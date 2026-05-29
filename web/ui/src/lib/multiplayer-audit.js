@@ -54,6 +54,14 @@ export function isProtocolResponseTimeoutForfeitReason(reason) {
   return String(reason || "") === PROTOCOL_RESPONSE_TIMEOUT_REASON;
 }
 
+export function isMatchClockTimeoutForfeitReason(reason) {
+  const normalized = String(reason || "");
+  return normalized === "match_clock_timeout"
+    || normalized === "peer_claimed_match_clock_timeout"
+    || normalized === "action_timeout"
+    || normalized === "peer_claimed_action_timeout";
+}
+
 export function cryptoMaterialRequirementType(requirement) {
   return String(requirement?.type || requirement?.requirement_type || "");
 }
@@ -888,6 +896,11 @@ export function isDisconnectForfeitCommand(command) {
 export function isProtocolResponseTimeoutForfeitCommand(command) {
   return command?.type === "forfeit_player"
     && isProtocolResponseTimeoutForfeitReason(command?.reason);
+}
+
+export function isMatchClockTimeoutForfeitCommand(command) {
+  return command?.type === "forfeit_player"
+    && isMatchClockTimeoutForfeitReason(command?.reason);
 }
 
 export function disconnectForfeitVoteThreshold(nonTargetPlayerCount) {
@@ -3709,6 +3722,7 @@ export async function verifyLiveAuditTranscript(
       : null;
     const disconnectForfeit = isDisconnectForfeitCommand(audit.command);
     const protocolTimeoutForfeit = isProtocolResponseTimeoutForfeitCommand(audit.command);
+    const matchClockTimeoutForfeit = isMatchClockTimeoutForfeitCommand(audit.command);
     const actionQuorumPlayers = forfeitTarget == null
       ? activeQuorumPlayers
       : activeQuorumPlayers.filter((player) =>
@@ -3724,8 +3738,10 @@ export async function verifyLiveAuditTranscript(
           ? 0
           : actionQuorumPlayers.length
       );
+    let disconnectForfeitReport = null;
+    let protocolTimeoutForfeitReport = null;
     if (disconnectForfeit) {
-      await verifyDisconnectForfeitCertificate({
+      disconnectForfeitReport = await verifyDisconnectForfeitCertificate({
         certificate: audit.command?.disconnect_certificate || audit.command?.disconnectCertificate,
         command: {
           ...audit.command,
@@ -3735,7 +3751,7 @@ export async function verifyLiveAuditTranscript(
       }, cryptoImpl);
     }
     if (protocolTimeoutForfeit) {
-      await verifyProtocolResponseTimeoutCertificate({
+      protocolTimeoutForfeitReport = await verifyProtocolResponseTimeoutCertificate({
         certificate: audit.command?.protocol_timeout_certificate
           || audit.command?.protocolTimeoutCertificate,
         command: {
@@ -3745,12 +3761,45 @@ export async function verifyLiveAuditTranscript(
         players: actionQuorumPlayers,
       }, cryptoImpl);
     }
-    await verifyActionQuorumCertificate({
+    const actionQuorumReport = await verifyActionQuorumCertificate({
       certificate: audit.quorumCertificate || entry.quorumCertificate,
       action: entry,
       players: actionQuorumPlayers,
       threshold: actionQuorumThresholdOverride,
     }, cryptoImpl);
+    if (forfeitTarget != null && forfeitTarget !== Number(audit.actor)) {
+      // The live receive-gate (usePeerLobby.js) forbids forfeiting another player
+      // unless it is an involuntary forfeit (disconnect / protocol-response timeout
+      // / match-clock timeout). A generic `forfeit_player` aimed at someone else is
+      // illegal, so reject it here too — otherwise a fabricated transcript could
+      // declare a winner via a forfeit that never happened, since the engine's
+      // forfeit_player applies unconditionally during replay.
+      if (!disconnectForfeit && !protocolTimeoutForfeit && !matchClockTimeoutForfeit) {
+        throw new Error(
+          `Action ${expectedSeq} forfeits another player without a valid involuntary-forfeit reason`
+        );
+      }
+      // An involuntary forfeit of another player must be attested by at least one
+      // player who is neither the actor nor the forfeited target. In a two-player
+      // game (or any game down to two active players) the disconnect / protocol /
+      // action-quorum thresholds collapse to self-attestation by the claimant, so
+      // without an independent witness the transcript alone cannot prove the
+      // forfeit — the live participants observed the timeout/disconnect locally, but
+      // a post-hoc verifier has no such observation and must not certify a winner.
+      const attestingVoters = new Set([
+        ...(disconnectForfeitReport?.voters || []),
+        ...(protocolTimeoutForfeitReport?.voters || []),
+        ...(actionQuorumReport?.voters || []),
+      ].map(Number));
+      const hasIndependentAttestation = [...attestingVoters].some(
+        (voter) => voter !== Number(audit.actor) && voter !== forfeitTarget
+      );
+      if (!hasIndependentAttestation) {
+        throw new Error(
+          `Action ${expectedSeq} forfeits another player without independent attestation`
+        );
+      }
+    }
     if (forfeitTarget != null) {
       activeQuorumPlayers = activeQuorumPlayers.filter((player) =>
         Number(player.index) !== forfeitTarget

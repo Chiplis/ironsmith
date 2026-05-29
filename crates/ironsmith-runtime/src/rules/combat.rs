@@ -780,7 +780,9 @@ mod tests {
     }
 
     fn set_mana_value(obj: &mut Object, mana_value: u8) {
-        obj.mana_cost = Some(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(mana_value)]]));
+        obj.mana_cost = Some(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
+            mana_value,
+        )]]));
     }
 
     #[test]
@@ -1386,7 +1388,8 @@ mod tests {
     }
 
     #[test]
-    fn rebbec_architect_of_ascension_mana_value_protection_blocks_only_matching_values_you_control() {
+    fn rebbec_architect_of_ascension_mana_value_protection_blocks_only_matching_values_you_control()
+    {
         let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
 

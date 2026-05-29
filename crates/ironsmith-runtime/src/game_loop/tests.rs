@@ -392,8 +392,7 @@ fn twenty_toed_toad_win_trigger_checks_cards_in_hand_and_counters() {
 
     let mut counters_threshold = setup_game();
     let toad = twenty_toed_toad_definition();
-    let toad_id =
-        counters_threshold.create_object_from_definition(&toad, alice, Zone::Battlefield);
+    let toad_id = counters_threshold.create_object_from_definition(&toad, alice, Zone::Battlefield);
     counters_threshold.remove_summoning_sickness(toad_id);
     counters_threshold
         .add_counters(toad_id, crate::object::CounterType::PlusOnePlusOne, 20)
@@ -535,11 +534,13 @@ fn keeper_of_the_flame_activation_requires_higher_life_opponent_and_damages_that
         .expect("Keeper of the Flame should have an activated ability");
     let activate_action = crate::decision::compute_legal_actions(&game, alice)
         .into_iter()
-        .find(|action| matches!(
-            action,
-            crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
-                if *source == keeper_id && *idx == ability_index
-        ))
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == keeper_id && *idx == ability_index
+            )
+        })
         .expect("Keeper of the Flame activation should be legal once Bob has more life");
 
     let mut trigger_queue = TriggerQueue::new();
@@ -637,11 +638,13 @@ fn activate_goblin_kites_targeting(
         .expect("Goblin Kites should have an activated ability");
     let activate_action = crate::decision::compute_legal_actions(game, controller)
         .into_iter()
-        .find(|action| matches!(
-            action,
-            crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
-                if *source == kites_id && *idx == ability_index
-        ))
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == kites_id && *idx == ability_index
+            )
+        })
         .expect("Goblin Kites activation should be legal");
 
     let mut trigger_queue = TriggerQueue::new();
@@ -692,11 +695,8 @@ fn goblin_kites_activation_requires_creature_you_control_with_toughness_two_or_l
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
 
-    let kites_id = game.create_object_from_definition(
-        &goblin_kites_definition(),
-        alice,
-        Zone::Battlefield,
-    );
+    let kites_id =
+        game.create_object_from_definition(&goblin_kites_definition(), alice, Zone::Battlefield);
     create_vanilla_creature(&mut game, "Too Tough", alice, 2, 3);
     create_vanilla_creature(&mut game, "Opponent's 1/1", bob, 1, 1);
     game.player_mut(alice)
@@ -726,13 +726,13 @@ fn goblin_kites_grants_flying_and_sacrifices_target_after_losing_delayed_flip() 
     game.turn.priority_player = Some(alice);
     game.set_random_seed(7);
 
-    let kites_id = game.create_object_from_definition(
-        &goblin_kites_definition(),
-        alice,
-        Zone::Battlefield,
-    );
+    let kites_id =
+        game.create_object_from_definition(&goblin_kites_definition(), alice, Zone::Battlefield);
     let target_id = create_vanilla_creature(&mut game, "Kited Goblin", alice, 1, 1);
-    let target_stable = game.object(target_id).expect("target should exist").stable_id;
+    let target_stable = game
+        .object(target_id)
+        .expect("target should exist")
+        .stable_id;
     game.player_mut(alice)
         .expect("Alice should exist")
         .mana_pool
@@ -778,13 +778,13 @@ fn goblin_kites_winning_delayed_flip_leaves_target_on_battlefield() {
     game.turn.priority_player = Some(alice);
     game.set_random_seed(2);
 
-    let kites_id = game.create_object_from_definition(
-        &goblin_kites_definition(),
-        alice,
-        Zone::Battlefield,
-    );
+    let kites_id =
+        game.create_object_from_definition(&goblin_kites_definition(), alice, Zone::Battlefield);
     let target_id = create_vanilla_creature(&mut game, "Lucky Goblin", alice, 1, 1);
-    let target_stable = game.object(target_id).expect("target should exist").stable_id;
+    let target_stable = game
+        .object(target_id)
+        .expect("target should exist")
+        .stable_id;
     game.player_mut(alice)
         .expect("Alice should exist")
         .mana_pool
@@ -879,11 +879,8 @@ fn tsabos_assassin_activation_is_legal_taps_source_and_resolves_from_stack() {
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
 
-    let assassin_id = game.create_object_from_definition(
-        &tsabos_assassin_definition(),
-        alice,
-        Zone::Battlefield,
-    );
+    let assassin_id =
+        game.create_object_from_definition(&tsabos_assassin_definition(), alice, Zone::Battlefield);
     game.remove_summoning_sickness(assassin_id);
     let target_id = create_colored_creature(
         &mut game,
@@ -902,11 +899,13 @@ fn tsabos_assassin_activation_is_legal_taps_source_and_resolves_from_stack() {
 
     let activate_action = crate::decision::compute_legal_actions(&game, alice)
         .into_iter()
-        .find(|action| matches!(
-            action,
-            crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
-                if *source == assassin_id && *idx == ability_index
-        ))
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == assassin_id && *idx == ability_index
+            )
+        })
         .expect("Tsabo's Assassin activation should be legal");
 
     let mut trigger_queue = TriggerQueue::new();
@@ -958,11 +957,8 @@ fn tsabos_assassin_destroys_creature_sharing_most_common_permanent_color() {
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
 
-    let assassin_id = game.create_object_from_definition(
-        &tsabos_assassin_definition(),
-        alice,
-        Zone::Battlefield,
-    );
+    let assassin_id =
+        game.create_object_from_definition(&tsabos_assassin_definition(), alice, Zone::Battlefield);
     game.remove_summoning_sickness(assassin_id);
     create_colored_creature(
         &mut game,
@@ -1032,11 +1028,8 @@ fn tsabos_assassin_destroys_creature_sharing_tied_most_common_color() {
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
 
-    let assassin_id = game.create_object_from_definition(
-        &tsabos_assassin_definition(),
-        alice,
-        Zone::Battlefield,
-    );
+    let assassin_id =
+        game.create_object_from_definition(&tsabos_assassin_definition(), alice, Zone::Battlefield);
     game.remove_summoning_sickness(assassin_id);
     create_colored_creature(
         &mut game,
@@ -1098,11 +1091,8 @@ fn tsabos_assassin_does_not_destroy_nonmatching_creature() {
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
 
-    let assassin_id = game.create_object_from_definition(
-        &tsabos_assassin_definition(),
-        alice,
-        Zone::Battlefield,
-    );
+    let assassin_id =
+        game.create_object_from_definition(&tsabos_assassin_definition(), alice, Zone::Battlefield);
     game.remove_summoning_sickness(assassin_id);
     create_colored_creature(
         &mut game,
@@ -1292,9 +1282,12 @@ fn desmond_miles_combat_damage_trigger_surveils_equal_to_damage_and_ignores_nonc
     let desmond = desmond_miles_definition();
     let desmond_id = game.create_object_from_definition(&desmond, alice, Zone::Battlefield);
     for idx in 0..4 {
-        let card = CardBuilder::new(CardId::from_raw(72_920 + idx), format!("Library Card {idx}"))
-            .card_types(vec![CardType::Creature])
-            .build();
+        let card = CardBuilder::new(
+            CardId::from_raw(72_920 + idx),
+            format!("Library Card {idx}"),
+        )
+        .card_types(vec![CardType::Creature])
+        .build();
         game.create_object_from_card(&card, alice, Zone::Library);
     }
 
@@ -1327,7 +1320,11 @@ fn desmond_miles_combat_damage_trigger_surveils_equal_to_damage_and_ignores_nonc
     for trigger in crate::triggers::check_triggers(&game, &combat_damage) {
         trigger_queue.add(trigger);
     }
-    assert_eq!(trigger_queue.entries.len(), 1, "combat damage should trigger once");
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "combat damage should trigger once"
+    );
 
     put_triggers_on_stack(&mut game, &mut trigger_queue)
         .expect("Desmond combat-damage trigger should go on the stack");
@@ -1468,14 +1465,10 @@ fn open_the_way_reveals_x_lands_to_battlefield_tapped_and_bottoms_rest() {
     let filler_stable = game.object(filler_id).unwrap().stable_id;
     let top_land_stable = game.object(top_land).unwrap().stable_id;
 
-    game.push_to_stack(
-        StackEntry::new(spell_id, alice)
-            .with_x(2)
-            .with_source_info(
-                game.object(spell_id).unwrap().stable_id,
-                "Open the Way".to_string(),
-            ),
-    );
+    game.push_to_stack(StackEntry::new(spell_id, alice).with_x(2).with_source_info(
+        game.object(spell_id).unwrap().stable_id,
+        "Open the Way".to_string(),
+    ));
     resolve_stack_entry(&mut game).expect("Open the Way should resolve");
 
     for stable_id in [top_land_stable, second_land_stable] {
@@ -1502,7 +1495,10 @@ fn open_the_way_reveals_x_lands_to_battlefield_tapped_and_bottoms_rest() {
         .find_object_by_stable_id(spell_stable)
         .expect("Open the Way should still exist after resolving");
     assert!(
-        game.player(alice).unwrap().graveyard.contains(&resolved_spell_id),
+        game.player(alice)
+            .unwrap()
+            .graveyard
+            .contains(&resolved_spell_id),
         "Open the Way should move to its owner's graveyard after resolving"
     );
 }
@@ -1525,7 +1521,9 @@ fn rise_from_the_grave_returns_creature_under_your_control_black_zombie() {
     let target_id = game.create_object_from_card(&target_card, bob, Zone::Graveyard);
     let target_stable = game.object(target_id).expect("target exists").stable_id;
 
-    game.push_to_stack(StackEntry::new(spell_id, alice).with_targets(vec![Target::Object(target_id)]));
+    game.push_to_stack(
+        StackEntry::new(spell_id, alice).with_targets(vec![Target::Object(target_id)]),
+    );
     resolve_stack_entry(&mut game).expect("Rise from the Grave should resolve");
 
     let returned_id = game
@@ -1579,7 +1577,11 @@ fn rise_from_the_grave_targets_only_creature_cards_in_graveyards() {
     let battlefield_creature = create_creature(&mut game, "Battlefield Creature", bob, 2, 2);
 
     let requirements = extract_target_requirements(&game, effects, alice, None);
-    assert_eq!(requirements.len(), 1, "Rise should have one target requirement");
+    assert_eq!(
+        requirements.len(),
+        1,
+        "Rise should have one target requirement"
+    );
     let legal_targets = &requirements[0].legal_targets;
     assert!(
         legal_targets.contains(&Target::Object(graveyard_creature)),
@@ -1870,7 +1872,11 @@ fn guardian_of_the_ages_loses_defender_and_stops_triggering() {
     .expect("attacking Guardian's controller should be legal");
     put_triggers_on_stack(&mut game, &mut trigger_queue)
         .expect("Guardian of the Ages trigger should go on stack");
-    assert_eq!(game.stack.len(), 1, "Guardian should trigger while it has defender");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "Guardian should trigger while it has defender"
+    );
     resolve_stack_entry(&mut game).expect("Guardian of the Ages trigger should resolve");
 
     assert!(
@@ -4102,18 +4108,14 @@ fn create_colored_creature(
     game.create_object_from_card(&card, owner, Zone::Battlefield)
 }
 
-fn put_dream_tides_upkeep_trigger_on_stack(
-    game: &mut GameState,
-    trigger_queue: &mut TriggerQueue,
-) {
+fn put_dream_tides_upkeep_trigger_on_stack(game: &mut GameState, trigger_queue: &mut TriggerQueue) {
     generate_and_queue_step_triggers(game, trigger_queue);
     assert_eq!(
         trigger_queue.entries.len(),
         1,
         "Dream Tides should create one upkeep trigger"
     );
-    put_triggers_on_stack(game, trigger_queue)
-        .expect("Dream Tides trigger should go on the stack");
+    put_triggers_on_stack(game, trigger_queue).expect("Dream Tides trigger should go on the stack");
 }
 
 #[test]
@@ -4175,7 +4177,10 @@ impl DecisionMaker for DreamTidesChoiceDecisionMaker {
             ctx.player, self.chooser,
             "active player should choose for Dream Tides"
         );
-        assert_eq!(ctx.min, 0, "Dream Tides should allow choosing zero creatures");
+        assert_eq!(
+            ctx.min, 0,
+            "Dream Tides should allow choosing zero creatures"
+        );
         assert_eq!(
             ctx.max,
             Some(ctx.candidates.len()),
@@ -12391,7 +12396,11 @@ fn valiant_endeavor_uses_chosen_result_for_destroy_and_other_result_for_tokens()
         .expect("destroyed equal creature should still be tracked by stable id");
     assert!(
         !game.battlefield.contains(&equal)
-            && game.player(bob).unwrap().graveyard.contains(&equal_graveyard_id),
+            && game
+                .player(bob)
+                .unwrap()
+                .graveyard
+                .contains(&equal_graveyard_id),
         "creature with power equal to the chosen result should be destroyed"
     );
     let large_graveyard_id = game
@@ -12411,7 +12420,10 @@ fn valiant_endeavor_uses_chosen_result_for_destroy_and_other_result_for_tokens()
         .battlefield
         .iter()
         .copied()
-        .filter(|&id| game.object(id).is_some_and(|object| object.name == "Knight"))
+        .filter(|&id| {
+            game.object(id)
+                .is_some_and(|object| object.name == "Knight")
+        })
         .collect::<Vec<_>>();
     assert_eq!(
         knight_tokens.len(),
@@ -12499,7 +12511,10 @@ fn valiant_endeavor_first_result_choice_uses_second_result_for_tokens() {
     let knight_count = game
         .battlefield
         .iter()
-        .filter(|&&id| game.object(id).is_some_and(|object| object.name == "Knight"))
+        .filter(|&&id| {
+            game.object(id)
+                .is_some_and(|object| object.name == "Knight")
+        })
         .count();
     assert_eq!(
         knight_count, 2,
@@ -12639,8 +12654,7 @@ fn firkraag_attack_trigger_fires_once_for_each_attacked_opponent() {
         "Firkraag should trigger once for each opponent attacked by Dragons"
     );
 
-    let mut dm =
-        ChooseObjectByOnlyLegalSetDecisionMaker::new(vec![bob_creature, charlie_creature]);
+    let mut dm = ChooseObjectByOnlyLegalSetDecisionMaker::new(vec![bob_creature, charlie_creature]);
     put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
         .expect("Firkraag attack triggers should go on the stack");
 
@@ -12811,7 +12825,10 @@ fn firkraag_damage_trigger_requires_creature_that_had_to_attack() {
         1,
         "Firkraag should get a +1/+1 counter"
     );
-    assert_eq!(game.player(alice).expect("Alice should exist").hand.len(), 1);
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").hand.len(),
+        1
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -13235,11 +13252,9 @@ impl DecisionMaker for ChooseSpecificObjectDecisionMaker {
             })
             .collect();
         assert!(
-            ctx.requirements
-                .iter()
-                .any(|requirement| requirement
-                    .legal_targets
-                    .contains(&Target::Object(self.desired))),
+            ctx.requirements.iter().any(|requirement| requirement
+                .legal_targets
+                .contains(&Target::Object(self.desired))),
             "expected desired object target to be legal, got {:?}",
             ctx.requirements
         );
@@ -15117,9 +15132,9 @@ fn the_mimeoplasm_exiles_two_graveyard_creatures_copies_one_and_gets_other_power
 
     let linked_ids = game.get_exiled_with_source_links(result.new_id);
     assert!(
-        linked_ids
-            .iter()
-            .all(|id| game.object(*id).is_some_and(|object| object.zone == Zone::Exile)),
+        linked_ids.iter().all(|id| game
+            .object(*id)
+            .is_some_and(|object| object.zone == Zone::Exile)),
         "The Mimeoplasm should link only exiled objects, got {linked_ids:?}"
     );
 
@@ -15161,8 +15176,14 @@ fn the_mimeoplasm_declined_optional_exile_enters_as_itself_and_leaves_graveyards
         .expect("The Mimeoplasm permanent should exist");
     assert_eq!(entered.name, "The Mimeoplasm");
     assert!(entered.counters.is_empty());
-    assert!(game.object(first_id).is_some_and(|object| object.zone == Zone::Graveyard));
-    assert!(game.object(second_id).is_some_and(|object| object.zone == Zone::Graveyard));
+    assert!(
+        game.object(first_id)
+            .is_some_and(|object| object.zone == Zone::Graveyard)
+    );
+    assert!(
+        game.object(second_id)
+            .is_some_and(|object| object.zone == Zone::Graveyard)
+    );
     assert!(game.get_exiled_with_source_links(result.new_id).is_empty());
 }
 
@@ -15189,7 +15210,10 @@ fn the_mimeoplasm_needs_two_graveyard_creature_cards_to_apply_copy_replacement()
         .expect("The Mimeoplasm permanent should exist");
     assert_eq!(entered.name, "The Mimeoplasm");
     assert!(entered.counters.is_empty());
-    assert!(game.object(lone_id).is_some_and(|object| object.zone == Zone::Graveyard));
+    assert!(
+        game.object(lone_id)
+            .is_some_and(|object| object.zone == Zone::Graveyard)
+    );
     assert!(game.get_exiled_with_source_links(result.new_id).is_empty());
 }
 
@@ -15221,16 +15245,27 @@ fn the_mimeoplasm_does_not_count_noncreature_or_token_graveyard_objects_for_its_
     let mut dm = PanicOnMimeoplasmReplacementPrompt;
     let result = game
         .move_object_with_etb_processing_with_dm(mimeoplasm_id, Zone::Battlefield, &mut dm)
-        .expect("The Mimeoplasm should enter without counting noncreature or token graveyard objects");
+        .expect(
+            "The Mimeoplasm should enter without counting noncreature or token graveyard objects",
+        );
 
     let entered = game
         .object(result.new_id)
         .expect("The Mimeoplasm permanent should exist");
     assert_eq!(entered.name, "The Mimeoplasm");
     assert!(entered.counters.is_empty());
-    assert!(game.object(creature_id).is_some_and(|object| object.zone == Zone::Graveyard));
-    assert!(game.object(noncreature_id).is_some_and(|object| object.zone == Zone::Graveyard));
-    assert!(game.object(token_id).is_some_and(|object| object.zone == Zone::Graveyard));
+    assert!(
+        game.object(creature_id)
+            .is_some_and(|object| object.zone == Zone::Graveyard)
+    );
+    assert!(
+        game.object(noncreature_id)
+            .is_some_and(|object| object.zone == Zone::Graveyard)
+    );
+    assert!(
+        game.object(token_id)
+            .is_some_and(|object| object.zone == Zone::Graveyard)
+    );
     assert!(game.get_exiled_with_source_links(result.new_id).is_empty());
 }
 
@@ -15966,9 +16001,9 @@ fn activate_tainted_sigil_after_life_losses(
         }
 
         progress = match progress {
-            crate::decision::GameProgress::NeedsDecisionCtx(
-                DecisionContext::SelectOptions(ctx),
-            ) => {
+            crate::decision::GameProgress::NeedsDecisionCtx(DecisionContext::SelectOptions(
+                ctx,
+            )) => {
                 let option = ctx
                     .options
                     .iter()
@@ -15988,9 +16023,7 @@ fn activate_tainted_sigil_after_life_losses(
                 )
                 .expect("Tainted Sigil cost choice should apply")
             }
-            crate::decision::GameProgress::NeedsDecisionCtx(
-                DecisionContext::SelectObjects(_),
-            ) => {
+            crate::decision::GameProgress::NeedsDecisionCtx(DecisionContext::SelectObjects(_)) => {
                 apply_priority_response_with_dm(
                     &mut game,
                     &mut trigger_queue,
@@ -22095,19 +22128,21 @@ fn demon_of_fates_design_life_cost_casts_only_enchantments_once_during_your_turn
 
     let cast_action = actions
         .into_iter()
-        .find(|action| matches!(
-            action,
-            LegalAction::CastSpell {
-                spell_id,
-                from_zone: Zone::Hand,
-                casting_method: CastingMethod::PlayFrom {
-                    source,
-                    zone: Zone::Hand,
-                    use_alternative: Some(_),
-                    ..
-                },
-            } if *spell_id == enchantment_id && *source == demon_id
-        ))
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Hand,
+                    casting_method: CastingMethod::PlayFrom {
+                        source,
+                        zone: Zone::Hand,
+                        use_alternative: Some(_),
+                        ..
+                    },
+                } if *spell_id == enchantment_id && *source == demon_id
+            )
+        })
         .expect("expected Demon alternative cast action");
 
     let mut trigger_queue = TriggerQueue::new();
@@ -22241,10 +22276,12 @@ fn demon_of_fates_design_sacrificed_enchantment_mana_value_sets_pump_amount() {
         Zone::Battlefield,
     );
     assert!(
-        !compute_legal_actions(&game, alice).iter().any(|action| matches!(
-            action,
-            LegalAction::ActivateAbility { source, .. } if *source == demon_id
-        )),
+        !compute_legal_actions(&game, alice)
+            .iter()
+            .any(|action| matches!(
+                action,
+                LegalAction::ActivateAbility { source, .. } if *source == demon_id
+            )),
         "Demon of Fate's Design should not be able to sacrifice itself for its another-enchantment cost"
     );
 
@@ -22298,7 +22335,12 @@ fn demon_of_fates_design_sacrificed_enchantment_mana_value_sets_pump_amount() {
     let sacrifice_cost_index = cost_order_ctx
         .options
         .iter()
-        .find(|option| option.description.to_ascii_lowercase().contains("sacrifice"))
+        .find(|option| {
+            option
+                .description
+                .to_ascii_lowercase()
+                .contains("sacrifice")
+        })
         .map(|option| option.index)
         .expect("expected Demon sacrifice cost option");
     let progress = apply_priority_response_with_dm(
@@ -26256,11 +26298,13 @@ fn aquamorph_entity_turns_face_up_with_chosen_power_toughness() {
         .add(ManaSymbol::Blue, 1);
     let action = crate::decision::compute_legal_actions(&game, alice)
         .into_iter()
-        .find(|action| matches!(
-            action,
-            crate::decision::LegalAction::TurnFaceUp { creature_id, .. }
-                if *creature_id == battlefield_id
-        ))
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::TurnFaceUp { creature_id, .. }
+                    if *creature_id == battlefield_id
+            )
+        })
         .expect("Aquamorph Entity should be turnable face up for its morph cost");
 
     let mut trigger_queue = TriggerQueue::new();
@@ -34522,7 +34566,11 @@ fn activate_heroism(
         }
     }
 
-    assert_eq!(game.stack.len(), 1, "Heroism ability should be on the stack");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "Heroism ability should be on the stack"
+    );
     assert!(
         game.object(sacrifice_id)
             .map(|object| object.zone != Zone::Battlefield)
@@ -34597,7 +34645,11 @@ fn test_heroism_prevents_unpaid_attacking_red_creature_damage_only() {
 
     game.turn.step = Some(crate::game_state::Step::CombatDamage);
     let events = execute_combat_damage_step(&mut game, &combat, false);
-    assert_eq!(events.len(), 2, "both attackers should assign combat damage");
+    assert_eq!(
+        events.len(),
+        2,
+        "both attackers should assign combat damage"
+    );
     assert_eq!(
         game.player(alice).expect("Alice exists").life,
         18,
@@ -34659,7 +34711,11 @@ fn test_heroism_controller_payment_allows_red_attacker_damage() {
 
     game.turn.step = Some(crate::game_state::Step::CombatDamage);
     let events = execute_combat_damage_step(&mut game, &combat, false);
-    assert_eq!(events.len(), 1, "the red attacker should assign combat damage");
+    assert_eq!(
+        events.len(),
+        1,
+        "the red attacker should assign combat damage"
+    );
     assert_eq!(
         game.player(alice).expect("Alice exists").life,
         17,
@@ -36169,7 +36225,10 @@ fn the_aesir_escape_valhalla_chapters_use_exiled_card_mana_value_and_return_pair
     let exiled_id = game
         .find_object_by_stable_id(exiled_stable_id)
         .expect("exiled card should still exist");
-    assert_eq!(game.object(exiled_id).expect("exiled card exists").zone, Zone::Exile);
+    assert_eq!(
+        game.object(exiled_id).expect("exiled card exists").zone,
+        Zone::Exile
+    );
     assert_eq!(
         game.player(alice).expect("alice exists").life,
         24,
@@ -36206,7 +36265,9 @@ fn the_aesir_escape_valhalla_chapters_use_exiled_card_mana_value_and_return_pair
         .find_object_by_stable_id(exiled_stable_id)
         .expect("exiled card should still exist after returning");
     assert_eq!(
-        game.object(returned_saga_id).expect("returned saga exists").zone,
+        game.object(returned_saga_id)
+            .expect("returned saga exists")
+            .zone,
         Zone::Hand,
         "chapter III should return this Saga to its owner's hand"
     );
@@ -36321,7 +36382,9 @@ fn the_aesir_escape_valhalla_without_exiled_card_adds_no_counters() {
         .find_object_by_stable_id(saga_stable_id)
         .expect("saga should still exist after returning");
     assert_eq!(
-        game.object(returned_saga_id).expect("returned saga exists").zone,
+        game.object(returned_saga_id)
+            .expect("returned saga exists")
+            .zone,
         Zone::Hand,
         "chapter III should still return this Saga to its owner's hand"
     );

@@ -503,8 +503,8 @@ fn counter_effect_target(effect: &Effect) -> Option<&ChooseSpec> {
 }
 
 fn unless_pays_counter_target(effect: &Effect) -> Option<&ChooseSpec> {
-    let unless_pays = unwrap_tagged_effect(effect)
-        .downcast_ref::<crate::effects::UnlessPaysEffect>()?;
+    let unless_pays =
+        unwrap_tagged_effect(effect).downcast_ref::<crate::effects::UnlessPaysEffect>()?;
     let [counter_effect] = unless_pays.effects.as_slice() else {
         return None;
     };
@@ -2229,12 +2229,8 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
             } else {
                 subject
             };
-            let mut ability_lines = describe_ability(
-                ability_idx + 1,
-                ability,
-                ability_subject,
-                rewrite_it_deals,
-            );
+            let mut ability_lines =
+                describe_ability(ability_idx + 1, ability, ability_subject, rewrite_it_deals);
             if ability_has_begin_on_battlefield_pregame(ability) {
                 for line in &mut ability_lines {
                     *line = substitute_pregame_self_reference(line, &def.card.name);

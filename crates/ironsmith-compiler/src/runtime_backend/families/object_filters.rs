@@ -12,7 +12,9 @@ use crate::{
 
 use super::grammar::primitives::{self as grammar_primitives, split_lexed_slices_on_or};
 use super::keyword_static::parse_pt_modifier;
-use super::lexer::{OwnedLexToken, TokenWordView};
+use super::lexer::{
+    OwnedLexToken, TokenWordView, word_slice_contains_any_phrase, word_slice_find_phrase_start,
+};
 use super::util::{
     apply_filter_keyword_constraint, is_article, is_demonstrative_object_head, is_non_outlaw_word,
     is_outlaw_word, is_permanent_type, is_source_reference_words, parse_alternative_cast_words,
@@ -114,16 +116,6 @@ where
         let parsed = make_parser().parse_next(&mut input).ok()?;
         Some((idx, parsed, words.len().saturating_sub(idx + input.len())))
     })
-}
-
-pub(super) fn find_word_slice_phrase_start(words: &[&str], phrase: &[&str]) -> Option<usize> {
-    find_word_slice_parse(words, || word_slice_phrase(phrase).void()).map(|(idx, _, _)| idx)
-}
-
-fn contains_any_word_slice_phrase(words: &[&str], phrases: &[&[&str]]) -> bool {
-    phrases
-        .iter()
-        .any(|phrase| find_word_slice_phrase_start(words, phrase).is_some())
 }
 
 #[derive(Clone)]
@@ -287,7 +279,7 @@ pub(super) fn token_find_index(
 }
 
 pub(super) fn slice_has<T: PartialEq>(items: &[T], expected: &T) -> bool {
-    items.iter().any(|item| item == expected)
+    crate::slice_primitives::contains(items, expected)
 }
 
 pub(super) fn set_has<T: Eq + std::hash::Hash>(
@@ -298,9 +290,7 @@ pub(super) fn set_has<T: Eq + std::hash::Hash>(
 }
 
 pub(super) fn push_unique<T: Copy + PartialEq>(items: &mut Vec<T>, value: T) {
-    if !slice_has(items, &value) {
-        items.push(value);
-    }
+    crate::slice_primitives::push_unique(items, value);
 }
 
 pub(super) fn strip_not_on_battlefield_phrase(tokens: &mut Vec<OwnedLexToken>) -> bool {
@@ -378,7 +368,7 @@ pub(super) fn apply_parity_filter_phrases(words: &[&str], filter: &mut ObjectFil
             ][..],
         ),
     ] {
-        if contains_any_word_slice_phrase(words, phrases) {
+        if word_slice_contains_any_phrase(words, phrases) {
             filter.mana_value_parity = Some(parity);
         }
     }
@@ -387,12 +377,12 @@ pub(super) fn apply_parity_filter_phrases(words: &[&str], filter: &mut ObjectFil
         (ParityRequirement::Odd, &[&["odd", "power"][..]][..]),
         (ParityRequirement::Even, &[&["even", "power"][..]][..]),
     ] {
-        if contains_any_word_slice_phrase(words, phrases) {
+        if word_slice_contains_any_phrase(words, phrases) {
             filter.power_parity = Some(parity);
         }
     }
 
-    if contains_any_word_slice_phrase(
+    if word_slice_contains_any_phrase(
         words,
         &[
             &["power", "of", "chosen", "quality"],
@@ -403,7 +393,7 @@ pub(super) fn apply_parity_filter_phrases(words: &[&str], filter: &mut ObjectFil
         filter.power_parity = Some(ParityRequirement::Chosen);
     }
 
-    if contains_any_word_slice_phrase(
+    if word_slice_contains_any_phrase(
         words,
         &[
             &["mana", "value", "of", "chosen", "quality"],

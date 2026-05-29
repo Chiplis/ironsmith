@@ -674,8 +674,10 @@ where
         ) = &self.grantable
             && self.zone == Zone::Hand
         {
-            let prefix = if matches!(usage_limit, Some(GrantUsageLimit::OnceDuringEachOfYourTurns))
-            {
+            let prefix = if matches!(
+                usage_limit,
+                Some(GrantUsageLimit::OnceDuringEachOfYourTurns)
+            ) {
                 "Once during each of your turns, "
             } else {
                 ""

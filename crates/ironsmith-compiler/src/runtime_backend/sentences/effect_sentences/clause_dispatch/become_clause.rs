@@ -1,15 +1,12 @@
-use super::super::super::grammar::primitives::TokenWordView;
 use super::super::super::keyword_static::{
     keyword_action_to_static_ability, parse_ability_line, parse_pt_modifier,
 };
-use super::super::super::lexer::OwnedLexToken;
-use super::super::super::token_primitives::{
-    find_str_by as find_word_index_by, slice_contains_str as word_slice_contains,
-    slice_ends_with as word_slice_ends_with, slice_starts_with as word_slice_starts_with,
+use super::super::super::lexer::{
+    LexedClause, OwnedLexToken, word_slice_eq, word_slice_eq_any, word_slice_starts_with,
+    word_slice_strip_any_suffix,
 };
 use super::super::super::util::{
-    parse_card_type, parse_color, parse_subject, parse_target_phrase, parse_value,
-    span_from_tokens, token_index_for_word_index, trim_commas,
+    parse_card_type, parse_color, parse_subject, parse_target_phrase, parse_value, span_from_tokens,
 };
 use super::super::clause_pattern_helpers::extract_subject_player;
 use super::super::parse_granted_abilities_for_gain_clause;
@@ -27,36 +24,35 @@ use crate::host::{CardTextError, EffectAst, IT_TAG, TagKey, TargetAst};
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::types::{CardType, Subtype};
 
+const ADDITION_TAIL_PHRASES: &[&[&str]] = &[
+    &["in", "addition", "to", "its", "other", "types"],
+    &["in", "addition", "to", "their", "other", "types"],
+    &["in", "addition", "to", "its", "other", "type"],
+    &["in", "addition", "to", "their", "other", "type"],
+];
+
 fn split_trailing_except_tokens(
     tokens: &[OwnedLexToken],
 ) -> (Vec<OwnedLexToken>, Option<Vec<OwnedLexToken>>) {
-    let token_word_view = TokenWordView::new(tokens);
-    let token_words = token_word_view.to_word_refs();
-    let Some(except_word_idx) = token_words.iter().rposition(|word| *word == "except") else {
+    let clause = LexedClause::new(tokens);
+    let Some(except_word_idx) = clause.rfind_word("except") else {
         return (tokens.to_vec(), None);
     };
-    let Some(except_token_idx) = token_index_for_word_index(tokens, except_word_idx) else {
+    let Some(except_token_idx) = clause.token_index_for_word_index(except_word_idx) else {
         return (tokens.to_vec(), None);
     };
-    let exception = trim_commas(&tokens[except_token_idx + 1..]);
+    let exception = clause.from(except_token_idx + 1).trim();
     (
-        trim_commas(&tokens[..except_token_idx]),
+        clause.before(except_token_idx).trim(),
         (!exception.is_empty()).then_some(exception),
     )
 }
 
 fn strip_trailing_addition_tail_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    let words = TokenWordView::new(tokens).to_word_refs();
-    let Some(addition_tail_len) =
-        (word_slice_ends_with(&words, &["in", "addition", "to", "its", "other", "types"])
-            || word_slice_ends_with(&words, &["in", "addition", "to", "their", "other", "types"])
-            || word_slice_ends_with(&words, &["in", "addition", "to", "its", "other", "type"])
-            || word_slice_ends_with(&words, &["in", "addition", "to", "their", "other", "type"]))
-        .then_some(6usize)
-    else {
-        return tokens;
-    };
-    &tokens[..tokens.len().saturating_sub(addition_tail_len)]
+    LexedClause::new(tokens)
+        .strip_any_suffix_clause(ADDITION_TAIL_PHRASES)
+        .map(|(_, head)| head.tokens())
+        .unwrap_or(tokens)
 }
 
 fn is_addition_tail_only(tokens: &[OwnedLexToken]) -> bool {
@@ -64,7 +60,7 @@ fn is_addition_tail_only(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn is_still_a_land_suffix(tokens: &[OwnedLexToken]) -> bool {
-    let words = TokenWordView::new(tokens).to_word_refs();
+    let words = LexedClause::new(tokens).word_refs();
     matches!(
         words.as_slice(),
         ["still", "a", "land"]
@@ -76,16 +72,15 @@ fn is_still_a_land_suffix(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn parse_copy_exception_preserves_source_abilities(tokens: &[OwnedLexToken]) -> bool {
-    let token_words = TokenWordView::new(tokens).to_word_refs();
-    token_words == ["it", "has", "this", "ability"]
+    LexedClause::new(tokens).matches_words(&["it", "has", "this", "ability"])
 }
 
 pub(crate) fn parse_become_clause(
     subject_tokens: &[OwnedLexToken],
     rest_tokens: &[OwnedLexToken],
 ) -> Result<EffectAst, CardTextError> {
-    let subject_tokens = trim_commas(subject_tokens).to_vec();
-    let rest_tokens = trim_commas(rest_tokens).to_vec();
+    let subject_tokens = LexedClause::new(subject_tokens).trim();
+    let rest_tokens = LexedClause::new(rest_tokens).trim();
     let (rest_core_tokens, copy_exception_tokens) = split_trailing_except_tokens(&rest_tokens);
     let preserve_source_abilities = copy_exception_tokens
         .as_deref()
@@ -109,34 +104,31 @@ pub(crate) fn parse_become_clause(
         )
     };
     let subject_tokens = subject_tokens_vec.as_slice();
-    let subject_word_view = TokenWordView::new(subject_tokens);
-    let subject_words = subject_word_view.to_word_refs();
+    let subject_clause = LexedClause::new(subject_tokens);
+    let subject_words = subject_clause.word_refs();
     let subject_targets_base_pt = subject_references_base_power_toughness(&subject_words);
     let target_subject_tokens =
         strip_base_power_toughness_subject_tokens(subject_tokens, &subject_words);
-    let target_subject_word_view = TokenWordView::new(target_subject_tokens);
-    let target_subject_words = target_subject_word_view.to_word_refs();
+    let target_subject_words = LexedClause::new(target_subject_tokens).word_refs();
     let subject = parse_subject(subject_tokens);
-    let become_body_tokens = if become_tokens
-        .first()
-        .and_then(OwnedLexToken::as_word)
-        .is_some_and(|word| word == "the" || word == "a" || word == "an")
+    let become_clause = LexedClause::new(&become_tokens);
+    let become_body_clause = if let Some(after_article) = become_clause
+        .strip_prefix_clause(&["the"])
+        .or_else(|| become_clause.strip_prefix_clause(&["a"]))
+        .or_else(|| become_clause.strip_prefix_clause(&["an"]))
     {
-        &become_tokens[1..]
+        after_article
     } else {
-        &become_tokens[..]
+        become_clause
     };
-    let become_word_view = TokenWordView::new(become_body_tokens);
-    let become_words_vec = become_word_view.to_word_refs();
+    let become_words_vec = become_body_clause.word_refs();
     let become_words = &become_words_vec[..];
 
     if let Some(player) = extract_subject_player(Some(subject)) {
-        if become_words == ["monarch"] {
+        if word_slice_eq(become_words, &["monarch"]) {
             return Ok(EffectAst::subject_verb_become_monarch(player));
         }
-        if word_slice_contains(&subject_words, "life")
-            && word_slice_contains(&subject_words, "total")
-        {
+        if subject_clause.contains_word("life") && subject_clause.contains_word("total") {
             let amount = parse_value(&become_tokens)
                 .map(|(value, _)| value)
                 .or_else(|| parse_half_starting_life_total_value(&become_tokens, player))
@@ -151,22 +143,27 @@ pub(crate) fn parse_become_clause(
     }
 
     let mut target = if target_subject_words.is_empty()
-        || target_subject_words == ["it"]
-        || target_subject_words == ["they"]
-        || target_subject_words == ["them"]
+        || word_slice_eq_any(&target_subject_words, &[&["it"], &["they"], &["them"]])
     {
         TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(subject_tokens))
-    } else if target_subject_words == ["this"]
-        || target_subject_words == ["this", "permanent"]
-        || target_subject_words == ["this", "creature"]
-        || target_subject_words == ["this", "land"]
-    {
+    } else if word_slice_eq_any(
+        &target_subject_words,
+        &[
+            &["this"],
+            &["this", "permanent"],
+            &["this", "creature"],
+            &["this", "land"],
+        ],
+    ) {
         TargetAst::Source(span_from_tokens(subject_tokens))
     } else {
         parse_target_phrase(target_subject_tokens)?
     };
 
-    if become_words == ["basic", "land", "type", "of", "your", "choice"] {
+    if word_slice_eq(
+        become_words,
+        &["basic", "land", "type", "of", "your", "choice"],
+    ) {
         return Ok(EffectAst::subject_verb_become_basic_land_type_choice(
             target, duration,
         ));
@@ -188,16 +185,20 @@ pub(crate) fn parse_become_clause(
         ));
     }
 
-    if become_words == ["color", "of", "your", "choice"]
-        || become_words == ["color", "or", "colors", "of", "your", "choice"]
-        || become_words == ["colors", "of", "your", "choice"]
-    {
+    if word_slice_eq_any(
+        become_words,
+        &[
+            &["color", "of", "your", "choice"],
+            &["color", "or", "colors", "of", "your", "choice"],
+            &["colors", "of", "your", "choice"],
+        ],
+    ) {
         return Ok(EffectAst::subject_verb_become_color_choice(
             target, duration,
         ));
     }
 
-    if become_words == ["creature", "type", "of", "your", "choice"] {
+    if word_slice_eq(become_words, &["creature", "type", "of", "your", "choice"]) {
         return Ok(EffectAst::subject_verb_become_creature_type_choice(
             target,
             duration,
@@ -205,14 +206,14 @@ pub(crate) fn parse_become_clause(
         ));
     }
 
-    if word_slice_starts_with(become_words, &["copy", "of"]) {
-        let Some(source_start) = token_index_for_word_index(become_body_tokens, 2) else {
+    if become_body_clause.starts_with(&["copy", "of"]) {
+        let Some(source_clause) = become_body_clause.after_words(2) else {
             return Err(CardTextError::ParseError(format!(
                 "missing copy source in become clause (clause: '{}')",
                 render_lower_words(&rest_tokens)
             )));
         };
-        let source_tokens = trim_commas(&become_body_tokens[source_start..]);
+        let source_tokens = source_clause.trim();
         if source_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing copy source in become clause (clause: '{}')",
@@ -228,16 +229,16 @@ pub(crate) fn parse_become_clause(
         ));
     }
 
-    if become_words == ["colorless"] {
+    if word_slice_eq(become_words, &["colorless"]) {
         return Ok(EffectAst::subject_verb_make_colorless(target, duration));
     }
 
     let aura_with_enchant_creature_words = if word_slice_starts_with(
-        become_words,
+        &become_words,
         &["aura", "enchantment", "with", "enchant", "creature"],
     ) {
         Some(&become_words[5..])
-    } else if word_slice_starts_with(become_words, &["aura", "with", "enchant", "creature"]) {
+    } else if word_slice_starts_with(&become_words, &["aura", "with", "enchant", "creature"]) {
         Some(&become_words[4..])
     } else {
         None
@@ -262,12 +263,16 @@ pub(crate) fn parse_become_clause(
         ));
     }
 
-    if word_slice_starts_with(become_words, &["equal", "to"]) {
+    if word_slice_starts_with(&become_words, &["equal", "to"]) {
         let rhs = &become_words[2..];
-        if rhs == ["this", "power", "and", "toughness"]
-            || rhs == ["thiss", "power", "and", "toughness"]
-            || rhs == ["source", "power", "and", "toughness"]
-        {
+        if word_slice_eq_any(
+            rhs,
+            &[
+                &["this", "power", "and", "toughness"],
+                &["thiss", "power", "and", "toughness"],
+                &["source", "power", "and", "toughness"],
+            ],
+        ) {
             return Ok(EffectAst::subject_verb_set_base_power_toughness(
                 Value::PowerOf(Box::new(ChooseSpec::Source)),
                 Value::ToughnessOf(Box::new(ChooseSpec::Source)),
@@ -288,9 +293,10 @@ pub(crate) fn parse_become_clause(
                 duration,
             ));
         }
-        if let Some(creature_idx) = find_word_index_by(become_words, |word| {
-            matches!(word, "creature" | "creatures")
-        }) {
+        if let Some(creature_idx) = become_words
+            .iter()
+            .position(|word| matches!(*word, "creature" | "creatures"))
+        {
             let mut card_types = vec![CardType::Creature];
             let mut subtypes = Vec::new();
             let mut colors = crate::color::ColorSet::new();
@@ -320,9 +326,9 @@ pub(crate) fn parse_become_clause(
             let mut abilities = Vec::new();
             let mut granted_abilities = Vec::<GrantedAbilityAst>::new();
             let suffix_tokens = if let Some(creature_token_idx) =
-                token_index_for_word_index(become_body_tokens, creature_idx)
+                become_body_clause.token_index_for_word_index(creature_idx)
             {
-                trim_commas(&become_body_tokens[creature_token_idx + 1..]).to_vec()
+                become_body_clause.from(creature_token_idx + 1).trim()
             } else {
                 Vec::new()
             };
@@ -336,9 +342,9 @@ pub(crate) fn parse_become_clause(
                 .first()
                 .is_some_and(|token| token.is_word("with"))
             {
-                let trimmed_suffix_tokens = trim_commas(&suffix_tokens[1..]);
+                let trimmed_suffix_tokens = LexedClause::new(&suffix_tokens[1..]).trim();
                 let trimmed_suffix = strip_trailing_addition_tail_tokens(&trimmed_suffix_tokens);
-                let suffix_words = TokenWordView::new(trimmed_suffix).to_word_refs();
+                let suffix_words = LexedClause::new(trimmed_suffix).word_refs();
                 if let Ok((parsed_abilities, _)) =
                     parse_granted_abilities_for_gain_clause(trimmed_suffix, &suffix_words, false)
                     && !parsed_abilities.is_empty()
@@ -409,34 +415,9 @@ pub(crate) fn parse_become_clause(
         ));
     }
 
-    let addition_tail_len = if word_slice_ends_with(
-        become_words,
-        &["in", "addition", "to", "its", "other", "types"],
-    ) {
-        Some(6usize)
-    } else if word_slice_ends_with(
-        become_words,
-        &["in", "addition", "to", "their", "other", "types"],
-    ) {
-        Some(6usize)
-    } else if word_slice_ends_with(
-        become_words,
-        &["in", "addition", "to", "its", "other", "type"],
-    ) {
-        Some(6usize)
-    } else if word_slice_ends_with(
-        become_words,
-        &["in", "addition", "to", "their", "other", "type"],
-    ) {
-        Some(6usize)
-    } else {
-        None
-    };
-    let card_type_words = if let Some(tail_len) = addition_tail_len {
-        &become_words[..become_words.len().saturating_sub(tail_len)]
-    } else {
-        become_words
-    };
+    let card_type_words = word_slice_strip_any_suffix(become_words, ADDITION_TAIL_PHRASES)
+        .map(|(_, head)| head)
+        .unwrap_or(become_words);
     if !card_type_words.is_empty() {
         let mut card_types = Vec::new();
         let mut all_card_types = true;

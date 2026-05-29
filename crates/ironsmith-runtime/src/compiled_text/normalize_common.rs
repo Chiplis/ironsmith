@@ -9174,7 +9174,10 @@ fn describe_color_subtype_addition_pair(
         .map(|subtype| subtype.to_string().to_ascii_lowercase())
         .collect::<Vec<_>>()
         .join(" ");
-    let descriptor = format!("{} {subtype_words}", describe_token_color_words(colors, false));
+    let descriptor = format!(
+        "{} {subtype_words}",
+        describe_token_color_words(colors, false)
+    );
     let descriptor = if plural_target {
         pluralize_noun_phrase(&descriptor)
     } else {
@@ -9209,7 +9212,8 @@ pub(super) fn describe_compact_apply_continuous_pair(
     }
 
     let (target, plural_target) = describe_apply_continuous_target(first);
-    if let Some(text) = describe_color_subtype_addition_pair(first, second, &target, plural_target) {
+    if let Some(text) = describe_color_subtype_addition_pair(first, second, &target, plural_target)
+    {
         return Some(text);
     }
     let mut clauses = describe_apply_continuous_clauses(first, plural_target);
@@ -9268,7 +9272,8 @@ pub(super) fn describe_compact_tagged_apply_continuous_pair(
     }
 
     let (target, plural_target) = describe_apply_continuous_target(first);
-    if let Some(text) = describe_color_subtype_addition_pair(first, second, &target, plural_target) {
+    if let Some(text) = describe_color_subtype_addition_pair(first, second, &target, plural_target)
+    {
         return Some(text);
     }
     if tagged_apply_pair_preserves_animated_land(first, second)

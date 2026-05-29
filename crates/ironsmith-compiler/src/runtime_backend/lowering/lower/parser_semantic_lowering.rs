@@ -3,6 +3,7 @@ use crate::runtime_backend::ast::{SubjectVerbEffectAst, SubjectVerbSubjectAst};
 use crate::runtime_backend::grammar::structure::{
     StatementLineFamily, classify_statement_line_family_lexed,
 };
+use crate::runtime_backend::lexer::word_slice_starts_with;
 
 fn parse_effect_sentences_from_text(
     text: &str,
@@ -41,18 +42,11 @@ fn full_text_has_triggered_intervening_if_clause(text: &str, line_index: usize) 
         .is_some()
 }
 
-fn word_refs_contain_sequence(words: &[&str], sequence: &[&str]) -> bool {
-    !sequence.is_empty()
-        && words
-            .windows(sequence.len())
-            .any(|window| window == sequence)
-}
-
 fn looks_like_combined_spell_and_activation_tax(words: &[&str]) -> bool {
     (words.contains(&"spell") || words.contains(&"spells"))
-        && word_refs_contain_sequence(words, &["and", "abilities"])
-        && word_refs_contain_sequence(words, &["activate", "cost"])
-        && word_refs_contain_sequence(words, &["more", "to", "activate"])
+        && word_slice_contains_phrase(words, &["and", "abilities"])
+        && word_slice_contains_phrase(words, &["activate", "cost"])
+        && word_slice_contains_phrase(words, &["more", "to", "activate"])
 }
 
 fn triggered_line_source_text(line: &RewriteTriggeredLine) -> &str {
@@ -309,7 +303,7 @@ fn sentences_have_temporary_static_followup_after_first<S: AsRef<[OwnedLexToken]
     sentences.iter().skip(1).any(|sentence| {
         let sentence = sentence.as_ref();
         let words = token_word_refs(sentence);
-        word_refs_contain_sequence(&words, &["this", "turn"])
+        word_slice_contains_phrase(&words, &["this", "turn"])
             && (matches!(parse_static_ability_ast_line_lexed(sentence), Ok(Some(_)))
                 || words.contains(&"cant")
                 || words.contains(&"can't")
@@ -2106,7 +2100,7 @@ pub(crate) fn try_lower_optional_cost_with_cast_trigger(
     };
     let stripped_head_tokens = trim_lexed_commas(&head_tokens[head_effect_start..]);
     let stripped_head_words = token_word_refs(stripped_head_tokens);
-    if !slice_starts_with(&stripped_head_words, &["you", "may"]) {
+    if !word_slice_starts_with(&stripped_head_words, &["you", "may"]) {
         return Ok(None);
     }
     let Some(optional_effect_start) = token_index_for_word_index(stripped_head_tokens, 2) else {
@@ -2190,8 +2184,8 @@ pub(crate) fn try_lower_optional_behold_additional_cost(
     };
     let stripped = trim_lexed_commas(effect_tokens);
     let words = token_word_refs(stripped);
-    if !slice_starts_with(&words, &["you", "may", "behold"])
-        && !slice_starts_with(&words, &["you", "may", "blight"])
+    if !word_slice_starts_with(&words, &["you", "may", "behold"])
+        && !word_slice_starts_with(&words, &["you", "may", "blight"])
     {
         return Ok(None);
     }

@@ -10,7 +10,11 @@ use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::grammar::structure::{
     LeadingResultPrefixKind, split_leading_result_prefix_lexed, split_trailing_if_clause_lexed,
 };
-use super::super::lexer::{OwnedLexToken, TokenKind, token_word_refs, trim_lexed_commas};
+use super::super::lexer::{
+    OwnedLexToken, TokenKind, token_word_refs, trim_lexed_commas, word_slice_contains_any_word,
+    word_slice_contains_phrase, word_slice_contains_window_by, word_slice_contains_word,
+    word_slice_eq, word_slice_eq_any, word_slice_find_phrase_start, word_slice_starts_with,
+};
 use super::super::object_filters::parse_object_filter;
 use super::super::permission_helpers::{
     PermissionClauseSpec, PermissionLifetime, parse_additional_land_plays_clause_lexed,
@@ -19,9 +23,8 @@ use super::super::permission_helpers::{
 };
 use super::super::rule_engine::{LexClauseView, LexRuleDef, LexRuleIndex};
 use super::super::token_primitives::{
-    find_window_index as find_word_sequence_index, rfind_index as find_last_token_index,
-    slice_contains_str as word_slice_contains, slice_starts_with as word_slice_starts_with,
-    str_contains as string_contains,
+    rfind_index as find_last_token_index, str_contains as string_contains,
+    str_contains_char as string_contains_char,
 };
 use super::super::util::is_source_reference_words;
 use super::super::value_helpers::{parse_number_from_lexed, parse_value_from_lexed};
@@ -71,31 +74,28 @@ fn parse_choose_land_of_each_basic_land_type_segment(
 ) -> Option<Vec<EffectAst>> {
     let word_view = TokenWordView::new(tokens);
     let words = word_view.word_refs();
-    let choice_words = match words.as_slice() {
-        ["choose", "a", "land", "of", "each", "basic", "land", "type"]
-        | ["choose", "land", "of", "each", "basic", "land", "type"] => words.as_slice(),
-        [
-            "you",
-            "choose",
-            "a",
-            "land",
-            "of",
-            "each",
-            "basic",
-            "land",
-            "type",
-        ]
-        | [
-            "you",
-            "choose",
-            "land",
-            "of",
-            "each",
-            "basic",
-            "land",
-            "type",
-        ] => &words[1..],
-        _ => return None,
+    let choice_words = if word_slice_eq_any(
+        &words,
+        &[
+            &["choose", "a", "land", "of", "each", "basic", "land", "type"],
+            &["choose", "land", "of", "each", "basic", "land", "type"],
+        ],
+    ) {
+        words.as_slice()
+    } else if word_slice_eq_any(
+        &words,
+        &[
+            &[
+                "you", "choose", "a", "land", "of", "each", "basic", "land", "type",
+            ],
+            &[
+                "you", "choose", "land", "of", "each", "basic", "land", "type",
+            ],
+        ],
+    ) {
+        &words[1..]
+    } else {
+        return None;
     };
     if choice_words.is_empty() {
         return None;
@@ -202,14 +202,7 @@ fn try_apply_rest_action_followup(effects: &mut Vec<EffectAst>, action: RestActi
 }
 
 fn contains_char(text: &str, expected: char) -> bool {
-    let mut chars = text.chars();
-    while let Some(ch) = chars.next() {
-        if ch == expected {
-            return true;
-        }
-    }
-
-    false
+    string_contains_char(text, expected)
 }
 
 fn starts_like_create_fragment_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -262,15 +255,15 @@ fn parse_exile_library_then_shuffle_graveyard_chain_lexed(
     }
 
     fn parse_owner(words: &[&str]) -> Option<(PlayerFilter, PlayerAst)> {
-        match normalize_possessive_words(words).as_slice() {
-            ["your"] => Some((PlayerFilter::You, PlayerAst::You)),
-            ["target", "player"] | ["target", "players"] => {
-                Some((PlayerFilter::target_player(), PlayerAst::Target))
-            }
-            ["target", "opponent"] | ["target", "opponents"] => {
-                Some((PlayerFilter::target_opponent(), PlayerAst::TargetOpponent))
-            }
-            _ => None,
+        let words = normalize_possessive_words(words);
+        if word_slice_eq(&words, &["your"]) {
+            Some((PlayerFilter::You, PlayerAst::You))
+        } else if word_slice_eq_any(&words, &[&["target", "player"], &["target", "players"]]) {
+            Some((PlayerFilter::target_player(), PlayerAst::Target))
+        } else if word_slice_eq_any(&words, &[&["target", "opponent"], &["target", "opponents"]]) {
+            Some((PlayerFilter::target_opponent(), PlayerAst::TargetOpponent))
+        } else {
+            None
         }
     }
 
@@ -280,7 +273,7 @@ fn parse_exile_library_then_shuffle_graveyard_chain_lexed(
     }
 
     let clause_words = token_word_refs(clause_tokens);
-    let Some(library_idx) = find_word_sequence_index(&clause_words, &["library"]) else {
+    let Some(library_idx) = word_slice_find_phrase_start(&clause_words, &["library"]) else {
         return Ok(None);
     };
     if library_idx <= 4 {
@@ -372,7 +365,7 @@ pub(crate) fn parse_effect_chain_lexed(
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if word_slice_starts_with(&clause_words, &["exile", "them"])
         && let Some(meld_idx) =
-            find_word_sequence_index(&clause_words, &["then", "meld", "them", "into"])
+            word_slice_find_phrase_start(&clause_words, &["then", "meld", "them", "into"])
     {
         let result_words = &clause_words[meld_idx + 4..];
         if result_words.is_empty() {
@@ -476,11 +469,9 @@ fn starts_with_until_end_of_turn_trigger_clause(clause_words: &[&str]) -> bool {
 }
 
 fn is_would_enter_replacement_clause(clause_words: &[&str]) -> bool {
-    clause_words.iter().any(|word| *word == "would")
-        && clause_words
-            .iter()
-            .any(|word| *word == "enter" || *word == "enters")
-        && clause_words.iter().any(|word| *word == "instead")
+    word_slice_contains_word(clause_words, "would")
+        && word_slice_contains_any_word(clause_words, &["enter", "enters"])
+        && word_slice_contains_word(clause_words, "instead")
 }
 
 fn is_comparison_or_delimiter_lexed(tokens: &[OwnedLexToken], idx: usize) -> bool {
@@ -581,8 +572,8 @@ pub(crate) fn parse_or_action_clause_lexed(
         return Ok(None);
     }
     let words = token_word_refs(tokens);
-    if words.contains(&"target")
-        && words.windows(3).any(|window| {
+    if word_slice_contains_word(&words, "target")
+        && word_slice_contains_window_by(&words, 3, |window| {
             matches!(
                 window,
                 [
@@ -1145,7 +1136,7 @@ pub(crate) fn parse_effect_chain_inner_lexed(
             continue;
         }
         let segment_words = token_word_refs(&segment);
-        if segment_words.starts_with(&["all", "abilities", "and"])
+        if word_slice_starts_with(&segment_words, &["all", "abilities", "and"])
             && matches!(segment_words.get(3).copied(), Some("gain" | "gains"))
         {
             let Some(gain_idx) = segment
@@ -1198,7 +1189,7 @@ fn is_orphan_rounded_up_where_x_tail(
     previous_effect: Option<&EffectAst>,
 ) -> bool {
     let segment_words = token_word_refs(segment);
-    if segment_words.as_slice() != ["rounded", "up"] {
+    if !word_slice_eq(&segment_words, &["rounded", "up"]) {
         return false;
     }
     if previous.is_none() && previous_effect.is_none() {
@@ -1557,14 +1548,13 @@ fn trailing_if_predicate_supported(predicate: &PredicateAst) -> bool {
 }
 
 pub(crate) fn is_beginning_of_end_step_words(words: &[&str]) -> bool {
-    find_word_sequence_index(words, &["beginning", "of", "the", "end", "step"]).is_some()
-        || find_word_sequence_index(words, &["beginning", "of", "next", "end", "step"]).is_some()
-        || find_word_sequence_index(words, &["beginning", "of", "the", "next", "end", "step"])
-            .is_some()
+    word_slice_contains_phrase(words, &["beginning", "of", "the", "end", "step"])
+        || word_slice_contains_phrase(words, &["beginning", "of", "next", "end", "step"])
+        || word_slice_contains_phrase(words, &["beginning", "of", "the", "next", "end", "step"])
 }
 
 pub(crate) fn is_end_of_combat_words(words: &[&str]) -> bool {
-    find_word_sequence_index(words, &["end", "of", "combat"]).is_some()
+    word_slice_contains_phrase(words, &["end", "of", "combat"])
 }
 
 pub(crate) fn target_is_generic_token_filter(target: &TargetAst) -> bool {

@@ -18,8 +18,10 @@ where
     F: Fn(usize) -> Option<usize>,
     G: Fn(usize) -> Option<usize>,
 {
-    let Some(not_named_idx) = find_word_slice_phrase_start(all_words.as_slice(), &["not", "named"])
-    else {
+    let Some(not_named_idx) = crate::runtime_backend::lexer::word_slice_find_phrase_start(
+        all_words.as_slice(),
+        &["not", "named"],
+    ) else {
         return Ok(false);
     };
     let (name, name_end) = extract_name_clause_text(
@@ -127,9 +129,10 @@ pub(super) fn strip_object_filter_face_state_words(
 }
 
 pub(super) fn strip_single_graveyard_phrase(filter: &mut ObjectFilter, all_words: &mut Vec<&str>) {
-    while let Some(idx) =
-        find_word_slice_phrase_start(all_words.as_slice(), &["single", "graveyard"])
-    {
+    while let Some(idx) = crate::runtime_backend::lexer::word_slice_find_phrase_start(
+        all_words.as_slice(),
+        &["single", "graveyard"],
+    ) {
         filter.single_graveyard = true;
         all_words.remove(idx);
     }
@@ -657,10 +660,7 @@ pub(super) fn apply_spell_filter_parity_phrases(words: &[&str], filter: &mut Obj
             ][..],
         ),
     ] {
-        if phrases
-            .iter()
-            .any(|phrase| find_word_slice_phrase_start(words, phrase).is_some())
-        {
+        if crate::runtime_backend::lexer::word_slice_contains_any_phrase(words, phrases) {
             filter.mana_value_parity = Some(parity);
         }
     }
@@ -675,25 +675,20 @@ pub(super) fn apply_spell_filter_parity_phrases(words: &[&str], filter: &mut Obj
             &[&["even", "power"][..]][..],
         ),
     ] {
-        if phrases
-            .iter()
-            .any(|phrase| find_word_slice_phrase_start(words, phrase).is_some())
-        {
+        if crate::runtime_backend::lexer::word_slice_contains_any_phrase(words, phrases) {
             filter.power_parity = Some(parity);
         }
     }
 }
 
 pub(super) fn contains_any_filter_phrase(words: &[&str], phrases: &[&[&str]]) -> bool {
-    phrases
-        .iter()
-        .any(|phrase| find_word_slice_phrase_start(words, phrase).is_some())
+    word_slice_contains_any_phrase(words, phrases)
 }
 
 pub(super) fn find_any_filter_phrase_start(words: &[&str], phrases: &[&[&str]]) -> Option<usize> {
-    phrases
-        .iter()
-        .find_map(|phrase| find_word_slice_phrase_start(words, phrase))
+    phrases.iter().find_map(|phrase| {
+        crate::runtime_backend::lexer::word_slice_find_phrase_start(words, phrase)
+    })
 }
 
 pub(super) fn find_mana_value_equal_counter_phrase_bounds(
@@ -702,7 +697,7 @@ pub(super) fn find_mana_value_equal_counter_phrase_bounds(
     (0..words.len()).find_map(|idx| {
         let tail = &words[idx..];
         if tail.len() >= 13
-            && find_word_slice_phrase_start(
+            && crate::runtime_backend::lexer::word_slice_find_phrase_start(
                 tail,
                 &[
                     "with", "mana", "value", "equal", "to", "the", "number", "of",
@@ -717,7 +712,7 @@ pub(super) fn find_mana_value_equal_counter_phrase_bounds(
             return Some((idx, idx + 13));
         }
         if tail.len() >= 12
-            && find_word_slice_phrase_start(
+            && crate::runtime_backend::lexer::word_slice_find_phrase_start(
                 tail,
                 &["with", "mana", "value", "equal", "to", "number", "of"],
             ) == Some(0)
@@ -734,13 +729,11 @@ pub(super) fn find_mana_value_equal_counter_phrase_bounds(
 }
 
 pub(super) fn contains_filter_word(words: &[&str], word: &str) -> bool {
-    find_word_slice_phrase_start(words, &[word]).is_some()
+    word_slice_contains_word(words, word)
 }
 
 pub(super) fn starts_with_any_filter_phrase(words: &[&str], phrases: &[&[&str]]) -> bool {
-    phrases
-        .iter()
-        .any(|phrase| find_word_slice_phrase_start(words, phrase) == Some(0))
+    word_slice_starts_with_any(words, phrases)
 }
 
 pub(super) fn attacking_player_filter_from_words(
@@ -830,9 +823,10 @@ pub(super) fn apply_reference_and_tag_stage(
         filter.source = true;
     }
 
-    if let Some(its_attached_idx) =
-        find_word_slice_phrase_start(all_words, &["its", "attached", "to"])
-    {
+    if let Some(its_attached_idx) = crate::runtime_backend::lexer::word_slice_find_phrase_start(
+        all_words,
+        &["its", "attached", "to"],
+    ) {
         let mut normalized = Vec::with_capacity(all_words.len() + 1);
         normalized.extend_from_slice(&all_words[..its_attached_idx]);
         normalized.extend(["attached", "to", "it"]);
@@ -906,9 +900,13 @@ pub(super) fn apply_reference_and_tag_stage(
         filter.zone.get_or_insert(Zone::Exile);
     }
     let has_exiled_with_phrase =
-        find_word_slice_phrase_start(all_words, &["exiled", "with"]).is_some();
-    let has_used_to_craft_phrase =
-        find_word_slice_phrase_start(all_words, &["used", "to", "craft"]).is_some();
+        crate::runtime_backend::lexer::word_slice_find_phrase_start(all_words, &["exiled", "with"])
+            .is_some();
+    let has_used_to_craft_phrase = crate::runtime_backend::lexer::word_slice_find_phrase_start(
+        all_words,
+        &["used", "to", "craft"],
+    )
+    .is_some();
     let owner_only_tail_after_exiled_cards = starts_with_exiled_card
         && all_words
             .iter()
@@ -927,8 +925,10 @@ pub(super) fn apply_reference_and_tag_stage(
             tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
-        if let Some(exiled_with_idx) = find_word_slice_phrase_start(all_words, &["exiled", "with"])
-        {
+        if let Some(exiled_with_idx) = crate::runtime_backend::lexer::word_slice_find_phrase_start(
+            all_words,
+            &["exiled", "with"],
+        ) {
             let mut reference_end = exiled_with_idx + 2;
             if all_words
                 .get(reference_end)
@@ -948,9 +948,10 @@ pub(super) fn apply_reference_and_tag_stage(
                 all_words.drain(exiled_with_idx + 1..reference_end);
             }
         }
-        if let Some(used_to_craft_idx) =
-            find_word_slice_phrase_start(all_words, &["used", "to", "craft"])
-        {
+        if let Some(used_to_craft_idx) = crate::runtime_backend::lexer::word_slice_find_phrase_start(
+            all_words,
+            &["used", "to", "craft"],
+        ) {
             let mut reference_end = used_to_craft_idx + 3;
             if all_words
                 .get(reference_end)
@@ -970,10 +971,11 @@ pub(super) fn apply_reference_and_tag_stage(
         }
         let segment_words_view = GrammarFilterNormalizedWords::new(segment_tokens.as_slice());
         let segment_words = segment_words_view.to_word_refs();
-        if let Some(exiled_with_idx) =
-            find_word_slice_phrase_start(&segment_words, &["exiled", "with"])
-            && let Some(exiled_with_token_idx) =
-                normalized_token_index_for_word_index(segment_tokens.as_slice(), exiled_with_idx)
+        if let Some(exiled_with_idx) = crate::runtime_backend::lexer::word_slice_find_phrase_start(
+            &segment_words,
+            &["exiled", "with"],
+        ) && let Some(exiled_with_token_idx) =
+            normalized_token_index_for_word_index(segment_tokens.as_slice(), exiled_with_idx)
         {
             let mut reference_end = exiled_with_token_idx + 2;
             if segment_tokens.get(reference_end).is_some_and(|token| {
@@ -1001,10 +1003,11 @@ pub(super) fn apply_reference_and_tag_stage(
         }
         let segment_words_view = GrammarFilterNormalizedWords::new(segment_tokens.as_slice());
         let segment_words = segment_words_view.to_word_refs();
-        if let Some(used_to_craft_idx) =
-            find_word_slice_phrase_start(&segment_words, &["used", "to", "craft"])
-            && let Some(used_to_craft_token_idx) =
-                normalized_token_index_for_word_index(segment_tokens.as_slice(), used_to_craft_idx)
+        if let Some(used_to_craft_idx) = crate::runtime_backend::lexer::word_slice_find_phrase_start(
+            &segment_words,
+            &["used", "to", "craft"],
+        ) && let Some(used_to_craft_token_idx) =
+            normalized_token_index_for_word_index(segment_tokens.as_slice(), used_to_craft_idx)
         {
             let mut reference_end = used_to_craft_token_idx + 3;
             if segment_tokens.get(reference_end).is_some_and(|token| {

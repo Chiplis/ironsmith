@@ -13,13 +13,15 @@ use super::grammar::filters::{
 };
 use super::grammar::primitives as grammar;
 use super::grammar::values::parse_value_comparison_tokens;
-use super::lexer::{LexStream, OwnedLexToken, TokenKind, token_word_refs, trim_lexed_commas};
+use super::lexer::{
+    LexStream, LexedClause, OwnedLexToken, TokenKind, token_word_refs, trim_lexed_commas,
+    word_slice_contains_any_phrase, word_slice_contains_phrase, word_slice_contains_word,
+    word_slice_ends_with, word_slice_starts_with,
+};
 use super::object_filters::merge_spell_filters;
 use super::token_primitives::{
-    TurnDurationPhrase, contains_window as word_slice_has_sequence, find_index as find_token_index,
-    parse_i32_word_token, parse_lexed_prefix, parse_turn_duration_prefix,
-    parse_turn_duration_suffix, slice_contains as word_slice_has,
-    slice_starts_with as word_slice_has_prefix,
+    TurnDurationPhrase, find_index as find_token_index, parse_i32_word_token, parse_lexed_prefix,
+    parse_turn_duration_prefix, parse_turn_duration_suffix,
 };
 use super::util::{token_index_for_word_index, trim_commas};
 use super::value_helpers::parse_value_from_lexed;
@@ -416,7 +418,9 @@ fn strip_prefix_phrase<'a>(
     tokens: &'a [OwnedLexToken],
     phrase: &'static [&'static str],
 ) -> Option<&'a [OwnedLexToken]> {
-    grammar::parse_prefix(tokens, grammar::phrase(phrase)).map(|(_, rest)| rest)
+    LexedClause::new(tokens)
+        .strip_prefix_clause(phrase)
+        .map(|rest| rest.tokens())
 }
 
 fn parse_permission_lead_tokens<'a>(
@@ -670,9 +674,12 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         }));
     }
 
-    if clause_refs.starts_with(&[
-        "once", "during", "each", "of", "your", "turns", "you", "may", "cast",
-    ]) && clause_refs.ends_with(&["from", "your", "graveyard"])
+    if word_slice_starts_with(
+        &clause_refs,
+        &[
+            "once", "during", "each", "of", "your", "turns", "you", "may", "cast",
+        ],
+    ) && word_slice_ends_with(&clause_refs, &["from", "your", "graveyard"])
     {
         let Some(from_idx) = find_token_index(tokens, |token| token.is_word("from")) else {
             return Ok(None);
@@ -865,7 +872,10 @@ pub(crate) fn parse_permission_clause_spec_lexed(
                 "other",
                 "costs",
             ]
-        && clause_refs.starts_with(&["once", "during", "each", "of", "your", "turns"])
+        && word_slice_starts_with(
+            &clause_refs,
+            &["once", "during", "each", "of", "your", "turns"],
+        )
     {
         let permanent_spell_filter = ObjectFilter {
             card_types: vec![
@@ -1134,9 +1144,9 @@ pub(crate) fn parse_unsupported_play_cast_permission_clause_lexed(
         )));
     }
 
-    if word_slice_has_prefix(&clause_refs, &["for", "as", "long", "as"])
-        && (word_slice_has_sequence(&clause_refs, &["may", "play"])
-            || word_slice_has_sequence(&clause_refs, &["may", "cast"]))
+    if word_slice_starts_with(&clause_refs, &["for", "as", "long", "as"])
+        && (word_slice_contains_phrase(&clause_refs, &["may", "play"])
+            || word_slice_contains_phrase(&clause_refs, &["may", "cast"]))
     {
         if parse_cast_or_play_tagged_clause(tokens)?.is_some() {
             return Ok(None);
@@ -1147,12 +1157,12 @@ pub(crate) fn parse_unsupported_play_cast_permission_clause_lexed(
         )));
     }
 
-    if word_slice_has_prefix(
+    if word_slice_starts_with(
         &clause_refs,
         &["once", "during", "each", "of", "your", "turns"],
-    ) && word_slice_has(&clause_refs, &"graveyard")
-        && (word_slice_has_sequence(&clause_refs, &["may", "play"])
-            || word_slice_has_sequence(&clause_refs, &["may", "cast"]))
+    ) && word_slice_contains_word(&clause_refs, "graveyard")
+        && (word_slice_contains_phrase(&clause_refs, &["may", "play"])
+            || word_slice_contains_phrase(&clause_refs, &["may", "cast"]))
     {
         return Err(CardTextError::ParseError(format!(
             "unsupported once-per-turn graveyard play/cast permission clause (clause: '{}')",
@@ -1293,8 +1303,8 @@ fn grant_spec_is_free_cast_from_hand(spec: &crate::grant::GrantSpec) -> bool {
 }
 
 fn clause_is_singular_free_cast_from_hand(clause_words: &[&str]) -> bool {
-    word_slice_has_sequence(clause_words, &["cast", "a", "spell"])
-        || word_slice_has_sequence(clause_words, &["cast", "one", "spell"])
+    word_slice_contains_phrase(clause_words, &["cast", "a", "spell"])
+        || word_slice_contains_phrase(clause_words, &["cast", "one", "spell"])
 }
 
 fn parse_cast_with_tagged_mana_value_limit_clause(
@@ -1412,13 +1422,15 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
     };
     filter.owner = Some(crate::target::PlayerFilter::You);
 
+    let normalized_tail_refs: Vec<_> = normalized_tail.iter().map(String::as_str).collect();
     let graveyard_uses_tagged_spell_mana_value = matches!(normalized_tail[2].as_str(), "graveyard")
-        && (normalized_tail
-            .windows(5)
-            .any(|window| window == ["that", "spell", "s", "mana", "value"])
-            || normalized_tail
-                .windows(4)
-                .any(|window| window == ["that", "spells", "mana", "value"]));
+        && word_slice_contains_any_phrase(
+            &normalized_tail_refs,
+            &[
+                &["that", "spell", "s", "mana", "value"],
+                &["that", "spells", "mana", "value"],
+            ],
+        );
     if graveyard_uses_tagged_spell_mana_value {
         filter.mana_value = None;
         filter

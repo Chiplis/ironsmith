@@ -377,9 +377,10 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::ThisTransformsWithSurface {
             surface,
             destination_name,
-        } => {
-            Trigger::transforms_with_surface_and_destination(surface.clone(), destination_name.clone())
-        }
+        } => Trigger::transforms_with_surface_and_destination(
+            surface.clone(),
+            destination_name.clone(),
+        ),
         TriggerSpec::ThisDealsCombatDamageToPlayer => Trigger::this_deals_combat_damage_to_player(),
         TriggerSpec::DealsCombatDamageToPlayer { source, player } => {
             Trigger::deals_combat_damage_to_player(source, player)
@@ -531,7 +532,9 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         | TriggerSpec::DealsCombatDamageToPlayer { .. } => Some(PlayerFilter::DamagedPlayer),
         TriggerSpec::ThisAttacks | TriggerSpec::ThisBecomesBlocked => Some(PlayerFilter::Defending),
         TriggerSpec::Attacks(filter) | TriggerSpec::AttacksOneOrMore(filter)
-            if filter.attacking_player_or_planeswalker_controlled_by.is_some() =>
+            if filter
+                .attacking_player_or_planeswalker_controlled_by
+                .is_some() =>
         {
             Some(PlayerFilter::Defending)
         }

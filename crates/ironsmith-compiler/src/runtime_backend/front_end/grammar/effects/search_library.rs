@@ -435,7 +435,7 @@ pub(crate) fn is_default_search_library_card_selector(tokens: &[OwnedLexToken]) 
         .into_iter()
         .filter(|word| !is_article(word))
         .collect::<Vec<_>>();
-    words.is_empty() || words.as_slice() == ["card"] || words.as_slice() == ["cards"]
+    words.is_empty() || word_slice_eq_any(&words, &[&["card"], &["cards"]])
 }
 
 pub(crate) fn find_search_library_marker_lexed(
@@ -663,11 +663,11 @@ pub(crate) fn derive_search_library_effect_routing_lexed(
         .put_idx
         .map(|put_idx| parser_text_word_refs(&search_tokens[put_idx..]));
     let destination = if let Some(put_clause_words) = put_clause_words.as_ref() {
-        if word_slice_contains(put_clause_words, "graveyard") {
+        if word_slice_contains_word(put_clause_words, "graveyard") {
             Zone::Graveyard
-        } else if word_slice_contains(put_clause_words, "hand") {
+        } else if word_slice_contains_word(put_clause_words, "hand") {
             Zone::Hand
-        } else if word_slice_contains(put_clause_words, "top") {
+        } else if word_slice_contains_word(put_clause_words, "top") {
             Zone::Library
         } else {
             Zone::Battlefield
@@ -677,15 +677,15 @@ pub(crate) fn derive_search_library_effect_routing_lexed(
     };
     let reveal = clause_markers.reveal_idx.is_some();
     let face_down_exile = clause_markers.exile_idx.is_some_and(|idx| {
-        word_slice_contains_sequence(
+        word_slice_contains_phrase(
             &parser_text_word_refs(&search_tokens[idx..]),
             &["face", "down"],
         )
     });
     let shuffle = clause_markers.shuffle_idx.is_some() && !trailing_discard_before_shuffle;
     let split_battlefield_and_hand = clause_markers.put_idx.is_some()
-        && word_slice_has_all(&words_all, &["battlefield", "hand", "other", "one"]);
-    let has_tapped_modifier = word_slice_contains(&words_all, "tapped");
+        && word_slice_contains_all_words(&words_all, &["battlefield", "hand", "other", "one"]);
+    let has_tapped_modifier = word_slice_contains_word(&words_all, "tapped");
 
     SearchLibraryEffectRouting {
         destination,
@@ -902,7 +902,7 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
     ) {
         player = PlayerAst::ItsOwner;
     } else if search_body_words.first().copied() == Some("your")
-        && let Some(for_pos) = word_slice_find(search_body_words, "for")
+        && let Some(for_pos) = word_slice_find_word(search_body_words, "for")
         && for_pos > 1
     {
         let zone_words = &search_body_words[1..for_pos];
@@ -1095,7 +1095,7 @@ pub(crate) fn parse_search_library_same_name_reference_lexed(
         let reference_words = token_word_refs(&reference_tokens);
         same_name_reference = if is_same_name_that_reference_words(&reference_words) {
             Some(SearchLibrarySameNameReference::Tagged(TagKey::from(IT_TAG)))
-        } else if reference_words.iter().any(|word| *word == "target") {
+        } else if word_slice_contains_word(&reference_words, "target") {
             let target = parse_target_phrase(&reference_tokens).map_err(|_| {
                 CardTextError::ParseError(format!(
                     "unsupported target same-name reference in search-library sentence (clause: '{}')",
@@ -1206,7 +1206,7 @@ pub(crate) fn parse_search_library_object_filter_lexed(
         }
         filter.distinct_names |= distinct_names;
         Ok(filter)
-    } else if word_slice_contains(&filter_words, "or") {
+    } else if word_slice_contains_word(&filter_words, "or") {
         let mut filter = parse_search_library_disjunction_filter(&filter_tokens)
             .or_else(|| parse_object_filter(&filter_tokens, false).ok())
             .ok_or_else(|| {
@@ -1239,7 +1239,7 @@ pub(crate) fn split_search_named_item_filters_lexed(
     filter_tokens: &[OwnedLexToken],
     words_all: &[&str],
 ) -> Result<Option<Vec<ObjectFilter>>, CardTextError> {
-    if !filter_tokens.iter().any(|token| token.is_word("named")) {
+    if !crate::runtime_backend::lexer::contains_token_word(filter_tokens, "named") {
         return Ok(None);
     }
 
@@ -1379,7 +1379,7 @@ pub(crate) fn parse_search_library_leading_effect_prelude_lexed<'a>(
 
 pub(crate) fn search_library_has_unsupported_top_position_probe(words: &[&str]) -> bool {
     word_slice_mentions_nth_from_top(words)
-        && !word_slice_contains_sequence(words, &["on", "top", "of", "library"])
+        && !word_slice_contains_phrase(words, &["on", "top", "of", "library"])
         && search_library_put_position_from_top_words(words).is_none()
 }
 

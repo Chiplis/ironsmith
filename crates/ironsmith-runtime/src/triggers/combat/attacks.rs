@@ -231,7 +231,10 @@ impl TriggerMatcher for AttacksTrigger {
                 self.min_total_attackers,
             );
         }
-        format!("Whenever {} attacks{target_tail}", display_filter.description())
+        format!(
+            "Whenever {} attacks{target_tail}",
+            display_filter.description()
+        )
     }
 
     fn event_value_amount(&self, event: &TriggerEvent, ctx: &TriggerContext) -> Option<i32> {
@@ -257,7 +260,10 @@ fn defending_player_for_attack_target(
 fn pluralize_one_or_more_attack_subject(subject: &str) -> String {
     if let Some((head, tail)) = subject.split_once(" creature ") {
         if !head.contains(' ')
-            && head.chars().next().is_some_and(|ch| ch.is_ascii_uppercase())
+            && head
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_ascii_uppercase())
         {
             return format!("{head}s {tail}");
         }
@@ -381,7 +387,11 @@ mod tests {
     #[test]
     fn one_or_more_attack_an_opponent_matches_first_attacker_for_each_opponent() {
         let mut game = GameState::new(
-            vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+            ],
             20,
         );
         let alice = PlayerId::from_index(0);

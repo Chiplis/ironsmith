@@ -1,3 +1,8 @@
+use super::super::token_primitives::{
+    str_contains, str_ends_with, str_ends_with_any_char, str_find, str_find_char, str_rfind,
+    str_split_once, str_split_once_char, str_starts_with, str_starts_with_char, str_strip_prefix,
+    str_strip_suffix,
+};
 use super::line_dispatch::{LineDispatchContext, LineDispatchResult};
 use super::*;
 
@@ -46,12 +51,12 @@ fn is_sticker_sheet_ticket_marker_line(ctx: &LineDispatchContext<'_>) -> bool {
         return false;
     }
 
-    let Some((cost, body)) = ctx.line.info.raw_line.split_once('—') else {
+    let Some((cost, body)) = str_split_once_char(ctx.line.info.raw_line.as_str(), '—') else {
         return false;
     };
     let mut remainder = cost.trim().to_ascii_lowercase();
     let mut saw_ticket_symbol = false;
-    while let Some(next) = remainder.strip_prefix("{tk}") {
+    while let Some(next) = str_strip_prefix(remainder.as_str(), "{tk}") {
         saw_ticket_symbol = true;
         remainder = next.trim_start().to_string();
     }
@@ -70,10 +75,12 @@ pub(super) fn run_championed_with_this_trigger_line_family(
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     let raw = ctx.line.info.raw_line.trim();
     let lower = raw.to_ascii_lowercase();
-    if !lower.starts_with("when ") || !lower.contains(" is championed with this ") {
+    if !str_starts_with(lower.as_str(), "when ")
+        || !str_contains(lower.as_str(), " is championed with this ")
+    {
         return Ok(None);
     }
-    let Some((_, effect_text)) = raw.split_once(',') else {
+    let Some((_, effect_text)) = str_split_once_char(raw, ',') else {
         return Ok(None);
     };
     let triggered_text = format!(
@@ -92,14 +99,13 @@ pub(super) fn run_max_speed_labeled_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     let raw = ctx.line.info.raw_line.trim_start();
-    if !raw.to_ascii_lowercase().starts_with("max speed") {
+    if !str_starts_with(raw.to_ascii_lowercase().as_str(), "max speed") {
         return Ok(None);
     };
 
-    let body_text = raw
-        .find('\u{2014}')
+    let body_text = str_find_char(raw, '\u{2014}')
         .and_then(|idx| raw.get(idx + '\u{2014}'.len_utf8()..))
-        .or_else(|| raw.split_once('-').map(|(_, body)| body))
+        .or_else(|| str_split_once_char(raw, '-').map(|(_, body)| body))
         .map(str::trim)
         .filter(|body| !body.is_empty())
         .unwrap_or(ctx.line.info.normalized.normalized.as_str())
@@ -113,9 +119,9 @@ pub(super) fn run_max_speed_labeled_line_family(
     }
 
     let body_lower = body_text.to_ascii_lowercase();
-    if body_lower.starts_with("when ")
-        || body_lower.starts_with("whenever ")
-        || body_lower.starts_with("at ")
+    if str_starts_with(body_lower.as_str(), "when ")
+        || str_starts_with(body_lower.as_str(), "whenever ")
+        || str_starts_with(body_lower.as_str(), "at ")
     {
         let triggered_text = max_speed_intervening_if_text(body_text.as_str());
         let triggered_line = rewrite_line_normalized(ctx.line, triggered_text.as_str())?;
@@ -174,7 +180,7 @@ pub(super) fn run_max_speed_labeled_line_family(
 
 fn max_speed_intervening_if_text(body_text: &str) -> String {
     let trimmed = body_text.trim().trim_end_matches('.');
-    let Some((trigger, effects)) = trimmed.split_once(',') else {
+    let Some((trigger, effects)) = str_split_once_char(trimmed, ',') else {
         return trimmed.to_string();
     };
     format!("{trigger}, if you have max speed,{effects}")
@@ -184,7 +190,7 @@ pub(super) fn run_start_your_engines_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     let lower = ctx.line.info.raw_line.trim_start().to_ascii_lowercase();
-    if !lower.starts_with("start your engines!")
+    if !str_starts_with(lower.as_str(), "start your engines!")
         && lower.trim_end_matches('.').trim() != "start your engines"
     {
         return Ok(None);
@@ -239,7 +245,7 @@ pub(super) fn run_learn_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     let lower = ctx.line.info.raw_line.trim().to_ascii_lowercase();
-    if !lower.starts_with("learn.") && lower.trim_end_matches('.') != "learn" {
+    if !str_starts_with(lower.as_str(), "learn.") && lower.trim_end_matches('.') != "learn" {
         return Ok(None);
     }
 
@@ -365,7 +371,7 @@ pub(super) fn run_graveyard_cast_control_condition_line_family(
     let raw_no_period = raw.trim_end_matches('.');
     let lower = raw_no_period.to_ascii_lowercase();
     let prefix = "you may cast this card from your graveyard as long as you control a ";
-    if !lower.starts_with(prefix) || !lower.ends_with(" permanent") {
+    if !str_starts_with(lower.as_str(), prefix) || !str_ends_with(lower.as_str(), " permanent") {
         return Ok(None);
     }
 
@@ -373,11 +379,11 @@ pub(super) fn run_graveyard_cast_control_condition_line_family(
         return Ok(None);
     };
     let condition_text = condition_text.trim();
-    let Some(color_pair_text) = condition_text.strip_suffix(" permanent") else {
+    let Some(color_pair_text) = str_strip_suffix(condition_text, " permanent") else {
         return Ok(None);
     };
     let color_pair_text = color_pair_text.trim();
-    let Some((left, right)) = color_pair_text.split_once(" or ") else {
+    let Some((left, right)) = str_split_once(color_pair_text, " or ") else {
         return Ok(None);
     };
 
@@ -412,22 +418,20 @@ pub(super) fn run_champion_line_family(
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     let raw = ctx.line.info.raw_line.trim();
     let lower = raw.to_ascii_lowercase();
-    if !lower.starts_with("champion ") {
+    if !str_starts_with(lower.as_str(), "champion ") {
         return Ok(None);
     }
 
-    let without_reminder = raw
-        .split_once('(')
+    let without_reminder = str_split_once_char(raw, '(')
         .map(|(prefix, _)| prefix)
         .unwrap_or(raw)
         .trim()
         .trim_end_matches('.');
-    let Some(filter_text) = without_reminder.strip_prefix("Champion ") else {
+    let Some(filter_text) = str_strip_prefix(without_reminder, "Champion ") else {
         return Ok(None);
     };
-    let filter_text = filter_text
-        .strip_prefix("a ")
-        .or_else(|| filter_text.strip_prefix("an "))
+    let filter_text = str_strip_prefix(filter_text, "a ")
+        .or_else(|| str_strip_prefix(filter_text, "an "))
         .unwrap_or(filter_text)
         .trim();
     if filter_text.is_empty() {
@@ -452,9 +456,9 @@ pub(super) fn run_station_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     let lower = ctx.line.info.raw_line.trim().to_ascii_lowercase();
-    if !lower.starts_with("station")
-        || (!lower.starts_with("station ")
-            && !lower.starts_with("station(")
+    if !str_starts_with(lower.as_str(), "station")
+        || (!str_starts_with(lower.as_str(), "station ")
+            && !str_starts_with(lower.as_str(), "station(")
             && lower.trim_end_matches('.') != "station")
     {
         return Ok(None);
@@ -535,7 +539,7 @@ pub(super) fn run_station_threshold_line_family(
     {
         body_text = rewritten;
     }
-    if !body_text.ends_with(['.', '!', '?']) {
+    if !str_ends_with_any_char(body_text.as_str(), &['.', '!', '?']) {
         body_text.push('.');
     }
 
@@ -566,9 +570,9 @@ pub(super) fn run_station_threshold_line_family(
 
     let body_line = rewrite_line_normalized(ctx.line, body_text.as_str())?;
     let body_lower = body_text.to_ascii_lowercase();
-    if body_lower.starts_with("when ")
-        || body_lower.starts_with("whenever ")
-        || body_lower.starts_with("at ")
+    if str_starts_with(body_lower.as_str(), "when ")
+        || str_starts_with(body_lower.as_str(), "whenever ")
+        || str_starts_with(body_lower.as_str(), "at ")
     {
         let mut triggered = parse_triggered_line_cst(&body_line)?;
         triggered.chosen_option_label = Some(label);
@@ -615,7 +619,7 @@ pub(super) fn run_station_threshold_line_family(
 }
 
 fn parse_station_threshold_line(raw_line: &str) -> Option<(i32, String)> {
-    let (prefix, body) = raw_line.split_once('|')?;
+    let (prefix, body) = str_split_once_char(raw_line, '|')?;
     let threshold = prefix
         .trim()
         .strip_suffix('+')?
@@ -628,13 +632,13 @@ fn parse_station_threshold_line(raw_line: &str) -> Option<(i32, String)> {
 
 fn parse_station_keyword_creature_threshold(lower: &str) -> Option<i32> {
     let marker = "artifact creature at ";
-    let start = lower.find(marker)? + marker.len();
+    let start = str_find(lower, marker)? + marker.len();
     let tail = &lower[start..];
     let digits = tail
         .chars()
         .take_while(|ch| ch.is_ascii_digit())
         .collect::<String>();
-    if digits.is_empty() || !tail[digits.len()..].starts_with('+') {
+    if digits.is_empty() || !str_starts_with_char(&tail[digits.len()..], '+') {
         return None;
     }
     digits.parse().ok()
@@ -662,10 +666,8 @@ fn station_threshold_is_creature_pt_threshold(
         let PreprocessedItem::Line(line) = item else {
             return false;
         };
-        line.info
-            .raw_line
-            .to_ascii_lowercase()
-            .contains(needle.as_str())
+        let lower = line.info.raw_line.to_ascii_lowercase();
+        str_contains(lower.as_str(), needle.as_str())
     })
 }
 
@@ -696,7 +698,7 @@ pub(super) fn run_partner_variant_keyword_line_family(
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     let raw = ctx.line.info.raw_line.trim();
     let lower = raw.to_ascii_lowercase();
-    if !lower.starts_with("partner") {
+    if !str_starts_with(lower.as_str(), "partner") {
         return Ok(None);
     }
 
@@ -704,14 +706,16 @@ pub(super) fn run_partner_variant_keyword_line_family(
         return Ok(None);
     };
     let rest = rest.trim_start();
-    if !(rest.starts_with('\u{2014}') || rest.starts_with("-") || rest.starts_with('\u{2013}')) {
+    if !(str_starts_with_char(rest, '\u{2014}')
+        || str_starts_with(rest, "-")
+        || str_starts_with_char(rest, '\u{2013}'))
+    {
         return Ok(None);
     }
 
     let partner_line = rewrite_line_normalized(ctx.line, "Partner")?;
     if let Some(mut keyword_line) = parse_keyword_line_cst(&partner_line)? {
-        let visible_label = raw
-            .split_once('(')
+        let visible_label = str_split_once_char(raw, '(')
             .map(|(head, _)| head)
             .unwrap_or(raw)
             .trim()
@@ -739,7 +743,7 @@ pub(super) fn run_escape_enters_with_counter_line_family(
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     let raw = ctx.line.info.raw_line.trim();
     let lower = raw.to_ascii_lowercase();
-    if !lower.contains(" escapes with ") {
+    if !str_contains(lower.as_str(), " escapes with ") {
         return Ok(None);
     }
     Ok(parse_static_line_cst(ctx.line)?.map(|static_cst| {
@@ -751,11 +755,10 @@ pub(super) fn run_surge_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     let raw = ctx.line.info.raw_line.trim();
-    let Some(rest) = raw.strip_prefix("Surge ") else {
+    let Some(rest) = str_strip_prefix(raw, "Surge ") else {
         return Ok(None);
     };
-    let cost_text = rest
-        .split_once('(')
+    let cost_text = str_split_once_char(rest, '(')
         .map(|(prefix, _)| prefix)
         .unwrap_or(rest)
         .trim()
@@ -790,11 +793,10 @@ pub(super) fn run_freerunning_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     let raw = ctx.line.info.raw_line.trim();
-    let Some(rest) = raw.strip_prefix("Freerunning ") else {
+    let Some(rest) = str_strip_prefix(raw, "Freerunning ") else {
         return Ok(None);
     };
-    let cost_text = rest
-        .split_once('(')
+    let cost_text = str_split_once_char(rest, '(')
         .map(|(prefix, _)| prefix)
         .unwrap_or(rest)
         .trim()
@@ -838,7 +840,7 @@ pub(super) fn run_additional_combat_after_this_phase_line_family(
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     let needle = "there is an additional combat phase after this phase, followed by an additional main phase";
     let raw = ctx.line.info.raw_line.trim();
-    if !raw.to_ascii_lowercase().contains(needle) {
+    if !str_contains(raw.to_ascii_lowercase().as_str(), needle) {
         return Ok(None);
     }
 
@@ -927,13 +929,12 @@ fn partner_with_name_from_line(raw_line: &str) -> Option<String> {
     let trimmed = raw_line.trim();
     let lower = trimmed.to_ascii_lowercase();
     let rest_start = "partner with ".len();
-    if !lower.starts_with("partner with ") {
+    if !str_starts_with(lower.as_str(), "partner with ") {
         return None;
     }
 
     let rest = trimmed.get(rest_start..)?.trim();
-    let name = rest
-        .split_once('(')
+    let name = str_split_once_char(rest, '(')
         .map(|(name, _)| name)
         .unwrap_or(rest)
         .trim()
@@ -970,12 +971,12 @@ pub(super) fn run_non_turn_conditional_untap_line_family(
     let raw = ctx.line.info.raw_line.trim();
     let lower = raw.to_ascii_lowercase();
     const SUFFIX: &str = "if it's not your turn, untap those creatures.";
-    if !lower.ends_with(SUFFIX) {
+    if !str_ends_with(lower.as_str(), SUFFIX) {
         return Ok(None);
     }
 
     let marker = format!(". {SUFFIX}");
-    let Some(split_idx) = lower.rfind(marker.as_str()) else {
+    let Some(split_idx) = str_rfind(lower.as_str(), marker.as_str()) else {
         return Ok(None);
     };
     let Some(prefix) = raw.get(..split_idx) else {
@@ -987,10 +988,8 @@ pub(super) fn run_non_turn_conditional_untap_line_family(
         return Ok(None);
     }
 
-    if !first_sentence
-        .to_ascii_lowercase()
-        .starts_with("creatures you control get ")
-    {
+    let first_sentence_lower = first_sentence.to_ascii_lowercase();
+    if !str_starts_with(first_sentence_lower.as_str(), "creatures you control get ") {
         return Ok(None);
     }
 
@@ -1053,11 +1052,12 @@ pub(super) fn run_statement_probe_line_family(
 
 fn is_can_block_additional_creatures_static_line(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if !words.starts_with(&["this", "creature", "can", "block"]) {
+    if !word_slice_starts_with(&words, &["this", "creature", "can", "block"]) {
         return false;
     }
 
-    let has_additional = words.iter().any(|word| *word == "additional");
+    let has_additional =
+        crate::runtime_backend::lexer::word_slice_contains_word(&words, "additional");
     let has_creature_noun = words
         .iter()
         .any(|word| *word == "creature" || *word == "creatures");
@@ -1065,7 +1065,7 @@ fn is_can_block_additional_creatures_static_line(tokens: &[OwnedLexToken]) -> bo
         return false;
     }
 
-    words.ends_with(&["each", "combat"]) || words.ends_with(&["this", "turn"])
+    word_slice_ends_with_any(&words, &[&["each", "combat"], &["this", "turn"]])
 }
 
 pub(super) fn run_static_line_family(

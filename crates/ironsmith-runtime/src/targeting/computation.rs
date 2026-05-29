@@ -276,7 +276,12 @@ fn has_protection_from_source_snapshot_with_view(
                     .chosen_color(target_id)
                     .is_some_and(|chosen| source_snapshot.colors.contains(chosen)),
                 crate::ability::ProtectionFrom::EachManaValueAmong(filter) => {
-                    source_snapshot_mana_value_matches_scope(game, target_id, source_snapshot, filter)
+                    source_snapshot_mana_value_matches_scope(
+                        game,
+                        target_id,
+                        source_snapshot,
+                        filter,
+                    )
                 }
                 _ => source_snapshot_matches_protection(source_snapshot, protection_from, game),
             };
@@ -403,7 +408,12 @@ fn mana_value_matches_scope(
 }
 
 fn object_mana_value(object: &Object) -> Option<i32> {
-    Some(object.mana_cost.as_ref().map_or(0, |cost| cost.mana_value() as i32))
+    Some(
+        object
+            .mana_cost
+            .as_ref()
+            .map_or(0, |cost| cost.mana_value() as i32),
+    )
 }
 
 fn snapshot_mana_value(snapshot: &ObjectSnapshot) -> Option<i32> {
@@ -925,7 +935,9 @@ mod tests {
 
     fn create_artifact(id: u32, name: &str, controller: PlayerId, mana_value: u8) -> Object {
         let card = CardBuilder::new(CardId::from_raw(id), name)
-            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(mana_value)]]))
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
+                mana_value,
+            )]]))
             .card_types(vec![CardType::Artifact])
             .build();
 
@@ -1441,7 +1453,8 @@ mod tests {
     }
 
     #[test]
-    fn rebbec_architect_of_ascension_mana_value_protection_targets_only_matching_values_you_control() {
+    fn rebbec_architect_of_ascension_mana_value_protection_targets_only_matching_values_you_control()
+     {
         let mut game = create_test_game();
         let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
@@ -1469,7 +1482,10 @@ mod tests {
 
         let result = can_target_object(&game, protected_id, matching_source_id, alice);
         assert!(
-            matches!(result, TargetingResult::Invalid(TargetingInvalidReason::HasProtection)),
+            matches!(
+                result,
+                TargetingResult::Invalid(TargetingInvalidReason::HasProtection)
+            ),
             "Rebbec, Architect of Ascension should make the artifact illegal to target from a source whose mana value is among artifacts its controller controls"
         );
 

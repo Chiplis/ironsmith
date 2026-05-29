@@ -6,9 +6,10 @@ macro_rules! nested_effects_variants {
     ($effects:ident) => {
         EffectAst::Sequence { effects: $effects }
             | EffectAst::UnlessPays {
-            effects: $effects,
-            ..
-        } | EffectAst::May { effects: $effects }
+                effects: $effects,
+                ..
+            }
+            | EffectAst::May { effects: $effects }
             | EffectAst::MayByPlayer {
                 effects: $effects,
                 ..

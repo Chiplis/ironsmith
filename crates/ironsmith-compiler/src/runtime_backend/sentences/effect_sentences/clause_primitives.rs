@@ -1,12 +1,13 @@
-use winnow::Parser as _;
-
 use super::super::clause_support::parse_triggered_line_lexed;
 use super::super::grammar::effects::{
     split_change_target_clause_lexed, split_change_target_unless_clause_lexed,
     split_choose_new_targets_clause_lexed,
 };
 use super::super::grammar::primitives as grammar;
-use super::super::lexer::token_word_refs;
+use super::super::lexer::{
+    LexedClause, contains_token_word, word_slice_eq, word_slice_eq_any, word_slice_matching_phrase,
+    word_slice_starts_with,
+};
 use super::super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
 use super::super::object_filters::parse_object_filter;
 use super::super::permission_helpers::{
@@ -15,12 +16,7 @@ use super::super::permission_helpers::{
     parse_unsupported_play_cast_permission_clause, parse_until_end_of_turn_may_play_tagged_clause,
     parse_until_your_next_turn_may_play_tagged_clause,
 };
-use super::super::token_primitives::{
-    find_index as find_token_index, slice_starts_with as word_slice_starts_with,
-};
-use super::super::util::{
-    is_article, parse_subject, parse_target_phrase, span_from_tokens, trim_commas,
-};
+use super::super::util::{is_article, parse_subject, parse_target_phrase, span_from_tokens};
 use super::parse_restriction_duration;
 use super::sentence_helpers::*;
 #[allow(unused_imports)]
@@ -47,8 +43,58 @@ const CHOOSE_CARD_NAME_PREFIXES: &[&[&str]] = &[
     &["you", "choose"],
     &["that", "player", "chooses"],
 ];
+const CARD_NAME_SUFFIX: &[&str] = &["card", "name"];
+const REPEAT_THIS_PROCESS_ANY_NUMBER_OF_TIMES_PATTERNS: &[&[&str]] = &[
+    &["repeat", "this", "process", "any", "number", "of", "times"],
+    &[
+        "and", "repeat", "this", "process", "any", "number", "of", "times",
+    ],
+    &[
+        "you", "may", "repeat", "this", "process", "any", "number", "of", "times",
+    ],
+    &[
+        "and", "you", "may", "repeat", "this", "process", "any", "number", "of", "times",
+    ],
+];
+const REPEAT_THIS_PROCESS_PATTERNS: &[&[&str]] = &[
+    &["repeat", "this", "process"],
+    &["and", "repeat", "this", "process"],
+];
+const REPEAT_THIS_PROCESS_ONCE_PATTERNS: &[&[&str]] = &[
+    &["repeat", "this", "process", "once"],
+    &["and", "repeat", "this", "process", "once"],
+];
+const DONT_LOSE_THIS_MANA_PATTERNS: &[&[&str]] = &[
+    &[
+        "you", "dont", "lose", "this", "mana", "as", "steps", "and", "phases", "end",
+    ],
+    &[
+        "you", "don't", "lose", "this", "mana", "as", "steps", "and", "phases", "end",
+    ],
+];
 const ALL_CREATURES_ABLE_TO_BLOCK_PREFIXES: &[&[&str]] =
     &[&["all", "creatures", "able", "to", "block"]];
+const ATTACK_OR_BLOCK_IF_ABLE_SUFFIXES: &[&[&str]] = &[
+    &["attack", "or", "block", "this", "turn", "if", "able"],
+    &["attacks", "or", "blocks", "this", "turn", "if", "able"],
+    &["attacks", "or", "block", "this", "turn", "if", "able"],
+    &["attack", "or", "blocks", "this", "turn", "if", "able"],
+];
+const ATTACK_IF_ABLE_SUFFIXES: &[&[&str]] = &[
+    &["attack", "this", "turn", "if", "able"],
+    &["attacks", "this", "turn", "if", "able"],
+];
+const MUST_BE_BLOCKED_IF_ABLE_SUFFIXES: &[&[&str]] = &[
+    &["must", "be", "blocked", "if", "able"],
+    &["must", "be", "blocked", "this", "turn", "if", "able"],
+    &[
+        "must", "be", "blocked", "each", "combat", "this", "turn", "if", "able",
+    ],
+];
+const BLOCK_THIS_TURN_IF_ABLE_SUFFIXES: &[&[&str]] = &[
+    &["block", "this", "turn", "if", "able"],
+    &["blocks", "this", "turn", "if", "able"],
+];
 const UNTIL_DURATION_TRIGGER_PREFIXES: &[&[&str]] = &[
     &["until", "your", "next", "turn"],
     &["until", "your", "next", "upkeep"],
@@ -58,10 +104,6 @@ const UNTIL_DURATION_TRIGGER_PREFIXES: &[&[&str]] = &[
 const AT_THE_PREFIXES: &[&[&str]] = &[&["at", "the"]];
 const EACH_OF_PREFIXES: &[&[&str]] = &[&["each", "of"]];
 const DAMAGE_TO_PREFIXES: &[&[&str]] = &[&["damage", "to"]];
-
-fn render_clause_words(tokens: &[OwnedLexToken]) -> String {
-    token_word_refs(tokens).join(" ")
-}
 
 pub(crate) fn parse_retarget_clause(
     tokens: &[OwnedLexToken],
@@ -78,33 +120,34 @@ pub(crate) fn parse_retarget_clause(
 pub(crate) fn parse_copy_targets_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words = token_word_refs(tokens);
-    let targets_idx = match words.as_slice() {
-        ["the", "copy", "targets", ..] | ["that", "copy", "targets", ..] => 2,
-        ["copy", "targets", ..] => 1,
-        _ => return Ok(None),
+    let clause = LexedClause::new(tokens);
+    let words = clause.word_refs();
+    let targets_idx = if word_slice_starts_with(&words, &["the", "copy", "targets"])
+        || word_slice_starts_with(&words, &["that", "copy", "targets"])
+    {
+        2
+    } else if word_slice_starts_with(&words, &["copy", "targets"]) {
+        1
+    } else {
+        return Ok(None);
     };
-    let targets_token_idx = super::super::util::token_index_for_word_index(tokens, targets_idx)
-        .ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "missing targets keyword in copy-target clause (clause: '{}')",
-                words.join(" ")
-            ))
-        })?;
-    let fixed_tokens = trim_commas(&tokens[targets_token_idx + 1..]);
-    if fixed_tokens.is_empty() {
+    let fixed_clause = clause.from_word(targets_idx + 1).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "missing targets keyword in copy-target clause (clause: '{}')",
+            clause.text()
+        ))
+    })?;
+    let fixed_clause = fixed_clause.trimmed();
+    if fixed_clause.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing target after copy-target clause (clause: '{}')",
-            words.join(" ")
+            clause.text()
         )));
     }
-    let fixed_filter = parse_object_filter(&fixed_tokens, false)?;
+    let fixed_filter = parse_object_filter(fixed_clause.tokens(), false)?;
     Ok(Some(EffectAst::subject_verb_retarget_stack_object(
         PlayerAst::Implicit,
-        TargetAst::Tagged(
-            TagKey::from(COPIED_STACK_OBJECT_TAG),
-            span_from_tokens(tokens),
-        ),
+        TargetAst::Tagged(TagKey::from(COPIED_STACK_OBJECT_TAG), clause.span()),
         RetargetModeAst::OneToFixed {
             target: TargetAst::Object(fixed_filter, None, None),
         },
@@ -119,7 +162,8 @@ pub(crate) fn parse_choose_new_targets_clause(
         return Ok(None);
     };
     if split.reference_target {
-        let reference_words = token_word_refs(split.target_tokens);
+        let reference_clause = LexedClause::new(split.target_tokens);
+        let reference_words = reference_clause.word_refs();
         let reference_tag = if matches!(
             reference_words.as_slice(),
             ["the", "copy", ..]
@@ -150,7 +194,7 @@ pub(crate) fn parse_choose_new_targets_clause(
     }
 
     let mut filter = parse_stack_retarget_filter(tail_tokens)?;
-    if tail_tokens.iter().any(|token| token.is_word("other")) {
+    if contains_token_word(tail_tokens, "other") {
         filter.other = true;
     }
 
@@ -178,8 +222,8 @@ pub(crate) fn parse_choose_new_targets_clause(
 pub(crate) fn parse_change_target_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = token_word_refs(tokens);
-    if clause_words.is_empty() || clause_words[0] != "change" {
+    let clause = LexedClause::new(tokens);
+    if clause.first_word() != Some("change") {
         return Ok(None);
     }
 
@@ -213,38 +257,33 @@ pub(crate) fn parse_change_target_clause_inner(
     let tail_tokens = split.target_tokens;
     let mut filter = parse_stack_retarget_filter(&tail_tokens)?;
 
-    if grammar::words_find_phrase(&tail_tokens, &["with", "a", "single", "target"]).is_some() {
+    let tail_clause = LexedClause::new(&tail_tokens);
+    if tail_clause.contains_phrase(&["with", "a", "single", "target"]) {
         filter = filter.target_count_exact(1);
     }
-    if grammar::words_find_phrase(
-        &tail_tokens,
-        &["targets", "only", "a", "single", "creature"],
-    )
-    .is_some()
-    {
+    if tail_clause.contains_phrase(&["targets", "only", "a", "single", "creature"]) {
         filter = filter
             .targeting_only_object(ObjectFilter::creature())
             .target_count_exact(1);
     }
-    if grammar::words_find_phrase(&tail_tokens, &["targets", "only", "this", "creature"]).is_some()
-        || grammar::words_find_phrase(&tail_tokens, &["targets", "only", "this", "permanent"])
-            .is_some()
+    if tail_clause.contains_phrase(&["targets", "only", "this", "creature"])
+        || tail_clause.contains_phrase(&["targets", "only", "this", "permanent"])
     {
         filter = filter
             .targeting_only_object(ObjectFilter::source())
             .target_count_exact(1);
     }
-    if grammar::words_find_phrase(&tail_tokens, &["targets", "only", "you"]).is_some() {
+    if tail_clause.contains_phrase(&["targets", "only", "you"]) {
         filter = filter
             .targeting_only_player(PlayerFilter::You)
             .target_count_exact(1);
     }
-    if grammar::words_find_phrase(&tail_tokens, &["targets", "only", "a", "player"]).is_some() {
+    if tail_clause.contains_phrase(&["targets", "only", "a", "player"]) {
         filter = filter
             .targeting_only_player(PlayerFilter::Any)
             .target_count_exact(1);
     }
-    if grammar::words_find_phrase(&tail_tokens, &["if", "that", "target", "is", "you"]).is_some() {
+    if tail_clause.contains_phrase(&["if", "that", "target", "is", "you"]) {
         filter = filter
             .targeting_only_player(PlayerFilter::You)
             .target_count_exact(1);
@@ -271,31 +310,26 @@ pub(crate) fn parse_change_target_clause_inner(
 pub(crate) fn parse_unless_pays_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<(PlayerAst, crate::cost::TotalCost), CardTextError> {
-    if tokens.is_empty() {
+    let clause = LexedClause::new(tokens);
+    if clause.is_empty() {
         return Err(CardTextError::ParseError(
             "missing unless clause".to_string(),
         ));
     }
-    let (player_slice, _pays_tail) =
-        super::super::grammar::primitives::split_lexed_once_on_separator(tokens, || {
-            use winnow::Parser as _;
-            super::super::grammar::primitives::kw("pays").void()
-        })
-        .ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "missing pays keyword (clause: '{}')",
-                render_clause_words(tokens)
-            ))
-        })?;
-    let pays_idx = player_slice.len();
+    let (player_clause, pays_clause) = clause.split_once_before_word("pays").ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "missing pays keyword (clause: '{}')",
+            clause.text()
+        ))
+    })?;
 
-    let player_tokens = trim_commas(player_slice);
-    let player = match parse_subject(&player_tokens) {
+    let player_clause = player_clause.trimmed();
+    let player = match parse_subject(player_clause.tokens()) {
         SubjectAst::Player(player) => player,
         _ => PlayerAst::Implicit,
     };
 
-    let mut payment_tokens = tokens[pays_idx..].to_vec();
+    let mut payment_tokens = pays_clause.tokens().to_vec();
     if let Some(first) = payment_tokens.first_mut()
         && first.is_word("pays")
     {
@@ -306,7 +340,7 @@ pub(crate) fn parse_unless_pays_clause(
         .ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "unsupported unless-payment clause (clause: '{}')",
-                render_clause_words(tokens)
+                clause.text()
             ))
         })?;
 
@@ -316,14 +350,15 @@ pub(crate) fn parse_unless_pays_clause(
 pub(crate) fn parse_stack_retarget_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<ObjectFilter, CardTextError> {
-    let words = token_word_refs(tokens);
+    let clause = LexedClause::new(tokens);
+    let words = clause.word_refs();
     let has_ability = words
         .iter()
         .any(|word| matches!(*word, "ability" | "abilities"));
     let has_spell = words.iter().any(|word| matches!(*word, "spell" | "spells"));
-    let has_activated = grammar::contains_word(tokens, "activated");
-    let has_instant = grammar::contains_word(tokens, "instant");
-    let has_sorcery = grammar::contains_word(tokens, "sorcery");
+    let has_activated = clause.contains_word("activated");
+    let has_instant = clause.contains_word("instant");
+    let has_sorcery = clause.contains_word("sorcery");
 
     let mut filter = if has_activated && has_ability {
         ObjectFilter::activated_ability()
@@ -338,11 +373,11 @@ pub(crate) fn parse_stack_retarget_filter(
     } else {
         return Err(CardTextError::ParseError(format!(
             "unsupported retarget target clause (clause: '{}')",
-            words.join(" ")
+            clause.text()
         )));
     };
 
-    if grammar::contains_word(tokens, "other") {
+    if clause.contains_word("other") {
         filter.other = true;
     }
 
@@ -468,36 +503,35 @@ pub(crate) fn run_clause_primitives(
 pub(crate) fn parse_choose_card_name_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = token_word_refs(tokens);
-    if clause_words.len() < 3 {
+    let clause = LexedClause::new(tokens);
+    if clause.word_len() < 3 {
         return Ok(None);
     }
 
-    let (player, prefix_len) = if let Some((prefix, _)) =
-        grammar::words_match_any_prefix(tokens, CHOOSE_CARD_NAME_PREFIXES)
+    let (player, tail_clause) = if let Some((prefix, tail_clause)) =
+        clause.strip_any_prefix_clause(CHOOSE_CARD_NAME_PREFIXES)
     {
         let player = if prefix == &["that", "player", "chooses"] {
             PlayerAst::That
         } else {
             PlayerAst::You
         };
-        (player, prefix.len())
+        (player, tail_clause.trimmed())
     } else {
         return Ok(None);
     };
 
-    if clause_words.len() < prefix_len + 2
-        || clause_words[clause_words.len() - 2..] != ["card", "name"]
-    {
+    let Some(filter_clause) = tail_clause.strip_suffix_clause(CARD_NAME_SUFFIX) else {
         return Ok(None);
-    }
+    };
+    let filter_clause = filter_clause.trimmed();
 
-    let filter_words = clause_words[prefix_len..clause_words.len() - 2]
-        .iter()
-        .copied()
+    let filter_words = filter_clause
+        .word_refs()
+        .into_iter()
         .filter(|word| !is_article(word))
         .collect::<Vec<_>>();
-    let filter = if filter_words.is_empty() || filter_words.as_slice() == ["any"] {
+    let filter = if filter_words.is_empty() || word_slice_eq(&filter_words, &["any"]) {
         None
     } else {
         let normalized_tokens: Vec<OwnedLexToken> = filter_words
@@ -507,7 +541,7 @@ pub(crate) fn parse_choose_card_name_clause(
         Some(parse_object_filter(&normalized_tokens, false).map_err(|_| {
             CardTextError::ParseError(format!(
                 "unsupported choose-card-name filter (clause: '{}')",
-                clause_words.join(" ")
+                clause.text()
             ))
         })?)
     };
@@ -522,32 +556,14 @@ pub(crate) fn parse_choose_card_name_clause(
 pub(crate) fn parse_repeat_this_process_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = token_word_refs(tokens);
-    if matches!(
-        clause_words.as_slice(),
-        ["repeat", "this", "process", "any", "number", "of", "times"]
-            | [
-                "and", "repeat", "this", "process", "any", "number", "of", "times",
-            ]
-            | [
-                "you", "may", "repeat", "this", "process", "any", "number", "of", "times"
-            ]
-            | [
-                "and", "you", "may", "repeat", "this", "process", "any", "number", "of", "times",
-            ]
-    ) {
+    let clause = LexedClause::new(tokens);
+    if clause.matches_any_words(REPEAT_THIS_PROCESS_ANY_NUMBER_OF_TIMES_PATTERNS) {
         return Ok(Some(EffectAst::RepeatThisProcessMay));
     }
-    if matches!(
-        clause_words.as_slice(),
-        ["repeat", "this", "process"] | ["and", "repeat", "this", "process"]
-    ) {
+    if clause.matches_any_words(REPEAT_THIS_PROCESS_PATTERNS) {
         return Ok(Some(EffectAst::RepeatThisProcess));
     }
-    if matches!(
-        clause_words.as_slice(),
-        ["repeat", "this", "process", "once"] | ["and", "repeat", "this", "process", "once"]
-    ) {
+    if clause.matches_any_words(REPEAT_THIS_PROCESS_ONCE_PATTERNS) {
         return Ok(Some(EffectAst::RepeatThisProcessOnce));
     }
     Ok(None)
@@ -556,15 +572,7 @@ pub(crate) fn parse_repeat_this_process_clause(
 pub(crate) fn parse_dont_lose_this_mana_as_steps_and_phases_end_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = token_word_refs(tokens);
-    if matches!(
-        clause_words.as_slice(),
-        [
-            "you", "dont", "lose", "this", "mana", "as", "steps", "and", "phases", "end"
-        ] | [
-            "you", "don't", "lose", "this", "mana", "as", "steps", "and", "phases", "end",
-        ]
-    ) {
+    if LexedClause::new(tokens).matches_any_words(DONT_LOSE_THIS_MANA_PATTERNS) {
         return Ok(Some(
             EffectAst::subject_verb_dont_lose_this_mana_as_steps_and_phases_end_this_turn(),
         ));
@@ -577,31 +585,22 @@ pub(crate) fn parse_attack_or_block_this_turn_if_able_clause(
 ) -> Result<Option<EffectAst>, CardTextError> {
     use crate::effect::Until;
 
-    use super::super::grammar::primitives as grammar;
-
-    let clause_words = token_word_refs(tokens);
-    let suffix = grammar::strip_lexed_suffix_phrases(
-        tokens,
-        &[
-            &["attack", "or", "block", "this", "turn", "if", "able"],
-            &["attacks", "or", "blocks", "this", "turn", "if", "able"],
-            &["attacks", "or", "block", "this", "turn", "if", "able"],
-            &["attack", "or", "blocks", "this", "turn", "if", "able"],
-        ],
-    );
-    let Some((_matched, subject_part)) = suffix else {
+    let clause = LexedClause::new(tokens);
+    let Some((_matched, subject_clause)) =
+        clause.strip_any_suffix_clause(ATTACK_OR_BLOCK_IF_ABLE_SUFFIXES)
+    else {
         return Ok(None);
     };
 
-    let subject_tokens = trim_commas(subject_part);
-    let target = if subject_tokens.is_empty() {
-        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens))
+    let subject_clause = subject_clause.trimmed();
+    let target = if subject_clause.is_empty() {
+        TargetAst::Tagged(TagKey::from(IT_TAG), clause.span())
     } else {
-        parse_target_phrase(&subject_tokens)?
+        parse_target_phrase(subject_clause.tokens())?
     };
     let abilities = vec![GrantedAbilityAst::MustAttack, GrantedAbilityAst::MustBlock];
 
-    if subject_tokens.is_empty() || starts_with_target_indicator(&subject_tokens) {
+    if subject_clause.is_empty() || starts_with_target_indicator(subject_clause.tokens()) {
         return Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
             target,
             abilities,
@@ -612,7 +611,7 @@ pub(crate) fn parse_attack_or_block_this_turn_if_able_clause(
     let filter = target_ast_to_object_filter(target).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "unsupported attacker/blocker subject in attacks-or-blocks-if-able clause (clause: '{}')",
-            clause_words.join(" ")
+            clause.text()
         ))
     })?;
 
@@ -626,32 +625,23 @@ pub(crate) fn parse_attack_or_block_this_turn_if_able_clause(
 pub(crate) fn parse_attack_this_turn_if_able_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    use super::super::grammar::primitives as grammar;
     use crate::effect::Until;
 
-    let clause_words = token_word_refs(tokens);
-    // Try splitting on "attack(s) this turn if able" suffix
-    let suffix =
-        grammar::strip_lexed_suffix_phrase(tokens, &["attack", "this", "turn", "if", "able"])
-            .or_else(|| {
-                grammar::strip_lexed_suffix_phrase(
-                    tokens,
-                    &["attacks", "this", "turn", "if", "able"],
-                )
-            });
-    let Some(subject_part) = suffix else {
+    let clause = LexedClause::new(tokens);
+    let Some((_matched, subject_clause)) = clause.strip_any_suffix_clause(ATTACK_IF_ABLE_SUFFIXES)
+    else {
         return Ok(None);
     };
 
-    let subject_tokens = trim_commas(subject_part);
-    let target = if subject_tokens.is_empty() {
-        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens))
+    let subject_clause = subject_clause.trimmed();
+    let target = if subject_clause.is_empty() {
+        TargetAst::Tagged(TagKey::from(IT_TAG), clause.span())
     } else {
-        parse_target_phrase(&subject_tokens)?
+        parse_target_phrase(subject_clause.tokens())?
     };
     let ability = GrantedAbilityAst::MustAttack;
 
-    if subject_tokens.is_empty() || starts_with_target_indicator(&subject_tokens) {
+    if subject_clause.is_empty() || starts_with_target_indicator(subject_clause.tokens()) {
         return Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
             target,
             vec![ability],
@@ -662,7 +652,7 @@ pub(crate) fn parse_attack_this_turn_if_able_clause(
     let filter = target_ast_to_object_filter(target).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "unsupported attacker subject in attacks-if-able clause (clause: '{}')",
-            clause_words.join(" ")
+            clause.text()
         ))
     })?;
 
@@ -678,44 +668,28 @@ pub(crate) fn parse_must_be_blocked_if_able_clause(
 ) -> Result<Option<EffectAst>, CardTextError> {
     use crate::effect::Until;
 
-    use super::super::grammar::primitives as grammar;
-
-    let clause_words = token_word_refs(tokens);
-    let suffix =
-        grammar::strip_lexed_suffix_phrase(tokens, &["must", "be", "blocked", "if", "able"])
-            .or_else(|| {
-                grammar::strip_lexed_suffix_phrase(
-                    tokens,
-                    &["must", "be", "blocked", "this", "turn", "if", "able"],
-                )
-            })
-            .or_else(|| {
-                grammar::strip_lexed_suffix_phrase(
-                    tokens,
-                    &[
-                        "must", "be", "blocked", "each", "combat", "this", "turn", "if", "able",
-                    ],
-                )
-            });
-    let Some(subject_part) = suffix else {
+    let clause = LexedClause::new(tokens);
+    let Some((_matched, subject_clause)) =
+        clause.strip_any_suffix_clause(MUST_BE_BLOCKED_IF_ABLE_SUFFIXES)
+    else {
         return Ok(None);
     };
 
-    let subject_tokens = trim_commas(subject_part);
-    if subject_tokens.is_empty() {
+    let subject_clause = subject_clause.trimmed();
+    if subject_clause.is_empty() {
         return Ok(None);
     }
-    if starts_with_target_indicator(&subject_tokens) {
+    if starts_with_target_indicator(subject_clause.tokens()) {
         // We only support source/tagged subjects here; explicit "target ..." needs
         // a target+restriction sequence that this single-clause parser cannot encode.
         return Ok(None);
     }
 
-    let attacker_target = parse_target_phrase(&subject_tokens)?;
+    let attacker_target = parse_target_phrase(subject_clause.tokens())?;
     let attacker_filter = target_ast_to_object_filter(attacker_target).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "unsupported attacker subject in must-be-blocked clause (clause: '{}')",
-            clause_words.join(" ")
+            clause.text()
         ))
     })?;
 
@@ -731,29 +705,28 @@ pub(crate) fn parse_must_block_if_able_clause(
 ) -> Result<Option<EffectAst>, CardTextError> {
     use crate::effect::Until;
 
-    let clause_words = token_word_refs(tokens);
+    let clause = LexedClause::new(tokens);
+    let clause_text = clause.text();
 
     // "<subject> blocks this turn if able."
-    let Some(block_idx) = find_token_index(tokens, |token| {
-        token.is_word("block") || token.is_word("blocks")
-    }) else {
+    let Some(block_idx) = clause.find_token_word_any(&["block", "blocks"]) else {
         return Ok(None);
     };
     if block_idx == 0 || block_idx + 1 >= tokens.len() {
         return Ok(None);
     }
-    let tail_words = token_word_refs(&tokens[block_idx..]);
-    if tail_words == ["block", "this", "turn", "if", "able"]
-        || tail_words == ["blocks", "this", "turn", "if", "able"]
+    if clause
+        .from(block_idx)
+        .starts_with_any(BLOCK_THIS_TURN_IF_ABLE_SUFFIXES)
     {
-        let subject_tokens = trim_commas(&tokens[..block_idx]);
-        if subject_tokens.is_empty() {
+        let subject_clause = clause.before(block_idx).trimmed();
+        if subject_clause.is_empty() {
             return Ok(None);
         }
-        let target = parse_target_phrase(&subject_tokens)?;
+        let target = parse_target_phrase(subject_clause.tokens())?;
         let ability = GrantedAbilityAst::MustBlock;
 
-        if starts_with_target_indicator(&subject_tokens) {
+        if starts_with_target_indicator(subject_clause.tokens()) {
             return Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
                 target,
                 vec![ability],
@@ -764,7 +737,7 @@ pub(crate) fn parse_must_block_if_able_clause(
         let filter = target_ast_to_object_filter(target).ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "unsupported blocker subject in blocks-if-able clause (clause: '{}')",
-                clause_words.join(" ")
+                clause_text
             ))
         })?;
         return Ok(Some(EffectAst::subject_verb_grant_abilities_all(
@@ -775,32 +748,34 @@ pub(crate) fn parse_must_block_if_able_clause(
     }
 
     // "All creatures able to block target creature this turn do so."
-    if grammar::words_match_any_prefix(tokens, ALL_CREATURES_ABLE_TO_BLOCK_PREFIXES).is_some() {
-        let mut tail_tokens = trim_commas(&tokens[5..]);
-        if grammar::words_match_suffix(&tail_tokens, &["do", "so"]).is_none() {
+    if let Some((_, tail_clause)) =
+        clause.strip_any_prefix_clause(ALL_CREATURES_ABLE_TO_BLOCK_PREFIXES)
+    {
+        let Some(tail_clause) = tail_clause.trimmed().strip_suffix_clause(&["do", "so"]) else {
             return Ok(None);
-        }
-        tail_tokens = trim_commas(&tail_tokens[..tail_tokens.len().saturating_sub(2)]);
+        };
+        let tail_clause = tail_clause.trimmed();
 
-        let (duration, attacker_tokens) =
-            if let Some((duration, remainder)) = parse_restriction_duration(&tail_tokens)? {
-                (duration, remainder)
-            } else {
-                (Until::EndOfTurn, tail_tokens.to_vec())
-            };
-        let attacker_tokens = trim_commas(&attacker_tokens);
-        if attacker_tokens.is_empty() {
+        let (duration, attacker_tokens) = if let Some((duration, remainder)) =
+            parse_restriction_duration(tail_clause.tokens())?
+        {
+            (duration, remainder)
+        } else {
+            (Until::EndOfTurn, tail_clause.tokens().to_vec())
+        };
+        let attacker_clause = LexedClause::new(&attacker_tokens).trimmed();
+        if attacker_clause.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing attacker in must-block clause (clause: '{}')",
-                clause_words.join(" ")
+                clause_text
             )));
         }
 
-        let attacker_target = parse_target_phrase(&attacker_tokens)?;
+        let attacker_target = parse_target_phrase(attacker_clause.tokens())?;
         let attacker_filter = target_ast_to_object_filter(attacker_target).ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "unsupported attacker target in must-block clause (clause: '{}')",
-                clause_words.join(" ")
+                clause_text
             ))
         })?;
 
@@ -815,42 +790,46 @@ pub(crate) fn parse_must_block_if_able_clause(
     }
 
     // "<subject> blocks <attacker> this turn if able."
-    let subject_tokens = trim_commas(&tokens[..block_idx]);
-    if subject_tokens.is_empty() {
+    let subject_clause = clause.before(block_idx).trimmed();
+    if subject_clause.is_empty() {
         return Ok(None);
     }
-    let blockers_filter = parse_subject_object_filter(&subject_tokens)?.ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "unsupported blocker subject in must-block clause (clause: '{}')",
-            clause_words.join(" ")
-        ))
-    })?;
+    let blockers_filter =
+        parse_subject_object_filter(subject_clause.tokens())?.ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported blocker subject in must-block clause (clause: '{}')",
+                clause_text
+            ))
+        })?;
 
-    let mut tail_tokens = trim_commas(&tokens[block_idx + 1..]);
-    if grammar::words_match_suffix(&tail_tokens, &["if", "able"]).is_none() {
+    let Some(tail_clause) = clause
+        .from(block_idx + 1)
+        .trimmed()
+        .strip_suffix_clause(&["if", "able"])
+    else {
         return Ok(None);
-    }
-    tail_tokens = trim_commas(&tail_tokens[..tail_tokens.len().saturating_sub(2)]);
+    };
+    let tail_clause = tail_clause.trimmed();
 
     let (duration, attacker_tokens) =
-        if let Some((duration, remainder)) = parse_restriction_duration(&tail_tokens)? {
+        if let Some((duration, remainder)) = parse_restriction_duration(tail_clause.tokens())? {
             (duration, remainder)
         } else {
-            (Until::EndOfTurn, tail_tokens.to_vec())
+            (Until::EndOfTurn, tail_clause.tokens().to_vec())
         };
-    let attacker_tokens = trim_commas(&attacker_tokens);
-    if attacker_tokens.is_empty() {
+    let attacker_clause = LexedClause::new(&attacker_tokens).trimmed();
+    if attacker_clause.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing attacker in must-block clause (clause: '{}')",
-            clause_words.join(" ")
+            clause_text
         )));
     }
 
-    let attacker_target = parse_target_phrase(&attacker_tokens)?;
+    let attacker_target = parse_target_phrase(attacker_clause.tokens())?;
     let attacker_filter = target_ast_to_object_filter(attacker_target).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "unsupported attacker target in must-block clause (clause: '{}')",
-            clause_words.join(" ")
+            clause_text
         ))
     })?;
 
@@ -864,9 +843,12 @@ pub(crate) fn parse_must_block_if_able_clause(
 pub(crate) fn parse_until_duration_triggered_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = token_word_refs(tokens);
+    let clause = LexedClause::new(tokens);
+    let clause_words = clause.word_refs();
     let has_leading_duration = starts_with_until_end_of_turn(&clause_words)
-        || grammar::words_match_any_prefix(tokens, UNTIL_DURATION_TRIGGER_PREFIXES).is_some();
+        || clause
+            .strip_any_prefix_clause(UNTIL_DURATION_TRIGGER_PREFIXES)
+            .is_some();
     if !has_leading_duration {
         return Ok(None);
     }
@@ -877,15 +859,16 @@ pub(crate) fn parse_until_duration_triggered_clause(
     if trigger_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing trigger after duration clause (clause: '{}')",
-            clause_words.join(" ")
+            clause.text()
         )));
     }
 
-    let trigger_words = token_word_refs(&trigger_tokens);
-    let looks_like_trigger = trigger_words
-        .first()
-        .is_some_and(|word| *word == "when" || *word == "whenever")
-        || grammar::words_match_any_prefix(&trigger_tokens, AT_THE_PREFIXES).is_some();
+    let trigger_clause = LexedClause::new(&trigger_tokens);
+    let trigger_words = trigger_clause.word_refs();
+    let looks_like_trigger = matches!(trigger_clause.first_word(), Some("when" | "whenever"))
+        || trigger_clause
+            .strip_any_prefix_clause(AT_THE_PREFIXES)
+            .is_some();
     if !looks_like_trigger {
         return Ok(None);
     }
@@ -900,7 +883,7 @@ pub(crate) fn parse_until_duration_triggered_clause(
             _ => {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported duration-triggered clause (clause: '{}')",
-                    clause_words.join(" ")
+                    clause.text()
                 )));
             }
         };
@@ -955,81 +938,79 @@ pub(crate) fn is_damage_source_target(target: &TargetAst) -> bool {
 pub(crate) fn parse_deal_damage_equal_to_power_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    use super::super::grammar::primitives as grammar;
-
-    let clause_words = token_word_refs(tokens);
-    let deal_split = grammar::split_lexed_once_on_separator(tokens, || grammar::kw("deal").void())
-        .or_else(|| grammar::split_lexed_once_on_separator(tokens, || grammar::kw("deals").void()));
-    let Some((source_slice, rest_slice)) = deal_split else {
-        return Ok(None);
-    };
-    if source_slice.is_empty() {
-        return Ok(None);
-    }
-
-    let source_tokens = trim_commas(source_slice);
-
-    let rest = trim_commas(rest_slice);
-    if rest.is_empty() || !rest[0].is_word("damage") {
-        return Ok(None);
-    }
-
-    let Some((_before_equal, _after_equal_to)) =
-        grammar::split_lexed_once_on_separator(&rest, || grammar::phrase(&["equal", "to"]).void())
+    let clause = LexedClause::new(tokens);
+    let clause_text = clause.text();
+    let Some((source_clause, rest_clause)) = clause.split_once_on_word_any(&["deal", "deals"])
     else {
         return Ok(None);
     };
-    let equal_idx = _before_equal.len();
+    if source_clause.is_empty() {
+        return Ok(None);
+    }
 
-    let power_ref_words = token_word_refs(&rest[equal_idx + 2..]);
+    let source_clause = source_clause.trimmed();
+
+    let rest_clause = rest_clause.trimmed();
+    if rest_clause.is_empty() || !rest_clause.first_is_word("damage") {
+        return Ok(None);
+    }
+
+    let Some((pre_equal_clause, after_equal_clause)) =
+        rest_clause.split_once_on_phrase(&["equal", "to"])
+    else {
+        return Ok(None);
+    };
+
+    let power_ref_clause = after_equal_clause.trimmed();
+    let power_ref_words = power_ref_clause.word_refs();
     let Some(power_ref_len) = parse_power_reference_word_count(&power_ref_words) else {
         return Ok(None);
     };
 
-    let source_words = token_word_refs(&source_tokens);
+    let source_words = source_clause.word_refs();
     let source = if matches!(
         source_words.as_slice(),
         ["it"] | ["that", "creature"] | ["that", "permanent"] | ["that", "card"]
     ) {
-        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&source_tokens))
+        TargetAst::Tagged(TagKey::from(IT_TAG), source_clause.span())
     } else {
-        parse_target_phrase(&source_tokens)?
+        parse_target_phrase(source_clause.tokens())?
     };
     if !is_damage_source_target(&source) {
         return Err(CardTextError::ParseError(format!(
             "unsupported damage source target phrase (clause: '{}')",
-            clause_words.join(" ")
+            clause_text
         )));
     }
 
-    let tail_after_power = trim_commas(&rest[equal_idx + 2 + power_ref_len..]);
-    let pre_equal_words = token_word_refs(&rest[..equal_idx]);
+    let tail_after_power_clause = power_ref_clause
+        .after_words(power_ref_len)
+        .unwrap_or_else(|| power_ref_clause.from(power_ref_clause.tokens().len()))
+        .trimmed();
+    let pre_equal_words = pre_equal_clause.word_refs();
 
-    let target = if pre_equal_words == ["damage"] {
-        let mut target_tokens = tail_after_power.as_slice();
-        if target_tokens
-            .first()
-            .is_some_and(|token| token.is_word("to"))
-        {
-            target_tokens = &target_tokens[1..];
-        }
-        if target_tokens.is_empty() {
+    let target = if word_slice_eq(&pre_equal_words, &["damage"]) {
+        let target_clause = tail_after_power_clause
+            .strip_prefix_clause(&["to"])
+            .unwrap_or(tail_after_power_clause)
+            .trimmed();
+        if target_clause.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing damage target after power reference (clause: '{}')",
-                clause_words.join(" ")
+                clause_text
             )));
         }
-        let mut normalized_target_tokens = target_tokens;
-        if grammar::words_match_any_prefix(target_tokens, EACH_OF_PREFIXES).is_some() {
-            let each_of_tokens = &target_tokens[2..];
-            if grammar::contains_word(each_of_tokens, "target") {
-                normalized_target_tokens = each_of_tokens;
+        let mut normalized_target_clause = target_clause;
+        if let Some((_, each_of_clause)) = target_clause.strip_any_prefix_clause(EACH_OF_PREFIXES) {
+            if each_of_clause.contains_word("target") {
+                normalized_target_clause = each_of_clause;
             }
         }
-        let normalized_target_words = token_word_refs(normalized_target_tokens);
-        if normalized_target_words.as_slice() == ["each", "player"]
-            || normalized_target_words.as_slice() == ["each", "players"]
-        {
+        let normalized_target_words = normalized_target_clause.word_refs();
+        if word_slice_eq_any(
+            &normalized_target_words,
+            &[&["each", "player"], &["each", "players"]],
+        ) {
             return Ok(Some(EffectAst::ForEachPlayer {
                 effects: vec![EffectAst::subject_verb_damage_equal_to_power(
                     source.clone(),
@@ -1037,11 +1018,15 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
                 )],
             }));
         }
-        if normalized_target_words.as_slice() == ["each", "opponent"]
-            || normalized_target_words.as_slice() == ["each", "opponents"]
-            || normalized_target_words.as_slice() == ["each", "other", "player"]
-            || normalized_target_words.as_slice() == ["each", "other", "players"]
-        {
+        if word_slice_eq_any(
+            &normalized_target_words,
+            &[
+                &["each", "opponent"],
+                &["each", "opponents"],
+                &["each", "other", "player"],
+                &["each", "other", "players"],
+            ],
+        ) {
             return Ok(Some(EffectAst::ForEachOpponent {
                 effects: vec![EffectAst::subject_verb_damage_equal_to_power(
                     source.clone(),
@@ -1049,13 +1034,18 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
                 )],
             }));
         }
-        parse_target_phrase(normalized_target_tokens)?
-    } else if grammar::words_match_any_prefix(&rest[..equal_idx], DAMAGE_TO_PREFIXES).is_some() {
-        let target_tokens = trim_commas(&rest[2..equal_idx]);
-        let target_words = token_word_refs(&target_tokens);
-        if target_words.as_slice() == ["each", "player"]
-            || target_words.as_slice() == ["each", "players"]
-        {
+        parse_target_phrase(normalized_target_clause.tokens())?
+    } else if pre_equal_clause
+        .strip_any_prefix_clause(DAMAGE_TO_PREFIXES)
+        .is_some()
+    {
+        let target_clause = pre_equal_clause
+            .strip_any_prefix_clause(DAMAGE_TO_PREFIXES)
+            .map(|(_, target_clause)| target_clause)
+            .unwrap_or(pre_equal_clause)
+            .trimmed();
+        let target_words = target_clause.word_refs();
+        if word_slice_eq_any(&target_words, &[&["each", "player"], &["each", "players"]]) {
             return Ok(Some(EffectAst::ForEachPlayer {
                 effects: vec![EffectAst::subject_verb_damage_equal_to_power(
                     source.clone(),
@@ -1063,11 +1053,15 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
                 )],
             }));
         }
-        if target_words.as_slice() == ["each", "opponent"]
-            || target_words.as_slice() == ["each", "opponents"]
-            || target_words.as_slice() == ["each", "other", "player"]
-            || target_words.as_slice() == ["each", "other", "players"]
-        {
+        if word_slice_eq_any(
+            &target_words,
+            &[
+                &["each", "opponent"],
+                &["each", "opponents"],
+                &["each", "other", "player"],
+                &["each", "other", "players"],
+            ],
+        ) {
             return Ok(Some(EffectAst::ForEachOpponent {
                 effects: vec![EffectAst::subject_verb_damage_equal_to_power(
                     source.clone(),
@@ -1075,22 +1069,22 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
                 )],
             }));
         }
-        if target_words == ["itself"] || target_words == ["it"] {
-            if !tail_after_power.is_empty() {
+        if word_slice_eq_any(&target_words, &[&["itself"], &["it"]]) {
+            if !tail_after_power_clause.is_empty() {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported trailing target after self-damage power clause (clause: '{}')",
-                    clause_words.join(" ")
+                    clause_text
                 )));
             }
             source.clone()
         } else {
-            if !tail_after_power.is_empty() {
+            if !tail_after_power_clause.is_empty() {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported trailing target after explicit power-damage target (clause: '{}')",
-                    clause_words.join(" ")
+                    clause_text
                 )));
             }
-            parse_target_phrase(&target_tokens)?
+            parse_target_phrase(target_clause.tokens())?
         }
     } else {
         return Ok(None);
@@ -1104,57 +1098,40 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
 pub(crate) fn parse_fight_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = token_word_refs(tokens);
-    let fight_split =
-        super::super::grammar::primitives::split_lexed_once_on_separator(tokens, || {
-            use winnow::Parser as _;
-            super::super::grammar::primitives::kw("fight").void()
-        })
-        .or_else(|| {
-            super::super::grammar::primitives::split_lexed_once_on_separator(tokens, || {
-                use winnow::Parser as _;
-                super::super::grammar::primitives::kw("fights").void()
-            })
-        });
-    let Some((left_of_fight, right_of_fight)) = fight_split else {
+    let clause = LexedClause::new(tokens);
+    let clause_text = clause.text();
+    let Some((left_clause, right_clause)) = clause.split_once_on_word_any(&["fight", "fights"])
+    else {
         return Ok(None);
     };
-    let fight_idx = left_of_fight.len();
 
-    if right_of_fight.is_empty() {
+    let right_clause = right_clause.trimmed();
+    if right_clause.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "fight clause requires two creatures (clause: '{}')",
-            clause_words.join(" ")
+            clause_text
         )));
     }
 
-    let right_tokens = trim_commas(&tokens[fight_idx + 1..]);
-    if right_tokens.is_empty() {
-        return Err(CardTextError::ParseError(format!(
-            "fight clause requires two creatures (clause: '{}')",
-            clause_words.join(" ")
-        )));
-    }
-
-    let creature1 = if fight_idx == 0 {
+    let creature1 = if left_clause.is_empty() {
         TargetAst::Source(None)
     } else {
-        let left_tokens = trim_commas(&tokens[..fight_idx]);
-        if left_tokens.is_empty() {
+        let left_clause = left_clause.trimmed();
+        if left_clause.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "fight clause requires two creatures (clause: '{}')",
-                clause_words.join(" ")
+                clause_text
             )));
         }
-        if let Some(filter) = parse_for_each_object_subject(&left_tokens)? {
-            let creature2 = parse_target_phrase(&right_tokens)?;
+        if let Some(filter) = parse_for_each_object_subject(left_clause.tokens())? {
+            let creature2 = parse_target_phrase(right_clause.tokens())?;
             if matches!(
                 creature2,
                 TargetAst::Player(_, _) | TargetAst::PlayerOrPlaneswalker(_, _)
             ) {
                 return Err(CardTextError::ParseError(format!(
                     "fight target must be a creature (clause: '{}')",
-                    clause_words.join(" ")
+                    clause_text
                 )));
             }
             return Ok(Some(EffectAst::ForEachObject {
@@ -1162,13 +1139,13 @@ pub(crate) fn parse_fight_clause(
                 effects: vec![EffectAst::subject_verb_fight_iterated(creature2)],
             }));
         }
-        parse_target_phrase(&left_tokens)?
+        parse_target_phrase(left_clause.tokens())?
     };
-    let right_words = token_word_refs(&right_tokens);
-    let creature2 = if right_words == ["each", "other"] || right_words == ["one", "another"] {
-        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&right_tokens))
+    let right_words = right_clause.word_refs();
+    let creature2 = if word_slice_eq_any(&right_words, &[&["each", "other"], &["one", "another"]]) {
+        TargetAst::Tagged(TagKey::from(IT_TAG), right_clause.span())
     } else {
-        parse_target_phrase(&right_tokens)?
+        parse_target_phrase(right_clause.tokens())?
     };
 
     for target in [&creature1, &creature2] {
@@ -1178,7 +1155,7 @@ pub(crate) fn parse_fight_clause(
         ) {
             return Err(CardTextError::ParseError(format!(
                 "fight target must be a creature (clause: '{}')",
-                clause_words.join(" ")
+                clause_text
             )));
         }
     }
@@ -1189,40 +1166,46 @@ pub(crate) fn parse_fight_clause(
 pub(crate) fn parse_clash_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = token_word_refs(tokens);
-    let Some(first) = clause_words.first().copied() else {
-        return Ok(None);
-    };
-    if first != "clash" && first != "clashes" {
+    let clause = LexedClause::new(tokens);
+    if !matches!(clause.first_word(), Some("clash" | "clashes")) {
         return Ok(None);
     }
 
-    let mut tail = trim_commas(&tokens[1..]);
-    if tail.first().is_some_and(|token| token.is_word("with")) {
-        tail = trim_commas(&tail[1..]);
-    }
-    let tail_end = find_token_index(&tail, |token| token.is_word("then") || token.is_comma())
-        .unwrap_or(tail.len());
-    let tail = trim_commas(&tail[..tail_end]);
-    if tail.is_empty() {
+    let tail_clause = clause
+        .from(1)
+        .trimmed()
+        .strip_prefix_clause(&["with"])
+        .unwrap_or_else(|| clause.from(1).trimmed())
+        .trimmed()
+        .take_until_token_matching(|token| token.is_word("then") || token.is_comma())
+        .trimmed();
+    if tail_clause.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing opponent in clash clause (clause: '{}')",
-            clause_words.join(" ")
+            clause.text()
         )));
     }
 
-    let tail_words: Vec<&str> = token_word_refs(&tail)
+    let tail_words: Vec<&str> = tail_clause
+        .word_refs()
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
-    let opponent = match tail_words.as_slice() {
-        ["opponent"] => ClashOpponentAst::Opponent,
-        ["target", "opponent"] => ClashOpponentAst::TargetOpponent,
-        ["defending", "player"] => ClashOpponentAst::DefendingPlayer,
+    let opponent = match word_slice_matching_phrase(
+        &tail_words,
+        &[
+            &["opponent"],
+            &["target", "opponent"],
+            &["defending", "player"],
+        ],
+    ) {
+        Some(["opponent"]) => ClashOpponentAst::Opponent,
+        Some(["target", "opponent"]) => ClashOpponentAst::TargetOpponent,
+        Some(["defending", "player"]) => ClashOpponentAst::DefendingPlayer,
         _ => {
             return Err(CardTextError::ParseError(format!(
                 "unsupported clash target (clause: '{}')",
-                clause_words.join(" ")
+                clause.text()
             )));
         }
     };

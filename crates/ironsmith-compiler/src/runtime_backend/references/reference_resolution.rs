@@ -1447,10 +1447,7 @@ fn visit_comparison_values(comparison: &crate::filter::Comparison, visit: &mut i
     }
 }
 
-fn visit_subject_verb_action_values(
-    action: &SubjectVerbActionAst,
-    visit: &mut impl FnMut(&Value),
-) {
+fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut impl FnMut(&Value)) {
     match action {
         SubjectVerbActionAst::Draw { count }
         | SubjectVerbActionAst::Mill { count }
@@ -1492,14 +1489,19 @@ fn visit_subject_verb_action_values(
         | SubjectVerbActionAst::AddManaCommanderIdentity { amount: count }
         | SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget { amount: count, .. }
         | SubjectVerbActionAst::LookAtTopCards { count, .. }
-        | SubjectVerbActionAst::MoveToLibraryNthFromTop { position: count, .. }
+        | SubjectVerbActionAst::MoveToLibraryNthFromTop {
+            position: count, ..
+        }
         | SubjectVerbActionAst::AdditionalLandPlays { count, .. } => visit(count),
         SubjectVerbActionAst::Incubate { amount, count } => {
             visit(amount);
             visit(count);
         }
         SubjectVerbActionAst::CounterUnlessPays { .. } => {}
-        SubjectVerbActionAst::PreventDamageToTargetPutCounters { amount: Some(amount), .. } => {
+        SubjectVerbActionAst::PreventDamageToTargetPutCounters {
+            amount: Some(amount),
+            ..
+        } => {
             visit(amount);
         }
         SubjectVerbActionAst::PutOrRemoveCounters {
@@ -1510,10 +1512,18 @@ fn visit_subject_verb_action_values(
             visit(put_count);
             visit(remove_count);
         }
-        SubjectVerbActionAst::Pump { power, toughness, .. }
-        | SubjectVerbActionAst::SetBasePowerToughness { power, toughness, .. }
-        | SubjectVerbActionAst::BecomeBasePtCreature { power, toughness, .. }
-        | SubjectVerbActionAst::PumpAll { power, toughness, .. } => {
+        SubjectVerbActionAst::Pump {
+            power, toughness, ..
+        }
+        | SubjectVerbActionAst::SetBasePowerToughness {
+            power, toughness, ..
+        }
+        | SubjectVerbActionAst::BecomeBasePtCreature {
+            power, toughness, ..
+        }
+        | SubjectVerbActionAst::PumpAll {
+            power, toughness, ..
+        } => {
             visit(power);
             visit(toughness);
         }
@@ -1538,7 +1548,9 @@ fn visit_subject_verb_action_values(
         | SubjectVerbActionAst::ReturnAllToBattlefield { filter, .. }
         | SubjectVerbActionAst::TagMatchingObjects { filter, .. }
         | SubjectVerbActionAst::GrantAbilitiesAll { filter, .. }
-        | SubjectVerbActionAst::RemoveAbilitiesAll { filter, .. } => visit_filter_values(filter, visit),
+        | SubjectVerbActionAst::RemoveAbilitiesAll { filter, .. } => {
+            visit_filter_values(filter, visit)
+        }
         SubjectVerbActionAst::CreateTokenWithMods {
             count,
             dynamic_power_toughness,

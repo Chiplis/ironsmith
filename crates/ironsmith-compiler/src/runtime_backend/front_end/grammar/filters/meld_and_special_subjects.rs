@@ -63,8 +63,8 @@ pub(super) fn parse_graveyard_threshold_predicate(
 
     let raw_filter_words = &tail[..in_idx];
     if raw_filter_words.is_empty()
-        || slice_contains(raw_filter_words, &"type")
-        || slice_contains(raw_filter_words, &"types")
+        || word_slice_contains_word(raw_filter_words, "type")
+        || word_slice_contains_word(raw_filter_words, "types")
     {
         return Ok(None);
     }
@@ -84,7 +84,7 @@ pub(super) fn parse_graveyard_threshold_predicate(
         return Ok(None);
     }
 
-    let mut filter = if matches!(normalized_filter_words.as_slice(), ["card"] | ["cards"]) {
+    let mut filter = if word_slice_eq_any(&normalized_filter_words, &[&["card"], &["cards"]]) {
         ObjectFilter::default()
     } else {
         let filter_tokens = normalized_filter_words

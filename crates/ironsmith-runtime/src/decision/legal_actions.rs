@@ -1396,9 +1396,7 @@ fn activation_precheck_with_view(
 
     if activated.is_exhaust_ability()
         && game.exhaust_ability_activated(source, ability_index)
-        && !player_may_activate_exhaust_abilities_as_unactivated_this_turn(
-            game, controller, view,
-        )
+        && !player_may_activate_exhaust_abilities_as_unactivated_this_turn(game, controller, view)
     {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());

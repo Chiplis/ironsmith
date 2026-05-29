@@ -401,12 +401,10 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::ThisTransformsWithSurface {
             surface,
             destination_name,
-        } => {
-            crate::triggers::Trigger::transforms_with_surface_and_destination(
-                surface,
-                destination_name,
-            )
-        }
+        } => crate::triggers::Trigger::transforms_with_surface_and_destination(
+            surface,
+            destination_name,
+        ),
         TriggerKind::YouCastThisSpell => crate::triggers::Trigger::you_cast_this_spell(),
         TriggerKind::KeywordActionMatchingObject {
             action,

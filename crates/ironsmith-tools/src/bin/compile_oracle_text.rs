@@ -236,7 +236,8 @@ fn compile_jobs_for_name(
     input_text: Option<&str>,
 ) -> Result<Vec<CompileJob>, String> {
     if input_text.is_none() {
-        let payloads = load_card_payloads_by_name(cards_path, name).map_err(|err| err.to_string())?;
+        let payloads =
+            load_card_payloads_by_name(cards_path, name).map_err(|err| err.to_string())?;
         if !payloads.is_empty() {
             return payloads
                 .into_iter()

@@ -2249,12 +2249,12 @@ fn choose_spec_for_resolution_target_validation(
             *count,
             value.clone(),
         ),
-        ChooseSpec::Player(filter) => ChooseSpec::Player(
-            player_filter_for_resolution_target_validation(filter),
-        ),
-        ChooseSpec::PlayerOrPlaneswalker(filter) => ChooseSpec::PlayerOrPlaneswalker(
-            player_filter_for_resolution_target_validation(filter),
-        ),
+        ChooseSpec::Player(filter) => {
+            ChooseSpec::Player(player_filter_for_resolution_target_validation(filter))
+        }
+        ChooseSpec::PlayerOrPlaneswalker(filter) => {
+            ChooseSpec::PlayerOrPlaneswalker(player_filter_for_resolution_target_validation(filter))
+        }
         _ => spec.clone(),
     }
 }

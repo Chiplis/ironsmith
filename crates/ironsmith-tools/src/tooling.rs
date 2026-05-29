@@ -396,10 +396,9 @@ pub fn load_card_payloads_by_name(
                     return Ok(payloads);
                 }
             }
-            if let Some(record) = build_registry_card_record_with_explicit_includes(
-                card,
-                &BTreeSet::new(),
-            ) {
+            if let Some(record) =
+                build_registry_card_record_with_explicit_includes(card, &BTreeSet::new())
+            {
                 return Ok(vec![record.payload]);
             }
         }

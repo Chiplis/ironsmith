@@ -10,7 +10,10 @@ use super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_add_mana_that_much_value,
     parse_dynamic_cost_modifier_value, parse_where_x_is_number_of_filter_value,
 };
-use super::lexer::{TokenWordView, token_word_refs};
+use super::lexer::{
+    TokenWordView, token_word_refs, word_slice_contains_word, word_slice_ends_with,
+    word_slice_find_phrase_start, word_slice_starts_with,
+};
 pub(crate) use super::object_filters::is_comparison_or_delimiter;
 use super::object_filters::parse_object_filter;
 pub(crate) use super::util::{
@@ -23,77 +26,8 @@ pub(crate) use super::util::{
 };
 pub(crate) use super::value_helpers::parse_filter_comparison_tokens;
 
-fn word_slice_starts_with(words: &[&str], expected: &[&str]) -> bool {
-    if words.len() < expected.len() {
-        return false;
-    }
-
-    let mut idx = 0usize;
-    while idx < expected.len() {
-        if words[idx] != expected[idx] {
-            return false;
-        }
-        idx += 1;
-    }
-
-    true
-}
-
-fn word_slice_ends_with(words: &[&str], expected: &[&str]) -> bool {
-    if words.len() < expected.len() {
-        return false;
-    }
-
-    let start = words.len() - expected.len();
-    let mut idx = 0usize;
-    while idx < expected.len() {
-        if words[start + idx] != expected[idx] {
-            return false;
-        }
-        idx += 1;
-    }
-
-    true
-}
-
-fn word_slice_contains(words: &[&str], expected: &str) -> bool {
-    let mut idx = 0usize;
-    while idx < words.len() {
-        if words[idx] == expected {
-            return true;
-        }
-        idx += 1;
-    }
-
-    false
-}
-
-fn find_word_sequence_index(words: &[&str], expected: &[&str]) -> Option<usize> {
-    if expected.is_empty() || words.len() < expected.len() {
-        return None;
-    }
-
-    let mut start = 0usize;
-    while start + expected.len() <= words.len() {
-        if word_slice_starts_with(&words[start..], expected) {
-            return Some(start);
-        }
-        start += 1;
-    }
-
-    None
-}
-
 fn push_unique_color(colors: &mut Vec<crate::color::Color>, color: crate::color::Color) {
-    let mut idx = 0usize;
-    while idx < colors.len() {
-        if colors[idx] == color {
-            return;
-        }
-        idx += 1;
-    }
-
-    colors.push(color);
+    crate::slice_primitives::push_unique(colors, color);
 }
 
 fn first_non_comma_token_index(tokens: &[OwnedLexToken]) -> usize {
@@ -148,17 +82,17 @@ pub(crate) fn parse_add_mana(
             colors_among,
         ));
     }
-    if word_slice_contains(&clause_words, "exiled")
+    if word_slice_contains_word(&clause_words, "exiled")
         && has_card_word
-        && word_slice_contains(&clause_words, "colors")
+        && word_slice_contains_word(&clause_words, "colors")
     {
         return Ok(EffectAst::subject_verb_add_mana_imprinted_colors());
     }
 
-    if (word_slice_contains(&clause_words, "commander")
-        || word_slice_contains(&clause_words, "commanders"))
-        && word_slice_contains(&clause_words, "color")
-        && word_slice_contains(&clause_words, "identity")
+    if (word_slice_contains_word(&clause_words, "commander")
+        || word_slice_contains_word(&clause_words, "commanders"))
+        && word_slice_contains_word(&clause_words, "color")
+        && word_slice_contains_word(&clause_words, "identity")
     {
         let amount = parse_value(tokens)
             .map(|(value, _)| value)
@@ -191,7 +125,7 @@ pub(crate) fn parse_add_mana(
         .iter()
         .any(|token| mana_pips_from_token(token).is_some());
     if !has_explicit_symbol
-        && let Some(chosen_idx) = find_word_sequence_index(&clause_words, &["chosen", "color"])
+        && let Some(chosen_idx) = word_slice_find_phrase_start(&clause_words, &["chosen", "color"])
     {
         let prefix = &clause_words[..chosen_idx];
         let references_mana_of_chosen_color = word_slice_ends_with(prefix, &["mana", "of", "the"])
@@ -236,12 +170,12 @@ pub(crate) fn parse_add_mana(
         ));
     }
 
-    let any_one = find_word_sequence_index(&clause_words, &["any", "one", "color"]).is_some()
-        || find_word_sequence_index(&clause_words, &["any", "one", "type"]).is_some();
-    let any_color = find_word_sequence_index(&clause_words, &["any", "color"]).is_some()
-        || find_word_sequence_index(&clause_words, &["one", "color"]).is_some();
-    let any_type = find_word_sequence_index(&clause_words, &["any", "type"]).is_some()
-        || find_word_sequence_index(&clause_words, &["one", "type"]).is_some();
+    let any_one = word_slice_find_phrase_start(&clause_words, &["any", "one", "color"]).is_some()
+        || word_slice_find_phrase_start(&clause_words, &["any", "one", "type"]).is_some();
+    let any_color = word_slice_find_phrase_start(&clause_words, &["any", "color"]).is_some()
+        || word_slice_find_phrase_start(&clause_words, &["one", "color"]).is_some();
+    let any_type = word_slice_find_phrase_start(&clause_words, &["any", "type"]).is_some()
+        || word_slice_find_phrase_start(&clause_words, &["one", "type"]).is_some();
     if any_color || any_type {
         let mut amount = parse_value(tokens)
             .map(|(value, _)| value)
@@ -514,8 +448,8 @@ fn parse_add_mana_colors_among_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     let words = token_word_refs(tokens);
-    if find_word_sequence_index(&words, &["for", "each", "color", "among"]).is_none()
-        || find_word_sequence_index(&words, &["add", "one", "mana", "of", "that", "color"])
+    if word_slice_find_phrase_start(&words, &["for", "each", "color", "among"]).is_none()
+        || word_slice_find_phrase_start(&words, &["add", "one", "mana", "of", "that", "color"])
             .is_none()
     {
         return Ok(None);
@@ -562,7 +496,7 @@ pub(crate) fn parse_or_mana_color_choices(
 ) -> Result<Option<Vec<crate::color::Color>>, CardTextError> {
     let clause_word_view = TokenWordView::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
-    if !word_slice_contains(&clause_words, "or") {
+    if !word_slice_contains_word(&clause_words, "or") {
         return Ok(None);
     }
 
@@ -607,7 +541,7 @@ pub(crate) fn parse_any_combination_mana_colors(
     let clause_word_view = TokenWordView::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
     let Some(combination_idx) =
-        find_word_sequence_index(&clause_words, &["any", "combination", "of"])
+        word_slice_find_phrase_start(&clause_words, &["any", "combination", "of"])
     else {
         return Ok(None);
     };
@@ -672,8 +606,8 @@ pub(crate) fn is_mana_pool_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
     let words = words_view.to_word_refs();
     if words.is_empty()
         || words[0] != "to"
-        || !word_slice_contains(&words, "mana")
-        || !word_slice_contains(&words, "pool")
+        || !word_slice_contains_word(&words, "mana")
+        || !word_slice_contains_word(&words, "pool")
     {
         return false;
     }
@@ -704,7 +638,7 @@ pub(crate) fn parse_land_could_produce_filter(
     }
 
     let marker_word_idx =
-        if let Some(could_idx) = find_word_sequence_index(&words, &["could", "produce"]) {
+        if let Some(could_idx) = word_slice_find_phrase_start(&words, &["could", "produce"]) {
             if could_idx + 2 != words.len() {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported trailing mana clause (tail: '{}')",

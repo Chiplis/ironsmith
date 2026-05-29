@@ -1,5 +1,3 @@
-use std::borrow::Borrow;
-
 use winnow::combinator::{alt, dispatch, fail, opt, peek, seq};
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::prelude::*;
@@ -12,7 +10,9 @@ pub(crate) use super::grammar::values::{
     parse_count_range_prefix, parse_mana_symbol, parse_mana_symbol_group, parse_modal_choose_range,
     parse_scryfall_mana_cost, parse_type_line_with, parse_value_comparison_tokens,
 };
-use super::lexer::{LexStream, OwnedLexToken, TokenKind, TokenWordView, render_token_slice};
+use super::lexer::{
+    LexStream, OwnedLexToken, TokenKind, TokenWordView, contains_token_kind, render_token_slice,
+};
 pub(crate) type LexedInput<'a> = LexStream<'a>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,215 +43,179 @@ fn until_from_turn_duration_phrase(duration: TurnDurationPhrase) -> Until {
 }
 
 pub(crate) fn slice_starts_with<T: PartialEq>(items: &[T], prefix: &[T]) -> bool {
-    items.len() >= prefix.len() && items[..prefix.len()] == *prefix
+    crate::slice_primitives::starts_with(items, prefix)
 }
 
 pub(crate) fn slice_ends_with<T: PartialEq>(items: &[T], suffix: &[T]) -> bool {
-    items.len() >= suffix.len() && items[items.len() - suffix.len()..] == *suffix
+    crate::slice_primitives::ends_with(items, suffix)
+}
+
+#[allow(dead_code)]
+pub(crate) fn slice_ends_with_any<T: PartialEq>(items: &[T], patterns: &[&[T]]) -> bool {
+    crate::slice_primitives::ends_with_any(items, patterns)
 }
 
 pub(crate) fn slice_contains<T: PartialEq>(items: &[T], expected: &T) -> bool {
-    items.iter().any(|item| item == expected)
+    crate::slice_primitives::contains(items, expected)
 }
 
-pub(crate) fn slice_contains_str(items: &[&str], expected: &str) -> bool {
-    items.iter().any(|item| *item == expected)
-}
-
+#[allow(dead_code)]
 pub(crate) fn slice_contains_any<T: PartialEq>(items: &[T], expected: &[T]) -> bool {
-    expected
-        .iter()
-        .any(|candidate| slice_contains(items, candidate))
+    crate::slice_primitives::contains_any(items, expected)
 }
 
+#[allow(dead_code)]
 pub(crate) fn slice_contains_all<T: PartialEq>(items: &[T], expected: &[T]) -> bool {
-    expected
-        .iter()
-        .all(|candidate| slice_contains(items, candidate))
+    crate::slice_primitives::contains_all(items, expected)
 }
 
+#[allow(dead_code)]
 pub(crate) fn slice_eq_any<T: PartialEq>(items: &[T], patterns: &[&[T]]) -> bool {
-    patterns.iter().any(|pattern| items == *pattern)
+    crate::slice_primitives::equals_any(items, patterns)
 }
 
+#[allow(dead_code)]
 pub(crate) fn slice_starts_with_any<T: PartialEq>(items: &[T], patterns: &[&[T]]) -> bool {
-    patterns
-        .iter()
-        .any(|pattern| slice_starts_with(items, pattern))
+    crate::slice_primitives::starts_with_any(items, patterns)
 }
 
 pub(crate) fn iter_contains<I, T>(items: I, expected: &T) -> bool
 where
     I: IntoIterator,
-    I::Item: Borrow<T>,
+    I::Item: std::borrow::Borrow<T>,
     T: PartialEq + ?Sized,
 {
-    items.into_iter().any(|item| item.borrow() == expected)
+    crate::slice_primitives::iter_contains(items, expected)
+}
+
+pub(crate) fn iter_eq<I, J>(left: I, right: J) -> bool
+where
+    I: IntoIterator,
+    J: IntoIterator,
+    I::Item: PartialEq<J::Item>,
+{
+    crate::slice_primitives::iter_eq(left, right)
 }
 
 pub(crate) fn slice_strip_prefix<'a, T: PartialEq>(
     items: &'a [T],
     prefix: &[T],
 ) -> Option<&'a [T]> {
-    slice_starts_with(items, prefix).then(|| &items[prefix.len()..])
+    crate::slice_primitives::strip_prefix(items, prefix)
 }
 
 pub(crate) fn slice_strip_suffix<'a, T: PartialEq>(
     items: &'a [T],
     suffix: &[T],
 ) -> Option<&'a [T]> {
-    slice_ends_with(items, suffix).then(|| &items[..items.len() - suffix.len()])
+    crate::slice_primitives::strip_suffix(items, suffix)
 }
 
-pub(crate) fn find_index<T>(items: &[T], mut predicate: impl FnMut(&T) -> bool) -> Option<usize> {
-    for (idx, item) in items.iter().enumerate() {
-        if predicate(item) {
-            return Some(idx);
-        }
-    }
-    None
+#[allow(dead_code)]
+pub(crate) fn slice_strip_any_prefix<'a, 'p, T: PartialEq>(
+    items: &'a [T],
+    patterns: &'p [&'p [T]],
+) -> Option<(&'p [T], &'a [T])> {
+    crate::slice_primitives::strip_any_prefix(items, patterns)
 }
 
-pub(crate) fn find_str_index(items: &[&str], expected: &str) -> Option<usize> {
-    find_index(items, |item| *item == expected)
+#[allow(dead_code)]
+pub(crate) fn slice_strip_any_suffix<'a, 'p, T: PartialEq>(
+    items: &'a [T],
+    patterns: &'p [&'p [T]],
+) -> Option<(&'p [T], &'a [T])> {
+    crate::slice_primitives::strip_any_suffix(items, patterns)
 }
 
-pub(crate) fn find_str_by(
-    items: &[&str],
-    mut predicate: impl FnMut(&str) -> bool,
-) -> Option<usize> {
-    for (idx, item) in items.iter().enumerate() {
-        if predicate(item) {
-            return Some(idx);
-        }
-    }
-    None
+pub(crate) fn find_index<T>(items: &[T], predicate: impl FnMut(&T) -> bool) -> Option<usize> {
+    crate::slice_primitives::find_index(items, predicate)
 }
 
-pub(crate) fn find_any_str_index(items: &[&str], expected: &[&str]) -> Option<usize> {
-    find_index(items, |item| {
-        expected.iter().any(|candidate| *item == *candidate)
-    })
-}
-
-pub(crate) fn rfind_index<T>(items: &[T], mut predicate: impl FnMut(&T) -> bool) -> Option<usize> {
-    for (idx, item) in items.iter().enumerate().rev() {
-        if predicate(item) {
-            return Some(idx);
-        }
-    }
-    None
-}
-
-pub(crate) fn rfind_str_by(
-    items: &[&str],
-    mut predicate: impl FnMut(&str) -> bool,
-) -> Option<usize> {
-    for (idx, item) in items.iter().enumerate().rev() {
-        if predicate(item) {
-            return Some(idx);
-        }
-    }
-    None
+pub(crate) fn rfind_index<T>(items: &[T], predicate: impl FnMut(&T) -> bool) -> Option<usize> {
+    crate::slice_primitives::rfind_index(items, predicate)
 }
 
 pub(crate) fn find_window_index<T: PartialEq>(items: &[T], window: &[T]) -> Option<usize> {
-    if window.is_empty() {
-        return Some(0);
-    }
-    if items.len() < window.len() {
-        return None;
-    }
-    let mut start = 0usize;
-    while start + window.len() <= items.len() {
-        if items[start..start + window.len()] == *window {
-            return Some(start);
-        }
-        start += 1;
-    }
-    None
+    crate::slice_primitives::find_window_index(items, window)
 }
 
 pub(crate) fn find_window_by<T>(
     items: &[T],
     window_len: usize,
-    mut predicate: impl FnMut(&[T]) -> bool,
+    predicate: impl FnMut(&[T]) -> bool,
 ) -> Option<usize> {
-    if window_len == 0 {
-        return Some(0);
-    }
-    if items.len() < window_len {
-        return None;
-    }
-    let mut start = 0usize;
-    while start + window_len <= items.len() {
-        if predicate(&items[start..start + window_len]) {
-            return Some(start);
-        }
-        start += 1;
-    }
-    None
+    crate::slice_primitives::find_window_by(items, window_len, predicate)
 }
 
 pub(crate) fn contains_sequence<T: PartialEq>(items: &[T], window: &[T]) -> bool {
-    if window.is_empty() {
-        return true;
-    }
-    if window.len() > items.len() {
-        return false;
-    }
-    for start in 0..=items.len() - window.len() {
-        if items[start..start + window.len()] == *window {
-            return true;
-        }
-    }
-    false
+    crate::slice_primitives::contains_sequence(items, window)
 }
 
 pub(crate) use contains_sequence as contains_window;
 
 pub(crate) fn str_contains(text: &str, needle: &str) -> bool {
-    text.contains(needle)
+    crate::string_primitives::contains(text, needle)
+}
+
+pub(crate) fn str_contains_char(text: &str, needle: char) -> bool {
+    crate::string_primitives::contains_char(text, needle)
 }
 
 pub(crate) fn str_starts_with(text: &str, prefix: &str) -> bool {
-    text.starts_with(prefix)
+    crate::string_primitives::starts_with(text, prefix)
 }
 
 pub(crate) fn str_starts_with_char(text: &str, expected: char) -> bool {
-    text.starts_with(expected)
+    crate::string_primitives::starts_with_char(text, expected)
 }
 
 pub(crate) fn str_ends_with(text: &str, suffix: &str) -> bool {
-    text.ends_with(suffix)
+    crate::string_primitives::ends_with(text, suffix)
 }
 
 pub(crate) fn str_ends_with_char(text: &str, expected: char) -> bool {
-    text.ends_with(expected)
+    crate::string_primitives::ends_with_char(text, expected)
+}
+
+pub(crate) fn str_ends_with_any_char(text: &str, expected: &[char]) -> bool {
+    crate::string_primitives::ends_with_any_char(text, expected)
 }
 
 pub(crate) fn str_find(text: &str, needle: &str) -> Option<usize> {
-    text.find(needle)
+    crate::string_primitives::find(text, needle)
 }
 
 pub(crate) fn str_find_char(text: &str, needle: char) -> Option<usize> {
-    text.find(needle)
+    crate::string_primitives::find_char(text, needle)
+}
+
+pub(crate) fn str_rfind(text: &str, needle: &str) -> Option<usize> {
+    crate::string_primitives::rfind(text, needle)
+}
+
+#[allow(dead_code)]
+pub(crate) fn str_rfind_char(text: &str, needle: char) -> Option<usize> {
+    crate::string_primitives::rfind_char(text, needle)
 }
 
 pub(crate) fn str_strip_prefix<'a>(text: &'a str, prefix: &str) -> Option<&'a str> {
-    text.strip_prefix(prefix)
+    crate::string_primitives::strip_prefix(text, prefix)
 }
 
 pub(crate) fn str_strip_suffix<'a>(text: &'a str, suffix: &str) -> Option<&'a str> {
-    text.strip_suffix(suffix)
+    crate::string_primitives::strip_suffix(text, suffix)
+}
+
+pub(crate) fn str_strip_suffix_char(text: &str, suffix: char) -> Option<&str> {
+    crate::string_primitives::strip_suffix_char(text, suffix)
 }
 
 pub(crate) fn str_split_once<'a>(text: &'a str, needle: &str) -> Option<(&'a str, &'a str)> {
-    text.split_once(needle)
+    crate::string_primitives::split_once(text, needle)
 }
 
 pub(crate) fn str_split_once_char<'a>(text: &'a str, needle: char) -> Option<(&'a str, &'a str)> {
-    text.split_once(needle)
+    crate::string_primitives::split_once_char(text, needle)
 }
 
 pub(crate) fn parse_lexed_prefix<'a, O>(
@@ -459,7 +423,7 @@ pub(crate) fn split_em_dash_label_prefix_tokens<'a>(
     let body_tokens = &tokens[split_idx + 1..];
     if label_tokens.is_empty()
         || body_tokens.is_empty()
-        || label_tokens.iter().any(OwnedLexToken::is_period)
+        || contains_token_kind(label_tokens, TokenKind::Period)
     {
         return None;
     }
@@ -609,14 +573,6 @@ pub(crate) fn split_lexed_once_on_period(
     tokens: &[OwnedLexToken],
 ) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
     split_lexed_once_on_delimiter(tokens, TokenKind::Period)
-}
-
-pub(crate) fn split_lexed_once_on_comma_then(
-    tokens: &[OwnedLexToken],
-) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
-    grammar::split_lexed_once_on_separator(tokens, || {
-        (grammar::comma(), grammar::kw("then")).void()
-    })
 }
 
 pub(crate) fn parse_i32_word_token<'a>(input: &mut LexedInput<'a>) -> WResult<i32> {

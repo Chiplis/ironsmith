@@ -164,12 +164,14 @@ impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
                 Some(AlternativeCastingMethod::alternative_cost(
                     "Pay life equal to mana value",
                     None,
-                    vec![Cost::try_from_runtime_effect(crate::effect::Effect::new(
-                        crate::effects::LoseLifeEffect::you(crate::effect::Value::ManaValueOf(
-                            Box::new(crate::target::ChooseSpec::Source),
-                        )),
-                    ))
-                    .expect("mana-value life payment should be cost-capable")],
+                    vec![
+                        Cost::try_from_runtime_effect(crate::effect::Effect::new(
+                            crate::effects::LoseLifeEffect::you(crate::effect::Value::ManaValueOf(
+                                Box::new(crate::target::ChooseSpec::Source),
+                            )),
+                        ))
+                        .expect("mana-value life payment should be cost-capable"),
+                    ],
                 ))
             }
             Self::GraveyardCastFromCardManaCost {

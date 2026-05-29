@@ -37,9 +37,9 @@ impl TriggerMatcher for FinalChapterAbilityResolvedTrigger {
                 .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game);
         }
 
-        ctx.game.object(resolved.saga).is_some_and(|obj| {
-            self.filter.matches(obj, &ctx.filter_ctx, ctx.game)
-        })
+        ctx.game
+            .object(resolved.saga)
+            .is_some_and(|obj| self.filter.matches(obj, &ctx.filter_ctx, ctx.game))
     }
 
     fn display(&self) -> String {

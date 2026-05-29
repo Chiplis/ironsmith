@@ -135,8 +135,7 @@ pub(super) fn apply_trait_replacement(
                 target,
                 which,
                 effect.controller,
-            )
-            else {
+            ) else {
                 return TraitApplyResult::Unchanged(event);
             };
             let redirected_target = match new_target {

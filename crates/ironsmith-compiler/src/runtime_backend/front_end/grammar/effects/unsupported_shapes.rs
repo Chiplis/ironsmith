@@ -6,22 +6,6 @@ const EXILE_PREFIXES: &[&[&str]] = &[&["exile"]];
 const RETURN_EACH_CREATURE_ISNT_PREFIXES: &[&[&str]] =
     &[&["return", "each", "creature", "that", "isnt"]];
 
-fn contains_word_window(words: &[&str], pattern: &[&str]) -> bool {
-    word_slice_contains_sequence(words, pattern)
-}
-
-fn contains_any_word_window(words: &[&str], patterns: &[&[&str]]) -> bool {
-    patterns
-        .iter()
-        .any(|pattern| contains_word_window(words, pattern))
-}
-
-fn slice_contains_any(words: &[&str], expected: &[&str]) -> bool {
-    expected
-        .iter()
-        .any(|word| words.iter().any(|candidate| candidate == word))
-}
-
 pub(crate) fn is_enters_as_copy_clause_lexed(tokens: &[OwnedLexToken]) -> bool {
     let as_copy_idx = primitives::words_find_phrase(tokens, &["as", "a", "copy"])
         .or_else(|| primitives::words_find_phrase(tokens, &["as", "an", "copy"]))
@@ -38,9 +22,12 @@ pub(crate) fn is_negated_untap_clause_words(words: &[&str]) -> bool {
     if words.len() < 3 {
         return false;
     }
-    let has_untap = slice_contains_any(words, &["untap", "untaps"]);
-    let has_negation = slice_contains_any(words, &["doesnt", "dont", "cant"])
-        || contains_any_word_window(words, &[&["does", "not"], &["do", "not"], &["can", "not"]]);
+    let has_untap = word_slice_contains_any_word(words, &["untap", "untaps"]);
+    let has_negation = word_slice_contains_any_word(words, &["doesnt", "dont", "cant"])
+        || word_slice_contains_any_phrase(
+            words,
+            &[&["does", "not"], &["do", "not"], &["can", "not"]],
+        );
     has_untap && has_negation
 }
 
@@ -59,20 +46,21 @@ pub(crate) fn is_negated_untap_clause_lexed(tokens: &[OwnedLexToken]) -> bool {
 pub(crate) fn looks_like_supported_negated_untap_clause_lexed(tokens: &[OwnedLexToken]) -> bool {
     let words_storage = normalize_cant_words(tokens);
     let words = words_storage.iter().map(String::as_str).collect::<Vec<_>>();
-    let has_negated_untap = contains_any_word_window(
+    let has_negated_untap = word_slice_contains_any_phrase(
         words.as_slice(),
         &[&["dont", "untap", "during"], &["doesnt", "untap", "during"]],
     );
-    let has_controllers_untap_step = contains_any_word_window(
+    let has_controllers_untap_step = word_slice_contains_any_phrase(
         words.as_slice(),
         &[
             &["controllers", "untap", "step"],
             &["controllers", "untap", "steps"],
         ],
     );
-    let has_tapped_duration = contains_word_window(words.as_slice(), &["for", "as", "long", "as"])
-        && word_slice_contains(words.as_slice(), "remains")
-        && word_slice_contains(words.as_slice(), "tapped");
+    let has_tapped_duration =
+        word_slice_contains_phrase(words.as_slice(), &["for", "as", "long", "as"])
+            && word_slice_contains_word(words.as_slice(), "remains")
+            && word_slice_contains_word(words.as_slice(), "tapped");
     has_negated_untap && has_controllers_untap_step && has_tapped_duration
 }
 
@@ -233,11 +221,11 @@ pub(crate) fn has_when_you_sacrifice_this_way_clause_sentence_lexed(
 }
 
 pub(crate) fn has_greatest_mana_value_clause_sentence_lexed(words: &[&str]) -> bool {
-    contains_word_window(words, &["greatest", "mana", "value"])
+    word_slice_contains_phrase(words, &["greatest", "mana", "value"])
 }
 
 pub(crate) fn has_least_power_among_creatures_clause_sentence_lexed(words: &[&str]) -> bool {
-    contains_word_window(words, &["least", "power", "among", "creatures"])
+    word_slice_contains_phrase(words, &["least", "power", "among", "creatures"])
 }
 
 pub(crate) fn has_villainous_choice_clause_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -245,15 +233,15 @@ pub(crate) fn has_villainous_choice_clause_sentence_lexed(tokens: &[OwnedLexToke
 }
 
 pub(crate) fn has_divided_evenly_clause_sentence_lexed(words: &[&str]) -> bool {
-    contains_word_window(words, &["divided", "evenly"])
+    word_slice_contains_phrase(words, &["divided", "evenly"])
 }
 
 pub(crate) fn has_different_names_clause_sentence_lexed(words: &[&str]) -> bool {
-    contains_word_window(words, &["different", "names"])
+    word_slice_contains_phrase(words, &["different", "names"])
 }
 
 pub(crate) fn has_chosen_at_random_clause_sentence_lexed(words: &[&str]) -> bool {
-    contains_word_window(words, &["chosen", "at", "random"])
+    word_slice_contains_phrase(words, &["chosen", "at", "random"])
 }
 
 pub(crate) fn has_defending_players_choice_clause_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -276,19 +264,19 @@ pub(crate) fn has_target_creature_token_player_planeswalker_clause_sentence_lexe
 pub(crate) fn has_if_you_sacrifice_an_island_this_way_clause_sentence_lexed(
     words: &[&str],
 ) -> bool {
-    contains_word_window(words, &["if", "you", "sacrifice", "an", "island"])
-        && contains_word_window(words, &["this", "way"])
+    word_slice_contains_phrase(words, &["if", "you", "sacrifice", "an", "island"])
+        && word_slice_contains_phrase(words, &["this", "way"])
 }
 
 pub(crate) fn has_spent_to_cast_clause_sentence_lexed(words: &[&str]) -> bool {
-    contains_word_window(words, &["spent", "to", "cast"])
+    word_slice_contains_phrase(words, &["spent", "to", "cast"])
 }
 
 pub(crate) fn has_face_down_clause_sentence_lexed(
     words: &[&str],
     tokens: &[OwnedLexToken],
 ) -> bool {
-    let has_face_down = contains_word_window(words, &["face", "down"])
+    let has_face_down = word_slice_contains_phrase(words, &["face", "down"])
         || words
             .iter()
             .any(|word| matches!(*word, "face-down" | "facedown"));

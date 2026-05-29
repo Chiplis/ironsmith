@@ -33,9 +33,7 @@ use super::super::keyword_static::{
     parse_dynamic_cost_modifier_value, parse_pt_modifier, parse_pt_modifier_values,
 };
 use super::super::lexer::{LexStream, TokenKind};
-use super::super::object_filters::{
-    find_word_slice_phrase_start, parse_object_filter, parse_object_filter_lexed,
-};
+use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::super::token_primitives::{
     find_index, find_window_by, rfind_index, slice_contains, slice_ends_with, slice_starts_with,
     str_strip_suffix,

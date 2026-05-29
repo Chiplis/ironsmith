@@ -18,12 +18,13 @@ use super::super::grammar::structure::split_trailing_if_clause_lexed;
 use super::super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_dynamic_cost_modifier_value,
 };
-use super::super::lexer::LexStream;
+use super::super::lexer::{
+    LexStream, word_slice_contains_word, word_slice_ends_with, word_slice_eq_any,
+    word_slice_find_phrase_start, word_slice_matching_phrase, word_slice_starts_with,
+};
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{
-    find_index as find_token_index, find_window_index as find_word_sequence_index,
-    rfind_index as find_last_token_index, slice_contains_str as word_slice_contains,
-    slice_ends_with as word_slice_ends_with, slice_starts_with as word_slice_starts_with,
+    find_index as find_token_index, rfind_index as find_last_token_index,
 };
 use super::super::util::{
     parse_counter_type_from_tokens, parse_counter_type_word, parse_number, parse_target_phrase,
@@ -72,10 +73,11 @@ fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> Option<Value
     if grammar::words_match_any_prefix(tokens, CREATURES_DIED_THIS_TURN_PREFIXES).is_some() {
         return Some(Value::CreaturesDiedThisTurn);
     }
-    if (word_slice_contains(&clause_words, "spell") || word_slice_contains(&clause_words, "spells"))
-        && (word_slice_contains(&clause_words, "cast")
-            || word_slice_contains(&clause_words, "casts"))
-        && word_slice_contains(&clause_words, "turn")
+    if (word_slice_contains_word(&clause_words, "spell")
+        || word_slice_contains_word(&clause_words, "spells"))
+        && (word_slice_contains_word(&clause_words, "cast")
+            || word_slice_contains_word(&clause_words, "casts"))
+        && word_slice_contains_word(&clause_words, "turn")
     {
         let player = if clause_words
             .iter()
@@ -92,14 +94,16 @@ fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> Option<Value
         };
 
         let other_than_first =
-            find_word_sequence_index(&clause_words, &["other", "than", "the", "first"]).is_some();
+            word_slice_find_phrase_start(&clause_words, &["other", "than", "the", "first"])
+                .is_some();
         if other_than_first {
             return Some(Value::Add(
                 Box::new(Value::SpellsCastThisTurn(player)),
                 Box::new(Value::Fixed(-1)),
             ));
         }
-        if word_slice_contains(&clause_words, "this") && word_slice_contains(&clause_words, "turn")
+        if word_slice_contains_word(&clause_words, "this")
+            && word_slice_contains_word(&clause_words, "turn")
         {
             return Some(Value::SpellsCastThisTurn(player));
         }
@@ -419,7 +423,7 @@ pub(crate) fn merge_it_match_filter_into_target(
 fn parse_counter_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
     let target_word_view = ZoneCounterCompatWords::new(tokens);
     let target_words = target_word_view.to_word_refs();
-    if matches!(target_words.as_slice(), ["him"] | ["her"]) {
+    if word_slice_eq_any(&target_words, &[&["him"], &["her"]]) {
         return Ok(TargetAst::Source(span_from_tokens(tokens)));
     }
     parse_target_phrase(tokens)
@@ -1017,130 +1021,63 @@ pub(crate) fn parse_half_starting_life_total_value(
 ) -> Option<Value> {
     let clause_word_view = ZoneCounterCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
-    let inferred_player_filter = || match clause_words.as_slice() {
-        ["half", "your", "starting", "life", "total"]
-        | ["half", "your", "starting", "life", "total", "rounded", "up"]
-        | [
-            "half",
-            "your",
-            "starting",
-            "life",
-            "total",
-            "rounded",
-            "down",
-        ] => Some(PlayerFilter::You),
-        ["half", "target", "players", "starting", "life", "total"]
-        | [
-            "half",
-            "target",
-            "players",
-            "starting",
-            "life",
-            "total",
-            "rounded",
-            "up",
-        ]
-        | [
-            "half",
-            "target",
-            "players",
-            "starting",
-            "life",
-            "total",
-            "rounded",
-            "down",
-        ] => Some(PlayerFilter::target_player()),
-        ["half", "an", "opponents", "starting", "life", "total"]
-        | [
-            "half",
-            "an",
-            "opponents",
-            "starting",
-            "life",
-            "total",
-            "rounded",
-            "up",
-        ]
-        | [
-            "half",
-            "an",
-            "opponents",
-            "starting",
-            "life",
-            "total",
-            "rounded",
-            "down",
-        ] => Some(PlayerFilter::Opponent),
+    let matched_phrase = word_slice_matching_phrase(
+        &clause_words,
+        &[
+            &["half", "your", "starting", "life", "total"],
+            &["half", "your", "starting", "life", "total", "rounded", "up"],
+            &[
+                "half", "your", "starting", "life", "total", "rounded", "down",
+            ],
+            &["half", "target", "players", "starting", "life", "total"],
+            &[
+                "half", "target", "players", "starting", "life", "total", "rounded", "up",
+            ],
+            &[
+                "half", "target", "players", "starting", "life", "total", "rounded", "down",
+            ],
+            &["half", "an", "opponents", "starting", "life", "total"],
+            &[
+                "half",
+                "an",
+                "opponents",
+                "starting",
+                "life",
+                "total",
+                "rounded",
+                "up",
+            ],
+            &[
+                "half",
+                "an",
+                "opponents",
+                "starting",
+                "life",
+                "total",
+                "rounded",
+                "down",
+            ],
+        ],
+    );
+    let phrase_player_filter = match matched_phrase {
+        Some(["half", "your", ..]) => Some(PlayerFilter::You),
+        Some(["half", "target", "players", ..]) => Some(PlayerFilter::target_player()),
+        Some(["half", "an", "opponents", ..]) => Some(PlayerFilter::Opponent),
         _ => None,
     };
+    let inferred_player_filter = || phrase_player_filter.clone();
     let player_filter =
         player_filter_for_set_life_total_reference(player).or_else(inferred_player_filter)?;
 
-    let rounded_up = match clause_words.as_slice() {
-        ["half", "your", "starting", "life", "total"]
-        | ["half", "your", "starting", "life", "total", "rounded", "up"] => {
-            player_filter == PlayerFilter::You
-        }
-        ["half", "target", "players", "starting", "life", "total"]
-        | [
-            "half",
-            "target",
-            "players",
-            "starting",
-            "life",
-            "total",
-            "rounded",
-            "up",
-        ] => player_filter == PlayerFilter::target_player(),
-        ["half", "an", "opponents", "starting", "life", "total"]
-        | [
-            "half",
-            "an",
-            "opponents",
-            "starting",
-            "life",
-            "total",
-            "rounded",
-            "up",
-        ] => player_filter == PlayerFilter::Opponent,
-        _ => false,
-    };
+    let phrase_matches_player = phrase_player_filter.as_ref() == Some(&player_filter);
+    let rounded_up =
+        phrase_matches_player && !word_slice_ends_with(&clause_words, &["rounded", "down"]);
     if rounded_up {
         return Some(Value::HalfStartingLifeTotalRoundedUp(player_filter));
     }
 
-    let rounded_down = match clause_words.as_slice() {
-        [
-            "half",
-            "your",
-            "starting",
-            "life",
-            "total",
-            "rounded",
-            "down",
-        ] => player_filter == PlayerFilter::You,
-        [
-            "half",
-            "target",
-            "players",
-            "starting",
-            "life",
-            "total",
-            "rounded",
-            "down",
-        ] => player_filter == PlayerFilter::target_player(),
-        [
-            "half",
-            "an",
-            "opponents",
-            "starting",
-            "life",
-            "total",
-            "rounded",
-            "down",
-        ] => player_filter == PlayerFilter::Opponent,
-        _ => false,
-    };
+    let rounded_down =
+        phrase_matches_player && word_slice_ends_with(&clause_words, &["rounded", "down"]);
     if rounded_down {
         return Some(Value::HalfStartingLifeTotalRoundedDown(player_filter));
     }
@@ -1168,12 +1105,16 @@ fn parse_transform_like(
             ))],
         });
     }
-    if target_words == ["it"]
-        || target_words == ["this"]
-        || target_words == ["this", "creature"]
-        || target_words == ["this", "land"]
-        || target_words == ["this", "permanent"]
-    {
+    if word_slice_eq_any(
+        &target_words,
+        &[
+            &["it"],
+            &["this"],
+            &["this", "creature"],
+            &["this", "land"],
+            &["this", "permanent"],
+        ],
+    ) {
         let span = span_from_tokens(tokens);
         if let Some(surface) = this_source_surface_for_words(&target_words) {
             record_source_reference_surface(span, surface);

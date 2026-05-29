@@ -233,7 +233,10 @@ pub(crate) fn parse_top_level_subject_verb_recognition(
     } else {
         let clause_word_storage = DispatchInnerNormalizedWords::new(tokens);
         let clause_words = clause_word_storage.to_word_refs();
-        if contains_word_window(clause_words.as_slice(), &["where", "x", "is"]) {
+        if crate::runtime_backend::lexer::word_slice_contains_phrase(
+            clause_words.as_slice(),
+            &["where", "x", "is"],
+        ) {
             let mut effects = parse_effect_sentence_with_where_x_lexed(tokens)?;
             apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
             Some(GenericTopLevelProgram::ValueBinding { effects })
@@ -368,13 +371,16 @@ fn parse_source_gets_filter_gains_subject_verb(
     };
     let ability_words = &words[gain_idx + 1..];
     let mut abilities = Vec::new();
-    if ability_words.iter().any(|word| *word == "haste") {
+    if crate::runtime_backend::lexer::word_slice_contains_word(ability_words, "haste") {
         abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Haste));
     }
-    if ability_words.iter().any(|word| *word == "trample") {
+    if crate::runtime_backend::lexer::word_slice_contains_word(ability_words, "trample") {
         abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Trample));
     }
-    if ability_words.windows(2).any(|window| window == ["first", "strike"]) {
+    if crate::runtime_backend::lexer::word_slice_contains_phrase(
+        ability_words,
+        &["first", "strike"],
+    ) {
         abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::FirstStrike));
     }
     if abilities.is_empty() {
@@ -407,16 +413,14 @@ fn parse_target_gains_then_gets_subject_verb(
     else {
         return Ok(None);
     };
-    let has_get_tail = words[gain_idx + 1..]
-        .windows(2)
-        .any(|window| matches!(window, ["and", "get"] | ["and", "gets"]));
+    let has_get_tail = crate::runtime_backend::lexer::word_slice_contains_any_phrase(
+        &words[gain_idx + 1..],
+        &[&["and", "get"], &["and", "gets"]],
+    );
     if !has_get_tail {
         return Ok(None);
     }
-    if words
-        .windows(3)
-        .any(|window| matches!(window, ["where", "x", "is"]))
-    {
+    if crate::runtime_backend::lexer::word_slice_contains_phrase(&words, &["where", "x", "is"]) {
         return Ok(None);
     }
     super::gain_ability::parse_gain_ability_sentence(tokens)
@@ -432,16 +436,14 @@ fn parse_target_gets_then_gains_subject_verb(
     else {
         return Ok(None);
     };
-    let has_gain_tail = words[get_idx + 1..]
-        .windows(2)
-        .any(|window| matches!(window, ["and", "gain"] | ["and", "gains"]));
+    let has_gain_tail = crate::runtime_backend::lexer::word_slice_contains_any_phrase(
+        &words[get_idx + 1..],
+        &[&["and", "gain"], &["and", "gains"]],
+    );
     if !has_gain_tail {
         return Ok(None);
     }
-    if words
-        .windows(3)
-        .any(|window| matches!(window, ["where", "x", "is"]))
-    {
+    if crate::runtime_backend::lexer::word_slice_contains_phrase(&words, &["where", "x", "is"]) {
         return Ok(None);
     }
     super::gain_ability::parse_gain_ability_sentence(tokens)
@@ -451,15 +453,15 @@ fn parse_target_player_controls_get_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(target_idx) = words.windows(3).position(|window| {
-        matches!(
-            window,
-            ["target", "player", "controls"]
-                | ["target", "players", "control"]
-                | ["target", "opponent", "controls"]
-                | ["target", "opponents", "control"]
-        )
-    }) else {
+    let Some((_, target_idx)) = crate::runtime_backend::lexer::word_slice_find_any_phrase_start(
+        &words,
+        &[
+            &["target", "player", "controls"],
+            &["target", "players", "control"],
+            &["target", "opponent", "controls"],
+            &["target", "opponents", "control"],
+        ],
+    ) else {
         return Ok(None);
     };
     let Some(get_idx) = words
@@ -502,20 +504,28 @@ fn parse_target_player_controls_get_subject_verb(
         Until::EndOfTurn,
     )];
     let tail = &words[get_idx + 2..];
-    if tail.starts_with(&["and", "gain"])
-        || tail.starts_with(&["and", "gains"])
-        || tail.starts_with(&["and", "have"])
-        || tail.starts_with(&["and", "has"])
+    if crate::runtime_backend::lexer::word_slice_starts_with_any(
+        tail,
+        &[
+            &["and", "gain"],
+            &["and", "gains"],
+            &["and", "have"],
+            &["and", "has"],
+        ],
+    )
     {
         let ability_tail = &tail[2..];
         let mut abilities = Vec::new();
-        if ability_tail.starts_with(&["first", "strike"]) {
+        if crate::runtime_backend::lexer::word_slice_starts_with(
+            ability_tail,
+            &["first", "strike"],
+        ) {
             abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::FirstStrike));
         }
-        if ability_tail.iter().any(|word| *word == "haste") {
+        if crate::runtime_backend::lexer::word_slice_contains_word(ability_tail, "haste") {
             abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Haste));
         }
-        if ability_tail.iter().any(|word| *word == "trample") {
+        if crate::runtime_backend::lexer::word_slice_contains_word(ability_tail, "trample") {
             abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Trample));
         }
         if !abilities.is_empty() {
@@ -685,11 +695,15 @@ fn parse_generic_consult_reveal_until_put_all_revealed_into_hand_subject_verb(
     apply_lesser_mana_value_consult_constraint(&sentence_tokens, &mut parts.effects);
 
     let followup_words = TokenWordView::new(&followup_tokens).word_refs();
-    let puts_all_revealed_into_hand = followup_words.as_slice()
-        == [
-            "put", "all", "cards", "revealed", "this", "way", "into", "your", "hand",
-        ]
-        || followup_words.as_slice() == ["put", "all", "revealed", "cards", "into", "your", "hand"];
+    let puts_all_revealed_into_hand = crate::runtime_backend::lexer::word_slice_eq_any(
+        &followup_words,
+        &[
+            &[
+                "put", "all", "cards", "revealed", "this", "way", "into", "your", "hand",
+            ],
+            &["put", "all", "revealed", "cards", "into", "your", "hand"],
+        ],
+    );
     if !puts_all_revealed_into_hand {
         return Ok(None);
     }
@@ -774,16 +788,16 @@ fn parse_generic_consult_reveal_until_battlefield_bottom_subject_verb(
     }
 
     let followup_words = TokenWordView::new(&followup_tokens).word_refs();
-    let puts_match_onto_battlefield = slice_starts_with(
+    let puts_match_onto_battlefield = word_slice_starts_with(
         followup_words.as_slice(),
         &["put", "it", "onto", "the", "battlefield"],
-    ) || slice_starts_with(
+    ) || word_slice_starts_with(
         followup_words.as_slice(),
         &["put", "that", "card", "onto", "the", "battlefield"],
     );
-    let puts_rest_bottom = slice_contains(&followup_words, &"rest")
-        && slice_contains(&followup_words, &"bottom")
-        && slice_contains(&followup_words, &"library");
+    let puts_rest_bottom = word_slice_contains_word(&followup_words, "rest")
+        && word_slice_contains_word(&followup_words, "bottom")
+        && word_slice_contains_word(&followup_words, "library");
     if !puts_match_onto_battlefield || !puts_rest_bottom {
         return Ok(None);
     }
@@ -829,14 +843,14 @@ fn parse_generic_each_player_exile_top_then_cast_any_number_subject_verb(
     }
 
     let exile_words = TokenWordView::new(&exile_tokens).word_refs();
-    let starts_with_each_player_exile = slice_starts_with(
+    let starts_with_each_player_exile = word_slice_starts_with(
         exile_words.as_slice(),
         &["exile", "the", "top", "card", "of", "each"],
-    ) || slice_starts_with(
+    ) || word_slice_starts_with(
         exile_words.as_slice(),
         &["exile", "top", "card", "of", "each"],
     );
-    let starts_with_each_player_exile_until_nonland = slice_starts_with(
+    let starts_with_each_player_exile_until_nonland = word_slice_starts_with(
         exile_words.as_slice(),
         &[
             "each", "player", "exiles", "cards", "from", "the", "top", "of", "their",
@@ -846,7 +860,7 @@ fn parse_generic_each_player_exile_top_then_cast_any_number_subject_verb(
     let mentions_player_library = exile_words
         .iter()
         .any(|word| matches!(*word, "player" | "players"))
-        && slice_contains(&exile_words, &"library");
+        && word_slice_contains_word(&exile_words, "library");
     if !(starts_with_each_player_exile || starts_with_each_player_exile_until_nonland)
         || !mentions_player_library
     {
@@ -854,23 +868,24 @@ fn parse_generic_each_player_exile_top_then_cast_any_number_subject_verb(
     }
 
     let cast_words = TokenWordView::new(&cast_tokens).word_refs();
-    let casts_any_number_from_those_cards = slice_starts_with(
+    let casts_any_number_from_those_cards = word_slice_starts_with(
         cast_words.as_slice(),
         &["you", "may", "cast", "any", "number", "of", "spells"],
-    ) && slice_contains(&cast_words, &"among")
-        && (slice_contains(&cast_words, &"those") || slice_contains(&cast_words, &"them"))
-        && slice_ends_with(
+    ) && word_slice_contains_word(&cast_words, "among")
+        && (word_slice_contains_word(&cast_words, "those")
+            || word_slice_contains_word(&cast_words, "them"))
+        && word_slice_ends_with(
             cast_words.as_slice(),
             &["without", "paying", "their", "mana", "costs"],
         );
 
-    let casts_any_number_from_nonland_exiled_this_way = slice_starts_with(
+    let casts_any_number_from_nonland_exiled_this_way = word_slice_starts_with(
         cast_words.as_slice(),
         &["you", "may", "cast", "any", "number", "of", "spells"],
-    ) && contains_word_window(
+    ) && crate::runtime_backend::lexer::word_slice_contains_phrase(
         cast_words.as_slice(),
         &["from", "among", "the", "nonland", "cards", "exiled", "this", "way"],
-    ) && slice_ends_with(
+    ) && word_slice_ends_with(
         cast_words.as_slice(),
         &["without", "paying", "their", "mana", "costs"],
     );
@@ -930,7 +945,7 @@ fn parse_generic_meld_subject_verb(
         return Ok(None);
     }
     let Some(meld_idx) = find_window_by(&clause_words, 4, |window| {
-        window == ["then", "meld", "them", "into"]
+        crate::runtime_backend::lexer::word_slice_eq(window, &["then", "meld", "them", "into"])
     }) else {
         return Ok(None);
     };
@@ -952,8 +967,9 @@ fn parse_generic_control_combat_choices_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if words.as_slice()
-        == [
+    if crate::runtime_backend::lexer::word_slice_eq(
+        &words,
+        &[
             "you",
             "choose",
             "which",
@@ -961,14 +977,16 @@ fn parse_generic_control_combat_choices_subject_verb(
             "attack",
             "this",
             "turn",
-        ]
+        ],
+    )
     {
         return Ok(Some(EffectAst::subject_verb_control_combat_choices_this_turn(
             true, false,
         )));
     }
-    if words.as_slice()
-        == [
+    if crate::runtime_backend::lexer::word_slice_eq(
+        &words,
+        &[
             "you",
             "choose",
             "which",
@@ -981,7 +999,8 @@ fn parse_generic_control_combat_choices_subject_verb(
             "those",
             "creatures",
             "block",
-        ]
+        ],
+    )
     {
         return Ok(Some(EffectAst::subject_verb_control_combat_choices_this_turn(
             false, true,
@@ -1051,16 +1070,17 @@ fn normalized_words_without_articles(tokens: &[OwnedLexToken]) -> Vec<&str> {
 }
 
 fn split_once_on_comma(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
-    let idx = tokens.iter().position(OwnedLexToken::is_comma)?;
+    let idx = crate::runtime_backend::lexer::find_token_kind(
+        tokens,
+        crate::runtime_backend::lexer::TokenKind::Comma,
+    )?;
     Some((&tokens[..idx], &tokens[idx + 1..]))
 }
 
 fn tokens_contain_relative_lesser_mana_value(tokens: &[OwnedLexToken]) -> bool {
-    tokens
-        .iter()
-        .any(|token| token.is_word("lesser") || token.is_word("less"))
-        && tokens.iter().any(|token| token.is_word("mana"))
-        && tokens.iter().any(|token| token.is_word("value"))
+    crate::runtime_backend::lexer::contains_token_any_word(tokens, &["lesser", "less"])
+        && crate::runtime_backend::lexer::contains_token_word(tokens, "mana")
+        && crate::runtime_backend::lexer::contains_token_word(tokens, "value")
 }
 
 fn apply_lesser_mana_value_consult_constraint(tokens: &[OwnedLexToken], effects: &mut [EffectAst]) {
@@ -1098,10 +1118,16 @@ fn apply_lesser_mana_value_consult_constraint(tokens: &[OwnedLexToken], effects:
 
 fn without_deferred_mana_value_clause(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let lesser_start = find_window_by(tokens, 4, |window| {
-        TokenWordView::new(window).word_refs().as_slice() == ["with", "lesser", "mana", "value"]
+        crate::runtime_backend::lexer::word_slice_eq(
+            &TokenWordView::new(window).word_refs(),
+            &["with", "lesser", "mana", "value"],
+        )
     });
     let equal_start = find_window_by(tokens, 4, |window| {
-        TokenWordView::new(window).word_refs().as_slice() == ["with", "mana", "value", "equal"]
+        crate::runtime_backend::lexer::word_slice_eq(
+            &TokenWordView::new(window).word_refs(),
+            &["with", "mana", "value", "equal"],
+        )
     });
     let Some(start) = lesser_start.or(equal_start) else {
         return tokens.to_vec();
@@ -1113,9 +1139,12 @@ pub(crate) fn parse_play_permission_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    let duration_words = if words.starts_with(&["until", "end", "of", "turn"]) {
+    let duration_words = if crate::runtime_backend::lexer::word_slice_starts_with(
+        &words,
+        &["until", "end", "of", "turn"],
+    ) {
         4
-    } else if words.starts_with(&["this", "turn"]) {
+    } else if crate::runtime_backend::lexer::word_slice_starts_with(&words, &["this", "turn"]) {
         2
     } else {
         return Ok(None);
@@ -1125,8 +1154,9 @@ pub(crate) fn parse_play_permission_subject_verb(
     };
     let rest = trim_commas(&tokens[tail_idx..]);
     let remaining_words = normalized_words_without_articles(&rest);
-    if remaining_words.as_slice()
-        != [
+    if !crate::runtime_backend::lexer::word_slice_eq(
+        &remaining_words,
+        &[
             "you",
             "may",
             "play",
@@ -1137,7 +1167,8 @@ pub(crate) fn parse_play_permission_subject_verb(
             "from",
             "your",
             "graveyard",
-        ]
+        ],
+    )
     {
         return Ok(None);
     }
@@ -1176,7 +1207,10 @@ pub(crate) fn parse_zone_replacement_subject_verb(
     let Some((_, remainder)) = split_once_on_comma(tokens) else {
         return Ok(None);
     };
-    if normalized_words_without_articles(remainder).as_slice() != ["exile", "that", "card", "instead"]
+    if !crate::runtime_backend::lexer::word_slice_eq(
+        &normalized_words_without_articles(remainder),
+        &["exile", "that", "card", "instead"],
+    )
     {
         return Ok(None);
     }
@@ -1197,8 +1231,8 @@ pub(crate) fn parse_choice_complement_subject_verb(
 ) -> Result<Option<EffectAst>, CardTextError> {
     let all_words = crate::runtime_backend::token_word_refs(tokens);
     if all_words.len() < 6
-        || (!slice_starts_with(&all_words, &["each", "player", "chooses"])
-            && !slice_starts_with(&all_words, &["each", "player", "choose"]))
+        || (!word_slice_starts_with(&all_words, &["each", "player", "chooses"])
+            && !word_slice_starts_with(&all_words, &["each", "player", "choose"]))
     {
         return Ok(None);
     }
@@ -1213,8 +1247,8 @@ pub(crate) fn parse_choice_complement_subject_verb(
     };
     let then_idx = before_then.len();
     let after_words = crate::runtime_backend::token_word_refs(after_then);
-    if !slice_starts_with(&after_words, &["sacrifice", "the", "rest"])
-        && !slice_starts_with(&after_words, &["sacrifices", "the", "rest"])
+    if !word_slice_starts_with(&after_words, &["sacrifice", "the", "rest"])
+        && !word_slice_starts_with(&after_words, &["sacrifices", "the", "rest"])
     {
         return Ok(None);
     }
@@ -1318,7 +1352,10 @@ pub(crate) fn parse_vote_subject_verb(
 
 fn truncate_vote_reveal_tail<'a>(words: &'a [&'a str]) -> &'a [&'a str] {
     for idx in 0..words.len().saturating_sub(3) {
-        if words[idx..].starts_with(&["then", "those", "votes", "are"]) {
+        if crate::runtime_backend::lexer::word_slice_starts_with(
+            &words[idx..],
+            &["then", "those", "votes", "are"],
+        ) {
             return &words[..idx];
         }
     }
@@ -1332,7 +1369,7 @@ fn parse_generic_vote_start(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst
         return Ok(None);
     };
 
-    let has_each = slice_contains(&clause_words[..vote_idx], &"each");
+    let has_each = word_slice_contains_word(&clause_words[..vote_idx], "each");
     let has_player = clause_words[..vote_idx]
         .iter()
         .any(|word| *word == "player" || *word == "players");
@@ -1456,9 +1493,15 @@ fn parse_generic_extra_vote(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
         return None;
     }
 
-    let has_vote = words.iter().any(|word| *word == "vote" || *word == "votes");
+    let has_vote = crate::runtime_backend::lexer::word_slice_contains_any_word(
+        &words,
+        &["vote", "votes"],
+    );
     let has_additional = grammar::contains_word(tokens, "additional");
-    let has_time = words.iter().any(|word| *word == "time" || *word == "times");
+    let has_time = crate::runtime_backend::lexer::word_slice_contains_any_word(
+        &words,
+        &["time", "times"],
+    );
     if !has_vote || !has_additional || !has_time {
         return None;
     }

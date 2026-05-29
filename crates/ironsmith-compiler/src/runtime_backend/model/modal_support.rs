@@ -15,22 +15,15 @@ use super::grammar::structure::{
 };
 use super::keyword_static::parse_value_binding_clause_lexed;
 use super::leaf::{lower_activation_cost_cst, parse_activation_cost_tokens_rewrite};
-use super::lexer::{OwnedLexToken, TokenKind, lex_line, render_token_slice, trim_lexed_commas};
+use super::lexer::{
+    OwnedLexToken, TokenKind, contains_token_word, find_token_any_word, lex_line,
+    render_token_slice, trim_lexed_commas,
+};
 use super::modal_helpers::{replace_unbound_x_with_value, value_contains_unbound_x};
 
 type ModalHeader = ParsedModalHeader;
 type ModalActivatedHeader = ParsedModalActivatedHeader;
 type ModalGate = ParsedModalGate;
-
-fn token_slice_has_word(tokens: &[OwnedLexToken], expected: &str) -> bool {
-    tokens.iter().any(|token| token.is_word(expected))
-}
-
-fn token_slice_has_any_word(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
-    expected
-        .iter()
-        .any(|candidate| token_slice_has_word(tokens, candidate))
-}
 
 fn find_token_index(
     tokens: &[OwnedLexToken],
@@ -165,13 +158,13 @@ fn parse_x_is_value_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
         return None;
     }
 
-    if token_slice_has_any_word(tokens, &["spell", "spells"])
-        && token_slice_has_any_word(tokens, &["cast", "casts"])
-        && token_slice_has_word(tokens, "turn")
+    if find_token_any_word(tokens, &["spell", "spells"]).is_some()
+        && find_token_any_word(tokens, &["cast", "casts"]).is_some()
+        && contains_token_word(tokens, "turn")
     {
-        let player = if token_slice_has_any_word(tokens, &["you", "your", "youve", "you've"]) {
+        let player = if find_token_any_word(tokens, &["you", "your", "youve", "you've"]).is_some() {
             PlayerFilter::You
-        } else if token_slice_has_any_word(tokens, &["opponent", "opponents"]) {
+        } else if find_token_any_word(tokens, &["opponent", "opponents"]).is_some() {
             PlayerFilter::Opponent
         } else {
             PlayerFilter::Any

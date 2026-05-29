@@ -1235,9 +1235,11 @@ impl Effect {
         player: crate::target::PlayerFilter,
         die_text: Option<String>,
     ) -> Self {
-        Self::new(crate::effects::RollDiceChooseResultEffect::new_with_die_text(
-            player, count, sides, die_text,
-        ))
+        Self::new(
+            crate::effects::RollDiceChooseResultEffect::new_with_die_text(
+                player, count, sides, die_text,
+            ),
+        )
     }
 
     pub fn fight(a: crate::target::ChooseSpec, b: crate::target::ChooseSpec) -> Self {

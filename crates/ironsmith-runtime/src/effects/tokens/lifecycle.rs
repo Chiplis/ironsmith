@@ -70,9 +70,11 @@ pub(crate) fn create_replacement_additional_tokens(
             let token_is_creature = token_obj.is_creature();
 
             game.add_object(token_obj);
-            let Some(entry_result) =
-                game.move_object_with_etb_processing_with_dm(id, Zone::Battlefield, &mut ctx.decision_maker)
-            else {
+            let Some(entry_result) = game.move_object_with_etb_processing_with_dm(
+                id,
+                Zone::Battlefield,
+                &mut ctx.decision_maker,
+            ) else {
                 game.remove_object(id);
                 continue;
             };

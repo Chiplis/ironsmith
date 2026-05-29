@@ -1,4 +1,4 @@
-use super::super::lexer::OwnedLexToken;
+use super::super::lexer::{OwnedLexToken, word_slice_eq_any};
 use super::super::rule_engine::LexClauseView;
 use super::sentence_unsupported::diagnose_sentence_unsupported_lexed;
 use super::{
@@ -22,7 +22,10 @@ pub(super) fn run_sentence_parse_rules_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<(&'static str, Vec<EffectAst>), CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if words == ["x", "cant", "be", "0"] || words == ["x", "can't", "be", "0"] {
+    if word_slice_eq_any(
+        &words,
+        &[&["x", "cant", "be", "0"], &["x", "can't", "be", "0"]],
+    ) {
         return Ok(("x_cant_be_zero_activation_restriction", Vec::new()));
     }
 
@@ -44,12 +47,14 @@ pub(super) fn run_sentence_parse_rules_lexed(
             .expect("die size was validated above");
         return Ok((
             "roll_dice_choose_one_result",
-            vec![EffectAst::subject_verb_roll_dice_choose_result_with_die_text(
-                crate::cards::builders::PlayerAst::Implicit,
-                count,
-                sides,
-                Some(words[2].to_string()),
-            )],
+            vec![
+                EffectAst::subject_verb_roll_dice_choose_result_with_die_text(
+                    crate::cards::builders::PlayerAst::Implicit,
+                    count,
+                    sides,
+                    Some(words[2].to_string()),
+                ),
+            ],
         ));
     }
 

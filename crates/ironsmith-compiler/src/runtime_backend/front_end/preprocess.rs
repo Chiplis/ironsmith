@@ -624,7 +624,7 @@ fn strip_resolution_timing_tail_with_map(text: &str, map: &[usize]) -> (String, 
 
     let mut out = text[..idx].trim_end().to_string();
     let mut out_map = map[..out.chars().count().min(map.len())].to_vec();
-    if text.trim_end().ends_with('.') && !out.ends_with('.') {
+    if str_ends_with_char(text.trim_end(), '.') && !str_ends_with_char(out.as_str(), '.') {
         out.push('.');
         out_map.push(*map.get(idx).unwrap_or_else(|| map.last().unwrap_or(&0)));
     }
@@ -987,7 +987,9 @@ fn rewrite_exile_return_when_source_leaves_line(text: &str) -> String {
             && let Some(previous) = rewritten.last_mut()
         {
             let previous_lower = previous.to_ascii_lowercase();
-            if previous_lower.contains("exile") && !previous_lower.contains("until this ") {
+            if str_contains(previous_lower.as_str(), "exile")
+                && !str_contains(previous_lower.as_str(), "until this ")
+            {
                 *previous = format!(
                     "{} until this {} leaves the battlefield",
                     previous.trim_end(),

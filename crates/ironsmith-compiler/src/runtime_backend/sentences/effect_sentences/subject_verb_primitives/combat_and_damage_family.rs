@@ -1,14 +1,15 @@
 use super::*;
 
 pub(crate) fn parse_sentence_destroy_creature_type_of_choice(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::super::grammar::primitives as grammar;
-
-    if grammar::strip_lexed_prefix_phrase(tokens, &["destroy", "all", "creatures"]).is_none() {
+    if clause
+        .strip_prefix(&["destroy", "all", "creatures"])
+        .is_none()
+    {
         return Ok(None);
     }
-    if find_creature_type_choice_phrase(tokens).is_none() {
+    if find_creature_type_choice_phrase(clause).is_none() {
         return Ok(None);
     }
 
@@ -19,41 +20,43 @@ pub(crate) fn parse_sentence_destroy_creature_type_of_choice(
 }
 
 pub(crate) fn parse_sentence_pump_creature_type_of_choice(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(get_idx) = find_index(tokens, |token| {
-        token.is_word("get") || token.is_word("gets")
-    }) else {
+    let Some(get_idx) = clause.find_token_word_any(&["get", "gets"]) else {
         return Ok(None);
     };
     if get_idx == 0 {
         return Ok(None);
     }
 
-    let subject_tokens = trim_commas(&tokens[..get_idx]);
-    let Some((choice_idx, consumed)) = find_creature_type_choice_phrase(&subject_tokens) else {
+    let subject_clause = clause.before(get_idx).trimmed();
+    let Some((choice_idx, consumed)) = find_creature_type_choice_phrase(subject_clause) else {
         return Ok(None);
     };
-    let trailing_subject = trim_commas(&subject_tokens[choice_idx + consumed..]);
-    if !trailing_subject.is_empty() {
+    if !subject_clause
+        .from(choice_idx + consumed)
+        .trimmed()
+        .is_empty()
+    {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing creature-type choice subject clause (clause: '{}')",
-            crate::runtime_backend::token_word_refs(tokens).join(" ")
+            clause.text()
         )));
     }
-    let trimmed_subject_tokens = trim_commas(&subject_tokens[..choice_idx]).to_vec();
-    if trimmed_subject_tokens.is_empty() {
+    let trimmed_subject_clause =
+        subject_clause.without_token_range_trimmed_clause(choice_idx, consumed);
+    if trimmed_subject_clause.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing creature subject before creature-type choice phrase (clause: '{}')",
-            crate::runtime_backend::token_word_refs(tokens).join(" ")
+            clause.text()
         )));
     }
 
     // Handle composed clauses like:
     // "Creatures of the creature type of your choice get +2/+2 and gain trample until end of turn."
-    let mut gain_candidate_tokens = trimmed_subject_tokens.clone();
-    gain_candidate_tokens.extend_from_slice(&tokens[get_idx..]);
-    if let Some(mut gain_effects) = parse_gain_ability_sentence(&gain_candidate_tokens)? {
+    let mut gain_candidate_clause = trimmed_subject_clause.clone();
+    gain_candidate_clause.append_clause(clause.from(get_idx));
+    if let Some(mut gain_effects) = parse_gain_ability_sentence(gain_candidate_clause.tokens())? {
         let mut patched = false;
         for effect in &mut gain_effects {
             match effect {
@@ -80,49 +83,47 @@ pub(crate) fn parse_sentence_pump_creature_type_of_choice(
         }
     }
 
-    let mut filter_tokens = trimmed_subject_tokens;
-    if filter_tokens
-        .first()
-        .is_some_and(|token| token.is_word("all"))
-    {
-        filter_tokens.remove(0);
-    }
-    if filter_tokens.is_empty() {
+    let mut filter_clause = trimmed_subject_clause;
+    filter_clause.remove_leading_word("all");
+    if filter_clause.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing creature subject before creature-type choice phrase (clause: '{}')",
-            crate::runtime_backend::token_word_refs(tokens).join(" ")
+            clause.text()
         )));
     }
 
-    let mut filter = parse_object_filter(&filter_tokens, false)?;
+    let mut filter = parse_object_filter(filter_clause.tokens(), false)?;
     if !iter_contains(filter.card_types.iter(), &CardType::Creature) {
         return Err(CardTextError::ParseError(format!(
             "creature-type choice pump subject must be creature-based (clause: '{}')",
-            crate::runtime_backend::token_word_refs(tokens).join(" ")
+            clause.text()
         )));
     }
 
-    let modifier = tokens
-        .get(get_idx + 1)
+    let modifier = clause
+        .token(get_idx + 1)
         .and_then(OwnedLexToken::as_word)
         .ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "missing power/toughness modifier in creature-type choice pump clause (clause: '{}')",
-                crate::runtime_backend::token_word_refs(tokens).join(" ")
+                clause.text()
             ))
         })?;
     let (base_power, base_toughness) = parse_pt_modifier_values(modifier).map_err(|_| {
         CardTextError::ParseError(format!(
             "invalid power/toughness modifier in creature-type choice pump clause (clause: '{}')",
-            crate::runtime_backend::token_word_refs(tokens).join(" ")
+            clause.text()
         ))
     })?;
-    let (power, toughness, duration, condition) =
-        parse_get_modifier_values_with_tail(&tokens[get_idx + 1..], base_power, base_toughness)?;
+    let (power, toughness, duration, condition) = parse_get_modifier_values_with_tail(
+        clause.from(get_idx + 1).tokens(),
+        base_power,
+        base_toughness,
+    )?;
     if condition.is_some() {
         return Err(CardTextError::ParseError(format!(
             "unsupported conditional gets duration in creature-type choice pump clause (clause: '{}')",
-            crate::runtime_backend::token_word_refs(tokens).join(" ")
+            clause.text()
         )));
     }
 
@@ -135,52 +136,45 @@ pub(crate) fn parse_sentence_pump_creature_type_of_choice(
 }
 
 pub(crate) fn parse_sentence_must_attack_creature_type_of_choice(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::super::grammar::primitives as grammar;
     use crate::effect::Until;
 
-    let suffix =
-        grammar::strip_lexed_suffix_phrase(tokens, &["attack", "this", "turn", "if", "able"])
-            .or_else(|| {
-                grammar::strip_lexed_suffix_phrase(
-                    tokens,
-                    &["attacks", "this", "turn", "if", "able"],
-                )
-            });
-    let Some(subject_tokens) = suffix else {
+    const MUST_ATTACK_SUFFIXES: &[&[&str]] = &[
+        &["attack", "this", "turn", "if", "able"],
+        &["attacks", "this", "turn", "if", "able"],
+    ];
+    let Some((_suffix, subject_clause)) = clause.strip_any_suffix(MUST_ATTACK_SUFFIXES) else {
         return Ok(None);
     };
-    let subject_tokens = trim_commas(subject_tokens);
-    let Some((choice_idx, consumed)) = find_creature_type_choice_phrase(&subject_tokens) else {
+    let subject_clause = subject_clause.trimmed();
+    let Some((choice_idx, consumed)) = find_creature_type_choice_phrase(subject_clause) else {
         return Ok(None);
     };
-    let trailing_subject = trim_commas(&subject_tokens[choice_idx + consumed..]);
-    if !trailing_subject.is_empty() {
+    if !subject_clause
+        .from(choice_idx + consumed)
+        .trimmed()
+        .is_empty()
+    {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing creature-type choice attack clause (clause: '{}')",
-            crate::runtime_backend::token_word_refs(tokens).join(" ")
+            clause.text()
         )));
     }
-    let mut filter_tokens = trim_commas(&subject_tokens[..choice_idx]).to_vec();
-    if filter_tokens
-        .first()
-        .is_some_and(|token| token.is_word("all"))
-    {
-        filter_tokens.remove(0);
-    }
-    if filter_tokens.is_empty() {
+    let mut filter_clause = subject_clause.without_token_range_trimmed_clause(choice_idx, consumed);
+    filter_clause.remove_leading_word("all");
+    if filter_clause.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing creature subject before creature-type choice attack clause (clause: '{}')",
-            crate::runtime_backend::token_word_refs(tokens).join(" ")
+            clause.text()
         )));
     }
 
-    let mut filter = parse_object_filter(&filter_tokens, false)?;
+    let mut filter = parse_object_filter(filter_clause.tokens(), false)?;
     if !iter_contains(filter.card_types.iter(), &CardType::Creature) {
         return Err(CardTextError::ParseError(format!(
             "creature-type choice attack subject must be creature-based (clause: '{}')",
-            crate::runtime_backend::token_word_refs(tokens).join(" ")
+            clause.text()
         )));
     }
     filter.chosen_creature_type = true;
@@ -196,59 +190,59 @@ pub(crate) fn parse_sentence_must_attack_creature_type_of_choice(
 }
 
 pub(crate) fn parse_sentence_put_sticker_on(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    let clause_words = clause.word_refs();
     if !matches!(clause_words.first().copied(), Some("put" | "puts")) {
         return Ok(None);
     }
-    let Some(sticker_idx) = find_index(&clause_words, |word| {
-        matches!(*word, "sticker" | "stickers")
-    }) else {
+    let Some(sticker_idx) = clause.find_word_any(&["sticker", "stickers"]) else {
         return Ok(None);
     };
-    let Some(on_idx) = rfind_index(&clause_words, |word| *word == "on") else {
+    let Some(on_idx) = clause.rfind_word("on") else {
         return Ok(None);
     };
     if on_idx <= sticker_idx || on_idx + 1 >= clause_words.len() {
         return Ok(None);
     }
 
-    let action = if contains_word_sequence(&clause_words[..=sticker_idx], &["name", "sticker"]) {
+    let Some(sticker_head) = clause.before_words(sticker_idx + 1) else {
+        return Ok(None);
+    };
+    let action = if sticker_head.contains_phrase(&["name", "sticker"]) {
         crate::events::KeywordActionKind::NameSticker
-    } else if contains_word_sequence(&clause_words[..=sticker_idx], &["art", "sticker"]) {
+    } else if sticker_head.contains_phrase(&["art", "sticker"]) {
         crate::events::KeywordActionKind::ArtSticker
-    } else if contains_word_sequence(&clause_words[..=sticker_idx], &["ability", "sticker"]) {
+    } else if sticker_head.contains_phrase(&["ability", "sticker"]) {
         crate::events::KeywordActionKind::AbilitySticker
-    } else if contains_word_sequence(
-        &clause_words[..=sticker_idx],
-        &["power", "and", "toughness", "sticker"],
-    ) {
+    } else if sticker_head.contains_phrase(&["power", "and", "toughness", "sticker"]) {
         crate::events::KeywordActionKind::PowerToughnessSticker
     } else {
         crate::events::KeywordActionKind::Sticker
     };
 
-    let Some(target_start) = token_index_for_word_index(tokens, on_idx + 1) else {
+    let Some(target_clause) = clause
+        .from_word(on_idx + 1)
+        .map(SubjectVerbPrimitiveClause::trimmed)
+    else {
         return Ok(None);
     };
-    let target_tokens = trim_commas(&tokens[target_start..]);
-    if target_tokens.is_empty() {
+    if target_clause.is_empty() {
         return Ok(None);
     }
 
-    let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
+    let target_words = target_clause.word_refs();
     if target_words
         .first()
         .is_some_and(|word| matches!(*word, "target" | "it" | "them" | "that" | "those" | "this"))
     {
-        let target = parse_target_phrase(&target_tokens)?;
+        let target = parse_target_phrase(target_clause.tokens())?;
         return Ok(Some(vec![EffectAst::subject_verb_put_sticker(
             target, action,
         )]));
     }
 
-    let mut filter = parse_object_filter(&target_tokens, false)?;
+    let mut filter = parse_object_filter(target_clause.tokens(), false)?;
     if filter.zone.is_none() {
         filter.zone = Some(crate::zone::Zone::Battlefield);
     }
@@ -259,28 +253,26 @@ pub(crate) fn parse_sentence_put_sticker_on(
 }
 
 pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if !tokens.first().is_some_and(|token| token.is_word("return")) {
+    if !clause.first_is_word("return") {
         return Ok(None);
     }
-    let Some(to_idx) = rfind_index(tokens, |token| token.is_word("to")) else {
+    let Some((target_clause, destination_clause)) = clause.rsplit_once_on_word("to") else {
         return Ok(None);
     };
-    if to_idx <= 1 {
+    if target_clause.len() <= 1 {
         return Ok(None);
     }
 
-    if !grammar::contains_word(&tokens[to_idx + 1..], "hand")
-        && !grammar::contains_word(&tokens[to_idx + 1..], "hands")
-    {
+    if !destination_clause.contains_any_word(&["hand", "hands"]) {
         return Ok(None);
     }
 
-    let target_tokens = trim_commas(&tokens[1..to_idx]);
-    let inline_creature_choice = find_creature_type_choice_phrase(&target_tokens);
+    let target_clause = target_clause.from(1).trimmed();
+    let inline_creature_choice = find_creature_type_choice_phrase(target_clause);
     let referenced_type_choice = if inline_creature_choice.is_none() {
-        find_type_choice_phrase(&target_tokens)
+        find_type_choice_phrase(target_clause)
     } else {
         None
     };
@@ -290,59 +282,72 @@ pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice(
 
     let (filter, needs_inline_choice_effect) =
         if let Some((choice_idx, consumed)) = inline_creature_choice {
-            let mut base_filter_tokens = target_tokens[..choice_idx].to_vec();
-            base_filter_tokens.extend_from_slice(&target_tokens[choice_idx + consumed..]);
-            let base_filter_tokens = trim_commas(&base_filter_tokens).to_vec();
-            if base_filter_tokens.is_empty() {
+            let base_filter_clause =
+                target_clause.without_token_range_trimmed_clause(choice_idx, consumed);
+            if base_filter_clause.is_empty() {
                 return Err(CardTextError::ParseError(format!(
                     "missing return target before chosen-type qualifier (clause: '{}')",
-                    crate::runtime_backend::token_word_refs(tokens).join(" ")
+                    clause.text()
                 )));
             }
-            let mut filter = parse_object_filter(&base_filter_tokens, false)?;
+            let mut filter = parse_object_filter(base_filter_clause.tokens(), false)?;
             filter.chosen_creature_type = true;
             (filter, true)
         } else {
             let (choice_idx, consumed) = referenced_type_choice.ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "type-choice return target must mention the chosen type (clause: '{}')",
-                    crate::runtime_backend::token_word_refs(tokens).join(" ")
+                    clause.text()
                 ))
             })?;
             let mut start_idx = choice_idx;
             let mut excluded = false;
             if choice_idx >= 2
-                && target_tokens[choice_idx - 2].is_word("that")
-                && (target_tokens[choice_idx - 1].is_word("arent")
-                    || target_tokens[choice_idx - 1].is_word("aren't"))
+                && target_clause
+                    .token(choice_idx - 2)
+                    .is_some_and(|token| token.is_word("that"))
+                && target_clause
+                    .token(choice_idx - 1)
+                    .is_some_and(|token| token.is_word("arent") || token.is_word("aren't"))
             {
                 start_idx = choice_idx - 2;
                 excluded = true;
             } else if choice_idx >= 3
-                && target_tokens[choice_idx - 3].is_word("that")
-                && target_tokens[choice_idx - 2].is_word("are")
-                && target_tokens[choice_idx - 1].is_word("not")
+                && target_clause
+                    .token(choice_idx - 3)
+                    .is_some_and(|token| token.is_word("that"))
+                && target_clause
+                    .token(choice_idx - 2)
+                    .is_some_and(|token| token.is_word("are"))
+                && target_clause
+                    .token(choice_idx - 1)
+                    .is_some_and(|token| token.is_word("not"))
             {
                 start_idx = choice_idx - 3;
                 excluded = true;
             } else if choice_idx >= 2
-                && target_tokens[choice_idx - 2].is_word("that")
-                && target_tokens[choice_idx - 1].is_word("are")
+                && target_clause
+                    .token(choice_idx - 2)
+                    .is_some_and(|token| token.is_word("that"))
+                && target_clause
+                    .token(choice_idx - 1)
+                    .is_some_and(|token| token.is_word("are"))
             {
                 start_idx = choice_idx - 2;
             }
 
-            let mut base_filter_tokens = target_tokens[..start_idx].to_vec();
-            base_filter_tokens.extend_from_slice(&target_tokens[choice_idx + consumed..]);
-            let base_filter_tokens = trim_commas(&base_filter_tokens).to_vec();
-            if base_filter_tokens.is_empty() {
+            let base_filter_clause = target_clause.without_token_ranges_trimmed_clause(&[
+                (start_idx, choice_idx - start_idx),
+                (choice_idx, consumed),
+            ]);
+            if base_filter_clause.is_empty() {
                 return Err(CardTextError::ParseError(format!(
                     "missing return target before chosen-type qualifier (clause: '{}')",
-                    crate::runtime_backend::token_word_refs(tokens).join(" ")
+                    clause.text()
                 )));
             }
 
-            let mut filter = parse_object_filter(&base_filter_tokens, false)?;
+            let mut filter = parse_object_filter(base_filter_clause.tokens(), false)?;
             if excluded {
                 filter.excluded_chosen_creature_type = true;
             } else {
@@ -355,7 +360,7 @@ pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice(
     // mention "target". If so, we need to parse a proper TargetAst (which
     // captures targeting semantics and count such as X) rather than using a
     // mass-return-all filter.
-    let has_target = grammar::contains_word(&target_tokens, "target");
+    let has_target = target_clause.contains_word("target");
 
     let mut effects = Vec::new();
     if needs_inline_choice_effect {
@@ -368,34 +373,41 @@ pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice(
     if has_target {
         // Rebuild the base tokens (stripping the creature-type-of-choice phrase)
         // so that parse_target_phrase can extract count + "target" + filter.
-        let base_target_tokens = {
+        let base_target_clause = {
             if let Some((choice_idx, consumed)) = inline_creature_choice {
-                let mut tmp = target_tokens[..choice_idx].to_vec();
-                tmp.extend_from_slice(&target_tokens[choice_idx + consumed..]);
-                trim_commas(&tmp).to_vec()
+                target_clause.without_token_range_trimmed_clause(choice_idx, consumed)
             } else {
                 let (choice_idx, consumed) = referenced_type_choice.unwrap();
                 let mut start_idx = choice_idx;
                 if choice_idx >= 2
-                    && target_tokens[choice_idx - 2].is_word("that")
-                    && (target_tokens[choice_idx - 1].is_word("arent")
-                        || target_tokens[choice_idx - 1].is_word("aren't")
-                        || target_tokens[choice_idx - 1].is_word("are"))
+                    && target_clause
+                        .token(choice_idx - 2)
+                        .is_some_and(|token| token.is_word("that"))
+                    && target_clause.token(choice_idx - 1).is_some_and(|token| {
+                        token.is_word("arent") || token.is_word("aren't") || token.is_word("are")
+                    })
                 {
                     start_idx = choice_idx - 2;
                 } else if choice_idx >= 3
-                    && target_tokens[choice_idx - 3].is_word("that")
-                    && target_tokens[choice_idx - 2].is_word("are")
-                    && target_tokens[choice_idx - 1].is_word("not")
+                    && target_clause
+                        .token(choice_idx - 3)
+                        .is_some_and(|token| token.is_word("that"))
+                    && target_clause
+                        .token(choice_idx - 2)
+                        .is_some_and(|token| token.is_word("are"))
+                    && target_clause
+                        .token(choice_idx - 1)
+                        .is_some_and(|token| token.is_word("not"))
                 {
                     start_idx = choice_idx - 3;
                 }
-                let mut tmp = target_tokens[..start_idx].to_vec();
-                tmp.extend_from_slice(&target_tokens[choice_idx + consumed..]);
-                trim_commas(&tmp).to_vec()
+                target_clause.without_token_ranges_trimmed_clause(&[
+                    (start_idx, choice_idx - start_idx),
+                    (choice_idx, consumed),
+                ])
             }
         };
-        let mut target = parse_target_phrase(&base_target_tokens)?;
+        let mut target = parse_target_phrase(base_target_clause.tokens())?;
         // Recursively patch `chosen_creature_type` / `excluded_chosen_creature_type`
         // on the ObjectFilter buried inside the TargetAst (may be wrapped in WithCount).
         fn patch_chosen_type(t: &mut TargetAst, chosen: bool, excluded: bool) {
@@ -422,100 +434,91 @@ pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice(
 }
 
 pub(crate) fn parse_sentence_choose_all_from_battlefield_and_graveyard_to_hand(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if grammar::words_match_any_prefix(tokens, CHOOSE_ALL_OR_PUT_ALL_PREFIXES).is_none() {
+    let clause_text = clause.text();
+    if !clause.starts_with_any(CHOOSE_ALL_OR_PUT_ALL_PREFIXES) {
         return Ok(None);
     }
-    let starts_choose_all = grammar::words_match_any_prefix(tokens, CHOOSE_ALL_PREFIXES).is_some();
-    if !((grammar::contains_word(tokens, "battlefield")
-        || grammar::contains_word(tokens, "command"))
-        && grammar::contains_word(tokens, "graveyard")
-        && grammar::contains_word(tokens, "hand"))
+    let starts_choose_all = clause.starts_with_any(CHOOSE_ALL_PREFIXES);
+    if !((clause.contains_word("battlefield") || clause.contains_word("command"))
+        && clause.contains_all_words(&["graveyard", "hand"]))
     {
         return Ok(None);
     }
 
-    let Some(from_idx) = find_index(&clause_words, |word| *word == "from") else {
-        return Ok(None);
-    };
-    let zone_pair = if contains_word_window(
-        &clause_words[from_idx..],
-        &[
-            "from",
-            "the",
-            "battlefield",
-            "and",
-            "from",
-            "your",
-            "graveyard",
-        ],
-    ) {
-        [Zone::Battlefield, Zone::Graveyard]
-    } else if contains_word_window(
-        &clause_words[from_idx..],
-        &[
-            "from",
-            "the",
-            "command",
-            "zone",
-            "and",
-            "from",
-            "your",
-            "graveyard",
-        ],
-    ) {
-        [Zone::Command, Zone::Graveyard]
-    } else {
+    let Some(from_idx) = clause.find_word("from") else {
         return Ok(None);
     };
     if from_idx <= 2 {
         return Ok(None);
     }
-
-    let Some(from_token_idx) = token_index_for_word_index(tokens, from_idx) else {
+    let Some(zone_clause) = clause.from_word(from_idx) else {
+        return Ok(None);
+    };
+    let zone_pair = if zone_clause.contains_phrase(&[
+        "from",
+        "the",
+        "battlefield",
+        "and",
+        "from",
+        "your",
+        "graveyard",
+    ]) {
+        [Zone::Battlefield, Zone::Graveyard]
+    } else if zone_clause.contains_phrase(&[
+        "from",
+        "the",
+        "command",
+        "zone",
+        "and",
+        "from",
+        "your",
+        "graveyard",
+    ]) {
+        [Zone::Command, Zone::Graveyard]
+    } else {
         return Ok(None);
     };
 
-    let filter_tokens = trim_commas(&tokens[2..from_token_idx]);
-    if filter_tokens.is_empty() {
+    let Some(filter_clause) = clause
+        .after_words(2)
+        .and_then(|tail| tail.before_word(from_idx - 2))
+        .map(SubjectVerbPrimitiveClause::trimmed)
+    else {
+        return Ok(None);
+    };
+    if filter_clause.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing object filter in choose-all battlefield/graveyard clause (clause: '{}')",
-            clause_words.join(" ")
+            clause_text
         )));
     }
 
     if starts_choose_all {
-        let Some(put_idx) = find_index(&clause_words, |word| *word == "put") else {
+        let Some(put_idx) = clause.find_word("put") else {
             return Ok(None);
         };
-        let Some(put_token_idx) = token_index_for_word_index(tokens, put_idx) else {
+        let Some(put_clause) = clause.from_word(put_idx) else {
             return Ok(None);
         };
-        if grammar::words_match_prefix(
-            &tokens[put_token_idx..],
+        if !put_clause.starts_with_any(&[
             &["put", "them", "into", "your", "hand"],
-        )
-        .is_none()
-            && grammar::words_match_prefix(
-                &tokens[put_token_idx..],
-                &["put", "them", "in", "your", "hand"],
-            )
-            .is_none()
-        {
+            &["put", "them", "in", "your", "hand"],
+        ]) {
             return Ok(None);
         }
-    } else if grammar::words_match_suffix(tokens, &["into", "your", "hand"]).is_none()
-        && grammar::words_match_suffix(tokens, &["in", "your", "hand"]).is_none()
+    } else if clause
+        .strip_any_suffix(&[&["into", "your", "hand"], &["in", "your", "hand"]])
+        .is_none()
     {
         return Ok(None);
     }
 
-    let mut base_filter = parse_object_filter(&filter_tokens, false).map_err(|_| {
+    let mut base_filter = parse_object_filter(filter_clause.tokens(), false).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported object filter in choose-all battlefield/graveyard clause (clause: '{}')",
-            clause_words.join(" ")
+            clause_text
         ))
     })?;
     base_filter.controller = None;
@@ -532,84 +535,74 @@ pub(crate) fn parse_sentence_choose_all_from_battlefield_and_graveyard_to_hand(
     ]))
 }
 
-pub(crate) fn return_segment_mentions_zone(tokens: &[OwnedLexToken]) -> bool {
-    grammar::contains_word(tokens, "graveyard")
-        || grammar::contains_word(tokens, "graveyards")
-        || grammar::contains_word(tokens, "battlefield")
-        || grammar::contains_word(tokens, "hand")
-        || grammar::contains_word(tokens, "hands")
-        || grammar::contains_word(tokens, "library")
-        || grammar::contains_word(tokens, "libraries")
-        || grammar::contains_word(tokens, "exile")
+pub(crate) fn return_segment_mentions_zone(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
+    clause.contains_word("graveyard")
+        || clause.contains_word("graveyards")
+        || clause.contains_word("battlefield")
+        || clause.contains_word("hand")
+        || clause.contains_word("hands")
+        || clause.contains_word("library")
+        || clause.contains_word("libraries")
+        || clause.contains_word("exile")
 }
 
 pub(crate) fn parse_sentence_return_multiple_targets(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if !tokens.first().is_some_and(|token| token.is_word("return")) {
+    if !clause.first_is_word("return") {
         return Ok(None);
     }
-    let Some(to_idx) = rfind_index(tokens, |token| token.is_word("to")) else {
+    let Some((target_clause, dest_clause)) = clause.rsplit_once_on_word("to") else {
         return Ok(None);
     };
-    if to_idx <= 1 {
+    if target_clause.len() <= 1 {
         return Ok(None);
     }
 
-    let dest_tokens = &tokens[to_idx + 1..];
-    let is_hand =
-        grammar::contains_word(dest_tokens, "hand") || grammar::contains_word(dest_tokens, "hands");
-    let is_battlefield = grammar::contains_word(dest_tokens, "battlefield");
-    let tapped = grammar::contains_word(dest_tokens, "tapped");
+    let is_hand = dest_clause.contains_any_word(&["hand", "hands"]);
+    let is_battlefield = dest_clause.contains_word("battlefield");
+    let tapped = dest_clause.contains_word("tapped");
     if !is_hand && !is_battlefield {
         return Ok(None);
     }
 
-    let target_tokens = trim_commas(&tokens[1..to_idx]);
-    let has_multi_separator = target_tokens.iter().any(|token| {
-        token.is_word("and") || token.is_comma() || token.is_word("or") || token.is_word("and/or")
-    });
+    let targets_clause = target_clause.from(1).trimmed();
+    let has_multi_separator = targets_clause.contains_comma_or_any_word(&["and", "or", "and/or"]);
     if !has_multi_separator {
         return Ok(None);
     }
 
-    let mut segments: Vec<Vec<OwnedLexToken>> = Vec::new();
-    for and_segment in split_lexed_slices_on_and(&target_tokens) {
-        for comma_segment in split_lexed_slices_on_comma(and_segment) {
-            let trimmed = trim_commas(&comma_segment);
-            if !trimmed.is_empty() {
-                let trimmed_words = crate::runtime_backend::token_word_refs(&trimmed);
-                let starts_new_target = trimmed_words.first().is_some_and(|word| {
-                    matches!(
-                        *word,
-                        "target"
-                            | "up"
-                            | "another"
-                            | "other"
-                            | "this"
-                            | "that"
-                            | "it"
-                            | "them"
-                            | "all"
-                            | "each"
-                    )
-                });
-                let mentions_target = grammar::contains_word(&trimmed, "target");
-                let starts_like_zone_suffix = trimmed_words
-                    .first()
-                    .is_some_and(|word| matches!(*word, "from" | "to" | "in" | "on" | "under"));
-                if !segments.is_empty()
-                    && !starts_new_target
-                    && !mentions_target
-                    && !starts_like_zone_suffix
-                {
-                    let last = segments.last_mut().expect("segments is non-empty");
-                    last.push(OwnedLexToken::comma(TextSpan::synthetic()));
-                    last.extend(trimmed.to_vec());
-                } else {
-                    segments.push(trimmed.to_vec());
-                }
-            }
+    let mut segments: Vec<SubjectVerbPrimitiveOwnedClause> = Vec::new();
+    for segment_clause in targets_clause.trimmed_and_comma_segments() {
+        let trimmed_words = segment_clause.word_refs();
+        let starts_new_target = trimmed_words.first().is_some_and(|word| {
+            matches!(
+                *word,
+                "target"
+                    | "up"
+                    | "another"
+                    | "other"
+                    | "this"
+                    | "that"
+                    | "it"
+                    | "them"
+                    | "all"
+                    | "each"
+            )
+        });
+        let mentions_target = segment_clause.contains_word("target");
+        let starts_like_zone_suffix = trimmed_words
+            .first()
+            .is_some_and(|word| matches!(*word, "from" | "to" | "in" | "on" | "under"));
+        if !segments.is_empty()
+            && !starts_new_target
+            && !mentions_target
+            && !starts_like_zone_suffix
+        {
+            let last = segments.last_mut().expect("segments is non-empty");
+            last.append_comma_then(segment_clause);
+        } else {
+            segments.push(SubjectVerbPrimitiveOwnedClause::from_clause(segment_clause));
         }
     }
     if segments.len() < 2 {
@@ -618,25 +611,26 @@ pub(crate) fn parse_sentence_return_multiple_targets(
 
     let shared_quantifier = segments
         .first()
-        .and_then(|segment| segment.first())
-        .and_then(OwnedLexToken::as_word)
+        .and_then(SubjectVerbPrimitiveOwnedClause::first_word)
         .filter(|word| matches!(*word, "all" | "each"))
         .map(str::to_string);
 
     let shared_suffix = segments
         .last()
         .and_then(|segment| {
-            find_index(segment, |token| token.is_word("from")).map(|idx| segment[idx..].to_vec())
+            segment
+                .find_token_word("from")
+                .map(|idx| segment.from_tokens(idx).to_vec())
         })
         .unwrap_or_default();
 
     let mut effects = Vec::new();
     for mut segment in segments {
-        if !return_segment_mentions_zone(&segment) && !shared_suffix.is_empty() {
-            segment.extend(shared_suffix.clone());
+        if !return_segment_mentions_zone(segment.as_clause()) && !shared_suffix.is_empty() {
+            segment.extend_from_slice(&shared_suffix);
         }
         if let Some(quantifier) = shared_quantifier.as_deref() {
-            let segment_words = crate::runtime_backend::token_word_refs(&segment);
+            let segment_words = segment.word_refs();
             let has_explicit_quantifier =
                 matches!(segment_words.first().copied(), Some("all" | "each"));
             let starts_like_target_reference = matches!(
@@ -645,23 +639,20 @@ pub(crate) fn parse_sentence_return_multiple_targets(
             );
             if !has_explicit_quantifier
                 && !starts_like_target_reference
-                && !grammar::contains_word(&segment, "target")
+                && !segment.contains_word("target")
             {
-                segment.insert(
-                    0,
-                    OwnedLexToken::word(quantifier.to_string(), TextSpan::synthetic()),
-                );
+                segment.insert_leading_word(quantifier);
             }
         }
-        let segment_words = crate::runtime_backend::token_word_refs(&segment);
+        let segment_words = segment.word_refs();
         if matches!(segment_words.first().copied(), Some("all" | "each")) {
             if segment.len() < 2 {
                 return Err(CardTextError::ParseError(format!(
                     "missing return-all filter (clause: '{}')",
-                    crate::runtime_backend::token_word_refs(tokens).join(" ")
+                    clause.text()
                 )));
             }
-            let filter = parse_object_filter(&segment[1..], false)?;
+            let filter = parse_object_filter(segment.from_tokens(1), false)?;
             if is_battlefield {
                 effects.push(EffectAst::subject_verb_return_all_to_battlefield(
                     filter,
@@ -672,7 +663,7 @@ pub(crate) fn parse_sentence_return_multiple_targets(
                 effects.push(EffectAst::subject_verb_return_all_to_hand(filter));
             }
         } else {
-            let target = parse_target_phrase(&segment)?;
+            let target = parse_target_phrase(segment.tokens())?;
             if is_battlefield {
                 effects.push(EffectAst::subject_verb_return_to_battlefield(
                     target,
@@ -692,25 +683,20 @@ pub(crate) fn parse_sentence_return_multiple_targets(
 }
 
 pub(crate) fn parse_sentence_for_each_of_target_objects(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::super::grammar::primitives as grammar;
-
-    if grammar::strip_lexed_prefix_phrase(tokens, &["for", "each"]).is_none()
-        && !tokens.first().is_some_and(|t| t.is_word("each"))
-    {
+    if clause.strip_prefix(&["for", "each"]).is_none() && clause.first_word() != Some("each") {
         return Ok(None);
     }
 
-    let Some((subject_slice, effect_slice)) = grammar::split_lexed_once_on_delimiter(
-        tokens,
-        super::super::super::lexer::TokenKind::Comma,
-    ) else {
+    let Some((subject_clause, effect_clause)) = clause.split_once_on_comma() else {
         return Ok(None);
     };
 
-    let subject_tokens = trim_commas(subject_slice);
-    let Some((mut filter, count)) = parse_for_each_targeted_object_subject(&subject_tokens)? else {
+    let subject_clause = subject_clause.trimmed();
+    let Some((mut filter, count)) =
+        parse_for_each_targeted_object_subject(subject_clause.tokens())?
+    else {
         return Ok(None);
     };
     if filter.zone == Some(Zone::Battlefield)
@@ -722,22 +708,21 @@ pub(crate) fn parse_sentence_for_each_of_target_objects(
         filter.controller = Some(PlayerFilter::Any);
     }
 
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let effect_tokens = trim_commas(effect_slice);
-    if effect_tokens.is_empty() {
+    let effect_clause = effect_clause.trimmed();
+    if effect_clause.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing effect after for-each target subject (clause: '{}')",
-            clause_words.join(" ")
+            clause.text()
         )));
     }
-    let mut per_target_effects = parse_effect_chain(&effect_tokens)?;
+    let mut per_target_effects = parse_effect_chain(effect_clause.tokens())?;
     for effect in &mut per_target_effects {
         bind_implicit_player_context(effect, PlayerAst::You);
     }
     if per_target_effects.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "for-each target follow-up produced no effects (clause: '{}')",
-            clause_words.join(" ")
+            clause.text()
         )));
     }
 
@@ -757,54 +742,54 @@ pub(crate) fn parse_sentence_for_each_of_target_objects(
 }
 
 pub(crate) fn parse_distribute_counters_sentence(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if clause_words.first().copied() != Some("distribute") {
+    if !clause.first_is_word("distribute") {
         return Ok(None);
     }
 
-    let (count, used) = parse_number(&tokens[1..]).ok_or_else(|| {
+    let amount_clause = clause.from(1);
+    let (count, used) = parse_number(amount_clause.tokens()).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "missing distributed counter amount (clause: '{}')",
-            clause_words.join(" ")
+            clause.text()
         ))
     })?;
-    let rest = &tokens[1 + used..];
-    let counter_type = parse_counter_type_from_tokens(rest).ok_or_else(|| {
+    let rest_clause = clause.from(1 + used);
+    let counter_type = parse_counter_type_from_tokens(rest_clause.tokens()).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "unsupported distributed counter type (clause: '{}')",
-            clause_words.join(" ")
+            clause.text()
         ))
     })?;
-    let among_idx = find_index(rest, |token| token.is_word("among")).ok_or_else(|| {
-        CardTextError::ParseError(format!(
+    let Some((_before_among, target_clause)) = rest_clause.split_once_on_word("among") else {
+        return Err(CardTextError::ParseError(format!(
             "missing distributed target clause after 'among' (clause: '{}')",
-            clause_words.join(" ")
-        ))
-    })?;
-    let target_tokens = trim_commas(&rest[among_idx + 1..]);
-    if target_tokens.is_empty() {
+            clause.text()
+        )));
+    };
+    let target_clause = target_clause.trimmed();
+    if target_clause.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing distributed counter targets (clause: '{}')",
-            clause_words.join(" ")
+            clause.text()
         )));
     }
-    let (target_count, used_count) = parse_counter_target_count_prefix(&target_tokens)?
+    let (target_count, used_count) = parse_counter_target_count_prefix(target_clause.tokens())?
         .ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "missing distributed target count prefix (clause: '{}')",
-                clause_words.join(" ")
+                clause.text()
             ))
         })?;
-    let target_phrase = &target_tokens[used_count..];
+    let target_phrase = target_clause.from(used_count).trimmed();
     if target_phrase.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing distributed target phrase (clause: '{}')",
-            clause_words.join(" ")
+            clause.text()
         )));
     }
-    let target = parse_target_phrase(target_phrase)?;
+    let target = parse_target_phrase(target_phrase.tokens())?;
 
     Ok(Some(EffectAst::subject_verb_put_counters(
         counter_type,
@@ -816,35 +801,33 @@ pub(crate) fn parse_distribute_counters_sentence(
 }
 
 pub(crate) fn parse_sentence_distribute_counters(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::super::grammar::primitives as grammar;
-
-    let (head_tokens, tail_tokens) = if let Some((head, tail)) =
-        split_lexed_once_on_comma_then(tokens).or_else(|| {
-            grammar::split_lexed_once_on_separator(tokens, || grammar::kw("then").void())
-        }) {
-        (head.to_vec(), trim_commas(tail))
+    let (head_clause, tail_clause) = if let Some((head, tail)) = clause.split_once_on_then_trimmed()
+    {
+        (head, Some(tail))
     } else {
-        (tokens.to_vec(), Vec::new())
+        (clause, None)
     };
 
-    let Some(primary) = parse_distribute_counters_sentence(&head_tokens)? else {
+    let Some(primary) = parse_distribute_counters_sentence(head_clause)? else {
         return Ok(None);
     };
 
     let mut effects = vec![primary];
-    if !tail_tokens.is_empty() {
-        effects.extend(parse_effect_chain(&tail_tokens)?);
+    if let Some(tail_clause) = tail_clause
+        && !tail_clause.is_empty()
+    {
+        effects.extend(parse_effect_chain(tail_clause.tokens())?);
     }
 
     Ok(Some(effects))
 }
 
 pub(crate) fn parse_sentence_transform_with_followup(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(first) = tokens.first() else {
+    let Some(first) = clause.token(0) else {
         return Ok(None);
     };
     let is_transform = first.is_word("transform");
@@ -853,120 +836,119 @@ pub(crate) fn parse_sentence_transform_with_followup(
         return Ok(None);
     }
 
-    let (head_tokens, tail_tokens) = if let Some((head, tail)) =
-        split_lexed_once_on_comma_then(tokens).or_else(|| {
-            super::super::super::grammar::primitives::split_lexed_once_on_separator(tokens, || {
-                super::super::super::grammar::primitives::kw("then").void()
-            })
-        }) {
-        (head.to_vec(), trim_commas(tail))
+    let (head_clause, tail_clause) = if let Some((head, tail)) = clause.split_once_on_then_trimmed()
+    {
+        (head, Some(tail))
     } else {
-        (tokens.to_vec(), Vec::new())
+        (clause, None)
     };
 
-    let target_tokens = trim_commas(&head_tokens[1..]);
+    let target_clause = head_clause.from(1).trimmed();
     let transform = if is_transform {
-        parse_transform(&target_tokens)?
+        parse_transform(target_clause.tokens())?
     } else {
-        parse_convert(&target_tokens)?
+        parse_convert(target_clause.tokens())?
     };
-    if tail_tokens.is_empty() {
+    let Some(tail_clause) = tail_clause else {
+        return Ok(Some(vec![transform]));
+    };
+    if tail_clause.is_empty() {
         return Ok(Some(vec![transform]));
     }
 
     let mut effects = vec![transform];
-    effects.extend(parse_effect_chain(&tail_tokens)?);
+    effects.extend(parse_effect_chain(tail_clause.tokens())?);
     Ok(Some(effects))
 }
 
 pub(crate) fn parse_sentence_cant_effect(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_cant_effect_sentence(tokens)
+    clause.parse_with_lexed(parse_cant_effect_sentence)
 }
 
 pub(crate) fn parse_sentence_gain_x_plus_life(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_gain_x_plus_life_sentence(tokens)
+    clause.parse_with_lexed(parse_gain_x_plus_life_sentence)
 }
 
 pub(crate) fn parse_sentence_for_each_exiled_this_way(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_for_each_exiled_this_way_sentence(tokens)
+    clause.parse_with_lexed(parse_for_each_exiled_this_way_sentence)
 }
 
 pub(crate) fn parse_sentence_for_each_put_into_graveyard_this_way(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_for_each_put_into_graveyard_this_way_sentence(tokens)
+    clause.parse_with_lexed(parse_for_each_put_into_graveyard_this_way_sentence)
 }
 
 pub(crate) fn parse_sentence_each_player_put_permanent_cards_exiled_with_source(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_each_player_put_permanent_cards_exiled_with_source_sentence(tokens)
+    clause.parse_with_lexed(parse_each_player_put_permanent_cards_exiled_with_source_sentence)
 }
 
 pub(crate) fn parse_sentence_for_each_destroyed_this_way(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_for_each_destroyed_this_way_sentence(tokens)
+    clause.parse_with_lexed(parse_for_each_destroyed_this_way_sentence)
 }
 
 pub(crate) fn parse_sentence_search_library(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_search_library_sentence(tokens)
+    clause.parse_with_lexed(parse_search_library_sentence)
 }
 
 pub(crate) fn parse_sentence_shuffle_graveyard_into_library(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_shuffle_graveyard_into_library_sentence(tokens)
+    clause.parse_with_lexed(parse_shuffle_graveyard_into_library_sentence)
 }
 
 pub(crate) fn parse_sentence_shuffle_object_into_library(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_shuffle_object_into_library_sentence(tokens)
+    clause.parse_with_lexed(parse_shuffle_object_into_library_sentence)
 }
 
 pub(crate) fn parse_sentence_exile_hand_and_graveyard_bundle(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_exile_hand_and_graveyard_bundle_sentence(tokens)
+    clause.parse_with_lexed(parse_exile_hand_and_graveyard_bundle_sentence)
 }
 
 pub(crate) fn parse_sentence_target_player_exiles_creature_and_graveyard(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_target_player_exiles_creature_and_graveyard_sentence(tokens)
+    clause.parse_with_lexed(parse_target_player_exiles_creature_and_graveyard_sentence)
 }
 
 pub(crate) fn parse_sentence_look_at_hand(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_look_at_hand_sentence(tokens)
+    clause.parse_with_lexed(parse_look_at_hand_sentence)
 }
 
 pub(crate) fn parse_sentence_look_at_top_then_exile_one(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_look_at_top_then_exile_one_sentence(tokens)
+    clause.parse_with_lexed(parse_look_at_top_then_exile_one_sentence)
 }
 
 pub(crate) fn parse_sentence_gain_life_equal_to_age(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_gain_life_equal_to_age_sentence(tokens)
+    clause.parse_with_lexed(parse_gain_life_equal_to_age_sentence)
 }
 
 pub(crate) fn parse_sentence_for_each_player_doesnt(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    Ok(parse_for_each_player_doesnt(tokens)?.map(|effect| vec![effect]))
+    clause.parse_one_with_lexed(parse_for_each_player_doesnt)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -976,10 +958,8 @@ pub(super) enum DelayedNextStepKind {
 }
 
 pub(super) fn delayed_next_step_marker(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Option<(usize, usize, DelayedNextStepKind, PlayerAst)> {
-    let word_storage = SubjectVerbPrimitiveNormalizedWords::new(tokens);
-    let words = word_storage.to_word_refs();
     let patterns: &[(&[&str], DelayedNextStepKind, PlayerAst)] = &[
         (
             &["at", "the", "beginning", "of", "your", "next", "upkeep"],
@@ -1094,7 +1074,7 @@ pub(super) fn delayed_next_step_marker(
     ];
 
     for (pattern, step, player) in patterns {
-        if let Some(start) = find_word_sequence_start(&words, pattern) {
+        if let Some(start) = clause.find_phrase_start(pattern) {
             return Some((start, start + pattern.len(), *step, *player));
         }
     }

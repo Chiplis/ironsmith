@@ -3754,7 +3754,9 @@ fn test_orzhov_advokist_attack_restriction_blocks_only_accepting_players_creatur
         .find(|option| option.creature == bob_attacker)
         .expect("Bob's creature should still be able to attack other players");
     assert!(
-        !bob_option.valid_targets.contains(&AttackTarget::Player(alice)),
+        !bob_option
+            .valid_targets
+            .contains(&AttackTarget::Player(alice)),
         "a player who accepted Orzhov Advokist's counters can't attack its controller"
     );
     assert!(
@@ -3764,7 +3766,9 @@ fn test_orzhov_advokist_attack_restriction_blocks_only_accepting_players_creatur
         "a player who accepted Orzhov Advokist's counters can't attack its controller's planeswalkers"
     );
     assert!(
-        bob_option.valid_targets.contains(&AttackTarget::Player(charlie)),
+        bob_option
+            .valid_targets
+            .contains(&AttackTarget::Player(charlie)),
         "Orzhov Advokist should not stop attacks against other players"
     );
     assert!(

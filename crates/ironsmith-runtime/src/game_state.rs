@@ -7404,11 +7404,17 @@ impl GameState {
     /// Used for OncePerTurn timing restrictions.
     pub fn record_ability_activation(&mut self, source: ObjectId, ability_index: usize) {
         let exhaust_controller = self.object(source).and_then(|object| {
-            object.abilities.get(ability_index).and_then(|ability| match &ability.kind {
-                crate::ability::AbilityKind::Activated(activated)
-                    if activated.is_exhaust_ability() => Some(self.controller_of(object)),
-                _ => None,
-            })
+            object
+                .abilities
+                .get(ability_index)
+                .and_then(|ability| match &ability.kind {
+                    crate::ability::AbilityKind::Activated(activated)
+                        if activated.is_exhaust_ability() =>
+                    {
+                        Some(self.controller_of(object))
+                    }
+                    _ => None,
+                })
         });
         self.turn_store
             .turn_history
@@ -8647,10 +8653,7 @@ impl GameState {
                 .iter()
                 .enumerate()
                 .map(|(idx, (power, toughness))| {
-                    crate::decisions::spec::DisplayOption::new(
-                        idx,
-                        format!("{power}/{toughness}"),
-                    )
+                    crate::decisions::spec::DisplayOption::new(idx, format!("{power}/{toughness}"))
                 })
                 .collect::<Vec<_>>();
             let choice_spec =

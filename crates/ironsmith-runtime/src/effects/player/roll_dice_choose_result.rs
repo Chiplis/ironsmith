@@ -67,14 +67,8 @@ impl EffectExecutor for RollDiceChooseResultEffect {
             .enumerate()
             .map(|(idx, result)| SelectableOption::new(idx, result.to_string()))
             .collect::<Vec<_>>();
-        let choice_ctx = SelectOptionsContext::new(
-            player,
-            Some(ctx.source),
-            "Choose one result",
-            options,
-            1,
-            1,
-        );
+        let choice_ctx =
+            SelectOptionsContext::new(player, Some(ctx.source), "Choose one result", options, 1, 1);
         let selected = ctx.decision_maker.decide_options(game, &choice_ctx);
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
@@ -138,7 +132,15 @@ mod tests {
         .expect("roll-and-choose effect should resolve");
 
         assert_eq!(outcome.as_count(), Some(2));
-        assert!(outcome.execution_facts.contains(&ExecutionFact::ChosenNumber(2)));
-        assert!(outcome.execution_facts.contains(&ExecutionFact::OtherNumber(5)));
+        assert!(
+            outcome
+                .execution_facts
+                .contains(&ExecutionFact::ChosenNumber(2))
+        );
+        assert!(
+            outcome
+                .execution_facts
+                .contains(&ExecutionFact::OtherNumber(5))
+        );
     }
 }

@@ -2532,10 +2532,7 @@ impl StaticAbility {
         Self::new(ThisSpellCastRestriction::new(kind, display))
     }
 
-    pub fn this_spell_x_maximum(
-        maximum: crate::effect::Value,
-        display: impl Into<String>,
-    ) -> Self {
+    pub fn this_spell_x_maximum(maximum: crate::effect::Value, display: impl Into<String>) -> Self {
         Self::new(ThisSpellXMaximum::new(maximum, display))
     }
 

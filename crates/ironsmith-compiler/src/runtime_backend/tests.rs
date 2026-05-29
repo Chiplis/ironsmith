@@ -2812,8 +2812,8 @@ fn rewrite_zone_counter_helpers_parse_target_before_exiled_card_mana_value_amoun
     )
     .expect("rewrite lexer should classify source-exiled mana-value counter clause");
 
-    let parsed =
-        parse_effect_sentence_lexed(&tokens).expect("source-exiled mana-value counter clause should parse");
+    let parsed = parse_effect_sentence_lexed(&tokens)
+        .expect("source-exiled mana-value counter clause should parse");
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("PutCounters"), "{debug}");
@@ -4892,11 +4892,12 @@ fn rewrite_token_primitives_split_comma_then_with_bounded_parser() {
     let tokens = lex_line("Draw a card, then discard a card.", 0)
         .expect("rewrite lexer should classify comma-then sentence");
 
-    let (head, tail) = super::token_primitives::split_lexed_once_on_comma_then(&tokens)
+    let (head, tail) = super::lexer::LexedClause::new(&tokens)
+        .split_comma_then()
         .expect("comma-then splitter should find boundary");
 
-    assert_eq!(token_word_refs(head), vec!["Draw", "a", "card"]);
-    assert_eq!(token_word_refs(tail), vec!["discard", "a", "card"]);
+    assert_eq!(token_word_refs(head.tokens()), vec!["Draw", "a", "card"]);
+    assert_eq!(token_word_refs(tail.tokens()), vec!["discard", "a", "card"]);
 }
 
 #[test]
@@ -5452,9 +5453,11 @@ fn rewrite_subject_verb_primitives_delayed_next_upkeep_unless_pays_normalizes_pl
     )
     .expect("rewrite lexer should classify delayed next-upkeep unless sentence");
 
-    let parsed = super::parse_sentence_delayed_next_step_unless_pays(&tokens)
-        .expect("delayed next-upkeep unless sentence should parse")
-        .expect("delayed next-upkeep unless sentence should be recognized");
+    let parsed = super::parse_sentence_delayed_next_step_unless_pays(
+        super::effect_sentences::SubjectVerbPrimitiveClause::new(&tokens),
+    )
+    .expect("delayed next-upkeep unless sentence should parse")
+    .expect("delayed next-upkeep unless sentence should be recognized");
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("DelayedUntilNextUpkeep"), "{debug}");
@@ -8362,10 +8365,9 @@ fn rewrite_grammar_attached_prevent_all_damage_to_enchanted_creature_line() {
     )
     .expect("rewrite lexer should classify attached prevention static line");
 
-    let parsed = super::keyword_static::parse_attached_prevent_all_damage_dealt_to_attached_line(
-        &tokens,
-    )
-    .expect("attached prevention line should parse");
+    let parsed =
+        super::keyword_static::parse_attached_prevent_all_damage_dealt_to_attached_line(&tokens)
+            .expect("attached prevention line should parse");
 
     assert!(matches!(
         parsed,
@@ -8480,11 +8482,8 @@ fn rewrite_grammar_flying_block_probes_match_keyword_static_shapes() {
         .expect("can-block-only-flying restriction should parse");
     assert!(parsed_only_flying.is_some(), "{parsed_only_flying:?}");
 
-    let subtype_reach = lex_line(
-        "This creature can block Dragons as though it had reach.",
-        0,
-    )
-    .expect("rewrite lexer should classify subtype reach blocking clause");
+    let subtype_reach = lex_line("This creature can block Dragons as though it had reach.", 0)
+        .expect("rewrite lexer should classify subtype reach blocking clause");
     assert_eq!(
         super::grammar::abilities::parse_can_block_subtype_as_though_reach_line_lexed(
             &subtype_reach,
@@ -9170,8 +9169,7 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
 
 #[test]
 fn rewrite_lexed_triggered_line_parses_player_contraction_dealt_damage_trigger() {
-    let text =
-        "Whenever you're dealt damage, put that many vitality counters on this Aura.";
+    let text = "Whenever you're dealt damage, put that many vitality counters on this Aura.";
     let tokens =
         lex_line(text, 0).expect("rewrite lexer should classify player dealt-damage trigger");
 
@@ -9928,9 +9926,11 @@ fn rewrite_sentence_primitive_routes_tagged_cards_remain_exiled_through_grammar_
     let lexed = lex_line("If those cards remain exiled, create a Treasure token.", 0)
         .expect("rewrite lexer should classify tagged-cards-remain-exiled sentence");
 
-    let parsed = super::effect_sentences::parse_sentence_if_tagged_cards_remain_exiled(&lexed)
-        .expect("subject/verb primitive should succeed")
-        .expect("subject/verb primitive should recognize tagged-cards-remain-exiled");
+    let parsed = super::effect_sentences::parse_sentence_if_tagged_cards_remain_exiled(
+        super::effect_sentences::SubjectVerbPrimitiveClause::new(&lexed),
+    )
+    .expect("subject/verb primitive should succeed")
+    .expect("subject/verb primitive should recognize tagged-cards-remain-exiled");
     let grammar =
         super::grammar::effects::parse_conditional_sentence_with_grammar_entrypoint_lexed(
             &lexed,
@@ -13346,8 +13346,8 @@ fn rewrite_trial_of_agony_other_clause_parses_as_other_tagged_restriction()
 #[test]
 fn flamebreak_damage_this_way_regeneration_restriction_tracks_damaged_creatures()
 -> Result<(), CardTextError> {
-    let builder = CardDefinitionBuilder::new(CardId::new(), "Flamebreak")
-        .card_types(vec![CardType::Sorcery]);
+    let builder =
+        CardDefinitionBuilder::new(CardId::new(), "Flamebreak").card_types(vec![CardType::Sorcery]);
     let (definition, _) = parse_text_with_annotations_lowered(
         builder,
         "Flamebreak deals 3 damage to each creature without flying and each player. Creatures dealt damage this way can't be regenerated this turn.".to_string(),
@@ -13459,9 +13459,11 @@ fn parse_choose_then_do_same_for_filter_splits_one_of_mana_values() {
     )
     .expect("choose-then-do-the-same sentence should lex");
 
-    let effects = super::parse_sentence_choose_then_do_same_for_filter(&tokens)
-        .expect("choose-then-do-the-same primitive should not error")
-        .expect("choose-then-do-the-same primitive should match");
+    let effects = super::parse_sentence_choose_then_do_same_for_filter(
+        super::effect_sentences::SubjectVerbPrimitiveClause::new(&tokens),
+    )
+    .expect("choose-then-do-the-same primitive should not error")
+    .expect("choose-then-do-the-same primitive should match");
     let debug = format!("{effects:#?}");
 
     assert_eq!(

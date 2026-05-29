@@ -21,7 +21,11 @@ use super::super::grammar::filters::parse_spell_filter_with_grammar_entrypoint_l
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::keyword_static::parse_value_binding_clause;
 use super::super::keyword_static_helpers::parse_granted_activated_or_triggered_ability_for_gain;
-use super::super::lexer::{LexStream, OwnedLexToken, TokenKind, split_lexed_sentences};
+use super::super::lexer::{
+    LexStream, LexedClause, OwnedLexToken, TokenKind, split_lexed_sentences,
+    word_slice_contains_any_phrase, word_slice_contains_phrase, word_slice_ends_with,
+    word_slice_eq, word_slice_eq_any, word_slice_starts_with_any,
+};
 use super::super::object_filters::{
     is_comparison_or_delimiter, parse_object_filter, parse_object_filter_lexed,
 };
@@ -97,23 +101,27 @@ fn repair_that_object_power_damage_subject(
     previous_damage_target: Option<TargetAst>,
 ) {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    let looks_like_that_object_power_damage = words.windows(8).any(|window| {
-        matches!(
-            window,
-            [
+    let looks_like_that_object_power_damage = word_slice_contains_any_phrase(
+        &words,
+        &[
+            &[
+                "that", "creature", "deals", "damage", "equal", "to", "its", "power",
+            ],
+            &[
                 "that",
-                "creature" | "permanent",
+                "permanent",
                 "deals",
                 "damage",
                 "equal",
                 "to",
                 "its",
-                "power"
-            ]
-        )
-    }) && words
-        .windows(3)
-        .any(|window| matches!(window, ["to", "this", "creature" | "permanent"]));
+                "power",
+            ],
+        ],
+    ) && word_slice_contains_any_phrase(
+        &words,
+        &[&["to", "this", "creature"], &["to", "this", "permanent"]],
+    );
     if !looks_like_that_object_power_damage {
         return;
     }
@@ -153,10 +161,7 @@ fn repair_target_controlled_source_damage_to_that_player(
     tokens: &[OwnedLexToken],
 ) {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if !words
-        .windows(3)
-        .any(|window| matches!(window, ["to", "that", "player"]))
-    {
+    if !word_slice_contains_phrase(&words, &["to", "that", "player"]) {
         return;
     }
 
@@ -961,7 +966,10 @@ fn parse_effect_sentences_from_sentence_inputs(
         }
         sentence_tokens = rewrite_when_one_or_more_this_way_clause_prefix(&sentence_tokens);
 
-        if crate::runtime_backend::token_word_refs(&sentence_tokens).as_slice() == ["learn"] {
+        if word_slice_eq(
+            &crate::runtime_backend::token_word_refs(&sentence_tokens),
+            &["learn"],
+        ) {
             effects.push(EffectAst::subject_verb_learn(PlayerAst::You));
             carried_context = None;
             sentence_idx += 1;
@@ -1144,7 +1152,7 @@ fn parse_effect_sentences_from_sentence_inputs(
 fn is_outside_game_art_rating_sentence(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::runtime_backend::token_word_refs(tokens);
     let has_phrase = |needle: &[&str]| -> bool {
-        !needle.is_empty() && words.windows(needle.len()).any(|window| window == needle)
+        crate::runtime_backend::lexer::word_slice_contains_phrase(&words, needle)
     };
     has_phrase(&["ask", "a", "person", "outside", "the", "game", "to", "rate"])
         || has_phrase(&["when", "they", "rate", "the", "art"])
@@ -1346,17 +1354,20 @@ fn group_this_way_copy_cast_followups(tokens: &[OwnedLexToken], effects: &mut Ve
 pub(crate) fn is_cant_be_regenerated_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
     let words_storage = normalize_cant_words(tokens);
     let words = words_storage.iter().map(String::as_str).collect::<Vec<_>>();
-    let destroyed_this_way_subject = words.starts_with(&["creature", "destroyed", "this", "way"])
-        || words.starts_with(&["creatures", "destroyed", "this", "way"])
-        || words.starts_with(&["a", "creature", "destroyed", "this", "way"]);
+    let destroyed_this_way_subject = word_slice_starts_with_any(
+        &words,
+        &[
+            &["creature", "destroyed", "this", "way"],
+            &["creatures", "destroyed", "this", "way"],
+            &["a", "creature", "destroyed", "this", "way"],
+        ],
+    );
     if destroyed_this_way_subject
-        && words.ends_with(&["be", "regenerated"])
+        && word_slice_ends_with(&words, &["be", "regenerated"])
         && (words
             .iter()
             .any(|word| matches!(*word, "cant" | "can't" | "cannot"))
-            || words
-                .windows(4)
-                .any(|window| window == ["can", "t", "be", "regenerated"]))
+            || word_slice_contains_phrase(&words, &["can", "t", "be", "regenerated"]))
     {
         return true;
     }
@@ -2956,8 +2967,10 @@ pub(crate) fn is_nonsemantic_restriction_sentence(tokens: &[OwnedLexToken]) -> b
     let words = crate::runtime_backend::token_word_refs(tokens);
     is_activate_only_restriction_sentence(tokens)
         || is_trigger_only_restriction_sentence(tokens)
-        || words == ["x", "cant", "be", "0"]
-        || words == ["x", "can't", "be", "0"]
+        || word_slice_eq_any(
+            &words,
+            &[&["x", "cant", "be", "0"], &["x", "can't", "be", "0"]],
+        )
 }
 
 fn token_copy_followup_container_effects_mut(

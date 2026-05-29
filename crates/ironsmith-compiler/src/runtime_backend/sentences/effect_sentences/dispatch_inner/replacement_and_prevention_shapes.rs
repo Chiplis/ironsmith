@@ -210,105 +210,147 @@ pub(crate) fn parse_take_extra_turn_sentence(
 pub(crate) fn parse_additional_phase_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     use crate::effects::AdditionalPhase;
 
+    #[derive(Clone, Copy)]
+    enum AdditionalPhasePattern {
+        OneCombat,
+        TwoCombats,
+        CombatThenMain,
+    }
+
     let words = parser_token_word_refs(tokens);
-    let phases = match words.as_slice() {
-        [
-            "after",
-            "this",
-            "phase",
-            "theres",
-            "an",
-            "additional",
-            "combat",
-            "phase",
-        ] => vec![AdditionalPhase::Combat],
-        [
-            "there",
-            "is",
-            "an",
-            "additional",
-            "combat",
-            "phase",
-            "after",
-            "this",
-            "phase",
-        ]
-        | [
-            "theres",
-            "an",
-            "additional",
-            "combat",
-            "phase",
-            "after",
-            "this",
-            "phase",
-        ]
-        | [
-            "after",
-            "this",
-            "phase",
-            "there",
-            "is",
-            "an",
-            "additional",
-            "combat",
-            "phase",
-        ] => vec![AdditionalPhase::Combat],
-        [
-            "after",
-            "this",
-            "combat",
-            "phase",
-            "there",
-            "is",
-            "an",
-            "additional",
-            "combat",
-            "phase",
-        ]
-        | [
-            "after",
-            "this",
-            "main",
-            "phase",
-            "there",
-            "is",
-            "an",
-            "additional",
-            "combat",
-            "phase",
-        ] => vec![AdditionalPhase::Combat],
-        [
-            "after",
-            "this",
-            "main",
-            "phase",
-            "there",
-            "are",
-            "two",
-            "additional",
-            "combat",
-            "phases",
-        ] => vec![AdditionalPhase::Combat, AdditionalPhase::Combat],
-        [
-            "after",
-            "this",
-            "main",
-            "phase",
-            "there",
-            "is",
-            "an",
-            "additional",
-            "combat",
-            "phase",
-            "followed",
-            "by",
-            "an",
-            "additional",
-            "main",
-            "phase",
-        ] => vec![AdditionalPhase::Combat, AdditionalPhase::Main],
-        _ => return None,
+    let pattern = word_slice_matching_value(
+        &words,
+        &[
+            (
+                &[
+                    "after",
+                    "this",
+                    "phase",
+                    "theres",
+                    "an",
+                    "additional",
+                    "combat",
+                    "phase",
+                ],
+                AdditionalPhasePattern::OneCombat,
+            ),
+            (
+                &[
+                    "there",
+                    "is",
+                    "an",
+                    "additional",
+                    "combat",
+                    "phase",
+                    "after",
+                    "this",
+                    "phase",
+                ],
+                AdditionalPhasePattern::OneCombat,
+            ),
+            (
+                &[
+                    "theres",
+                    "an",
+                    "additional",
+                    "combat",
+                    "phase",
+                    "after",
+                    "this",
+                    "phase",
+                ],
+                AdditionalPhasePattern::OneCombat,
+            ),
+            (
+                &[
+                    "after",
+                    "this",
+                    "phase",
+                    "there",
+                    "is",
+                    "an",
+                    "additional",
+                    "combat",
+                    "phase",
+                ],
+                AdditionalPhasePattern::OneCombat,
+            ),
+            (
+                &[
+                    "after",
+                    "this",
+                    "combat",
+                    "phase",
+                    "there",
+                    "is",
+                    "an",
+                    "additional",
+                    "combat",
+                    "phase",
+                ],
+                AdditionalPhasePattern::OneCombat,
+            ),
+            (
+                &[
+                    "after",
+                    "this",
+                    "main",
+                    "phase",
+                    "there",
+                    "is",
+                    "an",
+                    "additional",
+                    "combat",
+                    "phase",
+                ],
+                AdditionalPhasePattern::OneCombat,
+            ),
+            (
+                &[
+                    "after",
+                    "this",
+                    "main",
+                    "phase",
+                    "there",
+                    "are",
+                    "two",
+                    "additional",
+                    "combat",
+                    "phases",
+                ],
+                AdditionalPhasePattern::TwoCombats,
+            ),
+            (
+                &[
+                    "after",
+                    "this",
+                    "main",
+                    "phase",
+                    "there",
+                    "is",
+                    "an",
+                    "additional",
+                    "combat",
+                    "phase",
+                    "followed",
+                    "by",
+                    "an",
+                    "additional",
+                    "main",
+                    "phase",
+                ],
+                AdditionalPhasePattern::CombatThenMain,
+            ),
+        ],
+    )?;
+    let phases = match pattern {
+        AdditionalPhasePattern::OneCombat => vec![AdditionalPhase::Combat],
+        AdditionalPhasePattern::TwoCombats => {
+            vec![AdditionalPhase::Combat, AdditionalPhase::Combat]
+        }
+        AdditionalPhasePattern::CombatThenMain => {
+            vec![AdditionalPhase::Combat, AdditionalPhase::Main]
+        }
     };
     Some(EffectAst::subject_verb_additional_phases(phases))
 }
@@ -483,7 +525,11 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
     // Preserve return follow-up clauses (for example "with a +1/+1 counter on it")
     // while still rewriting the "it" return target to the tagged exiled object.
     let mut second_effects =
-        if let Some(effects) = parse_sentence_return_with_counters_on_it(second_clause)? {
+        if let Some(effects) =
+            parse_sentence_return_with_counters_on_it(super::SubjectVerbPrimitiveClause::new(
+                second_clause,
+            ))?
+        {
             effects
         } else {
             parse_effect_chain_inner(second_clause)?
@@ -627,8 +673,9 @@ pub(crate) fn parse_look_at_hand_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if words.as_slice()
-        == [
+    if word_slice_eq(
+        &words,
+        &[
             "look",
             "at",
             "an",
@@ -639,33 +686,45 @@ pub(crate) fn parse_look_at_hand_sentence(
             "any",
             "card",
             "name",
-        ]
-    {
+        ],
+    ) {
         return Ok(Some(vec![
             EffectAst::subject_verb_look_at_hand(TargetAst::Player(PlayerFilter::Opponent, None)),
             EffectAst::subject_verb_choose_card_name(PlayerAst::You, None, TagKey::from(IT_TAG)),
         ]));
     }
-    if words.as_slice() == ["look", "at", "target", "players", "hand"]
-        || words.as_slice() == ["look", "at", "target", "player", "hand"]
-    {
+    if word_slice_eq_any(
+        &words,
+        &[
+            &["look", "at", "target", "players", "hand"],
+            &["look", "at", "target", "player", "hand"],
+        ],
+    ) {
         let target = TargetAst::Player(PlayerFilter::target_player(), Some(TextSpan::synthetic()));
         return Ok(Some(vec![EffectAst::subject_verb_look_at_hand(target)]));
     }
-    if words.as_slice() == ["look", "at", "target", "opponent", "hand"]
-        || words.as_slice() == ["look", "at", "target", "opponents", "hand"]
-    {
+    if word_slice_eq_any(
+        &words,
+        &[
+            &["look", "at", "target", "opponent", "hand"],
+            &["look", "at", "target", "opponents", "hand"],
+        ],
+    ) {
         let target =
             TargetAst::Player(PlayerFilter::target_opponent(), Some(TextSpan::synthetic()));
         return Ok(Some(vec![EffectAst::subject_verb_look_at_hand(target)]));
     }
-    if words.as_slice() == ["look", "at", "an", "opponents", "hand"]
-        || words.as_slice() == ["look", "at", "opponents", "hand"]
-    {
+    if word_slice_eq_any(
+        &words,
+        &[
+            &["look", "at", "an", "opponents", "hand"],
+            &["look", "at", "opponents", "hand"],
+        ],
+    ) {
         let target = TargetAst::Player(PlayerFilter::Opponent, None);
         return Ok(Some(vec![EffectAst::subject_verb_look_at_hand(target)]));
     }
-    if words.as_slice() == ["look", "at", "that", "players", "hand"] {
+    if word_slice_eq(&words, &["look", "at", "that", "players", "hand"]) {
         let target = TargetAst::Player(PlayerFilter::IteratedPlayer, None);
         return Ok(Some(vec![EffectAst::subject_verb_look_at_hand(target)]));
     }
@@ -676,7 +735,7 @@ pub(crate) fn parse_look_at_top_then_exile_one_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let starts_with_look_top = slice_starts_with_any(
+    let starts_with_look_top = word_slice_starts_with_any(
         &clause_words,
         &[&["look", "at", "the", "top"], &["look", "at", "top"]],
     );
@@ -724,7 +783,7 @@ pub(crate) fn parse_look_at_top_then_exile_one_sentence(
         tail_tokens.remove(0);
     }
     let tail_words = crate::runtime_backend::token_word_refs(&tail_tokens);
-    let looks_like_exile_one_of_looked = slice_starts_with_any(
+    let looks_like_exile_one_of_looked = word_slice_starts_with_any(
         &tail_words,
         &[
             &["exile", "one", "of", "them"],

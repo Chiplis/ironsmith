@@ -1,9 +1,5 @@
 type DispatchInnerNormalizedWords<'a> = TokenWordView<'a>;
 
-fn find_dispatch_inner_phrase_start(words: &[&str], phrase: &[&str]) -> Option<usize> {
-    find_word_slice_phrase_start(words, phrase)
-}
-
 macro_rules! sentence_unsupported_adapters_lexed {
     ($(($adapter:ident, $predicate:ident)),* $(,)?) => {
         $(
@@ -13,36 +9,6 @@ macro_rules! sentence_unsupported_adapters_lexed {
             }
         )*
     };
-}
-
-fn slice_contains_any(words: &[&str], expected: &[&str]) -> bool {
-    expected
-        .iter()
-        .any(|word| words.iter().any(|candidate| candidate == word))
-}
-
-fn slice_starts_with_any(words: &[&str], prefixes: &[&[&str]]) -> bool {
-    prefixes
-        .iter()
-        .any(|prefix| starts_with_words(words, prefix))
-}
-
-fn contains_word_window(words: &[&str], pattern: &[&str]) -> bool {
-    if pattern.is_empty() || words.len() < pattern.len() {
-        return false;
-    }
-
-    for start in 0..=words.len() - pattern.len() {
-        if words[start..start + pattern.len()]
-            .iter()
-            .zip(pattern.iter())
-            .all(|(word, expected)| word == expected)
-        {
-            return true;
-        }
-    }
-
-    false
 }
 
 fn trailing_counter_constraint(
@@ -92,8 +58,8 @@ fn parse_target_deals_power_damage_to_other_and_self_where_x(
         return Ok(None);
     }
 
-    let deal_idx = find_dispatch_inner_phrase_start(words, &["deals", "x", "damage", "to"])
-        .or_else(|| find_dispatch_inner_phrase_start(words, &["deal", "x", "damage", "to"]));
+    let deal_idx = crate::runtime_backend::lexer::word_slice_find_phrase_start(words, &["deals", "x", "damage", "to"])
+        .or_else(|| crate::runtime_backend::lexer::word_slice_find_phrase_start(words, &["deal", "x", "damage", "to"]));
     let Some(deal_idx) = deal_idx else {
         return Ok(None);
     };
@@ -101,7 +67,7 @@ fn parse_target_deals_power_damage_to_other_and_self_where_x(
         return Ok(None);
     }
 
-    let Some(and_idx) = find_dispatch_inner_phrase_start(words, &["and", "x", "damage", "to"])
+    let Some(and_idx) = crate::runtime_backend::lexer::word_slice_find_phrase_start(words, &["and", "x", "damage", "to"])
     else {
         return Ok(None);
     };
@@ -110,7 +76,10 @@ fn parse_target_deals_power_damage_to_other_and_self_where_x(
     }
 
     let self_target_words = &words[and_idx + 4..where_idx];
-    if self_target_words != ["itself"] && self_target_words != ["it"] {
+    if !crate::runtime_backend::lexer::word_slice_eq_any(
+        self_target_words,
+        &[&["itself"], &["it"]],
+    ) {
         return Ok(None);
     }
 
@@ -137,11 +106,11 @@ fn parse_target_deals_power_damage_to_other_and_self_where_x(
 fn where_x_is_number_tapped_this_way(words: &[&str]) -> bool {
     words.len() >= 9
         && words.get(..6) == Some(["where", "x", "is", "the", "number", "of"].as_slice())
-        && words.ends_with(&["tapped", "this", "way"])
+        && crate::runtime_backend::lexer::word_slice_ends_with(words, &["tapped", "this", "way"])
 }
 
 fn prior_effect_words_reference_memory(words: &[&str]) -> bool {
-    words.windows(2).any(|window| window == ["this", "way"])
+    crate::runtime_backend::lexer::word_slice_contains_phrase(words, &["this", "way"])
         || words.iter().any(|word| {
             matches!(
                 *word,
@@ -158,7 +127,7 @@ fn prior_effect_words_reference_memory(words: &[&str]) -> bool {
 }
 
 fn prior_effect_metric_source(words: &[&str]) -> ironsmith_core::EffectMetricSource {
-    if words.iter().any(|word| *word == "chosen") {
+    if crate::runtime_backend::lexer::word_slice_contains_word(words, "chosen") {
         ironsmith_core::EffectMetricSource::ChosenObjects
     } else {
         ironsmith_core::EffectMetricSource::AffectedObjects
@@ -223,13 +192,12 @@ fn parse_where_x_prior_effect_number_value(words: &[&str]) -> Option<Value> {
     }
 
     let object_words = &words[idx + 2..];
-    if object_words
-        .iter()
-        .any(|word| *word == "counter" || *word == "counters")
-        && object_words.iter().any(|word| *word == "removed")
-        && object_words
-            .windows(2)
-            .any(|window| window == ["this", "way"])
+    if crate::runtime_backend::lexer::word_slice_contains_any_word(
+        object_words,
+        &["counter", "counters"],
+    )
+        && crate::runtime_backend::lexer::word_slice_contains_word(object_words, "removed")
+        && crate::runtime_backend::lexer::word_slice_contains_phrase(object_words, &["this", "way"])
     {
         return Some(Value::X);
     }
@@ -253,8 +221,9 @@ fn parse_where_x_commander_mana_value_choice(words: &[&str]) -> Option<(EffectAs
         .copied()
         .filter(|word| !matches!(*word, "a" | "an" | "the"))
         .collect();
-    if tail
-        != [
+    if !crate::runtime_backend::lexer::word_slice_eq(
+        &tail,
+        &[
             "mana",
             "value",
             "of",
@@ -267,7 +236,8 @@ fn parse_where_x_commander_mana_value_choice(words: &[&str]) -> Option<(EffectAs
             "in",
             "command",
             "zone",
-        ]
+        ],
+    )
     {
         return None;
     }
@@ -326,18 +296,13 @@ fn parse_tap_then_damage_for_number_tapped_this_way(
     }
 
     *amount = Value::EventValue(EventValueSpec::Amount);
-    if find_dispatch_inner_phrase_start(stripped_words, &["to", "the", "player"]).is_some() {
+    if crate::runtime_backend::lexer::word_slice_contains_phrase(
+        stripped_words,
+        &["to", "the", "player"],
+    ) {
         *target = TargetAst::Player(PlayerFilter::Active, None);
     }
     Ok(Some(effects))
-}
-
-fn starts_with_words(words: &[&str], prefix: &[&str]) -> bool {
-    words.len() >= prefix.len()
-        && words[..prefix.len()]
-            .iter()
-            .zip(prefix.iter())
-            .all(|(word, expected)| word == expected)
 }
 
 fn parse_next_spell_grant_sentence_lexed(
@@ -607,14 +572,20 @@ fn sentence_has_unsupported_negated_untap_clause(_: &[&str], tokens: &[OwnedLexT
 }
 
 fn parse_it_is_aura_enchantment_sentence(words: &[&str]) -> Option<Vec<EffectAst>> {
-    let tail = if words.starts_with(&["it's", "an"]) || words.starts_with(&["it’s", "an"]) {
+    let tail = if crate::runtime_backend::lexer::word_slice_starts_with_any(
+        words,
+        &[&["it's", "an"], &["it’s", "an"]],
+    ) {
         &words[2..]
-    } else if words.starts_with(&["it", "is", "an"]) {
+    } else if crate::runtime_backend::lexer::word_slice_starts_with(words, &["it", "is", "an"]) {
         &words[3..]
     } else {
         return None;
     };
-    if !tail.starts_with(&["aura", "enchantment", "with", "enchant", "creature"]) {
+    if !crate::runtime_backend::lexer::word_slice_starts_with(
+        tail,
+        &["aura", "enchantment", "with", "enchant", "creature"],
+    ) {
         return None;
     }
 
@@ -629,8 +600,8 @@ fn parse_it_is_aura_enchantment_sentence(words: &[&str]) -> Option<Vec<EffectAst
         Until::Forever,
     )];
 
-    if contains_word_window(tail, &["loses", "all", "other", "abilities"])
-        || contains_word_window(tail, &["loses", "all", "abilities"])
+    if word_slice_contains_phrase(tail, &["loses", "all", "other", "abilities"])
+        || word_slice_contains_phrase(tail, &["loses", "all", "abilities"])
     {
         effects.push(EffectAst::subject_verb_remove_abilities_all(
             ObjectFilter::default(),
@@ -702,19 +673,19 @@ fn parse_effect_sentence_lexed_inner(
         sentence_words.as_slice(),
         ["sacrifice", "any", "number", ..] | ["sacrifice", "one", "or", "more", ..]
     );
-    let sacrifice_delayed_lifecycle = find_dispatch_inner_phrase_start(
+    let sacrifice_delayed_lifecycle = crate::runtime_backend::lexer::word_slice_find_phrase_start(
         sentence_words.as_slice(),
         &["at", "the", "beginning", "of", "the", "next", "end", "step"],
     )
     .is_some()
-        || find_dispatch_inner_phrase_start(
+        || crate::runtime_backend::lexer::word_slice_find_phrase_start(
             sentence_words.as_slice(),
             &["at", "the", "beginning", "of", "next", "end", "step"],
         )
         .is_some()
-        || find_dispatch_inner_phrase_start(sentence_words.as_slice(), &["at", "end", "of", "combat"])
+        || crate::runtime_backend::lexer::word_slice_find_phrase_start(sentence_words.as_slice(), &["at", "end", "of", "combat"])
             .is_some()
-        || find_dispatch_inner_phrase_start(
+        || crate::runtime_backend::lexer::word_slice_find_phrase_start(
             sentence_words.as_slice(),
             &["at", "the", "end", "of", "combat"],
         )
@@ -730,8 +701,8 @@ fn parse_effect_sentence_lexed_inner(
     if sentence_words.first() == Some(&"at")
         && sentence_words.get(1) == Some(&"this")
         && let Some(end_idx) =
-            find_dispatch_inner_phrase_start(sentence_words.as_slice(), &["end", "of", "combat"])
-        && sentence_words[..end_idx].iter().any(|word| *word == "next")
+            crate::runtime_backend::lexer::word_slice_find_phrase_start(sentence_words.as_slice(), &["end", "of", "combat"])
+        && crate::runtime_backend::lexer::word_slice_contains_word(&sentence_words[..end_idx], "next")
     {
         let Some(remainder_start) = token_index_for_word_index(tokens, end_idx + 3) else {
             return Err(CardTextError::ParseError(
@@ -749,7 +720,8 @@ fn parse_effect_sentence_lexed_inner(
     }
 
     let leading_if_replacement_shape =
-        tokens.first().is_some_and(|token| token.is_word("if")) && sentence_words.contains(&"would");
+        tokens.first().is_some_and(|token| token.is_word("if"))
+            && word_slice_contains_word(&sentence_words, "would");
     if tokens.first().is_some_and(|token| token.is_word("if"))
         && !leading_if_replacement_shape
         && let Ok(Some(mut effects)) =
@@ -919,14 +891,12 @@ fn parse_effect_sentence_with_where_x_lexed(
     let clause_word_storage = DispatchInnerNormalizedWords::new(tokens);
     let clause_words = clause_word_storage.to_word_refs();
     let Some(where_idx) =
-        find_dispatch_inner_phrase_start(clause_words.as_slice(), &["where", "x", "is"])
+        crate::runtime_backend::lexer::word_slice_find_phrase_start(clause_words.as_slice(), &["where", "x", "is"])
     else {
         return parse_effect_sentence_inner_lexed(tokens);
     };
     let where_token_idx = token_index_for_word_index(tokens, where_idx).or_else(|| {
-        tokens.windows(3).position(|window| {
-            window[0].is_word("where") && window[1].is_word("x") && window[2].is_word("is")
-        })
+        find_token_word_sequence(tokens, &["where", "x", "is"])
     });
     let Some(where_token_idx) = where_token_idx else {
         return Err(CardTextError::ParseError(format!(
@@ -984,9 +954,11 @@ fn parse_effect_sentence_with_where_x_lexed(
     } else if let Some(value) = parse_where_x_prior_effect_number_value(&where_words) {
         value
     } else {
+        let stripped_references_target =
+            crate::runtime_backend::lexer::word_slice_contains_word(&stripped_words, "target");
         match where_words.get(3..) {
             Some(["its", "power"]) => {
-                if stripped_words.iter().any(|w| *w == "target") {
+                if stripped_references_target {
                     Value::PowerOf(Box::new(crate::target::ChooseSpec::target(
                         crate::target::ChooseSpec::Object(ObjectFilter::default()),
                     )))
@@ -995,7 +967,7 @@ fn parse_effect_sentence_with_where_x_lexed(
                 }
             }
             Some(["its", "toughness"]) => {
-                if stripped_words.iter().any(|w| *w == "target") {
+                if stripped_references_target {
                     Value::ToughnessOf(Box::new(crate::target::ChooseSpec::target(
                         crate::target::ChooseSpec::Object(ObjectFilter::default()),
                     )))
@@ -1004,7 +976,7 @@ fn parse_effect_sentence_with_where_x_lexed(
                 }
             }
             Some(["its", "mana", "value"]) => {
-                Value::ManaValueOf(Box::new(if stripped_words.iter().any(|w| *w == "target") {
+                Value::ManaValueOf(Box::new(if stripped_references_target {
                     crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
                         ObjectFilter::default(),
                     ))
@@ -1023,7 +995,7 @@ fn parse_effect_sentence_with_where_x_lexed(
                 crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG)),
             )),
             Some(["that", "creatures", "power"]) => {
-                Value::PowerOf(Box::new(if stripped_words.iter().any(|w| *w == "target") {
+                Value::PowerOf(Box::new(if stripped_references_target {
                     crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
                         ObjectFilter::default(),
                     ))
@@ -1032,7 +1004,7 @@ fn parse_effect_sentence_with_where_x_lexed(
                 }))
             }
             Some(["that", "creatures", "toughness"]) => {
-                Value::ToughnessOf(Box::new(if stripped_words.iter().any(|w| *w == "target") {
+                Value::ToughnessOf(Box::new(if stripped_references_target {
                     crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
                         ObjectFilter::default(),
                     ))
@@ -1041,7 +1013,7 @@ fn parse_effect_sentence_with_where_x_lexed(
                 }))
             }
             Some(["that", "creatures", "mana", "value"]) => {
-                Value::ManaValueOf(Box::new(if stripped_words.iter().any(|w| *w == "target") {
+                Value::ManaValueOf(Box::new(if stripped_references_target {
                     crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
                         ObjectFilter::default(),
                     ))

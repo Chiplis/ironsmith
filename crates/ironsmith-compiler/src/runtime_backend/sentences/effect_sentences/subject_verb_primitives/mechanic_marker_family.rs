@@ -732,9 +732,10 @@ mod tests {
     #[test]
     fn parse_sentence_implicit_become_clause_handles_explicit_self_negative_type_with_duration() {
         let tokens = tokenize_line("this creature isn't a creature until end of turn.", 0);
-        let effects = parse_sentence_implicit_become_clause(&tokens)
-            .expect("parse should succeed")
-            .expect("clause should be recognized");
+        let effects =
+            parse_sentence_implicit_become_clause(SubjectVerbPrimitiveClause::new(&tokens))
+                .expect("parse should succeed")
+                .expect("clause should be recognized");
 
         assert!(
             matches!(

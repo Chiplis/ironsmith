@@ -87,8 +87,9 @@ pub(crate) fn parse_add_mana(
         && let Some(chosen_idx) = find_word_sequence_start(&clause_words, &["chosen", "color"])
     {
         let prefix = &clause_words[..chosen_idx];
-        let references_mana_of_chosen_color = slice_ends_with(prefix, &["mana", "of", "the"])
-            || slice_ends_with(prefix, &["mana", "of"]);
+        let references_mana_of_chosen_color =
+            crate::runtime_backend::lexer::word_slice_ends_with(prefix, &["mana", "of", "the"])
+                || crate::runtime_backend::lexer::word_slice_ends_with(prefix, &["mana", "of"]);
         if references_mana_of_chosen_color {
             let tail_words = &clause_words[chosen_idx + 2..];
             let has_only_pool_tail = tail_words.is_empty()
@@ -130,15 +131,24 @@ pub(crate) fn parse_add_mana(
     }
 
     let any_one = find_window_by(&clause_words, 3, |window| {
-        window == ["any", "one", "color"] || window == ["any", "one", "type"]
+        crate::runtime_backend::lexer::word_slice_eq_any(
+            window,
+            &[&["any", "one", "color"], &["any", "one", "type"]],
+        )
     })
     .is_some();
     let any_color = find_window_by(&clause_words, 2, |window| {
-        window == ["any", "color"] || window == ["one", "color"]
+        crate::runtime_backend::lexer::word_slice_eq_any(
+            window,
+            &[&["any", "color"], &["one", "color"]],
+        )
     })
     .is_some();
     let any_type = find_window_by(&clause_words, 2, |window| {
-        window == ["any", "type"] || window == ["one", "type"]
+        crate::runtime_backend::lexer::word_slice_eq_any(
+            window,
+            &[&["any", "type"], &["one", "type"]],
+        )
     })
     .is_some();
     if any_color || any_type {
@@ -388,7 +398,8 @@ pub(crate) fn parse_add_mana(
             && trailing_words
                 .iter()
                 .all(|word| matches!(*word, "to" | "your" | "mana" | "pool"));
-        let has_only_instead_tail = trailing_words.as_slice() == ["instead"];
+        let has_only_instead_tail =
+            crate::runtime_backend::lexer::word_slice_eq(&trailing_words, &["instead"]);
         if !trailing_words.is_empty() && !has_only_pool_tail && !has_only_instead_tail {
             if let Some(last_idx) = last_mana_idx
                 && let Some(conditional) = wrap_instead_if_tail(

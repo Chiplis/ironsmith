@@ -4881,7 +4881,11 @@ mod tests {
                 .is_some_and(|obj| obj.zone == Zone::Hand)
         );
         let imprinted = game.get_imprinted_cards(anvil_id);
-        assert_eq!(imprinted.len(), 1, "Semblance Anvil should imprint one card");
+        assert_eq!(
+            imprinted.len(),
+            1,
+            "Semblance Anvil should imprint one card"
+        );
         assert_eq!(game.get_exiled_with_source_links(anvil_id), imprinted);
         assert_eq!(
             game.object(imprinted[0]).map(|obj| obj.zone),
@@ -4919,9 +4923,9 @@ mod tests {
             CardId::from_raw(9013),
             "Semblance Anvil Declined Imprint Probe",
         )
-            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
-            .card_types(vec![CardType::Artifact])
-            .build();
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .card_types(vec![CardType::Artifact])
+        .build();
         let original_card_id =
             game.create_object_from_card(&imprinted_candidate, alice, Zone::Hand);
 
@@ -4950,11 +4954,13 @@ mod tests {
             CardId::from_raw(9014),
             "Semblance Anvil Declined Cost Probe",
         )
-            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
-            .card_types(vec![CardType::Artifact])
-            .build();
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Artifact])
+        .build();
         let artifact_spell_id = game.create_object_from_card(&artifact_spell, alice, Zone::Hand);
-        let artifact_spell = game.object(artifact_spell_id).expect("artifact spell exists");
+        let artifact_spell = game
+            .object(artifact_spell_id)
+            .expect("artifact spell exists");
         let unreduced = calculate_effective_mana_cost(
             &game,
             alice,
@@ -4988,15 +4994,15 @@ mod tests {
         game.imprint_card(anvil_id, imprinted_id);
         game.add_exiled_with_source_link(anvil_id, imprinted_id);
 
-        let artifact_spell = CardBuilder::new(
-            CardId::from_raw(9022),
-            "Semblance Anvil Artifact Probe",
-        )
-            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
-            .card_types(vec![CardType::Artifact])
-            .build();
+        let artifact_spell =
+            CardBuilder::new(CardId::from_raw(9022), "Semblance Anvil Artifact Probe")
+                .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+                .card_types(vec![CardType::Artifact])
+                .build();
         let artifact_spell_id = game.create_object_from_card(&artifact_spell, alice, Zone::Hand);
-        let artifact_spell = game.object(artifact_spell_id).expect("artifact spell exists");
+        let artifact_spell = game
+            .object(artifact_spell_id)
+            .expect("artifact spell exists");
         let reduced = calculate_effective_mana_cost(
             &game,
             alice,
@@ -5019,15 +5025,15 @@ mod tests {
         );
         assert_eq!(unreduced_sorcery.to_oracle(), "{4}");
 
-        let bob_artifact = CardBuilder::new(
-            CardId::from_raw(9024),
-            "Semblance Anvil Opponent Probe",
-        )
-            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
-            .card_types(vec![CardType::Artifact])
-            .build();
+        let bob_artifact =
+            CardBuilder::new(CardId::from_raw(9024), "Semblance Anvil Opponent Probe")
+                .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+                .card_types(vec![CardType::Artifact])
+                .build();
         let bob_artifact_id = game.create_object_from_card(&bob_artifact, bob, Zone::Hand);
-        let bob_artifact = game.object(bob_artifact_id).expect("opponent artifact exists");
+        let bob_artifact = game
+            .object(bob_artifact_id)
+            .expect("opponent artifact exists");
         let unreduced_opponent = calculate_effective_mana_cost(
             &game,
             bob,
@@ -5051,15 +5057,15 @@ mod tests {
             .expect("Semblance Anvil should parse");
         game.create_object_from_definition(&semblance, alice, Zone::Battlefield);
 
-        let artifact_spell = CardBuilder::new(
-            CardId::from_raw(9031),
-            "Semblance Anvil No Imprint Probe",
-        )
-            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
-            .card_types(vec![CardType::Artifact])
-            .build();
+        let artifact_spell =
+            CardBuilder::new(CardId::from_raw(9031), "Semblance Anvil No Imprint Probe")
+                .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+                .card_types(vec![CardType::Artifact])
+                .build();
         let artifact_spell_id = game.create_object_from_card(&artifact_spell, alice, Zone::Hand);
-        let artifact_spell = game.object(artifact_spell_id).expect("artifact spell exists");
+        let artifact_spell = game
+            .object(artifact_spell_id)
+            .expect("artifact spell exists");
         let unreduced = calculate_effective_mana_cost(
             &game,
             alice,

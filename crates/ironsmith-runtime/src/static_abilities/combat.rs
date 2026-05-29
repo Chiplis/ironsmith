@@ -16,8 +16,8 @@ use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
 use crate::snapshot::ObjectSnapshot;
 use crate::target::ObjectFilter;
-use crate::types::Subtype;
 use crate::triggers::{TriggerEvent, TriggeredAbilityEntry};
+use crate::types::Subtype;
 use crate::zone::Zone;
 
 /// Macro to define simple combat abilities.

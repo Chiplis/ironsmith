@@ -1162,10 +1162,7 @@ fn is_nonland_permanent_filter_in_zone(filter: &ObjectFilter, zone: Zone) -> boo
         })
 }
 
-fn describe_tagged_condition_card_selection(
-    condition: &Condition,
-    tag: &str,
-) -> Option<String> {
+fn describe_tagged_condition_card_selection(condition: &Condition, tag: &str) -> Option<String> {
     match condition {
         Condition::TaggedObjectMatches(condition_tag, filter) if condition_tag.as_str() == tag => {
             Some(describe_search_selection_with_cards(&filter.description()))
@@ -1191,10 +1188,8 @@ fn describe_look_top_card_if_matching_may_reveal_put_hand(
     if look_at_top.player != PlayerFilter::You || look_at_top.count != Value::Fixed(1) {
         return None;
     }
-    let selection = describe_tagged_condition_card_selection(
-        &conditional.condition,
-        look_at_top.tag.as_str(),
-    )?;
+    let selection =
+        describe_tagged_condition_card_selection(&conditional.condition, look_at_top.tag.as_str())?;
     if !conditional.if_false.is_empty() {
         return None;
     }
@@ -2494,7 +2489,9 @@ fn describe_roll_choose_destroy_create_structural(effects: &[Effect]) -> Option<
         return None;
     }
 
-    let roll_text = describe_effect(roll_effect).trim_end_matches('.').to_string();
+    let roll_text = describe_effect(roll_effect)
+        .trim_end_matches('.')
+        .to_string();
     let destroy_text = describe_effect(destroy_effect)
         .trim_end_matches('.')
         .to_string();
@@ -3070,7 +3067,8 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             return None;
         };
         let pumped_tag = effect_tag(pump_effect)?;
-        let pump = unwrap_wrapped_effect(pump_effect).downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+        let pump = unwrap_wrapped_effect(pump_effect)
+            .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
         if pump.until != Until::EndOfTurn
             || pump.condition.is_some()
             || pump.modification.is_some()
@@ -3078,10 +3076,12 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         {
             return None;
         }
-        let [crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
-            power,
-            toughness,
-        }] = pump.runtime_modifications.as_slice()
+        let [
+            crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
+                power,
+                toughness,
+            },
+        ] = pump.runtime_modifications.as_slice()
         else {
             return None;
         };
@@ -3098,7 +3098,8 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         if !conditional.if_false.is_empty() {
             return None;
         }
-        let grant = unwrap_wrapped_effect(grant_effect).downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+        let grant = unwrap_wrapped_effect(grant_effect)
+            .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
         if grant.until != Until::EndOfTurn
             || grant.condition.is_some()
             || !grant.runtime_modifications.is_empty()
@@ -3197,9 +3198,8 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             "{} {subtype_words}",
             describe_token_color_words(colors, false)
         ));
-        let mut followup = format!(
-            "{followup_subject} is {descriptor} in addition to its other colors and types"
-        );
+        let mut followup =
+            format!("{followup_subject} is {descriptor} in addition to its other colors and types");
         if !matches!(first_apply.until, Until::Forever) {
             followup.push(' ');
             followup.push_str(&describe_until(&first_apply.until));
@@ -3232,8 +3232,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
 
         let bottom = unwrap_wrapped_effect(bottom_effect)
             .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
-        if bottom.tag != consult.all_tag
-            || bottom.keep_tagged.as_ref() != Some(&consult.match_tag)
+        if bottom.tag != consult.all_tag || bottom.keep_tagged.as_ref() != Some(&consult.match_tag)
         {
             return None;
         }
@@ -3641,9 +3640,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             return None;
         }
         let top = top_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
-        if top.reveal
-            || top.count != Value::Fixed(1)
-            || top.player != PlayerFilter::target_player()
+        if top.reveal || top.count != Value::Fixed(1) || top.player != PlayerFilter::target_player()
         {
             return None;
         }
@@ -7659,10 +7656,12 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         {
             return None;
         }
-        let [crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
-            power,
-            toughness,
-        }] = apply.runtime_modifications.as_slice()
+        let [
+            crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
+                power,
+                toughness,
+            },
+        ] = apply.runtime_modifications.as_slice()
         else {
             return None;
         };
@@ -8278,8 +8277,8 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
 
     if effects.len() == 2
         && let Some(target_only) = effects[0].downcast_ref::<crate::effects::TargetOnlyEffect>()
-        && let Some(damage) = unwrap_tag_wrappers(&effects[1])
-            .downcast_ref::<crate::effects::DealDamageEffect>()
+        && let Some(damage) =
+            unwrap_tag_wrappers(&effects[1]).downcast_ref::<crate::effects::DealDamageEffect>()
         && let Some(rendered) = describe_target_only_then_damage_that_player(target_only, damage)
     {
         return rendered;
@@ -11916,11 +11915,12 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                 filtered[idx + 1].downcast_ref::<crate::effects::ConditionalEffect>()
             && let Some(bottom_conditional) =
                 filtered[idx + 2].downcast_ref::<crate::effects::ConditionalEffect>()
-            && let Some(compact) = describe_look_top_card_if_matching_may_reveal_put_hand_else_bottom(
-                look_at_top,
-                conditional,
-                bottom_conditional,
-            )
+            && let Some(compact) =
+                describe_look_top_card_if_matching_may_reveal_put_hand_else_bottom(
+                    look_at_top,
+                    conditional,
+                    bottom_conditional,
+                )
         {
             parts.push(compact);
             idx += 3;
@@ -13690,7 +13690,10 @@ pub(super) fn describe_inline_ability_with_self_subject(
             if line.is_empty() {
                 "an activated ability".to_string()
             } else if activated.is_exhaust_ability() {
-                format!("Exhaust — {}", normalize_ability_self_reference_surface(&line, self_subject))
+                format!(
+                    "Exhaust — {}",
+                    normalize_ability_self_reference_surface(&line, self_subject)
+                )
             } else {
                 normalize_ability_self_reference_surface(&line, self_subject)
             }
@@ -13981,7 +13984,10 @@ fn describe_triggered_resolution_text(
         && let Some(surveil) = effect.downcast_ref::<crate::effects::SurveilEffect>()
         && surveil.player == PlayerFilter::You
         && value_prefers_where_x(&surveil.count)
-        && matches!(surveil.count.unhinted(), Value::EventValue(EventValueSpec::Amount))
+        && matches!(
+            surveil.count.unhinted(),
+            Value::EventValue(EventValueSpec::Amount)
+        )
     {
         return Some(
             "surveil X, where X is the amount of damage it dealt to that player".to_string(),
@@ -14041,8 +14047,7 @@ fn describe_triggered_inline_ability(
     if let Some(condition) = intervening_condition {
         line.push_str(", if ");
         line.push_str(&describe_trigger_intervening_condition(
-            &condition,
-            triggered,
+            &condition, triggered,
         ));
     }
 
@@ -14145,8 +14150,8 @@ fn source_return_from_graveyard_subject(
 }
 
 fn source_return_from_graveyard_subject_in_effect(effect: &Effect) -> Option<String> {
-    if let Some(return_to_battlefield) = effect
-        .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
+    if let Some(return_to_battlefield) =
+        effect.downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
         && matches!(return_to_battlefield.target.unhinted(), ChooseSpec::Source)
     {
         return Some(describe_choose_spec(&return_to_battlefield.target));
@@ -18984,8 +18989,7 @@ fn describe_for_each_prevent_combat_damage_unless_pays(
                 matches!(
                     prevent_combat.target,
                     crate::effects::CombatDamagePreventionTarget::From(ChooseSpec::Iterated)
-                )
-                    && matches!(prevent_combat.until, Until::EndOfTurn)
+                ) && matches!(prevent_combat.until, Until::EndOfTurn)
             });
     if !prevents_iterated_until_eot {
         return None;
@@ -19019,13 +19023,22 @@ fn describe_tagged_it_damage_source(filter: &ObjectFilter) -> Option<&'static st
     if !filter_is_tagged_it(filter) {
         return None;
     }
-    if filter.card_types.contains(&crate::types::CardType::Creature) {
+    if filter
+        .card_types
+        .contains(&crate::types::CardType::Creature)
+    {
         return Some("that creature");
     }
-    if filter.card_types.contains(&crate::types::CardType::Artifact) {
+    if filter
+        .card_types
+        .contains(&crate::types::CardType::Artifact)
+    {
         return Some("that artifact");
     }
-    if filter.card_types.contains(&crate::types::CardType::Enchantment) {
+    if filter
+        .card_types
+        .contains(&crate::types::CardType::Enchantment)
+    {
         return Some("that enchantment");
     }
     if filter.card_types.contains(&crate::types::CardType::Land) {
@@ -26836,9 +26849,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         return match move_to_zone.zone {
             Zone::Exile => {
                 if let Some(owner) = graveyard_owner_from_spec(&move_to_zone.target) {
-                    let target_text = describe_choose_spec_without_graveyard_zone(&move_to_zone.target);
+                    let target_text =
+                        describe_choose_spec_without_graveyard_zone(&move_to_zone.target);
                     let from_text = match owner {
-                        Some(owner) => format!("{} graveyard", describe_possessive_player_filter(&owner)),
+                        Some(owner) => {
+                            format!("{} graveyard", describe_possessive_player_filter(&owner))
+                        }
                         None => "a graveyard".to_string(),
                     };
                     format!("Exile {target_text} from {from_text}")
@@ -28490,10 +28506,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             if let Some(text) = source_and_source_exiled_return_text(filter) {
                 return text;
             }
-            if is_source_exiled_cards_filter(filter)
-        {
-            return "Return the exiled cards to their owners' hands".to_string();
-        }
+            if is_source_exiled_cards_filter(filter) {
+                return "Return the exiled cards to their owners' hands".to_string();
+            }
         }
         if let ChooseSpec::Object(filter) = &return_to_hand.spec
             && let Some(text) = source_and_source_exiled_return_text(filter)
@@ -28836,9 +28851,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             }
             let subject = describe_player_filter(&look_at_top.player);
             let verb = player_verb(&subject, "reveal", "reveals");
-            return format!(
-                "{subject} {verb} the {top_phrase} of {owner} library{where_clause}"
-            );
+            return format!("{subject} {verb} the {top_phrase} of {owner} library{where_clause}");
         }
         return format!("Look at the {top_phrase} of {owner} library{where_clause}");
     }
@@ -32766,7 +32779,10 @@ pub(super) fn collect_activation_restriction_clauses(
     }
 
     for raw in additional_restrictions {
-        if raw.to_ascii_lowercase().contains("exhaust ability only once") {
+        if raw
+            .to_ascii_lowercase()
+            .contains("exhaust ability only once")
+        {
             continue;
         }
         let normalized = normalize_activation_restriction_clause(raw);
@@ -34772,8 +34788,13 @@ fn describe_structural_demonstrate_keyword(
         return None;
     };
     let may = effect.downcast_ref::<crate::effects::MayEffect>()?;
-    let [copy_you, choose_opponent, copy_opponent, retarget_you, retarget_opponent] =
-        may.effects.as_slice()
+    let [
+        copy_you,
+        choose_opponent,
+        copy_opponent,
+        retarget_you,
+        retarget_opponent,
+    ] = may.effects.as_slice()
     else {
         return None;
     };
@@ -34792,7 +34813,8 @@ fn describe_structural_demonstrate_keyword(
     }
 
     let choose_opponent = choose_opponent.downcast_ref::<crate::effects::ChoosePlayerEffect>()?;
-    if choose_opponent.chooser != PlayerFilter::You || choose_opponent.filter != PlayerFilter::Opponent
+    if choose_opponent.chooser != PlayerFilter::You
+        || choose_opponent.filter != PlayerFilter::Opponent
     {
         return None;
     }
@@ -35557,8 +35579,7 @@ pub(super) fn describe_ability(
             if let Some(condition) = intervening_condition {
                 line.push_str(", if ");
                 line.push_str(&describe_trigger_intervening_condition(
-                    &condition,
-                    triggered,
+                    &condition, triggered,
                 ));
             }
             let mut clauses = Vec::new();

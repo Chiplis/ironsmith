@@ -443,7 +443,9 @@ fn most_common_permanent_colors(game: &GameState) -> ColorSet {
         let Some(object) = game.object(object_id) else {
             continue;
         };
-        let colors = game.current_colors(object_id).unwrap_or_else(|| object.colors());
+        let colors = game
+            .current_colors(object_id)
+            .unwrap_or_else(|| object.colors());
         for (idx, color) in Color::ALL.into_iter().enumerate() {
             if colors.contains(color) {
                 counts[idx] += 1;
@@ -471,8 +473,7 @@ fn subject_shares_most_common_permanent_color(
     let subject_colors = game
         .current_colors(subject.subject_object_id())
         .unwrap_or_else(|| subject.subject_colors());
-    !most_common_colors.is_empty()
-        && !subject_colors.intersection(most_common_colors).is_empty()
+    !most_common_colors.is_empty() && !subject_colors.intersection(most_common_colors).is_empty()
 }
 
 // ============================================================================

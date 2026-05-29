@@ -104,10 +104,7 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
             self.player.description()
         };
         let subject = with_indefinite_article(self.filter.description());
-        format!(
-            "Whenever {} deals combat damage to {}",
-            subject, player
-        )
+        format!("Whenever {} deals combat damage to {}", subject, player)
     }
 }
 

@@ -1,4 +1,9 @@
 use super::*;
+use crate::runtime_backend::effect_sentences::SubjectVerbPrimitiveClause;
+use crate::runtime_backend::lexer::{
+    word_slice_contains_word, word_slice_eq, word_slice_matching_phrase, word_slice_matching_value,
+    word_slice_starts_with,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum DelayedReturnTimingAst {
@@ -241,12 +246,12 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         }
         destination_words.truncate(except_idx);
     }
-    let is_hand =
-        slice_contains(&destination_words, &"hand") || slice_contains(&destination_words, &"hands");
-    let is_battlefield = slice_contains(&destination_words, &"battlefield");
-    let is_graveyard = slice_contains(&destination_words, &"graveyard")
-        || slice_contains(&destination_words, &"graveyards");
-    let tapped = slice_contains(&destination_words, &"tapped");
+    let is_hand = word_slice_contains_word(&destination_words, "hand")
+        || word_slice_contains_word(&destination_words, "hands");
+    let is_battlefield = word_slice_contains_word(&destination_words, "battlefield");
+    let is_graveyard = word_slice_contains_word(&destination_words, "graveyard")
+        || word_slice_contains_word(&destination_words, "graveyards");
+    let tapped = word_slice_contains_word(&destination_words, "tapped");
     let transformed = grammar::contains_word(destination_tokens_full, "transformed");
     let converted = grammar::contains_word(destination_tokens_full, "converted");
     let return_controller =
@@ -255,7 +260,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         } else if destination_words
             .iter()
             .any(|word| matches!(*word, "owner" | "owners" | "owner's" | "owners'"))
-            && slice_contains(&destination_words, &"control")
+            && word_slice_contains_word(&destination_words, "control")
         {
             ReturnControllerAst::Owner
         } else {
@@ -386,7 +391,8 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         }
         let return_filter_tokens = &target_tokens[1..];
         if is_hand
-            && let Some((choice_idx, consumed)) = find_color_choice_phrase(return_filter_tokens)
+            && let Some((choice_idx, consumed)) =
+                find_color_choice_phrase(SubjectVerbPrimitiveClause::new(return_filter_tokens))
         {
             let base_filter_tokens = trim_commas(&return_filter_tokens[..choice_idx]);
             let trailing = trim_commas(&return_filter_tokens[choice_idx + consumed..]);
@@ -525,8 +531,10 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
 
     let source_from_graveyard_target = if is_battlefield
         && target_words.len() > 3
-        && target_words[target_words.len() - 3..] == ["from", "your", "graveyard"]
-    {
+        && word_slice_eq(
+            &target_words[target_words.len() - 3..],
+            &["from", "your", "graveyard"],
+        ) {
         let prefix_word_len = target_words.len() - 3;
         let prefix_token_len = token_index_for_word_index(target_tokens, prefix_word_len)
             .unwrap_or(target_tokens.len());
@@ -542,7 +550,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     let mut count_value = None;
     let (target_tokens, dynamic_count) = if target_words
         .get(..2)
-        .is_some_and(|words| words == ["that", "many"])
+        .is_some_and(|words| word_slice_eq(words, &["that", "many"]))
     {
         let mut object_start = 2usize;
         if target_words.get(object_start).copied() == Some("of") {
@@ -637,12 +645,12 @@ pub(crate) fn parse_exchange(
             share_head
         };
 
-        let shared_type = if slice_starts_with(&share_head, &["permanent", "type"])
-            || slice_starts_with(&share_head, &["one", "of", "those", "permanent", "types"])
+        let shared_type = if word_slice_starts_with(share_head, &["permanent", "type"])
+            || word_slice_starts_with(share_head, &["one", "of", "those", "permanent", "types"])
         {
             SharedTypeConstraintAst::PermanentType
-        } else if slice_starts_with(&share_head, &["card", "type"])
-            || slice_starts_with(&share_head, &["one", "of", "those", "types"])
+        } else if word_slice_starts_with(share_head, &["card", "type"])
+            || word_slice_starts_with(share_head, &["one", "of", "those", "types"])
         {
             SharedTypeConstraintAst::CardType
         } else {
@@ -656,56 +664,95 @@ pub(crate) fn parse_exchange(
     }
 
     fn parse_value_operand(operand_tokens: &[OwnedLexToken]) -> Option<ExchangeValueAst> {
-        match crate::runtime_backend::token_word_refs(operand_tokens).as_slice() {
-            ["your", "life", "total"] => return Some(ExchangeValueAst::LifeTotal(PlayerAst::You)),
-            ["target", "player", "life", "total"]
-            | ["target", "players", "life", "total"]
-            | ["target", "player's", "life", "total"]
-            | ["target", "players'", "life", "total"] => {
-                return Some(ExchangeValueAst::LifeTotal(PlayerAst::Target));
-            }
-            ["target", "opponent", "life", "total"]
-            | ["target", "opponents", "life", "total"]
-            | ["target", "opponent's", "life", "total"]
-            | ["target", "opponents'", "life", "total"] => {
-                return Some(ExchangeValueAst::LifeTotal(PlayerAst::TargetOpponent));
-            }
-            ["an", "opponent", "life", "total"]
-            | ["opponent", "life", "total"]
-            | ["opponents", "life", "total"] => {
-                return Some(ExchangeValueAst::LifeTotal(PlayerAst::Opponent));
-            }
-            ["its", "power"]
-            | ["this", "power"]
-            | ["thiss", "power"]
-            | ["this's", "power"]
-            | ["this", "creature", "power"]
-            | ["this", "creature's", "power"]
-            | ["thiss", "creature", "power"]
-            | ["thiss", "creature's", "power"]
-            | ["this", "creatures", "power"]
-            | ["thiss", "creatures", "power"] => {
-                return Some(ExchangeValueAst::Stat {
-                    target: TargetAst::Source(span_from_tokens(operand_tokens)),
-                    kind: ExchangeValueKindAst::Power,
-                });
-            }
-            ["its", "toughness"]
-            | ["this", "toughness"]
-            | ["thiss", "toughness"]
-            | ["this's", "toughness"]
-            | ["this", "creature", "toughness"]
-            | ["this", "creature's", "toughness"]
-            | ["thiss", "creature", "toughness"]
-            | ["thiss", "creature's", "toughness"]
-            | ["this", "creatures", "toughness"]
-            | ["thiss", "creatures", "toughness"] => {
-                return Some(ExchangeValueAst::Stat {
-                    target: TargetAst::Source(span_from_tokens(operand_tokens)),
-                    kind: ExchangeValueKindAst::Toughness,
-                });
-            }
-            _ => {}
+        let words = crate::runtime_backend::token_word_refs(operand_tokens);
+        if let Some(player) = word_slice_matching_value(
+            &words,
+            &[
+                (&["your", "life", "total"], PlayerAst::You),
+                (&["target", "player", "life", "total"], PlayerAst::Target),
+                (&["target", "players", "life", "total"], PlayerAst::Target),
+                (&["target", "player's", "life", "total"], PlayerAst::Target),
+                (&["target", "players'", "life", "total"], PlayerAst::Target),
+                (
+                    &["target", "opponent", "life", "total"],
+                    PlayerAst::TargetOpponent,
+                ),
+                (
+                    &["target", "opponents", "life", "total"],
+                    PlayerAst::TargetOpponent,
+                ),
+                (
+                    &["target", "opponent's", "life", "total"],
+                    PlayerAst::TargetOpponent,
+                ),
+                (
+                    &["target", "opponents'", "life", "total"],
+                    PlayerAst::TargetOpponent,
+                ),
+                (&["an", "opponent", "life", "total"], PlayerAst::Opponent),
+                (&["opponent", "life", "total"], PlayerAst::Opponent),
+                (&["opponents", "life", "total"], PlayerAst::Opponent),
+            ],
+        ) {
+            return Some(ExchangeValueAst::LifeTotal(player));
+        }
+
+        if let Some(kind) = word_slice_matching_value(
+            &words,
+            &[
+                (&["its", "power"], ExchangeValueKindAst::Power),
+                (&["this", "power"], ExchangeValueKindAst::Power),
+                (&["thiss", "power"], ExchangeValueKindAst::Power),
+                (&["this's", "power"], ExchangeValueKindAst::Power),
+                (&["this", "creature", "power"], ExchangeValueKindAst::Power),
+                (
+                    &["this", "creature's", "power"],
+                    ExchangeValueKindAst::Power,
+                ),
+                (&["thiss", "creature", "power"], ExchangeValueKindAst::Power),
+                (
+                    &["thiss", "creature's", "power"],
+                    ExchangeValueKindAst::Power,
+                ),
+                (&["this", "creatures", "power"], ExchangeValueKindAst::Power),
+                (
+                    &["thiss", "creatures", "power"],
+                    ExchangeValueKindAst::Power,
+                ),
+                (&["its", "toughness"], ExchangeValueKindAst::Toughness),
+                (&["this", "toughness"], ExchangeValueKindAst::Toughness),
+                (&["thiss", "toughness"], ExchangeValueKindAst::Toughness),
+                (&["this's", "toughness"], ExchangeValueKindAst::Toughness),
+                (
+                    &["this", "creature", "toughness"],
+                    ExchangeValueKindAst::Toughness,
+                ),
+                (
+                    &["this", "creature's", "toughness"],
+                    ExchangeValueKindAst::Toughness,
+                ),
+                (
+                    &["thiss", "creature", "toughness"],
+                    ExchangeValueKindAst::Toughness,
+                ),
+                (
+                    &["thiss", "creature's", "toughness"],
+                    ExchangeValueKindAst::Toughness,
+                ),
+                (
+                    &["this", "creatures", "toughness"],
+                    ExchangeValueKindAst::Toughness,
+                ),
+                (
+                    &["thiss", "creatures", "toughness"],
+                    ExchangeValueKindAst::Toughness,
+                ),
+            ],
+        ) {
+            return Some(ExchangeValueAst::Stat {
+                target: TargetAst::Source(span_from_tokens(operand_tokens)),
+                kind,
+            });
         }
 
         let power_prefix = if let Some((prefix, _)) =
@@ -727,7 +774,7 @@ pub(crate) fn parse_exchange(
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if grammar::words_match_any_prefix(tokens, LIFE_TOTALS_PREFIXES).is_some() {
-        if clause_words.as_slice() == ["life", "totals"] {
+        if word_slice_eq(&clause_words, &["life", "totals"]) {
             return match subject {
                 Some(SubjectAst::Player(PlayerAst::Target)) => {
                     Ok(EffectAst::subject_verb_exchange_life_totals(
@@ -749,12 +796,29 @@ pub(crate) fn parse_exchange(
             )));
         }
 
-        let player2 = match crate::runtime_backend::token_word_refs(&tokens[3..]).as_slice() {
-            ["you"] => Some(PlayerAst::You),
-            ["target", "player"] | ["target", "players"] => Some(PlayerAst::Target),
-            ["target", "opponent"] | ["target", "opponents"] => Some(PlayerAst::TargetOpponent),
-            ["that", "player"] | ["that", "players"] => Some(PlayerAst::That),
-            ["opponent"] | ["opponents"] | ["an", "opponent"] => Some(PlayerAst::Opponent),
+        let player2_words = crate::runtime_backend::token_word_refs(&tokens[3..]);
+        let player2 = match word_slice_matching_phrase(
+            &player2_words,
+            &[
+                &["you"],
+                &["target", "player"],
+                &["target", "players"],
+                &["target", "opponent"],
+                &["target", "opponents"],
+                &["that", "player"],
+                &["that", "players"],
+                &["opponent"],
+                &["opponents"],
+                &["an", "opponent"],
+            ],
+        ) {
+            Some(["you"]) => Some(PlayerAst::You),
+            Some(["target", "player"] | ["target", "players"]) => Some(PlayerAst::Target),
+            Some(["target", "opponent"] | ["target", "opponents"]) => {
+                Some(PlayerAst::TargetOpponent)
+            }
+            Some(["that", "player"] | ["that", "players"]) => Some(PlayerAst::That),
+            Some(["opponent"] | ["opponents"] | ["an", "opponent"]) => Some(PlayerAst::Opponent),
             _ => None,
         }
         .ok_or_else(|| {
@@ -793,19 +857,19 @@ pub(crate) fn parse_exchange(
 
         return Ok(EffectAst::subject_verb_exchange_text_boxes(target));
     }
-    let zone_exchange = if slice_starts_with(&clause_words, &["your"]) {
+    let zone_exchange = if word_slice_starts_with(&clause_words, &["your"]) {
         Some((PlayerAst::You, 1))
-    } else if slice_starts_with(&clause_words, &["target", "player"])
-        || slice_starts_with(&clause_words, &["target", "players"])
+    } else if word_slice_starts_with(&clause_words, &["target", "player"])
+        || word_slice_starts_with(&clause_words, &["target", "players"])
     {
         Some((PlayerAst::Target, 2))
-    } else if slice_starts_with(&clause_words, &["target", "opponent"])
-        || slice_starts_with(&clause_words, &["target", "opponents"])
+    } else if word_slice_starts_with(&clause_words, &["target", "opponent"])
+        || word_slice_starts_with(&clause_words, &["target", "opponents"])
     {
         Some((PlayerAst::TargetOpponent, 2))
-    } else if slice_starts_with(&clause_words, &["an", "opponent"])
-        || slice_starts_with(&clause_words, &["opponent"])
-        || slice_starts_with(&clause_words, &["opponents"])
+    } else if word_slice_starts_with(&clause_words, &["an", "opponent"])
+        || word_slice_starts_with(&clause_words, &["opponent"])
+        || word_slice_starts_with(&clause_words, &["opponents"])
     {
         Some((
             PlayerAst::Opponent,

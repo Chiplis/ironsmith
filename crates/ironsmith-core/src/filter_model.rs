@@ -1,6 +1,6 @@
 use crate::{
-    CardType, ChoiceCount, ChooseSpec, Color, ColorSet, CounterType, ObjectId, PlayerId,
-    EffectMetric, StaticAbilityId, Subtype, Supertype, TagKey, Value, Zone,
+    CardType, ChoiceCount, ChooseSpec, Color, ColorSet, CounterType, EffectMetric, ObjectId,
+    PlayerId, StaticAbilityId, Subtype, Supertype, TagKey, Value, Zone,
     effect_model::EventValueSpec,
 };
 

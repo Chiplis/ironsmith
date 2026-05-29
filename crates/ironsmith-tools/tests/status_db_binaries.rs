@@ -1021,7 +1021,10 @@ fn compile_oracle_text_strictly_compiles_the_aesir_escape_valhalla_from_workspac
 
     let stdout =
         String::from_utf8(output.stdout).expect("compile_oracle_text stdout should be utf8");
-    assert!(stdout.contains("Name: The Aesir Escape Valhalla"), "{stdout}");
+    assert!(
+        stdout.contains("Name: The Aesir Escape Valhalla"),
+        "{stdout}"
+    );
     assert!(stdout.contains("Similarity: 1.0000"), "{stdout}");
     assert!(
         stdout.contains(
@@ -1061,8 +1064,14 @@ fn compile_oracle_text_strictly_compiles_trystan_faces_from_workspace_cards() {
 
     let stdout =
         String::from_utf8(output.stdout).expect("compile_oracle_text stdout should be utf8");
-    assert!(stdout.contains("Name: Trystan, Callous Cultivator"), "{stdout}");
-    assert!(stdout.contains("Name: Trystan, Penitent Culler"), "{stdout}");
+    assert!(
+        stdout.contains("Name: Trystan, Callous Cultivator"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("Name: Trystan, Penitent Culler"),
+        "{stdout}"
+    );
     assert!(stdout.contains("Semantic mismatch: false"), "{stdout}");
     assert!(
         stdout.contains("enters or transforms into Trystan, Callous Cultivator")

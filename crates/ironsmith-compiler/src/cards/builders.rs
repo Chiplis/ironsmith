@@ -418,13 +418,13 @@ impl CardDefinitionBuilder {
                 ))
             }
             KeywordAction::ProtectionFromFilter(filter) => self.protection_from_filter(filter),
-            KeywordAction::ProtectionFromEachManaValueAmong(filter) => self.with_ability(
-                crate::ability::Ability::static_ability(
+            KeywordAction::ProtectionFromEachManaValueAmong(filter) => {
+                self.with_ability(crate::ability::Ability::static_ability(
                     crate::static_abilities::StaticAbility::protection(
                         crate::ability::ProtectionFrom::EachManaValueAmong(filter),
                     ),
-                ),
-            ),
+                ))
+            }
             KeywordAction::ProtectionFromCardType(card_type) => {
                 self.protection_from_card_type(card_type)
             }
@@ -1485,11 +1485,13 @@ impl CardDefinitionBuilder {
                     )),
                     crate::effect::Effect::with_id(
                         1,
-                        crate::effect::Effect::new(crate::effects::CopySpellEffect::new_for_player(
-                            crate::target::ChooseSpec::Source,
-                            1,
-                            opponent.clone(),
-                        )),
+                        crate::effect::Effect::new(
+                            crate::effects::CopySpellEffect::new_for_player(
+                                crate::target::ChooseSpec::Source,
+                                1,
+                                opponent.clone(),
+                            ),
+                        ),
                     ),
                     crate::effect::Effect::may_choose_new_targets_player(
                         crate::effect::EffectId(0),

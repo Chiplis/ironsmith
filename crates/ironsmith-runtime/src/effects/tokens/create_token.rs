@@ -458,13 +458,22 @@ mod tests {
         assert_eq!(ids.len(), 3, "Xorn should add exactly one Treasure token");
         let fancy_count = ids
             .iter()
-            .filter(|id| game.object(**id).is_some_and(|token| token.name == "Fancy Treasure"))
+            .filter(|id| {
+                game.object(**id)
+                    .is_some_and(|token| token.name == "Fancy Treasure")
+            })
             .count();
         let normal_count = ids
             .iter()
-            .filter(|id| game.object(**id).is_some_and(|token| token.name == "Treasure"))
+            .filter(|id| {
+                game.object(**id)
+                    .is_some_and(|token| token.name == "Treasure")
+            })
             .count();
-        assert_eq!(fancy_count, 2, "the original token batch should be preserved");
+        assert_eq!(
+            fancy_count, 2,
+            "the original token batch should be preserved"
+        );
         assert_eq!(normal_count, 1, "Xorn should add one normal Treasure token");
         assert!(ids.iter().all(|id| {
             game.object(*id)
@@ -503,13 +512,10 @@ mod tests {
         game.refresh_continuous_state();
 
         let mut ctx = ExecutionContext::new_default(source, alice);
-        let result = CreateTokenEffect::new(
-            treasure_token_definition(),
-            2,
-            PlayerFilter::Specific(bob),
-        )
-        .execute(&mut game, &mut ctx)
-        .unwrap();
+        let result =
+            CreateTokenEffect::new(treasure_token_definition(), 2, PlayerFilter::Specific(bob))
+                .execute(&mut game, &mut ctx)
+                .unwrap();
 
         let crate::effect::OutcomeValue::Objects(ids) = result.value else {
             panic!("Expected Objects result");

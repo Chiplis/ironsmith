@@ -1,10 +1,11 @@
 use super::*;
+use crate::runtime_backend::effect_sentences::SubjectVerbPrimitiveClause;
 use crate::runtime_backend::util::parse_filter_counter_constraint_words;
 
 pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if let Some(from_idx) = find_index(tokens, |token| token.is_word("from")) {
         let tail_words = crate::runtime_backend::token_word_refs(&tokens[from_idx + 1..]);
-        if tail_words == ["combat"] {
+        if crate::runtime_backend::lexer::word_slice_eq(&tail_words, &["combat"]) {
             let target_tokens = trim_commas(&tokens[..from_idx]);
             if target_tokens.is_empty() {
                 return Err(CardTextError::ParseError(format!(
@@ -315,8 +316,10 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             });
             let supported_target = grammar::words_match_prefix(&target_tokens, &["target"])
                 .is_some()
-                || target_words == ["you"]
-                || target_words == ["it"]
+                || crate::runtime_backend::lexer::word_slice_eq_any(
+                    &target_words,
+                    &[&["you"], &["it"]],
+                )
                 || grammar::words_match_any_prefix(&target_tokens, ATTACHED_REFERENCE_PREFIXES)
                     .is_some();
             if !filter_tokens.is_empty()
@@ -351,7 +354,9 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             }
         }
         let filter_tokens = &core_tokens[1..];
-        if let Some((choice_idx, consumed)) = find_color_choice_phrase(filter_tokens) {
+        if let Some((choice_idx, consumed)) =
+            find_color_choice_phrase(SubjectVerbPrimitiveClause::new(filter_tokens))
+        {
             let base_filter_tokens = trim_commas(&filter_tokens[..choice_idx]);
             let trailing = trim_commas(&filter_tokens[choice_idx + consumed..]);
             if !trailing.is_empty() {

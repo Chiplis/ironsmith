@@ -57,7 +57,8 @@ impl EffectExecutor for LookAtObjectsEffect {
                     zone,
                     description.clone(),
                 );
-                ctx.decision_maker.view_cards(game, *viewer, &viewed, &view_ctx);
+                ctx.decision_maker
+                    .view_cards(game, *viewer, &viewed, &view_ctx);
             }
         }
 
@@ -65,7 +66,10 @@ impl EffectExecutor for LookAtObjectsEffect {
 
         let memory = viewed
             .iter()
-            .filter_map(|id| game.object(*id).map(|object| ObjectSnapshot::from_object(object, game)))
+            .filter_map(|id| {
+                game.object(*id)
+                    .map(|object| ObjectSnapshot::from_object(object, game))
+            })
             .map(|snapshot| OutcomeObjectMemory::from_snapshot(&snapshot))
             .collect::<Vec<_>>();
         Ok(EffectOutcome::count(viewed.len() as i32)
@@ -81,14 +85,7 @@ fn remember_hidden_views(
     viewers: &[PlayerId],
 ) {
     for viewer in viewers {
-        view_hidden_candidate_objects(
-            game,
-            ctx,
-            *viewer,
-            viewed,
-            "Look at hidden objects",
-            false,
-        );
+        view_hidden_candidate_objects(game, ctx, *viewer, viewed, "Look at hidden objects", false);
     }
 }
 

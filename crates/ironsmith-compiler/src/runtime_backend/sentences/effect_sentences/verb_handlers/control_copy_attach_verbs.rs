@@ -32,7 +32,7 @@ pub(crate) fn parse_lose_life(
             SubjectVerbActionAst::LoseLife { amount },
         ));
     }
-    if clause_words.as_slice() == ["the", "game"] {
+    if crate::runtime_backend::lexer::word_slice_eq(&clause_words, &["the", "game"]) {
         return Ok(EffectAst::subject_verb_lose_game(player));
     }
 
@@ -248,7 +248,7 @@ pub(crate) fn parse_gain_control(
                 Some(spec.predicate),
                 false,
             )
-        } else if target_tokens.iter().any(|token| token.is_word("if")) {
+        } else if crate::runtime_backend::lexer::contains_token_word(target_tokens, "if") {
             return Err(invalid_conditional_error());
         } else if let Some(spec) = split_trailing_unless_clause_lexed(target_tokens) {
             (
@@ -256,7 +256,7 @@ pub(crate) fn parse_gain_control(
                 Some(spec.predicate),
                 true,
             )
-        } else if target_tokens.iter().any(|token| token.is_word("unless")) {
+        } else if crate::runtime_backend::lexer::contains_token_word(target_tokens, "unless") {
             return Err(invalid_conditional_error());
         } else {
             (parse_target_phrase(target_tokens)?, None, false)
@@ -570,7 +570,10 @@ pub(crate) fn parse_put_into_hand(
         && grammar::contains_word(tokens, "top")
         && grammar::contains_word(tokens, "bottom")
         && grammar::contains_word(tokens, "library")
-        && clause_words.iter().any(|w| *w == "and" || *w == "then")
+        && crate::runtime_backend::lexer::word_slice_contains_any_word(
+            &clause_words,
+            &["and", "then"],
+        )
     {
         let mut up_to = false;
         let (count, used) = if tokens.first().is_some_and(|t| t.is_word("up"))
@@ -646,7 +649,10 @@ pub(crate) fn parse_put_into_hand(
             && grammar::contains_word(tokens, "rest")
             && grammar::contains_word(tokens, "bottom")
             && grammar::contains_word(tokens, "library")
-            && clause_words.iter().any(|w| *w == "and" || *w == "then")
+            && crate::runtime_backend::lexer::word_slice_contains_any_word(
+                &clause_words,
+                &["and", "then"],
+            )
         {
             let mut up_to = false;
             let (count, used) = if tokens.first().is_some_and(|t| t.is_word("up"))
@@ -696,7 +702,10 @@ pub(crate) fn parse_put_into_hand(
         if has_them
             && grammar::contains_word(tokens, "rest")
             && grammar::contains_word(tokens, "graveyard")
-            && clause_words.iter().any(|w| *w == "and" || *w == "then")
+            && crate::runtime_backend::lexer::word_slice_contains_any_word(
+                &clause_words,
+                &["and", "then"],
+            )
         {
             let mut up_to = false;
             let (count, used) = if tokens.first().is_some_and(|t| t.is_word("up"))
@@ -994,8 +1003,10 @@ pub(crate) fn parse_put_into_hand(
             }
 
             let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
-            let is_rest_target =
-                target_words.as_slice() == ["the", "rest"] || target_words.as_slice() == ["rest"];
+            let is_rest_target = crate::runtime_backend::lexer::word_slice_eq_any(
+                &target_words,
+                &[&["the", "rest"], &["rest"]],
+            );
             if is_rest_target {
                 return Ok(EffectAst::subject_verb_put_rest_on_bottom_of_library());
             }
@@ -1060,7 +1071,10 @@ pub(crate) fn parse_put_into_hand(
             };
             let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
             if zone == Zone::Graveyard
-                && matches!(target_words.as_slice(), ["the", "rest"] | ["rest"])
+                && crate::runtime_backend::lexer::word_slice_eq_any(
+                    &target_words,
+                    &[&["the", "rest"], &["rest"]],
+                )
             {
                 return Ok(EffectAst::subject_verb_move_to_zone(
                     TargetAst::Object(
@@ -1080,7 +1094,10 @@ pub(crate) fn parse_put_into_hand(
                 if let Some(count) = parse_counted_those_cards_target(&target_tokens)
                     && grammar::contains_word(destination_tokens, "rest")
                     && grammar::contains_word(destination_tokens, "graveyard")
-                    && clause_words.iter().any(|w| *w == "and" || *w == "then")
+                    && crate::runtime_backend::lexer::word_slice_contains_any_word(
+                        &clause_words,
+                        &["and", "then"],
+                    )
                 {
                     let dest_player = if grammar::contains_word(tokens, "your") {
                         PlayerAst::You
@@ -1195,26 +1212,37 @@ pub(crate) fn parse_put_into_hand(
         }
 
         let destination_tail_words = crate::runtime_backend::token_word_refs(&destination_tail);
+        const OWNER_CONTROL_TAILS: &[&[&str]] = &[
+            &["under", "its", "owners", "control"],
+            &["under", "his", "owners", "control"],
+            &["under", "her", "owners", "control"],
+            &["under", "their", "owners", "control"],
+            &["under", "that", "players", "control"],
+        ];
         let supported_control_tail = destination_tail_words.is_empty()
-            || destination_tail_words.as_slice() == ["under", "your", "control"]
-            || destination_tail_words.as_slice() == ["under", "its", "owners", "control"]
-            || destination_tail_words.as_slice() == ["under", "his", "owners", "control"]
-            || destination_tail_words.as_slice() == ["under", "her", "owners", "control"]
-            || destination_tail_words.as_slice() == ["under", "their", "owners", "control"]
-            || destination_tail_words.as_slice() == ["under", "that", "players", "control"];
+            || crate::runtime_backend::lexer::word_slice_eq(
+                &destination_tail_words,
+                &["under", "your", "control"],
+            )
+            || crate::runtime_backend::lexer::word_slice_eq_any(
+                &destination_tail_words,
+                OWNER_CONTROL_TAILS,
+            );
         if !supported_control_tail {
             return Err(CardTextError::ParseError(format!(
                 "unsupported put destination after 'onto' (clause: '{}')",
                 clause_words.join(" ")
             )));
         }
-        let battlefield_controller = if destination_tail_words.as_slice() == ["under", "your", "control"] {
+        let battlefield_controller = if crate::runtime_backend::lexer::word_slice_eq(
+            &destination_tail_words,
+            &["under", "your", "control"],
+        ) {
             ReturnControllerAst::You
-        } else if destination_tail_words.as_slice() == ["under", "its", "owners", "control"]
-            || destination_tail_words.as_slice() == ["under", "his", "owners", "control"]
-            || destination_tail_words.as_slice() == ["under", "her", "owners", "control"]
-            || destination_tail_words.as_slice() == ["under", "their", "owners", "control"]
-            || destination_tail_words.as_slice() == ["under", "that", "players", "control"]
+        } else if crate::runtime_backend::lexer::word_slice_eq_any(
+            &destination_tail_words,
+            OWNER_CONTROL_TAILS,
+        )
         {
             ReturnControllerAst::Owner
         } else {

@@ -100,6 +100,10 @@ use super::lexer::{
     OwnedLexToken, TokenKind, TokenWordView, lex_line, render_token_slice, split_lexed_sentences,
     token_word_refs, trim_lexed_commas,
 };
+use super::lexer::{
+    word_slice_contains_phrase, word_slice_contains_phrase_or_empty, word_slice_ends_with,
+    word_slice_find_phrase_start, word_slice_starts_with,
+};
 use super::lowering_support::{
     rewrite_apply_instead_followup_statement_to_last_ability, rewrite_lower_prepared_ability,
     rewrite_lower_prepared_additional_cost_choice_modes_with_exports,

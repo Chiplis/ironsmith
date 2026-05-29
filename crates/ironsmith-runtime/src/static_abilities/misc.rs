@@ -2964,15 +2964,16 @@ impl DamageAmountReplacementMatcher {
             } else {
                 ctx.filter_ctx.clone()
             };
-            self.source_filter
-                .matches(source, &filter_ctx, ctx.game)
+            self.source_filter.matches(source, &filter_ctx, ctx.game)
         });
         let lki = ctx
             .event_source_snapshot
             .filter(|snapshot| snapshot.object_id == damage.source)
             .is_some_and(|snapshot| {
                 let filter_ctx = if snapshot.zone == Zone::Stack {
-                    ctx.filter_ctx.clone().with_caster(Some(snapshot.controller))
+                    ctx.filter_ctx
+                        .clone()
+                        .with_caster(Some(snapshot.controller))
                 } else {
                     ctx.filter_ctx.clone()
                 };

@@ -27,10 +27,12 @@ use super::super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_dynamic_cost_modifier_value,
     parse_value_binding_clause,
 };
-use super::super::object_filters::parse_object_filter;
-use super::super::token_primitives::{
-    find_index, find_window_by, rfind_index, slice_contains, slice_starts_with, str_strip_suffix,
+use super::super::lexer::{
+    word_slice_contains_phrase, word_slice_contains_word, word_slice_eq, word_slice_eq_any,
+    word_slice_starts_with, word_slice_strip_prefix_value,
 };
+use super::super::object_filters::parse_object_filter;
+use super::super::token_primitives::{find_index, find_window_by, rfind_index, str_strip_suffix};
 use super::super::util::{
     is_article, is_source_reference_words, mana_pips_from_token, parse_card_type,
     parse_mana_symbol, parse_number, parse_number_word_u32, parse_target_count_range_prefix,
@@ -46,7 +48,7 @@ use super::super::value_helpers::{
 use super::clause_pattern_helpers::extract_subject_player;
 use super::creation_handlers::{parse_create, parse_incubate, parse_investigate};
 use super::for_each_helpers::parse_who_did_this_way_predicate;
-use super::subject_verb_primitives::try_build_unless;
+use super::subject_verb_primitives::{SubjectVerbPrimitiveClause, try_build_unless};
 use super::zone_counter_helpers::{parse_convert, parse_put_counters, parse_transform};
 use super::zone_handlers::{
     DelayedReturnTimingAst, parse_become, parse_delayed_return_timing_words, parse_destroy,

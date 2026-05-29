@@ -8,7 +8,7 @@ use super::super::grammar::effects::{
 };
 use super::super::grammar::primitives as grammar;
 use super::super::grammar::values as shared_values;
-use super::super::lexer::OwnedLexToken;
+use super::super::lexer::{OwnedLexToken, word_slice_eq, word_slice_eq_any};
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::super::token_primitives::{
     find_index, rfind_index, slice_contains, slice_ends_with, slice_starts_with,
@@ -407,7 +407,10 @@ pub(crate) fn parse_sentence_counter_target_spell_if_it_was_kicked(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if clause_words.as_slice() != ["counter", "target", "spell", "if", "it", "was", "kicked"] {
+    if !word_slice_eq(
+        &clause_words,
+        &["counter", "target", "spell", "if", "it", "was", "kicked"],
+    ) {
         return Ok(None);
     }
 
@@ -425,15 +428,18 @@ pub(crate) fn parse_sentence_counter_target_spell_thats_second_cast_this_turn(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let matches = clause_words.as_slice()
-        == [
-            "counter", "target", "spell", "thats", "second", "spell", "cast", "this", "turn",
-        ]
-        || clause_words.as_slice()
-            == [
+    let matches = word_slice_eq_any(
+        &clause_words,
+        &[
+            &[
+                "counter", "target", "spell", "thats", "second", "spell", "cast", "this", "turn",
+            ],
+            &[
                 "counter", "target", "spell", "thats", "the", "second", "spell", "cast", "this",
                 "turn",
-            ];
+            ],
+        ],
+    );
     if !matches {
         return Ok(None);
     }

@@ -1050,11 +1050,7 @@ pub struct LookAtObjectsEffect {
 }
 
 impl LookAtObjectsEffect {
-    pub fn new(
-        filter: ObjectFilter,
-        viewer: PlayerFilter,
-        subject: PlayerFilter,
-    ) -> Self {
+    pub fn new(filter: ObjectFilter, viewer: PlayerFilter, subject: PlayerFilter) -> Self {
         Self {
             filter,
             viewer,
@@ -3445,7 +3441,11 @@ pub struct RedirectAllDamageThisTurnToTargetEffect {
 }
 
 impl RedirectAllDamageThisTurnToTargetEffect {
-    pub fn new(player_filter: PlayerFilter, object_filter: ObjectFilter, target: ChooseSpec) -> Self {
+    pub fn new(
+        player_filter: PlayerFilter,
+        object_filter: ObjectFilter,
+        target: ChooseSpec,
+    ) -> Self {
         Self {
             player_filter,
             object_filter,

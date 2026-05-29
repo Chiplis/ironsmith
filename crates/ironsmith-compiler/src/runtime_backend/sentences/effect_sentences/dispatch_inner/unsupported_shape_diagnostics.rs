@@ -15,7 +15,8 @@ pub(crate) fn parse_gain_life_equal_to_power_sentence(
     }
 
     let tail = &words[gain_idx + 4..];
-    let has_its_power = contains_word_window(tail, &["its", "power"]);
+    let has_its_power =
+        crate::runtime_backend::lexer::word_slice_contains_phrase(tail, &["its", "power"]);
     if !has_its_power {
         return Ok(None);
     }

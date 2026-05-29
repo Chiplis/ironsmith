@@ -10,7 +10,7 @@ use crate::cards::builders::{CardTextError, TextSpan};
 use crate::mana::ManaSymbol;
 
 pub(crate) use super::super::lexer::TokenWordView;
-use super::super::lexer::{LexStream, LexToken, TokenKind};
+use super::super::lexer::{LexStream, LexToken, TokenKind, word_slice_ends_with};
 
 pub(crate) struct MaybeTrace<P, D> {
     parser: P,
@@ -799,7 +799,7 @@ pub(crate) fn split_lexed_once_on_comma<'a>(
 }
 
 fn primitive_words_end_with(words: &[&str], suffix: &[&str]) -> bool {
-    words.len() >= suffix.len() && &words[words.len() - suffix.len()..] == suffix
+    word_slice_ends_with(words, suffix)
 }
 
 fn should_keep_and_for_power_toughness_axis<'a>(

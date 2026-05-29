@@ -36,7 +36,10 @@ fn object_filter_mentions_iterated_player(filter: &crate::target::ObjectFilter) 
             .entered_battlefield_controller
             .as_ref()
             .is_some_and(crate::target::PlayerFilter::mentions_iterated_player)
-        || filter.any_of.iter().any(object_filter_mentions_iterated_player)
+        || filter
+            .any_of
+            .iter()
+            .any(object_filter_mentions_iterated_player)
 }
 
 fn restriction_mentions_iterated_player(restriction: &crate::effect::Restriction) -> bool {
@@ -44,9 +47,7 @@ fn restriction_mentions_iterated_player(restriction: &crate::effect::Restriction
         crate::effect::Restriction::AttackPlayerOrPlaneswalkersControlledBy {
             attackers,
             player,
-        } => {
-            object_filter_mentions_iterated_player(attackers) || player.mentions_iterated_player()
-        }
+        } => object_filter_mentions_iterated_player(attackers) || player.mentions_iterated_player(),
         _ => false,
     }
 }
@@ -119,13 +120,13 @@ impl EffectExecutor for IfEffect {
             .get_outcome(self.condition)
             .ok_or(ExecutionError::EffectNotFound(self.condition))?;
 
-        if matches!(self.predicate, EffectPredicate::Happened | EffectPredicate::DidNotHappen)
-            && (effect_list_mentions_iterated_player(&self.then)
-                || effect_list_mentions_iterated_player(&self.else_))
-            && let Some(player_counts) = outcome
-                .execution_facts
-                .iter()
-                .find_map(|fact| match fact {
+        if matches!(
+            self.predicate,
+            EffectPredicate::Happened | EffectPredicate::DidNotHappen
+        ) && (effect_list_mentions_iterated_player(&self.then)
+            || effect_list_mentions_iterated_player(&self.else_))
+            && let Some(player_counts) =
+                outcome.execution_facts.iter().find_map(|fact| match fact {
                     ExecutionFact::PlayerCounts(counts) => Some(counts.clone()),
                     _ => None,
                 })

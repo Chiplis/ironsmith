@@ -24,18 +24,19 @@ use super::keyword_static::{
     parse_value_binding_clause_lexed,
 };
 use super::leaf::{lower_activation_cost_cst, parse_activation_cost_tokens_rewrite};
-use super::lexer::{OwnedLexToken, TokenKind};
-use super::object_filters::{
-    find_word_slice_phrase_start, parse_object_filter, parse_object_filter_lexed,
+use super::lexer::{
+    OwnedLexToken, TokenKind, word_slice_contains_any_phrase, word_slice_contains_phrase,
+    word_slice_contains_word, word_slice_ends_with, word_slice_starts_with,
 };
+use super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::token_primitives::{
     contains_window, find_index, find_window_by, find_window_index, lexed_head_words, rfind_index,
     slice_contains, slice_ends_with, slice_starts_with, slice_strip_prefix, slice_strip_suffix,
     str_strip_prefix, str_strip_suffix,
 };
 use super::util::{
-    current_source_reference_name, is_source_reference_words, mana_pips_from_token, parse_card_type,
-    parse_color, parse_counter_type_from_tokens, parse_non_type, parse_number,
+    current_source_reference_name, is_source_reference_words, mana_pips_from_token,
+    parse_card_type, parse_color, parse_counter_type_from_tokens, parse_non_type, parse_number,
     parse_number_word_u32, parse_subject, parse_target_count_range_prefix, parse_target_phrase,
     parse_value_expr_words, source_reference_surface_for_span, source_reference_surface_for_words,
     span_from_tokens, token_index_for_word_index, trim_commas, words,

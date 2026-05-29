@@ -71,7 +71,7 @@ pub(super) fn parse_object_filter_inner(
             }
             let fragment_words_view = GrammarFilterNormalizedWords::new(&fragment_tokens);
             let fragment_words = fragment_words_view.to_word_refs();
-            if fragment_words.starts_with(&["a", "single"]) {
+            if word_slice_starts_with(&fragment_words, &["a", "single"]) {
                 count = Some(crate::effect::ChoiceCount::exactly(1));
                 let start = normalized_token_index_for_word_index(&fragment_tokens, 2)
                     .unwrap_or(fragment_tokens.len());
@@ -224,10 +224,10 @@ pub(super) fn parse_object_filter_inner(
 
         let tail_words_view = GrammarFilterNormalizedWords::new(&base_tokens[idx + 2..]);
         let tail_words = tail_words_view.to_word_refs();
-        if tail_words.starts_with(&["enchanted"])
-            || tail_words.starts_with(&["equipped"])
-            || tail_words.starts_with(&["basic", "land"])
-        {
+        if word_slice_starts_with_any(
+            &tail_words,
+            &[&["enchanted"], &["equipped"], &["basic", "land"]],
+        ) {
             idx += 1;
             continue;
         }
@@ -356,9 +356,12 @@ pub(super) fn parse_object_filter_inner(
     // "legendary or Rat card" (Nashi, Moon's Legacy) is a supertype/subtype disjunction.
     // We parse it by collecting both selectors and then expanding into an `any_of` filter
     // after the normal pass so other shared qualifiers (zone/owner/etc.) are preserved.
-    let legendary_or_subtype = find_word_slice_phrase_start(&all_words, &["legendary", "or"])
-        .and_then(|idx| all_words.get(idx + 2).copied())
-        .and_then(parse_subtype_word);
+    let legendary_or_subtype = crate::runtime_backend::lexer::word_slice_find_phrase_start(
+        &all_words,
+        &["legendary", "or"],
+    )
+    .and_then(|idx| all_words.get(idx + 2).copied())
+    .and_then(parse_subtype_word);
 
     // "in a graveyard that was put there from anywhere this turn" (Reenact the Crime)
     // means the card entered a graveyard this turn.
@@ -1136,7 +1139,7 @@ pub(super) fn parse_object_filter_inner(
             if qualifier_in_all_segments(qualifier) {
                 return true;
             }
-            if all_words.iter().any(|word| *word == opposite) {
+            if crate::runtime_backend::lexer::word_slice_contains_word(&all_words, opposite) {
                 return false;
             }
             let Some(first_segment) = segment_words_lists.first() else {
@@ -1796,7 +1799,9 @@ fn try_apply_could_be_targeted_by_that_spell_clause(
         ["this", "spell", "could", "target"].as_slice(),
         ["it", "could", "target"].as_slice(),
     ] {
-        let Some(idx) = find_word_slice_phrase_start(all_words, phrase) else {
+        let Some(idx) =
+            crate::runtime_backend::lexer::word_slice_find_phrase_start(all_words, phrase)
+        else {
             continue;
         };
         filter.could_be_targeted_by = Some(TargetabilityConstraint::by_stack_object(
@@ -1814,7 +1819,9 @@ fn try_apply_distinct_powers_clause(filter: &mut ObjectFilter, all_words: &mut V
         ["that", "have", "different", "powers"].as_slice(),
         ["that", "has", "different", "powers"].as_slice(),
     ] {
-        let Some(idx) = find_word_slice_phrase_start(all_words, phrase) else {
+        let Some(idx) =
+            crate::runtime_backend::lexer::word_slice_find_phrase_start(all_words, phrase)
+        else {
             continue;
         };
         filter.distinct_powers = true;
@@ -1833,7 +1840,9 @@ fn try_apply_distinct_creature_types_clause(
         ["that", "shares", "no", "creature", "types"].as_slice(),
         ["with", "no", "creature", "types", "in", "common"].as_slice(),
     ] {
-        let Some(idx) = find_word_slice_phrase_start(all_words, phrase) else {
+        let Some(idx) =
+            crate::runtime_backend::lexer::word_slice_find_phrase_start(all_words, phrase)
+        else {
             continue;
         };
         filter.distinct_creature_types = true;

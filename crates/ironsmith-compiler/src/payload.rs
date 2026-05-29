@@ -414,7 +414,10 @@ impl KeywordAction {
                 format!("Protection from {}", filter.description())
             }
             Self::ProtectionFromEachManaValueAmong(filter) => {
-                format!("Protection from each mana value among {}", filter.description())
+                format!(
+                    "Protection from each mana value among {}",
+                    filter.description()
+                )
             }
             Self::ProtectionFromCardType(card_type) => {
                 format!(

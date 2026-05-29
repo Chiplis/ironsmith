@@ -16,9 +16,13 @@ use crate::types::{CardType, Subtype, Supertype};
 use ironsmith_core::ValueSurfaceHint;
 
 use super::super::activation_and_restrictions::activated_line_core::find_word_sequence_start;
-use super::super::lexer::{LexStream, OwnedLexToken, TokenKind, lex_line, parser_token_word_refs};
+use super::super::lexer::{
+    LexStream, OwnedLexToken, TokenKind, contains_token_word, lex_line, parser_token_word_refs,
+    word_slice_contains_word, word_slice_eq, word_slice_eq_any, word_slice_find_phrase_start,
+    word_slice_starts_with,
+};
 use super::super::object_filters::parse_object_filter_lexed;
-use super::super::token_primitives::{find_index, slice_contains, slice_starts_with};
+use super::super::token_primitives::find_index;
 #[cfg(test)]
 use super::super::util::parse_subtype_word;
 use super::super::util::{
@@ -118,7 +122,7 @@ pub(crate) fn parse_players_who_control_more_than_you_value_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    let mut idx = if matches!(words.as_slice(), ["where", "x", "is", ..]) {
+    let mut idx = if word_slice_starts_with(&words, &["where", "x", "is"]) {
         3usize
     } else {
         0usize
@@ -154,14 +158,12 @@ pub(crate) fn parse_players_who_control_more_than_you_value_lexed(
     }
     idx += 1;
 
-    let Some(than_offset) =
-        crate::runtime_backend::token_primitives::find_window_index(&words[idx..], &["than"])
-    else {
+    let Some(than_offset) = word_slice_find_phrase_start(&words[idx..], &["than"]) else {
         return None;
     };
     let than_idx = idx + than_offset;
     let tail = &words[than_idx..];
-    if tail != ["than", "you"] {
+    if !word_slice_eq(tail, &["than", "you"]) {
         return None;
     }
 
@@ -560,7 +562,7 @@ pub(crate) fn parse_modal_choose_range(
         return Ok(Some(range));
     }
 
-    if tokens.iter().any(|token| token.is_word("or")) {
+    if contains_token_word(tokens, "or") {
         return Ok(Some((Some(Value::Fixed(1)), Some(Value::Fixed(1)))));
     }
 
@@ -670,46 +672,70 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
         if is_source_toughness_segment(segment) {
             return Some(Value::ToughnessOf(Box::new(ChooseSpec::Source)));
         }
-        if segment == ["that", "creature", "power"]
-            || segment == ["that", "creatures", "power"]
-            || segment == ["that", "objects", "power"]
-        {
+        if word_slice_eq_any(
+            segment,
+            &[
+                &["that", "creature", "power"],
+                &["that", "creatures", "power"],
+                &["that", "objects", "power"],
+            ],
+        ) {
             return Some(tagged_it_power.clone());
         }
-        if segment == ["that", "creature", "toughness"]
-            || segment == ["that", "creatures", "toughness"]
-            || segment == ["that", "objects", "toughness"]
-        {
+        if word_slice_eq_any(
+            segment,
+            &[
+                &["that", "creature", "toughness"],
+                &["that", "creatures", "toughness"],
+                &["that", "objects", "toughness"],
+            ],
+        ) {
             return Some(tagged_it_toughness.clone());
         }
-        if segment == ["the", "sacrificed", "creature", "power"]
-            || segment == ["the", "sacrificed", "creatures", "power"]
-            || segment == ["sacrificed", "creature", "power"]
-            || segment == ["sacrificed", "creatures", "power"]
-        {
+        if word_slice_eq_any(
+            segment,
+            &[
+                &["the", "sacrificed", "creature", "power"],
+                &["the", "sacrificed", "creatures", "power"],
+                &["sacrificed", "creature", "power"],
+                &["sacrificed", "creatures", "power"],
+            ],
+        ) {
             return Some(tagged_it_power);
         }
-        if segment == ["the", "exploited", "creature", "power"]
-            || segment == ["the", "exploited", "creatures", "power"]
-            || segment == ["exploited", "creature", "power"]
-            || segment == ["exploited", "creatures", "power"]
-        {
+        if word_slice_eq_any(
+            segment,
+            &[
+                &["the", "exploited", "creature", "power"],
+                &["the", "exploited", "creatures", "power"],
+                &["exploited", "creature", "power"],
+                &["exploited", "creatures", "power"],
+            ],
+        ) {
             return Some(Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(
                 crate::tag::EXPLOITED_TAG,
             )))));
         }
-        if segment == ["the", "sacrificed", "creature", "toughness"]
-            || segment == ["the", "sacrificed", "creatures", "toughness"]
-            || segment == ["sacrificed", "creature", "toughness"]
-            || segment == ["sacrificed", "creatures", "toughness"]
-        {
+        if word_slice_eq_any(
+            segment,
+            &[
+                &["the", "sacrificed", "creature", "toughness"],
+                &["the", "sacrificed", "creatures", "toughness"],
+                &["sacrificed", "creature", "toughness"],
+                &["sacrificed", "creatures", "toughness"],
+            ],
+        ) {
             return Some(tagged_it_toughness);
         }
-        if segment == ["the", "exploited", "creature", "toughness"]
-            || segment == ["the", "exploited", "creatures", "toughness"]
-            || segment == ["exploited", "creature", "toughness"]
-            || segment == ["exploited", "creatures", "toughness"]
-        {
+        if word_slice_eq_any(
+            segment,
+            &[
+                &["the", "exploited", "creature", "toughness"],
+                &["the", "exploited", "creatures", "toughness"],
+                &["exploited", "creature", "toughness"],
+                &["exploited", "creatures", "toughness"],
+            ],
+        ) {
             return Some(Value::ToughnessOf(Box::new(ChooseSpec::Tagged(
                 TagKey::from(crate::tag::EXPLOITED_TAG),
             ))));
@@ -730,18 +756,18 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
             !segment[1..segment.len() - 2].is_empty()
         };
 
-        if slice_starts_with(&segment, &["that", "spell", "mana", "value"])
-            || slice_starts_with(&segment, &["that", "spell's", "mana", "value"])
-            || slice_starts_with(&segment, &["that", "spells", "mana", "value"])
+        if word_slice_starts_with(&segment, &["that", "spell", "mana", "value"])
+            || word_slice_starts_with(&segment, &["that", "spell's", "mana", "value"])
+            || word_slice_starts_with(&segment, &["that", "spells", "mana", "value"])
         {
             return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
                 TagKey::from(IT_TAG),
             ))));
         }
-        if slice_starts_with(&segment, &["that", "card", "mana", "value"])
-            || slice_starts_with(&segment, &["that", "card's", "mana", "value"])
-            || slice_starts_with(&segment, &["that", "cards", "mana", "value"])
-            || slice_starts_with(
+        if word_slice_starts_with(&segment, &["that", "card", "mana", "value"])
+            || word_slice_starts_with(&segment, &["that", "card's", "mana", "value"])
+            || word_slice_starts_with(&segment, &["that", "cards", "mana", "value"])
+            || word_slice_starts_with(
                 &segment,
                 &[
                     "the",
@@ -753,7 +779,7 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
                     "creature",
                 ],
             )
-            || slice_starts_with(
+            || word_slice_starts_with(
                 &segment,
                 &[
                     "the",
@@ -765,7 +791,7 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
                     "artifact",
                 ],
             )
-            || slice_starts_with(
+            || word_slice_starts_with(
                 &segment,
                 &[
                     "the",
@@ -777,49 +803,49 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
                     "permanent",
                 ],
             )
-            || slice_starts_with(
+            || word_slice_starts_with(
                 &segment,
                 &["mana", "value", "of", "the", "sacrificed", "creature"],
             )
-            || slice_starts_with(
+            || word_slice_starts_with(
                 &segment,
                 &["mana", "value", "of", "the", "sacrificed", "artifact"],
             )
-            || slice_starts_with(
+            || word_slice_starts_with(
                 &segment,
                 &["mana", "value", "of", "the", "sacrificed", "permanent"],
             )
-            || slice_starts_with(
+            || word_slice_starts_with(
                 &segment,
                 &["the", "sacrificed", "creature", "mana", "value"],
             )
-            || slice_starts_with(
+            || word_slice_starts_with(
                 &segment,
                 &["the", "sacrificed", "artifact", "mana", "value"],
             )
-            || slice_starts_with(
+            || word_slice_starts_with(
                 &segment,
                 &["the", "sacrificed", "permanent", "mana", "value"],
             )
-            || slice_starts_with(
+            || word_slice_starts_with(
                 &segment,
                 &["the", "sacrificed", "creatures", "mana", "value"],
             )
-            || slice_starts_with(
+            || word_slice_starts_with(
                 &segment,
                 &["the", "sacrificed", "artifacts", "mana", "value"],
             )
-            || slice_starts_with(
+            || word_slice_starts_with(
                 &segment,
                 &["the", "sacrificed", "permanents", "mana", "value"],
             )
-            || slice_starts_with(&segment, &["sacrificed", "creature", "mana", "value"])
-            || slice_starts_with(&segment, &["sacrificed", "artifact", "mana", "value"])
-            || slice_starts_with(&segment, &["sacrificed", "permanent", "mana", "value"])
-            || slice_starts_with(&segment, &["sacrificed", "creatures", "mana", "value"])
-            || slice_starts_with(&segment, &["sacrificed", "artifacts", "mana", "value"])
-            || slice_starts_with(&segment, &["sacrificed", "permanents", "mana", "value"])
-            || slice_starts_with(&segment, &["its", "mana", "value"])
+            || word_slice_starts_with(&segment, &["sacrificed", "creature", "mana", "value"])
+            || word_slice_starts_with(&segment, &["sacrificed", "artifact", "mana", "value"])
+            || word_slice_starts_with(&segment, &["sacrificed", "permanent", "mana", "value"])
+            || word_slice_starts_with(&segment, &["sacrificed", "creatures", "mana", "value"])
+            || word_slice_starts_with(&segment, &["sacrificed", "artifacts", "mana", "value"])
+            || word_slice_starts_with(&segment, &["sacrificed", "permanents", "mana", "value"])
+            || word_slice_starts_with(&segment, &["its", "mana", "value"])
             || is_tagged_that_object_mana_value()
         {
             return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
@@ -864,15 +890,15 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
     }
 
     if is_source_power_segment(tail)
-        || slice_starts_with(&tail, &["that", "creature", "power"])
-        || slice_starts_with(&tail, &["that", "creatures", "power"])
-        || slice_starts_with(&tail, &["that", "objects", "power"])
-        || slice_starts_with(&tail, &["the", "sacrificed", "creature", "power"])
-        || slice_starts_with(&tail, &["the", "sacrificed", "creatures", "power"])
-        || slice_starts_with(&tail, &["sacrificed", "creature", "power"])
-        || slice_starts_with(&tail, &["sacrificed", "creatures", "power"])
+        || word_slice_starts_with(&tail, &["that", "creature", "power"])
+        || word_slice_starts_with(&tail, &["that", "creatures", "power"])
+        || word_slice_starts_with(&tail, &["that", "objects", "power"])
+        || word_slice_starts_with(&tail, &["the", "sacrificed", "creature", "power"])
+        || word_slice_starts_with(&tail, &["the", "sacrificed", "creatures", "power"])
+        || word_slice_starts_with(&tail, &["sacrificed", "creature", "power"])
+        || word_slice_starts_with(&tail, &["sacrificed", "creatures", "power"])
     {
-        let source = if tail[0] == "that" || slice_contains(&tail, &"sacrificed") {
+        let source = if tail[0] == "that" || word_slice_contains_word(&tail, "sacrificed") {
             ChooseSpec::Tagged(TagKey::from(IT_TAG))
         } else {
             ChooseSpec::Source
@@ -881,15 +907,15 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
     }
 
     if is_source_toughness_segment(tail)
-        || slice_starts_with(&tail, &["that", "creature", "toughness"])
-        || slice_starts_with(&tail, &["that", "creatures", "toughness"])
-        || slice_starts_with(&tail, &["that", "objects", "toughness"])
-        || slice_starts_with(&tail, &["the", "sacrificed", "creature", "toughness"])
-        || slice_starts_with(&tail, &["the", "sacrificed", "creatures", "toughness"])
-        || slice_starts_with(&tail, &["sacrificed", "creature", "toughness"])
-        || slice_starts_with(&tail, &["sacrificed", "creatures", "toughness"])
+        || word_slice_starts_with(&tail, &["that", "creature", "toughness"])
+        || word_slice_starts_with(&tail, &["that", "creatures", "toughness"])
+        || word_slice_starts_with(&tail, &["that", "objects", "toughness"])
+        || word_slice_starts_with(&tail, &["the", "sacrificed", "creature", "toughness"])
+        || word_slice_starts_with(&tail, &["the", "sacrificed", "creatures", "toughness"])
+        || word_slice_starts_with(&tail, &["sacrificed", "creature", "toughness"])
+        || word_slice_starts_with(&tail, &["sacrificed", "creatures", "toughness"])
     {
-        let source = if tail[0] == "that" || slice_contains(&tail, &"sacrificed") {
+        let source = if tail[0] == "that" || word_slice_contains_word(&tail, "sacrificed") {
             ChooseSpec::Tagged(TagKey::from(IT_TAG))
         } else {
             ChooseSpec::Source
@@ -897,18 +923,18 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
         return Some(Value::ToughnessOf(Box::new(source)));
     }
 
-    if slice_starts_with(&tail, &["that", "spell", "mana", "value"])
-        || slice_starts_with(&tail, &["that", "spell's", "mana", "value"])
-        || slice_starts_with(&tail, &["that", "spells", "mana", "value"])
+    if word_slice_starts_with(&tail, &["that", "spell", "mana", "value"])
+        || word_slice_starts_with(&tail, &["that", "spell's", "mana", "value"])
+        || word_slice_starts_with(&tail, &["that", "spells", "mana", "value"])
     {
         return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
             TagKey::from(IT_TAG),
         ))));
     }
-    if slice_starts_with(&tail, &["that", "card", "mana", "value"])
-        || slice_starts_with(&tail, &["that", "card's", "mana", "value"])
-        || slice_starts_with(&tail, &["that", "cards", "mana", "value"])
-        || slice_starts_with(
+    if word_slice_starts_with(&tail, &["that", "card", "mana", "value"])
+        || word_slice_starts_with(&tail, &["that", "card's", "mana", "value"])
+        || word_slice_starts_with(&tail, &["that", "cards", "mana", "value"])
+        || word_slice_starts_with(
             &tail,
             &[
                 "the",
@@ -920,7 +946,7 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
                 "creature",
             ],
         )
-        || slice_starts_with(
+        || word_slice_starts_with(
             &tail,
             &[
                 "the",
@@ -932,7 +958,7 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
                 "artifact",
             ],
         )
-        || slice_starts_with(
+        || word_slice_starts_with(
             &tail,
             &[
                 "the",
@@ -944,31 +970,31 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
                 "permanent",
             ],
         )
-        || slice_starts_with(
+        || word_slice_starts_with(
             &tail,
             &["mana", "value", "of", "the", "sacrificed", "creature"],
         )
-        || slice_starts_with(
+        || word_slice_starts_with(
             &tail,
             &["mana", "value", "of", "the", "sacrificed", "artifact"],
         )
-        || slice_starts_with(
+        || word_slice_starts_with(
             &tail,
             &["mana", "value", "of", "the", "sacrificed", "permanent"],
         )
-        || slice_starts_with(&tail, &["the", "sacrificed", "creature", "mana", "value"])
-        || slice_starts_with(&tail, &["the", "sacrificed", "artifact", "mana", "value"])
-        || slice_starts_with(&tail, &["the", "sacrificed", "permanent", "mana", "value"])
-        || slice_starts_with(&tail, &["the", "sacrificed", "creatures", "mana", "value"])
-        || slice_starts_with(&tail, &["the", "sacrificed", "artifacts", "mana", "value"])
-        || slice_starts_with(&tail, &["the", "sacrificed", "permanents", "mana", "value"])
-        || slice_starts_with(&tail, &["sacrificed", "creature", "mana", "value"])
-        || slice_starts_with(&tail, &["sacrificed", "artifact", "mana", "value"])
-        || slice_starts_with(&tail, &["sacrificed", "permanent", "mana", "value"])
-        || slice_starts_with(&tail, &["sacrificed", "creatures", "mana", "value"])
-        || slice_starts_with(&tail, &["sacrificed", "artifacts", "mana", "value"])
-        || slice_starts_with(&tail, &["sacrificed", "permanents", "mana", "value"])
-        || slice_starts_with(&tail, &["its", "mana", "value"])
+        || word_slice_starts_with(&tail, &["the", "sacrificed", "creature", "mana", "value"])
+        || word_slice_starts_with(&tail, &["the", "sacrificed", "artifact", "mana", "value"])
+        || word_slice_starts_with(&tail, &["the", "sacrificed", "permanent", "mana", "value"])
+        || word_slice_starts_with(&tail, &["the", "sacrificed", "creatures", "mana", "value"])
+        || word_slice_starts_with(&tail, &["the", "sacrificed", "artifacts", "mana", "value"])
+        || word_slice_starts_with(&tail, &["the", "sacrificed", "permanents", "mana", "value"])
+        || word_slice_starts_with(&tail, &["sacrificed", "creature", "mana", "value"])
+        || word_slice_starts_with(&tail, &["sacrificed", "artifact", "mana", "value"])
+        || word_slice_starts_with(&tail, &["sacrificed", "permanent", "mana", "value"])
+        || word_slice_starts_with(&tail, &["sacrificed", "creatures", "mana", "value"])
+        || word_slice_starts_with(&tail, &["sacrificed", "artifacts", "mana", "value"])
+        || word_slice_starts_with(&tail, &["sacrificed", "permanents", "mana", "value"])
+        || word_slice_starts_with(&tail, &["its", "mana", "value"])
     {
         return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
             TagKey::from(IT_TAG),

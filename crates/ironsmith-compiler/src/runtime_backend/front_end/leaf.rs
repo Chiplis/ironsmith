@@ -18,9 +18,16 @@ use super::grammar::values::{
     count_word_value, parse_count_word_tokens, parse_mana_cost_tokens, parse_mana_symbol,
     parse_mana_symbol_group,
 };
-use super::lexer::{OwnedLexToken, TokenKind, lex_line, render_token_slice};
+use super::lexer::{
+    OwnedLexToken, TokenKind, lex_line, render_token_slice, word_slice_contains_word,
+    word_slice_ends_with, word_slice_eq, word_slice_eq_any, word_slice_find_window_by,
+    word_slice_find_word_where, word_slice_starts_with,
+};
 use super::object_filters::parse_object_filter_lexed;
-use super::token_primitives::find_index as find_token_index;
+use super::token_primitives::{
+    find_index as find_token_index, str_ends_with, str_starts_with, str_strip_prefix,
+    str_strip_suffix,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ActivationCostCst {
@@ -154,42 +161,13 @@ fn parse_color_word(word: &str) -> Option<ColorSet> {
     Color::from_name(word).map(ColorSet::from_color)
 }
 
-fn str_starts_with(text: &str, prefix: &str) -> bool {
-    super::token_primitives::str_starts_with(text, prefix)
-}
-
-fn str_ends_with(text: &str, suffix: &str) -> bool {
-    super::token_primitives::str_ends_with(text, suffix)
-}
-
-fn str_strip_prefix<'a>(text: &'a str, prefix: &str) -> Option<&'a str> {
-    super::token_primitives::str_strip_prefix(text, prefix)
-}
-
-fn str_strip_suffix<'a>(text: &'a str, suffix: &str) -> Option<&'a str> {
-    super::token_primitives::str_strip_suffix(text, suffix)
-}
-
-fn word_slice_starts_with(words: &[&str], prefix: &[&str]) -> bool {
-    super::token_primitives::slice_starts_with(words, prefix)
-}
-
 fn trim_plural_s(word: &str) -> Option<&str> {
     let bytes = word.as_bytes();
     (bytes.len() > 1 && bytes[bytes.len() - 1] == b's').then(|| &word[..word.len() - 1])
 }
 
-fn find_word_index(words: &[&str], mut predicate: impl FnMut(&str) -> bool) -> Option<usize> {
-    super::token_primitives::find_str_by(words, |word| predicate(word))
-}
-
 fn push_unique_card_type(card_types: &mut Vec<CardType>, card_type: CardType) {
-    for existing in card_types.iter() {
-        if *existing == card_type {
-            return;
-        }
-    }
-    card_types.push(card_type);
+    crate::slice_primitives::push_unique(card_types, card_type);
 }
 
 fn first_non_comma_token(tokens: &[OwnedLexToken]) -> Option<&OwnedLexToken> {
@@ -246,16 +224,12 @@ fn render_lower_lexed_tokens(tokens: &[OwnedLexToken]) -> String {
     render_trimmed_lexed_tokens(tokens).to_ascii_lowercase()
 }
 
-fn word_slice_ends_with(words: &[&str], suffix: &[&str]) -> bool {
-    super::token_primitives::slice_ends_with(words, suffix)
-}
-
 fn words_match_any(words: &[&str], patterns: &[&[&str]]) -> bool {
-    super::token_primitives::slice_eq_any(words, patterns)
+    crate::slice_primitives::equals_any(words, patterns)
 }
 
 fn words_start_with_any(words: &[&str], patterns: &[&[&str]]) -> bool {
-    super::token_primitives::slice_starts_with_any(words, patterns)
+    crate::slice_primitives::starts_with_any(words, patterns)
 }
 
 fn parse_count_prefix_words(words: &[&str]) -> Option<(u32, usize)> {
@@ -376,7 +350,8 @@ fn parse_counter_type_descriptor(raw: &str) -> Result<CounterType, CardTextError
         .filter(|word| !word.is_empty())
         .collect::<Vec<_>>();
 
-    let counter_idx = find_word_index(&words, |word| matches!(word, "counter" | "counters"));
+    let counter_idx =
+        word_slice_find_word_where(&words, |word| matches!(word, "counter" | "counters"));
 
     let counter_type = counter_idx.and_then(|counter_idx| {
         if counter_idx == 0 {
@@ -540,10 +515,10 @@ fn parse_discard_segment_tokens(
     let lowered = words.to_word_refs();
     let tail = lowered.get(1..).unwrap_or_default();
 
-    if tail == ["your", "hand"] {
+    if word_slice_eq(tail, &["your", "hand"]) {
         return Ok(ActivationCostSegmentCst::DiscardHand);
     }
-    if tail == ["this", "card"] {
+    if word_slice_eq(tail, &["this", "card"]) {
         return Ok(ActivationCostSegmentCst::DiscardSource);
     }
     if tail.is_empty() {
@@ -673,7 +648,7 @@ fn parse_sacrifice_segment_tokens(
     ) {
         return Ok(ActivationCostSegmentCst::SacrificeSelf);
     }
-    if tail == ["a", "creature"] {
+    if word_slice_eq(tail, &["a", "creature"]) {
         return Ok(ActivationCostSegmentCst::SacrificeCreature);
     }
 
@@ -930,16 +905,15 @@ fn parse_exile_segment_tokens(
 }
 
 fn parse_exile_self_and_named_artifacts_cost(tail: &[&str]) -> Option<ActivationCostSegmentCst> {
-    let marker_idx = tail.windows(5).enumerate().find_map(|(idx, window)| {
-        (window == ["and", "artifacts", "you", "control", "named"]
-            || window == ["and", "artifact", "you", "control", "named"])
-        .then_some(idx)
+    let marker_idx = word_slice_find_window_by(tail, 5, |window| {
+        word_slice_eq(window, &["and", "artifacts", "you", "control", "named"])
+            || word_slice_eq(window, &["and", "artifact", "you", "control", "named"])
     })?;
     if marker_idx == 0 {
         return None;
     }
     let source_words = &tail[..marker_idx];
-    if source_words.is_empty() || source_words == ["the", "top"] {
+    if source_words.is_empty() || word_slice_eq(source_words, &["the", "top"]) {
         return None;
     }
     let name_words = &tail[marker_idx + 5..];
@@ -1028,23 +1002,24 @@ fn parse_put_counter_segment_tokens(
     let raw = render_lower_lexed_tokens(tokens);
     let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
-    if lowered
-        == [
-            "put",
-            "a",
-            "card",
-            "an",
-            "opponent",
-            "owns",
-            "from",
-            "exile",
-            "into",
-            "that",
-            "players",
-            "graveyard",
-        ]
-        || lowered
-            == [
+    if word_slice_eq_any(
+        &lowered,
+        &[
+            &[
+                "put",
+                "a",
+                "card",
+                "an",
+                "opponent",
+                "owns",
+                "from",
+                "exile",
+                "into",
+                "that",
+                "players",
+                "graveyard",
+            ],
+            &[
                 "put",
                 "a",
                 "card",
@@ -1057,12 +1032,14 @@ fn parse_put_counter_segment_tokens(
                 "that",
                 "player's",
                 "graveyard",
-            ]
-    {
+            ],
+        ],
+    ) {
         return Ok(ActivationCostSegmentCst::MoveOpponentOwnedExiledCardToGraveyard);
     }
 
-    let Some(on_word_idx) = find_word_index(lowered.as_slice(), |word| word == "on") else {
+    let Some(on_word_idx) = word_slice_find_word_where(lowered.as_slice(), |word| word == "on")
+    else {
         return Err(CardTextError::ParseError(format!(
             "rewrite put-counter parser missing 'on' in '{raw}'"
         )));
@@ -1123,7 +1100,8 @@ fn parse_remove_counter_segment_tokens(
     let raw = render_lower_lexed_tokens(tokens);
     let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
-    let Some(from_word_idx) = find_word_index(lowered.as_slice(), |word| word == "from") else {
+    let Some(from_word_idx) = word_slice_find_word_where(lowered.as_slice(), |word| word == "from")
+    else {
         return Err(CardTextError::ParseError(format!(
             "rewrite remove-counter parser missing 'from' in '{raw}'"
         )));
@@ -1340,7 +1318,7 @@ fn parse_activation_cost_segment_tokens(
         "discard" => Some(parse_discard_segment_tokens(tokens)),
         "mill" => Some(parse_mill_segment_tokens(tokens)),
         "sacrifice" => Some(parse_sacrifice_segment_tokens(tokens)),
-        "tap" if lowered.iter().any(|word| *word == "untapped") => {
+        "tap" if word_slice_contains_word(&lowered, "untapped") => {
             Some(parse_tap_chosen_segment_tokens(tokens))
         }
         "behold" => Some(parse_behold_segment_tokens(tokens)),
@@ -1622,7 +1600,10 @@ fn parse_reveal_segment_tokens(
     let raw = render_lower_lexed_tokens(tokens);
     let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
-    if lowered == ["reveal", "this", "card", "from", "your", "hand"] {
+    if word_slice_eq(
+        &lowered,
+        &["reveal", "this", "card", "from", "your", "hand"],
+    ) {
         return Ok(ActivationCostSegmentCst::RevealSourceFromHand);
     }
 

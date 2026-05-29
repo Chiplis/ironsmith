@@ -11,18 +11,11 @@ pub(super) fn wrap_delayed_next_step_unless_pays(
     }
 }
 
-pub(crate) fn find_unquoted_token_word(tokens: &[OwnedLexToken], word: &str) -> Option<usize> {
-    let mut inside_quotes = false;
-    for (idx, token) in tokens.iter().enumerate() {
-        if token.is_quote() {
-            inside_quotes = !inside_quotes;
-            continue;
-        }
-        if !inside_quotes && token.is_word(word) {
-            return Some(idx);
-        }
-    }
-    None
+pub(crate) fn find_unquoted_token_word(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    word: &str,
+) -> Option<usize> {
+    clause.find_unquoted_token_word(word)
 }
 
 fn bind_unless_player_context(effect: &mut EffectAst, player: PlayerAst) {
@@ -59,46 +52,51 @@ fn bind_unless_player_context(effect: &mut EffectAst, player: PlayerAst) {
 }
 
 pub(crate) fn parse_sentence_delayed_next_step_unless_pays(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let segments = split_lexed_slices_on_period(tokens);
+    let segments = clause.trimmed_period_segments();
     if segments.is_empty() {
         return Ok(None);
     }
 
     let (leading_segments, final_segment) = segments.split_at(segments.len() - 1);
-    let final_segment = trim_commas(&final_segment[0]);
     let Some((timing_start_word, _timing_end_word, step, player)) =
-        delayed_next_step_marker(&final_segment)
+        delayed_next_step_marker(final_segment[0])
     else {
         return Ok(None);
     };
 
-    let Some(timing_token_idx) = token_index_for_word_index(&final_segment, timing_start_word)
+    let Some(delayed_effect_clause) = final_segment[0]
+        .before_word(timing_start_word)
+        .map(SubjectVerbPrimitiveClause::trimmed)
     else {
         return Ok(None);
     };
-    let delayed_effect_tokens = trim_commas(&final_segment[..timing_token_idx]);
-    if delayed_effect_tokens.is_empty() {
+    if delayed_effect_clause.is_empty() {
         return Ok(None);
     }
 
-    let delayed_effects = parse_effect_chain(&delayed_effect_tokens)?;
+    let delayed_effects = parse_effect_chain(delayed_effect_clause.tokens())?;
     if delayed_effects.is_empty() {
         return Ok(None);
     }
 
-    let timing_tokens = trim_commas(&final_segment[timing_token_idx..]);
-    let Some(unless_idx) = find_token_word(&timing_tokens, "unless") else {
+    let Some(timing_clause) = final_segment[0]
+        .from_word(timing_start_word)
+        .map(SubjectVerbPrimitiveClause::trimmed)
+    else {
         return Ok(None);
     };
-    let Some(unless_effect) = try_build_unless(delayed_effects, &timing_tokens, unless_idx)? else {
+    let Some(unless_idx) = timing_clause.find_token_word("unless") else {
+        return Ok(None);
+    };
+    let Some(unless_effect) = try_build_unless(delayed_effects, timing_clause, unless_idx)? else {
         return Ok(None);
     };
 
     let mut effects = Vec::new();
     for segment in leading_segments {
-        let parsed = parse_effect_chain(segment)?;
+        let parsed = parse_effect_chain(segment.tokens())?;
         if parsed.is_empty() {
             return Ok(None);
         }
@@ -113,34 +111,24 @@ pub(crate) fn parse_sentence_delayed_next_step_unless_pays(
 }
 
 pub(crate) fn parse_sentence_delayed_next_upkeep_unless_pays_lose_game(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let segments = split_lexed_slices_on_period(tokens);
+    let segments = clause.trimmed_period_segments();
     if segments.len() != 2 && segments.len() != 3 {
         return Ok(None);
     }
 
-    let (mut effects, upkeep_tokens, lose_tokens) = if segments.len() == 3 {
-        let first_effects = parse_effect_chain(&segments[0])?;
+    let (mut effects, upkeep_clause, lose_clause) = if segments.len() == 3 {
+        let first_effects = parse_effect_chain(segments[0].tokens())?;
         if first_effects.is_empty() {
             return Ok(None);
         }
-        (
-            first_effects,
-            trim_commas(&segments[1]),
-            trim_commas(&segments[2]),
-        )
+        (first_effects, segments[1], segments[2])
     } else {
-        (
-            Vec::new(),
-            trim_commas(&segments[0]),
-            trim_commas(&segments[1]),
-        )
+        (Vec::new(), segments[0], segments[1])
     };
-    let upkeep_words = crate::runtime_backend::token_word_refs(&upkeep_tokens);
-    let pay_idx = if grammar::words_match_prefix(
-        &upkeep_tokens,
-        &[
+    let pay_idx = if upkeep_clause
+        .strip_prefix(&[
             "at",
             "the",
             "beginning",
@@ -149,14 +137,12 @@ pub(crate) fn parse_sentence_delayed_next_upkeep_unless_pays_lose_game(
             "next",
             "upkeep",
             "pay",
-        ],
-    )
-    .is_some()
+        ])
+        .is_some()
     {
         7usize
-    } else if grammar::words_match_prefix(
-        &upkeep_tokens,
-        &[
+    } else if upkeep_clause
+        .strip_prefix(&[
             "at",
             "the",
             "beginning",
@@ -165,23 +151,21 @@ pub(crate) fn parse_sentence_delayed_next_upkeep_unless_pays_lose_game(
             "next",
             "upkeep",
             "pay",
-        ],
-    )
-    .is_some()
+        ])
+        .is_some()
     {
         8usize
     } else {
         return Ok(None);
     };
 
-    let Some(pay_token_idx) = token_index_for_word_index(&upkeep_tokens, pay_idx) else {
+    let Some(mana_clause) = upkeep_clause.after_words(pay_idx + 1) else {
         return Ok(None);
     };
-    let mana_tokens = &upkeep_tokens[pay_token_idx + 1..];
-    if mana_tokens.is_empty() {
+    if mana_clause.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing mana payment in delayed next-upkeep clause (clause: '{}')",
-            upkeep_words.join(" ")
+            upkeep_clause.text()
         )));
     }
 
@@ -190,21 +174,26 @@ pub(crate) fn parse_sentence_delayed_next_upkeep_unless_pays_lose_game(
         use super::super::super::lexer::LexStream;
         use winnow::prelude::*;
 
-        let mut stream = LexStream::new(mana_tokens);
+        let mut stream = LexStream::new(mana_clause.tokens());
         grammar::collect_mana_symbols
             .parse_next(&mut stream)
             .map_err(|_| {
                 CardTextError::ParseError(format!(
                     "missing mana payment in delayed next-upkeep clause (clause: '{}')",
-                    upkeep_words.join(" ")
+                    upkeep_clause.text()
                 ))
             })?
     };
 
-    let lose_words = crate::runtime_backend::token_word_refs(&lose_tokens);
-    let valid_lose_clause = lose_words == ["if", "you", "dont", "you", "lose", "the", "game"]
-        || lose_words == ["if", "you", "do", "not", "you", "lose", "the", "game"]
-        || lose_words == ["if", "you", "don't", "you", "lose", "the", "game"];
+    let lose_words = lose_clause.word_refs();
+    let valid_lose_clause = crate::runtime_backend::lexer::word_slice_eq_any(
+        &lose_words,
+        &[
+            &["if", "you", "dont", "you", "lose", "the", "game"],
+            &["if", "you", "do", "not", "you", "lose", "the", "game"],
+            &["if", "you", "don't", "you", "lose", "the", "game"],
+        ],
+    );
     if !valid_lose_clause {
         return Ok(None);
     }
@@ -221,35 +210,36 @@ pub(crate) fn parse_sentence_delayed_next_upkeep_unless_pays_lose_game(
 }
 
 fn normalize_unless_payment_clause_tokens(
-    action_tokens: &[OwnedLexToken],
-) -> Option<Vec<OwnedLexToken>> {
-    let mut tokens = trim_commas(action_tokens);
-    let first = tokens.first()?.as_word()?;
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Option<SubjectVerbPrimitiveOwnedClause> {
+    let payment_clause = clause
+        .split_once_on_word_trimmed("before")
+        .map(|(payment_clause, _)| payment_clause.trimmed())
+        .unwrap_or_else(|| clause.trimmed());
+    let mut payment_clause =
+        SubjectVerbPrimitiveOwnedClause::from_comma_trimmed_clause(payment_clause);
+    let first = payment_clause.first_word()?;
     let normalized_first = match first {
         "pay" | "pays" => "pay",
         "sacrifice" | "sacrifices" => "sacrifice",
         _ => return None,
     };
 
-    if tokens[0].as_word() != Some(normalized_first) {
-        tokens[0].replace_word(normalized_first);
+    if first != normalized_first {
+        payment_clause.replace_leading_word(normalized_first);
     }
 
-    if let Some(before_idx) = find_index(&tokens, |token| token.is_word("before")) {
-        tokens.truncate(before_idx);
-    }
-
-    Some(trim_commas(&tokens))
+    Some(payment_clause)
 }
 
 fn parse_unless_payment_clause_as_cost(
-    action_tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<crate::cost::TotalCost>, CardTextError> {
-    let Some(payment_tokens) = normalize_unless_payment_clause_tokens(action_tokens) else {
+    let Some(payment_tokens) = normalize_unless_payment_clause_tokens(clause) else {
         return Ok(None);
     };
     crate::runtime_backend::families::activation_and_restrictions::parse_payment_clause_as_total_cost(
-        &payment_tokens,
+        payment_tokens.tokens(),
     )
 }
 
@@ -257,35 +247,37 @@ fn parse_unless_payment_clause_as_cost(
 /// Returns the unless wrapper containing the given `effects` as the main effects.
 pub(crate) fn try_build_unless(
     effects: Vec<EffectAst>,
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
     unless_idx: usize,
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let after_unless = &tokens[unless_idx + 1..];
-    let after_word_storage = SubjectVerbPrimitiveNormalizedWords::new(after_unless);
-    let after_words = after_word_storage.to_word_refs();
-    let pay_word_idx = find_index(&after_words, |word| matches!(*word, "pay" | "pays"));
-    let pay_token_idx = find_index(after_unless, |token| {
-        token.is_word("pay") || token.is_word("pays")
-    });
+    let after_clause = clause.from(unless_idx + 1).trimmed();
+    let after_words = after_clause.words().to_word_refs();
+    let pay_word_idx = after_clause.find_word_any(&["pay", "pays"]);
 
     let match_player_prefix = |prefix: &[&str]| -> Option<(PlayerAst, usize)> {
-        if prefix == ["you"] {
+        if crate::runtime_backend::lexer::word_slice_eq(prefix, &["you"]) {
             Some((PlayerAst::You, 1))
-        } else if prefix == ["target", "opponent"] {
+        } else if crate::runtime_backend::lexer::word_slice_eq(prefix, &["target", "opponent"]) {
             Some((PlayerAst::TargetOpponent, 2))
-        } else if prefix == ["target", "player"] {
+        } else if crate::runtime_backend::lexer::word_slice_eq(prefix, &["target", "player"]) {
             Some((PlayerAst::Target, 2))
-        } else if prefix == ["any", "player"] {
+        } else if crate::runtime_backend::lexer::word_slice_eq(prefix, &["any", "player"]) {
             Some((PlayerAst::Any, 2))
-        } else if prefix == ["they"] {
+        } else if crate::runtime_backend::lexer::word_slice_eq(prefix, &["they"]) {
             Some((PlayerAst::That, 1))
-        } else if prefix == ["defending", "player"] {
+        } else if crate::runtime_backend::lexer::word_slice_eq(prefix, &["defending", "player"]) {
             Some((PlayerAst::Defending, 2))
-        } else if prefix == ["that", "player"] {
+        } else if crate::runtime_backend::lexer::word_slice_eq(prefix, &["that", "player"]) {
             Some((PlayerAst::That, 2))
-        } else if prefix == ["its", "controller"] || prefix == ["their", "controller"] {
+        } else if crate::runtime_backend::lexer::word_slice_eq_any(
+            prefix,
+            &[&["its", "controller"], &["their", "controller"]],
+        ) {
             Some((PlayerAst::ItsController, 2))
-        } else if prefix == ["its", "owner"] || prefix == ["their", "owner"] {
+        } else if crate::runtime_backend::lexer::word_slice_eq_any(
+            prefix,
+            &[&["its", "owner"], &["their", "owner"]],
+        ) {
             Some((PlayerAst::ItsOwner, 2))
         } else if prefix.len() >= 6
             && prefix[0] == "that"
@@ -411,36 +403,34 @@ pub(crate) fn try_build_unless(
         return Ok(None);
     };
 
-    let action_token_idx = if let Some(pay_idx) = pay_token_idx {
-        pay_idx
+    let action_clause = if let Some(pay_idx) = pay_word_idx {
+        after_clause.from_word(pay_idx)
     } else {
-        after_word_storage
-            .token_index_after_words(action_word_start)
-            .unwrap_or(0)
-    };
-
-    let action_tokens = &after_unless[action_token_idx..];
-    let action_word_storage = SubjectVerbPrimitiveNormalizedWords::new(action_tokens);
+        after_clause.after_words(action_word_start)
+    }
+    .unwrap_or_else(|| after_clause.from(0))
+    .trimmed();
+    let action_word_storage = action_clause.words();
     let action_words = action_word_storage.to_word_refs();
 
     if action_words.first() == Some(&"pay") || action_words.first() == Some(&"pays") {
-        if contains_word_window(&action_words, &["mana", "cost"]) {
+        if action_clause.contains_phrase(&["mana", "cost"]) {
             return Err(CardTextError::ParseError(format!(
                 "unsupported unless-payment mana-cost clause (clause: '{}')",
-                crate::runtime_backend::token_word_refs(tokens).join(" ")
+                clause.text()
             )));
         }
     } else if matches!(action_words.first(), Some(&"draw" | &"draws")) {
         return Err(CardTextError::ParseError(format!(
             "unsupported non-cost unless action (clause: '{}')",
-            crate::runtime_backend::token_word_refs(tokens).join(" ")
+            clause.text()
         )));
     }
 
     if matches!(
         action_words.first().copied(),
         Some("sacrifice" | "sacrifices")
-    ) && let Some(cost) = parse_unless_payment_clause_as_cost(action_tokens)?
+    ) && let Some(cost) = parse_unless_payment_clause_as_cost(action_clause)?
     {
         return Ok(Some(EffectAst::UnlessPays {
             effects,
@@ -453,7 +443,7 @@ pub(crate) fn try_build_unless(
         action_words.first().copied(),
         Some("sacrifice" | "sacrifices")
     ) && let Ok(mut alternative) = super::super::zone_handlers::parse_sacrifice(
-        action_tokens,
+        action_clause.tokens(),
         Some(SubjectAst::Player(player)),
         None,
     )
@@ -469,7 +459,7 @@ pub(crate) fn try_build_unless(
         }));
     }
 
-    if let Some(cost) = parse_unless_payment_clause_as_cost(action_tokens)? {
+    if let Some(cost) = parse_unless_payment_clause_as_cost(action_clause)? {
         return Ok(Some(EffectAst::UnlessPays {
             effects,
             player,
@@ -480,7 +470,7 @@ pub(crate) fn try_build_unless(
     // Prefer the action-only slice for explicit-player clauses like
     // "unless that player discards ... or sacrifices ...". Parsing the full
     // clause first can flatten the trailing "or" branch into the first action.
-    if let Ok(mut alternative) = parse_effect_chain(action_tokens) {
+    if let Ok(mut alternative) = parse_effect_chain(action_clause.tokens()) {
         if !alternative.is_empty() {
             for effect in &mut alternative {
                 bind_unless_player_context(effect, player);
@@ -495,7 +485,7 @@ pub(crate) fn try_build_unless(
 
     // Fall back to the full clause when the action-only parse needs the
     // explicit player prefix to succeed.
-    if let Ok(mut alternative) = parse_effect_chain(after_unless) {
+    if let Ok(mut alternative) = parse_effect_chain(after_clause.tokens()) {
         if !alternative.is_empty() {
             for effect in &mut alternative {
                 bind_unless_player_context(effect, player);
@@ -508,7 +498,7 @@ pub(crate) fn try_build_unless(
         }
     }
 
-    if let Ok(mut alternative) = parse_effect_sentence_lexed(after_unless) {
+    if let Ok(mut alternative) = parse_effect_sentence_lexed(after_clause.tokens()) {
         if !alternative.is_empty() {
             for effect in &mut alternative {
                 bind_unless_player_context(effect, player);
@@ -521,7 +511,7 @@ pub(crate) fn try_build_unless(
         }
     }
 
-    if let Ok(mut alternative) = parse_effect_sentence_lexed(action_tokens) {
+    if let Ok(mut alternative) = parse_effect_sentence_lexed(action_clause.tokens()) {
         if !alternative.is_empty() {
             for effect in &mut alternative {
                 bind_unless_player_context(effect, player);
@@ -534,7 +524,9 @@ pub(crate) fn try_build_unless(
         }
     }
 
-    if let Ok(mut alternative) = parse_effect_clause(action_tokens).map(|effect| vec![effect]) {
+    if let Ok(mut alternative) =
+        parse_effect_clause(action_clause.tokens()).map(|effect| vec![effect])
+    {
         if !alternative.is_empty() {
             for effect in &mut alternative {
                 bind_unless_player_context(effect, player);
@@ -548,8 +540,9 @@ pub(crate) fn try_build_unless(
     }
 
     if matches!(action_words.first().copied(), Some("discard" | "discards"))
-        && let Ok(mut alternative) = super::super::zone_handlers::parse_discard(action_tokens, None)
-            .map(|effect| vec![effect])
+        && let Ok(mut alternative) =
+            super::super::zone_handlers::parse_discard(action_clause.tokens(), None)
+                .map(|effect| vec![effect])
     {
         for effect in &mut alternative {
             bind_unless_player_context(effect, player);
@@ -576,11 +569,12 @@ mod tests {
             0,
         )
         .expect("rewrite lexer should classify explicit-player unless choice");
-        let unless_idx = find_token_word(&tokens, "unless").expect("unless token");
+        let clause = SubjectVerbPrimitiveClause::new(&tokens);
+        let unless_idx = clause.find_token_word("unless").expect("unless token");
         let effects = parse_effect_chain(&tokens[..unless_idx])
             .expect("lead effect should parse before unless clause");
 
-        let unless_effect = try_build_unless(effects, &tokens, unless_idx)
+        let unless_effect = try_build_unless(effects, clause, unless_idx)
             .expect("unless choice should parse")
             .expect("unless choice should lower");
         let debug = format!("{unless_effect:?}");
@@ -601,36 +595,39 @@ mod tests {
 }
 
 pub(crate) fn parse_sentence_fallback_mechanic_marker(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if tokens
-        .iter()
-        .filter_map(OwnedLexToken::as_word)
-        .any(|word| {
-            matches!(
-                word,
-                "may" | "cast" | "casts" | "casting" | "play" | "plays" | "playing" | "played"
-            )
-        })
-        && parse_cast_or_play_tagged_clause(tokens)?.is_some()
+    if clause.contains_any_word(&[
+        "may", "cast", "casts", "casting", "play", "plays", "playing", "played",
+    ]) && clause
+        .parse_value_with_lexed(parse_cast_or_play_tagged_clause)?
+        .is_some()
     {
         return Ok(None);
     }
 
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if clause_words.as_slice() == ["venture", "into", "the", "dungeon"] {
+    let clause_words = clause.word_refs();
+    if crate::runtime_backend::lexer::word_slice_eq(
+        &clause_words,
+        &["venture", "into", "the", "dungeon"],
+    ) {
         return Ok(Some(vec![EffectAst::subject_verb_venture_into_dungeon(
             crate::cards::builders::PlayerAst::You,
             false,
         )]));
     }
 
-    let is_match = clause_words.as_slice() == ["its", "still", "a", "land"]
-        || clause_words.as_slice() == ["it", "still", "a", "land"]
-        || grammar::words_match_any_prefix(tokens, &MECHANIC_MARKER_PREFIXES[..3]).is_some()
-        || grammar::words_match_prefix(
-            tokens,
-            &[
+    let is_match = crate::runtime_backend::lexer::word_slice_eq_any(
+        &clause_words,
+        &[
+            &["its", "still", "a", "land"],
+            &["it", "still", "a", "land"],
+        ],
+    ) || clause
+        .strip_any_prefix(&MECHANIC_MARKER_PREFIXES[..3])
+        .is_some()
+        || clause
+            .strip_prefix(&[
                 "chooses",
                 "any",
                 "number",
@@ -638,12 +635,10 @@ pub(crate) fn parse_sentence_fallback_mechanic_marker(
                 "creatures",
                 "they",
                 "control",
-            ],
-        )
-        .is_some()
-        || grammar::words_match_prefix(
-            tokens,
-            &[
+            ])
+            .is_some()
+        || clause
+            .strip_prefix(&[
                 "each",
                 "player",
                 "chooses",
@@ -653,32 +648,25 @@ pub(crate) fn parse_sentence_fallback_mechanic_marker(
                 "creatures",
                 "they",
                 "control",
-            ],
-        )
-        .is_some()
-        || grammar::words_match_prefix(
-            tokens,
-            &["an", "opponent", "chooses", "one", "of", "those", "piles"],
-        )
-        .is_some()
-        || grammar::words_match_prefix(tokens, &["put", "that", "pile", "into", "your", "hand"])
+            ])
             .is_some()
-        || grammar::words_match_prefix(
-            tokens,
-            &["cast", "that", "card", "for", "as", "long", "as"],
-        )
-        .is_some()
-        || grammar::words_match_prefix(
-            tokens,
-            &[
+        || clause
+            .strip_prefix(&["an", "opponent", "chooses", "one", "of", "those", "piles"])
+            .is_some()
+        || clause
+            .strip_prefix(&["put", "that", "pile", "into", "your", "hand"])
+            .is_some()
+        || clause
+            .strip_prefix(&["cast", "that", "card", "for", "as", "long", "as"])
+            .is_some()
+        || clause
+            .strip_prefix(&[
                 "until", "end", "of", "turn", "this", "creature", "loses", "prevent", "all",
                 "damage",
-            ],
-        )
-        .is_some()
-        || grammar::words_match_prefix(
-            tokens,
-            &[
+            ])
+            .is_some()
+        || clause
+            .strip_prefix(&[
                 "until",
                 "end",
                 "of",
@@ -694,50 +682,36 @@ pub(crate) fn parse_sentence_fallback_mechanic_marker(
                 "power",
                 "and",
                 "toughness",
-            ],
-        )
-        .is_some()
-        || grammar::words_match_prefix(
-            tokens,
-            &["for", "each", "1", "damage", "prevented", "this", "way"],
-        )
-        .is_some()
-        || grammar::words_match_prefix(
-            tokens,
-            &[
+            ])
+            .is_some()
+        || clause
+            .strip_prefix(&["for", "each", "1", "damage", "prevented", "this", "way"])
+            .is_some()
+        || clause
+            .strip_prefix(&[
                 "for", "each", "card", "less", "than", "two", "a", "player", "draws", "this", "way",
-            ],
-        )
-        .is_some()
-        || grammar::words_match_prefix(
-            tokens,
-            &["this", "deals", "4", "damage", "if", "there", "are"],
-        )
-        .is_some()
-        || grammar::words_match_prefix(
-            tokens,
-            &[
+            ])
+            .is_some()
+        || clause
+            .strip_prefix(&["this", "deals", "4", "damage", "if", "there", "are"])
+            .is_some()
+        || clause
+            .strip_prefix(&[
                 "this", "deals", "4", "damage", "instead", "if", "there", "are",
-            ],
-        )
-        .is_some()
-        || grammar::words_match_prefix(
-            tokens,
-            &[
+            ])
+            .is_some()
+        || clause
+            .strip_prefix(&[
                 "that", "spell", "deals", "damage", "to", "each", "opponent", "equal", "to",
-            ],
-        )
-        .is_some()
-        || grammar::words_match_prefix(
-            tokens,
-            &[
+            ])
+            .is_some()
+        || clause
+            .strip_prefix(&[
                 "the", "next", "spell", "you", "cast", "this", "turn", "costs",
-            ],
-        )
-        .is_some()
-        || grammar::words_match_prefix(
-            tokens,
-            &[
+            ])
+            .is_some()
+        || clause
+            .strip_prefix(&[
                 "that",
                 "creature",
                 "attacks",
@@ -749,55 +723,58 @@ pub(crate) fn parse_sentence_fallback_mechanic_marker(
                 "phase",
                 "if",
                 "able",
-            ],
-        )
-        .is_some()
-        || grammar::words_match_prefix(
-            tokens,
-            &[
+            ])
+            .is_some()
+        || clause
+            .strip_prefix(&[
                 "all", "damage", "that", "would", "be", "dealt", "this", "turn", "to", "target",
                 "creature", "you", "control", "by", "a", "source", "of", "your", "choice", "is",
                 "dealt", "to", "another", "target", "creature", "instead",
-            ],
-        )
-        .is_some()
-        || (grammar::words_match_any_prefix(tokens, &MECHANIC_MARKER_PREFIXES[3..]).is_some()
-            && grammar::contains_word(tokens, "remains")
-            && grammar::contains_word(tokens, "tapped"));
+            ])
+            .is_some()
+        || (clause
+            .strip_any_prefix(&MECHANIC_MARKER_PREFIXES[3..])
+            .is_some()
+            && clause.contains_word("remains")
+            && clause.contains_word("tapped"));
     if !is_match {
         return Ok(None);
     }
     Err(CardTextError::ParseError(format!(
         "unsupported mechanic marker clause (clause: '{}')",
-        clause_words.join(" ")
+        clause.text()
     )))
 }
 
 pub(crate) fn parse_sentence_implicit_become_clause(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = TokenWordView::new(tokens).to_word_refs();
-    let (target, rest_word_idx) = match clause_words.as_slice() {
-        ["this", "permanent", ..] | ["this", "creature", ..] | ["this", "land", ..] => {
-            (TargetAst::Source(None), 2)
-        }
-        ["this", ..] => (TargetAst::Source(None), 1),
-        ["each", "of", "them", ..] => (TargetAst::Tagged(TagKey::from(IT_TAG), None), 3),
-        ["they", ..] => (TargetAst::Tagged(TagKey::from(IT_TAG), None), 1),
-        ["its", ..] | ["it", ..] => (TargetAst::Tagged(TagKey::from(IT_TAG), None), 1),
-        _ => return Ok(None),
+    let Some((target, rest_clause)) = clause.strip_prefix_value_clause(&[
+        (&["this", "permanent"], TargetAst::Source(None)),
+        (&["this", "creature"], TargetAst::Source(None)),
+        (&["this", "land"], TargetAst::Source(None)),
+        (&["this"], TargetAst::Source(None)),
+        (
+            &["each", "of", "them"],
+            TargetAst::Tagged(TagKey::from(IT_TAG), None),
+        ),
+        (&["they"], TargetAst::Tagged(TagKey::from(IT_TAG), None)),
+        (&["its"], TargetAst::Tagged(TagKey::from(IT_TAG), None)),
+        (&["it"], TargetAst::Tagged(TagKey::from(IT_TAG), None)),
+    ]) else {
+        return Ok(None);
     };
-
-    let rest_token_idx = token_index_for_word_index(tokens, rest_word_idx).unwrap_or(tokens.len());
-    let rest_tokens = trim_commas(&tokens[rest_token_idx..]);
-    let (mut duration, duration_remainder) =
-        if let Some((duration, remainder)) = parse_restriction_duration(&rest_tokens)? {
-            (duration, remainder)
+    let rest_clause = rest_clause.trimmed();
+    let (mut duration, duration_remainder_clause) =
+        if let Some((duration, remainder)) = parse_restriction_duration(rest_clause.tokens())? {
+            (duration, SubjectVerbPrimitiveOwnedClause::new(remainder))
         } else {
-            (Until::Forever, rest_tokens.to_vec())
+            (
+                Until::Forever,
+                SubjectVerbPrimitiveOwnedClause::from_clause(rest_clause),
+            )
         };
-    let rest_tokens = trim_commas(&duration_remainder);
-    let mut rest_words = TokenWordView::new(&rest_tokens).to_word_refs();
+    let mut rest_words = duration_remainder_clause.as_clause().trimmed_word_refs();
     if rest_words.first().copied() == Some("still") {
         rest_words.remove(0);
     }
@@ -805,8 +782,8 @@ pub(crate) fn parse_sentence_implicit_become_clause(
         return Ok(None);
     }
 
-    let negated = if slice_starts_with(&rest_words, &["is", "not"])
-        || slice_starts_with(&rest_words, &["are", "not"])
+    let negated = if word_slice_starts_with(&rest_words, &["is", "not"])
+        || word_slice_starts_with(&rest_words, &["are", "not"])
     {
         rest_words.drain(..2);
         true
@@ -822,7 +799,7 @@ pub(crate) fn parse_sentence_implicit_become_clause(
         }
         false
     };
-    if slice_ends_with(&rest_words, &["until", "end", "of", "turn"]) {
+    if word_slice_ends_with(&rest_words, &["until", "end", "of", "turn"]) {
         duration = Until::EndOfTurn;
         let new_len = rest_words.len().saturating_sub(4);
         rest_words.truncate(new_len);
@@ -841,11 +818,11 @@ pub(crate) fn parse_sentence_implicit_become_clause(
         } else {
             Some(&rest_words[..])
         }
-    } else if slice_starts_with(&rest_words, &["not", "a"]) && rest_words.len() > 2 {
+    } else if word_slice_starts_with(&rest_words, &["not", "a"]) && rest_words.len() > 2 {
         Some(&rest_words[2..])
-    } else if slice_starts_with(&rest_words, &["not", "an"]) && rest_words.len() > 2 {
+    } else if word_slice_starts_with(&rest_words, &["not", "an"]) && rest_words.len() > 2 {
         Some(&rest_words[2..])
-    } else if slice_starts_with(&rest_words, &["not"]) && rest_words.len() > 1 {
+    } else if word_slice_starts_with(&rest_words, &["not"]) && rest_words.len() > 1 {
         Some(&rest_words[1..])
     } else {
         None
@@ -870,18 +847,14 @@ pub(crate) fn parse_sentence_implicit_become_clause(
         }
     }
 
-    let addition_tail_len = if slice_ends_with(
+    let addition_tail_len = if word_slice_ends_with_any(
         &rest_words,
-        &["in", "addition", "to", "its", "other", "types"],
-    ) || slice_ends_with(
-        &rest_words,
-        &["in", "addition", "to", "their", "other", "types"],
-    ) || slice_ends_with(
-        &rest_words,
-        &["in", "addition", "to", "its", "other", "type"],
-    ) || slice_ends_with(
-        &rest_words,
-        &["in", "addition", "to", "their", "other", "type"],
+        &[
+            &["in", "addition", "to", "its", "other", "types"],
+            &["in", "addition", "to", "their", "other", "types"],
+            &["in", "addition", "to", "its", "other", "type"],
+            &["in", "addition", "to", "their", "other", "type"],
+        ],
     ) {
         Some(6usize)
     } else {
@@ -974,9 +947,9 @@ pub(crate) fn parse_sentence_implicit_become_clause(
 }
 
 pub(crate) fn parse_sentence_gains_or_loses_all_creature_types(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = TokenWordView::new(tokens).to_word_refs();
+    let words = clause.word_refs();
     let Some(verb_idx) = words
         .iter()
         .position(|word| matches!(*word, "gain" | "gains" | "lose" | "loses"))
@@ -985,9 +958,13 @@ pub(crate) fn parse_sentence_gains_or_loses_all_creature_types(
     };
     let is_gain = matches!(words[verb_idx], "gain" | "gains");
     let tail = &words[verb_idx + 1..];
-    if tail != ["all", "creature", "types", "until", "end", "of", "turn"]
-        && tail != ["every", "creature", "type", "until", "end", "of", "turn"]
-    {
+    if !crate::runtime_backend::lexer::word_slice_eq_any(
+        tail,
+        &[
+            &["all", "creature", "types", "until", "end", "of", "turn"],
+            &["every", "creature", "type", "until", "end", "of", "turn"],
+        ],
+    ) {
         return Ok(None);
     }
 
@@ -996,20 +973,22 @@ pub(crate) fn parse_sentence_gains_or_loses_all_creature_types(
             .iter()
             .position(|word| matches!(*word, "get" | "gets"))
     {
-        let Some(get_token_idx) = token_index_for_word_index(tokens, get_word_idx) else {
-            return Ok(None);
-        };
         let Some(modifier_word) = words.get(get_word_idx + 1).copied() else {
             return Ok(None);
         };
         let Ok((power, toughness)) = parse_pt_modifier_values(modifier_word) else {
             return Ok(None);
         };
-        let target_tokens = trim_commas(&tokens[..get_token_idx]);
-        if target_tokens.is_empty() {
+        let Some(target_clause) = clause
+            .before_word(get_word_idx)
+            .map(SubjectVerbPrimitiveClause::trimmed)
+        else {
+            return Ok(None);
+        };
+        if target_clause.is_empty() {
             return Ok(None);
         }
-        let target = parse_target_phrase(&target_tokens)?;
+        let target = parse_target_phrase(target_clause.tokens())?;
         return Ok(Some(vec![
             EffectAst::subject_verb_pump(power, toughness, target.clone(), Until::EndOfTurn, None),
             EffectAst::subject_verb_remove_all_subtypes_of_family(
@@ -1020,12 +999,19 @@ pub(crate) fn parse_sentence_gains_or_loses_all_creature_types(
         ]));
     }
 
-    let verb_token_idx = token_index_for_word_index(tokens, verb_idx).unwrap_or(tokens.len());
-    let target_tokens = trim_commas(&tokens[..verb_token_idx]);
-    let target = if words[..verb_idx] == ["it"] || words[..verb_idx] == ["that", "creature"] {
+    let target = if crate::runtime_backend::lexer::word_slice_eq_any(
+        &words[..verb_idx],
+        &[&["it"], &["that", "creature"]],
+    ) {
         TargetAst::Tagged(TagKey::from(IT_TAG), None)
     } else {
-        parse_target_phrase(&target_tokens)?
+        let Some(target_clause) = clause
+            .before_word(verb_idx)
+            .map(SubjectVerbPrimitiveClause::trimmed)
+        else {
+            return Ok(None);
+        };
+        parse_target_phrase(target_clause.tokens())?
     };
     let effect = if is_gain {
         EffectAst::subject_verb_add_all_subtypes_of_family(
@@ -1048,12 +1034,10 @@ fn fixed_count_word(word: &str) -> Option<i32> {
 }
 
 pub(crate) fn parse_sentence_lose_draw_clash_repeat_process(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = TokenWordView::new(tokens).to_word_refs();
-    let if_idx = words
-        .windows(3)
-        .position(|window| window == ["if", "you", "win"]);
+    let words = clause.word_refs();
+    let if_idx = word_slice_find_phrase_start(&words, &["if", "you", "win"]);
     let body_words = if let Some(if_idx) = if_idx {
         if words.get(if_idx + 3..) != Some(&["repeat", "this", "process"][..]) {
             return Ok(None);
