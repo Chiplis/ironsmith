@@ -1492,8 +1492,12 @@ fn test_parse_eelectrocute_roll_six_graveyard_cast_condition_and_exile_clause() 
     let debug = format!("{def:#?}");
     assert!(
         rendered.contains("Eelectrocute deals 2 damage to any target")
-            && rendered.contains("You may cast this card from your graveyard as long as you've rolled a 6 this turn")
-            && rendered.contains("If you cast it this way and it would be put into your graveyard, exile it instead")
+            && rendered.contains(
+                "You may cast this card from your graveyard as long as you've rolled a 6 this turn"
+            )
+            && rendered.contains(
+                "If you cast it this way and it would be put into your graveyard, exile it instead"
+            )
             && debug.contains("PlayerRolledResultThisTurn")
             && debug.contains("exiles_after_resolution: true"),
         "expected Eelectrocute parser/text output to preserve roll-six graveyard casting and exile-after-resolution semantics, got rendered={rendered}; debug={debug}"
@@ -2779,7 +2783,9 @@ fn painters_servant_adds_chosen_color_to_permanents_spells_and_nonbattlefield_ca
     assert!(graveyard_card_colors.contains(Color::Green));
     assert!(graveyard_card_colors.contains(Color::Blue));
 
-    let exile_card_colors = game.current_colors(exile_card_id).expect("exile card colors");
+    let exile_card_colors = game
+        .current_colors(exile_card_id)
+        .expect("exile card colors");
     assert!(exile_card_colors.contains(Color::Green));
     assert!(exile_card_colors.contains(Color::Blue));
 
@@ -14118,10 +14124,7 @@ fn create_winds_test_creature(
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
-fn resolve_winds_of_qal_sisma(
-    game: &mut crate::game_state::GameState,
-    controller: PlayerId,
-) {
+fn resolve_winds_of_qal_sisma(game: &mut crate::game_state::GameState, controller: PlayerId) {
     let winds = parse_oracle_card_definition("Winds of Qal Sisma");
     let spell_id = game.create_object_from_definition(&winds, controller, Zone::Stack);
     game.push_to_stack(crate::game_state::StackEntry::new(spell_id, controller));
@@ -14154,7 +14157,11 @@ fn parse_oracle_winds_of_qal_sisma_without_ferocious_prevents_all_combat_damage(
     game.turn.step = Some(crate::game_state::Step::CombatDamage);
     let events = crate::game_loop::execute_combat_damage_step(&mut game, &combat, false);
 
-    assert_eq!(events.len(), 1, "Bob's attacker should assign combat damage");
+    assert_eq!(
+        events.len(),
+        1,
+        "Bob's attacker should assign combat damage"
+    );
     assert_eq!(
         game.player(alice).expect("Alice exists").life,
         20,
@@ -14203,7 +14210,11 @@ fn parse_oracle_winds_of_qal_sisma_ferocious_prevents_only_opponents_creature_da
     game.turn.step = Some(crate::game_state::Step::CombatDamage);
     let events = crate::game_loop::execute_combat_damage_step(&mut game, &combat, false);
 
-    assert_eq!(events.len(), 2, "both attackers should assign combat damage");
+    assert_eq!(
+        events.len(),
+        2,
+        "both attackers should assign combat damage"
+    );
     assert_eq!(
         game.player(alice).expect("Alice exists").life,
         20,
@@ -35553,10 +35564,8 @@ fn calamity_bearer_strict_parser_and_text_regression() {
 #[test]
 fn calamity_bearer_runtime_doubles_giant_source_damage_to_players_and_permanents() {
     let def = parse_oracle_card_definition("Calamity Bearer");
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     game.create_object_from_definition(&def, alice, Zone::Battlefield);
@@ -35633,10 +35642,8 @@ fn calamity_bearer_runtime_doubles_giant_source_damage_to_players_and_permanents
 #[test]
 fn calamity_bearer_runtime_ignores_non_giant_and_opposing_giant_sources() {
     let def = parse_oracle_card_definition("Calamity Bearer");
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     game.create_object_from_definition(&def, alice, Zone::Battlefield);

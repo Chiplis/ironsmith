@@ -50,8 +50,8 @@ pub(crate) fn is_supported_untap_restriction_tail(words: &[&str]) -> bool {
         return false;
     }
 
-    slice_contains(&words, &"during")
-        && (slice_contains(&words, &"step") || slice_contains(&words, &"steps"))
+    word_slice_contains_word(&words, "during")
+        && (word_slice_contains_word(&words, "step") || word_slice_contains_word(&words, "steps"))
 }
 
 pub(crate) fn normalize_cant_words(tokens: &[OwnedLexToken]) -> Vec<String> {
@@ -387,10 +387,10 @@ fn parse_dynamic_payment_clause_as_total_cost(
             if trailing_words
                 .iter()
                 .any(|word| matches!(*word, "graveyard" | "graveyards"))
-                && (crate::runtime_backend::token_primitives::contains_window(
+                && (word_slice_contains_phrase(
                     &trailing_words,
                     &["same", "name", "as", "the", "spell"],
-                ) || crate::runtime_backend::token_primitives::contains_window(
+                ) || word_slice_contains_phrase(
                     &trailing_words,
                     &["same", "name", "as", "that", "spell"],
                 ))
@@ -1433,13 +1433,13 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
             }
             if words.len() >= 2 {
                 if matches!((head, second), ("first", Some("strike"))) {
-                    if words.len() > 2 && slice_contains(&words, &"and") {
+                    if words.len() > 2 && word_slice_contains_word(&words, "and") {
                         return None;
                     }
                     return Some(KeywordAction::FirstStrike);
                 }
                 if matches!((head, second), ("double", Some("strike"))) {
-                    if words.len() > 2 && slice_contains(&words, &"and") {
+                    if words.len() > 2 && word_slice_contains_word(&words, "and") {
                         return None;
                     }
                     return Some(KeywordAction::DoubleStrike);
@@ -1600,7 +1600,9 @@ pub(crate) fn looks_like_trigger_discard_qualifier_tail(
     }
 
     let prefix_words = crate::runtime_backend::token_word_refs(trigger_prefix_tokens);
-    if !(slice_contains(&prefix_words, &"discard") || slice_contains(&prefix_words, &"discards")) {
+    if !(word_slice_contains_word(&prefix_words, "discard")
+        || word_slice_contains_word(&prefix_words, "discards"))
+    {
         return false;
     }
 
@@ -1621,7 +1623,8 @@ pub(crate) fn looks_like_trigger_discard_qualifier_tail(
 
     find_index(tail_tokens, |token| token.is_comma()).is_some_and(|comma_idx| {
         let before_words = crate::runtime_backend::token_word_refs(&tail_tokens[..comma_idx]);
-        slice_contains(&before_words, &"card") || slice_contains(&before_words, &"cards")
+        word_slice_contains_word(&before_words, "card")
+            || word_slice_contains_word(&before_words, "cards")
     })
 }
 

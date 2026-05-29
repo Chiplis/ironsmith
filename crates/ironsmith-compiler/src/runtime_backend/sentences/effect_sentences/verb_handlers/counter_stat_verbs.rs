@@ -531,23 +531,32 @@ pub(crate) fn parse_reveal(
         return Ok(EffectAst::subject_verb_reveal_tagged(TagKey::from(IT_TAG)));
     }
     if grammar::contains_word(tokens, "hand") {
-        let is_full_hand_reveal = matches!(words.as_slice(), ["your", "hand"] | ["their", "hand"])
-            || words.as_slice() == ["his", "or", "her", "hand"];
+        let is_full_hand_reveal = crate::runtime_backend::lexer::word_slice_eq_any(
+            &words,
+            &[
+                &["your", "hand"],
+                &["their", "hand"],
+                &["his", "or", "her", "hand"],
+            ],
+        );
         if !is_full_hand_reveal {
             if grammar::contains_word(tokens, "from") {
                 if let Some(equal_idx) = words.iter().position(|word| *word == "equal") {
                     let tail = &words[equal_idx..];
-                    let count_value = if tail.starts_with(&[
-                        "equal",
-                        "to",
-                        "the",
-                        "number",
-                        "of",
-                        "creatures",
-                        "in",
-                        "your",
-                        "party",
-                    ]) {
+                    let count_value = if word_slice_starts_with(
+                        tail,
+                        &[
+                            "equal",
+                            "to",
+                            "the",
+                            "number",
+                            "of",
+                            "creatures",
+                            "in",
+                            "your",
+                            "party",
+                        ],
+                    ) {
                         Some(Value::PartySize(PlayerFilter::You))
                     } else {
                         parse_dynamic_cost_modifier_value(&tokens[equal_idx..])?
@@ -592,8 +601,10 @@ pub(crate) fn parse_reveal(
         grammar::contains_word(tokens, "card") || grammar::contains_word(tokens, "cards");
     let has_library =
         grammar::contains_word(tokens, "library") || grammar::contains_word(tokens, "libraries");
-    let explicit_top_card =
-        words.as_slice() == ["top", "card"] || words.as_slice() == ["the", "top", "card"];
+    let explicit_top_card = crate::runtime_backend::lexer::word_slice_eq_any(
+        &words,
+        &[&["top", "card"], &["the", "top", "card"]],
+    );
 
     if !has_card || (!has_library && !explicit_top_card) {
         return Err(CardTextError::ParseError(format!(
@@ -602,8 +613,8 @@ pub(crate) fn parse_reveal(
         )));
     }
 
-    if words.starts_with(&["that", "many", "cards", "from", "the", "top", "of"])
-        || words.starts_with(&["that", "many", "cards", "from", "top", "of"])
+    if word_slice_starts_with(&words, &["that", "many", "cards", "from", "the", "top", "of"])
+        || word_slice_starts_with(&words, &["that", "many", "cards", "from", "top", "of"])
     {
         return Ok(EffectAst::subject_verb_reveal_top_cards(
             player,
@@ -615,9 +626,9 @@ pub(crate) fn parse_reveal(
         ));
     }
 
-    let top_prefix_len = if words.starts_with(&["the", "top"]) {
+    let top_prefix_len = if word_slice_starts_with(&words, &["the", "top"]) {
         Some(2usize)
-    } else if words.starts_with(&["top"]) {
+    } else if word_slice_starts_with(&words, &["top"]) {
         Some(1usize)
     } else {
         None
@@ -665,7 +676,7 @@ fn parse_prior_effect_count_binding_clause(tokens: &[OwnedLexToken]) -> Option<V
     let tokens = trim_commas(tokens);
     let word_view = TokenWordView::new(&tokens);
     let words = word_view.word_refs();
-    if !slice_starts_with(&words, &["where", "x", "is"]) {
+    if !word_slice_starts_with(&words, &["where", "x", "is"]) {
         return None;
     }
 
@@ -678,9 +689,7 @@ fn parse_prior_effect_count_binding_clause(tokens: &[OwnedLexToken]) -> Option<V
     }
 
     let object_words = &words[idx + 2..];
-    let references_this_way = object_words
-        .windows(2)
-        .any(|window| window == ["this", "way"]);
+    let references_this_way = word_slice_contains_phrase(object_words, &["this", "way"]);
     let references_memory_action = object_words.iter().any(|word| {
         matches!(
             *word,
@@ -698,7 +707,7 @@ fn parse_prior_effect_count_binding_clause(tokens: &[OwnedLexToken]) -> Option<V
         return None;
     }
 
-    let source = if object_words.iter().any(|word| *word == "chosen") {
+    let source = if crate::runtime_backend::lexer::word_slice_contains_word(object_words, "chosen") {
         ironsmith_core::EffectMetricSource::ChosenObjects
     } else {
         ironsmith_core::EffectMetricSource::AffectedObjects
@@ -714,7 +723,7 @@ pub(crate) fn parse_life_amount(
     amount_kind: &str,
 ) -> Result<(Value, usize), CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if clause_words == ["that", "much", "life"] {
+    if crate::runtime_backend::lexer::word_slice_eq(&clause_words, &["that", "much", "life"]) {
         // "that much life" binds to the triggering event amount.
         return Ok((Value::EventValue(EventValueSpec::Amount), 2));
     }

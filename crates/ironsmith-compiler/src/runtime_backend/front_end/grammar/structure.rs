@@ -9,7 +9,9 @@ use crate::cards::builders::{CardTextError, EffectAst, IfResultPredicate, Predic
 use crate::effect::{Comparison, Value};
 
 use super::super::lexer::{
-    LexStream, LexToken, OwnedLexToken, TokenKind, TokenWordView, trim_lexed_commas,
+    LexStream, LexToken, OwnedLexToken, TokenKind, TokenWordView, contains_token_kind,
+    find_token_word, trim_lexed_commas, word_slice_contains_any_word, word_slice_contains_word,
+    word_slice_strip_prefix,
 };
 use super::super::util::{parse_card_type, parse_color, parse_subtype_flexible};
 use super::{primitives, values};
@@ -305,34 +307,40 @@ pub(crate) fn classify_statement_line_family_lexed(
         return None;
     }
 
-    let starts_with_each_player_statement = matches!(
-        word_refs.as_slice(),
-        ["each", "player", third, ..] if is_statement_verb_word(third)
-    );
-    let starts_with_each_other_player_statement = matches!(
-        word_refs.as_slice(),
-        ["each", "other", "player", fourth, ..] | ["each", "other", "players", fourth, ..]
-            if is_statement_verb_word(fourth)
-    );
-    let starts_with_all_quantified_statement = matches!(
-        word_refs.as_slice(),
-        ["all", ..] if word_refs.iter().skip(1).any(|word| is_statement_verb_word(word))
-    );
-    let starts_with_quantified_target_player_statement = matches!(
-        word_refs.as_slice(),
-        [_, "target", "player", fourth, ..] | [_, "target", "players", fourth, ..]
-            if is_statement_verb_word(fourth)
-    );
+    let starts_with_each_player_statement =
+        word_slice_strip_prefix(&word_refs, &["each", "player"])
+            .and_then(|rest| rest.first())
+            .is_some_and(|word| is_statement_verb_word(word));
+    let starts_with_each_other_player_statement =
+        word_slice_strip_prefix(&word_refs, &["each", "other", "player"])
+            .or_else(|| word_slice_strip_prefix(&word_refs, &["each", "other", "players"]))
+            .and_then(|rest| rest.first())
+            .is_some_and(|word| is_statement_verb_word(word));
+    let starts_with_all_quantified_statement = word_slice_strip_prefix(&word_refs, &["all"])
+        .is_some_and(|rest| rest.iter().any(|word| is_statement_verb_word(word)));
+    let starts_with_quantified_target_player_statement = word_refs
+        .get(1..)
+        .and_then(|tail| {
+            word_slice_strip_prefix(tail, &["target", "player"])
+                .or_else(|| word_slice_strip_prefix(tail, &["target", "players"]))
+        })
+        .and_then(|rest| rest.first())
+        .is_some_and(|word| is_statement_verb_word(word));
+    let starts_with_this_spell_statement = word_slice_strip_prefix(&word_refs, &["this", "spell"])
+        .and_then(|rest| rest.first())
+        .is_some_and(|word| is_statement_verb_word(word));
 
     (starts_with_each_player_statement
         || starts_with_each_other_player_statement
         || starts_with_all_quantified_statement
         || starts_with_quantified_target_player_statement
         || is_statement_verb_word(word_refs[0])
-        || matches!(word_refs.as_slice(), ["this", "spell", third, ..] if is_statement_verb_word(third))
-        || matches!(word_refs.as_slice(), [_, second, ..] if is_statement_verb_word(second))
-        || matches!(word_refs.first(), Some(&"target")
-            if word_refs.iter().skip(1).any(|word| is_statement_verb_word(word))))
+        || starts_with_this_spell_statement
+        || word_refs
+            .get(1)
+            .is_some_and(|word| is_statement_verb_word(word))
+        || word_slice_strip_prefix(&word_refs, &["target"])
+            .is_some_and(|rest| rest.iter().any(|word| is_statement_verb_word(word))))
     .then_some(StatementLineFamily::Generic)
 }
 
@@ -402,7 +410,7 @@ pub(crate) fn classify_static_line_family_lexed(
     if let Some(quote_idx) = primitives::find_token_index(tokens, |token| token.is_quote()) {
         let head = trim_lexed_commas(&tokens[..quote_idx]);
         if !head.is_empty()
-            && !head.iter().any(|token| token.kind == TokenKind::Period)
+            && !contains_token_kind(head, TokenKind::Period)
             && primitives::words_match_any_prefix(head, &[&["this"], &["it"], &["all"], &["each"]])
                 .is_some()
         {
@@ -512,7 +520,7 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
     if words.len() >= 2
         && words[0] == "you"
         && (words[1] == "win" || words[1] == "won")
-        && (words.len() == 2 || words.iter().any(|word| *word == "clash"))
+        && (words.len() == 2 || word_slice_contains_word(&words, "clash"))
     {
         return Some(IfResultPredicate::Value(
             crate::effect::Comparison::GreaterThan(0),
@@ -529,7 +537,7 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
     if words.len() >= 3
         && words[0] == "you"
         && (words[1] == "win" || words[1] == "won")
-        && words.contains(&"flip")
+        && word_slice_contains_word(&words, "flip")
     {
         return Some(IfResultPredicate::Did);
     }
@@ -596,7 +604,7 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
     if words.len() >= 5
         && (words[0] == "that" || words[0] == "it")
         && words[1] == "spell"
-        && words.iter().any(|word| *word == "countered")
+        && word_slice_contains_word(&words, "countered")
         && words[words.len() - 2] == "this"
         && words[words.len() - 1] == "way"
     {
@@ -649,7 +657,7 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
     if words.len() >= 3
         && words[0] == "you"
         && matches!(words[1], "lose" | "lost")
-        && words.contains(&"flip")
+        && word_slice_contains_word(&words, "flip")
     {
         return Some(IfResultPredicate::DidNot);
     }
@@ -810,8 +818,7 @@ fn looks_like_trigger_object_list_tail_lexed(tokens: &[OwnedLexToken]) -> bool {
     let Some(first_word) = first_candidate else {
         return false;
     };
-    looks_like_trigger_objectish_word(first_word)
-        && tokens.iter().any(|token| token.kind == TokenKind::Comma)
+    looks_like_trigger_objectish_word(first_word) && contains_token_kind(tokens, TokenKind::Comma)
 }
 
 fn looks_like_trigger_discard_qualifier_tail_lexed(
@@ -824,7 +831,7 @@ fn looks_like_trigger_discard_qualifier_tail_lexed(
 
     let prefix_words_view = TokenWordView::new(trigger_prefix_tokens);
     let prefix_words = prefix_words_view.word_refs();
-    if !(prefix_words.contains(&"discard") || prefix_words.contains(&"discards")) {
+    if !(word_slice_contains_any_word(&prefix_words, &["discard", "discards"])) {
         return false;
     }
 
@@ -851,7 +858,7 @@ fn looks_like_trigger_discard_qualifier_tail_lexed(
         |comma_idx| {
             let before_words_view = TokenWordView::new(&tail_tokens[..comma_idx]);
             let before_words = before_words_view.word_refs();
-            before_words.contains(&"card") || before_words.contains(&"cards")
+            word_slice_contains_any_word(&before_words, &["card", "cards"])
         },
     )
 }
@@ -871,9 +878,9 @@ fn looks_like_trigger_type_list_tail_lexed(tokens: &[OwnedLexToken]) -> bool {
             parse_card_type(word).is_some() || parse_subtype_flexible(word).is_some()
         });
     first_is_card_type
-        && (words.contains(&"spell") || words.contains(&"spells"))
-        && words.contains(&"or")
-        && tokens.iter().any(|token| token.kind == TokenKind::Comma)
+        && (word_slice_contains_any_word(&words, &["spell", "spells"]))
+        && word_slice_contains_word(&words, "or")
+        && contains_token_kind(tokens, TokenKind::Comma)
 }
 
 fn looks_like_trigger_color_list_tail_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -886,8 +893,8 @@ fn looks_like_trigger_color_list_tail_lexed(tokens: &[OwnedLexToken]) -> bool {
         return false;
     }
     parse_color(words[0]).is_some()
-        && words.contains(&"or")
-        && tokens.iter().any(|token| token.kind == TokenKind::Comma)
+        && word_slice_contains_word(&words, "or")
+        && contains_token_kind(tokens, TokenKind::Comma)
 }
 
 fn looks_like_trigger_numeric_list_tail_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -899,7 +906,8 @@ fn looks_like_trigger_numeric_list_tail_lexed(tokens: &[OwnedLexToken]) -> bool 
     if words.len() < 3 || words[0].parse::<i32>().is_err() {
         return false;
     }
-    words.iter().skip(1).any(|word| word.parse::<i32>().is_ok()) && words.contains(&"or")
+    words.iter().skip(1).any(|word| word.parse::<i32>().is_ok())
+        && word_slice_contains_word(&words, "or")
 }
 
 pub(crate) fn find_trigger_effect_list_tail_split_lexed(
@@ -924,7 +932,7 @@ pub(crate) fn find_trigger_effect_list_tail_split_lexed(
             }
             let before_words_view = TokenWordView::new(&tail_tokens[..idx]);
             let before_words = before_words_view.word_refs();
-            if before_words.contains(&"card") || before_words.contains(&"cards") {
+            if word_slice_contains_any_word(&before_words, &["card", "cards"]) {
                 Some(idx)
             } else {
                 None
@@ -949,7 +957,7 @@ pub(crate) fn find_trigger_effect_list_tail_split_lexed(
             }
             let before_words_view = TokenWordView::new(&tail_tokens[..idx]);
             let before_words = before_words_view.word_refs();
-            if before_words.contains(&"spell") || before_words.contains(&"spells") {
+            if word_slice_contains_any_word(&before_words, &["spell", "spells"]) {
                 Some(idx)
             } else {
                 None
@@ -1112,7 +1120,7 @@ fn scan_choose_both_control_card_types(tokens: &[OwnedLexToken]) -> Vec<crate::t
     if !primitives::contains_phrase(tokens, &["you", "may", "choose", "both", "instead"]) {
         return Vec::new();
     }
-    let Some(if_idx) = tokens.iter().position(|token| token.is_word("if")) else {
+    let Some(if_idx) = find_token_word(tokens, "if") else {
         return Vec::new();
     };
     let Some(control_idx) = tokens
@@ -1603,7 +1611,7 @@ pub(crate) fn split_triggered_conditional_clause_lexed<'a>(
         if predicate_tokens.is_empty() || effects_tokens.is_empty() {
             continue;
         }
-        if predicate_tokens.iter().any(|token| token.is_period()) {
+        if contains_token_kind(predicate_tokens, TokenKind::Period) {
             continue;
         }
         if effects_tokens

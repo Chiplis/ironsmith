@@ -7,16 +7,17 @@ use super::super::grammar::primitives::{
     self as grammar, TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_or,
 };
 use super::super::grammar::structure::parse_trailing_if_predicate_lexed;
-use super::super::lexer::{OwnedLexToken, TokenKind, trim_lexed_commas};
+use super::super::lexer::{
+    OwnedLexToken, TokenKind, find_token_kind, trim_lexed_commas, word_slice_contains_phrase,
+    word_slice_contains_word, word_slice_eq, word_slice_eq_any, word_slice_find_any_phrase_start,
+    word_slice_find_phrase_start, word_slice_find_phrase_value, word_slice_find_word_where,
+    word_slice_starts_with,
+};
 use super::super::lowering_support::{
     rewrite_lower_static_ability_ast, rewrite_parsed_triggered_ability as parsed_triggered_ability,
 };
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
-use super::super::token_primitives::{
-    find_str_by as find_word_index_by, find_window_index as find_word_sequence_index,
-    slice_contains_str as word_slice_contains, slice_starts_with as word_slice_starts_with,
-    str_contains as string_contains,
-};
+use super::super::token_primitives::str_contains as string_contains;
 use super::super::util::{
     is_article, is_source_reference_words, parse_mana_symbol, parse_target_phrase,
     span_from_tokens, token_index_for_word_index, trim_commas,
@@ -25,6 +26,7 @@ use super::clause_dispatch::parse_become_clause;
 use super::dispatch_inner::trim_edge_punctuation;
 use super::lex_chain_helpers::find_verb_lexed;
 use super::sentence_helpers::*;
+use super::subject_verb_primitives::SubjectVerbPrimitiveClause;
 #[allow(unused_imports)]
 use super::{Verb, find_verb, parse_effect_chain};
 use crate::ability::Ability;
@@ -170,7 +172,9 @@ fn parse_shared_subject_base_pt_from_has_tail(
     };
     let rest_tokens = trim_commas(&tokens[rest_start_token_idx..]);
     let rest_words = GainAbilityWordView::new(&rest_tokens).to_word_refs();
-    if rest_words.len() < 5 || rest_words[..4] != ["base", "power", "and", "toughness"] {
+    if rest_words.len() < 5
+        || !word_slice_eq(&rest_words[..4], &["base", "power", "and", "toughness"])
+    {
         return Ok(None);
     }
     let (power, toughness) = parse_pt_modifier_values(rest_words[4]).map_err(|_| {
@@ -204,7 +208,7 @@ fn parse_leading_subject_base_pt_before_gain(
         return Ok(None);
     }
     let rest = &before_gain[local_has_idx + 1..];
-    if rest.len() < 5 || rest[..4] != ["base", "power", "and", "toughness"] {
+    if rest.len() < 5 || !word_slice_eq(&rest[..4], &["base", "power", "and", "toughness"]) {
         return Ok(None);
     }
     let (power, toughness) = parse_pt_modifier_values(rest[4]).map_err(|_| {
@@ -216,7 +220,7 @@ fn parse_leading_subject_base_pt_before_gain(
     let tail = &rest[5..];
     if !tail.is_empty()
         && !is_until_end_of_turn(tail)
-        && tail != ["until", "end", "of", "turn", "and"]
+        && !word_slice_eq(tail, &["until", "end", "of", "turn", "and"])
     {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing base power/toughness clause (clause: '{}')",
@@ -360,12 +364,7 @@ fn render_lower_words(tokens: &[OwnedLexToken]) -> String {
 }
 
 fn push_unique_keyword_action(actions: &mut Vec<KeywordAction>, action: KeywordAction) {
-    for existing in actions.iter() {
-        if *existing == action {
-            return;
-        }
-    }
-    actions.push(action);
+    crate::slice_primitives::push_unique(actions, action);
 }
 
 fn color_only_hexproof_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
@@ -525,29 +524,31 @@ pub(crate) fn parse_granted_abilities_for_gain_clause(
 pub(crate) fn parse_simple_ability_duration(
     words_after_verb: &[&str],
 ) -> Option<(usize, usize, Until)> {
-    if let Some(idx) = find_word_sequence_index(words_after_verb, &["until", "end", "of", "turn"]) {
-        return Some((idx, 4, Until::EndOfTurn));
-    }
-    if let Some(idx) =
-        find_word_sequence_index(words_after_verb, &["until", "your", "next", "turn"]).or_else(
-            || find_word_sequence_index(words_after_verb, &["until", "your", "next", "upkeep"]),
-        )
-    {
-        return Some((idx, 4, Until::YourNextTurn));
-    }
-    if let Some(idx) = find_word_sequence_index(
+    if let Some(((len, duration), idx)) = word_slice_find_phrase_value(
         words_after_verb,
-        &["until", "your", "next", "untap", "step"],
-    )
-    .or_else(|| {
-        find_word_sequence_index(
-            words_after_verb,
-            &["during", "your", "next", "untap", "step"],
-        )
-    }) {
-        return Some((idx, 5, Until::YourNextTurn));
+        &[
+            (&["until", "end", "of", "turn"], (4usize, Until::EndOfTurn)),
+            (
+                &["until", "your", "next", "turn"],
+                (4usize, Until::YourNextTurn),
+            ),
+            (
+                &["until", "your", "next", "upkeep"],
+                (4usize, Until::YourNextTurn),
+            ),
+            (
+                &["until", "your", "next", "untap", "step"],
+                (5usize, Until::YourNextTurn),
+            ),
+            (
+                &["during", "your", "next", "untap", "step"],
+                (5usize, Until::YourNextTurn),
+            ),
+        ],
+    ) {
+        return Some((idx, len, duration));
     }
-    if let Some(idx) = find_word_sequence_index(
+    if let Some(idx) = word_slice_find_phrase_start(
         words_after_verb,
         &["for", "as", "long", "as", "you", "control"],
     ) {
@@ -646,7 +647,7 @@ fn parse_simple_ability_modifier_clause_lexed(
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause_word_view = GainAbilityWordView::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
-    let verb_idx = find_word_index_by(&clause_words, |word| {
+    let verb_idx = word_slice_find_word_where(&clause_words, |word| {
         if losing {
             matches!(word, "lose" | "loses")
         } else {
@@ -700,8 +701,8 @@ fn parse_simple_ability_modifier_clause_lexed(
         let subject_word_refs = subject_words.to_word_refs();
         let target_phrase_with_controller_tail = subject_word_refs.first().copied()
             == Some("target")
-            && (word_slice_contains(&subject_word_refs, "control")
-                || word_slice_contains(&subject_word_refs, "controls"));
+            && (word_slice_contains_word(&subject_word_refs, "control")
+                || word_slice_contains_word(&subject_word_refs, "controls"));
         if !target_phrase_with_controller_tail {
             return Ok(None);
         }
@@ -728,23 +729,20 @@ fn parse_simple_ability_modifier_clause_lexed(
         .unwrap_or(Until::Forever);
 
     let shared_gain_tail_word_idx = if losing {
-        words_after_verb
-            .windows(2)
-            .position(|window| matches!(window, ["and", "gain"] | ["and", "gains"]))
+        word_slice_find_any_phrase_start(words_after_verb, &[&["and", "gain"], &["and", "gains"]])
+            .map(|(_, idx)| idx)
     } else {
         None
     };
     let shared_get_tail_word_idx = if !losing {
-        words_after_verb
-            .windows(2)
-            .position(|window| matches!(window, ["and", "get"] | ["and", "gets"]))
+        word_slice_find_any_phrase_start(words_after_verb, &[&["and", "get"], &["and", "gets"]])
+            .map(|(_, idx)| idx)
     } else {
         None
     };
     let shared_has_tail_word_idx = if losing {
-        words_after_verb
-            .windows(2)
-            .position(|window| matches!(window, ["and", "has"] | ["and", "have"]))
+        word_slice_find_any_phrase_start(words_after_verb, &[&["and", "has"], &["and", "have"]])
+            .map(|(_, idx)| idx)
     } else {
         None
     };
@@ -768,13 +766,12 @@ fn parse_simple_ability_modifier_clause_lexed(
     }
 
     let ability_word_refs = GainAbilityWordView::new(&ability_tokens).to_word_refs();
-    let (abilities, _) = if losing && matches!(ability_word_refs.as_slice(), ["this", "ability"]) {
+    let (abilities, _) = if losing && word_slice_eq(&ability_word_refs, &["this", "ability"]) {
         (vec![GrantedAbilityAst::ThisAbility], false)
     } else {
         parse_granted_abilities_for_gain_clause(&ability_tokens, &clause_words, false)?
     };
-    let removes_all_abilities =
-        losing && matches!(ability_word_refs.as_slice(), ["all", "abilities"]);
+    let removes_all_abilities = losing && word_slice_eq(&ability_word_refs, &["all", "abilities"]);
     if abilities.is_empty() && !removes_all_abilities {
         return Ok(None);
     }
@@ -804,8 +801,8 @@ fn parse_simple_ability_modifier_clause_lexed(
 
     let subject_words = GainAbilityWordView::new(subject_tokens);
     let subject_word_refs = subject_words.to_word_refs();
-    let is_pronoun_subject =
-        implied_it_subject || matches!(subject_word_refs.as_slice(), ["it"] | ["they"] | ["them"]);
+    let is_pronoun_subject = implied_it_subject
+        || word_slice_eq_any(&subject_word_refs, &[&["it"], &["they"], &["them"]]);
     if is_pronoun_subject {
         let target =
             TargetAst::Tagged(TagKey::from(IT_TAG), span_from_lexed_tokens(subject_tokens));
@@ -833,7 +830,7 @@ fn parse_simple_ability_modifier_clause_lexed(
     let is_demonstrative_subject = subject_word_refs
         .first()
         .is_some_and(|word| *word == "that" || *word == "those");
-    if is_demonstrative_subject || word_slice_contains(&subject_word_refs, "target") {
+    if is_demonstrative_subject || word_slice_contains_word(&subject_word_refs, "target") {
         let target = parse_target_phrase(subject_tokens)?;
         if losing {
             return Ok(Some(EffectAst::subject_verb_remove_abilities_from_target(
@@ -845,10 +842,7 @@ fn parse_simple_ability_modifier_clause_lexed(
         )));
     }
 
-    if !losing
-        && (subject_word_refs.as_slice() == ["players"]
-            || subject_word_refs.as_slice() == ["all", "players"])
-    {
+    if !losing && word_slice_eq_any(&subject_word_refs, &[&["players"], &["all", "players"]]) {
         let Some(mut player_effects) = player_gain_effects_for_abilities(
             &abilities,
             &duration,
@@ -898,7 +892,7 @@ pub(crate) fn parse_simple_ability_modifier_clause(
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause_word_view = GainAbilityWordView::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
-    let verb_idx = find_word_index_by(&clause_words, |word| {
+    let verb_idx = word_slice_find_word_where(&clause_words, |word| {
         if losing {
             matches!(word, "lose" | "loses")
         } else {
@@ -951,8 +945,8 @@ pub(crate) fn parse_simple_ability_modifier_clause(
         let subject_word_refs = subject_words.to_word_refs();
         let target_phrase_with_controller_tail = subject_word_refs.first().copied()
             == Some("target")
-            && (word_slice_contains(&subject_word_refs, "control")
-                || word_slice_contains(&subject_word_refs, "controls"));
+            && (word_slice_contains_word(&subject_word_refs, "control")
+                || word_slice_contains_word(&subject_word_refs, "controls"));
         if !target_phrase_with_controller_tail {
             return Ok(None);
         }
@@ -987,7 +981,7 @@ pub(crate) fn parse_simple_ability_modifier_clause(
     }
 
     let ability_word_refs = GainAbilityWordView::new(&ability_tokens).to_word_refs();
-    let (abilities, _) = if losing && matches!(ability_word_refs.as_slice(), ["this", "ability"]) {
+    let (abilities, _) = if losing && word_slice_eq(&ability_word_refs, &["this", "ability"]) {
         (vec![GrantedAbilityAst::ThisAbility], false)
     } else {
         parse_granted_abilities_for_gain_clause(&ability_tokens, &clause_words, false)?
@@ -1009,8 +1003,8 @@ pub(crate) fn parse_simple_ability_modifier_clause(
 
     let subject_words = GainAbilityWordView::new(&subject_tokens);
     let subject_word_refs = subject_words.to_word_refs();
-    let is_pronoun_subject =
-        implied_it_subject || matches!(subject_word_refs.as_slice(), ["it"] | ["they"] | ["them"]);
+    let is_pronoun_subject = implied_it_subject
+        || word_slice_eq_any(&subject_word_refs, &[&["it"], &["they"], &["them"]]);
     if is_pronoun_subject {
         let target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&subject_tokens));
         if losing {
@@ -1037,7 +1031,7 @@ pub(crate) fn parse_simple_ability_modifier_clause(
     let is_demonstrative_subject = subject_word_refs
         .first()
         .is_some_and(|word| *word == "that" || *word == "those");
-    if is_demonstrative_subject || word_slice_contains(&subject_word_refs, "target") {
+    if is_demonstrative_subject || word_slice_contains_word(&subject_word_refs, "target") {
         let target = parse_target_phrase(&subject_tokens)?;
         if losing {
             return Ok(Some(EffectAst::subject_verb_remove_abilities_from_target(
@@ -1049,10 +1043,7 @@ pub(crate) fn parse_simple_ability_modifier_clause(
         )));
     }
 
-    if !losing
-        && (subject_word_refs.as_slice() == ["players"]
-            || subject_word_refs.as_slice() == ["all", "players"])
-    {
+    if !losing && word_slice_eq_any(&subject_word_refs, &[&["players"], &["all", "players"]]) {
         let Some(mut player_effects) = player_gain_effects_for_abilities(
             &abilities,
             &duration,
@@ -1090,16 +1081,16 @@ pub(crate) fn parse_gain_ability_sentence(
     let word_view = GainAbilityWordView::new(&tokens);
     let word_list = word_view.to_word_refs();
     let looks_like_can_attack_no_defender =
-        find_word_sequence_index(&word_list, &["can", "attack"]).is_some()
-            && find_word_sequence_index(&word_list, &["as", "though"]).is_some()
-            && word_slice_contains(&word_list, "defender");
+        word_slice_contains_phrase(&word_list, &["can", "attack"])
+            && word_slice_contains_phrase(&word_list, &["as", "though"])
+            && word_slice_contains_word(&word_list, "defender");
     if looks_like_can_attack_no_defender {
         return Ok(None);
     }
-    let gain_idx = find_word_index_by(&word_list, |word| {
+    let gain_idx = word_slice_find_word_where(&word_list, |word| {
         matches!(word, "gain" | "gains" | "lose" | "loses")
     })
-    .or_else(|| find_word_index_by(&word_list, |word| matches!(word, "has" | "have")));
+    .or_else(|| word_slice_find_word_where(&word_list, |word| matches!(word, "has" | "have")));
     let Some(gain_idx) = gain_idx else {
         return Ok(None);
     };
@@ -1108,7 +1099,7 @@ pub(crate) fn parse_gain_ability_sentence(
     };
     if let Some((Verb::Create, create_idx)) = find_verb(tokens)
         && create_idx < gain_token_idx
-        && word_slice_contains(&word_list, "token")
+        && word_slice_contains_word(&word_list, "token")
     {
         return Ok(None);
     }
@@ -1156,10 +1147,10 @@ pub(crate) fn parse_gain_ability_sentence(
         let subject_word_refs = subject_words.to_word_refs();
         let target_phrase_with_controller_tail = subject_word_refs.first().copied()
             == Some("target")
-            && (word_slice_contains(&subject_word_refs, "control")
-                || word_slice_contains(&subject_word_refs, "controls"));
-        let controller_tail_subject = word_slice_contains(&subject_word_refs, "control")
-            || word_slice_contains(&subject_word_refs, "controls");
+            && (word_slice_contains_word(&subject_word_refs, "control")
+                || word_slice_contains_word(&subject_word_refs, "controls"));
+        let controller_tail_subject = word_slice_contains_word(&subject_word_refs, "control")
+            || word_slice_contains_word(&subject_word_refs, "controls");
         let object_filter_subject = parse_object_filter(&subject_tokens, false).is_ok();
         if !target_phrase_with_controller_tail && !controller_tail_subject && !object_filter_subject
         {
@@ -1185,16 +1176,14 @@ pub(crate) fn parse_gain_ability_sentence(
         duration_phrase.is_some() || leading_duration_phrase.as_ref().is_some();
 
     let shared_get_tail_word_idx = if !losing {
-        after_gain
-            .windows(2)
-            .position(|window| matches!(window, ["and", "get"] | ["and", "gets"]))
+        word_slice_find_any_phrase_start(after_gain, &[&["and", "get"], &["and", "gets"]])
+            .map(|(_, idx)| idx)
     } else {
         None
     };
     let shared_has_tail_word_idx = if losing {
-        after_gain
-            .windows(2)
-            .position(|window| matches!(window, ["and", "has"] | ["and", "have"]))
+        word_slice_find_any_phrase_start(after_gain, &[&["and", "has"], &["and", "have"]])
+            .map(|(_, idx)| idx)
     } else {
         None
     };
@@ -1247,9 +1236,13 @@ pub(crate) fn parse_gain_ability_sentence(
         if tail_words.first().is_some_and(|word| *word == "and") {
             tail_words = tail_words[1..].to_vec();
         }
-        if tail_words.as_slice() == ["attacks", "this", "combat", "if", "able"]
-            || tail_words.as_slice() == ["attack", "this", "combat", "if", "able"]
-        {
+        if word_slice_eq_any(
+            &tail_words,
+            &[
+                &["attacks", "this", "combat", "if", "able"],
+                &["attack", "this", "combat", "if", "able"],
+            ],
+        ) {
             grants_must_attack = true;
             trailing_tail_tokens.clear();
         }
@@ -1291,10 +1284,10 @@ pub(crate) fn parse_gain_ability_sentence(
         }
     }
     let removes_all_abilities = losing
-        && GainAbilityWordView::new(&ability_tokens)
-            .to_word_refs()
-            .as_slice()
-            == ["all", "abilities"];
+        && word_slice_eq(
+            &GainAbilityWordView::new(&ability_tokens).to_word_refs(),
+            &["all", "abilities"],
+        );
     if abilities.is_empty() && !grants_must_attack && !removes_all_abilities {
         return Ok(None);
     }
@@ -1307,7 +1300,7 @@ pub(crate) fn parse_gain_ability_sentence(
     // modifier before the ability verb, extract it as a separate Pump/PumpAll effect.
     let before_gain = &word_list[subject_start_word_idx..gain_idx];
     let leading_become_effect = if let Some(become_idx) =
-        find_word_index_by(before_gain, |word| matches!(word, "become" | "becomes"))
+        word_slice_find_word_where(before_gain, |word| matches!(word, "become" | "becomes"))
     {
         let become_word_idx = subject_start_word_idx + become_idx;
         let Some(become_token_idx) = token_index_for_word_index(tokens, become_word_idx) else {
@@ -1336,7 +1329,7 @@ pub(crate) fn parse_gain_ability_sentence(
     } else {
         None
     };
-    let get_idx = find_word_index_by(before_gain, |word| matches!(word, "get" | "gets"));
+    let get_idx = word_slice_find_word_where(before_gain, |word| matches!(word, "get" | "gets"));
     let leading_base_pt_effect = if !losing {
         parse_leading_subject_base_pt_before_gain(before_gain, subject_start_word_idx, gain_idx)?
     } else {
@@ -1477,15 +1470,21 @@ pub(crate) fn parse_gain_ability_sentence(
             .find_map(|(idx, word)| {
                 if matches!(*word, "it" | "they" | "target") {
                     let mut start_idx = idx;
-                    if idx >= 3 && before_gain[idx - 3..idx] == ["up", "to", "one"] {
+                    if idx >= 3 && word_slice_eq(&before_gain[idx - 3..idx], &["up", "to", "one"]) {
                         start_idx = idx - 3;
-                    } else if idx >= 3 && before_gain[idx - 3..idx] == ["up", "to", "x"] {
+                    } else if idx >= 3
+                        && word_slice_eq(&before_gain[idx - 3..idx], &["up", "to", "x"])
+                    {
                         start_idx = idx - 3;
-                    } else if idx >= 3 && before_gain[idx - 3..idx] == ["any", "number", "of"] {
+                    } else if idx >= 3
+                        && word_slice_eq(&before_gain[idx - 3..idx], &["any", "number", "of"])
+                    {
                         start_idx = idx - 3;
                     } else if idx >= 1 && before_gain[idx - 1] == "x" {
                         start_idx = idx - 1;
-                    } else if idx >= 4 && before_gain[idx - 4..idx] == ["each", "of", "up", "to"] {
+                    } else if idx >= 4
+                        && word_slice_eq(&before_gain[idx - 4..idx], &["each", "of", "up", "to"])
+                    {
                         start_idx = idx - 4;
                     }
                     Some(subject_start_word_idx + start_idx)
@@ -1520,8 +1519,7 @@ pub(crate) fn parse_gain_ability_sentence(
     // Check for pronoun subjects ("it", "they") that reference a prior tagged object.
     let real_subject_word_view = GainAbilityWordView::new(&real_subject_tokens);
     let real_subject_words = real_subject_word_view.to_word_refs();
-    let is_pronoun_subject =
-        real_subject_words.as_slice() == ["it"] || real_subject_words.as_slice() == ["they"];
+    let is_pronoun_subject = word_slice_eq_any(&real_subject_words, &[&["it"], &["they"]]);
     if is_pronoun_subject {
         let span = span_from_tokens(&real_subject_tokens);
         let target = TargetAst::Tagged(TagKey::from(IT_TAG), span);
@@ -1621,7 +1619,7 @@ pub(crate) fn parse_gain_ability_sentence(
         return Ok(Some(effects));
     }
 
-    if word_slice_contains(before_gain, "target") {
+    if word_slice_contains_word(before_gain, "target") {
         let has_preceding_target_effect = pump_effect.is_some() || leading_become_effect.is_some();
         let target = parse_target_phrase(&real_subject_tokens)?;
         if let Some(become_effect) = &leading_become_effect {
@@ -1669,7 +1667,7 @@ pub(crate) fn parse_gain_ability_sentence(
         return Ok(Some(effects));
     }
 
-    if !losing && real_subject_words.as_slice() == ["you"] {
+    if !losing && word_slice_eq(&real_subject_words, &["you"]) {
         let has_protection_from_everything =
             abilities.iter().any(grants_protection_from_everything);
         if has_protection_from_everything {
@@ -1689,7 +1687,12 @@ pub(crate) fn parse_gain_ability_sentence(
         }
     }
 
-    if !losing && real_subject_words.as_slice() == ["you", "and", "permanents", "you", "control"] {
+    if !losing
+        && word_slice_eq(
+            &real_subject_words,
+            &["you", "and", "permanents", "you", "control"],
+        )
+    {
         let permanent_filter = crate::target::ObjectFilter::permanent().you_control();
         let Some(mut player_effects) = player_gain_effects_for_abilities(
             &abilities,
@@ -1712,10 +1715,7 @@ pub(crate) fn parse_gain_ability_sentence(
         return Ok(Some(effects));
     }
 
-    if !losing
-        && (real_subject_words.as_slice() == ["players"]
-            || real_subject_words.as_slice() == ["all", "players"])
-    {
+    if !losing && word_slice_eq_any(&real_subject_words, &[&["players"], &["all", "players"]]) {
         let Some(mut player_effects) = player_gain_effects_for_abilities(
             &abilities,
             &duration,
@@ -1972,7 +1972,7 @@ fn parse_granted_triggered_otherwise_ability(
     } else {
         0
     };
-    let Some(comma_idx) = ability_tokens.iter().position(OwnedLexToken::is_comma) else {
+    let Some(comma_idx) = find_token_kind(ability_tokens, TokenKind::Comma) else {
         return Ok(None);
     };
     let Some(otherwise_idx) = ability_tokens
@@ -2040,7 +2040,9 @@ pub(crate) fn append_gain_ability_trailing_effects(
     }
 
     if trimmed.first().is_some_and(|token| token.is_word("unless")) {
-        if let Some(unless_effect) = try_build_unless(effects, &trimmed, 0)? {
+        if let Some(unless_effect) =
+            try_build_unless(effects, SubjectVerbPrimitiveClause::new(&trimmed), 0)?
+        {
             return Ok(vec![unless_effect]);
         }
         return Err(CardTextError::ParseError(format!(
@@ -2099,7 +2101,8 @@ pub(crate) fn parse_gain_ability_to_source_sentence(
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause_word_view = GainAbilityWordView::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
-    let gain_idx = find_word_index_by(&clause_words, |word| matches!(word, "gain" | "gains"));
+    let gain_idx =
+        word_slice_find_word_where(&clause_words, |word| matches!(word, "gain" | "gains"));
     let Some(gain_idx) = gain_idx else {
         return Ok(None);
     };

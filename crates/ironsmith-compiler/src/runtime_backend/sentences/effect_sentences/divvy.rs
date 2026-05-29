@@ -1,5 +1,5 @@
 use super::super::grammar::primitives::TokenWordView;
-use super::super::lexer::{OwnedLexToken, split_lexed_sentences};
+use super::super::lexer::{OwnedLexToken, split_lexed_sentences, word_slice_starts_with};
 use super::dispatch_entry::SentenceInput;
 use super::dispatch_inner::parse_effect_sentence_lexed;
 use crate::cards::builders::{
@@ -71,22 +71,26 @@ pub(super) fn try_parse_divvy_sentence_sequence(
 
     if sentences.len() == 1 {
         let words = TokenWordView::new(sentences[0].lowered());
+        let word_refs = words.word_refs();
         if words.has_phrase(&["chooses", "two", "of", "those", "cards"])
             && words.has_phrase(&["shuffle", "the", "chosen", "cards"])
             && words.has_phrase(&["put", "the", "rest", "onto", "the", "battlefield"])
-            && words.starts_with(&[
-                "search",
-                "your",
-                "library",
-                "and",
-                "graveyard",
-                "for",
-                "up",
-                "to",
-                "four",
-                "creature",
-                "cards",
-            ])
+            && word_slice_starts_with(
+                &word_refs,
+                &[
+                    "search",
+                    "your",
+                    "library",
+                    "and",
+                    "graveyard",
+                    "for",
+                    "up",
+                    "to",
+                    "four",
+                    "creature",
+                    "cards",
+                ],
+            )
         {
             let first_effect_tokens = split_lexed_sentences(sentences[0].lowered())
                 .into_iter()

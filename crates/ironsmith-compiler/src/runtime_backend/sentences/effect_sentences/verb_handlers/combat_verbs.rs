@@ -15,32 +15,33 @@ pub(crate) fn parse_attach_object_phrase(
         return Ok(TargetAst::Source(object_span));
     }
 
-    if matches!(object_words.as_slice(), ["it"] | ["them"]) {
+    if crate::runtime_backend::lexer::word_slice_eq_any(&object_words, &[&["it"], &["them"]]) {
         return Ok(TargetAst::Tagged(TagKey::from(IT_TAG), object_span));
     }
 
     let mut tagged_filter = ObjectFilter::default();
-    if matches!(
-        object_words.as_slice(),
-        ["that", "equipment"] | ["those", "equipment"]
+    if crate::runtime_backend::lexer::word_slice_eq_any(
+        &object_words,
+        &[&["that", "equipment"], &["those", "equipment"]],
     ) {
         tagged_filter.zone = Some(Zone::Battlefield);
         tagged_filter.card_types.push(CardType::Artifact);
         tagged_filter.subtypes.push(Subtype::Equipment);
-    } else if matches!(
-        object_words.as_slice(),
-        ["that", "aura"] | ["those", "auras"]
+    } else if crate::runtime_backend::lexer::word_slice_eq_any(
+        &object_words,
+        &[&["that", "aura"], &["those", "auras"]],
     ) {
         tagged_filter.zone = Some(Zone::Battlefield);
         tagged_filter.card_types.push(CardType::Enchantment);
         tagged_filter.subtypes.push(Subtype::Aura);
-    } else if matches!(
-        object_words.as_slice(),
-        ["that", "artifact"] | ["those", "artifacts"]
+    } else if crate::runtime_backend::lexer::word_slice_eq_any(
+        &object_words,
+        &[&["that", "artifact"], &["those", "artifacts"]],
     ) {
         tagged_filter.zone = Some(Zone::Battlefield);
         tagged_filter.card_types.push(CardType::Artifact);
-    } else if object_words.as_slice() == ["that", "enchantment"] {
+    } else if crate::runtime_backend::lexer::word_slice_eq(&object_words, &["that", "enchantment"])
+    {
         tagged_filter.zone = Some(Zone::Battlefield);
         tagged_filter.card_types.push(CardType::Enchantment);
     }
@@ -72,7 +73,7 @@ pub(crate) fn parse_attach_object_phrase(
     }
 
     if object_words.len() >= 2
-        && !object_words.contains(&"target")
+        && !word_slice_contains_word(&object_words, "target")
         && object_words
             .iter()
             .all(|word| word.chars().all(|ch| ch.is_ascii_alphanumeric()))
@@ -139,13 +140,18 @@ pub(crate) fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     let object_words = crate::runtime_backend::token_word_refs(&object_tokens);
     let object = parse_attach_object_phrase(&object_tokens)?;
     let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
-    if object_words.as_slice() == ["it"] && target_words.as_slice() == ["the", "token"] {
+    if crate::runtime_backend::lexer::word_slice_eq(&object_words, &["it"])
+        && crate::runtime_backend::lexer::word_slice_eq(&target_words, &["the", "token"])
+    {
         return Ok(EffectAst::subject_verb_attach(
             TargetAst::Tagged(TagKey::from("triggering"), span_from_tokens(&object_tokens)),
             TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&target_tokens)),
         ));
     }
-    let target = if matches!(target_words.as_slice(), ["it"] | ["them"]) {
+    let target = if crate::runtime_backend::lexer::word_slice_eq_any(
+        &target_words,
+        &[&["it"], &["them"]],
+    ) {
         TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&target_tokens))
     } else {
         parse_target_phrase(&target_tokens)?
@@ -260,7 +266,7 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
         .or_else(|| {
             let tail_words =
                 crate::runtime_backend::token_word_refs(&tokens[equal_token_idx + 2..]);
-            (tail_words.as_slice() == ["the", "result"])
+            crate::runtime_backend::lexer::word_slice_eq(&tail_words, &["the", "result"])
                 .then_some(Value::EventValue(EventValueSpec::Amount))
         })
         .or(parse_dynamic_cost_modifier_value(tokens)?)
@@ -271,9 +277,10 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
             ))
         })?;
     let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
-    if target_words.as_slice() == ["each", "player"]
-        || target_words.as_slice() == ["each", "players"]
-    {
+    if crate::runtime_backend::lexer::word_slice_eq_any(
+        &target_words,
+        &[&["each", "player"], &["each", "players"]],
+    ) {
         return Ok(Some(EffectAst::ForEachPlayer {
             effects: vec![EffectAst::subject_verb_damage(
                 amount.clone(),
@@ -281,11 +288,15 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
             )],
         }));
     }
-    if target_words.as_slice() == ["each", "opponent"]
-        || target_words.as_slice() == ["each", "opponents"]
-        || target_words.as_slice() == ["each", "other", "player"]
-        || target_words.as_slice() == ["each", "other", "players"]
-    {
+    if crate::runtime_backend::lexer::word_slice_eq_any(
+        &target_words,
+        &[
+            &["each", "opponent"],
+            &["each", "opponents"],
+            &["each", "other", "player"],
+            &["each", "other", "players"],
+        ],
+    ) {
         return Ok(Some(EffectAst::ForEachOpponent {
             effects: vec![EffectAst::subject_verb_damage(
                 amount.clone(),
@@ -484,7 +495,10 @@ fn parse_divided_damage_target(
 
     let target_phrase_tokens = &among_tail[target_idx..];
     let base_target =
-        if among_words[target_idx..] == ["target"] || among_words[target_idx..] == ["targets"] {
+        if crate::runtime_backend::lexer::word_slice_eq_any(
+            &among_words[target_idx..],
+            &[&["target"], &["targets"]],
+        ) {
             TargetAst::AnyTarget(span_from_tokens(target_phrase_tokens))
         } else {
             parse_target_phrase(target_phrase_tokens)?
@@ -569,19 +583,17 @@ pub(crate) fn parse_deal_damage_with_amount(
         token.is_word("among")
     }) {
         let among_tail = &target_tokens[among_idx + 1..];
-        if among_tail.iter().any(|token| token.is_word("target"))
-            && among_tail.iter().any(|token| {
-                token.is_word("player")
-                    || token.is_word("players")
-                    || token.is_word("creature")
-                    || token.is_word("creatures")
-            })
+        if crate::runtime_backend::lexer::contains_token_word(among_tail, "target")
+            && crate::runtime_backend::lexer::contains_token_any_word(
+                among_tail,
+                &["player", "players", "creature", "creatures"],
+            )
         {
             target_tokens = among_tail;
         }
     }
 
-    if target_tokens.iter().any(|token| token.is_word("where")) {
+    if crate::runtime_backend::lexer::contains_token_word(target_tokens, "where") {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing where damage clause (clause: '{}')",
             crate::runtime_backend::token_word_refs(tokens).join(" ")
@@ -660,18 +672,20 @@ pub(crate) fn parse_deal_damage_with_amount(
     }
 
     let target_words = crate::runtime_backend::token_word_refs(target_tokens);
-    if target_words.as_slice() == ["instead"] {
+    if crate::runtime_backend::lexer::word_slice_eq(&target_words, &["instead"]) {
         return Ok(EffectAst::subject_verb_damage(
             amount,
             TargetAst::PlayerOrPlaneswalker(PlayerFilter::Any, None),
         ));
     }
-    if matches!(
-        target_words.as_slice(),
-        ["the", "creatures", "controller"]
-            | ["that", "creatures", "controller"]
-            | ["the", "creature's", "controller"]
-            | ["that", "creature's", "controller"]
+    if crate::runtime_backend::lexer::word_slice_eq_any(
+        &target_words,
+        &[
+            &["the", "creatures", "controller"],
+            &["that", "creatures", "controller"],
+            &["the", "creature's", "controller"],
+            &["that", "creature's", "controller"],
+        ],
     ) {
         return Ok(EffectAst::subject_verb_damage(
             amount,
@@ -681,7 +695,7 @@ pub(crate) fn parse_deal_damage_with_amount(
             ),
         ));
     }
-    if target_words.as_slice() == ["the", "player"] {
+    if crate::runtime_backend::lexer::word_slice_eq(&target_words, &["the", "player"]) {
         return Ok(EffectAst::subject_verb_damage(
             amount,
             TargetAst::Player(
@@ -709,9 +723,10 @@ pub(crate) fn parse_deal_damage_with_amount(
             return Ok(EffectAst::subject_verb_damage(amount, target));
         }
     }
-    if target_words.as_slice() == ["each", "player"]
-        || target_words.as_slice() == ["each", "players"]
-    {
+    if crate::runtime_backend::lexer::word_slice_eq_any(
+        &target_words,
+        &[&["each", "player"], &["each", "players"]],
+    ) {
         return Ok(EffectAst::ForEachPlayer {
             effects: vec![EffectAst::subject_verb_damage(
                 amount.clone(),
@@ -725,16 +740,12 @@ pub(crate) fn parse_deal_damage_with_amount(
         && normalized_target_words
             .iter()
             .any(|word| matches!(*word, "player" | "players"))
-        && normalized_target_words
-            .windows(2)
-            .any(|window| window == ["max", "speed"]);
+        && word_slice_contains_phrase(&normalized_target_words, &["max", "speed"]);
     if each_player_max_speed_filter {
         let has_max_speed = !(normalized_target_words
             .iter()
             .any(|word| matches!(*word, "does" | "doesnt" | "doesn" | "dont" | "not"))
-            || normalized_target_words
-                .windows(2)
-                .any(|window| window == ["does", "not"]));
+            || word_slice_contains_phrase(&normalized_target_words, &["does", "not"]));
         let filter = if has_max_speed {
             PlayerFilter::with_max_speed(PlayerFilter::Any)
         } else {
@@ -748,9 +759,10 @@ pub(crate) fn parse_deal_damage_with_amount(
             )],
         });
     }
-    if target_words.as_slice() == ["each", "opponent"]
-        || target_words.as_slice() == ["each", "opponents"]
-    {
+    if crate::runtime_backend::lexer::word_slice_eq_any(
+        &target_words,
+        &[&["each", "opponent"], &["each", "opponents"]],
+    ) {
         return Ok(EffectAst::ForEachOpponent {
             effects: vec![EffectAst::subject_verb_damage(
                 amount.clone(),
@@ -785,7 +797,10 @@ pub(crate) fn parse_deal_damage_with_amount(
 
     if matches!(target_words.first(), Some(&"each") | Some(&"all"))
         && let Some(and_each_idx) = find_window_by(&target_words, 3, |window| {
-            window == ["and", "each", "player"] || window == ["and", "each", "players"]
+            crate::runtime_backend::lexer::word_slice_eq_any(
+                window,
+                &[&["and", "each", "player"], &["and", "each", "players"]],
+            )
         })
         && and_each_idx >= 1
         && and_each_idx + 3 == target_words.len()
@@ -839,8 +854,13 @@ pub(crate) fn parse_deal_damage_with_amount(
 
     if let Some(at_idx) = find_index(&target_tokens, |token| token.is_word("at")) {
         let timing_words = crate::runtime_backend::token_word_refs(&target_tokens[at_idx..]);
-        let matches_end_of_combat = timing_words.as_slice() == ["at", "end", "of", "combat"]
-            || timing_words.as_slice() == ["at", "the", "end", "of", "combat"];
+        let matches_end_of_combat = crate::runtime_backend::lexer::word_slice_eq_any(
+            &timing_words,
+            &[
+                &["at", "end", "of", "combat"],
+                &["at", "the", "end", "of", "combat"],
+            ],
+        );
         if matches_end_of_combat && at_idx >= 1 {
             let pre_target_tokens = trim_commas(&target_tokens[..at_idx]);
             if !pre_target_tokens.is_empty() {

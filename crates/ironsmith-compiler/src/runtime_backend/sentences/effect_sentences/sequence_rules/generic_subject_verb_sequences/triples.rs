@@ -14,7 +14,10 @@ use crate::effect::{ChoiceCount, Value};
 use crate::runtime_backend::activation_and_restrictions::activated_line_core::find_word_sequence_start;
 use crate::runtime_backend::effect_sentences;
 use crate::runtime_backend::effect_sentences::SentenceInput;
-use crate::runtime_backend::front_end::lexer::OwnedLexToken;
+use crate::runtime_backend::front_end::lexer::{
+    OwnedLexToken, find_token_word, word_slice_contains_all_words, word_slice_contains_word,
+    word_slice_ends_with, word_slice_eq, word_slice_eq_any, word_slice_starts_with,
+};
 use crate::runtime_backend::lexer::TokenWordView;
 use crate::runtime_backend::permission_helpers::parse_cast_or_play_tagged_clause;
 use crate::runtime_backend::token_primitives::{
@@ -69,12 +72,12 @@ fn abundant_harvest_choice_sentence(words: &[&str]) -> bool {
 }
 
 fn abundant_harvest_reveal_sentence(words: &[&str]) -> bool {
-    slice_starts_with(
+    word_slice_starts_with(
         words,
         &[
             "reveal", "cards", "from", "the", "top", "of", "your", "library",
         ],
-    ) && words.ends_with(&["a", "card", "of", "the", "chosen", "kind"])
+    ) && word_slice_ends_with(words, &["a", "card", "of", "the", "chosen", "kind"])
 }
 
 fn abundant_harvest_branch_effects(
@@ -130,11 +133,11 @@ pub(crate) fn parse_choose_land_or_nonland_then_consult_to_hand_bottom(
 
     let third_words = crate::runtime_backend::token_word_refs(&third);
     let moves_to_hand =
-        slice_starts_with(
+        word_slice_starts_with(
             &third_words,
             &["put", "that", "card", "into", "your", "hand"],
-        ) || slice_starts_with(&third_words, &["put", "it", "into", "your", "hand"]);
-    if !moves_to_hand || !slice_contains(&third_words, &"rest") {
+        ) || word_slice_starts_with(&third_words, &["put", "it", "into", "your", "hand"]);
+    if !moves_to_hand || !word_slice_contains_word(&third_words, "rest") {
         return Ok(None);
     }
     let Some(order) =
@@ -236,7 +239,7 @@ pub(crate) fn parse_reveal_top_opponent_exiles_one_put_rest_hand_then_may_cast(
         .copied()
         .filter(|word| !is_article(word))
         .collect::<Vec<_>>();
-    if actor_words.as_slice() != ["opponent"] {
+    if !word_slice_eq(&actor_words, &["opponent"]) {
         return Ok(None);
     }
     let Some(exile_tail_start) = exile_words.token_index_after_words(exile_word_idx + 1) else {
@@ -276,7 +279,10 @@ pub(crate) fn parse_reveal_top_opponent_exiles_one_put_rest_hand_then_may_cast(
         .copied()
         .filter(|word| !is_article(word))
         .collect::<Vec<_>>();
-    if rest_without_articles.as_slice() != ["you", "put", "rest", "into", "your", "hand"] {
+    if !word_slice_eq(
+        &rest_without_articles,
+        &["you", "put", "rest", "into", "your", "hand"],
+    ) {
         return Ok(None);
     }
 
@@ -287,12 +293,13 @@ pub(crate) fn parse_reveal_top_opponent_exiles_one_put_rest_hand_then_may_cast(
         .copied()
         .filter(|word| !is_article(word))
         .collect::<Vec<_>>();
-    if third_without_articles.as_slice()
-        != [
+    if !word_slice_eq(
+        &third_without_articles,
+        &[
             "that", "opponent", "may", "cast", "exiled", "card", "without", "paying", "its",
             "mana", "cost",
-        ]
-    {
+        ],
+    ) {
         return Ok(None);
     }
 
@@ -337,7 +344,7 @@ pub(crate) fn parse_search_then_player_names_card_conditional_put_then_shuffle(
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let first = trim_commas(sentences[sentence_idx].lowered());
-    let Some(then_idx) = first.iter().position(|token| token.is_word("then")) else {
+    let Some(then_idx) = find_token_word(&first, "then") else {
         return Ok(None);
     };
     let search_tokens = trim_commas(&first[..then_idx]);
@@ -525,11 +532,12 @@ pub(crate) fn parse_search_two_then_put_one_hand_other_graveyard_then_shuffle(
         .copied()
         .filter(|word| !is_article(word))
         .collect::<Vec<_>>();
-    let puts_one_hand = slice_starts_with(&content_words, &["put", "one", "into", "your", "hand"])
-        || slice_starts_with(
-            &content_words,
-            &["put", "one", "of", "them", "into", "your", "hand"],
-        );
+    let puts_one_hand =
+        word_slice_starts_with(&content_words, &["put", "one", "into", "your", "hand"])
+            || word_slice_starts_with(
+                &content_words,
+                &["put", "one", "of", "them", "into", "your", "hand"],
+            );
     let puts_other_graveyard =
         find_word_sequence_start(&content_words, &["other", "into", "your", "graveyard"]).is_some()
             || find_word_sequence_start(&content_words, &["other", "into", "graveyard"]).is_some();
@@ -539,7 +547,7 @@ pub(crate) fn parse_search_two_then_put_one_hand_other_graveyard_then_shuffle(
 
     let third_tokens = trim_commas(sentences[sentence_idx + 2].lowered());
     let third_words = TokenWordView::new(&third_tokens).word_refs();
-    if !matches!(third_words.as_slice(), ["then", "shuffle"] | ["shuffle"]) {
+    if !word_slice_eq_any(&third_words, &[&["then", "shuffle"], &["shuffle"]]) {
         return Ok(None);
     }
 
@@ -840,11 +848,12 @@ pub(crate) fn parse_top_cards_put_match_into_hand_rest_graveyard(
 
     let after_from_words = &action_word_refs[from_among_word_idx + from_among_len..];
     let moves_into_hand = if reveal_chosen {
-        (slice_starts_with(after_from_words, &["and", "put", "it", "into"])
-            || slice_starts_with(after_from_words, &["put", "it", "into"]))
-            && slice_contains(after_from_words, &"hand")
+        (word_slice_starts_with(after_from_words, &["and", "put", "it", "into"])
+            || word_slice_starts_with(after_from_words, &["put", "it", "into"]))
+            && word_slice_contains_word(after_from_words, "hand")
     } else {
-        slice_starts_with(after_from_words, &["into"]) && slice_contains(after_from_words, &"hand")
+        word_slice_starts_with(after_from_words, &["into"])
+            && word_slice_contains_word(after_from_words, "hand")
     };
     if !moves_into_hand {
         return Ok(None);
@@ -858,14 +867,13 @@ pub(crate) fn parse_top_cards_put_match_into_hand_rest_graveyard(
         &third_word_refs[..]
     };
     let puts_rest_graveyard = matches!(third_rest_words.first(), Some(&"put" | &"puts"))
-        && third_rest_words.contains(&"rest")
-        && third_rest_words.contains(&"graveyard");
+        && word_slice_contains_all_words(third_rest_words, &["rest", "graveyard"]);
     if !puts_rest_graveyard {
         return Ok(None);
     }
 
     if filter.card_types.len() > 1
-        && filter_words.iter().any(|word| *word == "and/or")
+        && word_slice_contains_word(&filter_words, "and/or")
         && filter.all_card_types.is_empty()
         && filter.subtypes.is_empty()
         && filter.static_abilities.is_empty()
@@ -974,7 +982,7 @@ fn parse_any_number_from_looked_cards_action(
     let action_tokens = trim_commas(tokens);
     let action_words = TokenWordView::new(&action_tokens);
     let action_word_refs = action_words.word_refs();
-    if !slice_starts_with(&action_word_refs, &["any", "number", "of"]) {
+    if !word_slice_starts_with(&action_word_refs, &["any", "number", "of"]) {
         return None;
     }
 
@@ -996,16 +1004,16 @@ fn parse_any_number_from_looked_cards_action(
     filter.zone = None;
 
     let after_from_words = &action_word_refs[from_among_word_idx + from_among_len..];
-    let (zone, tapped) = if slice_starts_with(after_from_words, &["into", "your", "hand"])
-        || slice_starts_with(after_from_words, &["into", "hand"])
+    let (zone, tapped) = if word_slice_starts_with(after_from_words, &["into", "your", "hand"])
+        || word_slice_starts_with(after_from_words, &["into", "hand"])
     {
         (Zone::Hand, false)
-    } else if slice_starts_with(after_from_words, &["onto", "the", "battlefield", "tapped"])
-        || slice_starts_with(after_from_words, &["onto", "battlefield", "tapped"])
+    } else if word_slice_starts_with(after_from_words, &["onto", "the", "battlefield", "tapped"])
+        || word_slice_starts_with(after_from_words, &["onto", "battlefield", "tapped"])
     {
         (Zone::Battlefield, true)
-    } else if slice_starts_with(after_from_words, &["onto", "the", "battlefield"])
-        || slice_starts_with(after_from_words, &["onto", "battlefield"])
+    } else if word_slice_starts_with(after_from_words, &["onto", "the", "battlefield"])
+        || word_slice_starts_with(after_from_words, &["onto", "battlefield"])
     {
         (Zone::Battlefield, false)
     } else {
@@ -1044,9 +1052,7 @@ pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
         &third_word_refs[..]
     };
     let puts_rest_bottom = matches!(third_rest_words.first(), Some(&"put" | &"puts"))
-        && third_rest_words.contains(&"rest")
-        && third_rest_words.contains(&"bottom")
-        && third_rest_words.contains(&"library");
+        && word_slice_contains_all_words(third_rest_words, &["rest", "bottom", "library"]);
     if !puts_rest_bottom {
         return Ok(None);
     }
@@ -1126,7 +1132,7 @@ fn parse_cast_from_among_looked_cards_action(
         return Ok(None);
     };
     let after_from_words = &action_word_refs[from_among_word_idx + from_among_len..];
-    if !slice_starts_with(
+    if !word_slice_starts_with(
         after_from_words,
         &["without", "paying", "its", "mana", "cost"],
     ) {
@@ -1192,9 +1198,7 @@ pub(crate) fn parse_top_cards_may_cast_match_rest_bottom(
         &third_word_refs[..]
     };
     let puts_rest_bottom = matches!(third_rest_words.first(), Some(&"put" | &"puts"))
-        && third_rest_words.contains(&"rest")
-        && third_rest_words.contains(&"bottom")
-        && third_rest_words.contains(&"library");
+        && word_slice_contains_all_words(third_rest_words, &["rest", "bottom", "library"]);
     if !puts_rest_bottom {
         return Ok(None);
     }
@@ -1267,7 +1271,7 @@ fn parse_reveal_any_number_from_looked_cards_into_hand_action(
     let action_tokens = trim_commas(action_match.tail_tokens);
     let action_words = TokenWordView::new(&action_tokens);
     let action_word_refs = action_words.word_refs();
-    if !slice_starts_with(&action_word_refs, &["any", "number", "of"]) {
+    if !word_slice_starts_with(&action_word_refs, &["any", "number", "of"]) {
         return Ok(None);
     }
     let Some((from_among_word_idx, from_among_len)) =
@@ -1288,9 +1292,8 @@ fn parse_reveal_any_number_from_looked_cards_into_hand_action(
 
     let after_from_words = &action_word_refs[from_among_word_idx + from_among_len..];
     let puts_revealed_into_hand =
-        slice_starts_with(after_from_words, &["and", "put", "the", "revealed"])
-            && after_from_words.contains(&"cards")
-            && after_from_words.contains(&"hand");
+        word_slice_starts_with(after_from_words, &["and", "put", "the", "revealed"])
+            && word_slice_contains_all_words(after_from_words, &["cards", "hand"]);
     if !puts_revealed_into_hand {
         return Ok(None);
     }
@@ -1324,9 +1327,7 @@ pub(crate) fn parse_top_cards_reveal_any_matching_to_hand_rest_bottom(
         &third_word_refs[..]
     };
     let puts_rest_bottom = matches!(third_rest_words.first(), Some(&"put" | &"puts"))
-        && third_rest_words.contains(&"rest")
-        && third_rest_words.contains(&"bottom")
-        && third_rest_words.contains(&"library");
+        && word_slice_contains_all_words(third_rest_words, &["rest", "bottom", "library"]);
     if !puts_rest_bottom {
         return Ok(None);
     }
@@ -1490,7 +1491,7 @@ fn is_one_chosen_to_battlefield_others_to_hand_rest_to_graveyard(tokens: &[Owned
     let trimmed = trim_commas(tokens);
     let words = TokenWordView::new(&trimmed);
     let word_refs = words.word_refs();
-    if !slice_starts_with(
+    if !word_slice_starts_with(
         &word_refs,
         &[
             "put",
@@ -1652,7 +1653,7 @@ pub(crate) fn parse_top_cards_for_each_card_type_among_spells_put_matching_into_
     let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
     let second_words = TokenWordView::new(&second_tokens);
     let word_refs = second_words.word_refs();
-    if !slice_starts_with(&word_refs, &["for", "each", "card", "type", "among"]) {
+    if !word_slice_starts_with(&word_refs, &["for", "each", "card", "type", "among"]) {
         return Ok(None);
     }
 
@@ -1664,12 +1665,12 @@ pub(crate) fn parse_top_cards_for_each_card_type_among_spells_put_matching_into_
     if word_refs.get(tail_idx).is_some_and(|word| is_article(word)) {
         tail_idx += 1;
     }
-    if !slice_starts_with(
+    if !word_slice_starts_with(
         &word_refs[tail_idx..],
         &[
             "card", "of", "that", "type", "from", "among", "the", "revealed", "cards", "into",
         ],
-    ) || !slice_contains(&word_refs[tail_idx..], &"hand")
+    ) || !word_slice_contains_word(&word_refs[tail_idx..], "hand")
     {
         return Ok(None);
     }
@@ -1691,7 +1692,7 @@ pub(crate) fn parse_top_cards_for_each_card_type_among_spells_put_matching_into_
     let Some(suffix) = suffix_patterns
         .iter()
         .copied()
-        .find(|suffix| slice_ends_with(&filter_words, suffix))
+        .find(|suffix| word_slice_ends_with(&filter_words, suffix))
     else {
         return Ok(None);
     };
@@ -1742,7 +1743,7 @@ pub(crate) fn parse_top_cards_for_each_card_type_put_matching_into_hand_rest_bot
     let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
     let second_words = TokenWordView::new(&second_tokens);
     let word_refs = second_words.word_refs();
-    if !slice_starts_with(&word_refs, &["for", "each", "card", "type"]) {
+    if !word_slice_starts_with(&word_refs, &["for", "each", "card", "type"]) {
         return Ok(None);
     }
     if word_refs.get(4).is_some_and(|word| *word == "among") {
@@ -1757,12 +1758,12 @@ pub(crate) fn parse_top_cards_for_each_card_type_put_matching_into_hand_rest_bot
     if word_refs.get(tail_idx).is_some_and(|word| is_article(word)) {
         tail_idx += 1;
     }
-    if !slice_starts_with(
+    if !word_slice_starts_with(
         &word_refs[tail_idx..],
         &[
             "card", "of", "that", "type", "from", "among", "the", "revealed", "cards", "into",
         ],
-    ) || !slice_contains(&word_refs[tail_idx..], &"hand")
+    ) || !word_slice_contains_word(&word_refs[tail_idx..], "hand")
     {
         return Ok(None);
     }
@@ -1797,7 +1798,7 @@ fn is_put_one_looked_card_hand_one_bottom_exile_one(tokens: &[OwnedLexToken]) ->
     let words = TokenWordView::new(&trimmed);
     let word_refs = words.word_refs();
 
-    slice_starts_with(
+    word_slice_starts_with(
         &word_refs,
         &["put", "one", "of", "them", "into", "your", "hand"],
     ) && find_word_sequence_start(
@@ -2035,13 +2036,13 @@ pub(crate) fn parse_look_at_top_reveal_match_put_rest_bottom(
     filter.zone = None;
 
     let after_from_words = &reveal_word_refs[from_among_word_idx + from_among_len..];
-    let puts_into_hand = (slice_starts_with(after_from_words, &["and", "put", "it", "into"])
-        || slice_starts_with(after_from_words, &["put", "it", "into"])
-        || slice_starts_with(after_from_words, &["and", "put", "them", "into"])
-        || slice_starts_with(after_from_words, &["put", "them", "into"])
-        || slice_starts_with(after_from_words, &["and", "put", "that", "card", "into"])
-        || slice_starts_with(after_from_words, &["put", "that", "card", "into"]))
-        && slice_contains(after_from_words, &"hand");
+    let puts_into_hand = (word_slice_starts_with(after_from_words, &["and", "put", "it", "into"])
+        || word_slice_starts_with(after_from_words, &["put", "it", "into"])
+        || word_slice_starts_with(after_from_words, &["and", "put", "them", "into"])
+        || word_slice_starts_with(after_from_words, &["put", "them", "into"])
+        || word_slice_starts_with(after_from_words, &["and", "put", "that", "card", "into"])
+        || word_slice_starts_with(after_from_words, &["put", "that", "card", "into"]))
+        && word_slice_contains_word(after_from_words, "hand");
     if !puts_into_hand {
         return Ok(None);
     }
@@ -2054,9 +2055,7 @@ pub(crate) fn parse_look_at_top_reveal_match_put_rest_bottom(
         &third_word_refs[..]
     };
     let puts_rest_bottom = matches!(third_rest_words.first(), Some(&"put" | &"puts"))
-        && third_rest_words.contains(&"rest")
-        && third_rest_words.contains(&"bottom")
-        && third_rest_words.contains(&"library");
+        && word_slice_contains_all_words(third_rest_words, &["rest", "bottom", "library"]);
     if !puts_rest_bottom {
         return Ok(None);
     }
@@ -2162,14 +2161,15 @@ pub(crate) fn parse_look_at_top_reveal_match_put_top_rest_bottom(
     filter.zone = None;
 
     let after_from_words = &reveal_word_refs[from_among_word_idx + from_among_len..];
-    let puts_on_top = (slice_starts_with(after_from_words, &["and", "put", "it", "on", "top"])
-        || slice_starts_with(after_from_words, &["put", "it", "on", "top"])
-        || slice_starts_with(
-            after_from_words,
-            &["and", "put", "that", "card", "on", "top"],
-        )
-        || slice_starts_with(after_from_words, &["put", "that", "card", "on", "top"]))
-        && slice_contains(after_from_words, &"library");
+    let puts_on_top =
+        (word_slice_starts_with(after_from_words, &["and", "put", "it", "on", "top"])
+            || word_slice_starts_with(after_from_words, &["put", "it", "on", "top"])
+            || word_slice_starts_with(
+                after_from_words,
+                &["and", "put", "that", "card", "on", "top"],
+            )
+            || word_slice_starts_with(after_from_words, &["put", "that", "card", "on", "top"]))
+            && word_slice_contains_word(after_from_words, "library");
     if !puts_on_top {
         return Ok(None);
     }
@@ -2182,9 +2182,7 @@ pub(crate) fn parse_look_at_top_reveal_match_put_top_rest_bottom(
         &third_word_refs[..]
     };
     let puts_rest_bottom = matches!(third_rest_words.first(), Some(&"put" | &"puts"))
-        && third_rest_words.contains(&"rest")
-        && third_rest_words.contains(&"bottom")
-        && third_rest_words.contains(&"library");
+        && word_slice_contains_all_words(third_rest_words, &["rest", "bottom", "library"]);
     if !puts_rest_bottom {
         return Ok(None);
     }

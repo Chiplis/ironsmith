@@ -306,15 +306,22 @@ pub(super) fn parse_static_line_cst(
 /// equip ability you activate each turn." and the variant "during each of your turns."
 fn is_first_equip_cost_alternative_line(normalized: &str) -> bool {
     let s = normalized.trim_end_matches('.');
-    s.starts_with("you may pay ")
-        && s.contains(" rather than pay the equip cost of the first equip ability you activate")
-        && (s.ends_with("each turn") || s.ends_with("during each of your turns"))
+    crate::runtime_backend::token_primitives::str_starts_with(s, "you may pay ")
+        && crate::runtime_backend::token_primitives::str_contains(
+            s,
+            " rather than pay the equip cost of the first equip ability you activate",
+        )
+        && (crate::runtime_backend::token_primitives::str_ends_with(s, "each turn")
+            || crate::runtime_backend::token_primitives::str_ends_with(
+                s,
+                "during each of your turns",
+            ))
 }
 
 fn is_additional_land_play_static_line(normalized: &str) -> bool {
     let normalized = normalized.trim_end_matches('.').to_ascii_lowercase();
     let words = normalized.split_whitespace().collect::<Vec<_>>();
-    if !matches!(words.as_slice(), ["you", "may", "play", ..]) {
+    if !word_slice_starts_with(&words, &["you", "may", "play"]) {
         return false;
     }
     let Some((_, used)) = ironsmith_core::parse_cardinal_words(&words[3..]) else {
@@ -336,10 +343,17 @@ fn is_additional_land_play_static_line(normalized: &str) -> bool {
 
 fn is_can_block_additional_creatures_static_line(normalized: &str) -> bool {
     let normalized = normalized.trim_end_matches('.').to_ascii_lowercase();
-    if !normalized.starts_with("this creature can block an additional ") {
+    if !crate::runtime_backend::token_primitives::str_starts_with(
+        normalized.as_str(),
+        "this creature can block an additional ",
+    ) {
         return false;
     }
-    normalized.ends_with(" each combat") || normalized.ends_with(" this turn")
+    crate::runtime_backend::token_primitives::str_ends_with(normalized.as_str(), " each combat")
+        || crate::runtime_backend::token_primitives::str_ends_with(
+            normalized.as_str(),
+            " this turn",
+        )
 }
 
 fn parse_split_static_item_count(tokens: &[OwnedLexToken]) -> Result<Option<usize>, CardTextError> {

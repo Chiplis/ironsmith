@@ -24,10 +24,11 @@ use super::keyword_static::{
     parse_value_binding_clause_lexed,
 };
 use super::leaf::{lower_activation_cost_cst, parse_activation_cost_tokens_rewrite};
-use super::lexer::{OwnedLexToken, TokenKind};
-use super::object_filters::{
-    find_word_slice_phrase_start, parse_object_filter, parse_object_filter_lexed,
+use super::lexer::{
+    OwnedLexToken, TokenKind, word_slice_contains_any_phrase, word_slice_contains_phrase,
+    word_slice_contains_word, word_slice_ends_with, word_slice_starts_with,
 };
+use super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::token_primitives::{
     contains_window, find_index, find_window_by, find_window_index, lexed_head_words, rfind_index,
     slice_contains, slice_ends_with, slice_starts_with, slice_strip_prefix, slice_strip_suffix,

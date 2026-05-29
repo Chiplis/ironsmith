@@ -1,45 +1,26 @@
 use super::*;
 
 pub(super) fn render_lower_words(tokens: &[OwnedLexToken]) -> String {
-    let word_view = ClauseDispatchCompatWords::new(tokens);
-    word_view.to_word_refs().join(" ")
+    LexedClause::new(tokens).text()
 }
 
 fn contains_card_type(card_types: &[CardType], target: CardType) -> bool {
-    for card_type in card_types {
-        if *card_type == target {
-            return true;
-        }
-    }
-    false
+    crate::slice_primitives::contains(card_types, &target)
 }
 
 pub(super) fn push_unique_card_type(card_types: &mut Vec<CardType>, card_type: CardType) {
-    if !contains_card_type(card_types, card_type) {
-        card_types.push(card_type);
-    }
-}
-
-fn contains_subtype(subtypes: &[Subtype], target: Subtype) -> bool {
-    for subtype in subtypes {
-        if *subtype == target {
-            return true;
-        }
-    }
-    false
+    crate::slice_primitives::push_unique(card_types, card_type);
 }
 
 pub(super) fn push_unique_subtype(subtypes: &mut Vec<Subtype>, subtype: Subtype) {
-    if !contains_subtype(subtypes, subtype) {
-        subtypes.push(subtype);
-    }
+    crate::slice_primitives::push_unique(subtypes, subtype);
 }
 
 pub(super) fn parse_controller_or_owner_of_target_subject(
     subject_tokens: &[OwnedLexToken],
 ) -> Option<(SubjectAst, TargetAst)> {
-    let subject_view = ClauseDispatchCompatWords::new(subject_tokens);
-    let subject_words = subject_view.to_word_refs();
+    let subject_clause = LexedClause::new(subject_tokens);
+    let subject_words = subject_clause.word_refs();
     fn strip_trailing_possessive_token(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
         let mut normalized = tokens.to_vec();
         if let Some(last) = normalized.last_mut()
@@ -67,21 +48,26 @@ pub(super) fn parse_controller_or_owner_of_target_subject(
             });
         TargetAst::Object(filter, None, None)
     };
-    match subject_words.as_slice() {
-        ["enchanted", "creature", "s", "controller"]
-        | ["enchanted", "creatures", "controller"]
-        | ["enchanted", "creature's", "controller"] => {
-            return Some((
-                SubjectAst::Player(PlayerAst::ItsController),
-                enchanted_filter(),
-            ));
-        }
-        ["enchanted", "creature", "s", "owner"]
-        | ["enchanted", "creatures", "owner"]
-        | ["enchanted", "creature's", "owner"] => {
-            return Some((SubjectAst::Player(PlayerAst::ItsOwner), enchanted_filter()));
-        }
-        _ => {}
+    if let Some(enchanted_phrase) = crate::runtime_backend::lexer::word_slice_matching_phrase(
+        &subject_words,
+        &[
+            &["enchanted", "creature", "s", "controller"],
+            &["enchanted", "creatures", "controller"],
+            &["enchanted", "creature's", "controller"],
+            &["enchanted", "creature", "s", "owner"],
+            &["enchanted", "creatures", "owner"],
+            &["enchanted", "creature's", "owner"],
+        ],
+    ) {
+        let player = if matches!(
+            enchanted_phrase.last().copied(),
+            Some("controller" | "controller's")
+        ) {
+            PlayerAst::ItsController
+        } else {
+            PlayerAst::ItsOwner
+        };
+        return Some((SubjectAst::Player(player), enchanted_filter()));
     }
 
     if subject_words.len() >= 2 {
@@ -94,33 +80,46 @@ pub(super) fn parse_controller_or_owner_of_target_subject(
         };
         if let Some(player) = player {
             let owner_word_idx = subject_words.len() - 1;
-            if let Some(target_token_end) = subject_view.token_index_for_word_index(owner_word_idx)
+            let target_clause = subject_clause.before_word(owner_word_idx)?.trimmed();
+            let target_tokens = strip_trailing_possessive_token(target_clause.tokens());
+            if !target_tokens.is_empty()
+                && let Ok(target) = parse_target_phrase(&target_tokens)
             {
-                let trimmed_target_tokens = trim_commas(&subject_tokens[..target_token_end]);
-                let target_tokens = strip_trailing_possessive_token(&trimmed_target_tokens);
-                if !target_tokens.is_empty()
-                    && let Ok(target) = parse_target_phrase(&target_tokens)
-                {
-                    return Some((SubjectAst::Player(player), target));
-                }
+                return Some((SubjectAst::Player(player), target));
             }
         }
     }
 
-    let (player, target_start) = match subject_words.as_slice() {
-        ["the", "controller", "of", ..] => (PlayerAst::ItsController, 3usize),
-        ["controller", "of", ..] => (PlayerAst::ItsController, 2usize),
-        ["the", "owner", "of", ..] => (PlayerAst::ItsOwner, 3usize),
-        ["owner", "of", ..] => (PlayerAst::ItsOwner, 2usize),
-        _ => return None,
+    let (player, target_start) = if crate::runtime_backend::lexer::word_slice_starts_with(
+        &subject_words,
+        &["the", "controller", "of"],
+    ) {
+        (PlayerAst::ItsController, 3usize)
+    } else if crate::runtime_backend::lexer::word_slice_starts_with(
+        &subject_words,
+        &["controller", "of"],
+    ) {
+        (PlayerAst::ItsController, 2usize)
+    } else if crate::runtime_backend::lexer::word_slice_starts_with(
+        &subject_words,
+        &["the", "owner", "of"],
+    ) {
+        (PlayerAst::ItsOwner, 3usize)
+    } else if crate::runtime_backend::lexer::word_slice_starts_with(
+        &subject_words,
+        &["owner", "of"],
+    ) {
+        (PlayerAst::ItsOwner, 2usize)
+    } else {
+        return None;
     };
 
-    let target_tokens = trim_commas(&subject_tokens[target_start..]);
-    if target_tokens.is_empty() {
+    let target_clause = subject_clause.from_word(target_start)?.trimmed();
+    if target_clause.is_empty() {
         return None;
     }
 
-    let target = parse_target_phrase(&target_tokens).ok()?;
+    let target = parse_target_phrase(target_clause.tokens()).ok()?;
     Some((SubjectAst::Player(player), target))
 }
 
@@ -150,7 +149,7 @@ pub(super) fn has_counter_state_pronoun(subject_words: &[&str]) -> bool {
 }
 
 pub(super) fn subject_references_base_power_toughness(subject_words: &[&str]) -> bool {
-    find_word_sequence_index(subject_words, &["base", "power", "and", "toughness"]).is_some()
+    word_slice_contains_phrase(subject_words, &["base", "power", "and", "toughness"])
 }
 
 pub(super) fn strip_base_power_toughness_subject_tokens<'a>(
@@ -158,11 +157,12 @@ pub(super) fn strip_base_power_toughness_subject_tokens<'a>(
     subject_words: &[&str],
 ) -> &'a [OwnedLexToken] {
     let Some(base_word_idx) =
-        find_word_sequence_index(subject_words, &["base", "power", "and", "toughness"])
+        word_slice_find_phrase_start(subject_words, &["base", "power", "and", "toughness"])
     else {
         return subject_tokens;
     };
-    let Some(base_token_idx) = token_index_for_word_index(subject_tokens, base_word_idx) else {
+    let subject_clause = LexedClause::new(subject_tokens);
+    let Some(base_token_idx) = subject_clause.token_index_for_word_index(base_word_idx) else {
         return subject_tokens;
     };
 
@@ -176,11 +176,16 @@ pub(super) fn strip_base_power_toughness_subject_tokens<'a>(
 pub(super) fn parse_become_base_pt_tail<'a>(
     become_words: &'a [&'a str],
 ) -> Result<Option<(&'a [&'a str], i32, i32)>, CardTextError> {
-    let Some(with_idx) = find_word_index(become_words, "with") else {
+    let Some(with_idx) = word_slice_find_word(become_words, "with") else {
         return Ok(None);
     };
     let tail = &become_words[with_idx + 1..];
-    if tail.len() != 5 || tail[..4] != ["base", "power", "and", "toughness"] {
+    if tail.len() != 5
+        || !crate::runtime_backend::lexer::word_slice_eq(
+            &tail[..4],
+            &["base", "power", "and", "toughness"],
+        )
+    {
         return Ok(None);
     }
     let (power, toughness) = parse_pt_modifier(tail[4])?;

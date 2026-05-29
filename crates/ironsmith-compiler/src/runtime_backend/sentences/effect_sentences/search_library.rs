@@ -1,15 +1,16 @@
 use super::super::grammar::primitives::{self as grammar, split_lexed_slices_on_or};
 use super::super::grammar::values::parse_value_comparison_tokens;
-use super::super::lexer::{OwnedLexToken, TokenKind, lex_line, token_word_refs, trim_lexed_commas};
+use super::super::lexer::{
+    LexedClause, OwnedLexToken, TokenKind, contains_token_word, lex_line, token_word_refs,
+    trim_lexed_commas, word_slice_contains_all_words, word_slice_contains_word, word_slice_eq,
+    word_slice_eq_any, word_slice_find_any_word, word_slice_find_phrase_start,
+    word_slice_find_word, word_slice_matching_phrase, word_slice_starts_with,
+    word_slice_starts_with_any,
+};
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::super::token_primitives::{
-    contains_window as word_slice_contains_sequence, find_any_str_index as word_slice_find_any,
-    find_index as find_token_index, find_str_index as word_slice_find,
-    find_window_index as word_slice_find_sequence, parse_simple_restriction_duration_prefix,
+    find_index as find_token_index, parse_simple_restriction_duration_prefix,
     parse_simple_restriction_duration_suffix, rfind_index as rfind_token_index,
-    slice_contains_all as word_slice_has_all, slice_contains_any as word_slice_contains_any,
-    slice_contains_str as word_slice_contains, slice_ends_with as word_slice_ends_with,
-    slice_starts_with as word_slice_starts_with,
 };
 use super::super::util::{
     helper_tag_for_tokens, is_article, parse_number, parse_subject, parse_target_phrase,
@@ -58,13 +59,6 @@ pub(crate) fn parse_search_library_sentence(
     )
 }
 
-fn token_slice_contains_word(tokens: &[OwnedLexToken], expected: &'static str) -> bool {
-    tokens
-        .iter()
-        .enumerate()
-        .any(|(idx, _)| grammar::parse_prefix(&tokens[idx..], grammar::kw(expected)).is_some())
-}
-
 fn token_slice_contains_phrase(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> bool {
     grammar::find_prefix(tokens, || grammar::phrase(phrase)).is_some()
 }
@@ -78,12 +72,6 @@ fn find_phrase_token_bounds(
     }
     let (idx, _, rest) = grammar::find_prefix(tokens, || grammar::phrase(phrase))?;
     Some((idx, tokens.len() - rest.len()))
-}
-
-pub(crate) fn word_slice_starts_with_any(words: &[&str], prefixes: &[&[&str]]) -> bool {
-    prefixes
-        .iter()
-        .any(|prefix| word_slice_starts_with(words, prefix))
 }
 
 #[allow(dead_code)]
@@ -108,26 +96,26 @@ fn is_source_reference_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
         "permanent",
     ]
     .iter()
-    .any(|word| token_slice_contains_word(tokens, word))
+    .any(|word| contains_token_word(tokens, word))
 }
 
 fn is_as_long_as_you_control_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
-    token_slice_contains_word(tokens, "you")
-        && token_slice_contains_word(tokens, "control")
+    contains_token_word(tokens, "you")
+        && contains_token_word(tokens, "control")
         && is_source_reference_duration_tokens(tokens)
 }
 
 fn is_source_remains_tapped_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
     token_slice_contains_phrase(tokens, &["for", "as", "long", "as"])
-        && token_slice_contains_word(tokens, "remains")
-        && token_slice_contains_word(tokens, "tapped")
+        && contains_token_word(tokens, "remains")
+        && contains_token_word(tokens, "tapped")
         && is_source_reference_duration_tokens(tokens)
 }
 
 fn is_source_remains_battlefield_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
     token_slice_contains_phrase(tokens, &["for", "as", "long", "as"])
-        && token_slice_contains_word(tokens, "remains")
-        && token_slice_contains_word(tokens, "battlefield")
+        && contains_token_word(tokens, "remains")
+        && contains_token_word(tokens, "battlefield")
         && is_source_reference_duration_tokens(tokens)
 }
 
@@ -815,7 +803,7 @@ pub(crate) fn parse_exile_hand_and_graveyard_bundle_sentence(
     let clause_words = token_words(&clause_tokens);
 
     let first_zone_idx =
-        word_slice_find_any(&clause_words, &["hand", "hands", "graveyard", "graveyards"])
+        word_slice_find_any_word(&clause_words, &["hand", "hands", "graveyard", "graveyards"])
             .ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "missing zone in exile hand+graveyard clause (clause: '{}')",
@@ -827,10 +815,19 @@ pub(crate) fn parse_exile_hand_and_graveyard_bundle_sentence(
     }
 
     let owner_words = normalize_possessive_words(&clause_words[4..first_zone_idx]);
-    let owner = match owner_words.as_slice() {
-        ["target", "player"] | ["target", "players"] => PlayerFilter::target_player(),
-        ["target", "opponent"] | ["target", "opponents"] => PlayerFilter::target_opponent(),
-        ["your"] => PlayerFilter::You,
+    let owner = match word_slice_matching_phrase(
+        &owner_words,
+        &[
+            &["target", "player"],
+            &["target", "players"],
+            &["target", "opponent"],
+            &["target", "opponents"],
+            &["your"],
+        ],
+    ) {
+        Some(["target", "player"] | ["target", "players"]) => PlayerFilter::target_player(),
+        Some(["target", "opponent"] | ["target", "opponents"]) => PlayerFilter::target_opponent(),
+        Some(["your"]) => PlayerFilter::You,
         _ => return Ok(None),
     };
 
@@ -888,11 +885,14 @@ pub(crate) fn parse_target_player_exiles_creature_and_graveyard_sentence(
         return Ok(None);
     }
 
-    let (subject_player, subject_filter) = match clause_words.as_slice() {
-        ["target", "opponent", ..] => (PlayerAst::TargetOpponent, PlayerFilter::target_opponent()),
-        ["target", "player", ..] => (PlayerAst::Target, PlayerFilter::target_player()),
-        _ => return Ok(None),
-    };
+    let (subject_player, subject_filter) =
+        if word_slice_starts_with(&clause_words, &["target", "opponent"]) {
+            (PlayerAst::TargetOpponent, PlayerFilter::target_opponent())
+        } else if word_slice_starts_with(&clause_words, &["target", "player"]) {
+            (PlayerAst::Target, PlayerFilter::target_player())
+        } else {
+            return Ok(None);
+        };
 
     let verb_idx = 2usize;
     if !matches!(
@@ -903,13 +903,13 @@ pub(crate) fn parse_target_player_exiles_creature_and_graveyard_sentence(
     }
 
     let tail_words = &clause_words[verb_idx + 1..];
-    let Some(and_idx) = word_slice_find(tail_words, "and") else {
+    let Some(and_idx) = word_slice_find_word(tail_words, "and") else {
         return Ok(None);
     };
     let creature_words = &tail_words[..and_idx];
     let graveyard_words = &tail_words[and_idx + 1..];
 
-    if graveyard_words != ["their", "graveyard"] {
+    if !word_slice_eq(graveyard_words, &["their", "graveyard"]) {
         return Ok(None);
     }
 
@@ -918,8 +918,13 @@ pub(crate) fn parse_target_player_exiles_creature_and_graveyard_sentence(
     } else {
         creature_words
     };
-    let creature_clause_matches = creature_words == ["creature", "they", "control"]
-        || creature_words == ["creature", "that", "player", "controls"];
+    let creature_clause_matches = word_slice_eq_any(
+        creature_words,
+        &[
+            &["creature", "they", "control"],
+            &["creature", "that", "player", "controls"],
+        ],
+    );
     if !creature_clause_matches {
         return Ok(None);
     }
@@ -1015,7 +1020,6 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
             words_all.join(" ")
         )));
     }
-    let effect_words = token_words(&effect_tokens);
     let reveal_until_prefix = [
         "its",
         "controller",
@@ -1031,20 +1035,21 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
         "they",
         "reveal",
     ];
-    if word_slice_starts_with(&effect_words, &reveal_until_prefix)
-        && let Some(put_word_idx) = word_slice_find_sequence(
-            &effect_words,
-            &["puts", "that", "card", "onto", "the", "battlefield"],
-        )
-        && word_slice_contains_sequence(&effect_words[put_word_idx..], &["then", "shuffles"])
+    let effect_clause = LexedClause::new(&effect_tokens);
+    if let Some(after_prefix) = effect_clause.strip_prefix_clause(&reveal_until_prefix)
+        && let Some((filter_clause, put_tail)) = after_prefix.split_once_before_phrase(&[
+            "puts",
+            "that",
+            "card",
+            "onto",
+            "the",
+            "battlefield",
+        ])
+        && put_tail.contains_phrase(&["then", "shuffles"])
     {
-        let filter_start = token_index_for_word_index(&effect_tokens, reveal_until_prefix.len())
-            .unwrap_or(effect_tokens.len());
-        let filter_end =
-            token_index_for_word_index(&effect_tokens, put_word_idx).unwrap_or(effect_tokens.len());
-        let reveal_filter_tokens = trim_commas(&effect_tokens[filter_start..filter_end]);
+        let reveal_filter_tokens = filter_clause.trimmed_tokens();
         if !reveal_filter_tokens.is_empty() {
-            let filter = parse_object_filter_lexed(&reveal_filter_tokens, false)?;
+            let filter = parse_object_filter_lexed(reveal_filter_tokens, false)?;
             let revealed_tag = helper_tag_for_tokens(tokens, "revealed");
             let matched_tag = helper_tag_for_tokens(tokens, "chosen");
 
@@ -1076,23 +1081,20 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
             }]));
         }
     }
-    if word_slice_starts_with(&effect_words, &reveal_until_prefix)
-        && let Some(put_word_idx) = word_slice_find_sequence(
-            &effect_words,
-            &["puts", "that", "card", "onto", "the", "battlefield"],
-        )
-        && word_slice_contains_sequence(
-            &effect_words[put_word_idx..],
-            &["then", "puts", "the", "rest", "on", "the", "bottom"],
-        )
+    if let Some(after_prefix) = effect_clause.strip_prefix_clause(&reveal_until_prefix)
+        && let Some((filter_clause, put_tail)) = after_prefix.split_once_before_phrase(&[
+            "puts",
+            "that",
+            "card",
+            "onto",
+            "the",
+            "battlefield",
+        ])
+        && put_tail.contains_phrase(&["then", "puts", "the", "rest", "on", "the", "bottom"])
     {
-        let filter_start = token_index_for_word_index(&effect_tokens, reveal_until_prefix.len())
-            .unwrap_or(effect_tokens.len());
-        let filter_end =
-            token_index_for_word_index(&effect_tokens, put_word_idx).unwrap_or(effect_tokens.len());
-        let reveal_filter_tokens = trim_commas(&effect_tokens[filter_start..filter_end]);
+        let reveal_filter_tokens = filter_clause.trimmed_tokens();
         if !reveal_filter_tokens.is_empty() {
-            let filter = parse_object_filter_lexed(&reveal_filter_tokens, false)?;
+            let filter = parse_object_filter_lexed(reveal_filter_tokens, false)?;
             let revealed_tag = helper_tag_for_tokens(tokens, "revealed");
             let matched_tag = helper_tag_for_tokens(tokens, "chosen");
 

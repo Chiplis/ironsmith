@@ -11,34 +11,31 @@ fn subject_verb_put_counters_target(effect: &EffectAst) -> Option<TargetAst> {
 }
 
 pub(crate) fn parse_sentence_sacrifice_at_end_of_combat(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::super::grammar::primitives as grammar;
-
     // "sacrifice <object> at [the] end of combat"
-    let Some(object_tokens) = grammar::strip_lexed_prefix_phrase(tokens, &["sacrifice"]) else {
+    const END_OF_COMBAT_TIMING: &[&[&str]] = &[
+        &["at", "end", "of", "combat"],
+        &["at", "the", "end", "of", "combat"],
+    ];
+    let Some(object_clause) = clause.strip_prefix_clause(&["sacrifice"]) else {
         return Ok(None);
     };
-    let Some((object_tokens, _timing)) =
-        grammar::split_lexed_once_on_separator(object_tokens, || {
-            winnow::combinator::alt((
-                grammar::phrase(&["at", "end", "of", "combat"]),
-                grammar::phrase(&["at", "the", "end", "of", "combat"]),
-            ))
-        })
+    let Some((_timing, object_clause, _tail)) =
+        object_clause.split_once_on_any_phrase(END_OF_COMBAT_TIMING)
     else {
         return Ok(None);
     };
 
-    let object_tokens = trim_commas(object_tokens);
-    if object_tokens.is_empty() {
+    let object_clause = object_clause.trimmed();
+    if object_clause.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing sacrifice object in end-of-combat clause (clause: '{}')",
-            crate::runtime_backend::token_word_refs(tokens).join(" ")
+            clause.text()
         )));
     }
 
-    let object_words = crate::runtime_backend::token_word_refs(&object_tokens);
+    let object_words = object_clause.word_refs();
     let filter = if matches!(
         object_words.as_slice(),
         ["it"]
@@ -50,7 +47,7 @@ pub(crate) fn parse_sentence_sacrifice_at_end_of_combat(
     ) {
         ObjectFilter::tagged(TagKey::from(IT_TAG))
     } else {
-        parse_object_filter(&object_tokens, false)?
+        parse_object_filter(object_clause.tokens(), false)?
     };
 
     Ok(Some(vec![EffectAst::DelayedUntilEndOfCombat {
@@ -64,36 +61,28 @@ pub(crate) fn parse_sentence_sacrifice_at_end_of_combat(
 }
 
 pub(crate) fn parse_sentence_for_each_counter_kind_put_or_remove(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::super::grammar::primitives as grammar;
-
     // "for each kind of counter on <target>, put another counter of that kind on it or remove one from it"
     let Some(after_prefix) =
-        grammar::strip_lexed_prefix_phrase(tokens, &["for", "each", "kind", "of", "counter", "on"])
+        clause.strip_prefix_clause(&["for", "each", "kind", "of", "counter", "on"])
     else {
         return Ok(None);
     };
-    let Some((target_tokens, tail_tokens)) = grammar::split_lexed_once_on_delimiter(
-        after_prefix,
-        super::super::super::lexer::TokenKind::Comma,
-    ) else {
+    let Some((target_clause, tail_clause)) = after_prefix.split_once_on_comma() else {
         return Ok(None);
     };
 
-    let target_tokens = trim_commas(target_tokens);
-    if target_tokens.is_empty() {
+    let target_clause = target_clause.trimmed();
+    if target_clause.is_empty() {
         return Ok(None);
     }
-    let target = parse_target_phrase(&target_tokens)?;
+    let target = parse_target_phrase(target_clause.tokens())?;
 
-    if !grammar::contains_phrase(
-        tail_tokens,
-        &[
-            "put", "another", "counter", "of", "that", "kind", "on", "it", "or", "remove", "one",
-            "from",
-        ],
-    ) {
+    if !tail_clause.contains_phrase(&[
+        "put", "another", "counter", "of", "that", "kind", "on", "it", "or", "remove", "one",
+        "from",
+    ]) {
         return Ok(None);
     }
 
@@ -103,39 +92,41 @@ pub(crate) fn parse_sentence_for_each_counter_kind_put_or_remove(
 }
 
 pub(crate) fn parse_put_counter_ladder_segments(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let segments = split_lexed_slices_on_comma(tokens);
+    let segments = clause.trimmed_comma_segments();
     if segments.len() != 3 {
         return Ok(None);
     }
 
     let mut effects = Vec::new();
     for (idx, segment) in segments.iter().enumerate() {
-        let mut clause = trim_commas(segment).to_vec();
-        if idx == 0 {
-            if clause.is_empty() || !clause[0].is_word("put") {
+        let segment_clause = if idx == 0 {
+            if !segment.first_is_word("put") {
                 return Ok(None);
             }
-            clause.remove(0);
-        } else if clause.first().is_some_and(|token| token.is_word("and")) {
-            clause.remove(0);
-        }
-        if clause.is_empty() {
+            segment.from(1).trimmed()
+        } else if segment.first_is_word("and") {
+            segment.from(1).trimmed()
+        } else {
+            segment.trimmed()
+        };
+        if segment_clause.is_empty() {
             return Ok(None);
         }
 
-        let Some(on_idx) = find_index(&clause, |token| token.is_word("on")) else {
+        let Some((descriptor_clause, target_clause)) = segment_clause.split_once_on_word("on")
+        else {
             return Ok(None);
         };
-        let descriptor = trim_commas(&clause[..on_idx]);
-        let target_tokens = trim_commas(&clause[on_idx + 1..]);
-        if descriptor.is_empty() || target_tokens.is_empty() {
+        let descriptor_clause = descriptor_clause.trimmed();
+        let target_clause = target_clause.trimmed();
+        if descriptor_clause.is_empty() || target_clause.is_empty() {
             return Ok(None);
         }
 
-        let (count, counter_type) = parse_counter_descriptor(&descriptor)?;
-        let target = parse_target_phrase(&target_tokens)?;
+        let (count, counter_type) = parse_counter_descriptor(descriptor_clause.tokens())?;
+        let target = parse_target_phrase(target_clause.tokens())?;
         effects.push(EffectAst::subject_verb_put_counters(
             counter_type,
             Value::Fixed(count as i32),
@@ -149,75 +140,68 @@ pub(crate) fn parse_put_counter_ladder_segments(
 }
 
 pub(crate) fn parse_sentence_put_counter_sequence(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::super::grammar::primitives as grammar;
-
-    if !tokens.first().is_some_and(|token| token.is_word("put")) {
+    if !clause.first_is_word("put") {
         return Ok(None);
     }
-    if !tokens
-        .iter()
-        .any(|token| token.is_word("counter") || token.is_word("counters"))
+    if !clause.contains_any_word(&["counter", "counters"]) {
+        return Ok(None);
+    }
+
+    let (head_clause, tail_clause) = if let Some((head, tail)) = clause.split_once_on_then_trimmed()
     {
-        return Ok(None);
-    }
-
-    let (head_tokens, tail_tokens) = if let Some((head, tail)) =
-        split_lexed_once_on_comma_then(tokens).or_else(|| {
-            grammar::split_lexed_once_on_separator(tokens, || grammar::kw("then").void())
-        }) {
-        (head.to_vec(), trim_commas(tail))
+        (head, Some(tail))
     } else {
-        (tokens.to_vec(), Vec::new())
+        (clause, None)
     };
-    if !tail_tokens.is_empty() {
-        let mut effects = parse_effect_chain(&head_tokens)?;
+    if let Some(tail_clause) = tail_clause
+        && !tail_clause.is_empty()
+    {
+        let mut effects = parse_effect_chain(head_clause.tokens())?;
         if effects.is_empty() {
             return Ok(None);
         }
-        effects.extend(parse_effect_chain(&tail_tokens)?);
+        effects.extend(parse_effect_chain(tail_clause.tokens())?);
         return Ok(Some(effects));
     }
 
-    if let Some(effects) = parse_put_counter_ladder_segments(tokens)? {
+    if let Some(effects) = parse_put_counter_ladder_segments(clause)? {
         return Ok(Some(effects));
     }
 
-    if let Some(on_idx) = find_index(tokens, |token| token.is_word("on")) {
-        let descriptor_tokens = trim_commas(&tokens[1..on_idx]);
-        let target_tokens = trim_commas(&tokens[on_idx + 1..]);
-        if !descriptor_tokens.is_empty() && !target_tokens.is_empty() {
-            let mut descriptors: Vec<Vec<OwnedLexToken>> = Vec::new();
-            let comma_segments = split_lexed_slices_on_comma(&descriptor_tokens);
+    if let Some((descriptor_clause, target_clause)) = clause.split_once_on_word("on") {
+        let descriptor_clause = descriptor_clause.from(1).trimmed();
+        let target_clause = target_clause.trimmed();
+        if !descriptor_clause.is_empty() && !target_clause.is_empty() {
+            let mut descriptors: Vec<SubjectVerbPrimitiveOwnedClause> = Vec::new();
+            let comma_segments = descriptor_clause.trimmed_comma_segments();
             if comma_segments.len() >= 2 {
                 for segment in comma_segments {
-                    let mut clause = trim_commas(segment);
-                    if clause.first().is_some_and(|token| token.is_word("and")) {
-                        clause.remove(0);
-                    }
-                    if clause.is_empty() {
+                    let mut segment_clause = SubjectVerbPrimitiveOwnedClause::from_clause(segment);
+                    segment_clause.remove_leading_word("and");
+                    if segment_clause.is_empty() {
                         descriptors.clear();
                         break;
                     }
-                    descriptors.push(clause);
+                    descriptors.push(segment_clause);
                 }
-            } else if let Some(and_idx) =
-                find_index(&descriptor_tokens, |token| token.is_word("and"))
+            } else if let Some((first_clause, second_clause)) =
+                descriptor_clause.split_once_on_word("and")
             {
-                let first = trim_commas(&descriptor_tokens[..and_idx]);
-                let second = trim_commas(&descriptor_tokens[and_idx + 1..]);
-                if !first.is_empty() && !second.is_empty() {
-                    descriptors.push(first);
-                    descriptors.push(second);
+                let first_clause = first_clause.trimmed();
+                let second_clause = second_clause.trimmed();
+                if !first_clause.is_empty() && !second_clause.is_empty() {
+                    descriptors.push(SubjectVerbPrimitiveOwnedClause::from_clause(first_clause));
+                    descriptors.push(SubjectVerbPrimitiveOwnedClause::from_clause(second_clause));
                 }
             }
 
             if descriptors.len() >= 2 {
-                let target = parse_target_phrase(&target_tokens)?;
+                let target = parse_target_phrase(target_clause.tokens())?;
                 let mut effects = Vec::new();
                 for descriptor in descriptors {
-                    let (count, counter_type) = parse_counter_descriptor(&descriptor)?;
+                    let (count, counter_type) = parse_counter_descriptor(descriptor.tokens())?;
                     effects.push(EffectAst::subject_verb_put_counters(
                         counter_type,
                         Value::Fixed(count as i32),
@@ -232,21 +216,14 @@ pub(crate) fn parse_sentence_put_counter_sequence(
     }
 
     // Handle "put ... counter on X and it gains ... until end of turn."
-    if let Some(and_idx) = find_window_by(tokens, 2, |window| {
-        window[0].is_word("and") && window[1].is_word("it")
-    }) {
-        let first_clause = trim_commas(&tokens[1..and_idx]);
-        let second_clause = trim_commas(&tokens[and_idx + 1..]);
+    if let Some((first_clause, second_clause)) = clause.split_once_on_phrase(&["and", "it"]) {
+        let first_clause = first_clause.from(1).trimmed();
+        let second_clause = second_clause.trimmed();
         if !first_clause.is_empty()
             && !second_clause.is_empty()
-            && second_clause.iter().any(|token| {
-                token.is_word("gain")
-                    || token.is_word("gains")
-                    || token.is_word("has")
-                    || token.is_word("have")
-            })
-            && let Ok(first) = parse_put_counters(&first_clause)
-            && let Some(mut gain_effects) = parse_gain_ability_sentence(&second_clause)?
+            && second_clause.contains_any_word(&["gain", "gains", "has", "have"])
+            && let Ok(first) = parse_put_counters(first_clause.tokens())
+            && let Some(mut gain_effects) = parse_gain_ability_sentence(second_clause.tokens())?
         {
             let source_target = match &first {
                 effect if subject_verb_put_counters_target(effect).is_some() => {
@@ -287,47 +264,46 @@ pub(crate) fn parse_sentence_put_counter_sequence(
     }
 
     // Handle "put ... and ... counter on ..." without comma separation.
-    if let Some(and_idx) = find_index(tokens, |token| token.is_word("and")) {
-        let first_clause = trim_commas(&tokens[1..and_idx]);
-        let second_clause = trim_commas(&tokens[and_idx + 1..]);
+    if let Some((first_clause, second_clause)) = clause.split_once_on_word("and") {
+        let first_clause = first_clause.from(1).trimmed();
+        let second_clause = second_clause.trimmed();
         if !first_clause.is_empty() && !second_clause.is_empty() {
             if let (Ok(first), Ok(second)) = (
-                parse_put_counters(&first_clause),
-                parse_put_counters(&second_clause),
+                parse_put_counters(first_clause.tokens()),
+                parse_put_counters(second_clause.tokens()),
             ) {
                 return Ok(Some(vec![first, second]));
             }
         }
     }
 
-    let segments = split_lexed_slices_on_comma(tokens);
+    let segments = clause.trimmed_comma_segments();
     if segments.len() < 2 {
         return Ok(None);
     }
 
     let mut effects = Vec::new();
     for (idx, segment) in segments.iter().enumerate() {
-        let mut clause = segment.to_vec();
-        if idx == 0 {
-            if clause.is_empty() || !clause[0].is_word("put") {
+        let segment_clause = if idx == 0 {
+            if !segment.first_is_word("put") {
                 return Ok(None);
             }
-            clause.remove(0);
-        } else if clause.first().is_some_and(|token| token.is_word("and")) {
-            clause.remove(0);
-        }
+            segment.from(1).trimmed()
+        } else if segment.first_is_word("and") {
+            segment.from(1).trimmed()
+        } else {
+            *segment
+        };
 
-        if clause.is_empty() {
+        if segment_clause.is_empty() {
             return Ok(None);
         }
 
-        if !grammar::contains_word(&clause, "counter")
-            && !grammar::contains_word(&clause, "counters")
-        {
+        if !segment_clause.contains_any_word(&["counter", "counters"]) {
             return Ok(None);
         }
 
-        let Ok(effect) = parse_put_counters(&clause) else {
+        let Ok(effect) = parse_put_counters(segment_clause.tokens()) else {
             return Ok(None);
         };
         effects.push(effect);
@@ -354,55 +330,44 @@ pub(crate) fn is_pump_like_effect(effect: &EffectAst) -> bool {
 }
 
 pub(crate) fn parse_gets_then_fights_sentence(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::super::grammar::primitives as grammar;
-
-    let body_tokens = grammar::strip_lexed_prefix_phrase(tokens, &["then"]).unwrap_or(tokens);
-    if body_tokens.is_empty() {
+    let body_clause = clause.strip_prefix_clause(&["then"]).unwrap_or(clause);
+    if body_clause.is_empty() {
         return Ok(None);
     }
 
     // Split on "fight"/"fights"
-    let fight_split =
-        grammar::split_lexed_once_on_separator(body_tokens, || grammar::kw("fight").void())
-            .or_else(|| {
-                grammar::split_lexed_once_on_separator(body_tokens, || grammar::kw("fights").void())
-            });
-    let Some((left_slice, right_slice)) = fight_split else {
+    let Some((left_clause, right_clause)) =
+        body_clause.split_once_on_word_any(&["fight", "fights"])
+    else {
         return Ok(None);
     };
 
-    let mut left_tokens = trim_commas(left_slice).to_vec();
-    while left_tokens.last().is_some_and(|token| token.is_word("and")) {
-        left_tokens.pop();
-    }
-    let left_tokens = trim_commas(&left_tokens);
-    let right_tokens = trim_commas(right_slice);
-    if left_tokens.is_empty() || right_tokens.is_empty() {
+    let left_clause = left_clause.without_trailing_words_clause(&["and"]);
+    let right_clause = right_clause.trimmed();
+    if left_clause.is_empty() || right_clause.is_empty() {
         return Ok(None);
     }
 
     // Split left side on "get"/"gets" to extract subject
-    let get_split =
-        grammar::split_lexed_once_on_separator(&left_tokens, || grammar::kw("get").void()).or_else(
-            || grammar::split_lexed_once_on_separator(&left_tokens, || grammar::kw("gets").void()),
-        );
-    let Some((subject_slice, _modifier_slice)) = get_split else {
+    let Some((subject_clause, _modifier_clause)) =
+        left_clause.split_once_on_word_any(&["get", "gets"])
+    else {
         return Ok(None);
     };
 
-    let pump_effect = parse_effect_clause(&left_tokens)?;
+    let pump_effect = parse_effect_clause(left_clause.tokens())?;
     if !is_pump_like_effect(&pump_effect) {
         return Ok(None);
     }
 
-    let subject_tokens = trim_commas(subject_slice);
-    if subject_tokens.is_empty() {
+    let subject_clause = subject_clause.trimmed();
+    if subject_clause.is_empty() {
         return Ok(None);
     }
-    let creature1 = parse_target_phrase(&subject_tokens)?;
-    let creature2 = parse_target_phrase(&right_tokens)?;
+    let creature1 = parse_target_phrase(subject_clause.tokens())?;
+    let creature2 = parse_target_phrase(right_clause.tokens())?;
     if matches!(
         creature1,
         TargetAst::Player(_, _) | TargetAst::PlayerOrPlaneswalker(_, _)
@@ -412,7 +377,7 @@ pub(crate) fn parse_gets_then_fights_sentence(
     ) {
         return Err(CardTextError::ParseError(format!(
             "fight target must be a creature (clause: '{}')",
-            crate::runtime_backend::token_word_refs(tokens).join(" ")
+            clause.text()
         )));
     }
 
@@ -423,13 +388,13 @@ pub(crate) fn parse_gets_then_fights_sentence(
 }
 
 pub(crate) fn parse_sentence_gets_then_fights(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_gets_then_fights_sentence(tokens)
+    parse_gets_then_fights_sentence(clause)
 }
 
 pub(crate) fn parse_return_with_counters_on_it_sentence(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     fn normalize_destination_words<'a>(words: &'a [&'a str]) -> Vec<&'a str> {
         words
@@ -443,87 +408,99 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
             .collect()
     }
 
-    if !tokens.first().is_some_and(|token| token.is_word("return")) {
+    if !clause.first_is_word("return") {
         return Ok(None);
     }
 
-    let Some(to_idx) = rfind_index(tokens, |token| token.is_word("to")) else {
+    let Some((target_clause, destination_clause)) = clause.rsplit_once_on_word("to") else {
         return Ok(None);
     };
-    if to_idx <= 1 {
+    if target_clause.len() <= 1 {
         return Ok(None);
     }
 
-    let target_tokens = trim_commas(&tokens[1..to_idx]);
-    if target_tokens.is_empty() {
+    let target_clause = target_clause.from(1).trimmed();
+    if target_clause.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing return target before destination (clause: '{}')",
-            crate::runtime_backend::token_word_refs(tokens).join(" ")
+            clause.text()
         )));
     }
 
-    let destination_tokens = trim_commas(&tokens[to_idx + 1..]);
-    if destination_tokens.is_empty() {
+    let destination_clause = destination_clause.trimmed();
+    if destination_clause.is_empty() {
         return Ok(None);
     }
-    if !grammar::contains_word(&destination_tokens, "battlefield") {
+    if !destination_clause.contains_word("battlefield") {
         return Ok(None);
     }
 
-    let Some(with_idx) = find_token_word(&destination_tokens, "with") else {
+    let Some(with_idx) = destination_clause.find_token_word("with") else {
         return Ok(None);
     };
-    if with_idx + 1 >= destination_tokens.len() {
+    if with_idx + 1 >= destination_clause.len() {
         return Ok(None);
     }
 
-    let base_destination_word_storage =
-        crate::runtime_backend::token_word_refs(&destination_tokens[..with_idx]);
+    let base_destination_word_storage = destination_clause.before(with_idx).word_refs();
     let base_destination_words = normalize_destination_words(&base_destination_word_storage);
-    let Some(battlefield_idx) = find_index(&base_destination_words, |word| *word == "battlefield")
+    let Some(battlefield_idx) = base_destination_words
+        .iter()
+        .position(|word| *word == "battlefield")
     else {
         return Ok(None);
     };
-    let tapped = slice_contains(&base_destination_words, &"tapped");
+    let tapped = word_slice_contains_word(&base_destination_words, "tapped");
     let destination_tail: Vec<&str> = base_destination_words[battlefield_idx + 1..]
         .iter()
         .copied()
         .filter(|word| *word != "tapped")
         .collect();
+    const PRESERVE_CONTROL_TAILS: &[&[&str]] =
+        &[&["under", "its", "control"], &["under", "their", "control"]];
+    const OWNER_CONTROL_TAILS: &[&[&str]] = &[
+        &["under", "its", "owner", "control"],
+        &["under", "their", "owner", "control"],
+        &["under", "his", "owner", "control"],
+        &["under", "her", "owner", "control"],
+        &["under", "that", "player", "control"],
+    ];
     let battlefield_controller = if destination_tail.is_empty()
-        || destination_tail == ["under", "its", "control"]
-        || destination_tail == ["under", "their", "control"]
-    {
+        || crate::runtime_backend::lexer::word_slice_eq_any(
+            &destination_tail,
+            PRESERVE_CONTROL_TAILS,
+        ) {
         ReturnControllerAst::Preserve
-    } else if destination_tail == ["under", "your", "control"] {
+    } else if crate::runtime_backend::lexer::word_slice_eq(
+        &destination_tail,
+        &["under", "your", "control"],
+    ) {
         ReturnControllerAst::You
-    } else if destination_tail == ["under", "its", "owner", "control"]
-        || destination_tail == ["under", "their", "owner", "control"]
-        || destination_tail == ["under", "his", "owner", "control"]
-        || destination_tail == ["under", "her", "owner", "control"]
-        || destination_tail == ["under", "that", "player", "control"]
-    {
+    } else if crate::runtime_backend::lexer::word_slice_eq_any(
+        &destination_tail,
+        OWNER_CONTROL_TAILS,
+    ) {
         ReturnControllerAst::Owner
     } else {
         return Ok(None);
     };
 
-    let counter_clause_tokens = trim_commas(&destination_tokens[with_idx + 1..]);
-    let Some(on_idx) = rfind_token_word(&counter_clause_tokens, "on") else {
+    let counter_clause = destination_clause.from(with_idx + 1).trimmed();
+    let Some(on_idx) = counter_clause.rfind_token_word("on") else {
         return Ok(None);
     };
-    if on_idx + 1 >= counter_clause_tokens.len() {
+    if on_idx + 1 >= counter_clause.len() {
         return Ok(None);
     }
 
-    let on_target_words =
-        crate::runtime_backend::token_word_refs(&counter_clause_tokens[on_idx + 1..]);
-    let timing_words =
-        if on_target_words.starts_with(&["it"]) || on_target_words.starts_with(&["them"]) {
-            &on_target_words[1..]
-        } else {
-            return Ok(None);
-        };
+    let on_target_words = counter_clause.from(on_idx + 1).word_refs();
+    let timing_words = if word_slice_starts_with(&on_target_words, &["it"])
+        || word_slice_starts_with(&on_target_words, &["them"])
+    {
+        &on_target_words[1..]
+    } else {
+        return Ok(None);
+    };
     let delayed_timing = if timing_words.is_empty() {
         None
     } else {
@@ -533,40 +510,33 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
         return Ok(None);
     }
 
-    let descriptor_tokens = trim_commas(&counter_clause_tokens[..on_idx]);
-    if descriptor_tokens.is_empty() {
+    let descriptor_clause = counter_clause.before(on_idx).trimmed();
+    if descriptor_clause.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing counter descriptor in return-with-counters clause (clause: '{}')",
-            crate::runtime_backend::token_word_refs(tokens).join(" ")
+            clause.text()
         )));
     }
 
-    let mut descriptors = Vec::new();
-    for descriptor in split_lexed_slices_on_and(&descriptor_tokens) {
-        let descriptor = trim_commas(&descriptor);
-        if descriptor.is_empty() {
-            continue;
-        }
-        descriptors.push(descriptor);
-    }
+    let descriptors = descriptor_clause.trimmed_and_segments();
     if descriptors.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing counter descriptor in return-with-counters clause (clause: '{}')",
-            crate::runtime_backend::token_word_refs(tokens).join(" ")
+            clause.text()
         )));
     }
 
     let mut effects = vec![EffectAst::subject_verb_return_to_battlefield(
-        parse_target_phrase(&target_tokens)?,
+        parse_target_phrase(target_clause.tokens())?,
         tapped,
         false,
         false,
         battlefield_controller,
         None,
     )];
-    let tagged_target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens));
+    let tagged_target = TargetAst::Tagged(TagKey::from(IT_TAG), clause.span());
     for descriptor in descriptors {
-        let (count, counter_type) = parse_counter_descriptor(&descriptor)?;
+        let (count, counter_type) = parse_counter_descriptor(descriptor.tokens())?;
         effects.push(EffectAst::subject_verb_put_counters(
             counter_type,
             Value::Fixed(count as i32),
@@ -596,7 +566,7 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
 }
 
 pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     fn normalize_destination_words<'a>(words: &'a [&'a str]) -> Vec<&'a str> {
         words
@@ -610,119 +580,116 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence(
             .collect()
     }
 
-    if !tokens
-        .first()
+    if !clause
+        .token(0)
         .is_some_and(|token| token.is_word("put") || token.is_word("puts"))
     {
         return Ok(None);
     }
 
-    let Some(onto_idx) = find_index(tokens, |token| token.is_word("onto")) else {
+    let Some((target_clause, destination_clause)) = clause.split_once_on_word("onto") else {
         return Ok(None);
     };
-    if onto_idx <= 1 {
+    if target_clause.len() <= 1 {
         return Ok(None);
     }
 
-    let target_tokens = trim_commas(&tokens[1..onto_idx]);
-    if target_tokens.is_empty() {
+    let target_clause = target_clause.from(1).trimmed();
+    if target_clause.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing put target before destination (clause: '{}')",
-            crate::runtime_backend::token_word_refs(tokens).join(" ")
+            clause.text()
         )));
     }
 
-    let destination_tokens = trim_commas(&tokens[onto_idx + 1..]);
-    if destination_tokens.is_empty() {
+    let destination_clause = destination_clause.trimmed();
+    if destination_clause.is_empty() {
         return Ok(None);
     }
-    if !grammar::contains_word(&destination_tokens, "battlefield") {
+    if !destination_clause.contains_word("battlefield") {
         return Ok(None);
     }
 
-    let Some(with_idx) = find_token_word(&destination_tokens, "with") else {
+    let Some(with_idx) = destination_clause.find_token_word("with") else {
         return Ok(None);
     };
-    if with_idx + 1 >= destination_tokens.len() {
+    if with_idx + 1 >= destination_clause.len() {
         return Ok(None);
     }
 
-    let base_destination_word_storage =
-        crate::runtime_backend::token_word_refs(&destination_tokens[..with_idx]);
+    let base_destination_word_storage = destination_clause.before(with_idx).word_refs();
     let base_destination_words = normalize_destination_words(&base_destination_word_storage);
     if base_destination_words.first() != Some(&"battlefield") {
         return Ok(None);
     }
 
     let destination_tail = &base_destination_words[1..];
+    const OWNER_CONTROL_TAILS: &[&[&str]] = &[
+        &["under", "its", "owner", "control"],
+        &["under", "their", "owner", "control"],
+        &["under", "his", "owner", "control"],
+        &["under", "her", "owner", "control"],
+        &["under", "that", "player", "control"],
+    ];
     let supported_control_tail = destination_tail.is_empty()
-        || destination_tail == ["under", "your", "control"]
-        || destination_tail == ["under", "its", "owner", "control"]
-        || destination_tail == ["under", "their", "owner", "control"]
-        || destination_tail == ["under", "his", "owner", "control"]
-        || destination_tail == ["under", "her", "owner", "control"]
-        || destination_tail == ["under", "that", "player", "control"];
+        || crate::runtime_backend::lexer::word_slice_eq(
+            destination_tail,
+            &["under", "your", "control"],
+        )
+        || crate::runtime_backend::lexer::word_slice_eq_any(destination_tail, OWNER_CONTROL_TAILS);
     if !supported_control_tail {
         return Ok(None);
     }
-    let battlefield_controller = if destination_tail == ["under", "your", "control"] {
+    let battlefield_controller = if crate::runtime_backend::lexer::word_slice_eq(
+        destination_tail,
+        &["under", "your", "control"],
+    ) {
         ReturnControllerAst::You
-    } else if destination_tail == ["under", "its", "owner", "control"]
-        || destination_tail == ["under", "their", "owner", "control"]
-        || destination_tail == ["under", "his", "owner", "control"]
-        || destination_tail == ["under", "her", "owner", "control"]
-        || destination_tail == ["under", "that", "player", "control"]
-    {
+    } else if crate::runtime_backend::lexer::word_slice_eq_any(
+        destination_tail,
+        OWNER_CONTROL_TAILS,
+    ) {
         ReturnControllerAst::Owner
     } else {
         ReturnControllerAst::Preserve
     };
 
-    let counter_clause_tokens = trim_commas(&destination_tokens[with_idx + 1..]);
-    let Some(on_idx) = rfind_token_word(&counter_clause_tokens, "on") else {
+    let counter_clause = destination_clause.from(with_idx + 1).trimmed();
+    let Some(on_idx) = counter_clause.rfind_token_word("on") else {
         return Ok(None);
     };
-    if on_idx + 1 >= counter_clause_tokens.len() {
+    if on_idx + 1 >= counter_clause.len() {
         return Ok(None);
     }
 
-    let on_target_words =
-        crate::runtime_backend::token_word_refs(&counter_clause_tokens[on_idx + 1..]);
-    if on_target_words != ["it"] && on_target_words != ["them"] {
+    let on_target_words = counter_clause.from(on_idx + 1).word_refs();
+    if !crate::runtime_backend::lexer::word_slice_eq_any(&on_target_words, &[&["it"], &["them"]]) {
         return Ok(None);
     }
 
-    let descriptor_tokens = trim_commas(&counter_clause_tokens[..on_idx]);
-    if descriptor_tokens.is_empty()
-        || (!grammar::contains_word(&descriptor_tokens, "counter")
-            && !grammar::contains_word(&descriptor_tokens, "counters"))
+    let descriptor_clause = counter_clause.before(on_idx).trimmed();
+    if descriptor_clause.is_empty()
+        || !descriptor_clause.contains_any_word(&["counter", "counters"])
     {
         return Ok(None);
     }
 
-    let mut descriptors = Vec::new();
-    for descriptor in split_lexed_slices_on_and(&descriptor_tokens) {
-        let descriptor = trim_commas(&descriptor);
-        if descriptor.is_empty() {
-            continue;
-        }
-        descriptors.push(descriptor);
-    }
+    let descriptors = descriptor_clause.trimmed_and_segments();
     if descriptors.is_empty() {
         return Ok(None);
     }
 
     let mut effects = vec![EffectAst::subject_verb_move_to_zone(
-        parse_target_phrase(&target_tokens)?,
+        parse_target_phrase(target_clause.tokens())?,
         Zone::Battlefield,
         false,
         battlefield_controller,
         false,
         None,
     )];
-    let tagged_target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens));
+    let tagged_target = TargetAst::Tagged(TagKey::from(IT_TAG), clause.span());
     for descriptor in descriptors {
-        let (count, counter_type) = parse_counter_descriptor(&descriptor)?;
+        let (count, counter_type) = parse_counter_descriptor(descriptor.tokens())?;
         effects.push(EffectAst::subject_verb_put_counters(
             counter_type,
             Value::Fixed(count as i32),
@@ -736,15 +703,15 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence(
 }
 
 pub(crate) fn parse_sentence_return_with_counters_on_it(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_return_with_counters_on_it_sentence(tokens)
+    parse_return_with_counters_on_it_sentence(clause)
 }
 
 pub(crate) fn parse_sentence_put_onto_battlefield_with_counters_on_it(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_put_onto_battlefield_with_counters_on_it_sentence(tokens)
+    parse_put_onto_battlefield_with_counters_on_it_sentence(clause)
 }
 
 pub(crate) fn replace_target_subtype(target: &mut TargetAst, subtype: Subtype) -> bool {
@@ -822,31 +789,26 @@ pub(crate) fn clone_return_effect_with_subtype(
     }
 }
 pub(crate) fn parse_draw_then_connive_sentence(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(comma_then_idx) = find_comma_then_idx(tokens) else {
+    let Some((head_clause, tail_clause)) = clause.split_comma_then_trimmed() else {
         return Ok(None);
     };
 
-    let head_tokens = trim_commas(&tokens[..comma_then_idx]);
-    let tail_tokens = trim_commas(&tokens[comma_then_idx + 2..]);
-    if head_tokens.is_empty() || tail_tokens.is_empty() {
+    if head_clause.is_empty() || tail_clause.is_empty() {
         return Ok(None);
     }
 
-    if !tail_tokens
-        .iter()
-        .any(|token| token.is_word("connive") || token.is_word("connives"))
-    {
+    if !tail_clause.contains_any_word(&["connive", "connives"]) {
         return Ok(None);
     }
 
-    let mut head_effects = parse_effect_chain(&head_tokens)?;
+    let mut head_effects = parse_effect_chain(head_clause.tokens())?;
     if head_effects.is_empty() {
         return Ok(None);
     }
 
-    let Some(connive_effect) = parse_connive_clause(&tail_tokens)? else {
+    let Some(connive_effect) = parse_connive_clause(tail_clause.tokens())? else {
         return Ok(None);
     };
     head_effects.push(connive_effect);
@@ -854,70 +816,76 @@ pub(crate) fn parse_draw_then_connive_sentence(
 }
 
 pub(crate) fn parse_sentence_draw_then_connive(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    parse_draw_then_connive_sentence(tokens)
+    parse_draw_then_connive_sentence(clause)
 }
 
-pub(crate) fn parse_if_enters_with_additional_counter_sentence(
-    tokens: &[OwnedLexToken],
-) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::super::grammar::primitives as grammar;
-    use super::super::super::lexer::TokenKind;
-
-    // "if <predicate>, it enters with <counter descriptor> on it"
-    let Some(after_if) = grammar::strip_lexed_prefix_phrase(tokens, &["if"]) else {
-        return Ok(None);
-    };
-    let Some((predicate_slice, followup_slice)) =
-        grammar::split_lexed_once_on_delimiter(after_if, TokenKind::Comma)
+fn parse_additional_counter_descriptor_on_target(
+    counter_clause: SubjectVerbPrimitiveClause<'_>,
+    accepted_targets: &[&[&str]],
+) -> Result<Option<(u32, crate::object::CounterType)>, CardTextError> {
+    let counter_clause = counter_clause.trimmed();
+    let Some((descriptor_clause, on_target_clause)) =
+        counter_clause.rsplit_once_on_word_trimmed("on")
     else {
         return Ok(None);
     };
+    if descriptor_clause.is_empty()
+        || !descriptor_clause.contains_word("additional")
+        || !accepted_targets
+            .iter()
+            .any(|target_words| on_target_clause.word_refs() == *target_words)
+    {
+        return Ok(None);
+    }
 
-    let predicate_tokens = trim_commas(predicate_slice);
-    let predicate_words: Vec<&str> = crate::runtime_backend::token_word_refs(&predicate_tokens)
+    parse_counter_descriptor(descriptor_clause.tokens()).map(Some)
+}
+
+pub(crate) fn parse_if_enters_with_additional_counter_sentence(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // "if <predicate>, it enters with <counter descriptor> on it"
+    let Some(after_if) = clause.strip_prefix_clause(&["if"]) else {
+        return Ok(None);
+    };
+    let Some((predicate_clause, followup_clause)) = after_if.split_once_on_comma() else {
+        return Ok(None);
+    };
+
+    let predicate_words: Vec<&str> = predicate_clause
+        .trimmed_word_refs()
         .into_iter()
         .filter(|word| !is_article(word))
         .collect();
-    let predicate_is_supported = predicate_words.as_slice()
-        == ["creature", "enters", "this", "way"]
-        || predicate_words.as_slice() == ["it", "enters", "as", "creature"];
+    let predicate_is_supported = crate::runtime_backend::lexer::word_slice_eq_any(
+        &predicate_words,
+        &[
+            &["creature", "enters", "this", "way"],
+            &["it", "enters", "as", "creature"],
+        ],
+    );
     if !predicate_is_supported {
         return Ok(None);
     }
 
-    let followup_tokens = trim_commas(followup_slice);
-    let Some(counter_clause_slice) =
-        grammar::strip_lexed_prefix_phrase(&followup_tokens, &["it", "enters", "with"])
+    let Some(counter_clause) = followup_clause
+        .trimmed()
+        .strip_prefix_clause(&["it", "enters", "with"])
     else {
         return Ok(None);
     };
 
-    let counter_clause_tokens = trim_commas(counter_clause_slice);
-    let Some(on_idx) = rfind_token_word(&counter_clause_tokens, "on") else {
+    let Some((count, counter_type)) =
+        parse_additional_counter_descriptor_on_target(counter_clause, &[&["it"]])?
+    else {
         return Ok(None);
     };
-    if on_idx + 1 >= counter_clause_tokens.len() {
-        return Ok(None);
-    }
-
-    let on_target_words =
-        crate::runtime_backend::token_word_refs(&counter_clause_tokens[on_idx + 1..]);
-    if on_target_words != ["it"] {
-        return Ok(None);
-    }
-
-    let descriptor_tokens = trim_commas(&counter_clause_tokens[..on_idx]);
-    if descriptor_tokens.is_empty() || !grammar::contains_word(&descriptor_tokens, "additional") {
-        return Ok(None);
-    }
-
-    let (count, counter_type) = parse_counter_descriptor(&descriptor_tokens)?;
     let put_counter = EffectAst::subject_verb_put_counters(
         counter_type,
         Value::Fixed(count as i32),
-        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
+        TargetAst::Tagged(TagKey::from(IT_TAG), clause.span()),
         None,
         false,
     );
@@ -934,44 +902,28 @@ pub(crate) fn parse_if_enters_with_additional_counter_sentence(
 }
 
 pub(crate) fn parse_put_onto_battlefield_with_additional_counters_sentence(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if !tokens.first().is_some_and(|token| token.is_word("put")) {
+    if clause.first_word() != Some("put") {
         return Ok(None);
     }
-    if !grammar::contains_word(tokens, "onto") || !grammar::contains_word(tokens, "battlefield") {
+    if !clause.contains_all_words(&["onto", "battlefield"]) {
         return Ok(None);
     }
 
-    let Some(with_idx) = rfind_token_word(tokens, "with") else {
+    let Some((move_clause, counter_clause)) = clause.rsplit_once_on_word_trimmed("with") else {
         return Ok(None);
     };
-    let move_clause_tokens = trim_commas(&tokens[..with_idx]);
-    let counter_clause_tokens = trim_commas(&tokens[with_idx + 1..]);
-    if move_clause_tokens.is_empty() || counter_clause_tokens.is_empty() {
+    if move_clause.is_empty() || counter_clause.is_empty() {
         return Ok(None);
     }
 
-    let Some(on_idx) = rfind_token_word(&counter_clause_tokens, "on") else {
+    let Some((count, counter_type)) =
+        parse_additional_counter_descriptor_on_target(counter_clause, &[&["it"], &["them"]])?
+    else {
         return Ok(None);
     };
-    if on_idx + 1 >= counter_clause_tokens.len() {
-        return Ok(None);
-    }
-
-    let on_target_words =
-        crate::runtime_backend::token_word_refs(&counter_clause_tokens[on_idx + 1..]);
-    if on_target_words != ["it"] && on_target_words != ["them"] {
-        return Ok(None);
-    }
-
-    let descriptor_tokens = trim_commas(&counter_clause_tokens[..on_idx]);
-    if descriptor_tokens.is_empty() || !grammar::contains_word(&descriptor_tokens, "additional") {
-        return Ok(None);
-    }
-
-    let (count, counter_type) = parse_counter_descriptor(&descriptor_tokens)?;
-    let mut effects = parse_effect_chain_inner(&move_clause_tokens)?;
+    let mut effects = parse_effect_chain_inner(move_clause.tokens())?;
     if effects.is_empty()
         || !effects.iter().any(|effect| {
             matches!(
@@ -993,7 +945,7 @@ pub(crate) fn parse_put_onto_battlefield_with_additional_counters_sentence(
     effects.push(EffectAst::subject_verb_put_counters(
         counter_type,
         Value::Fixed(count as i32),
-        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
+        TargetAst::Tagged(TagKey::from(IT_TAG), clause.span()),
         None,
         false,
     ));
@@ -1002,34 +954,32 @@ pub(crate) fn parse_put_onto_battlefield_with_additional_counters_sentence(
 }
 
 pub(crate) fn parse_sacrifice_then_put_onto_battlefield_with_additional_counters_sentence(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if !tokens
-        .first()
+    if !clause
+        .token(0)
         .is_some_and(|token| token.is_word("sacrifice") || token.is_word("sacrifices"))
     {
         return Ok(None);
     }
 
-    let Some((sacrifice_slice, put_slice)) =
-        grammar::split_lexed_once_on_separator(tokens, || grammar::kw("then").void())
-    else {
+    let Some((sacrifice_clause, put_clause)) = clause.split_once_on_then_trimmed() else {
         return Ok(None);
     };
-    let sacrifice_tokens = trim_commas(sacrifice_slice);
-    let put_tokens = trim_commas(put_slice);
-    if sacrifice_tokens.is_empty() || put_tokens.is_empty() {
+    if sacrifice_clause.is_empty() || put_clause.is_empty() {
         return Ok(None);
     }
 
     let Some(mut put_effects) =
-        parse_put_onto_battlefield_with_additional_counters_sentence(&put_tokens)?
+        parse_put_onto_battlefield_with_additional_counters_sentence(put_clause)?
     else {
         return Ok(None);
     };
-    let mut effects = if sacrifice_tokens.len() >= 2
-        && sacrifice_tokens[0].is_word("sacrifice")
-        && sacrifice_tokens[1..]
+    let mut effects = if sacrifice_clause.len() >= 2
+        && sacrifice_clause.first_is_word("sacrifice")
+        && sacrifice_clause
+            .from(1)
+            .tokens()
             .iter()
             .all(|token| token.as_word().is_some())
     {
@@ -1043,7 +993,7 @@ pub(crate) fn parse_sacrifice_then_put_onto_battlefield_with_additional_counters
             None,
         )]
     } else {
-        parse_effect_chain_inner(&sacrifice_tokens)?
+        parse_effect_chain_inner(sacrifice_clause.tokens())?
     };
     if effects.is_empty() {
         return Ok(None);
@@ -1053,105 +1003,65 @@ pub(crate) fn parse_sacrifice_then_put_onto_battlefield_with_additional_counters
 }
 
 pub(crate) fn parse_if_sacrifice_then_put_onto_battlefield_with_additional_counters_sentence(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    use super::super::super::lexer::TokenKind;
-
-    let Some(after_if) = grammar::strip_lexed_prefix_phrase(tokens, &["if"]) else {
+    let Some(after_if) = clause.strip_prefix_clause(&["if"]) else {
         return Ok(None);
     };
-    let Some((predicate_slice, effect_slice)) =
-        grammar::split_lexed_once_on_delimiter(after_if, TokenKind::Comma)
-    else {
+    let Some((predicate_clause, effect_clause)) = after_if.split_once_on_comma() else {
         return Ok(None);
     };
 
-    let predicate_tokens = trim_commas(predicate_slice);
-    let effect_tokens = trim_commas(effect_slice);
-    if predicate_tokens.is_empty() || effect_tokens.is_empty() {
+    let predicate_clause = predicate_clause.trimmed();
+    let effect_clause = effect_clause.trimmed();
+    if predicate_clause.is_empty() || effect_clause.is_empty() {
         return Ok(None);
     }
-    if !effect_tokens
-        .first()
-        .is_some_and(|token| token.is_word("sacrifice") || token.is_word("sacrifices"))
-    {
+    if !effect_clause.first_is_any_word(&["sacrifice", "sacrifices"]) {
         return Ok(None);
     }
 
     let Some(effects) =
-        parse_sacrifice_then_put_onto_battlefield_with_additional_counters_sentence(
-            &effect_tokens,
-        )?
+        parse_sacrifice_then_put_onto_battlefield_with_additional_counters_sentence(effect_clause)?
     else {
         return Ok(None);
     };
     Ok(Some(vec![EffectAst::Conditional {
-        predicate: parse_predicate_lexed(&predicate_tokens)?,
+        predicate: parse_predicate_lexed(predicate_clause.tokens())?,
         if_true: effects,
         if_false: Vec::new(),
     }]))
 }
 
 pub(crate) fn parse_each_player_return_with_additional_counter_sentence(
-    tokens: &[OwnedLexToken],
+    clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let _clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let inner_start_word_idx = if let Some((prefix, _)) =
-        grammar::words_match_any_prefix(tokens, FOR_EACH_PLAYER_PREFIXES)
-    {
-        prefix.len()
-    } else {
-        return Ok(None);
-    };
-
-    let Some(inner_start_token_idx) = token_index_for_word_index(tokens, inner_start_word_idx)
+    let Some((_prefix, inner_clause)) = clause.strip_any_prefix_clause(FOR_EACH_PLAYER_PREFIXES)
     else {
         return Ok(None);
     };
-    let inner_tokens = trim_commas(&tokens[inner_start_token_idx..]);
-    if inner_tokens.is_empty() {
+    let inner_clause = inner_clause.trimmed();
+    if inner_clause.is_empty() {
         return Ok(None);
     }
-    if !inner_tokens
-        .first()
-        .is_some_and(|token| token.is_word("return") || token.is_word("returns"))
-    {
+    if !inner_clause.first_is_any_word(&["return", "returns"]) {
         return Ok(None);
     }
 
-    let Some(with_idx) = rfind_index(&inner_tokens, |token| token.is_word("with")) else {
+    let Some((return_clause, counter_clause)) = inner_clause.rsplit_once_on_word_trimmed("with")
+    else {
         return Ok(None);
     };
-    if with_idx + 1 >= inner_tokens.len() {
+    if return_clause.is_empty() {
         return Ok(None);
     }
 
-    let return_clause_tokens = trim_commas(&inner_tokens[..with_idx]);
-    if return_clause_tokens.is_empty() {
-        return Ok(None);
-    }
-
-    let counter_clause_tokens = trim_commas(&inner_tokens[with_idx + 1..]);
-    let Some(on_idx) = rfind_token_word(&counter_clause_tokens, "on") else {
+    let Some((count, counter_type)) =
+        parse_additional_counter_descriptor_on_target(counter_clause, &[&["it"], &["them"]])?
+    else {
         return Ok(None);
     };
-    if on_idx + 1 >= counter_clause_tokens.len() {
-        return Ok(None);
-    }
-
-    let on_target_words =
-        crate::runtime_backend::token_word_refs(&counter_clause_tokens[on_idx + 1..]);
-    if on_target_words != ["it"] && on_target_words != ["them"] {
-        return Ok(None);
-    }
-
-    let descriptor_tokens = trim_commas(&counter_clause_tokens[..on_idx]);
-    if descriptor_tokens.is_empty() || !grammar::contains_word(&descriptor_tokens, "additional") {
-        return Ok(None);
-    }
-
-    let (count, counter_type) = parse_counter_descriptor(&descriptor_tokens)?;
-    let mut per_player_effects = parse_effect_chain_inner(&return_clause_tokens)?;
+    let mut per_player_effects = parse_effect_chain_inner(return_clause.tokens())?;
     if per_player_effects.is_empty() {
         return Ok(None);
     }
@@ -1171,7 +1081,7 @@ pub(crate) fn parse_each_player_return_with_additional_counter_sentence(
     per_player_effects.push(EffectAst::subject_verb_put_counters(
         counter_type,
         Value::Fixed(count as i32),
-        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
+        TargetAst::Tagged(TagKey::from(IT_TAG), clause.span()),
         None,
         false,
     ));

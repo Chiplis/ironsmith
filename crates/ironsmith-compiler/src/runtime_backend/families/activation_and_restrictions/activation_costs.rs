@@ -68,14 +68,20 @@ pub(crate) fn parse_cant_clauses(
     }
     let is_direct_temporary_cast_restriction =
         contains_word_sequence(&normalized_words, &["this", "turn"])
-            && !slice_contains(&normalized_words, &"unless")
-            && !slice_contains(&normalized_words, &"who")
-            && (slice_starts_with(&normalized_words, &["your", "opponents", "cant", "cast"])
-                || slice_starts_with(&normalized_words, &["each", "opponent", "cant", "cast"])
-                || slice_starts_with(&normalized_words, &["each", "player", "cant", "cast"])
-                || slice_starts_with(&normalized_words, &["players", "cant", "cast"])
-                || slice_starts_with(&normalized_words, &["target", "player", "cant", "cast"])
-                || slice_starts_with(&normalized_words, &["you", "cant", "cast"]));
+            && !word_slice_contains_word(&normalized_words, "unless")
+            && !word_slice_contains_word(&normalized_words, "who")
+            && (word_slice_starts_with(&normalized_words, &["your", "opponents", "cant", "cast"])
+                || word_slice_starts_with(
+                    &normalized_words,
+                    &["each", "opponent", "cant", "cast"],
+                )
+                || word_slice_starts_with(&normalized_words, &["each", "player", "cant", "cast"])
+                || word_slice_starts_with(&normalized_words, &["players", "cant", "cast"])
+                || word_slice_starts_with(
+                    &normalized_words,
+                    &["target", "player", "cant", "cast"],
+                )
+                || word_slice_starts_with(&normalized_words, &["you", "cant", "cast"]));
     if is_direct_temporary_cast_restriction {
         return Ok(None);
     }
@@ -179,7 +185,7 @@ pub(crate) fn split_cant_clause_on_or(tokens: &[OwnedLexToken]) -> Option<Vec<Ve
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    if slice_starts_with(&remainder_words, &["attack", "or", "block"]) {
+    if word_slice_starts_with(&remainder_words, &["attack", "or", "block"]) {
         return None;
     }
     let or_idx = find_index(&remainder_tokens, |token: &OwnedLexToken| {
@@ -217,11 +223,15 @@ fn is_mana_retention_cant_clause(words: &[&str]) -> bool {
         ["dont", tail @ ..] | ["don't", tail @ ..] | ["do", "not", tail @ ..] => tail,
         _ => return false,
     };
-    (rest.starts_with(&["lose", "unspent"])
-        && rest
-            .windows(3)
-            .any(|window| window == ["mana", "as", "steps"]))
-        || rest.starts_with(&["lose", "this", "mana", "as", "steps"])
+    (crate::runtime_backend::lexer::word_slice_starts_with(rest, &["lose", "unspent"])
+        && crate::runtime_backend::lexer::word_slice_contains_phrase(
+            rest,
+            &["mana", "as", "steps"],
+        ))
+        || crate::runtime_backend::lexer::word_slice_starts_with(
+            rest,
+            &["lose", "this", "mana", "as", "steps"],
+        )
 }
 
 pub(crate) fn parse_cant_clause(
@@ -297,7 +307,7 @@ pub(crate) fn parse_cant_clause(
         }
     }
 
-    let is_collective_restraint_domain_attack_tax = slice_starts_with(
+    let is_collective_restraint_domain_attack_tax = word_slice_starts_with(
         &normalized,
         &[
             "creatures",
@@ -318,13 +328,13 @@ pub(crate) fn parse_cant_clause(
             "attacking",
             "you",
         ],
-    ) && (slice_ends_with(
+    ) && (word_slice_ends_with(
         &normalized,
         &[
             "where", "x", "is", "the", "number", "of", "basic", "land", "types", "among", "lands",
             "you", "control",
         ],
-    ) || slice_ends_with(
+    ) || word_slice_ends_with(
         &normalized,
         &[
             "where", "x", "is", "the", "number", "of", "basic", "land", "type", "among", "lands",
@@ -338,18 +348,18 @@ pub(crate) fn parse_cant_clause(
     }
 
     let starts_with_cant_be_blocked_by =
-        slice_starts_with(
+        word_slice_starts_with(
             &normalized,
             &["this", "creature", "cant", "be", "blocked", "by"],
-        ) || slice_starts_with(&normalized, &["this", "cant", "be", "blocked", "by"])
-            || slice_starts_with(&normalized, &["cant", "be", "blocked", "by"]);
+        ) || word_slice_starts_with(&normalized, &["this", "cant", "be", "blocked", "by"])
+            || word_slice_starts_with(&normalized, &["cant", "be", "blocked", "by"]);
     if starts_with_cant_be_blocked_by {
-        let mut idx = if slice_starts_with(
+        let mut idx = if word_slice_starts_with(
             &normalized,
             &["this", "creature", "cant", "be", "blocked", "by"],
         ) {
             6
-        } else if slice_starts_with(&normalized, &["this", "cant", "be", "blocked", "by"]) {
+        } else if word_slice_starts_with(&normalized, &["this", "cant", "be", "blocked", "by"]) {
             5
         } else {
             4
@@ -488,20 +498,20 @@ pub(crate) fn parse_cant_clause(
     }
 
     let starts_with_cant_be_blocked_except_by =
-        slice_starts_with(
+        word_slice_starts_with(
             &normalized,
             &["this", "creature", "cant", "be", "blocked", "except", "by"],
-        ) || slice_starts_with(
+        ) || word_slice_starts_with(
             &normalized,
             &["this", "cant", "be", "blocked", "except", "by"],
-        ) || slice_starts_with(&normalized, &["cant", "be", "blocked", "except", "by"]);
+        ) || word_slice_starts_with(&normalized, &["cant", "be", "blocked", "except", "by"]);
     if starts_with_cant_be_blocked_except_by {
-        let idx = if slice_starts_with(
+        let idx = if word_slice_starts_with(
             &normalized,
             &["this", "creature", "cant", "be", "blocked", "except", "by"],
         ) {
             7
-        } else if slice_starts_with(
+        } else if word_slice_starts_with(
             &normalized,
             &["this", "cant", "be", "blocked", "except", "by"],
         ) {
@@ -581,7 +591,7 @@ pub(crate) fn parse_cant_clause(
         }
     }
 
-    let starts_with_cant_attack_unless_defending_player = slice_starts_with(
+    let starts_with_cant_attack_unless_defending_player = word_slice_starts_with(
         &normalized,
         &[
             "this",
@@ -592,32 +602,32 @@ pub(crate) fn parse_cant_clause(
             "defending",
             "player",
         ],
-    ) || slice_starts_with(
+    ) || word_slice_starts_with(
         &normalized,
         &["this", "cant", "attack", "unless", "defending", "player"],
     );
-    let cant_attack_unless_cast_creature_spell_tail = slice_ends_with(
+    let cant_attack_unless_cast_creature_spell_tail = word_slice_ends_with(
         &normalized,
         &[
             "unless", "youve", "cast", "a", "creature", "spell", "this", "turn",
         ],
-    ) || slice_ends_with(
+    ) || word_slice_ends_with(
         &normalized,
         &[
             "unless", "you", "ve", "cast", "a", "creature", "spell", "this", "turn",
         ],
-    ) || slice_ends_with(
+    ) || word_slice_ends_with(
         &normalized,
         &[
             "unless", "youve", "cast", "creature", "spell", "this", "turn",
         ],
-    ) || slice_ends_with(
+    ) || word_slice_ends_with(
         &normalized,
         &[
             "unless", "you", "ve", "cast", "creature", "spell", "this", "turn",
         ],
     );
-    let cant_attack_unless_cast_noncreature_spell_tail = slice_ends_with(
+    let cant_attack_unless_cast_noncreature_spell_tail = word_slice_ends_with(
         &normalized,
         &[
             "unless",
@@ -629,7 +639,7 @@ pub(crate) fn parse_cant_clause(
             "this",
             "turn",
         ],
-    ) || slice_ends_with(
+    ) || word_slice_ends_with(
         &normalized,
         &[
             "unless",
@@ -642,7 +652,7 @@ pub(crate) fn parse_cant_clause(
             "this",
             "turn",
         ],
-    ) || slice_ends_with(
+    ) || word_slice_ends_with(
         &normalized,
         &[
             "unless",
@@ -653,7 +663,7 @@ pub(crate) fn parse_cant_clause(
             "this",
             "turn",
         ],
-    ) || slice_ends_with(
+    ) || word_slice_ends_with(
         &normalized,
         &[
             "unless",
@@ -667,16 +677,16 @@ pub(crate) fn parse_cant_clause(
         ],
     );
     if cant_attack_unless_cast_creature_spell_tail
-        && (slice_starts_with(&normalized, &["this", "creature", "cant", "attack"])
-            || slice_starts_with(&normalized, &["this", "cant", "attack"]))
+        && (word_slice_starts_with(&normalized, &["this", "creature", "cant", "attack"])
+            || word_slice_starts_with(&normalized, &["this", "cant", "attack"]))
     {
         return Ok(Some(
             StaticAbility::cant_attack_unless_controller_cast_creature_spell_this_turn(),
         ));
     }
     if cant_attack_unless_cast_noncreature_spell_tail
-        && (slice_starts_with(&normalized, &["this", "creature", "cant", "attack"])
-            || slice_starts_with(&normalized, &["this", "cant", "attack"]))
+        && (word_slice_starts_with(&normalized, &["this", "creature", "cant", "attack"])
+            || word_slice_starts_with(&normalized, &["this", "cant", "attack"]))
     {
         return Ok(Some(
             StaticAbility::cant_attack_unless_controller_cast_noncreature_spell_this_turn(),
@@ -684,12 +694,12 @@ pub(crate) fn parse_cant_clause(
     }
 
     let starts_with_this_cant_attack_unless =
-        slice_starts_with(
+        word_slice_starts_with(
             &normalized,
             &["this", "creature", "cant", "attack", "unless"],
-        ) || slice_starts_with(&normalized, &["this", "cant", "attack", "unless"]);
+        ) || word_slice_starts_with(&normalized, &["this", "cant", "attack", "unless"]);
     if starts_with_this_cant_attack_unless {
-        let tail = if slice_starts_with(
+        let tail = if word_slice_starts_with(
             &normalized,
             &["this", "creature", "cant", "attack", "unless"],
         ) {
@@ -1156,7 +1166,7 @@ pub(crate) fn parse_cant_clause(
     }
 
     if starts_with_cant_attack_unless_defending_player {
-        let mut idx = if slice_starts_with(
+        let mut idx = if word_slice_starts_with(
             &normalized,
             &[
                 "this",
@@ -1271,7 +1281,7 @@ pub(crate) fn parse_cant_clause(
         }
     }
 
-    if slice_starts_with(
+    if word_slice_starts_with(
         &normalized,
         &["your", "opponents", "cant", "cast", "spells", "with"],
     ) && normalized.len() >= 8
@@ -1292,7 +1302,7 @@ pub(crate) fn parse_cant_clause(
         )));
     }
 
-    if slice_starts_with(
+    if word_slice_starts_with(
         &normalized,
         &[
             "your",
@@ -1322,10 +1332,10 @@ pub(crate) fn parse_cant_clause(
         )));
     }
 
-    if slice_starts_with(
+    if word_slice_starts_with(
         &normalized,
         &["this", "cant", "attack", "or", "block", "unless"],
-    ) && slice_ends_with(
+    ) && word_slice_ends_with(
         &normalized,
         &["even", "number", "of", "counters", "on", "it"],
     ) {
@@ -1334,15 +1344,15 @@ pub(crate) fn parse_cant_clause(
         )));
     }
 
-    if (slice_starts_with(
+    if (word_slice_starts_with(
         &normalized,
         &[
             "this", "creature", "cant", "attack", "or", "block", "unless",
         ],
-    ) || slice_starts_with(
+    ) || word_slice_starts_with(
         &normalized,
         &["this", "cant", "attack", "or", "block", "unless"],
-    )) && let tail = if slice_starts_with(
+    )) && let tail = if word_slice_starts_with(
         &normalized,
         &[
             "this", "creature", "cant", "attack", "or", "block", "unless",
@@ -1377,15 +1387,15 @@ pub(crate) fn parse_cant_clause(
         ));
     }
 
-    if (slice_starts_with(
+    if (word_slice_starts_with(
         &normalized,
         &[
             "this", "creature", "cant", "attack", "or", "block", "unless",
         ],
-    ) || slice_starts_with(
+    ) || word_slice_starts_with(
         &normalized,
         &["this", "cant", "attack", "or", "block", "unless"],
-    )) && let tail = if slice_starts_with(
+    )) && let tail = if word_slice_starts_with(
         &normalized,
         &[
             "this", "creature", "cant", "attack", "or", "block", "unless",
@@ -1428,10 +1438,10 @@ pub(crate) fn parse_cant_clause(
         }
     }
 
-    if slice_starts_with(&normalized, &["if", "source", "you", "control", "with"])
-        && slice_contains(&normalized, &"mana")
-        && slice_contains(&normalized, &"value")
-        && slice_contains(&normalized, &"double")
+    if word_slice_starts_with(&normalized, &["if", "source", "you", "control", "with"])
+        && word_slice_contains_word(&normalized, "mana")
+        && word_slice_contains_word(&normalized, "value")
+        && word_slice_contains_word(&normalized, "double")
         && normalized.last().is_some_and(|word| *word == "instead")
     {
         return Ok(Some(StaticAbility::rule_fallback_text(

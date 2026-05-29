@@ -43,9 +43,12 @@ pub(crate) fn parse_cant_restrictions(
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    if normalized.starts_with(&[
-        "players", "cant", "lose", "the", "game", "or", "win", "the", "game",
-    ]) {
+    if word_slice_starts_with(
+        &normalized,
+        &[
+            "players", "cant", "lose", "the", "game", "or", "win", "the", "game",
+        ],
+    ) {
         return Ok(Some(vec![
             ParsedCantRestriction {
                 restriction: crate::effect::Restriction::lose_game(PlayerFilter::Any),
@@ -103,15 +106,15 @@ pub(crate) fn parse_cant_restrictions(
                     crate::runtime_backend::token_word_refs(segment).join(" ")
                 )));
             };
-            let segment_words = normalize_cant_words(segment)
-                .into_iter()
-                .collect::<Vec<_>>();
-            let has_or_win_tail = segment_words
-                .windows(5)
-                .any(|window| window == ["or", "win", "the", "game", "this"])
-                || segment_words
-                    .windows(4)
-                    .any(|window| window == ["or", "win", "the", "game"]);
+            let segment_words = normalize_cant_words(segment);
+            let segment_word_refs = segment_words.iter().map(String::as_str).collect::<Vec<_>>();
+            let has_or_win_tail = word_slice_contains_any_phrase(
+                &segment_word_refs,
+                &[
+                    &["or", "win", "the", "game", "this"],
+                    &["or", "win", "the", "game"],
+                ],
+            );
             if has_or_win_tail
                 && let crate::effect::Restriction::LoseGame(player_filter) =
                     restriction.restriction.clone()
@@ -364,11 +367,15 @@ fn is_mana_retention_negated_clause(words: &[&str]) -> bool {
 }
 
 fn is_mana_retention_tail(words: &[&str]) -> bool {
-    (words.starts_with(&["lose", "unspent"])
-        && words
-            .windows(3)
-            .any(|window| window == ["mana", "as", "steps"]))
-        || words.starts_with(&["lose", "this", "mana", "as", "steps"])
+    (crate::runtime_backend::lexer::word_slice_starts_with(words, &["lose", "unspent"])
+        && crate::runtime_backend::lexer::word_slice_contains_phrase(
+            words,
+            &["mana", "as", "steps"],
+        ))
+        || crate::runtime_backend::lexer::word_slice_starts_with(
+            words,
+            &["lose", "this", "mana", "as", "steps"],
+        )
 }
 
 pub(crate) fn parse_cant_cast_restriction_words(
@@ -462,7 +469,7 @@ pub(crate) fn parse_cant_cast_restriction_words(
 }
 
 fn parse_spell_subject_cant_be_cast_filter(words: &[&str]) -> Option<ObjectFilter> {
-    if !slice_ends_with(words, &["cant", "be", "cast"]) || words.len() <= 3 {
+    if !word_slice_ends_with(words, &["cant", "be", "cast"]) || words.len() <= 3 {
         return None;
     }
     parse_spell_restriction_subject_filter(&words[..words.len() - 3])
@@ -539,28 +546,28 @@ fn parse_spell_restriction_subject_filter(words: &[&str]) -> Option<ObjectFilter
 }
 
 pub(crate) fn parse_cant_cast_subject(words: &[&str]) -> Option<(PlayerFilter, usize)> {
-    if slice_starts_with(&words, &["players", "dealt", "damage", "this", "way"]) {
+    if word_slice_starts_with(&words, &["players", "dealt", "damage", "this", "way"]) {
         return Some((PlayerFilter::TaggedPlayer(TagKey::from("damaged_0")), 5));
     }
-    if slice_starts_with(&words, &["that", "player"]) {
+    if word_slice_starts_with(&words, &["that", "player"]) {
         return Some((PlayerFilter::IteratedPlayer, 2));
     }
-    if slice_starts_with(&words, &["your", "opponents", "who", "have"]) {
+    if word_slice_starts_with(&words, &["your", "opponents", "who", "have"]) {
         return Some((PlayerFilter::Opponent, 4));
     }
-    if slice_starts_with(&words, &["each", "player", "who", "has"]) {
+    if word_slice_starts_with(&words, &["each", "player", "who", "has"]) {
         return Some((PlayerFilter::Any, 4));
     }
-    if slice_starts_with(&words, &["each", "opponent", "who", "has"]) {
+    if word_slice_starts_with(&words, &["each", "opponent", "who", "has"]) {
         return Some((PlayerFilter::Opponent, 4));
     }
-    if slice_starts_with(&words, &["your", "opponents"]) {
+    if word_slice_starts_with(&words, &["your", "opponents"]) {
         return Some((PlayerFilter::Opponent, 2));
     }
-    if slice_starts_with(&words, &["each", "player"]) {
+    if word_slice_starts_with(&words, &["each", "player"]) {
         return Some((PlayerFilter::Any, 2));
     }
-    if slice_starts_with(&words, &["each", "opponent"]) {
+    if word_slice_starts_with(&words, &["each", "opponent"]) {
         return Some((PlayerFilter::Opponent, 2));
     }
     match words.first().copied() {
@@ -722,7 +729,7 @@ pub(crate) fn strip_static_restriction_condition(
         .map(String::as_str)
         .collect::<Vec<_>>();
 
-    if slice_starts_with(&normalized, &["during", "your", "turn"]) {
+    if word_slice_starts_with(&normalized, &["during", "your", "turn"]) {
         let remainder = find_index(tokens, |token| token.is_comma())
             .map(|idx| trim_commas(&tokens[idx + 1..]).to_vec())
             .unwrap_or_else(|| trim_commas(&tokens[3..]).to_vec());
@@ -732,7 +739,7 @@ pub(crate) fn strip_static_restriction_condition(
         )));
     }
 
-    if slice_starts_with(&normalized, &["if"]) {
+    if word_slice_starts_with(&normalized, &["if"]) {
         let Some(comma_idx) = find_index(tokens, |token| token.is_comma()) else {
             return Ok(None);
         };
@@ -746,7 +753,7 @@ pub(crate) fn strip_static_restriction_condition(
         )));
     }
 
-    if slice_starts_with(&normalized, &["during", "combat"]) {
+    if word_slice_starts_with(&normalized, &["during", "combat"]) {
         let remainder = find_index(tokens, |token| token.is_comma())
             .map(|idx| trim_commas(&tokens[idx + 1..]).to_vec())
             .unwrap_or_else(|| trim_commas(&tokens[2..]).to_vec());
@@ -756,7 +763,7 @@ pub(crate) fn strip_static_restriction_condition(
         )));
     }
 
-    if slice_ends_with(&normalized, &["during", "your", "turn"]) {
+    if word_slice_ends_with(&normalized, &["during", "your", "turn"]) {
         let cut = rfind_index(tokens, |token| token.is_word("during")).unwrap_or(tokens.len());
         return Ok(Some((
             crate::ConditionExpr::ActivationTiming(ActivationTiming::DuringYourTurn),
@@ -764,7 +771,7 @@ pub(crate) fn strip_static_restriction_condition(
         )));
     }
 
-    if slice_ends_with(&normalized, &["during", "combat"]) {
+    if word_slice_ends_with(&normalized, &["during", "combat"]) {
         let cut = rfind_index(tokens, |token| token.is_word("during")).unwrap_or(tokens.len());
         return Ok(Some((
             crate::ConditionExpr::ActivationTiming(ActivationTiming::DuringCombat),
@@ -772,7 +779,7 @@ pub(crate) fn strip_static_restriction_condition(
         )));
     }
 
-    if slice_starts_with(&normalized, &["as", "long", "as"]) {
+    if word_slice_starts_with(&normalized, &["as", "long", "as"]) {
         let Some(comma_idx) = find_index(tokens, |token| token.is_comma()) else {
             return Ok(None);
         };
@@ -853,7 +860,7 @@ pub(crate) fn parse_player_negated_restriction_clause(
             target,
         }));
     }
-    if slice_starts_with(&remainder_words, &["activate", "abilities", "of"]) {
+    if word_slice_starts_with(&remainder_words, &["activate", "abilities", "of"]) {
         let Some(mut filter) =
             parse_card_type_list_filter(&remainder_words[3..], Some(Zone::Battlefield))
         else {
@@ -861,7 +868,7 @@ pub(crate) fn parse_player_negated_restriction_clause(
         };
         filter.controller = Some(player);
         let restriction =
-            if slice_ends_with(&remainder_words, &["unless", "theyre", "mana", "abilities"]) {
+            if word_slice_ends_with(&remainder_words, &["unless", "theyre", "mana", "abilities"]) {
                 Restriction::activate_non_mana_abilities_of(filter)
             } else {
                 Restriction::activate_abilities_of(filter)
@@ -1186,13 +1193,13 @@ pub(crate) fn parse_negated_object_restriction_clause(
             };
             (filter, None, None)
         };
-    if words
-        .windows(4)
-        .any(|window| window == ["dealt", "damage", "this", "way"])
-        && !filter
-            .tagged_constraints
-            .iter()
-            .any(|constraint| constraint.tag.as_str() == "damaged_0")
+    if crate::runtime_backend::lexer::word_slice_contains_phrase(
+        &words,
+        &["dealt", "damage", "this", "way"],
+    ) && !filter
+        .tagged_constraints
+        .iter()
+        .any(|constraint| constraint.tag.as_str() == "damaged_0")
     {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: TagKey::from("damaged_0"),
@@ -1225,38 +1232,42 @@ pub(crate) fn parse_negated_object_restriction_clause(
             return Ok(None);
         }
         let restriction = match remainder_words.as_slice() {
-            words if slice_starts_with(words, &["gain", "life"]) => Restriction::gain_life(player),
-            words if slice_starts_with(words, &["search", "libraries"]) => {
+            words if word_slice_starts_with(words, &["gain", "life"]) => {
+                Restriction::gain_life(player)
+            }
+            words if word_slice_starts_with(words, &["search", "libraries"]) => {
                 Restriction::search_libraries(player)
             }
-            words if slice_starts_with(words, &["lose", "the", "game"]) => {
+            words if word_slice_starts_with(words, &["lose", "the", "game"]) => {
                 Restriction::lose_game(player)
             }
-            words if slice_starts_with(words, &["lose", "life"]) => Restriction::lose_life(player),
-            words if slice_starts_with(words, &["win", "the", "game"]) => {
+            words if word_slice_starts_with(words, &["lose", "life"]) => {
+                Restriction::lose_life(player)
+            }
+            words if word_slice_starts_with(words, &["win", "the", "game"]) => {
                 Restriction::win_game(player)
             }
-            words if slice_starts_with(words, &["draw", "cards"]) => {
+            words if word_slice_starts_with(words, &["draw", "cards"]) => {
                 Restriction::draw_cards(player)
             }
-            words if slice_starts_with(words, &["draw", "more", "than", "one", "card"]) => {
+            words if word_slice_starts_with(words, &["draw", "more", "than", "one", "card"]) => {
                 Restriction::draw_extra_cards(player)
             }
             words
-                if slice_starts_with(words, &["get", "additional", "poison", "counters"])
-                    || slice_starts_with(words, &["get", "poison", "counters"]) =>
+                if word_slice_starts_with(words, &["get", "additional", "poison", "counters"])
+                    || word_slice_starts_with(words, &["get", "poison", "counters"]) =>
             {
                 Restriction::poison_counters(player)
             }
             words
-                if slice_starts_with(
+                if word_slice_starts_with(
                     words,
                     &["cast", "more", "than", "one", "spell", "each", "turn"],
                 ) =>
             {
                 Restriction::cast_more_than_one_spell_each_turn(player)
             }
-            words if slice_starts_with(words, &["cast", "spells"]) => {
+            words if word_slice_starts_with(words, &["cast", "spells"]) => {
                 Restriction::cast_spells_matching(player, ObjectFilter::spell())
             }
             _ => {
@@ -1305,7 +1316,7 @@ pub(crate) fn parse_negated_object_restriction_clause(
         ["block", "alone", "this", "turn"] => Restriction::block_alone(filter),
         ["be", "blocked"] => Restriction::be_blocked(filter),
         ["be", "blocked", "this", "turn"] => Restriction::be_blocked(filter),
-        _ if slice_starts_with(&remainder_words, &["be", "blocked", "except", "by"])
+        _ if word_slice_starts_with(&remainder_words, &["be", "blocked", "except", "by"])
             && remainder_words.len() > 4 =>
         {
             let blocker_tokens = trim_commas(&remainder_tokens[4..]);
@@ -1327,7 +1338,7 @@ pub(crate) fn parse_negated_object_restriction_clause(
                 })?;
             Restriction::block_specific_attacker(blocker_filter, filter)
         }
-        _ if slice_starts_with(&remainder_words, &["be", "blocked", "by"])
+        _ if word_slice_starts_with(&remainder_words, &["be", "blocked", "by"])
             && remainder_words.len() > 3 =>
         {
             let blocker_tokens = trim_commas(&remainder_tokens[3..]);
@@ -1462,7 +1473,7 @@ pub(crate) fn parse_activated_ability_subject(
         .map(String::as_str)
         .collect::<Vec<_>>();
     let word_view = ActivationRestrictionCompatWords::new(tokens);
-    let owner_tokens = if slice_ends_with(&subject_words, &["activated", "abilities"]) {
+    let owner_tokens = if word_slice_ends_with(&subject_words, &["activated", "abilities"]) {
         let owner_word_len = subject_words.len().saturating_sub(2);
         if owner_word_len == 0 {
             return Ok(None);
@@ -1471,7 +1482,7 @@ pub(crate) fn parse_activated_ability_subject(
             .token_index_after_words(owner_word_len)
             .unwrap_or(tokens.len());
         trim_commas(&tokens[..owner_end])
-    } else if slice_ends_with(
+    } else if word_slice_ends_with(
         &subject_words,
         &[
             "activated",
@@ -1491,12 +1502,12 @@ pub(crate) fn parse_activated_ability_subject(
             .token_index_after_words(owner_word_len)
             .unwrap_or(tokens.len());
         trim_commas(&tokens[..owner_end])
-    } else if slice_starts_with(&subject_words, &["activated", "abilities", "of"]) {
+    } else if word_slice_starts_with(&subject_words, &["activated", "abilities", "of"]) {
         let Some(owner_start) = word_view.token_index_for_word_index(3) else {
             return Ok(None);
         };
         trim_commas(&tokens[owner_start..])
-    } else if slice_starts_with(
+    } else if word_slice_starts_with(
         &subject_words,
         &[
             "activated",
@@ -1517,7 +1528,7 @@ pub(crate) fn parse_activated_ability_subject(
         return Ok(None);
     };
 
-    let scope = if slice_ends_with(
+    let scope = if word_slice_ends_with(
         &subject_words,
         &[
             "activated",
@@ -1528,7 +1539,7 @@ pub(crate) fn parse_activated_ability_subject(
             "their",
             "costs",
         ],
-    ) || slice_starts_with(
+    ) || word_slice_starts_with(
         &subject_words,
         &[
             "activated",

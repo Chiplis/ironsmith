@@ -1,10 +1,11 @@
 use super::super::grammar::primitives as grammar;
 use super::super::keyword_static::parse_pt_modifier_values;
-use super::super::lexer::{OwnedLexToken, TokenWordView};
+use super::super::lexer::{
+    LexedClause, OwnedLexToken, word_slice_eq, word_slice_find_phrase_start,
+    word_slice_matching_phrase, word_slice_starts_with,
+};
 use super::super::object_filters::parse_object_filter_lexed;
 use super::super::rule_engine::{LexClauseView, LexRuleDef, LexRuleIndex, RULE_SHAPE_STARTS_IF};
-use super::super::token_primitives::find_window_index as find_word_sequence_index;
-use super::super::util::trim_commas;
 use super::sentence_helpers::target_ast_to_object_filter;
 use super::{parse_object_filter, parse_target_phrase as parse_target_phrase_lexed};
 use crate::cards::builders::{CardTextError, ChoiceCount, EffectAst};
@@ -13,7 +14,6 @@ use crate::effect::{EventValueSpec, Until};
 use crate::object::CounterType;
 use crate::runtime_backend::contains_until_end_of_turn;
 use crate::runtime_backend::model::ast::{SubjectVerbActionAst, SubjectVerbRoleAst};
-use crate::runtime_backend::token_index_for_word_index;
 use crate::static_abilities::StaticAbilityId;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::CardType;
@@ -74,21 +74,22 @@ fn parse_keyword_bundle_pump_clause(
 pub(crate) fn parse_keyword_bundle_pump_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let word_storage = TokenWordView::new(tokens);
-    let words = word_storage.word_refs();
-    if words.is_empty() {
+    let clause = LexedClause::new(tokens);
+    let words = clause.word_refs();
+    if clause.is_empty() {
         return Ok(None);
     }
 
-    let (subject_start_word_idx, duration) = if words.starts_with(&["until", "end", "of", "turn"]) {
-        (4usize, Until::EndOfTurn)
-    } else if words.starts_with(&["until", "your", "next", "turn"]) {
-        (4usize, Until::YourNextTurn)
-    } else if words.starts_with(&["until", "end", "of", "combat"]) {
-        (4usize, Until::EndOfCombat)
-    } else {
-        return Ok(None);
-    };
+    let (subject_start_word_idx, duration) =
+        if word_slice_starts_with(&words, &["until", "end", "of", "turn"]) {
+            (4usize, Until::EndOfTurn)
+        } else if word_slice_starts_with(&words, &["until", "your", "next", "turn"]) {
+            (4usize, Until::YourNextTurn)
+        } else if word_slice_starts_with(&words, &["until", "end", "of", "combat"]) {
+            (4usize, Until::EndOfCombat)
+        } else {
+            return Ok(None);
+        };
 
     let Some(get_word_idx) = words
         .iter()
@@ -100,32 +101,23 @@ pub(crate) fn parse_keyword_bundle_pump_sentence(
         return Ok(None);
     }
 
-    let subject_start_token_idx =
-        token_index_for_word_index(tokens, subject_start_word_idx).unwrap_or(tokens.len());
-    let subject_end_token_idx =
-        token_index_for_word_index(tokens, get_word_idx).unwrap_or(tokens.len());
-    if subject_start_token_idx >= subject_end_token_idx {
+    let subject_clause = clause.between_words_trimmed(subject_start_word_idx, get_word_idx);
+    if subject_clause.is_empty() {
         return Ok(None);
     }
 
-    let subject_tokens = trim_commas(&tokens[subject_start_token_idx..subject_end_token_idx]);
-    if subject_tokens.is_empty() {
-        return Ok(None);
-    }
-
-    let filter_tokens = if subject_tokens
-        .first()
-        .is_some_and(|token| token.is_word("each") || token.is_word("all"))
-    {
-        &subject_tokens[1..]
+    let filter_clause = if subject_clause.first_is_any_word(&["each", "all"]) {
+        subject_clause
+            .after_words(1)
+            .unwrap_or_else(|| subject_clause.from(subject_clause.len()))
     } else {
-        subject_tokens.as_slice()
+        subject_clause
     };
-    if filter_tokens.is_empty() {
+    if filter_clause.is_empty() {
         return Ok(None);
     }
 
-    let base_filter = parse_object_filter(filter_tokens, false)?;
+    let base_filter = parse_object_filter(filter_clause.tokens(), false)?;
 
     let Some(((power, toughness), first_ability, mut cursor)) =
         parse_keyword_bundle_pump_clause(&words, get_word_idx + 1)?
@@ -186,9 +178,10 @@ pub(crate) fn parse_keyword_bundle_pump_sentence(
 pub(crate) fn parse_scaled_target_power_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let word_storage = TokenWordView::new(tokens);
-    let words = word_storage.word_refs();
-    let Some((verb, multiplier)) = word_storage.first().and_then(|word| match word {
+    let clause = LexedClause::new(tokens);
+    let clause_text = clause.text();
+    let words = clause.word_refs();
+    let Some((verb, multiplier)) = clause.first_word().and_then(|word| match word {
         "double" => Some(("double", 1)),
         "triple" => Some(("triple", 2)),
         _ => None,
@@ -289,19 +282,24 @@ pub(crate) fn parse_scaled_target_power_sentence(
         return Ok(Some(vec![EffectAst::subject_verb_double_mana_pool(player)]));
     }
     if verb == "loses"
-        && matches!(
-            words.as_slice(),
-            ["that", "player", "loses", "all", "unspent", "mana"]
-                | ["target", "player", "loses", "all", "unspent", "mana"]
-                | ["target", "opponent", "loses", "all", "unspent", "mana"]
-                | ["you", "lose", "all", "unspent", "mana"]
+        && let Some(phrase) = word_slice_matching_phrase(
+            &words,
+            &[
+                &["that", "player", "loses", "all", "unspent", "mana"],
+                &["target", "player", "loses", "all", "unspent", "mana"],
+                &["target", "opponent", "loses", "all", "unspent", "mana"],
+                &["you", "lose", "all", "unspent", "mana"],
+            ],
         )
     {
-        let player = match words.as_slice() {
-            ["that", "player", ..] => PlayerAst::That,
-            ["target", "opponent", ..] => PlayerAst::TargetOpponent,
-            ["you", ..] => PlayerAst::You,
-            _ => PlayerAst::Target,
+        let player = if word_slice_starts_with(phrase, &["that", "player"]) {
+            PlayerAst::That
+        } else if word_slice_starts_with(phrase, &["target", "opponent"]) {
+            PlayerAst::TargetOpponent
+        } else if word_slice_starts_with(phrase, &["you"]) {
+            PlayerAst::You
+        } else {
+            PlayerAst::Target
         };
         return Ok(Some(vec![EffectAst::subject_verb_empty_mana_pool(player)]));
     }
@@ -322,11 +320,11 @@ pub(crate) fn parse_scaled_target_power_sentence(
             _ => (false, false, 0),
         };
         if subject_start != 0 && subject_start < subject_end {
-            let subject_tokens = trim_commas(&tokens[subject_start..subject_end]);
-            if subject_tokens.is_empty() {
+            let subject_clause = clause.between_words_trimmed(subject_start, subject_end);
+            if subject_clause.is_empty() {
                 return Err(CardTextError::ParseError(format!(
                     "missing subject in {verb} clause (clause: '{}')",
-                    words.join(" ")
+                    clause_text
                 )));
             }
 
@@ -335,14 +333,16 @@ pub(crate) fn parse_scaled_target_power_sentence(
                 .first()
                 .is_some_and(|word| *word == "each" || *word == "all")
             {
-                let filter_tokens = &subject_tokens[1..];
-                if filter_tokens.is_empty() {
+                let filter_clause = subject_clause
+                    .after_words(1)
+                    .unwrap_or_else(|| subject_clause.from(subject_clause.len()));
+                if filter_clause.is_empty() {
                     return Err(CardTextError::ParseError(format!(
                         "missing filter in {verb} clause (clause: '{}')",
-                        words.join(" ")
+                        clause_text
                     )));
                 }
-                let filter = parse_object_filter(filter_tokens, false)?;
+                let filter = parse_object_filter(filter_clause.tokens(), false)?;
                 return Ok(Some(vec![scale_pt_all(
                     filter,
                     include_power,
@@ -350,7 +350,7 @@ pub(crate) fn parse_scaled_target_power_sentence(
                 )]));
             }
 
-            let target = parse_target_phrase_lexed(&subject_tokens)?;
+            let target = parse_target_phrase_lexed(subject_clause.tokens())?;
             return Ok(Some(vec![scale_pt_from_value_spec(
                 &target,
                 include_power,
@@ -360,8 +360,10 @@ pub(crate) fn parse_scaled_target_power_sentence(
     }
 
     let (include_power, include_toughness, characteristic_start) = if subject_end >= 4
-        && words[subject_end - 3..subject_end] == ["power", "and", "toughness"]
-    {
+        && word_slice_eq(
+            &words[subject_end - 3..subject_end],
+            &["power", "and", "toughness"],
+        ) {
         (true, true, subject_end - 3)
     } else if subject_end >= 1 && words[subject_end - 1] == "power" {
         (true, false, subject_end - 1)
@@ -374,11 +376,11 @@ pub(crate) fn parse_scaled_target_power_sentence(
         return Ok(None);
     }
 
-    let target_tokens = trim_commas(&tokens[1..characteristic_start]);
-    if target_tokens.is_empty() {
+    let target_clause = clause.between_words_trimmed(1, characteristic_start);
+    if target_clause.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing target in {verb} clause (clause: '{}')",
-            words.join(" ")
+            clause_text
         )));
     }
 
@@ -386,14 +388,16 @@ pub(crate) fn parse_scaled_target_power_sentence(
         .get(1)
         .is_some_and(|word| *word == "each" || *word == "all")
     {
-        let filter_tokens = &target_tokens[1..];
-        if filter_tokens.is_empty() {
+        let filter_clause = target_clause
+            .after_words(1)
+            .unwrap_or_else(|| target_clause.from(target_clause.len()));
+        if filter_clause.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing filter in {verb} clause (clause: '{}')",
-                words.join(" ")
+                clause_text
             )));
         }
-        let filter = parse_object_filter(filter_tokens, false)?;
+        let filter = parse_object_filter(filter_clause.tokens(), false)?;
         return Ok(Some(vec![scale_pt_all(
             filter,
             include_power,
@@ -401,7 +405,7 @@ pub(crate) fn parse_scaled_target_power_sentence(
         )]));
     }
 
-    let target = parse_target_phrase_lexed(&target_tokens)?;
+    let target = parse_target_phrase_lexed(target_clause.tokens())?;
     Ok(Some(vec![scale_pt_from_value_spec(
         &target,
         include_power,
@@ -455,30 +459,33 @@ pub(super) fn parse_spell_this_way_pay_life_rule_lexed(
 pub(super) fn parse_sacrifice_any_number_then_draw_that_many_rule_lexed(
     view: &LexClauseView<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if grammar::words_match_prefix(view.tokens, &["sacrifice", "any", "number", "of"]).is_none() {
+    let clause = LexedClause::new(view.tokens);
+    if clause
+        .strip_prefix_clause(&["sacrifice", "any", "number", "of"])
+        .is_none()
+    {
         return Ok(None);
     }
-    let words = crate::runtime_backend::token_word_refs(view.tokens);
-    let Some(then_idx) = words.iter().position(|word| *word == "then") else {
+    let Some((before_then, after_then)) = clause.split_once_on_then_trimmed() else {
         return Ok(None);
     };
-    if words.get(then_idx + 1..) != Some(&["draw", "that", "many", "cards"][..]) {
+    if !after_then.matches_words(&["draw", "that", "many", "cards"]) {
         return Ok(None);
     }
 
-    let Some(then_token_idx) =
-        crate::runtime_backend::token_index_for_word_index(view.tokens, then_idx)
+    let Some(filter_clause) =
+        before_then.strip_prefix_clause(&["sacrifice", "any", "number", "of"])
     else {
         return Ok(None);
     };
-    let filter_tokens = trim_commas(&view.tokens[4..then_token_idx]);
-    if filter_tokens.is_empty() {
+    let filter_clause = filter_clause.trimmed();
+    if filter_clause.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing sacrifice object after 'any number of' (clause: '{}')",
             view.display_text()
         )));
     }
-    let filter_words = crate::runtime_backend::token_word_refs(&filter_tokens);
+    let filter_words = filter_clause.word_refs();
     let filter_text = view.display_text().to_ascii_lowercase();
     let filter = if filter_text.contains("token")
         && filter_words
@@ -496,7 +503,7 @@ pub(super) fn parse_sacrifice_any_number_then_draw_that_many_rule_lexed(
         ];
         filter
     } else {
-        parse_object_filter_lexed(&filter_tokens, false)?
+        parse_object_filter_lexed(filter_clause.tokens(), false)?
     };
     let tag = TagKey::from("sacrificed_0");
 

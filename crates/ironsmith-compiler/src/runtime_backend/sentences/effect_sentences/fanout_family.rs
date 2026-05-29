@@ -1,6 +1,10 @@
 use super::super::grammar::primitives::{self as grammar, find_phrase_start};
 use super::super::keyword_static::parse_pt_modifier;
-use super::super::lexer::OwnedLexToken;
+use super::super::lexer::{
+    LexedClause, OwnedLexToken, find_token_word_sequence, word_slice_contains_phrase,
+    word_slice_ends_with, word_slice_ends_with_any, word_slice_eq, word_slice_eq_any,
+    word_slice_find_phrase_start, word_slice_matching_value, word_slice_starts_with,
+};
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{find_window_by, rfind_index};
 use super::super::util::{
@@ -19,54 +23,6 @@ use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOp
 use crate::zone::Zone;
 
 const THAT_MUCH_PREFIXES: &[&[&str]] = &[&["that", "much"]];
-
-fn find_token_word_window(tokens: &[OwnedLexToken], expected: &[&str]) -> Option<usize> {
-    if expected.is_empty() || tokens.len() < expected.len() {
-        return None;
-    }
-
-    for start in 0..=tokens.len() - expected.len() {
-        if tokens[start..start + expected.len()]
-            .iter()
-            .zip(expected.iter())
-            .all(|(token, expected_word)| token.is_word(expected_word))
-        {
-            return Some(start);
-        }
-    }
-
-    None
-}
-
-fn contains_word_window(words: &[&str], pattern: &[&str]) -> bool {
-    if pattern.is_empty() || words.len() < pattern.len() {
-        return false;
-    }
-
-    for start in 0..=words.len() - pattern.len() {
-        if words[start..start + pattern.len()]
-            .iter()
-            .zip(pattern.iter())
-            .all(|(word, expected)| word == expected)
-        {
-            return true;
-        }
-    }
-
-    false
-}
-
-fn find_phrase_start_words(words: &[&str], phrase: &[&str]) -> Option<usize> {
-    if phrase.is_empty() || words.len() < phrase.len() {
-        return None;
-    }
-    (0..=words.len() - phrase.len()).find(|start| {
-        words[*start..*start + phrase.len()]
-            .iter()
-            .zip(phrase.iter())
-            .all(|(word, expected)| word == expected)
-    })
-}
 
 pub(crate) fn find_same_name_reference_span(
     tokens: &[OwnedLexToken],
@@ -267,7 +223,7 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
             return Ok(None);
         }
 
-        let Some(split_idx) = find_token_word_window(target_tokens, &["and", "each", "other"])
+        let Some(split_idx) = find_token_word_sequence(target_tokens, &["and", "each", "other"])
         else {
             return Ok(None);
         };
@@ -299,7 +255,7 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
         return Ok(None);
     }
 
-    let Some(and_idx) = find_token_word_window(tokens, &["and", "all", "other"]) else {
+    let Some(and_idx) = find_token_word_sequence(tokens, &["and", "all", "other"]) else {
         return Ok(None);
     };
     if and_idx <= 1 {
@@ -359,7 +315,7 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
         if first_filter.owner.is_none() {
             first_filter.owner = filter.owner.clone();
             if first_filter.owner.is_none()
-                && contains_word_window(&words_all, &["your", "graveyard"])
+                && word_slice_contains_phrase(&words_all, &["your", "graveyard"])
             {
                 first_filter.owner = Some(PlayerFilter::You);
             }
@@ -494,7 +450,7 @@ fn parse_explicit_shared_color_gets_or_gains(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words_all = crate::runtime_backend::token_word_refs(tokens);
     let find_and_each_other =
-        |scope: &[OwnedLexToken]| find_token_word_window(scope, &["and", "each", "other"]);
+        |scope: &[OwnedLexToken]| find_token_word_sequence(scope, &["and", "each", "other"]);
 
     let Some(and_idx) = find_and_each_other(tokens) else {
         return Ok(None);
@@ -618,7 +574,7 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
     };
 
     let find_and_each_other =
-        |scope: &[OwnedLexToken]| find_token_word_window(scope, &["and", "each", "other"]);
+        |scope: &[OwnedLexToken]| find_token_word_sequence(scope, &["and", "each", "other"]);
 
     if matches!(verb, Verb::Destroy | Verb::Exile | Verb::Untap) {
         let after_verb = &tokens[verb_token_idx + 1..];
@@ -751,7 +707,7 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
         }
         idx += 1;
 
-        let Some(this_turn_rel) = find_phrase_start_words(
+        let Some(this_turn_rel) = word_slice_find_phrase_start(
             &crate::runtime_backend::token_word_refs(&tokens[idx..]),
             &["this", "turn"],
         ) else {
@@ -967,24 +923,10 @@ fn strip_trailing_where_clause(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     strip_trailing_damage_noise(&tokens[..where_idx])
 }
 
-fn words_have_suffix(words: &[&str], suffix: &[&str]) -> bool {
-    words.len() >= suffix.len() && words[words.len() - suffix.len()..] == *suffix
-}
-
 fn strip_word_suffix(tokens: &[OwnedLexToken], suffix: &[&str]) -> Option<Vec<OwnedLexToken>> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    if !words_have_suffix(&words, suffix) {
-        return None;
-    }
-    let base_word_len = words.len().saturating_sub(suffix.len());
-    let token_end = if base_word_len == 0 {
-        0
-    } else if base_word_len >= words.len() {
-        tokens.len()
-    } else {
-        token_index_for_word_index(tokens, base_word_len).unwrap_or(base_word_len)
-    };
-    Some(strip_trailing_damage_noise(&tokens[..token_end]))
+    LexedClause::new(tokens)
+        .strip_suffix_clause(suffix)
+        .map(|head| strip_trailing_damage_noise(head.tokens()))
 }
 
 fn tokens_before_word(tokens: &[OwnedLexToken], word_idx: usize) -> Vec<OwnedLexToken> {
@@ -1016,13 +958,18 @@ fn strip_known_controller_tail(
     player_context: Option<PlayerFilter>,
 ) -> (Vec<OwnedLexToken>, Option<PlayerFilter>) {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    let has_controller_controls_tail = words_have_suffix(&words, &["controller", "controls"])
-        || words_have_suffix(&words, &["controller", "control"])
-        || words_have_suffix(&words, &["controllers", "controls"])
-        || words_have_suffix(&words, &["controllers", "control"]);
+    let has_controller_controls_tail = word_slice_ends_with_any(
+        &words,
+        &[
+            &["controller", "controls"],
+            &["controller", "control"],
+            &["controllers", "controls"],
+            &["controllers", "control"],
+        ],
+    );
     if has_controller_controls_tail && words.len() >= 6 {
         for start in 0..words.len().saturating_sub(4) {
-            if words[start..].starts_with(&["that", "player", "or", "that"])
+            if word_slice_starts_with(&words[start..], &["that", "player", "or", "that"])
                 && words[start + 4..words.len().saturating_sub(2)]
                     .iter()
                     .any(|word| word.starts_with("planeswalker"))
@@ -1144,14 +1091,16 @@ fn parse_each_damage_part(
         return Ok(None);
     }
 
-    match words.as_slice() {
-        ["player"] | ["players"] => {
-            return Ok(Some(CompoundDamagePart::EachPlayer(PlayerFilter::Any)));
-        }
-        ["opponent"] | ["opponents"] => {
-            return Ok(Some(CompoundDamagePart::EachPlayer(PlayerFilter::Opponent)));
-        }
-        _ => {}
+    if let Some(player_filter) = word_slice_matching_value(
+        &words,
+        &[
+            (&["player"], PlayerFilter::Any),
+            (&["players"], PlayerFilter::Any),
+            (&["opponent"], PlayerFilter::Opponent),
+            (&["opponents"], PlayerFilter::Opponent),
+        ],
+    ) {
+        return Ok(Some(CompoundDamagePart::EachPlayer(player_filter)));
     }
 
     if words
@@ -1189,21 +1138,21 @@ fn parse_damage_part(
         return parse_each_damage_part(&tokens[1..], player_context);
     }
 
-    if words.as_slice() == ["you"] {
+    if word_slice_eq(&words, &["you"]) {
         return Ok(Some(CompoundDamagePart::Target(TargetAst::Player(
             PlayerFilter::You,
             span_from_tokens(&tokens),
         ))));
     }
 
-    if words.as_slice() == ["opponent"] || words.as_slice() == ["opponents"] {
+    if word_slice_eq_any(&words, &[&["opponent"], &["opponents"]]) {
         return Ok(Some(CompoundDamagePart::Target(TargetAst::Player(
             PlayerFilter::Opponent,
             span_from_tokens(&tokens),
         ))));
     }
 
-    if words.iter().any(|word| *word == "target") {
+    if crate::runtime_backend::lexer::word_slice_contains_word(&words, "target") {
         return Ok(Some(CompoundDamagePart::Target(parse_target_phrase(
             &tokens,
         )?)));
@@ -1345,8 +1294,8 @@ pub(crate) fn parse_compound_damage_fanout_sentence(
         return Ok(None);
     }
 
-    let Some(split_idx) = find_token_word_window(&target_tokens, &["and", "each"])
-        .or_else(|| find_token_word_window(&target_tokens, &["and", "all"]))
+    let Some(split_idx) = find_token_word_sequence(&target_tokens, &["and", "each"])
+        .or_else(|| find_token_word_sequence(&target_tokens, &["and", "all"]))
     else {
         return Ok(None);
     };
@@ -1380,7 +1329,7 @@ pub(crate) fn parse_same_name_gets_fanout_sentence(
     }
 
     let subject_tokens = &tokens[..verb_idx];
-    let Some(and_idx) = find_token_word_window(subject_tokens, &["and", "all", "other"]) else {
+    let Some(and_idx) = find_token_word_sequence(subject_tokens, &["and", "all", "other"]) else {
         return Ok(None);
     };
     if and_idx == 0 {

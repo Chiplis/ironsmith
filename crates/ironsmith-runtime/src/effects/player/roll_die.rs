@@ -45,18 +45,14 @@ impl EffectExecutor for RollDieEffect {
             game.turn_store
                 .turn_history
                 .record_die_roll(player, clamped);
-            return Ok(
-                EffectOutcome::count(clamped as i32)
-                    .with_execution_fact(ExecutionFact::ChosenNumber(clamped)),
-            );
+            return Ok(EffectOutcome::count(clamped as i32)
+                .with_execution_fact(ExecutionFact::ChosenNumber(clamped)));
         }
 
         let mut faces: Vec<u32> = (1..=self.sides).collect();
         game.shuffle_slice(&mut faces);
         let result = faces[0];
-        game.turn_store
-            .turn_history
-            .record_die_roll(player, result);
+        game.turn_store.turn_history.record_die_roll(player, result);
         Ok(EffectOutcome::count(result as i32)
             .with_execution_fact(ExecutionFact::ChosenNumber(result)))
     }

@@ -58,6 +58,7 @@ use super::token_primitives::{
     find_index, find_window_by, slice_contains, str_contains, str_find, str_split_once,
     str_split_once_char, str_starts_with, str_strip_suffix,
 };
+use crate::runtime_backend::lexer::word_slice_contains_word;
 
 use super::effect_ast_traversal::{
     assert_effect_ast_variant_coverage, for_each_nested_effects, for_each_nested_effects_mut,
@@ -3061,7 +3062,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
         })
         .filter(|word| !word.is_empty())
         .collect();
-    let has_word = |needle: &str| slice_contains(words.as_slice(), &needle);
+    let has_word = |needle: &str| word_slice_contains_word(words.as_slice(), needle);
     let has_words = |needles: &[&str]| needles.iter().all(|needle| has_word(needle));
     let has_any_word = |needles: &[&str]| needles.iter().any(|needle| has_word(needle));
     let has_phrase = |phrase: &[&str]| contains_word_sequence(words.as_slice(), phrase);
@@ -3393,10 +3394,10 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
     if has_word("creature") {
         let mut card_types = vec![CardType::Creature];
         let first_creature_idx = find_index(words.as_slice(), |word| *word == "creature");
-        let artifact_before_creature =
-            first_creature_idx.is_some_and(|idx| slice_contains(&words[..idx], &"artifact"));
-        let enchantment_before_creature =
-            first_creature_idx.is_some_and(|idx| slice_contains(&words[..idx], &"enchantment"));
+        let artifact_before_creature = first_creature_idx
+            .is_some_and(|idx| word_slice_contains_word(&words[..idx], "artifact"));
+        let enchantment_before_creature = first_creature_idx
+            .is_some_and(|idx| word_slice_contains_word(&words[..idx], "enchantment"));
         if artifact_before_creature {
             card_types.insert(0, CardType::Artifact);
         }

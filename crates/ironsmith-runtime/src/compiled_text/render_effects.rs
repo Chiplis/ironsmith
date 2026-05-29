@@ -2774,8 +2774,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
 
         let bottom = unwrap_wrapped_effect(bottom_effect)
             .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
-        if bottom.tag != consult.all_tag
-            || bottom.keep_tagged.as_ref() != Some(&consult.match_tag)
+        if bottom.tag != consult.all_tag || bottom.keep_tagged.as_ref() != Some(&consult.match_tag)
         {
             return None;
         }
@@ -7081,10 +7080,12 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         {
             return None;
         }
-        let [crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
-            power,
-            toughness,
-        }] = apply.runtime_modifications.as_slice()
+        let [
+            crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
+                power,
+                toughness,
+            },
+        ] = apply.runtime_modifications.as_slice()
         else {
             return None;
         };
@@ -13319,7 +13320,10 @@ fn describe_triggered_resolution_text(
         && let Some(surveil) = effect.downcast_ref::<crate::effects::SurveilEffect>()
         && surveil.player == PlayerFilter::You
         && value_prefers_where_x(&surveil.count)
-        && matches!(surveil.count.unhinted(), Value::EventValue(EventValueSpec::Amount))
+        && matches!(
+            surveil.count.unhinted(),
+            Value::EventValue(EventValueSpec::Amount)
+        )
     {
         return Some(
             "surveil X, where X is the amount of damage it dealt to that player".to_string(),
@@ -13379,8 +13383,7 @@ fn describe_triggered_inline_ability(
     if let Some(condition) = intervening_condition {
         line.push_str(", if ");
         line.push_str(&describe_trigger_intervening_condition(
-            &condition,
-            triggered,
+            &condition, triggered,
         ));
     }
 
@@ -13483,8 +13486,8 @@ fn source_return_from_graveyard_subject(
 }
 
 fn source_return_from_graveyard_subject_in_effect(effect: &Effect) -> Option<String> {
-    if let Some(return_to_battlefield) = effect
-        .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
+    if let Some(return_to_battlefield) =
+        effect.downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
         && matches!(return_to_battlefield.target.unhinted(), ChooseSpec::Source)
     {
         return Some(describe_choose_spec(&return_to_battlefield.target));
@@ -18235,8 +18238,7 @@ fn describe_for_each_prevent_combat_damage_unless_pays(
                 matches!(
                     prevent_combat.target,
                     crate::effects::CombatDamagePreventionTarget::From(ChooseSpec::Iterated)
-                )
-                    && matches!(prevent_combat.until, Until::EndOfTurn)
+                ) && matches!(prevent_combat.until, Until::EndOfTurn)
             });
     if !prevents_iterated_until_eot {
         return None;
@@ -18270,13 +18272,22 @@ fn describe_tagged_it_damage_source(filter: &ObjectFilter) -> Option<&'static st
     if !filter_is_tagged_it(filter) {
         return None;
     }
-    if filter.card_types.contains(&crate::types::CardType::Creature) {
+    if filter
+        .card_types
+        .contains(&crate::types::CardType::Creature)
+    {
         return Some("that creature");
     }
-    if filter.card_types.contains(&crate::types::CardType::Artifact) {
+    if filter
+        .card_types
+        .contains(&crate::types::CardType::Artifact)
+    {
         return Some("that artifact");
     }
-    if filter.card_types.contains(&crate::types::CardType::Enchantment) {
+    if filter
+        .card_types
+        .contains(&crate::types::CardType::Enchantment)
+    {
         return Some("that enchantment");
     }
     if filter.card_types.contains(&crate::types::CardType::Land) {
@@ -34540,8 +34551,7 @@ pub(super) fn describe_ability(
             if let Some(condition) = intervening_condition {
                 line.push_str(", if ");
                 line.push_str(&describe_trigger_intervening_condition(
-                    &condition,
-                    triggered,
+                    &condition, triggered,
                 ));
             }
             let mut clauses = Vec::new();

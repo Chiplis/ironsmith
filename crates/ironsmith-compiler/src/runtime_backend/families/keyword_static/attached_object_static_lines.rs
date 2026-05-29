@@ -22,28 +22,7 @@ fn token_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
 }
 
 fn str_ends_with_char(text: &str, suffix: char) -> bool {
-    let mut chars = text.chars();
-    chars.next_back().is_some_and(|ch| ch == suffix)
-}
-
-fn word_slice_starts_with(words: &[&str], prefix: &[&str]) -> bool {
-    crate::runtime_backend::token_primitives::slice_starts_with(words, prefix)
-}
-
-fn word_slice_ends_with(words: &[&str], suffix: &[&str]) -> bool {
-    crate::runtime_backend::token_primitives::slice_ends_with(words, suffix)
-}
-
-fn word_slice_contains(words: &[&str], expected: &str) -> bool {
-    crate::runtime_backend::token_primitives::slice_contains_str(words, expected)
-}
-
-fn word_slice_contains_sequence(words: &[&str], sequence: &[&str]) -> bool {
-    crate::runtime_backend::token_primitives::contains_window(words, sequence)
-}
-
-fn find_word_index(words: &[&str], mut predicate: impl FnMut(&str) -> bool) -> Option<usize> {
-    crate::runtime_backend::token_primitives::find_str_by(words, |word| predicate(word))
+    crate::runtime_backend::token_primitives::str_ends_with_char(text, suffix)
 }
 
 fn find_token_index(
@@ -56,23 +35,11 @@ fn find_token_index(
 }
 
 fn strip_suffix_char<'a>(word: &'a str, suffix: char) -> Option<&'a str> {
-    let mut chars = word.char_indices();
-    let Some((last_idx, last_char)) = chars.next_back() else {
-        return None;
-    };
-    if last_char != suffix {
-        return None;
-    }
-    Some(&word[..last_idx])
+    crate::string_primitives::strip_suffix_char(word, suffix)
 }
 
 fn push_unique<T: PartialEq>(items: &mut Vec<T>, item: T) {
-    for existing in items.iter() {
-        if *existing == item {
-            return;
-        }
-    }
-    items.push(item);
+    crate::slice_primitives::push_unique(items, item);
 }
 
 fn parse_attached_with_base_power_toughness_clause(
@@ -372,7 +339,7 @@ pub(crate) fn parse_enchanted_creature_has_line(
 
     let mut condition: Option<crate::ConditionExpr> = None;
     let ability_head_words = token_words(&ability_tokens);
-    if let Some(as_long_idx) = find_word_index(&ability_head_words, |word| word == "as")
+    if let Some(as_long_idx) = word_slice_find_word_where(&ability_head_words, |word| word == "as")
         .filter(|idx| word_slice_starts_with(&ability_head_words[*idx..], &["as", "long", "as"]))
     {
         let Some(as_long_token_idx) = token_index_for_word_index(&ability_tokens, as_long_idx)
@@ -768,13 +735,13 @@ pub(crate) fn parse_attached_gets_and_cant_block_line(
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    let subject = if word_slice_contains_sequence(&line_words, &["enchanted", "permanent"]) {
+    let subject = if word_slice_contains_phrase(&line_words, &["enchanted", "permanent"]) {
         "enchanted permanent"
-    } else if word_slice_contains_sequence(&line_words, &["enchanted", "creature"]) {
+    } else if word_slice_contains_phrase(&line_words, &["enchanted", "creature"]) {
         "enchanted creature"
-    } else if word_slice_contains_sequence(&line_words, &["equipped", "permanent"]) {
+    } else if word_slice_contains_phrase(&line_words, &["equipped", "permanent"]) {
         "equipped permanent"
-    } else if word_slice_contains_sequence(&line_words, &["equipped", "creature"]) {
+    } else if word_slice_contains_phrase(&line_words, &["equipped", "creature"]) {
         "equipped creature"
     } else {
         return Ok(None);
@@ -1066,14 +1033,14 @@ pub(crate) fn parse_prevent_damage_to_source_remove_counter_line(
     {
         return Ok(None);
     }
-    if !word_slice_contains_sequence(&line_words, &["prevent", "that", "damage"]) {
+    if !word_slice_contains_phrase(&line_words, &["prevent", "that", "damage"]) {
         return Ok(None);
     }
 
-    let Some(remove_word_idx) = find_word_index(&line_words, |word| word == "remove") else {
+    let Some(remove_word_idx) = word_slice_find_word_where(&line_words, |word| word == "remove") else {
         return Ok(None);
     };
-    let Some(counter_word_idx) = find_word_index(&line_words[remove_word_idx + 1..], |word| {
+    let Some(counter_word_idx) = word_slice_find_word_where(&line_words[remove_word_idx + 1..], |word| {
         matches!(word, "counter" | "counters")
     })
     .map(|idx| remove_word_idx + 1 + idx) else {
@@ -1153,7 +1120,7 @@ pub(crate) fn parse_prevent_damage_to_source_put_counters_line(
         } else if word_slice_starts_with(&line_words[6..], &["this"]) {
             Some(1usize)
         } else {
-            let prevent_idx = find_word_index(&line_words[6..], |word| word == "prevent");
+            let prevent_idx = word_slice_find_word_where(&line_words[6..], |word| word == "prevent");
             let source_end = prevent_idx.map(|idx| {
                 line_words[6..6 + idx]
                     .iter()
@@ -1193,7 +1160,7 @@ pub(crate) fn parse_prevent_damage_to_source_put_counters_line(
             let mut condition = None;
 
             if tail.first().copied() == Some("while") {
-                let Some(prevent_word_idx) = find_word_index(tail, |word| word == "prevent") else {
+                let Some(prevent_word_idx) = word_slice_find_word_where(tail, |word| word == "prevent") else {
                     return Err(CardTextError::ParseError(format!(
                         "unsupported conditional prevent-damage tail (clause: '{}')",
                         line_words.join(" ")
@@ -1842,7 +1809,7 @@ pub(crate) fn parse_enchanted_has_activated_ability_line(
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let line_words = token_words(tokens);
     if !word_slice_starts_with(&line_words, &["enchanted"])
-        || !word_slice_contains(&line_words, "has")
+        || !word_slice_contains_word(&line_words, "has")
     {
         return Ok(None);
     }

@@ -1,10 +1,12 @@
 use super::grammar::primitives::{self as grammar, split_lexed_slices_on_or};
 use super::grammar::values::parse_value_comparison_tokens;
-use super::lexer::{OwnedLexToken, TokenKind, token_word_refs, trim_lexed_commas};
+use super::lexer::{
+    OwnedLexToken, TokenKind, contains_token_word, token_word_refs, trim_lexed_commas,
+    word_slice_starts_with, word_slice_starts_with_any,
+};
 use super::object_filters::parse_object_filter;
 use super::token_primitives::{
     parse_simple_restriction_duration_prefix, parse_simple_restriction_duration_suffix,
-    slice_starts_with as word_slice_starts_with,
 };
 use super::util::trim_commas;
 use crate::cards::builders::CardTextError;
@@ -21,12 +23,6 @@ pub(crate) enum SearchLibraryManaConstraint {
     OneOf(Vec<u32>),
 }
 
-pub(crate) fn word_slice_starts_with_any(words: &[&str], prefixes: &[&[&str]]) -> bool {
-    prefixes
-        .iter()
-        .any(|prefix| word_slice_starts_with(words, prefix))
-}
-
 pub(crate) fn word_slice_mentions_nth_from_top(words: &[&str]) -> bool {
     let mut idx = 0usize;
     while idx + 3 < words.len() {
@@ -36,13 +32,6 @@ pub(crate) fn word_slice_mentions_nth_from_top(words: &[&str]) -> bool {
         idx += 1;
     }
     false
-}
-
-fn token_slice_contains_word(tokens: &[OwnedLexToken], expected: &'static str) -> bool {
-    tokens
-        .iter()
-        .enumerate()
-        .any(|(idx, _)| grammar::parse_prefix(&tokens[idx..], grammar::kw(expected)).is_some())
 }
 
 fn token_slice_contains_phrase(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> bool {
@@ -74,19 +63,19 @@ fn is_source_reference_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
         "permanent",
     ]
     .iter()
-    .any(|word| token_slice_contains_word(tokens, word))
+    .any(|word| contains_token_word(tokens, word))
 }
 
 fn is_as_long_as_you_control_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
-    token_slice_contains_word(tokens, "you")
-        && token_slice_contains_word(tokens, "control")
+    contains_token_word(tokens, "you")
+        && contains_token_word(tokens, "control")
         && is_source_reference_duration_tokens(tokens)
 }
 
 fn is_source_remains_tapped_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
     token_slice_contains_phrase(tokens, &["for", "as", "long", "as"])
-        && token_slice_contains_word(tokens, "remains")
-        && token_slice_contains_word(tokens, "tapped")
+        && contains_token_word(tokens, "remains")
+        && contains_token_word(tokens, "tapped")
         && is_source_reference_duration_tokens(tokens)
 }
 

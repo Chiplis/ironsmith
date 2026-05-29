@@ -4,7 +4,12 @@ use super::super::activation_and_restrictions::choice_object_clauses::{
     parse_choose_card_type_phrase_words, parse_target_player_choose_objects_clause,
     parse_you_choose_objects_clause,
 };
-use super::super::lexer::{OwnedLexToken, TokenKind, split_lexed_sentences};
+use super::super::lexer::{
+    OwnedLexToken, TokenKind, split_lexed_sentences, word_slice_contains_all_words,
+    word_slice_contains_any_word, word_slice_contains_phrase, word_slice_contains_word,
+    word_slice_eq, word_slice_eq_any, word_slice_find_any_phrase_span,
+    word_slice_strip_prefix_value,
+};
 use super::super::object_filters::parse_object_filter_lexed;
 use super::super::permission_helpers::{
     parse_until_end_of_turn_may_play_tagged_clause,
@@ -165,7 +170,7 @@ fn parse_choose_type_then_phase_out_bundle(
     if !second_words
         .iter()
         .any(|word| matches!(*word, "that" | "chosen"))
-        || !second_words.iter().any(|word| *word == "type")
+        || !word_slice_contains_word(&second_words, "type")
     {
         return Ok(None);
     }
@@ -230,8 +235,9 @@ fn parse_proliferate_then_choose_permanents_phase_out_bundle(
     } else {
         &first_words[..]
     };
-    if first_words
-        != [
+    if !word_slice_eq(
+        first_words,
+        &[
             "proliferate",
             "then",
             "choose",
@@ -250,13 +256,13 @@ fn parse_proliferate_then_choose_permanents_phase_out_bundle(
             "them",
             "this",
             "way",
-        ]
-    {
+        ],
+    ) {
         return None;
     }
 
     let second_words = crate::runtime_backend::token_word_refs(second_sentence);
-    if second_words != ["those", "permanents", "phase", "out"] {
+    if !word_slice_eq(&second_words, &["those", "permanents", "phase", "out"]) {
         return None;
     }
 
@@ -290,8 +296,9 @@ fn parse_proliferate_then_choose_permanents_phase_out_single_sentence(
     } else {
         &words[..]
     };
-    if words
-        != [
+    if !word_slice_eq(
+        words,
+        &[
             "proliferate",
             "then",
             "choose",
@@ -314,8 +321,8 @@ fn parse_proliferate_then_choose_permanents_phase_out_single_sentence(
             "permanents",
             "phase",
             "out",
-        ]
-    {
+        ],
+    ) {
         return None;
     }
 
@@ -347,12 +354,13 @@ fn parse_draw_create_treasure_lose_life_bundle(tokens: &[OwnedLexToken]) -> Opti
     } else {
         clause_words.as_slice()
     };
-    if words
-        != [
+    if !word_slice_eq(
+        words,
+        &[
             "draw", "that", "many", "cards", "create", "that", "many", "tapped", "treasure",
             "tokens", "then", "lose", "that", "much", "life",
-        ]
-    {
+        ],
+    ) {
         return None;
     }
 
@@ -396,16 +404,12 @@ fn looks_like_source_leaves_return_followup_sentence(tokens: &[OwnedLexToken]) -
     if words.first().copied() != Some("return") {
         return false;
     }
-    if !words.iter().any(|word| *word == "when")
-        || !words.iter().any(|word| *word == "leaves")
-        || !words.iter().any(|word| *word == "battlefield")
-        || !words
-            .windows(3)
-            .any(|window| window == ["to", "the", "battlefield"])
+    if !word_slice_contains_all_words(&words, &["when", "leaves", "battlefield"])
+        || !word_slice_contains_phrase(&words, &["to", "the", "battlefield"])
         || !words
             .iter()
             .any(|word| matches!(*word, "owner" | "owners" | "owner's" | "owners'"))
-        || !words.iter().any(|word| *word == "control")
+        || !word_slice_contains_word(&words, "control")
     {
         return false;
     }
@@ -472,7 +476,10 @@ fn parse_reveal_from_outside_game_or_choose_face_up_exile_to_hand(
     let first_words = words(&first_tokens);
     let second_words = words(&second_tokens);
 
-    if second_words.as_slice() != ["put", "that", "card", "into", "your", "hand"] {
+    if !word_slice_eq(
+        &second_words,
+        &["put", "that", "card", "into", "your", "hand"],
+    ) {
         return Ok(None);
     }
 
@@ -488,21 +495,15 @@ fn parse_reveal_from_outside_game_or_choose_face_up_exile_to_hand(
     let reveal_words = words(&reveal_tokens);
     let choose_words = words(&choose_tokens);
 
-    if !reveal_words.iter().any(|word| *word == "outside")
-        || !reveal_words.iter().any(|word| *word == "game")
-    {
+    if !word_slice_contains_all_words(&reveal_words, &["outside", "game"]) {
         return Ok(None);
     }
-    let has_face_up = choose_words
-        .iter()
-        .any(|word| *word == "face-up" || *word == "faceup")
-        || choose_words
-            .windows(2)
-            .any(|window| window == ["face", "up"]);
+    let has_face_up = word_slice_contains_any_word(&choose_words, &["face-up", "faceup"])
+        || word_slice_contains_phrase(&choose_words, &["face", "up"]);
     if !has_face_up {
         return Ok(None);
     }
-    if !choose_words.iter().any(|word| *word == "exile") {
+    if !word_slice_contains_word(&choose_words, "exile") {
         return Ok(None);
     }
 
@@ -567,8 +568,7 @@ fn parse_reveal_from_outside_game_to_hand(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let tokens = trim_commas(tokens);
     let lowered = words(&tokens);
-    if !lowered.iter().any(|word| *word == "outside") || !lowered.iter().any(|word| *word == "game")
-    {
+    if !word_slice_contains_all_words(&lowered, &["outside", "game"]) {
         return Ok(None);
     }
     let Some(reveal_idx) = lowered.iter().position(|word| *word == "reveal") else {
@@ -582,9 +582,8 @@ fn parse_reveal_from_outside_game_to_hand(
     }
 
     let put_tail = &["and", "put", "it", "into", "your", "hand"];
-    let Some(put_idx) = lowered
-        .windows(put_tail.len())
-        .position(|window| window == put_tail)
+    let Some(put_idx) =
+        crate::runtime_backend::lexer::word_slice_find_phrase_start(&lowered, put_tail)
     else {
         return Ok(None);
     };
@@ -593,13 +592,9 @@ fn parse_reveal_from_outside_game_to_hand(
     }
 
     let mut filter_tokens = trim_commas(&tokens[reveal_idx + 1..from_idx]).to_vec();
-    if filter_tokens
-        .windows(2)
-        .position(|window| window[0].is_word("you") && window[1].is_word("own"))
+    if crate::runtime_backend::lexer::find_token_word_sequence(&filter_tokens, &["you", "own"])
         .is_none()
-        && !lowered[from_idx..put_idx]
-            .windows(2)
-            .any(|window| window == ["you", "own"])
+        && !word_slice_contains_phrase(&lowered[from_idx..put_idx], &["you", "own"])
     {
         return Ok(None);
     }
@@ -735,6 +730,10 @@ fn parser_words(tokens: &[OwnedLexToken]) -> Vec<String> {
         .collect()
 }
 
+fn parser_word_refs(words: &[String]) -> Vec<&str> {
+    words.iter().map(String::as_str).collect()
+}
+
 fn split_search_library_slot_filter_items_lexed(
     filter_tokens: &[OwnedLexToken],
 ) -> Option<Vec<Vec<OwnedLexToken>>> {
@@ -800,14 +799,22 @@ fn parse_search_library_slots_to_hand_bundle(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let sentence_words = parser_words(tokens);
-    let multi_zone = if sentence_words.len() >= 15
-        && sentence_words[..4] == ["search", "your", "library", "for"]
-    {
+    let sentence_word_refs = parser_word_refs(&sentence_words);
+    let multi_zone = if sentence_word_refs.len() >= 15
+        && word_slice_eq(
+            &sentence_word_refs[..4],
+            &["search", "your", "library", "for"],
+        ) {
         false
-    } else if sentence_words.len() >= 17
-        && (sentence_words[..6] == ["search", "your", "library", "and", "graveyard", "for"]
-            || sentence_words[..6] == ["search", "your", "library", "or", "graveyard", "for"]
-            || sentence_words[..6] == ["search", "your", "library", "and/or", "graveyard", "for"])
+    } else if sentence_word_refs.len() >= 17
+        && word_slice_eq_any(
+            &sentence_word_refs[..6],
+            &[
+                &["search", "your", "library", "and", "graveyard", "for"],
+                &["search", "your", "library", "or", "graveyard", "for"],
+                &["search", "your", "library", "and/or", "graveyard", "for"],
+            ],
+        )
     {
         true
     } else {
@@ -820,16 +827,14 @@ fn parse_search_library_slots_to_hand_bundle(
     let put_those_cards_phrase = [
         "put", "those", "cards", "into", "your", "hand", "then", "shuffle",
     ];
-    let reveal_match = sentence_words
-        .windows(reveal_phrase.len())
-        .position(|window| window == reveal_phrase)
-        .map(|idx| (idx, reveal_phrase.len()))
-        .or_else(|| {
-            sentence_words
-                .windows(reveal_them_phrase.len())
-                .position(|window| window == reveal_them_phrase)
-                .map(|idx| (idx, reveal_them_phrase.len()))
-        });
+    let sentence_word_refs = sentence_words
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    let reveal_match = word_slice_find_any_phrase_span(
+        &sentence_word_refs,
+        &[&reveal_phrase, &reveal_them_phrase],
+    );
     let Some((reveal_word_idx, reveal_word_len)) = reveal_match else {
         return Ok(None);
     };
@@ -920,23 +925,31 @@ fn parse_kicked_search_library_slots_replacement_bundle(
     let first_words = parser_words(sentences[0]);
     let second_words = parser_words(sentences[1]);
     let third_words = parser_words(sentences[2]);
-    if first_words.as_slice()
-        != [
+    let first_word_refs = parser_word_refs(&first_words);
+    let second_word_refs = parser_word_refs(&second_words);
+    let third_word_refs = parser_word_refs(&third_words);
+    if !word_slice_eq(
+        &first_word_refs,
+        &[
             "search", "your", "library", "for", "a", "basic", "land", "card",
-        ]
-    {
+        ],
+    ) {
         return Ok(None);
     }
-    if !second_words.iter().take(10).map(String::as_str).eq([
-        "if", "this", "spell", "was", "kicked", "instead", "search", "your", "library", "for",
-    ]) {
+    if !word_slice_eq(
+        &second_word_refs[..second_word_refs.len().min(10)],
+        &[
+            "if", "this", "spell", "was", "kicked", "instead", "search", "your", "library", "for",
+        ],
+    ) {
         return Ok(None);
     }
-    if third_words.as_slice()
-        != [
+    if !word_slice_eq(
+        &third_word_refs,
+        &[
             "reveal", "those", "cards", "put", "them", "into", "your", "hand", "then", "shuffle",
-        ]
-    {
+        ],
+    ) {
         return Ok(None);
     }
 
@@ -1015,9 +1028,13 @@ fn parse_kicked_multi_zone_search_to_battlefield_replacement_bundle(
     let first_words = parser_words(sentences[0]);
     let second_words = parser_words(sentences[1]);
     let third_words = parser_words(sentences[2]);
+    let first_word_refs = parser_word_refs(&first_words);
+    let second_word_refs = parser_word_refs(&second_words);
+    let third_word_refs = parser_word_refs(&third_words);
 
-    if first_words.as_slice()
-        != [
+    if !word_slice_eq(
+        &first_word_refs,
+        &[
             "search",
             "your",
             "library",
@@ -1037,19 +1054,21 @@ fn parse_kicked_multi_zone_search_to_battlefield_replacement_bundle(
             "into",
             "your",
             "hand",
-        ]
-    {
+        ],
+    ) {
         return None;
     }
-    if second_words.as_slice()
-        != [
+    if !word_slice_eq(
+        &second_word_refs,
+        &[
             "if", "you", "search", "your", "library", "this", "way", "shuffle",
-        ]
-    {
+        ],
+    ) {
         return None;
     }
-    if third_words.as_slice()
-        != [
+    if !word_slice_eq(
+        &third_word_refs,
+        &[
             "if",
             "this",
             "spell",
@@ -1068,8 +1087,8 @@ fn parse_kicked_multi_zone_search_to_battlefield_replacement_bundle(
             "into",
             "your",
             "hand",
-        ]
-    {
+        ],
+    ) {
         return None;
     }
 
@@ -1089,36 +1108,40 @@ fn parse_soul_partition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst
     let first_words = parser_words(sentences[0]);
     let second_words = parser_words(sentences[1]);
     let third_words = parser_words(sentences[2]);
-    let third_word_refs = third_words.iter().map(String::as_str).collect::<Vec<_>>();
+    let first_word_refs = parser_word_refs(&first_words);
+    let second_word_refs = parser_word_refs(&second_words);
+    let third_word_refs = parser_word_refs(&third_words);
     let mana_word = third_words
         .iter()
         .find(|word| *word == "2" || *word == "{2}");
 
-    if first_words.as_slice() != ["exile", "target", "nonland", "permanent"]
-        || second_words.as_slice()
-            != [
-                "for", "as", "long", "as", "that", "card", "remains", "exiled", "its", "owner",
-                "may", "play", "it",
-            ]
-        || !matches!(
-            third_word_refs.as_slice(),
-            [
-                "a",
-                "spell",
-                "cast",
-                "by",
-                "an",
-                "opponent",
-                "this",
-                "way",
-                "costs",
-                _,
-                "more",
-                "to",
-                "cast",
-            ]
-        )
-        || mana_word.is_none()
+    if !word_slice_eq(
+        &first_word_refs,
+        &["exile", "target", "nonland", "permanent"],
+    ) || !word_slice_eq(
+        &second_word_refs,
+        &[
+            "for", "as", "long", "as", "that", "card", "remains", "exiled", "its", "owner", "may",
+            "play", "it",
+        ],
+    ) || !matches!(
+        third_word_refs.as_slice(),
+        [
+            "a",
+            "spell",
+            "cast",
+            "by",
+            "an",
+            "opponent",
+            "this",
+            "way",
+            "costs",
+            _,
+            "more",
+            "to",
+            "cast",
+        ]
+    ) || mana_word.is_none()
     {
         return None;
     }
@@ -1154,8 +1177,10 @@ fn parse_soul_partition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst
 
 fn parse_empty_laboratory_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let sentence_words = parser_words(tokens);
-    if sentence_words.as_slice()
-        != [
+    let sentence_word_refs = parser_word_refs(&sentence_words);
+    if !word_slice_eq(
+        &sentence_word_refs,
+        &[
             "sacrifice",
             "x",
             "zombies",
@@ -1205,8 +1230,8 @@ fn parse_empty_laboratory_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectA
             "a",
             "random",
             "order",
-        ]
-    {
+        ],
+    ) {
         return None;
     }
 
@@ -1259,8 +1284,10 @@ fn parse_empty_laboratory_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectA
 
 fn parse_shape_anew_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let sentence_words = parser_words(tokens);
-    if sentence_words.as_slice()
-        != [
+    let sentence_word_refs = parser_word_refs(&sentence_words);
+    if !word_slice_eq(
+        &sentence_word_refs,
+        &[
             "the",
             "controller",
             "of",
@@ -1302,8 +1329,8 @@ fn parse_shape_anew_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
             "into",
             "their",
             "library",
-        ]
-    {
+        ],
+    ) {
         return None;
     }
 
@@ -1351,84 +1378,50 @@ fn parse_shape_anew_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
 fn parse_reveal_until_land_put_all_graveyard_bundle(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
+    #[derive(Clone, Copy)]
+    enum RevealingPlayer {
+        TargetPlayer,
+        TargetOpponent,
+        ThatPlayer,
+        DefendingPlayer,
+    }
+
     let sentence_words = parser_words(tokens);
     let sentence_word_refs = sentence_words
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    let (player, target_effect, consumed) = match sentence_word_refs.as_slice() {
-        [
-            "target",
-            "player",
-            "reveals",
-            "cards",
-            "from",
-            "the",
-            "top",
-            "of",
-            "their",
-            "library",
-            ..,
-        ] => (
+    let (revealing_player, tail) = word_slice_strip_prefix_value(
+        &sentence_word_refs,
+        &[
+            (&["target", "player"], RevealingPlayer::TargetPlayer),
+            (&["target", "opponent"], RevealingPlayer::TargetOpponent),
+            (&["that", "player"], RevealingPlayer::ThatPlayer),
+            (&["defending", "player"], RevealingPlayer::DefendingPlayer),
+        ],
+    )?;
+    let (player, target_effect) = match revealing_player {
+        RevealingPlayer::TargetPlayer => (
             PlayerAst::Target,
             Some(EffectAst::subject_verb_target_only(TargetAst::Player(
                 PlayerFilter::Any,
                 span_from_tokens(tokens),
             ))),
-            2,
         ),
-        [
-            "target",
-            "opponent",
-            "reveals",
-            "cards",
-            "from",
-            "the",
-            "top",
-            "of",
-            "their",
-            "library",
-            ..,
-        ] => (
+        RevealingPlayer::TargetOpponent => (
             PlayerAst::TargetOpponent,
             Some(EffectAst::subject_verb_target_only(TargetAst::Player(
                 PlayerFilter::Opponent,
                 span_from_tokens(tokens),
             ))),
-            2,
         ),
-        [
-            "that",
-            "player",
-            "reveals",
-            "cards",
-            "from",
-            "the",
-            "top",
-            "of",
-            "their",
-            "library",
-            ..,
-        ] => (PlayerAst::That, None, 2),
-        [
-            "defending",
-            "player",
-            "reveals",
-            "cards",
-            "from",
-            "the",
-            "top",
-            "of",
-            "their",
-            "library",
-            ..,
-        ] => (PlayerAst::Defending, None, 2),
-        _ => return None,
+        RevealingPlayer::ThatPlayer => (PlayerAst::That, None),
+        RevealingPlayer::DefendingPlayer => (PlayerAst::Defending, None),
     };
 
-    let tail = &sentence_word_refs[consumed..];
-    if tail
-        != [
+    if !word_slice_eq(
+        tail,
+        &[
             "reveals",
             "cards",
             "from",
@@ -1450,8 +1443,8 @@ fn parse_reveal_until_land_put_all_graveyard_bundle(
             "into",
             "their",
             "graveyard",
-        ]
-    {
+        ],
+    ) {
         return None;
     }
 
@@ -1505,11 +1498,11 @@ fn parse_consult_then_put_matches_battlefield_rest_bottom_bundle(
     };
 
     let followup_words = crate::runtime_backend::token_word_refs(followup_sentence);
-    if !followup_words.starts_with(&["put", "those"])
-        || !followup_words.contains(&"battlefield")
-        || !followup_words.contains(&"rest")
-        || !followup_words.contains(&"bottom")
-        || !followup_words.contains(&"library")
+    if !crate::runtime_backend::lexer::word_slice_starts_with(&followup_words, &["put", "those"])
+        || !word_slice_contains_all_words(
+            &followup_words,
+            &["battlefield", "rest", "bottom", "library"],
+        )
     {
         return Ok(None);
     }
@@ -1517,7 +1510,7 @@ fn parse_consult_then_put_matches_battlefield_rest_bottom_bundle(
         return Ok(None);
     };
 
-    let enters_tapped = followup_words.contains(&"tapped");
+    let enters_tapped = word_slice_contains_word(&followup_words, "tapped");
     let mut effects = parts.effects;
     effects.push(EffectAst::subject_verb_move_to_zone(
         TargetAst::Tagged(parts.match_tag.clone(), None),
@@ -1527,12 +1520,14 @@ fn parse_consult_then_put_matches_battlefield_rest_bottom_bundle(
         enters_tapped,
         None,
     ));
-    effects.push(EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-        parts.all_tag,
-        Some(parts.match_tag),
-        order,
-        parts.player,
-    ));
+    effects.push(
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            parts.all_tag,
+            Some(parts.match_tag),
+            order,
+            parts.player,
+        ),
+    );
 
     Ok(Some(effects))
 }
@@ -1543,12 +1538,13 @@ fn parse_tap_lands_then_empty_mana_pool_bundle(tokens: &[OwnedLexToken]) -> Opti
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    if sentence_word_refs.as_slice()
-        != [
+    if !word_slice_eq(
+        &sentence_word_refs,
+        &[
             "tap", "all", "lands", "target", "player", "controls", "and", "that", "player",
             "loses", "all", "unspent", "mana",
-        ]
-    {
+        ],
+    ) {
         return None;
     }
 
@@ -1568,8 +1564,10 @@ fn parse_tap_lands_then_empty_mana_pool_bundle(tokens: &[OwnedLexToken]) -> Opti
 
 fn parse_collision_of_realms_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let sentence_words = parser_words(tokens);
-    if sentence_words.as_slice()
-        != [
+    let sentence_word_refs = parser_word_refs(&sentence_words);
+    if !word_slice_eq(
+        &sentence_word_refs,
+        &[
             "each",
             "player",
             "shuffles",
@@ -1626,8 +1624,8 @@ fn parse_collision_of_realms_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<Effe
             "a",
             "random",
             "order",
-        ]
-    {
+        ],
+    ) {
         return None;
     }
 
@@ -1712,8 +1710,10 @@ fn parse_collision_of_realms_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<Effe
 
 fn parse_nissas_encouragement_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let sentence_words = parser_words(tokens);
-    if sentence_words.as_slice()
-        != [
+    let sentence_word_refs = parser_word_refs(&sentence_words);
+    if !word_slice_eq(
+        &sentence_word_refs,
+        &[
             "search",
             "your",
             "library",
@@ -1746,8 +1746,8 @@ fn parse_nissas_encouragement_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<Eff
             "hand",
             "then",
             "shuffle",
-        ]
-    {
+        ],
+    ) {
         return None;
     }
 
@@ -1933,16 +1933,17 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
         })
         .collect::<Vec<_>>();
 
-    if sentence_words.as_slice()
-        == [
+    if word_slice_eq(
+        &sentence_words,
+        &[
             "look", "at", "the", "top", "x", "cards", "of", "your", "library", "where", "x", "is",
             "your", "devotion", "to", "blue", "put", "up", "to", "one", "of", "them", "on", "top",
             "of", "your", "library", "and", "the", "rest", "on", "the", "bottom", "of", "your",
             "library", "in", "a", "random", "order", "if", "x", "is", "greater", "than", "or",
             "equal", "to", "the", "number", "of", "cards", "in", "your", "library", "you", "win",
             "the", "game",
-        ]
-    {
+        ],
+    ) {
         let looked_tag = TagKey::from("thassas_oracle_looked");
         return Some(vec![
             EffectAst::subject_verb_look_at_top_cards(
@@ -1973,8 +1974,9 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
         ]);
     }
 
-    if sentence_words.as_slice()
-        == [
+    if word_slice_eq(
+        &sentence_words,
+        &[
             "if",
             "this",
             "spell",
@@ -1996,8 +1998,8 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
             "for",
             "the",
             "copy",
-        ]
-    {
+        ],
+    ) {
         return Some(vec![EffectAst::Conditional {
             predicate: crate::cards::builders::PredicateAst::ThisSpellWasCastFromZone(
                 Zone::Graveyard,

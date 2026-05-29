@@ -275,6 +275,10 @@ impl OwnedLexToken {
         ) && self.parser_text == normalize_parser_fragment(expected)
     }
 
+    pub fn is_any_word(&self, expected: &[&str]) -> bool {
+        expected.iter().any(|word| self.is_word(word))
+    }
+
     pub fn is_comma(&self) -> bool {
         self.kind == TokenKind::Comma
     }
@@ -379,6 +383,243 @@ pub fn token_word_pieces_for_token(token: &OwnedLexToken) -> &[TokenWordPiece] {
     token.parser_word_pieces()
 }
 
+pub fn word_slice_find_phrase_start(words: &[&str], expected: &[&str]) -> Option<usize> {
+    crate::word_primitives::find_phrase_start(words, expected)
+}
+
+pub fn word_slice_find_phrase_start_or_zero(words: &[&str], expected: &[&str]) -> Option<usize> {
+    crate::word_primitives::find_phrase_start_or_zero(words, expected)
+}
+
+pub fn word_slice_find_any_phrase_start<'p>(
+    words: &[&str],
+    expected: &'p [&'p [&'p str]],
+) -> Option<(&'p [&'p str], usize)> {
+    crate::word_primitives::find_any_phrase_start(words, expected)
+}
+
+pub fn word_slice_find_any_phrase_span(
+    words: &[&str],
+    expected: &[&[&str]],
+) -> Option<(usize, usize)> {
+    word_slice_find_any_phrase_start(words, expected).map(|(phrase, idx)| (idx, phrase.len()))
+}
+
+pub fn word_slice_find_phrase_value<T: Clone>(
+    words: &[&str],
+    expected: &[(&[&str], T)],
+) -> Option<(T, usize)> {
+    crate::word_primitives::find_phrase_value(words, expected)
+}
+
+pub fn word_slice_find_any_phrase_start_or_zero<'p>(
+    words: &[&str],
+    expected: &'p [&'p [&'p str]],
+) -> Option<(&'p [&'p str], usize)> {
+    crate::word_primitives::find_any_phrase_start_or_zero(words, expected)
+}
+
+pub fn word_slice_find_window_by(
+    words: &[&str],
+    window_len: usize,
+    predicate: impl FnMut(&[&str]) -> bool,
+) -> Option<usize> {
+    crate::word_primitives::find_window_by(words, window_len, predicate)
+}
+
+pub fn word_slice_contains_window_by(
+    words: &[&str],
+    window_len: usize,
+    predicate: impl FnMut(&[&str]) -> bool,
+) -> bool {
+    crate::word_primitives::contains_window_by(words, window_len, predicate)
+}
+
+pub fn word_slice_contains_phrase(words: &[&str], expected: &[&str]) -> bool {
+    crate::word_primitives::contains_phrase(words, expected)
+}
+
+pub fn word_slice_contains_phrase_or_empty(words: &[&str], expected: &[&str]) -> bool {
+    crate::word_primitives::contains_phrase_or_empty(words, expected)
+}
+
+pub fn word_slice_contains_any_phrase(words: &[&str], expected: &[&[&str]]) -> bool {
+    crate::word_primitives::contains_any_phrase(words, expected)
+}
+
+pub fn word_slice_contains_any_phrase_or_empty(words: &[&str], expected: &[&[&str]]) -> bool {
+    crate::word_primitives::contains_any_phrase_or_empty(words, expected)
+}
+
+pub fn word_slice_eq(words: &[&str], expected: &[&str]) -> bool {
+    crate::word_primitives::equals(words, expected)
+}
+
+pub fn word_slice_eq_any(words: &[&str], expected: &[&[&str]]) -> bool {
+    crate::word_primitives::equals_any(words, expected)
+}
+
+pub fn word_slice_matching_phrase<'p>(
+    words: &[&str],
+    expected: &'p [&'p [&'p str]],
+) -> Option<&'p [&'p str]> {
+    crate::word_primitives::matching_phrase(words, expected)
+}
+
+pub fn word_slice_matching_value<T: Clone>(words: &[&str], expected: &[(&[&str], T)]) -> Option<T> {
+    crate::word_primitives::matching_value(words, expected)
+}
+
+pub fn word_slice_ends_with(words: &[&str], expected: &[&str]) -> bool {
+    crate::word_primitives::ends_with(words, expected)
+}
+
+pub fn word_slice_ends_with_any(words: &[&str], expected: &[&[&str]]) -> bool {
+    crate::word_primitives::ends_with_any(words, expected)
+}
+
+pub fn word_slice_starts_with(words: &[&str], expected: &[&str]) -> bool {
+    crate::word_primitives::starts_with(words, expected)
+}
+
+pub fn word_slice_starts_with_any(words: &[&str], expected: &[&[&str]]) -> bool {
+    crate::word_primitives::starts_with_any(words, expected)
+}
+
+pub fn word_slice_strip_prefix<'a>(
+    words: &'a [&'a str],
+    expected: &[&str],
+) -> Option<&'a [&'a str]> {
+    crate::word_primitives::strip_prefix(words, expected)
+}
+
+pub fn word_slice_strip_suffix<'a>(
+    words: &'a [&'a str],
+    expected: &[&str],
+) -> Option<&'a [&'a str]> {
+    crate::word_primitives::strip_suffix(words, expected)
+}
+
+pub fn word_slice_strip_any_prefix<'a, 'p>(
+    words: &'a [&'a str],
+    expected: &'p [&'p [&'p str]],
+) -> Option<(&'p [&'p str], &'a [&'a str])> {
+    crate::word_primitives::strip_any_prefix(words, expected)
+}
+
+pub fn word_slice_strip_prefix_value<'w, 'a, T: Clone>(
+    words: &'w [&'a str],
+    expected: &[(&[&str], T)],
+) -> Option<(T, &'w [&'a str])> {
+    crate::word_primitives::strip_prefix_value(words, expected)
+}
+
+pub fn word_slice_strip_first_word<'w, 'a>(
+    words: &'w [&'a str],
+    expected: &str,
+) -> Option<&'w [&'a str]> {
+    crate::word_primitives::strip_first_word(words, expected)
+}
+
+pub fn word_slice_strip_first_word_value<'w, 'a, T: Clone>(
+    words: &'w [&'a str],
+    expected: &[(&str, T)],
+) -> Option<(T, &'w [&'a str])> {
+    crate::word_primitives::strip_first_word_value(words, expected)
+}
+
+pub fn word_slice_strip_any_suffix<'a, 'p>(
+    words: &'a [&'a str],
+    expected: &'p [&'p [&'p str]],
+) -> Option<(&'p [&'p str], &'a [&'a str])> {
+    crate::word_primitives::strip_any_suffix(words, expected)
+}
+
+pub fn word_slice_strip_suffix_value<'w, 'a, T: Clone>(
+    words: &'w [&'a str],
+    expected: &[(&[&str], T)],
+) -> Option<(T, &'w [&'a str])> {
+    crate::word_primitives::strip_suffix_value(words, expected)
+}
+
+pub fn word_slice_contains_word(words: &[&str], expected: &str) -> bool {
+    crate::word_primitives::contains_word(words, expected)
+}
+
+pub fn word_slice_find_word(words: &[&str], expected: &str) -> Option<usize> {
+    crate::word_primitives::find_word(words, expected)
+}
+
+pub fn word_slice_find_any_word(words: &[&str], expected: &[&str]) -> Option<usize> {
+    crate::word_primitives::find_any_word(words, expected)
+}
+
+pub fn word_slice_find_word_where(
+    words: &[&str],
+    predicate: impl FnMut(&str) -> bool,
+) -> Option<usize> {
+    crate::word_primitives::find_word_where(words, predicate)
+}
+
+pub fn word_slice_rfind_word_where(
+    words: &[&str],
+    predicate: impl FnMut(&str) -> bool,
+) -> Option<usize> {
+    crate::word_primitives::rfind_word_where(words, predicate)
+}
+
+pub fn word_slice_contains_any_word(words: &[&str], expected: &[&str]) -> bool {
+    crate::word_primitives::contains_any_word(words, expected)
+}
+
+pub fn word_slice_contains_all_words(words: &[&str], expected: &[&str]) -> bool {
+    crate::word_primitives::contains_all_words(words, expected)
+}
+
+pub fn find_token_word_sequence(tokens: &[OwnedLexToken], expected: &[&str]) -> Option<usize> {
+    if expected.is_empty() {
+        return None;
+    }
+    crate::slice_primitives::find_window_by(tokens, expected.len(), |window| {
+        window
+            .iter()
+            .zip(expected.iter())
+            .all(|(token, expected_word)| token.is_word(expected_word))
+    })
+}
+
+pub fn contains_token_word_sequence(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
+    find_token_word_sequence(tokens, expected).is_some()
+}
+
+pub fn find_token_word(tokens: &[OwnedLexToken], expected: &str) -> Option<usize> {
+    crate::slice_primitives::find_index(tokens, |token| token.is_word(expected))
+}
+
+pub fn find_token_any_word(tokens: &[OwnedLexToken], expected: &[&str]) -> Option<usize> {
+    crate::slice_primitives::find_index(tokens, |token| token.is_any_word(expected))
+}
+
+pub fn rfind_token_word(tokens: &[OwnedLexToken], expected: &str) -> Option<usize> {
+    crate::slice_primitives::rfind_index(tokens, |token| token.is_word(expected))
+}
+
+pub fn contains_token_word(tokens: &[OwnedLexToken], expected: &str) -> bool {
+    find_token_word(tokens, expected).is_some()
+}
+
+pub fn contains_token_any_word(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
+    find_token_any_word(tokens, expected).is_some()
+}
+
+pub fn find_token_kind(tokens: &[OwnedLexToken], expected: TokenKind) -> Option<usize> {
+    crate::slice_primitives::find_index(tokens, |token| token.kind == expected)
+}
+
+pub fn contains_token_kind(tokens: &[OwnedLexToken], expected: TokenKind) -> bool {
+    find_token_kind(tokens, expected).is_some()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TokenWordView<'a> {
     words: Vec<&'a str>,
@@ -426,7 +667,11 @@ impl<'a> TokenWordView<'a> {
     }
 
     pub fn starts_with(&self, expected: &[&str]) -> bool {
-        self.slice_eq(0, expected)
+        word_slice_starts_with(&self.words, expected)
+    }
+
+    pub fn starts_with_any(&self, expected: &[&[&str]]) -> bool {
+        word_slice_starts_with_any(&self.words, expected)
     }
 
     pub fn slice_eq(&self, start: usize, expected: &[&str]) -> bool {
@@ -442,34 +687,99 @@ impl<'a> TokenWordView<'a> {
     }
 
     pub fn find_phrase_start(&self, expected: &[&str]) -> Option<usize> {
-        if expected.is_empty() || self.words.len() < expected.len() {
-            return None;
-        }
-        let mut idx = 0usize;
-        let last_start = self.words.len() - expected.len();
-        while idx <= last_start {
-            if self.slice_eq(idx, expected) {
-                return Some(idx);
-            }
-            idx += 1;
-        }
-        None
+        word_slice_find_phrase_start(&self.words, expected)
+    }
+
+    pub fn find_any_phrase_start<'p>(
+        &self,
+        expected: &'p [&'p [&'p str]],
+    ) -> Option<(&'p [&'p str], usize)> {
+        word_slice_find_any_phrase_start(&self.words, expected)
+    }
+
+    pub fn find_any_phrase_span(&self, expected: &[&[&str]]) -> Option<(usize, usize)> {
+        word_slice_find_any_phrase_span(&self.words, expected)
+    }
+
+    pub fn find_phrase_value<T: Clone>(&self, expected: &[(&[&str], T)]) -> Option<(T, usize)> {
+        word_slice_find_phrase_value(&self.words, expected)
+    }
+
+    pub fn find_window_by(
+        &self,
+        window_len: usize,
+        predicate: impl FnMut(&[&str]) -> bool,
+    ) -> Option<usize> {
+        word_slice_find_window_by(&self.words, window_len, predicate)
+    }
+
+    pub fn contains_window_by(
+        &self,
+        window_len: usize,
+        predicate: impl FnMut(&[&str]) -> bool,
+    ) -> bool {
+        word_slice_contains_window_by(&self.words, window_len, predicate)
     }
 
     pub fn has_phrase(&self, expected: &[&str]) -> bool {
-        self.find_phrase_start(expected).is_some()
+        word_slice_contains_phrase(&self.words, expected)
+    }
+
+    pub fn has_any_phrase(&self, expected: &[&[&str]]) -> bool {
+        word_slice_contains_any_phrase(&self.words, expected)
     }
 
     pub fn find_word(&self, expected: &str) -> Option<usize> {
-        let mut idx = 0usize;
-        while idx < self.words.len() {
-            if self.words[idx] == expected {
-                return Some(idx);
-            }
-            idx += 1;
-        }
+        word_slice_find_word(&self.words, expected)
+    }
 
-        None
+    pub fn find_any_word(&self, expected: &[&str]) -> Option<usize> {
+        word_slice_find_any_word(&self.words, expected)
+    }
+
+    pub fn rfind_word(&self, expected: &str) -> Option<usize> {
+        word_slice_rfind_word_where(&self.words, |word| word == expected)
+    }
+
+    pub fn contains_word(&self, expected: &str) -> bool {
+        word_slice_contains_word(&self.words, expected)
+    }
+
+    pub fn contains_any_word(&self, expected: &[&str]) -> bool {
+        word_slice_contains_any_word(&self.words, expected)
+    }
+
+    pub fn contains_all_words(&self, expected: &[&str]) -> bool {
+        word_slice_contains_all_words(&self.words, expected)
+    }
+
+    pub fn matching_phrase<'p>(&self, expected: &'p [&'p [&'p str]]) -> Option<&'p [&'p str]> {
+        word_slice_matching_phrase(&self.words, expected)
+    }
+
+    pub fn matching_value<T: Clone>(&self, expected: &[(&[&str], T)]) -> Option<T> {
+        word_slice_matching_value(&self.words, expected)
+    }
+
+    pub fn strip_prefix_value<'w, T: Clone>(
+        &'w self,
+        expected: &[(&[&str], T)],
+    ) -> Option<(T, &'w [&'a str])> {
+        word_slice_strip_prefix_value(&self.words, expected)
+    }
+
+    pub fn strip_suffix_value<'w, T: Clone>(
+        &'w self,
+        expected: &[(&[&str], T)],
+    ) -> Option<(T, &'w [&'a str])> {
+        word_slice_strip_suffix_value(&self.words, expected)
+    }
+
+    pub fn strip_first_word_value<'w, T: Clone>(
+        &'w self,
+        expected: &[(&str, T)],
+    ) -> Option<(T, &'w [&'a str])> {
+        word_slice_strip_first_word_value(&self.words, expected)
     }
 
     pub fn first(&self) -> Option<&str> {

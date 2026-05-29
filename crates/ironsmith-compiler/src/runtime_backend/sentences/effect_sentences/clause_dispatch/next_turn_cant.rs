@@ -1,7 +1,5 @@
 use super::super::super::activation_and_restrictions::parse_cant_restriction_clause;
-use super::super::super::grammar::primitives::TokenWordView;
-use super::super::super::lexer::OwnedLexToken;
-use super::super::super::token_primitives::slice_ends_with as word_slice_ends_with;
+use super::super::super::lexer::{LexedClause, OwnedLexToken};
 use crate::effect::{Restriction, Until};
 use crate::host::{CardTextError, EffectAst, PlayerAst};
 use crate::target::PlayerFilter;
@@ -9,23 +7,16 @@ use crate::target::PlayerFilter;
 pub(super) fn parse_next_turn_cant_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let lowered_word_view = TokenWordView::new(tokens);
-    let lowered_words = lowered_word_view.to_word_refs();
+    let clause = LexedClause::new(tokens);
     for suffix in [
         ["during", "that", "players", "next", "turn"].as_slice(),
         ["during", "that", "player's", "next", "turn"].as_slice(),
         ["during", "that", "player", "s", "next", "turn"].as_slice(),
     ] {
-        if !word_slice_ends_with(&lowered_words, suffix) {
+        let Some(prefix_clause) = clause.strip_suffix_clause(suffix) else {
             continue;
-        }
-
-        let prefix_word_len = lowered_words.len().saturating_sub(suffix.len());
-        let prefix_end = lowered_word_view
-            .token_index_for_word_index(prefix_word_len)
-            .unwrap_or(tokens.len());
-        let prefix_tokens = &tokens[..prefix_end];
-        let Some(parsed) = parse_cant_restriction_clause(prefix_tokens)? else {
+        };
+        let Some(parsed) = parse_cant_restriction_clause(prefix_clause.tokens())? else {
             continue;
         };
 

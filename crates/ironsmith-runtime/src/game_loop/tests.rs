@@ -235,9 +235,12 @@ fn desmond_miles_combat_damage_trigger_surveils_equal_to_damage_and_ignores_nonc
     let desmond = desmond_miles_definition();
     let desmond_id = game.create_object_from_definition(&desmond, alice, Zone::Battlefield);
     for idx in 0..4 {
-        let card = CardBuilder::new(CardId::from_raw(72_920 + idx), format!("Library Card {idx}"))
-            .card_types(vec![CardType::Creature])
-            .build();
+        let card = CardBuilder::new(
+            CardId::from_raw(72_920 + idx),
+            format!("Library Card {idx}"),
+        )
+        .card_types(vec![CardType::Creature])
+        .build();
         game.create_object_from_card(&card, alice, Zone::Library);
     }
 
@@ -270,7 +273,11 @@ fn desmond_miles_combat_damage_trigger_surveils_equal_to_damage_and_ignores_nonc
     for trigger in crate::triggers::check_triggers(&game, &combat_damage) {
         trigger_queue.add(trigger);
     }
-    assert_eq!(trigger_queue.entries.len(), 1, "combat damage should trigger once");
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "combat damage should trigger once"
+    );
 
     put_triggers_on_stack(&mut game, &mut trigger_queue)
         .expect("Desmond combat-damage trigger should go on the stack");
@@ -411,14 +418,10 @@ fn open_the_way_reveals_x_lands_to_battlefield_tapped_and_bottoms_rest() {
     let filler_stable = game.object(filler_id).unwrap().stable_id;
     let top_land_stable = game.object(top_land).unwrap().stable_id;
 
-    game.push_to_stack(
-        StackEntry::new(spell_id, alice)
-            .with_x(2)
-            .with_source_info(
-                game.object(spell_id).unwrap().stable_id,
-                "Open the Way".to_string(),
-            ),
-    );
+    game.push_to_stack(StackEntry::new(spell_id, alice).with_x(2).with_source_info(
+        game.object(spell_id).unwrap().stable_id,
+        "Open the Way".to_string(),
+    ));
     resolve_stack_entry(&mut game).expect("Open the Way should resolve");
 
     for stable_id in [top_land_stable, second_land_stable] {
@@ -445,7 +448,10 @@ fn open_the_way_reveals_x_lands_to_battlefield_tapped_and_bottoms_rest() {
         .find_object_by_stable_id(spell_stable)
         .expect("Open the Way should still exist after resolving");
     assert!(
-        game.player(alice).unwrap().graveyard.contains(&resolved_spell_id),
+        game.player(alice)
+            .unwrap()
+            .graveyard
+            .contains(&resolved_spell_id),
         "Open the Way should move to its owner's graveyard after resolving"
     );
 }
@@ -725,7 +731,11 @@ fn guardian_of_the_ages_loses_defender_and_stops_triggering() {
     .expect("attacking Guardian's controller should be legal");
     put_triggers_on_stack(&mut game, &mut trigger_queue)
         .expect("Guardian of the Ages trigger should go on stack");
-    assert_eq!(game.stack.len(), 1, "Guardian should trigger while it has defender");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "Guardian should trigger while it has defender"
+    );
     resolve_stack_entry(&mut game).expect("Guardian of the Ages trigger should resolve");
 
     assert!(
@@ -13208,9 +13218,9 @@ fn activate_tainted_sigil_after_life_losses(
         }
 
         progress = match progress {
-            crate::decision::GameProgress::NeedsDecisionCtx(
-                DecisionContext::SelectOptions(ctx),
-            ) => {
+            crate::decision::GameProgress::NeedsDecisionCtx(DecisionContext::SelectOptions(
+                ctx,
+            )) => {
                 let option = ctx
                     .options
                     .iter()
@@ -13230,9 +13240,7 @@ fn activate_tainted_sigil_after_life_losses(
                 )
                 .expect("Tainted Sigil cost choice should apply")
             }
-            crate::decision::GameProgress::NeedsDecisionCtx(
-                DecisionContext::SelectObjects(_),
-            ) => {
+            crate::decision::GameProgress::NeedsDecisionCtx(DecisionContext::SelectObjects(_)) => {
                 apply_priority_response_with_dm(
                     &mut game,
                     &mut trigger_queue,
@@ -31200,7 +31208,11 @@ fn activate_heroism(
         }
     }
 
-    assert_eq!(game.stack.len(), 1, "Heroism ability should be on the stack");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "Heroism ability should be on the stack"
+    );
     assert!(
         game.object(sacrifice_id)
             .map(|object| object.zone != Zone::Battlefield)
@@ -31275,7 +31287,11 @@ fn test_heroism_prevents_unpaid_attacking_red_creature_damage_only() {
 
     game.turn.step = Some(crate::game_state::Step::CombatDamage);
     let events = execute_combat_damage_step(&mut game, &combat, false);
-    assert_eq!(events.len(), 2, "both attackers should assign combat damage");
+    assert_eq!(
+        events.len(),
+        2,
+        "both attackers should assign combat damage"
+    );
     assert_eq!(
         game.player(alice).expect("Alice exists").life,
         18,
@@ -31337,7 +31353,11 @@ fn test_heroism_controller_payment_allows_red_attacker_damage() {
 
     game.turn.step = Some(crate::game_state::Step::CombatDamage);
     let events = execute_combat_damage_step(&mut game, &combat, false);
-    assert_eq!(events.len(), 1, "the red attacker should assign combat damage");
+    assert_eq!(
+        events.len(),
+        1,
+        "the red attacker should assign combat damage"
+    );
     assert_eq!(
         game.player(alice).expect("Alice exists").life,
         17,

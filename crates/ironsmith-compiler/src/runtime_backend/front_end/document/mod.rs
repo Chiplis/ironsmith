@@ -39,7 +39,8 @@ use super::keyword_static::parse_if_this_spell_costs_less_to_cast_line_lexed;
 use super::leaf::{lower_activation_cost_cst, parse_activation_cost_tokens_rewrite};
 use super::lexer::{
     LexStream, OwnedLexToken, TokenKind, TokenWordView, lex_line, render_token_slice,
-    token_word_refs, trim_lexed_commas,
+    token_word_refs, trim_lexed_commas, word_slice_ends_with_any, word_slice_eq,
+    word_slice_starts_with,
 };
 use super::preprocess::{
     PreprocessedDocument, PreprocessedItem, PreprocessedLine, preprocess_document,
@@ -166,12 +167,14 @@ fn strip_trailing_trigger_cap_suffix_tokens(
     let Some((phrase, head)) = grammar::strip_lexed_suffix_phrases(tokens, &cap_suffixes) else {
         return (tokens, None);
     };
-    let count = if phrase
-        == [
+    let count = if word_slice_eq(
+        phrase,
+        &[
             "this", "ability", "triggers", "only", "once", "each", "turn",
-        ] {
+        ],
+    ) {
         1
-    } else if phrase == ["do", "this", "only", "once", "each", "turn"] {
+    } else if word_slice_eq(phrase, &["do", "this", "only", "once", "each", "turn"]) {
         1
     } else {
         2
@@ -2501,8 +2504,8 @@ fn starts_with_when_one_or_more_this_way_clause(tokens: &[OwnedLexToken]) -> boo
     let this_way_in_prefix = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
         .map(|(before, _after)| grammar::contains_phrase(before, &["this", "way"]))
         .unwrap_or(false);
-    (words.starts_with(&["when", "one", "or", "more"])
-        || words.starts_with(&["whenever", "one", "or", "more"]))
+    (word_slice_starts_with(&words, &["when", "one", "or", "more"])
+        || word_slice_starts_with(&words, &["whenever", "one", "or", "more"]))
         && this_way_in_prefix
 }
 

@@ -71,7 +71,7 @@ pub(crate) fn parse_target_player_choose_objects_clause(
 
     let mut count = ChoiceCount::exactly(1);
     let choose_object_words = crate::runtime_backend::token_word_refs(&choose_object_tokens);
-    if slice_starts_with(&choose_object_words, &["any", "number", "of"]) {
+    if word_slice_starts_with(&choose_object_words, &["any", "number", "of"]) {
         count = ChoiceCount::any_number();
         choose_object_tokens = trim_commas(&choose_object_tokens[3..]);
     } else if choose_object_tokens
@@ -254,10 +254,10 @@ pub(crate) fn parse_you_choose_objects_clause(
         break;
     }
     let mut count = ChoiceCount::exactly(1);
-    if slice_starts_with(&choose_words, &["any", "number", "of"]) {
+    if word_slice_starts_with(&choose_words, &["any", "number", "of"]) {
         count = ChoiceCount::any_number();
         choose_words = choose_words[3..].to_vec();
-    } else if slice_starts_with(&choose_words, &["up", "to"]) {
+    } else if word_slice_starts_with(&choose_words, &["up", "to"]) {
         if choose_words
             .get(2)
             .is_some_and(|word| word.eq_ignore_ascii_case("x"))
@@ -472,7 +472,7 @@ pub(crate) fn parse_you_choose_player_clause(
     };
 
     let mut random = false;
-    if slice_starts_with(&player_words, &["at", "random"]) {
+    if word_slice_starts_with(&player_words, &["at", "random"]) {
         random = true;
         player_words = player_words[2..].to_vec();
     }
@@ -914,7 +914,7 @@ pub(crate) fn parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(
     idx += 2;
 
     let reveal_words = &first_words[idx..];
-    if !slice_starts_with(&reveal_words, &["then", "reveal", "the", "top"]) {
+    if !word_slice_starts_with(reveal_words, &["then", "reveal", "the", "top"]) {
         return Ok(None);
     }
     let reveal_tokens = reveal_words[4..]
@@ -938,7 +938,7 @@ pub(crate) fn parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(
         )));
     }
     let reveal_tail = crate::runtime_backend::token_word_refs(&reveal_tokens[used + 1..]);
-    if !slice_ends_with(&reveal_tail, &["of", "your", "library"]) {
+    if !word_slice_ends_with(&reveal_tail, &["of", "your", "library"]) {
         return Ok(None);
     }
 
@@ -1186,8 +1186,8 @@ pub(crate) fn parse_choose_creature_type_then_become_type(
     }
 
     let subject_words = crate::runtime_backend::token_word_refs(&subject_tokens);
-    let target = if slice_starts_with(&subject_words, &["each"])
-        || slice_starts_with(&subject_words, &["all"])
+    let target = if word_slice_starts_with(&subject_words, &["each"])
+        || word_slice_starts_with(&subject_words, &["all"])
     {
         let filter_tokens = trim_commas(&subject_tokens[1..]);
         if filter_tokens.is_empty() {
@@ -1255,7 +1255,7 @@ pub(crate) fn parse_sentence_target_player_chooses_then_puts_on_top_of_library(
         return Ok(None);
     }
     let destination_words = crate::runtime_backend::token_word_refs(&second_clause[on_idx + 3..]);
-    if !slice_contains(&destination_words, &"library") {
+    if !word_slice_contains_word(&destination_words, "library") {
         return Ok(None);
     }
 
@@ -1352,7 +1352,7 @@ pub(crate) fn parse_sentence_target_player_chooses_then_you_put_it_onto_battlefi
         return Ok(None);
     }
     let mut destination_tail: Vec<&str> = destination_words[1..].to_vec();
-    let battlefield_tapped = slice_contains(&destination_tail, &"tapped");
+    let battlefield_tapped = word_slice_contains_word(&destination_tail, "tapped");
     destination_tail.retain(|word| *word != "tapped");
     let battlefield_controller = if destination_tail.as_slice() == ["under", "your", "control"] {
         ReturnControllerAst::You

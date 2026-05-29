@@ -212,7 +212,7 @@ pub(crate) fn parse_possessive_clause_player_filter(words: &[&str]) -> PlayerFil
     let has_each_player = contains_word_sequence(&normalized_words, &["each", "player"]);
     if has_each_player {
         PlayerFilter::Any
-    } else if contains_your_team_words(words) || slice_contains(&words, &"your") {
+    } else if contains_your_team_words(words) || word_slice_contains_word(words, "your") {
         PlayerFilter::You
     } else if contains_opponent_word(words) {
         PlayerFilter::Opponent
@@ -222,7 +222,7 @@ pub(crate) fn parse_possessive_clause_player_filter(words: &[&str]) -> PlayerFil
 }
 
 pub(crate) fn parse_subject_clause_player_filter(words: &[&str]) -> PlayerFilter {
-    if contains_your_team_words(words) || slice_contains(&words, &"you") {
+    if contains_your_team_words(words) || word_slice_contains_word(words, "you") {
         PlayerFilter::You
     } else if contains_word_sequence(words, &["enchanted", "player"])
         || contains_word_sequence(words, &["enchanted", "players"])
@@ -256,8 +256,8 @@ pub(crate) fn parse_trigger_subject_player_filter(subject: &[&str]) -> Option<Pl
     if subject == ["the", "chosen", "player"] || subject == ["chosen", "player"] {
         return Some(PlayerFilter::ChosenPlayer);
     }
-    if slice_starts_with(&subject, &["the", "player", "who", "cast"])
-        || slice_starts_with(&subject, &["player", "who", "cast"])
+    if word_slice_starts_with(subject, &["the", "player", "who", "cast"])
+        || word_slice_starts_with(subject, &["player", "who", "cast"])
     {
         return Some(PlayerFilter::EffectController);
     }
@@ -280,7 +280,7 @@ pub(crate) fn parse_trigger_subject_player_filter(subject: &[&str]) -> Option<Pl
     {
         return Some(PlayerFilter::Opponent);
     }
-    if slice_ends_with(&subject, &["on", "your", "team"])
+    if word_slice_ends_with(subject, &["on", "your", "team"])
         && subject
             .iter()
             .any(|word| matches!(*word, "player" | "players"))
@@ -306,7 +306,7 @@ pub(crate) fn parse_shuffle_trigger_subject(
         return Some((player, false, false));
     }
 
-    if !(slice_starts_with(&subject, &["a", "spell", "or", "ability", "causes"])
+    if !(word_slice_starts_with(subject, &["a", "spell", "or", "ability", "causes"])
         && subject.last().copied() == Some("to")
         && subject.len() > 6)
     {
@@ -891,7 +891,9 @@ pub(crate) fn parse_spell_activity_trigger(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TriggerSpec>, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if !slice_contains(&clause_words, &"spell") && !slice_contains(&clause_words, &"spells") {
+    if !word_slice_contains_word(&clause_words, "spell")
+        && !word_slice_contains_word(&clause_words, "spells")
+    {
         return Ok(None);
     }
 
@@ -936,9 +938,9 @@ pub(crate) fn parse_spell_activity_trigger(
         contains_word_sequence(&clause_words, &["other", "than", "your", "first", "spell"])
             || contains_word_sequence(&clause_words, &["other", "than", "the", "first", "spell"])
             || (contains_word_sequence(&clause_words, &["other", "than", "the", "first"])
-                && slice_contains(&clause_words, &"spell")
-                && slice_contains(&clause_words, &"casts")
-                && slice_contains(&clause_words, &"turn"));
+                && word_slice_contains_word(&clause_words, "spell")
+                && word_slice_contains_word(&clause_words, "casts")
+                && word_slice_contains_word(&clause_words, "turn"));
     let second_spell_turn_pattern = has_second_spell_turn_pattern(&clause_words);
     let first_spell_each_turn =
         !has_other_than_first_spell_pattern && has_first_spell_each_turn_pattern(&clause_words);
@@ -1009,25 +1011,25 @@ pub(crate) fn parse_spell_activity_trigger(
                 Ok(None)
             } else {
                 let parse_spell_origin_zone_filter = || -> Option<ObjectFilter> {
-                    let zone = if slice_contains(&filter_words, &"graveyard") {
+                    let zone = if word_slice_contains_word(&filter_words, "graveyard") {
                         Some(Zone::Graveyard)
-                    } else if slice_contains(&filter_words, &"exile") {
+                    } else if word_slice_contains_word(&filter_words, "exile") {
                         Some(Zone::Exile)
-                    } else if slice_contains(&filter_words, &"hand") {
+                    } else if word_slice_contains_word(&filter_words, "hand") {
                         Some(Zone::Hand)
                     } else {
                         None
                     }?;
-                    let mentions_spell = slice_contains(&filter_words, &"spell")
-                        || slice_contains(&filter_words, &"spells");
+                    let mentions_spell = word_slice_contains_word(&filter_words, "spell")
+                        || word_slice_contains_word(&filter_words, "spells");
                     if !mentions_spell {
                         return None;
                     }
                     let mut filter = ObjectFilter::spell().in_zone(zone);
-                    if slice_contains(&filter_words, &"your") {
+                    if word_slice_contains_word(&filter_words, "your") {
                         filter.owner = Some(actor.clone());
-                    } else if slice_contains(&filter_words, &"opponent")
-                        || slice_contains(&filter_words, &"their")
+                    } else if word_slice_contains_word(&filter_words, "opponent")
+                        || word_slice_contains_word(&filter_words, "their")
                     {
                         filter.owner = Some(PlayerFilter::Opponent);
                     }
@@ -1210,7 +1212,7 @@ pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<May
         clause_words.remove(0);
     }
 
-    if slice_starts_with(&clause_words, &["if", "you", "do"]) {
+    if word_slice_starts_with(&clause_words, &["if", "you", "do"]) {
         clause_words = clause_words[3..].to_vec();
         while clause_words
             .first()
@@ -1246,23 +1248,23 @@ pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<May
     };
 
     let rest = &clause_words[verb_idx + 1..];
-    let (tag, as_copy, consumed) = if slice_starts_with(&rest, &["it"]) {
+    let (tag, as_copy, consumed) = if word_slice_starts_with(rest, &["it"]) {
         (TagKey::from(IT_TAG), false, 1usize)
-    } else if slice_starts_with(&rest, &["that", "card"]) {
+    } else if word_slice_starts_with(rest, &["that", "card"]) {
         (
             subject_tag.unwrap_or_else(|| TagKey::from(IT_TAG)),
             false,
             2usize,
         )
-    } else if slice_starts_with(&rest, &["the", "exiled", "card"]) {
+    } else if word_slice_starts_with(rest, &["the", "exiled", "card"]) {
         (TagKey::from(crate::tag::SOURCE_EXILED_TAG), false, 3usize)
-    } else if slice_starts_with(&rest, &["the", "revealed", "card"])
-        || slice_starts_with(&rest, &["that", "revealed", "card"])
+    } else if word_slice_starts_with(rest, &["the", "revealed", "card"])
+        || word_slice_starts_with(rest, &["that", "revealed", "card"])
     {
         (TagKey::from("__last_revealed__"), false, 3usize)
-    } else if slice_starts_with(&rest, &["the", "copy"])
-        || slice_starts_with(&rest, &["that", "copy"])
-        || slice_starts_with(&rest, &["a", "copy"])
+    } else if word_slice_starts_with(rest, &["the", "copy"])
+        || word_slice_starts_with(rest, &["that", "copy"])
+        || word_slice_starts_with(rest, &["a", "copy"])
     {
         (TagKey::from(IT_TAG), true, 2usize)
     } else {
@@ -1361,9 +1363,9 @@ pub(crate) fn parse_copy_reference_cost_reduction_sentence(
     if clause_words.len() < 6 {
         return None;
     }
-    if !(slice_starts_with(&clause_words, &["that", "copy", "costs"])
-        || slice_starts_with(&clause_words, &["the", "copy", "costs"])
-        || slice_starts_with(&clause_words, &["a", "copy", "costs"]))
+    if !(word_slice_starts_with(&clause_words, &["that", "copy", "costs"])
+        || word_slice_starts_with(&clause_words, &["the", "copy", "costs"])
+        || word_slice_starts_with(&clause_words, &["a", "copy", "costs"]))
     {
         return None;
     }
@@ -1565,7 +1567,7 @@ pub(crate) fn parse_sentence_exile_that_token_when_source_leaves(
     if when_idx < 2 || when_idx + 3 >= clause_words.len() {
         return None;
     }
-    if !slice_ends_with(&clause_words, &["leaves", "the", "battlefield"]) {
+    if !word_slice_ends_with(&clause_words, &["leaves", "the", "battlefield"]) {
         return None;
     }
     let object_words = &clause_words[1..when_idx];
@@ -1620,40 +1622,44 @@ pub(crate) fn is_generic_token_reminder_sentence(tokens: &[OwnedLexToken]) -> bo
     if words.is_empty() {
         return false;
     }
-    if slice_starts_with(&words, &["it", "has"]) || slice_starts_with(&words, &["they", "have"]) {
-        return true;
-    }
-    if slice_starts_with(&words, &["when", "it"])
-        || slice_starts_with(&words, &["whenever", "it"])
-        || slice_starts_with(&words, &["when", "they"])
-        || slice_starts_with(&words, &["whenever", "they"])
+    if word_slice_starts_with(&words, &["it", "has"])
+        || word_slice_starts_with(&words, &["they", "have"])
     {
         return true;
     }
-    if slice_starts_with(&words, &["its", "power"])
-        || slice_starts_with(&words, &["its", "power", "and", "toughness"])
-        || slice_starts_with(&words, &["its", "toughness"])
+    if word_slice_starts_with(&words, &["when", "it"])
+        || word_slice_starts_with(&words, &["whenever", "it"])
+        || word_slice_starts_with(&words, &["when", "they"])
+        || word_slice_starts_with(&words, &["whenever", "they"])
+    {
+        return true;
+    }
+    if word_slice_starts_with(&words, &["its", "power"])
+        || word_slice_starts_with(&words, &["its", "power", "and", "toughness"])
+        || word_slice_starts_with(&words, &["its", "toughness"])
     {
         return true;
     }
     let delayed_lifecycle_reference = matches!(words.first().copied(), Some("exile" | "sacrifice"))
         && (is_beginning_of_end_step_words(&words) || is_end_of_combat_words(&words))
-        && (slice_contains(&words, &"token")
-            || slice_contains(&words, &"tokens")
-            || slice_contains(&words, &"it")
-            || slice_contains(&words, &"them"));
+        && (word_slice_contains_word(&words, "token")
+            || word_slice_contains_word(&words, "tokens")
+            || word_slice_contains_word(&words, "it")
+            || word_slice_contains_word(&words, "them"));
     if delayed_lifecycle_reference {
         return true;
     }
-    slice_starts_with(&words, &["when", "this", "token"])
-        || slice_starts_with(&words, &["whenever", "this", "token"])
-        || slice_starts_with(&words, &["this", "token"])
-        || slice_starts_with(&words, &["those", "tokens"])
+    word_slice_starts_with(&words, &["when", "this", "token"])
+        || word_slice_starts_with(&words, &["whenever", "this", "token"])
+        || word_slice_starts_with(&words, &["this", "token"])
+        || word_slice_starts_with(&words, &["those", "tokens"])
 }
 
 pub(crate) fn strip_embedded_token_rules_text(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let words_all = crate::runtime_backend::token_word_refs(tokens);
-    if !slice_contains(&words_all, &"create") || !slice_contains(&words_all, &"token") {
+    if !word_slice_contains_word(&words_all, "create")
+        || !word_slice_contains_word(&words_all, "token")
+    {
         return tokens.to_vec();
     }
     let Some(with_idx) = find_index(tokens, |token| token.is_word("with")) else {
@@ -1685,25 +1691,25 @@ pub(crate) fn append_token_reminder_to_last_create_effect(
         .map(String::as_str)
         .collect::<Vec<_>>();
     let mut prepend_with = false;
-    if slice_starts_with(&reminder_words, &["it", "has"])
-        || slice_starts_with(&reminder_words, &["they", "have"])
+    if word_slice_starts_with(&reminder_words, &["it", "has"])
+        || word_slice_starts_with(&reminder_words, &["they", "have"])
     {
         reminder_words = reminder_words[2..].to_vec();
         prepend_with = true;
     }
-    if slice_starts_with(&reminder_words, &["when", "it"]) {
+    if word_slice_starts_with(&reminder_words, &["when", "it"]) {
         let mut rewritten = vec!["when", "this", "token"];
         rewritten.extend_from_slice(&reminder_words[2..]);
         reminder_words = rewritten;
-    } else if slice_starts_with(&reminder_words, &["whenever", "it"]) {
+    } else if word_slice_starts_with(&reminder_words, &["whenever", "it"]) {
         let mut rewritten = vec!["whenever", "this", "token"];
         rewritten.extend_from_slice(&reminder_words[2..]);
         reminder_words = rewritten;
-    } else if slice_starts_with(&reminder_words, &["when", "they"]) {
+    } else if word_slice_starts_with(&reminder_words, &["when", "they"]) {
         let mut rewritten = vec!["when", "this", "token"];
         rewritten.extend_from_slice(&reminder_words[2..]);
         reminder_words = rewritten;
-    } else if slice_starts_with(&reminder_words, &["whenever", "they"]) {
+    } else if word_slice_starts_with(&reminder_words, &["whenever", "they"]) {
         let mut rewritten = vec!["whenever", "this", "token"];
         rewritten.extend_from_slice(&reminder_words[2..]);
         reminder_words = rewritten;
@@ -1804,7 +1810,7 @@ pub(crate) fn append_token_reminder_to_effect(
                     *exile_at_next_end_step = true;
                     return true;
                 }
-                let exile_end_of_combat = slice_contains(&reminder_words, &"exile")
+                let exile_end_of_combat = word_slice_contains_word(reminder_words, "exile")
                     && is_end_of_combat_words(reminder_words);
                 if exile_end_of_combat {
                     *exile_at_end_of_combat = true;
@@ -1838,7 +1844,7 @@ pub(crate) fn append_token_reminder_to_effect(
                 if exile_next_end_step {
                     *exile_at_next_end_step = true;
                 }
-                let exile_end_of_combat = slice_contains(&reminder_words, &"exile")
+                let exile_end_of_combat = word_slice_contains_word(reminder_words, "exile")
                     && is_end_of_combat_words(reminder_words);
                 if exile_end_of_combat {
                     *exile_at_end_of_combat = true;
@@ -1873,12 +1879,12 @@ pub(crate) fn append_token_reminder_to_effect(
                 if exile_next_end_step {
                     *exile_at_next_end_step = true;
                 }
-                let exile_end_of_combat = slice_contains(&reminder_words, &"exile")
+                let exile_end_of_combat = word_slice_contains_word(reminder_words, "exile")
                     && is_end_of_combat_words(reminder_words);
                 if exile_end_of_combat {
                     *exile_at_end_of_combat = true;
                 }
-                let sacrifice_end_of_combat = slice_contains(&reminder_words, &"sacrifice")
+                let sacrifice_end_of_combat = word_slice_contains_word(reminder_words, "sacrifice")
                     && is_end_of_combat_words(reminder_words);
                 if sacrifice_end_of_combat {
                     *sacrifice_at_end_of_combat = true;

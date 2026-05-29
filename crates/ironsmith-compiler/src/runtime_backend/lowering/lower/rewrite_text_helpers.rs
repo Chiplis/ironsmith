@@ -15,15 +15,15 @@ pub(crate) fn lexed_tokens(
 }
 
 pub(crate) fn word_refs_have_prefix(words: &[&str], prefix: &[&str]) -> bool {
-    slice_starts_with(words, prefix)
+    word_slice_starts_with(words, prefix)
 }
 
 pub(crate) fn word_refs_have_suffix(words: &[&str], suffix: &[&str]) -> bool {
-    slice_ends_with(words, suffix)
+    word_slice_ends_with(words, suffix)
 }
 
 pub(crate) fn word_refs_find(words: &[&str], expected: &str) -> Option<usize> {
-    find_index(words, |word| *word == expected)
+    word_slice_find_phrase_start(words, &[expected])
 }
 
 #[derive(Debug, Clone, Default)]

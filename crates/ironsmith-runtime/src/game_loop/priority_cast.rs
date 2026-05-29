@@ -398,7 +398,11 @@ pub(super) fn max_x_from_non_mana_costs(
     max_x
 }
 
-fn max_x_from_static_abilities(game: &GameState, caster: PlayerId, source: ObjectId) -> Option<u32> {
+fn max_x_from_static_abilities(
+    game: &GameState,
+    caster: PlayerId,
+    source: ObjectId,
+) -> Option<u32> {
     let spell = game.object(source)?;
     let mut max_x = None;
     for ability in &spell.abilities {

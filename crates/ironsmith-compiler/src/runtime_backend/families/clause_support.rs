@@ -21,27 +21,14 @@ use super::grammar::structure::{
     split_first_time_each_turn_trigger_suffix_lexed, split_state_triggered_clause_lexed,
     split_triggered_conditional_clause_lexed,
 };
-use super::lexer::{OwnedLexToken, TokenKind, render_token_slice, split_lexed_sentences};
+use super::lexer::{
+    OwnedLexToken, TokenKind, render_token_slice, split_lexed_sentences, word_slice_contains_word,
+    word_slice_starts_with,
+};
 use super::util::{
     parse_card_type, parse_color, parse_filter_counter_constraint_words,
     parse_flashback_keyword_line, parse_subtype_flexible, trim_commas,
 };
-
-fn word_slice_starts_with(words: &[&str], expected: &[&str]) -> bool {
-    if words.len() < expected.len() {
-        return false;
-    }
-
-    let mut idx = 0usize;
-    while idx < expected.len() {
-        if words[idx] != expected[idx] {
-            return false;
-        }
-        idx += 1;
-    }
-
-    true
-}
 
 fn protection_from_colored_spells_action(words: &[&str]) -> Option<KeywordAction> {
     if !matches!(
@@ -69,51 +56,6 @@ fn protection_from_colored_spells_action(words: &[&str]) -> Option<KeywordAction
     let mut filter = ObjectFilter::spell();
     filter.colors = Some(all_colors);
     Some(KeywordAction::ProtectionFromFilter(filter))
-}
-
-fn word_slice_ends_with(words: &[&str], expected: &[&str]) -> bool {
-    if words.len() < expected.len() {
-        return false;
-    }
-
-    let start = words.len() - expected.len();
-    let mut idx = 0usize;
-    while idx < expected.len() {
-        if words[start + idx] != expected[idx] {
-            return false;
-        }
-        idx += 1;
-    }
-
-    true
-}
-
-fn word_slice_contains(words: &[&str], expected: &str) -> bool {
-    let mut idx = 0usize;
-    while idx < words.len() {
-        if words[idx] == expected {
-            return true;
-        }
-        idx += 1;
-    }
-
-    false
-}
-
-fn find_word_sequence_index(words: &[&str], expected: &[&str]) -> Option<usize> {
-    if expected.is_empty() || words.len() < expected.len() {
-        return None;
-    }
-
-    let mut start = 0usize;
-    while start + expected.len() <= words.len() {
-        if word_slice_starts_with(&words[start..], expected) {
-            return Some(start);
-        }
-        start += 1;
-    }
-
-    None
 }
 
 fn find_token_index(
@@ -355,19 +297,22 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
             return None;
         }
 
-        if words.starts_with(&[
-            "casualty",
-            "x",
-            "the",
-            "copy",
-            "isnt",
-            "legendary",
-            "and",
-            "has",
-            "starting",
-            "loyalty",
-            "x",
-        ]) {
+        if word_slice_starts_with(
+            &words,
+            &[
+                "casualty",
+                "x",
+                "the",
+                "copy",
+                "isnt",
+                "legendary",
+                "and",
+                "has",
+                "starting",
+                "loyalty",
+                "x",
+            ],
+        ) {
             return Some(KeywordAction::VariableCasualtyPlaneswalkerCopy);
         }
 
@@ -449,7 +394,7 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
             return Some(KeywordAction::MarkerText(format!("Dredge {amount}")));
         }
 
-        if words.starts_with(&["read", "ahead"]) {
+        if word_slice_starts_with(&words, &["read", "ahead"]) {
             return Some(KeywordAction::ReadAhead);
         }
 
@@ -762,9 +707,9 @@ pub(crate) fn parse_triggered_line_lexed(
             "equal",
             "to",
         ],
-    ) && word_slice_contains(&clause_words, "number")
-        && word_slice_contains(&clause_words, "cards")
-        && word_slice_contains(&clause_words, "hand")
+    ) && word_slice_contains_word(&clause_words, "number")
+        && word_slice_contains_word(&clause_words, "cards")
+        && word_slice_contains_word(&clause_words, "hand")
     {
         return Ok(LineAst::Triggered {
             trigger: TriggerSpec::ThisBecomesMonstrous,

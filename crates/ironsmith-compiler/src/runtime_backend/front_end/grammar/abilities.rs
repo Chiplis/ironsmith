@@ -15,9 +15,11 @@ use crate::zone::Zone;
 use super::super::activation_helpers::parse_subtype_flexible;
 use super::super::effect_sentences::parse_subtype_word;
 use super::super::lexer::{
-    LexStream, LexToken, OwnedLexToken, TokenKind, TokenWordView, trim_lexed_commas,
+    LexStream, LexToken, OwnedLexToken, TokenKind, TokenWordView, find_token_kind, find_token_word,
+    trim_lexed_commas, word_slice_contains_any_word, word_slice_ends_with_any, word_slice_eq,
+    word_slice_eq_any, word_slice_find_word, word_slice_starts_with, word_slice_starts_with_any,
 };
-use super::super::token_primitives::{slice_contains, slice_starts_with, str_strip_suffix};
+use super::super::token_primitives::{slice_contains, str_strip_suffix};
 use super::filters::parse_spell_filter_with_grammar_entrypoint;
 use super::primitives;
 use crate::runtime_backend::util::{
@@ -612,11 +614,15 @@ fn parse_cant_be_spent_to_cast_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ManaUsageRestriction> {
     let words = TokenWordView::new(tokens).to_word_refs();
-    let start_idx = if words.starts_with(&["this", "mana", "cant", "be", "spent", "to", "cast"])
-        || words.starts_with(&["this", "mana", "can't", "be", "spent", "to", "cast"])
-        || words.starts_with(&["that", "mana", "cant", "be", "spent", "to", "cast"])
-        || words.starts_with(&["that", "mana", "can't", "be", "spent", "to", "cast"])
-    {
+    let start_idx = if word_slice_starts_with_any(
+        &words,
+        &[
+            &["this", "mana", "cant", "be", "spent", "to", "cast"],
+            &["this", "mana", "can't", "be", "spent", "to", "cast"],
+            &["that", "mana", "cant", "be", "spent", "to", "cast"],
+            &["that", "mana", "can't", "be", "spent", "to", "cast"],
+        ],
+    ) {
         7
     } else {
         return None;
@@ -647,21 +653,23 @@ fn parse_activate_ability_mana_usage_restriction_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ManaUsageRestriction> {
     let words = TokenWordView::new(tokens).to_word_refs();
-    if words
-        == [
-            "spend",
-            "this",
-            "mana",
-            "only",
-            "to",
-            "activate",
-            "abilities",
-        ]
-        || words
-            == [
+    if word_slice_eq_any(
+        &words,
+        &[
+            &[
+                "spend",
+                "this",
+                "mana",
+                "only",
+                "to",
+                "activate",
+                "abilities",
+            ],
+            &[
                 "spend", "this", "mana", "only", "to", "activate", "an", "ability",
-            ]
-    {
+            ],
+        ],
+    ) {
         Some(ManaUsageRestriction::ActivateAbility)
     } else {
         None
@@ -716,15 +724,20 @@ fn parse_legacy_mana_usage_restriction_sentence_lexed(
     let mut tail = ((spell_idx + 1)..words.len())
         .filter_map(|word_idx| words.get(word_idx))
         .collect::<Vec<_>>();
-    let subtype_requirement = if slice_starts_with(&tail, &["of", "the", "chosen", "type"]) {
+    let subtype_requirement = if word_slice_starts_with(&tail, &["of", "the", "chosen", "type"]) {
         tail.drain(0..4);
         Some(crate::ability::ManaUsageSubtypeRequirement::ChosenTypeOfSource)
     } else {
         None
     };
 
-    let grant_uncounterable = tail == ["and", "that", "spell", "can't", "be", "countered"]
-        || tail == ["and", "that", "spell", "cant", "be", "countered"];
+    let grant_uncounterable = word_slice_eq_any(
+        &tail,
+        &[
+            &["and", "that", "spell", "can't", "be", "countered"],
+            &["and", "that", "spell", "cant", "be", "countered"],
+        ],
+    );
     if !grant_uncounterable && !tail.is_empty() {
         return None;
     }
@@ -748,12 +761,16 @@ fn parse_filter_mana_usage_restriction_sentence_lexed(
     }
 
     let mut word_refs = words.to_word_refs();
-    let cast_idx = word_refs.iter().position(|word| *word == "cast")?;
+    let cast_idx = word_slice_find_word(&word_refs, "cast")?;
     if word_refs.len() >= 6 {
         let tail = &word_refs[word_refs.len() - 6..];
-        if tail == ["and", "that", "spell", "can't", "be", "countered"]
-            || tail == ["and", "that", "spell", "cant", "be", "countered"]
-        {
+        if word_slice_eq_any(
+            tail,
+            &[
+                &["and", "that", "spell", "can't", "be", "countered"],
+                &["and", "that", "spell", "cant", "be", "countered"],
+            ],
+        ) {
             word_refs.truncate(word_refs.len() - 6);
         }
     }
@@ -768,23 +785,23 @@ fn parse_filter_mana_usage_restriction_sentence_lexed(
     }
     let special_filter = parse_special_mana_usage_spell_filter_words(&spec_words);
     if special_filter.is_none()
-        && spec_words.iter().any(|word| {
-            matches!(
-                *word,
-                "activate"
-                    | "activates"
-                    | "activated"
-                    | "activation"
-                    | "ability"
-                    | "abilities"
-                    | "pay"
-                    | "foretell"
-                    | "unlock"
-                    | "turn"
-                    | "cost"
-                    | "costs"
-            )
-        })
+        && word_slice_contains_any_word(
+            &spec_words,
+            &[
+                "activate",
+                "activates",
+                "activated",
+                "activation",
+                "ability",
+                "abilities",
+                "pay",
+                "foretell",
+                "unlock",
+                "turn",
+                "cost",
+                "costs",
+            ],
+        )
     {
         return None;
     }
@@ -799,13 +816,14 @@ fn parse_filter_mana_usage_restriction_sentence_lexed(
         (filter != ObjectFilter::default() || is_plain_spell).then_some(filter)
     })?;
 
-    let grant_uncounterable =
-        words
-            .to_word_refs()
-            .ends_with(&["and", "that", "spell", "can't", "be", "countered"])
-            || words
-                .to_word_refs()
-                .ends_with(&["and", "that", "spell", "cant", "be", "countered"]);
+    let word_refs = words.to_word_refs();
+    let grant_uncounterable = word_slice_ends_with_any(
+        &word_refs,
+        &[
+            &["and", "that", "spell", "can't", "be", "countered"],
+            &["and", "that", "spell", "cant", "be", "countered"],
+        ],
+    );
 
     Some(ManaUsageRestriction::CastSpellMatching {
         filter,
@@ -896,7 +914,7 @@ pub(crate) fn parse_mana_spend_bonus_sentence_lexed(
 
     let simple_card_type = parse_simple_mana_spend_bonus_card_type(&spec_words);
 
-    let comma_idx = tokens.iter().position(OwnedLexToken::is_comma)?;
+    let comma_idx = find_token_kind(tokens, TokenKind::Comma)?;
     let clause_tokens = trim_lexed_commas(&tokens[comma_idx + 1..]);
     if clause_tokens.is_empty() {
         return None;
@@ -1080,9 +1098,9 @@ pub(crate) fn is_trigger_only_restriction_sentence_lexed(tokens: &[OwnedLexToken
 
 pub(crate) fn parse_triggered_times_each_turn_from_words(words: &[&str]) -> Option<u32> {
     let (count_idx, prefix_len) =
-        if slice_starts_with(words, &["this", "ability", "triggers", "only"]) {
+        if word_slice_starts_with(words, &["this", "ability", "triggers", "only"]) {
             (4usize, 4usize)
-        } else if slice_starts_with(words, &["do", "this", "only"]) {
+        } else if word_slice_starts_with(words, &["do", "this", "only"]) {
             (3usize, 3usize)
         } else {
             return None;
@@ -1162,9 +1180,14 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
         let zone_tail = (in_idx..words.len())
             .filter_map(|idx| words.get(idx))
             .collect::<Vec<_>>();
-        let points_to_your_graveyard = zone_tail == ["in", "your", "graveyard"]
-            || zone_tail == ["in", "graveyard"]
-            || zone_tail == ["in", "the", "graveyard"];
+        let points_to_your_graveyard = word_slice_eq_any(
+            &zone_tail,
+            &[
+                &["in", "your", "graveyard"],
+                &["in", "graveyard"],
+                &["in", "the", "graveyard"],
+            ],
+        );
         if !points_to_your_graveyard {
             return None;
         }
@@ -1239,7 +1262,7 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
         let tail = (10..words.len())
             .filter_map(|idx| words.get(idx))
             .collect::<Vec<_>>();
-        if tail == ["or", "greater"] {
+        if word_slice_eq(&tail, &["or", "greater"]) {
             return Some(ConditionExpr::ControlCreaturesTotalPowerAtLeast(threshold));
         }
         return None;
@@ -1263,22 +1286,25 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
         let tail = (9..words.len())
             .filter_map(|idx| words.get(idx))
             .collect::<Vec<_>>();
-        if tail
-            == [
-                "or",
-                "more",
-                "noncombat",
-                "damage",
-                "this",
-                "turn",
-                "and",
-                "only",
-                "as",
-                "a",
-                "sorcery",
-            ]
-            || tail == ["or", "more", "noncombat", "damage", "this", "turn"]
-        {
+        if word_slice_eq_any(
+            &tail,
+            &[
+                &[
+                    "or",
+                    "more",
+                    "noncombat",
+                    "damage",
+                    "this",
+                    "turn",
+                    "and",
+                    "only",
+                    "as",
+                    "a",
+                    "sorcery",
+                ],
+                &["or", "more", "noncombat", "damage", "this", "turn"],
+            ],
+        ) {
             return Some(ConditionExpr::ValueComparison {
                 left: crate::effect::Value::NoncombatDamageDealtBySourcesControlledThisTurn {
                     player: PlayerFilter::You,
@@ -1299,13 +1325,13 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
     let control_tail = (5..words.len())
         .filter_map(|idx| words.get(idx))
         .collect::<Vec<_>>();
-    if slice_starts_with(&control_tail, &["a", "creature", "with", "power"])
-        || slice_starts_with(&control_tail, &["creature", "with", "power"])
+    if word_slice_starts_with(&control_tail, &["a", "creature", "with", "power"])
+        || word_slice_starts_with(&control_tail, &["creature", "with", "power"])
     {
         let power_idx = control_tail.iter().position(|word| *word == "power")?;
         let threshold = parse_number_word_u32(control_tail.get(power_idx + 1)?)?;
         let tail = &control_tail[power_idx + 2..];
-        if tail == ["or", "greater"] {
+        if word_slice_eq(tail, &["or", "greater"]) {
             return Some(ConditionExpr::YouControl(
                 ObjectFilter::creature().with_power(crate::filter::Comparison::GreaterThanOrEqual(
                     threshold as i32,
@@ -1319,7 +1345,10 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
         .and_then(|word| parse_number_word_u32(word))
     {
         let tail = &control_tail[1..];
-        if tail == ["or", "more", "artifact"] || tail == ["or", "more", "artifacts"] {
+        if word_slice_eq_any(
+            tail,
+            &[&["or", "more", "artifact"], &["or", "more", "artifacts"]],
+        ) {
             let mut filter = ObjectFilter::artifact();
             filter.zone = Some(Zone::Battlefield);
             return Some(ConditionExpr::PlayerControlsAtLeast {
@@ -1328,7 +1357,7 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
                 count,
             });
         }
-        if tail == ["or", "more", "land"] || tail == ["or", "more", "lands"] {
+        if word_slice_eq_any(tail, &[&["or", "more", "land"], &["or", "more", "lands"]]) {
             let mut filter = ObjectFilter::default().with_type(crate::types::CardType::Land);
             filter.zone = Some(Zone::Battlefield);
             return Some(ConditionExpr::PlayerControlsAtLeast {
@@ -1338,11 +1367,15 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
             });
         }
     }
-    if control_tail == ["an", "artifact"]
-        || control_tail == ["a", "artifact"]
-        || control_tail == ["artifact"]
-        || control_tail == ["artifacts"]
-    {
+    if word_slice_eq_any(
+        &control_tail,
+        &[
+            &["an", "artifact"],
+            &["a", "artifact"],
+            &["artifact"],
+            &["artifacts"],
+        ],
+    ) {
         let mut filter = ObjectFilter::artifact();
         filter.zone = Some(Zone::Battlefield);
         return Some(ConditionExpr::PlayerControlsAtLeast {
@@ -1435,13 +1468,10 @@ pub(crate) fn is_standard_gift_keyword_tokens_lexed(tokens: &[OwnedLexToken]) ->
 pub(crate) fn additional_cost_tail_tokens_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
-    let comma_idx = tokens
-        .iter()
-        .enumerate()
-        .find_map(|(idx, token)| (token.kind == TokenKind::Comma).then_some(idx));
+    let comma_idx = find_token_kind(tokens, TokenKind::Comma);
     let effect_start = if let Some(idx) = comma_idx {
         idx + 1
-    } else if let Some(idx) = tokens.iter().position(|token| token.is_word("spell")) {
+    } else if let Some(idx) = find_token_word(tokens, "spell") {
         idx + 1
     } else {
         tokens.len()
@@ -1546,7 +1576,7 @@ mod tests {
 }
 
 fn contains_word_lexed(tokens: &[OwnedLexToken], expected: &str) -> bool {
-    tokens.iter().any(|token| token.is_word(expected))
+    super::super::lexer::contains_token_word(tokens, expected)
 }
 
 fn last_parser_word_text_lexed(tokens: &[OwnedLexToken]) -> Option<&str> {
@@ -1557,14 +1587,11 @@ fn last_parser_word_text_lexed(tokens: &[OwnedLexToken]) -> Option<&str> {
 }
 
 fn parser_text_contains_char(text: &str, expected: char) -> bool {
-    text.chars().any(|ch| ch == expected)
+    crate::string_primitives::contains_char(text, expected)
 }
 
 fn contains_any_word_lexed(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
-    expected
-        .iter()
-        .copied()
-        .any(|word| contains_word_lexed(tokens, word))
+    super::super::lexer::find_token_any_word(tokens, expected).is_some()
 }
 
 fn contains_phrase_lexed(tokens: &[OwnedLexToken], expected: &'static [&'static str]) -> bool {
@@ -1591,19 +1618,23 @@ pub(crate) fn is_draw_replace_exile_top_face_down_line_lexed(tokens: &[OwnedLexT
 
 pub(crate) fn is_draw_replacement_double_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(tokens).word_refs();
-    words
-        == [
+    word_slice_eq(
+        &words,
+        &[
             "if", "you", "would", "draw", "a", "card", "draw", "two", "cards", "instead",
-        ]
+        ],
+    )
 }
 
 pub(crate) fn is_draw_replacement_skip_empty_library_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(tokens).word_refs();
-    words
-        == [
+    word_slice_eq(
+        &words,
+        &[
             "if", "you", "would", "draw", "a", "card", "while", "your", "library", "has", "no",
             "cards", "in", "it", "skip", "that", "draw", "instead",
-        ]
+        ],
+    )
 }
 
 pub(crate) fn is_effect_discard_to_library_replacement_line_lexed(

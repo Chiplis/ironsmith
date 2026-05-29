@@ -74,10 +74,11 @@ pub(crate) fn parse_effect_with_verb(
             }
         }
         Verb::Put => {
-            let has_onto = tokens.iter().any(|token| token.is_word("onto"));
-            let has_counter_words = tokens
-                .iter()
-                .any(|token| token.is_word("counter") || token.is_word("counters"));
+            let has_onto = crate::runtime_backend::lexer::contains_token_word(tokens, "onto");
+            let has_counter_words = crate::runtime_backend::lexer::contains_token_any_word(
+                tokens,
+                &["counter", "counters"],
+            );
 
             // Prefer zone moves like "... onto the battlefield" over counter placement because
             // "counter(s)" may appear in subordinate clauses (e.g. "mana value equal to the number
@@ -136,10 +137,7 @@ fn parse_take(
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if matches!(
-        words.as_slice(),
-        ["an", "extra", "turn", "after", "this", "one"]
-    ) {
+    if word_slice_eq(&words, &["an", "extra", "turn", "after", "this", "one"]) {
         return Ok(EffectAst::subject_verb_extra_turn_after_turn(
             extract_subject_player(subject).unwrap_or(PlayerAst::You),
             ExtraTurnAnchorAst::CurrentTurn,
@@ -178,11 +176,16 @@ fn parse_proliferate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
     let trailing = trim_commas(&tokens[used..]);
     let trailing_words = crate::runtime_backend::token_word_refs(&trailing);
     let trailing_ok = trailing_words.is_empty()
-        || trailing_words.as_slice() == ["time"]
-        || trailing_words.as_slice() == ["times"]
-        || trailing_words.as_slice() == ["instead"]
-        || trailing_words.as_slice() == ["time", "instead"]
-        || trailing_words.as_slice() == ["times", "instead"];
+        || crate::runtime_backend::lexer::word_slice_eq_any(
+            &trailing_words,
+            &[
+                &["time"],
+                &["times"],
+                &["instead"],
+                &["time", "instead"],
+                &["times", "instead"],
+            ],
+        );
     if !trailing_ok {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing proliferate clause (clause: '{}')",
@@ -207,17 +210,18 @@ fn parse_library_nth_from_top_destination(tokens: &[OwnedLexToken]) -> Option<Va
         .filter(|word| !is_article(word))
         .collect();
     if let Some((position, used)) = ironsmith_core::parse_ordinal_words(&filtered_tail)
-        && filtered_tail.get(used..) == Some(["from", "top"].as_slice())
+        && filtered_tail
+            .get(used..)
+            .is_some_and(|tail| word_slice_eq(tail, &["from", "top"]))
     {
         return Some(Value::Fixed(position as i32));
     }
 
-    let amount_start = match filtered_tail.as_slice() {
-        ["just", "beneath", "top", ..] => Some(3usize),
-        ["beneath", "top", ..] => Some(2usize),
-        _ => None,
-    }?;
-    let amount_tokens = filtered_tail[amount_start..]
+    let (_, amount_words) = word_slice_strip_prefix_value(
+        &filtered_tail,
+        &[(&["just", "beneath", "top"], ()), (&["beneath", "top"], ())],
+    )?;
+    let amount_tokens = amount_words
         .iter()
         .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
         .collect::<Vec<_>>();
@@ -229,7 +233,10 @@ fn parse_library_nth_from_top_destination(tokens: &[OwnedLexToken]) -> Option<Va
     if used + 1 > amount_words.len() {
         return None;
     }
-    if amount_words[used + 1..] != ["of", "that", "library"] {
+    if !crate::runtime_backend::lexer::word_slice_eq(
+        &amount_words[used + 1..],
+        &["of", "that", "library"],
+    ) {
         return None;
     }
 
@@ -241,76 +248,76 @@ pub(crate) fn parse_look(
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
     fn parse_hand_owner(words: &[&str]) -> Option<(PlayerAst, usize)> {
-        if slice_starts_with(&words, &["your", "hand"]) {
+        if word_slice_starts_with(&words, &["your", "hand"]) {
             return Some((PlayerAst::You, 2));
         }
-        if slice_starts_with(&words, &["each", "player", "hand"])
-            || slice_starts_with(&words, &["each", "players", "hand"])
+        if word_slice_starts_with(&words, &["each", "player", "hand"])
+            || word_slice_starts_with(&words, &["each", "players", "hand"])
         {
             return Some((PlayerAst::Any, 3));
         }
-        if slice_starts_with(&words, &["their", "hand"]) {
+        if word_slice_starts_with(&words, &["their", "hand"]) {
             return Some((PlayerAst::That, 2));
         }
-        if slice_starts_with(&words, &["that", "player", "hand"])
-            || slice_starts_with(&words, &["that", "players", "hand"])
+        if word_slice_starts_with(&words, &["that", "player", "hand"])
+            || word_slice_starts_with(&words, &["that", "players", "hand"])
         {
             return Some((PlayerAst::That, 3));
         }
-        if slice_starts_with(&words, &["target", "player", "hand"])
-            || slice_starts_with(&words, &["target", "players", "hand"])
+        if word_slice_starts_with(&words, &["target", "player", "hand"])
+            || word_slice_starts_with(&words, &["target", "players", "hand"])
         {
             return Some((PlayerAst::Target, 3));
         }
-        if slice_starts_with(&words, &["target", "opponent", "hand"])
-            || slice_starts_with(&words, &["target", "opponents", "hand"])
+        if word_slice_starts_with(&words, &["target", "opponent", "hand"])
+            || word_slice_starts_with(&words, &["target", "opponents", "hand"])
         {
             return Some((PlayerAst::TargetOpponent, 3));
         }
-        if slice_starts_with(&words, &["opponent", "hand"])
-            || slice_starts_with(&words, &["opponents", "hand"])
+        if word_slice_starts_with(&words, &["opponent", "hand"])
+            || word_slice_starts_with(&words, &["opponents", "hand"])
         {
             return Some((PlayerAst::Opponent, 2));
         }
-        if slice_starts_with(&words, &["his", "or", "her", "hand"]) {
+        if word_slice_starts_with(&words, &["his", "or", "her", "hand"]) {
             return Some((PlayerAst::That, 4));
         }
         None
     }
 
     fn parse_library_owner(words: &[&str]) -> Option<(PlayerAst, usize)> {
-        if slice_starts_with(&words, &["your", "library"]) {
+        if word_slice_starts_with(&words, &["your", "library"]) {
             return Some((PlayerAst::You, 2));
         }
-        if slice_starts_with(&words, &["each", "player", "library"])
-            || slice_starts_with(&words, &["each", "players", "library"])
+        if word_slice_starts_with(&words, &["each", "player", "library"])
+            || word_slice_starts_with(&words, &["each", "players", "library"])
         {
             return Some((PlayerAst::Any, 3));
         }
-        if slice_starts_with(&words, &["their", "library"]) {
+        if word_slice_starts_with(&words, &["their", "library"]) {
             return Some((PlayerAst::That, 2));
         }
-        if slice_starts_with(&words, &["that", "player", "library"])
-            || slice_starts_with(&words, &["that", "players", "library"])
+        if word_slice_starts_with(&words, &["that", "player", "library"])
+            || word_slice_starts_with(&words, &["that", "players", "library"])
         {
             return Some((PlayerAst::That, 3));
         }
-        if slice_starts_with(&words, &["target", "player", "library"])
-            || slice_starts_with(&words, &["target", "players", "library"])
+        if word_slice_starts_with(&words, &["target", "player", "library"])
+            || word_slice_starts_with(&words, &["target", "players", "library"])
         {
             return Some((PlayerAst::Target, 3));
         }
-        if slice_starts_with(&words, &["target", "opponent", "library"])
-            || slice_starts_with(&words, &["target", "opponents", "library"])
+        if word_slice_starts_with(&words, &["target", "opponent", "library"])
+            || word_slice_starts_with(&words, &["target", "opponents", "library"])
         {
             return Some((PlayerAst::TargetOpponent, 3));
         }
-        if slice_starts_with(&words, &["its", "owner", "library"])
-            || slice_starts_with(&words, &["its", "owners", "library"])
+        if word_slice_starts_with(&words, &["its", "owner", "library"])
+            || word_slice_starts_with(&words, &["its", "owners", "library"])
         {
             return Some((PlayerAst::ItsOwner, 3));
         }
-        if slice_starts_with(&words, &["his", "or", "her", "library"]) {
+        if word_slice_starts_with(&words, &["his", "or", "her", "library"]) {
             return Some((PlayerAst::That, 4));
         }
         None
@@ -330,8 +337,9 @@ pub(crate) fn parse_look(
         .map(String::as_str)
         .collect::<Vec<_>>();
 
-    if clause_words.as_slice()
-        == [
+    if crate::runtime_backend::lexer::word_slice_eq(
+        &clause_words,
+        &[
             "and",
             "play",
             "those",
@@ -343,7 +351,8 @@ pub(crate) fn parse_look(
             "they",
             "remain",
             "exiled",
-        ]
+        ],
+    )
     {
         return Ok(EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
             TagKey::from(IT_TAG),
@@ -535,7 +544,9 @@ pub(crate) fn parse_reorder(
     }
     let rest = &clause_words[consumed..];
 
-    if !rest.is_empty() && rest != ["as", "you", "choose"] {
+    if !rest.is_empty()
+        && !crate::runtime_backend::lexer::word_slice_eq(rest, &["as", "you", "choose"])
+    {
         return Err(CardTextError::ParseError(format!(
             "unsupported reorder clause tail (clause: '{clause}')"
         )));
@@ -657,11 +668,12 @@ pub(crate) fn parse_shuffle(
             }
         }
 
-        let consult_style_remainder_shuffle = slice_starts_with(&target_words, &["the", "rest"])
-            || (slice_starts_with(&target_words, &["all", "other"])
-                && slice_contains(&target_words, &"cards")
-                && (slice_contains(&target_words, &"revealed")
-                    || slice_contains(&target_words, &"exiled")));
+        let consult_style_remainder_shuffle =
+            word_slice_starts_with(&target_words, &["the", "rest"])
+                || (word_slice_starts_with(&target_words, &["all", "other"])
+                    && word_slice_contains_word(&target_words, "cards")
+                    && (word_slice_contains_word(&target_words, "revealed")
+                        || word_slice_contains_word(&target_words, "exiled")));
         if consult_style_remainder_shuffle
             && let Some((destination_player, consumed)) =
                 parse_library_destination_player(&destination_words, player)
@@ -676,12 +688,14 @@ pub(crate) fn parse_shuffle(
     }
 
     if matches!(player, PlayerAst::ItsOwner)
-        && matches!(
-            clause_words.as_slice(),
-            ["them", "into", "their", "libraries"]
-                | ["them", "into", "their", "library"]
-                | ["those", "cards", "into", "their", "libraries"]
-                | ["those", "cards", "into", "their", "library"]
+        && word_slice_eq_any(
+            &clause_words,
+            &[
+                &["them", "into", "their", "libraries"],
+                &["them", "into", "their", "library"],
+                &["those", "cards", "into", "their", "libraries"],
+                &["those", "cards", "into", "their", "library"],
+            ],
         )
     {
         return Ok(EffectAst::ForEachTagged {
@@ -738,7 +752,7 @@ pub(crate) fn parse_goad(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardText
     if let Some(target) = parse_chosen_name_goad_target(&target_tokens, &target_words)? {
         return Ok(EffectAst::subject_verb_goad(target));
     }
-    if target_words.as_slice() == ["it"] || target_words.as_slice() == ["them"] {
+    if crate::runtime_backend::lexer::word_slice_eq_any(&target_words, &[&["it"], &["them"]]) {
         return Ok(EffectAst::subject_verb_goad(TargetAst::Tagged(
             TagKey::from(IT_TAG),
             span_from_tokens(&target_tokens),
@@ -830,7 +844,7 @@ pub(crate) fn parse_detain(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     }
 
     let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
-    if matches!(target_words.as_slice(), ["it"] | ["them"]) {
+    if crate::runtime_backend::lexer::word_slice_eq_any(&target_words, &[&["it"], &["them"]]) {
         return Ok(EffectAst::subject_verb_detain(TargetAst::Tagged(
             TagKey::from(IT_TAG),
             span_from_tokens(&target_tokens),
@@ -851,7 +865,7 @@ pub(crate) fn parse_suspect(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     }
 
     let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
-    if matches!(target_words.as_slice(), ["it"] | ["them"]) {
+    if crate::runtime_backend::lexer::word_slice_eq_any(&target_words, &[&["it"], &["them"]]) {
         return Ok(EffectAst::subject_verb_suspect(TargetAst::Tagged(
             TagKey::from(IT_TAG),
             span_from_tokens(&target_tokens),

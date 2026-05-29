@@ -6,11 +6,14 @@ use winnow::token::take_till;
 
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::keyword_static::parse_value_binding_clause;
-use super::super::lexer::{LexStream, OwnedLexToken};
+use super::super::lexer::{
+    LexStream, LexedClause, OwnedLexToken, contains_token_any_word, contains_token_word,
+    find_token_word, word_slice_contains_word, word_slice_ends_with, word_slice_eq,
+    word_slice_eq_any, word_slice_starts_with,
+};
 use super::super::token_primitives::{
     find_index, find_window_by, parse_turn_duration_prefix, parse_value_comparison_tokens,
-    slice_contains, slice_ends_with, slice_starts_with, strip_leading_if_you_do_lexed,
-    word_view_has_prefix,
+    strip_leading_if_you_do_lexed, word_view_has_prefix,
 };
 use super::super::util::{
     helper_tag_for_tokens, parse_number, parse_subject, token_index_for_word_index, trim_commas,
@@ -95,7 +98,7 @@ pub(crate) fn parse_consult_traversal_sentence(
         infer_consult_player_from_prefix(&prefix_tokens).unwrap_or(PlayerAst::You)
     } else {
         let subject_words = TokenWordView::new(&consult_tokens[..consult_verb_idx]).word_refs();
-        if subject_words.as_slice() == ["they"] {
+        if word_slice_eq(&subject_words, &["they"]) {
             PlayerAst::That
         } else {
             match parse_subject(&consult_tokens[..consult_verb_idx]) {
@@ -127,8 +130,8 @@ pub(crate) fn parse_consult_traversal_sentence(
         .into_iter()
         .filter(|word| !super::super::util::is_article(word))
         .collect();
-    if !slice_starts_with(&prefix_words, &["cards", "from", "top", "of"])
-        || !slice_ends_with(&prefix_words, &["library"])
+    if !word_slice_starts_with(&prefix_words, &["cards", "from", "top", "of"])
+        || !word_slice_ends_with(&prefix_words, &["library"])
     {
         return Ok(None);
     }
@@ -158,11 +161,9 @@ pub(crate) fn parse_consult_traversal_sentence(
         if filter_tokens.is_empty() {
             return Ok(None);
         }
-        let stop_rule = if TokenWordView::new(&filter_tokens)
-            .word_refs()
-            .as_slice()
-            .starts_with(&["that", "many"])
-        {
+        let filter_word_view = TokenWordView::new(&filter_tokens);
+        let filter_words = filter_word_view.word_refs();
+        let stop_rule = if word_slice_starts_with(&filter_words, &["that", "many"]) {
             let remaining_start = TokenWordView::new(&filter_tokens)
                 .token_index_after_words(2)
                 .unwrap_or(2);
@@ -244,11 +245,9 @@ pub(crate) fn parse_consult_traversal_sentence(
 }
 
 fn apply_consult_relative_mana_value_filter(tokens: &[OwnedLexToken], filter: &mut ObjectFilter) {
-    let has_lesser_mana_value = tokens
-        .iter()
-        .any(|token| token.is_word("lesser") || token.is_word("less"))
-        && tokens.iter().any(|token| token.is_word("mana"))
-        && tokens.iter().any(|token| token.is_word("value"));
+    let has_lesser_mana_value = contains_token_any_word(tokens, &["lesser", "less"])
+        && contains_token_word(tokens, "mana")
+        && contains_token_word(tokens, "value");
     if !has_lesser_mana_value {
         return;
     }
@@ -270,13 +269,11 @@ fn apply_consult_relative_mana_value_filter(tokens: &[OwnedLexToken], filter: &m
 fn without_consult_relative_mana_value_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<OwnedLexToken>> {
-    let start = tokens.iter().position(|token| token.is_word("with"))?;
+    let start = find_token_word(tokens, "with")?;
     let tail = &tokens[start..];
-    let has_lesser_mana_value = tail
-        .iter()
-        .any(|token| token.is_word("lesser") || token.is_word("less"))
-        && tail.iter().any(|token| token.is_word("mana"))
-        && tail.iter().any(|token| token.is_word("value"));
+    let has_lesser_mana_value = contains_token_any_word(tail, &["lesser", "less"])
+        && contains_token_word(tail, "mana")
+        && contains_token_word(tail, "value");
     if !has_lesser_mana_value {
         return None;
     }
@@ -359,7 +356,7 @@ fn infer_consult_player_from_prefix(tokens: &[OwnedLexToken]) -> Option<PlayerAs
 }
 
 pub(crate) fn parse_consult_remainder_order(words: &[&str]) -> Option<LibraryBottomOrderAst> {
-    if !slice_contains(words, &"bottom") || !slice_contains(words, &"library") {
+    if !word_slice_contains_word(words, "bottom") || !word_slice_contains_word(words, "library") {
         return None;
     }
     if super::super::activation_and_restrictions::activated_line_core::contains_word_sequence(
@@ -380,7 +377,7 @@ pub(crate) fn parse_consult_remainder_order(words: &[&str]) -> Option<LibraryBot
 pub(crate) fn parse_consult_condition_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let word_view = TokenWordView::new(tokens);
     let word_refs = word_view.word_refs();
-    if matches!(word_refs.as_slice(), ["thiss", "power"] | ["this", "power"]) {
+    if word_slice_eq_any(&word_refs, &[&["thiss", "power"], &["this", "power"]]) {
         return Some(Value::SourcePower);
     }
 
@@ -407,13 +404,13 @@ pub(crate) fn parse_consult_condition_value(tokens: &[OwnedLexToken]) -> Option<
     Some(Value::Count(filter))
 }
 
-fn strip_prefix_phrases<'a>(
+fn strip_prefix_phrases<'a, 'p>(
     tokens: &'a [OwnedLexToken],
-    phrases: &[&'static [&'static str]],
-) -> Option<(&'static [&'static str], &'a [OwnedLexToken])> {
-    phrases.iter().find_map(|phrase| {
-        grammar::parse_prefix(tokens, grammar::phrase(phrase)).map(|(_, rest)| (*phrase, rest))
-    })
+    phrases: &'p [&'p [&'p str]],
+) -> Option<(&'p [&'p str], &'a [OwnedLexToken])> {
+    LexedClause::new(tokens)
+        .strip_any_prefix_clause(phrases)
+        .map(|(phrase, rest)| (phrase, rest.tokens()))
 }
 
 fn take_remaining_clause_tokens<'a>(
@@ -565,7 +562,7 @@ pub(crate) fn parse_consult_cast_clause(tokens: &[OwnedLexToken]) -> Option<Cons
     let allow_land = matches!(matched_phrase, ["play", ..]);
     let remainder_word_view = TokenWordView::new(remainder_tokens);
     let remainder = remainder_word_view.word_refs();
-    if remainder == ["this", "turn"] {
+    if word_slice_eq(&remainder, &["this", "turn"]) {
         return Some(ConsultCastClause {
             caster,
             allow_land,
@@ -575,12 +572,13 @@ pub(crate) fn parse_consult_cast_clause(tokens: &[OwnedLexToken]) -> Option<Cons
         });
     }
 
-    if remainder
-        == [
+    if word_slice_eq(
+        &remainder,
+        &[
             "by", "paying", "life", "equal", "to", "the", "spell's", "mana", "value", "rather",
             "than", "paying", "its", "mana", "cost",
-        ]
-    {
+        ],
+    ) {
         return Some(ConsultCastClause {
             caster,
             allow_land,
@@ -641,8 +639,13 @@ pub(crate) fn parse_consult_bottom_remainder_clause(
     let mentions_cast_window = grammar::words_find_phrase(tokens, &["not", "cast", "this"])
         .is_some()
         || find_window_by(&clause_words, 4, |window| {
-            window == ["werent", "cast", "this", "way"]
-                || window == ["weren't", "cast", "this", "way"]
+            word_slice_eq_any(
+                window,
+                &[
+                    &["werent", "cast", "this", "way"],
+                    &["weren't", "cast", "this", "way"],
+                ],
+            )
         })
         .is_some()
         || grammar::words_find_phrase(tokens, &["were", "not", "cast", "this", "way"]).is_some();
@@ -657,44 +660,42 @@ pub(crate) fn parse_if_declined_put_match_into_hand(
     match_tag: TagKey,
 ) -> Option<Vec<EffectAst>> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let moves_to_hand = clause_words == ["put", "that", "card", "into", "your", "hand"]
-        || clause_words == ["put", "the", "exiled", "card", "into", "your", "hand"]
-        || clause_words == ["put", "it", "into", "your", "hand"]
-        || clause_words
-            == [
+    let moves_to_hand = word_slice_eq_any(
+        &clause_words,
+        &[
+            &["put", "that", "card", "into", "your", "hand"],
+            &["put", "the", "exiled", "card", "into", "your", "hand"],
+            &["put", "it", "into", "your", "hand"],
+            &[
                 "put", "that", "card", "into", "your", "hand", "if", "it", "wasnt", "cast", "this",
                 "way",
-            ]
-        || clause_words
-            == [
+            ],
+            &[
                 "put", "that", "card", "into", "your", "hand", "if", "it", "wasn't", "cast",
                 "this", "way",
-            ]
-        || clause_words
-            == [
+            ],
+            &[
                 "put", "the", "exiled", "card", "into", "your", "hand", "if", "it", "wasnt",
                 "cast", "this", "way",
-            ]
-        || clause_words
-            == [
+            ],
+            &[
                 "put", "the", "exiled", "card", "into", "your", "hand", "if", "it", "wasn't",
                 "cast", "this", "way",
-            ]
-        || clause_words
-            == [
-                "put", "it", "into", "your", "hand", "if", "it", "wasnt", "cast", "this", "way",
-            ]
-        || clause_words
-            == [
-                "put", "it", "into", "your", "hand", "if", "it", "wasn't", "cast", "this", "way",
-            ]
-        || super::super::grammar::primitives::words_match_prefix(
-            tokens,
-            &[
-                "if", "you", "dont", "put", "that", "card", "into", "your", "hand",
             ],
-        )
-        .is_some()
+            &[
+                "put", "it", "into", "your", "hand", "if", "it", "wasnt", "cast", "this", "way",
+            ],
+            &[
+                "put", "it", "into", "your", "hand", "if", "it", "wasn't", "cast", "this", "way",
+            ],
+        ],
+    ) || super::super::grammar::primitives::words_match_prefix(
+        tokens,
+        &[
+            "if", "you", "dont", "put", "that", "card", "into", "your", "hand",
+        ],
+    )
+    .is_some()
         || super::super::grammar::primitives::words_match_prefix(
             tokens,
             &[

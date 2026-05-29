@@ -12,9 +12,7 @@ pub(super) fn synth_words_as_tokens(words: &[&str]) -> Vec<OwnedLexToken> {
 }
 
 pub(super) fn push_unique_filter_value<T: Copy + PartialEq>(items: &mut Vec<T>, value: T) {
-    if !items.iter().any(|item| *item == value) {
-        items.push(value);
-    }
+    crate::slice_primitives::push_unique(items, value);
 }
 
 pub(super) fn parse_filter_prefix_words<'a, O>(
@@ -451,12 +449,13 @@ pub(super) fn drain_segment_phrase_variants(
     let segment_words_view = GrammarFilterNormalizedWords::new(segment_tokens.as_slice());
     let segment_words = segment_words_view.to_word_refs();
     let segment_match = variants.iter().find_map(|variant| {
-        find_word_slice_phrase_start(&segment_words, variant.words).map(|seg_start| {
-            (
-                seg_start + variant.drain_start_offset,
-                seg_start + variant.words.len(),
-            )
-        })
+        crate::runtime_backend::lexer::word_slice_find_phrase_start(&segment_words, variant.words)
+            .map(|seg_start| {
+                (
+                    seg_start + variant.drain_start_offset,
+                    seg_start + variant.words.len(),
+                )
+            })
     });
     if let Some((start_word_idx, end_word_idx)) = segment_match
         && let Some(start_token_idx) =

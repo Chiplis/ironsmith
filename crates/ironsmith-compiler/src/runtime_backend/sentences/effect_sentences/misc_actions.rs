@@ -3,6 +3,10 @@ use crate::TextSpan;
 use crate::cards::builders::{
     SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst,
 };
+use crate::runtime_backend::lexer::{
+    word_slice_contains_phrase, word_slice_contains_word, word_slice_eq, word_slice_eq_any,
+    word_slice_starts_with, word_slice_starts_with_any,
+};
 use crate::runtime_backend::parse_counter_type_from_tokens;
 
 fn subject_verb_player_effect(
@@ -28,7 +32,7 @@ pub(crate) fn parse_become(
     };
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if clause_words.as_slice() == ["the", "monarch"] || clause_words.as_slice() == ["monarch"] {
+    if word_slice_eq_any(&clause_words, &[&["the", "monarch"], &["monarch"]]) {
         return Ok(EffectAst::subject_verb_become_monarch(player));
     }
 
@@ -76,7 +80,7 @@ pub(crate) fn parse_switch(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                 | ["this", "permanent"]
                 | ["it"]
         ) {
-        if target_words == ["it"] {
+        if word_slice_eq(&target_words, &["it"]) {
             TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(target_tokens))
         } else {
             TargetAst::Source(span_from_tokens(target_tokens))
@@ -140,26 +144,26 @@ pub(crate) fn parse_skip(
         }
     };
 
-    let skips_next_combat_phase_this_turn = slice_contains(&words, &"combat")
-        && slice_contains(&words, &"phase")
-        && slice_contains(&words, &"next")
-        && slice_contains(&words, &"this")
-        && slice_contains(&words, &"turn");
+    let skips_next_combat_phase_this_turn = word_slice_contains_word(&words, "combat")
+        && word_slice_contains_word(&words, "phase")
+        && word_slice_contains_word(&words, "next")
+        && word_slice_contains_word(&words, "this")
+        && word_slice_contains_word(&words, "turn");
     if skips_next_combat_phase_this_turn {
         return Ok(EffectAst::subject_verb_skip_next_combat_phase_this_turn(
             player,
         ));
     }
-    if slice_contains(&words, &"combat")
-        && (slice_contains(&words, &"phase") || slice_contains(&words, &"phases"))
-        && slice_contains(&words, &"turn")
+    if word_slice_contains_word(&words, "combat")
+        && (word_slice_contains_word(&words, "phase") || word_slice_contains_word(&words, "phases"))
+        && word_slice_contains_word(&words, "turn")
     {
         return Ok(EffectAst::subject_verb_skip_combat_phases(player));
     }
-    if slice_contains(&words, &"draw") && slice_contains(&words, &"step") {
+    if word_slice_contains_word(&words, "draw") && word_slice_contains_word(&words, "step") {
         return Ok(EffectAst::subject_verb_skip_draw_step(player));
     }
-    if slice_contains(&words, &"turn") {
+    if word_slice_contains_word(&words, "turn") {
         return Ok(EffectAst::subject_verb_skip_turn(player));
     }
 
@@ -179,10 +183,10 @@ pub(crate) fn parse_end(
         SubjectAst::This => PlayerAst::Implicit,
     };
 
-    if clause_words.as_slice() == ["the", "turn"] || clause_words.as_slice() == ["turn"] {
+    if word_slice_eq_any(&clause_words, &[&["the", "turn"], &["turn"]]) {
         return Ok(EffectAst::subject_verb_end_turn(player));
     }
-    if clause_words.as_slice() == ["step", "you", "lose", "the", "game"] {
+    if word_slice_eq(&clause_words, &["step", "you", "lose", "the", "game"]) {
         return Ok(EffectAst::subject_verb_lose_game(PlayerAst::You));
     }
 
@@ -205,14 +209,18 @@ pub(crate) fn parse_flip(
     }
 
     let target_words = crate::runtime_backend::token_word_refs(tokens);
-    if matches!(target_words.as_slice(), ["a", "coin"] | ["coin"]) {
+    if word_slice_eq_any(&target_words, &[&["a", "coin"], &["coin"]]) {
         return Ok(EffectAst::subject_verb_flip_coin(player));
     }
-    if target_words == ["it"]
-        || target_words == ["this"]
-        || target_words == ["this", "creature"]
-        || target_words == ["this", "permanent"]
-    {
+    if word_slice_eq_any(
+        &target_words,
+        &[
+            &["it"],
+            &["this"],
+            &["this", "creature"],
+            &["this", "permanent"],
+        ],
+    ) {
         return Ok(EffectAst::subject_verb_flip(TargetAst::Source(
             span_from_tokens(tokens),
         )));
@@ -271,7 +279,9 @@ pub(crate) fn parse_roll(
                 .get(1)
                 .and_then(OwnedLexToken::as_word)
                 .is_some_and(|word| matches!(word, "die" | "dice"));
-            has_die_noun.then(|| parse_sided_die_word(&die_word)).flatten()
+            has_die_noun
+                .then(|| parse_sided_die_word(&die_word))
+                .flatten()
         })
         .or_else(|| {
             let has_sided_die_noun = die_tokens
@@ -324,11 +334,11 @@ pub(crate) fn parse_mill(
         if words.first().copied() == Some("card") || words.first().copied() == Some("cards") {
             words = words[1..].to_vec();
         }
-        if !(words.starts_with(&["for", "each"]) || words.starts_with(&["each"])) {
+        if !word_slice_starts_with_any(&words, &[&["for", "each"], &["each"]]) {
             return None;
         }
 
-        let after_each = if words.starts_with(&["for", "each"]) {
+        let after_each = if word_slice_starts_with(&words, &["for", "each"]) {
             &words[2..]
         } else {
             &words[1..]
@@ -585,7 +595,7 @@ pub(crate) fn parse_get(
                 (!rendered.is_empty()).then_some(rendered)
             })
             .unwrap_or_else(|| {
-                if slice_starts_with(&text_words, &["at", "the", "beginning", "of"])
+                if word_slice_starts_with(&text_words, &["at", "the", "beginning", "of"])
                     && let Some(this_idx) = find_index(&text_words, |word| *word == "this")
                 {
                     let head = text_words[..this_idx].join(" ");
@@ -707,7 +717,7 @@ pub(crate) fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
         let filter = parse_object_filter(&tokens[1..], false)?;
         return Ok(EffectAst::subject_verb_untap_all(filter));
     }
-    if words.as_slice() == ["them"] {
+    if word_slice_eq(&words, &["them"]) {
         let mut filter = ObjectFilter::default();
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: IT_TAG.into(),
@@ -788,15 +798,11 @@ pub(crate) fn parse_pay(
     {
         return Ok(EffectAst::subject_verb_pay_any_energy(player));
     }
-    let has_for_each = clause_words
-        .windows(2)
-        .any(|window| window == ["for", "each"]);
+    let has_for_each = word_slice_contains_phrase(&clause_words, &["for", "each"]);
     let references_tagged_choice = clause_words
         .iter()
         .any(|word| matches!(*word, "those" | "them"))
-        || clause_words
-            .windows(3)
-            .any(|window| window == ["chosen", "this", "way"]);
+        || word_slice_contains_phrase(&clause_words, &["chosen", "this", "way"]);
     let repeats_for_tagged_choice = has_for_each && references_tagged_choice;
 
     if repeats_for_tagged_choice {

@@ -407,10 +407,7 @@ pub(crate) fn parse_cycling_keyword_cost_groups(
 }
 
 fn push_unique<T: PartialEq>(items: &mut Vec<T>, item: T) {
-    if items.iter().any(|existing| existing == &item) {
-        return;
-    }
-    items.push(item);
+    crate::slice_primitives::push_unique(items, item);
 }
 
 pub(crate) fn merge_cycling_search_filters(base: &mut ObjectFilter, extra: &ObjectFilter) {

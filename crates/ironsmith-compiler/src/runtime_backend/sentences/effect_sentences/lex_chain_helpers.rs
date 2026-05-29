@@ -2,11 +2,11 @@
 
 use super::super::clause_support::parse_ability_line_lexed;
 use super::super::grammar::primitives as grammar;
-use super::super::lexer::{OwnedLexToken, TokenKind, token_word_refs, trim_lexed_commas};
-use super::super::token_primitives::{
-    contains_window as word_slice_contains_sequence, find_str_by as find_word_index,
-    slice_contains_str as word_slice_contains, slice_ends_with as word_slice_ends_with,
-    slice_starts_with as word_slice_starts_with,
+use super::super::lexer::{
+    OwnedLexToken, TokenKind, contains_token_kind, token_word_refs, trim_lexed_commas,
+    word_slice_contains_all_words, word_slice_contains_any_word, word_slice_contains_phrase,
+    word_slice_contains_word, word_slice_ends_with, word_slice_find_word_where,
+    word_slice_starts_with,
 };
 use super::super::util::{parse_zone_word, trim_commas};
 use super::chain_carry::{Verb, find_verb};
@@ -282,12 +282,12 @@ pub(crate) fn is_token_creation_context(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn has_inline_token_rules_context(words: &[&str]) -> bool {
-    word_slice_contains_sequence(words, &["when", "this", "token"])
-        || word_slice_contains_sequence(words, &["whenever", "this", "token"])
-        || word_slice_contains_sequence(words, &["at", "the", "beginning", "of"])
-        || (word_slice_contains(words, "except")
-            && word_slice_contains(words, "copy")
-            && word_slice_contains(words, "token"))
+    word_slice_contains_phrase(words, &["when", "this", "token"])
+        || word_slice_contains_phrase(words, &["whenever", "this", "token"])
+        || word_slice_contains_phrase(words, &["at", "the", "beginning", "of"])
+        || (word_slice_contains_word(words, "except")
+            && word_slice_contains_word(words, "copy")
+            && word_slice_contains_word(words, "token"))
 }
 
 fn should_keep_and_for_token_rules(current: &[OwnedLexToken], remaining: &[OwnedLexToken]) -> bool {
@@ -621,10 +621,8 @@ fn should_keep_and_for_card_type_list_lexed(
     }
 
     let current_has_type = current_words.iter().any(|word| is_card_type_word(word));
-    let current_has_list_marker = current.iter().any(|token| token.kind == TokenKind::Comma)
-        || current_words
-            .iter()
-            .any(|word| matches!(*word, "or" | "and/or"));
+    let current_has_list_marker = contains_token_kind(current, TokenKind::Comma)
+        || word_slice_contains_any_word(&current_words, &["or", "and/or"]);
 
     current_has_type && current_has_list_marker
 }
@@ -673,19 +671,20 @@ fn is_prevent_all_damage_clause_words_lexed(words: &[&str]) -> bool {
 }
 
 fn is_can_attack_as_though_no_defender_clause_words_lexed(words: &[&str]) -> bool {
-    let Some(can_idx) = find_word_index(words, |word| word == "can") else {
+    let Some(can_idx) = word_slice_find_word_where(words, |word| word == "can") else {
         return false;
     };
     let tail = &words[can_idx..];
     word_slice_starts_with(tail, &["can", "attack"])
-        && word_slice_contains_sequence(tail, &["as", "though"])
-        && word_slice_contains(tail, "turn")
-        && word_slice_contains(tail, "have")
+        && word_slice_contains_phrase(tail, &["as", "though"])
+        && word_slice_contains_word(tail, "turn")
+        && word_slice_contains_word(tail, "have")
         && tail.last().copied() == Some("defender")
 }
 
 fn is_attack_or_block_this_turn_if_able_clause_words_lexed(words: &[&str]) -> bool {
-    let Some(attack_idx) = find_word_index(words, |word| matches!(word, "attack" | "attacks"))
+    let Some(attack_idx) =
+        word_slice_find_word_where(words, |word| matches!(word, "attack" | "attacks"))
     else {
         return false;
     };
@@ -699,7 +698,8 @@ fn is_attack_or_block_this_turn_if_able_clause_words_lexed(words: &[&str]) -> bo
 }
 
 fn is_attack_this_turn_if_able_clause_words_lexed(words: &[&str]) -> bool {
-    let Some(attack_idx) = find_word_index(words, |word| matches!(word, "attack" | "attacks"))
+    let Some(attack_idx) =
+        word_slice_find_word_where(words, |word| matches!(word, "attack" | "attacks"))
     else {
         return false;
     };
@@ -717,7 +717,9 @@ fn is_must_block_if_able_clause_words_lexed(words: &[&str]) -> bool {
         return true;
     }
 
-    let Some(block_idx) = find_word_index(words, |word| matches!(word, "block" | "blocks")) else {
+    let Some(block_idx) =
+        word_slice_find_word_where(words, |word| matches!(word, "block" | "blocks"))
+    else {
         return false;
     };
     if block_idx == 0 || block_idx + 1 >= words.len() {
@@ -741,7 +743,7 @@ fn is_phase_clause_words_lexed(words: &[&str]) -> bool {
 
 fn is_choose_target_prelude_clause_words_lexed(words: &[&str]) -> bool {
     matches!(words.first().copied(), Some("choose" | "chooses"))
-        && word_slice_contains(words, "target")
+        && word_slice_contains_word(words, "target")
 }
 
 fn should_keep_and_for_power_toughness_axis_lexed(
@@ -761,8 +763,8 @@ fn should_keep_and_for_become_with_quoted_ability(
     remaining: &[OwnedLexToken],
 ) -> bool {
     let current_words = token_word_refs(current);
-    if !word_slice_contains(&current_words, "becomes")
-        || !word_slice_contains(&current_words, "with")
+    if !word_slice_contains_word(&current_words, "becomes")
+        || !word_slice_contains_word(&current_words, "with")
     {
         return false;
     }
@@ -955,7 +957,7 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                 let after_words = token_word_refs(after_then);
                 let has_back_ref = after_words
                     .iter()
-                    .any(|w| word_slice_contains(&back_ref_words, w));
+                    .any(|w| word_slice_contains_word(&back_ref_words, w));
                 let has_nonverb_effect_head = after_words.first().is_some_and(|word| {
                     matches!(
                         *word,
@@ -1003,21 +1005,16 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                 let allow_deal_damage_equal_total_mana_value_followup =
                     !starts_with_for_each_player_or_opponent
                         && has_back_ref
-                        && after_words
-                            .iter()
-                            .any(|word| matches!(*word, "deal" | "deals"))
-                        && after_words.iter().any(|word| *word == "damage")
-                        && after_words.iter().any(|word| *word == "equal")
-                        && after_words.iter().any(|word| *word == "total")
-                        && after_words.iter().any(|word| *word == "mana")
-                        && after_words.iter().any(|word| *word == "value");
+                        && word_slice_contains_any_word(&after_words, &["deal", "deals"])
+                        && word_slice_contains_all_words(
+                            &after_words,
+                            &["damage", "equal", "total", "mana", "value"],
+                        );
                 let allow_for_each_damage_followup = has_back_ref
                     && grammar::words_match_any_prefix(after_then, GENERIC_FOR_EACH_PREFIXES)
                         .is_some()
-                    && after_words
-                        .iter()
-                        .any(|word| *word == "deal" || *word == "deals")
-                    && after_words.iter().any(|word| *word == "damage");
+                    && word_slice_contains_any_word(&after_words, &["deal", "deals"])
+                    && word_slice_contains_word(&after_words, "damage");
                 let allow_return_with_counter_followup = !starts_with_for_each_player_or_opponent
                     && has_back_ref
                     && after_words.first().is_some_and(|word| *word == "return")

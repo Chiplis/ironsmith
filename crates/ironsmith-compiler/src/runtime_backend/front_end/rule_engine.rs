@@ -3,7 +3,7 @@
 use crate::cards::builders::CardTextError;
 use std::collections::HashMap;
 
-use super::lexer::{OwnedLexToken, TokenKind, TokenWordView, token_word_refs};
+use super::lexer::{OwnedLexToken, TokenKind, TokenWordView, contains_token_kind, token_word_refs};
 
 pub(crate) const RULE_SHAPE_HAS_COLON: u32 = 1 << 0;
 pub(crate) const RULE_SHAPE_HAS_COMMA: u32 = 1 << 1;
@@ -133,13 +133,13 @@ pub(crate) fn unsupported_rule_error_for_view(
 
 fn clause_shape(tokens: &[OwnedLexToken], words: &[&str]) -> u32 {
     let mut shape = 0u32;
-    if tokens.iter().any(|token| token.is_colon()) {
+    if contains_token_kind(tokens, TokenKind::Colon) {
         shape |= RULE_SHAPE_HAS_COLON;
     }
-    if tokens.iter().any(|token| token.is_comma()) {
+    if contains_token_kind(tokens, TokenKind::Comma) {
         shape |= RULE_SHAPE_HAS_COMMA;
     }
-    if tokens.iter().any(|token| token.is_semicolon()) {
+    if contains_token_kind(tokens, TokenKind::Semicolon) {
         shape |= RULE_SHAPE_HAS_SEMICOLON;
     }
     match words.first().copied().unwrap_or("") {
@@ -155,22 +155,13 @@ fn clause_shape(tokens: &[OwnedLexToken], words: &[&str]) -> u32 {
 
 fn clause_shape_lexed(tokens: &[OwnedLexToken], words: &LexClauseWords) -> u32 {
     let mut shape = 0u32;
-    if tokens
-        .iter()
-        .any(|token| matches!(token.kind, TokenKind::Colon))
-    {
+    if contains_token_kind(tokens, TokenKind::Colon) {
         shape |= RULE_SHAPE_HAS_COLON;
     }
-    if tokens
-        .iter()
-        .any(|token| matches!(token.kind, TokenKind::Comma))
-    {
+    if contains_token_kind(tokens, TokenKind::Comma) {
         shape |= RULE_SHAPE_HAS_COMMA;
     }
-    if tokens
-        .iter()
-        .any(|token| matches!(token.kind, TokenKind::Semicolon))
-    {
+    if contains_token_kind(tokens, TokenKind::Semicolon) {
         shape |= RULE_SHAPE_HAS_SEMICOLON;
     }
     match words.first().unwrap_or("") {

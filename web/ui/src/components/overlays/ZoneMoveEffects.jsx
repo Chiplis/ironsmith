@@ -884,8 +884,8 @@ function ShaderCanvas({ effects }) {
       if (buffer) gl.deleteBuffer(buffer);
       if (inspectorTexture) gl.deleteTexture(inspectorTexture);
       if (program) gl.deleteProgram(program);
-      const lose = gl.getExtension("WEBGL_lose_context");
-      if (lose) lose.loseContext();
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
     };
   }, []);
 

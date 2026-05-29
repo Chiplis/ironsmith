@@ -111,9 +111,7 @@ impl StaticAbilityModelInterpreter {
                 )
             }
             ironsmith_core::StaticAbilityPayload::ThisSpellXMaximum { maximum, display } => {
-                format!(
-                    "ThisSpellXMaximum {{ maximum: {maximum:?}, display: {display:?} }}"
-                )
+                format!("ThisSpellXMaximum {{ maximum: {maximum:?}, display: {display:?} }}")
             }
             payload => format!("{payload:?}"),
         }

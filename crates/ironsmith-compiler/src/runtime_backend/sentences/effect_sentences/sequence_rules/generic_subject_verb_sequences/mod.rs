@@ -12,29 +12,17 @@ use crate::effect::Value;
 use crate::mana::ManaSymbol;
 use crate::object::CounterType;
 use crate::runtime_backend::effect_sentences;
-use crate::runtime_backend::grammar::primitives as grammar;
+use crate::runtime_backend::front_end::lexer::{
+    LexedClause, word_slice_contains_all_words, word_slice_eq, word_slice_eq_any,
+    word_slice_starts_with,
+};
 use crate::runtime_backend::object_filters::parse_object_filter_lexed;
-use crate::runtime_backend::token_index_for_word_index;
-use crate::runtime_backend::token_primitives::{find_index, slice_contains, slice_starts_with};
 use crate::runtime_backend::util::{is_article, mana_pips_from_token, trim_commas};
 use crate::target::PlayerFilter;
 use crate::zone::Zone;
 
-fn sequence_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
-    crate::runtime_backend::token_word_refs(tokens)
-}
-
-fn find_word_sequence(words: &[&str], pattern: &[&str]) -> Option<usize> {
-    if pattern.is_empty() {
-        return Some(0);
-    }
-    words
-        .windows(pattern.len())
-        .position(|window| window == pattern)
-}
-
-fn contains_word_sequence(words: &[&str], pattern: &[&str]) -> bool {
-    find_word_sequence(words, pattern).is_some()
+fn non_article_words(clause: LexedClause<'_>) -> Vec<&str> {
+    clause.word_refs_where(|word| !is_article(word))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,31 +66,30 @@ pub(crate) fn parse_parameterized_flashback_grant_sequence(
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let _shape = GenericSubjectVerbSequence::parameterized_flashback_grant();
-    let first_tokens = trim_commas(sentences[sentence_idx].lowered());
-    let first_words = crate::runtime_backend::token_word_refs(&first_tokens);
-    let Some(gain_idx) = first_words
-        .iter()
-        .position(|word| matches!(*word, "gain" | "gains"))
-    else {
+    let first_clause = LexedClause::new(sentences[sentence_idx].lowered()).trimmed();
+    let Some(gain_idx) = first_clause.find_word_any(&["gain", "gains"]) else {
         return Ok(None);
     };
-    if first_words[gain_idx + 1..] != ["flashback", "until", "end", "of", "turn"] {
+    let first_words = first_clause.word_refs();
+    if !word_slice_eq(
+        &first_words[gain_idx + 1..],
+        &["flashback", "until", "end", "of", "turn"],
+    ) {
         return Ok(None);
     }
 
-    let Some(gain_token_idx) = token_index_for_word_index(&first_tokens, gain_idx) else {
-        return Ok(None);
-    };
-    let target_tokens = trim_commas(&first_tokens[..gain_token_idx]);
-    if target_tokens.is_empty() {
+    let target_clause = first_clause
+        .before_word(gain_idx)
+        .unwrap_or_else(|| first_clause.before(0))
+        .trimmed();
+    if target_clause.is_empty() {
         return Ok(None);
     }
-    let target = effect_sentences::parse_target_phrase(&target_tokens)?;
+    let target = effect_sentences::parse_target_phrase(target_clause.tokens())?;
 
-    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
-    let second_words = crate::runtime_backend::token_word_refs(&second_tokens);
-    let valid_followup = second_words.as_slice()
-        == [
+    let second_clause = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
+    let valid_followup = second_clause.matches_any_words(&[
+        &[
             "the",
             "flashback",
             "cost",
@@ -112,20 +99,20 @@ pub(crate) fn parse_parameterized_flashback_grant_sequence(
             "its",
             "mana",
             "cost",
-        ]
-        || second_words.as_slice()
-            == [
-                "that",
-                "cards",
-                "flashback",
-                "cost",
-                "is",
-                "equal",
-                "to",
-                "its",
-                "mana",
-                "cost",
-            ];
+        ],
+        &[
+            "that",
+            "cards",
+            "flashback",
+            "cost",
+            "is",
+            "equal",
+            "to",
+            "its",
+            "mana",
+            "cost",
+        ],
+    ]);
     if !valid_followup {
         return Ok(None);
     }
@@ -166,41 +153,39 @@ pub(crate) fn parse_iterative_library_procedure_sequence(
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let _shape = GenericSubjectVerbSequence::iterative_library_procedure();
-    let first_tokens = trim_commas(sentences[sentence_idx].lowered());
-    let first_words: Vec<&str> = crate::runtime_backend::token_word_refs(&first_tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
-    if first_words.as_slice() != ["exile", "top", "card", "of", "your", "library"] {
+    let first_clause = LexedClause::new(sentences[sentence_idx].lowered()).trimmed();
+    let first_words = non_article_words(first_clause);
+    if !word_slice_eq(
+        &first_words,
+        &["exile", "top", "card", "of", "your", "library"],
+    ) {
         return Ok(None);
     }
 
-    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
-    let second_words: Vec<&str> = crate::runtime_backend::token_word_refs(&second_tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
-    let second_matches = second_words.as_slice()
-        == [
-            "you", "may", "put", "that", "card", "into", "your", "hand", "unless", "it", "has",
-            "same", "name", "as", "another", "card", "exiled", "this", "way",
-        ]
-        || second_words.as_slice()
-            == [
+    let second_clause = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
+    let second_words = non_article_words(second_clause);
+    let second_matches = word_slice_eq_any(
+        &second_words,
+        &[
+            &[
+                "you", "may", "put", "that", "card", "into", "your", "hand", "unless", "it", "has",
+                "same", "name", "as", "another", "card", "exiled", "this", "way",
+            ],
+            &[
                 "you", "may", "put", "it", "into", "your", "hand", "unless", "it", "has", "same",
                 "name", "as", "another", "card", "exiled", "this", "way",
-            ];
+            ],
+        ],
+    );
     if !second_matches {
         return Ok(None);
     }
 
-    let third_tokens = trim_commas(sentences[sentence_idx + 2].lowered());
-    let third_words: Vec<&str> = crate::runtime_backend::token_word_refs(&third_tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
-    let third_matches = third_words.as_slice()
-        == [
+    let third_clause = LexedClause::new(sentences[sentence_idx + 2].lowered()).trimmed();
+    let third_words = non_article_words(third_clause);
+    let third_matches = word_slice_eq(
+        &third_words,
+        &[
             "repeat",
             "this",
             "process",
@@ -222,7 +207,8 @@ pub(crate) fn parse_iterative_library_procedure_sequence(
             "whichever",
             "comes",
             "first",
-        ];
+        ],
+    );
     if !third_matches {
         return Ok(None);
     }
@@ -267,58 +253,57 @@ pub(crate) fn parse_each_player_shuffle_reveal_then_put_revealed_types_bottom(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let first_tokens = trim_commas(sentences[sentence_idx].lowered());
-    let first_words = sequence_words(&first_tokens);
-    if !first_words.starts_with(&["each", "player", "shuffles", "all"])
-        || !contains_word_sequence(&first_words, &["they", "own", "into", "their", "library"])
-        || !contains_word_sequence(
-            &first_words,
-            &[
-                "then", "reveals", "that", "many", "cards", "from", "the", "top", "of", "their",
-                "library",
-            ],
-        )
+    let first_clause = LexedClause::new(sentences[sentence_idx].lowered()).trimmed();
+    if !first_clause.starts_with(&["each", "player", "shuffles", "all"])
+        || !first_clause.contains_phrase(&["they", "own", "into", "their", "library"])
+        || !first_clause.contains_phrase(&[
+            "then", "reveals", "that", "many", "cards", "from", "the", "top", "of", "their",
+            "library",
+        ])
     {
         return Ok(None);
     }
 
-    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
-    let second_words = sequence_words(&second_tokens);
-    if !second_words.starts_with(&["each", "player", "puts", "all"])
-        || !contains_word_sequence(
-            &second_words,
-            &["revealed", "this", "way", "onto", "the", "battlefield"],
-        )
-        || !contains_word_sequence(&second_words, &["then", "does", "the", "same", "for"])
-        || !contains_word_sequence(
-            &second_words,
-            &["on", "the", "bottom", "of", "their", "library"],
-        )
+    let second_clause = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
+    if !second_clause.starts_with(&["each", "player", "puts", "all"])
+        || !second_clause.contains_phrase(&[
+            "revealed",
+            "this",
+            "way",
+            "onto",
+            "the",
+            "battlefield",
+        ])
+        || !second_clause.contains_phrase(&["then", "does", "the", "same", "for"])
+        || !second_clause.contains_phrase(&["on", "the", "bottom", "of", "their", "library"])
     {
         return Ok(None);
     }
 
-    let Some(revealed_idx) = find_word_sequence(&second_words, &["revealed", "this", "way"]) else {
+    let Some(revealed_idx) = second_clause.find_phrase_start(&["revealed", "this", "way"]) else {
         return Ok(None);
     };
-    let Some(filter_start) = token_index_for_word_index(&second_tokens, 3) else {
+    let second_tokens = second_clause.tokens();
+    let Some(filter_start) = second_clause.token_index_for_word_index(3) else {
         return Ok(None);
     };
-    let Some(filter_end) = token_index_for_word_index(&second_tokens, revealed_idx) else {
+    let Some(filter_end) = second_clause.token_index_for_word_index(revealed_idx) else {
         return Ok(None);
     };
     let mut battlefield_filter =
         parse_object_filter_lexed(&second_tokens[filter_start..filter_end], false)?;
     battlefield_filter.zone = None;
 
-    if let Some(same_for_idx) = find_word_sequence(&second_words, &["same", "for"]) {
+    if let Some(same_for_idx) = second_clause.find_phrase_start(&["same", "for"]) {
         let extra_start_word = same_for_idx + 2;
-        let extra_end_word = find_word_sequence(&second_words[extra_start_word..], &["then"])
+        let extra_end_word = second_clause
+            .after_words(extra_start_word)
+            .and_then(|tail| tail.find_phrase_start(&["then"]))
             .map(|offset| extra_start_word + offset)
-            .unwrap_or(second_words.len());
+            .unwrap_or(second_clause.word_len());
         if extra_end_word > extra_start_word
-            && let Some(extra_start) = token_index_for_word_index(&second_tokens, extra_start_word)
-            && let Some(extra_end) = token_index_for_word_index(&second_tokens, extra_end_word)
+            && let Some(extra_start) = second_clause.token_index_for_word_index(extra_start_word)
+            && let Some(extra_end) = second_clause.token_index_for_word_index(extra_end_word)
         {
             let extra_filter =
                 parse_object_filter_lexed(&second_tokens[extra_start..extra_end], false)?;
@@ -419,23 +404,17 @@ pub(crate) fn parse_damage_prevention_counter_sequence(
         _ => return Ok(None),
     };
 
-    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
-    let second_words: Vec<&str> = crate::runtime_backend::token_word_refs(&second_tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
-    if !slice_starts_with(
+    let second_clause = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
+    let second_words = non_article_words(second_clause);
+    if !word_slice_starts_with(
         &second_words,
         &["for", "each", "1", "damage", "prevented", "this", "way"],
-    ) || !slice_contains(&second_words, &"put")
-        || !slice_contains(&second_words, &"+1/+1")
-        || !slice_contains(&second_words, &"counter")
-        || !slice_contains(&second_words, &"on")
+    ) || !word_slice_contains_all_words(&second_words, &["put", "+1/+1", "counter", "on"])
     {
         return Ok(None);
     }
 
-    let Some(on_idx) = find_index(&second_words, |word| *word == "on") else {
+    let Some(on_idx) = second_words.iter().position(|word| *word == "on") else {
         return Ok(None);
     };
     let target_words = &second_words[on_idx + 1..];
@@ -483,19 +462,21 @@ pub(crate) fn parse_tap_lock_sequence(
         return Ok(None);
     };
 
-    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
+    let second_clause = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
+    let second_tokens = second_clause.tokens();
     let starts_with_supported_pronoun_clause =
-        grammar::words_match_any_prefix(&second_tokens, THEY_DONT_UNTAP_DURING_PREFIXES).is_some();
-    let has_source_tapped_duration =
-        grammar::words_find_phrase(&second_tokens, &["for", "as", "long", "as"]).is_some()
-            && grammar::contains_word(&second_tokens, "remains")
-            && grammar::contains_word(&second_tokens, "tapped")
-            && (grammar::contains_word(&second_tokens, "this")
-                || grammar::contains_word(&second_tokens, "thiss")
-                || grammar::contains_word(&second_tokens, "source")
-                || grammar::contains_word(&second_tokens, "artifact")
-                || grammar::contains_word(&second_tokens, "creature")
-                || grammar::contains_word(&second_tokens, "permanent"));
+        second_clause.starts_with_any(THEY_DONT_UNTAP_DURING_PREFIXES);
+    let has_source_tapped_duration = second_clause.contains_phrase(&["for", "as", "long", "as"])
+        && second_clause.contains_word("remains")
+        && second_clause.contains_word("tapped")
+        && second_clause.contains_any_word(&[
+            "this",
+            "thiss",
+            "source",
+            "artifact",
+            "creature",
+            "permanent",
+        ]);
     if !starts_with_supported_pronoun_clause || !has_source_tapped_duration {
         return Ok(None);
     }
@@ -506,7 +487,7 @@ pub(crate) fn parse_tap_lock_sequence(
         return Ok(None);
     };
     let valid_untap_clause =
-        grammar::words_match_any_prefix(&clause_tokens, THEY_DONT_UNTAP_DURING_PREFIXES).is_some();
+        LexedClause::new(&clause_tokens).starts_with_any(THEY_DONT_UNTAP_DURING_PREFIXES);
     if !valid_untap_clause {
         return Ok(None);
     }
@@ -529,19 +510,13 @@ pub(crate) fn parse_search_delayed_upkeep_unless_pays_sequence(
     else {
         return Ok(None);
     };
-    if first_effects.is_empty()
-        || grammar::words_match_prefix(
-            sentences[sentence_idx].lowered(),
-            &["search", "your", "library"],
-        )
-        .is_none()
-    {
+    let search_clause = LexedClause::new(sentences[sentence_idx].lowered()).trimmed();
+    if first_effects.is_empty() || !search_clause.starts_with(&["search", "your", "library"]) {
         return Ok(None);
     }
 
-    let upkeep_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
-    let pay_idx = if grammar::words_match_prefix(
-        &upkeep_tokens,
+    let upkeep_clause = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
+    let pay_idx = if upkeep_clause.starts_with_any(&[
         &[
             "at",
             "the",
@@ -552,12 +527,6 @@ pub(crate) fn parse_search_delayed_upkeep_unless_pays_sequence(
             "upkeep",
             "pay",
         ],
-    )
-    .is_some()
-    {
-        7usize
-    } else if grammar::words_match_prefix(
-        &upkeep_tokens,
         &[
             "at",
             "the",
@@ -568,17 +537,16 @@ pub(crate) fn parse_search_delayed_upkeep_unless_pays_sequence(
             "upkeep",
             "pay",
         ],
-    )
-    .is_some()
-    {
+    ]) {
         7usize
     } else {
         return Ok(None);
     };
-    let Some(pay_token_idx) = token_index_for_word_index(&upkeep_tokens, pay_idx) else {
+    let Some(pay_token_idx) = upkeep_clause.token_index_for_word_index(pay_idx) else {
         return Ok(None);
     };
-    let mana_tokens = trim_commas(&upkeep_tokens[pay_token_idx + 1..]);
+    let mana_clause = upkeep_clause.from(pay_token_idx + 1).trimmed();
+    let mana_tokens = mana_clause.tokens();
     if mana_tokens.is_empty() {
         return Ok(None);
     }
@@ -602,11 +570,12 @@ pub(crate) fn parse_search_delayed_upkeep_unless_pays_sequence(
         return Ok(None);
     }
 
-    let lose_tokens = trim_commas(sentences[sentence_idx + 2].lowered());
-    let lose_words = crate::runtime_backend::token_word_refs(&lose_tokens);
-    let valid_lose_clause = lose_words == ["if", "you", "dont", "you", "lose", "the", "game"]
-        || lose_words == ["if", "you", "don't", "you", "lose", "the", "game"]
-        || lose_words == ["if", "you", "do", "not", "you", "lose", "the", "game"];
+    let lose_clause = LexedClause::new(sentences[sentence_idx + 2].lowered()).trimmed();
+    let valid_lose_clause = lose_clause.matches_any_words(&[
+        &["if", "you", "dont", "you", "lose", "the", "game"],
+        &["if", "you", "don't", "you", "lose", "the", "game"],
+        &["if", "you", "do", "not", "you", "lose", "the", "game"],
+    ]);
     if !valid_lose_clause {
         return Ok(None);
     }

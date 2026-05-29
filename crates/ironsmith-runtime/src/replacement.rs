@@ -177,7 +177,10 @@ pub enum ReplacementAction {
     Additionally(Vec<Effect>),
 
     /// Add separately defined tokens to a token-creation event.
-    AddTokens { token: AdditionalTokenKind, count: u32 },
+    AddTokens {
+        token: AdditionalTokenKind,
+        count: u32,
+    },
 
     /// Skip (for "skip your draw step" etc.)
     Skip,

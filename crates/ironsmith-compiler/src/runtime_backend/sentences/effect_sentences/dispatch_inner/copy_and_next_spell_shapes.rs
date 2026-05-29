@@ -184,8 +184,8 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
 
         let trigger_words = crate::runtime_backend::token_word_refs(&trigger_tokens);
         let attack_unblocked_suffix =
-            slice_ends_with(trigger_words.as_slice(), &["attacks", "and", "isn't", "blocked"])
-                || slice_ends_with(
+            word_slice_ends_with(trigger_words.as_slice(), &["attacks", "and", "isn't", "blocked"])
+                || word_slice_ends_with(
                     trigger_words.as_slice(),
                     &["attacks", "and", "isnt", "blocked"],
                 );
@@ -269,7 +269,9 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
 
     let trigger_word_storage = DispatchInnerNormalizedWords::new(&trigger_tokens);
     let trigger_words = trigger_word_storage.to_word_refs();
-    if trigger_words.len() < 3 || !slice_ends_with(trigger_words.as_slice(), &["this", "turn"]) {
+    if trigger_words.len() < 3
+        || !word_slice_ends_with(trigger_words.as_slice(), &["this", "turn"])
+    {
         return Ok(None);
     }
 
@@ -297,7 +299,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
             ObjectFilter::permanent()
         };
         filter = filter.match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
-        if trigger_core_words.contains(&"combat") {
+        if word_slice_contains_word(&trigger_core_words, "combat") {
             TriggerSpec::IsDealtCombatDamage(filter)
         } else {
             TriggerSpec::IsDealtDamage(filter)
@@ -351,7 +353,7 @@ pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
             return Ok(None);
         }
         dies_idx + 2
-    } else if let Some(dealt_idx) = find_dispatch_inner_phrase_start(
+    } else if let Some(dealt_idx) = crate::runtime_backend::lexer::word_slice_find_phrase_start(
         &clause_words,
         &["dealt", "damage", "this", "way", "dies", "this", "turn"],
     ) {
@@ -381,7 +383,7 @@ pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
             ))
         })?);
         dealt_idx + 6
-    } else if let Some(dealt_idx) = find_dispatch_inner_phrase_start(
+    } else if let Some(dealt_idx) = crate::runtime_backend::lexer::word_slice_find_phrase_start(
         &clause_words,
         &[
             "dealt", "damage", "this", "way", "would", "die", "this", "turn",

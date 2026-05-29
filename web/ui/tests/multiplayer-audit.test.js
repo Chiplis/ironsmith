@@ -958,6 +958,71 @@ test("protocol response timeout forfeits require non-target quorum", async () =>
   assert.equal((await verifyEnvelopeOnlyTranscript(transcript)).valid, true);
 });
 
+test("live transcript verifier rejects a fabricated forfeit of another player", async () => {
+  const matchId = "m-forged-forfeit";
+  const keys = await Promise.all([
+    createAuditSessionKey(webcrypto),
+    createAuditSessionKey(webcrypto),
+  ]);
+  const players = await Promise.all(keys.map(async (keyPair, index) => ({
+    index,
+    keyPair,
+    peerId: `peer-${index}`,
+    auditPublicKey: await exportAuditPublicKey(keyPair, webcrypto),
+  })));
+
+  const transcriptForCommand = async (command, publicCheckpointHash) => {
+    const audit = await buildSignedActionEnvelope({
+      keyPair: keys[0],
+      matchId,
+      seq: 1,
+      actor: 0,
+      prevStateHash: "0".repeat(64),
+      command,
+      publicCheckpointHash,
+    }, webcrypto);
+    return buildCurrentProtocolTranscript({
+      matchId,
+      players,
+      playerCount: 2,
+      actions: [{ seq: 1, actorIndex: 0, command, audit }],
+    });
+  };
+
+  // A generic forfeit aimed at the opponent is rejected even though a two-player
+  // game requires no quorum certificate: the live gate forbids forfeiting another
+  // player, and the transcript verifier must agree or a player could fabricate a
+  // winning transcript from a forfeit that never happened.
+  const genericForfeit = await transcriptForCommand(
+    { type: "forfeit_player", player: 1 },
+    "public-checkpoint-forged-generic-forfeit",
+  );
+  await assert.rejects(
+    () => verifyEnvelopeOnlyTranscript(genericForfeit),
+    /without a valid involuntary-forfeit reason/,
+  );
+
+  // Dressing the same forfeit up as a match-clock timeout does not help: with only
+  // two players there is no independent (non-actor, non-target) witness, so the
+  // transcript alone cannot prove the opponent timed out.
+  const timeoutForfeit = await transcriptForCommand(
+    { type: "forfeit_player", player: 1, reason: "match_clock_timeout" },
+    "public-checkpoint-forged-timeout-forfeit",
+  );
+  await assert.rejects(
+    () => verifyEnvelopeOnlyTranscript(timeoutForfeit),
+    /without independent attestation/,
+  );
+
+  // A self-forfeit (concede) must still verify — the fix must not block legitimate
+  // surrenders.
+  const selfForfeit = await transcriptForCommand(
+    { type: "forfeit_player", player: 0 },
+    "public-checkpoint-self-forfeit",
+  );
+  assert.equal((await verifyEnvelopeOnlyTranscript(selfForfeit)).valid, true);
+});
+
 test("live transcript verifier validates action-fork dispute evidence", async () => {
   const keys = await Promise.all([
     createAuditSessionKey(webcrypto),

@@ -690,13 +690,22 @@ mod tests {
         assert_eq!(ids.len(), 2, "Xorn should add one Treasure token");
         let copied_count = ids
             .iter()
-            .filter(|id| game.object(**id).is_some_and(|token| token.name == "Fancy Treasure"))
+            .filter(|id| {
+                game.object(**id)
+                    .is_some_and(|token| token.name == "Fancy Treasure")
+            })
             .count();
         let normal_count = ids
             .iter()
-            .filter(|id| game.object(**id).is_some_and(|token| token.name == "Treasure"))
+            .filter(|id| {
+                game.object(**id)
+                    .is_some_and(|token| token.name == "Treasure")
+            })
             .count();
-        assert_eq!(copied_count, 1, "the original token copy should be preserved");
+        assert_eq!(
+            copied_count, 1,
+            "the original token copy should be preserved"
+        );
         assert_eq!(normal_count, 1, "Xorn should add one normal Treasure token");
         assert!(ids.iter().all(|id| {
             game.object(*id).is_some_and(|token| {
@@ -711,11 +720,8 @@ mod tests {
     fn xorn_does_not_add_tokens_when_copying_non_treasure_tokens() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
-        let clue_id = game.create_object_from_definition(
-            &clue_token_definition(),
-            alice,
-            Zone::Battlefield,
-        );
+        let clue_id =
+            game.create_object_from_definition(&clue_token_definition(), alice, Zone::Battlefield);
         let source = game.new_object_id();
         game.create_object_from_definition(&xorn_definition(), alice, Zone::Battlefield);
         game.refresh_continuous_state();

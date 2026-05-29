@@ -1,8 +1,13 @@
 use super::*;
+use crate::runtime_backend::lexer::{
+    word_slice_eq, word_slice_eq_any, word_slice_find_phrase_start, word_slice_starts_with,
+};
 use crate::runtime_backend::sentences::effect_sentences::lex_chain_helpers::{
     find_verb_lexed, has_effect_head_without_verb_lexed,
 };
-use crate::runtime_backend::sentences::effect_sentences::subject_verb_primitives::try_build_unless;
+use crate::runtime_backend::sentences::effect_sentences::subject_verb_primitives::{
+    SubjectVerbPrimitiveClause, try_build_unless,
+};
 
 fn trim_trailing_discard_alternative_action(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     for (idx, token) in tokens.iter().enumerate() {
@@ -46,9 +51,13 @@ fn parse_unless_mana_spent_to_cast_predicate(tokens: &[OwnedLexToken]) -> Option
         return None;
     }
     let words = crate::runtime_backend::token_word_refs(rest);
-    if words.as_slice() != ["was", "spent", "to", "cast", "it"]
-        && words.as_slice() != ["was", "spent", "to", "cast", "this", "spell"]
-    {
+    if !word_slice_eq_any(
+        &words,
+        &[
+            &["was", "spent", "to", "cast", "it"],
+            &["was", "spent", "to", "cast", "this", "spell"],
+        ],
+    ) {
         return None;
     }
     let symbols = parse_mana_symbol_group(mana_token.slice.as_str()).ok()?;
@@ -66,9 +75,7 @@ fn split_greatest_mana_value_among_clause(
 ) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
     let marker = ["with", "the", "greatest", "mana", "value", "among"];
     let words = crate::runtime_backend::token_word_refs(tokens);
-    let marker_start = words
-        .windows(marker.len())
-        .position(|window| window == marker)?;
+    let marker_start = word_slice_find_phrase_start(&words, &marker)?;
     let marker_end = marker_start + marker.len();
     let before_idx = token_index_for_word_index(tokens, marker_start)?;
     let after_idx = token_index_for_word_index(tokens, marker_end)?;
@@ -86,7 +93,7 @@ pub(crate) fn parse_sacrifice(
     let mut unless_escaped = false;
     if let Some(unless_idx) = find_index(&normalized_words, |word| *word == "unless") {
         let tail = &normalized_words[unless_idx..];
-        if tail == ["unless", "it", "escaped"] {
+        if word_slice_eq(tail, &["unless", "it", "escaped"]) {
             unless_escaped = true;
             let cut_idx = token_index_for_word_index(tokens, unless_idx).unwrap_or(tokens.len());
             tokens = &tokens[..cut_idx];
@@ -113,16 +120,21 @@ pub(crate) fn parse_sacrifice(
             }
             let unless_words =
                 crate::runtime_backend::token_word_refs(&tokens[unless_token_idx + 1..]);
-            if unless_words.as_slice()
-                == ["an", "opponent", "was", "dealt", "damage", "this", "turn"]
-            {
+            if word_slice_eq(
+                &unless_words,
+                &["an", "opponent", "was", "dealt", "damage", "this", "turn"],
+            ) {
                 return Ok(EffectAst::Conditional {
                     predicate: PredicateAst::OpponentLostLifeThisTurn,
                     if_true: Vec::new(),
                     if_false: vec![base],
                 });
             }
-            if let Some(unless_effect) = try_build_unless(vec![base], tokens, unless_token_idx)? {
+            if let Some(unless_effect) = try_build_unless(
+                vec![base],
+                SubjectVerbPrimitiveClause::new(tokens),
+                unless_token_idx,
+            )? {
                 return Ok(unless_effect);
             }
             return Err(CardTextError::ParseError(format!(
@@ -258,7 +270,7 @@ pub(crate) fn parse_sacrifice(
         )));
     }
     let filter_words = crate::runtime_backend::token_word_refs(filter_tokens);
-    let mut filter = if matches!(filter_words.as_slice(), ["it"] | ["that", "card"]) {
+    let mut filter = if word_slice_eq_any(&filter_words, &[&["it"], &["that", "card"]]) {
         ObjectFilter::tagged(TagKey::from(IT_TAG))
     } else {
         parse_object_filter_lexed(filter_tokens, other)?
@@ -317,14 +329,19 @@ pub(crate) fn parse_discard(
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if matches!(
-        clause_words.as_slice(),
-        ["hand"] | ["your", "hand"] | ["their", "hand"] | ["that", "players", "hand"]
+    if word_slice_eq_any(
+        &clause_words,
+        &[
+            &["hand"],
+            &["your", "hand"],
+            &["their", "hand"],
+            &["that", "players", "hand"],
+        ],
     ) {
         return Ok(EffectAst::subject_verb_discard_hand(player));
     }
 
-    if matches!(clause_words.as_slice(), ["it"] | ["that", "card"]) {
+    if word_slice_eq_any(&clause_words, &[&["it"], &["that", "card"]]) {
         let mut tagged_filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
         tagged_filter.zone = Some(Zone::Hand);
         return Ok(EffectAst::subject_verb_discard(
@@ -337,7 +354,7 @@ pub(crate) fn parse_discard(
         ));
     }
 
-    if matches!(clause_words.as_slice(), ["those", "cards"]) {
+    if word_slice_eq(&clause_words, &["those", "cards"]) {
         let mut tagged_filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
         tagged_filter.zone = Some(Zone::Hand);
         return Ok(EffectAst::subject_verb_discard(
@@ -350,9 +367,7 @@ pub(crate) fn parse_discard(
         ));
     }
 
-    let any_number = clause_words
-        .as_slice()
-        .starts_with(&["any", "number", "of"]);
+    let any_number = word_slice_starts_with(clause_words.as_slice(), &["any", "number", "of"]);
     let count_tokens =
         if let Some((_, rest)) = grammar::words_match_any_prefix(tokens, UP_TO_PREFIXES) {
             rest
@@ -392,7 +407,10 @@ pub(crate) fn parse_discard(
     let qualifier_tokens = trim_commas(&rest[..card_token_idx]);
     let mut discard_filter = None;
     if !qualifier_tokens.is_empty()
-        && crate::runtime_backend::token_word_refs(&qualifier_tokens).as_slice() != ["the"]
+        && !word_slice_eq(
+            &crate::runtime_backend::token_word_refs(&qualifier_tokens),
+            &["the"],
+        )
     {
         let mut filter = if let Ok(filter) = parse_object_filter(&qualifier_tokens, false) {
             filter
@@ -437,11 +455,11 @@ pub(crate) fn parse_discard(
         ));
     }
     let trailing_words = crate::runtime_backend::token_word_refs(trailing_tokens);
-    let random = trailing_words.as_slice() == ["at", "random"];
+    let random = word_slice_eq(&trailing_words, &["at", "random"]);
     if !trailing_words.is_empty() && !random {
         let trailing_filter = if let Ok(filter) = parse_object_filter(trailing_tokens, false) {
             Some(filter)
-        } else if trailing_words.as_slice() == ["with", "that", "name"] {
+        } else if word_slice_eq(&trailing_words, &["with", "that", "name"]) {
             let mut filter = ObjectFilter::default();
             filter.name = Some("{chosen name}".to_string());
             Some(filter)

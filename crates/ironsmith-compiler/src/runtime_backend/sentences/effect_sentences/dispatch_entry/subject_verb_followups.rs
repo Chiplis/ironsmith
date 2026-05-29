@@ -82,38 +82,33 @@ fn effect_needs_followup_library_shuffle(effect: &EffectAst) -> bool {
 }
 
 fn is_if_you_search_library_this_way_shuffle_sentence(tokens: &[OwnedLexToken]) -> bool {
-    let words: Vec<&str> = crate::runtime_backend::token_word_refs(tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
-    words.as_slice()
-        == [
+    let words = LexedClause::new(tokens).word_refs_where(|word| !is_article(word));
+    matches!(
+        words.as_slice(),
+        [
             "if", "you", "search", "your", "library", "this", "way", "shuffle",
+        ] | [
+            "if", "you", "search", "your", "library", "this", "way", "shuffles"
         ]
-        || words.as_slice()
-            == [
-                "if", "you", "search", "your", "library", "this", "way", "shuffles",
-            ]
+    )
 }
 
 fn is_then_that_player_shuffles_sentence(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    matches!(
-        words.as_slice(),
-        ["then", "that", "player", "shuffles"]
-            | ["that", "player", "shuffles"]
-            | ["then", "that", "player", "shuffle"]
-            | ["that", "player", "shuffle"]
-    )
+    LexedClause::new(tokens).matches_any_words(&[
+        &["then", "that", "player", "shuffles"],
+        &["that", "player", "shuffles"],
+        &["then", "that", "player", "shuffle"],
+        &["that", "player", "shuffle"],
+    ])
 }
 
 fn rule_matches_sentence_head(heads: &[&str], tokens: &[OwnedLexToken]) -> bool {
     if heads.is_empty() {
         return true;
     }
-    crate::runtime_backend::token_word_refs(tokens)
-        .first()
-        .is_some_and(|head| heads.iter().any(|candidate| head == candidate))
+    LexedClause::new(tokens)
+        .first_word()
+        .is_some_and(|head| heads.iter().any(|candidate| head == *candidate))
 }
 
 fn pre_followup_subject_verb_route(id: &str) -> &'static str {
@@ -262,7 +257,7 @@ fn pre_rule_future_zone_replacement_followup(
     _sentence_idx: usize,
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
-    let sentence_text = crate::runtime_backend::token_word_refs(sentence_tokens).join(" ");
+    let sentence_text = LexedClause::new(sentence_tokens).text();
     if !str_contains(&sentence_text, "would die this turn") {
         return Ok(None);
     }
@@ -289,13 +284,10 @@ fn pre_rule_skip_tapped_source_turn_replacement(
     _sentence_idx: usize,
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(sentence_tokens);
-    if words.as_slice()
-        != [
-            "if", "you", "would", "begin", "your", "turn", "while", "this", "artifact", "is",
-            "tapped", "you", "may", "skip", "that", "turn", "instead",
-        ]
-    {
+    if !LexedClause::new(sentence_tokens).matches_words(&[
+        "if", "you", "would", "begin", "your", "turn", "while", "this", "artifact", "is", "tapped",
+        "you", "may", "skip", "that", "turn", "instead",
+    ]) {
         return Ok(None);
     }
     Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
@@ -316,10 +308,9 @@ fn pre_rule_damage_this_way_player_followup(
     _sentence_idx: usize,
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(sentence_tokens);
-    if matches!(
-        words.as_slice(),
-        [
+    let clause = LexedClause::new(sentence_tokens);
+    if clause.matches_any_words(&[
+        &[
             "players",
             "dealt",
             "damage",
@@ -330,12 +321,13 @@ fn pre_rule_damage_this_way_player_followup(
             "noncreature",
             "spells",
             "this",
-            "turn"
-        ] | [
+            "turn",
+        ],
+        &[
             "players", "dealt", "damage", "this", "way", "cant", "cast", "non", "creature",
-            "spells", "this", "turn"
-        ]
-    ) {
+            "spells", "this", "turn",
+        ],
+    ]) {
         return Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
             tokens: sentence_tokens.to_vec(),
             wrap_if_result: None,
@@ -354,16 +346,16 @@ fn pre_rule_damage_this_way_player_followup(
         })));
     }
 
-    if !matches!(
-        words.as_slice(),
-        [
+    if !clause.matches_any_words(&[
+        &[
             "if", "a", "player", "is", "dealt", "damage", "this", "way", "they", "cant", "gain",
-            "life", "for", "the", "rest", "of", "the", "game"
-        ] | [
+            "life", "for", "the", "rest", "of", "the", "game",
+        ],
+        &[
             "if", "player", "is", "dealt", "damage", "this", "way", "they", "cant", "gain", "life",
-            "for", "the", "rest", "of", "the", "game"
-        ]
-    ) {
+            "for", "the", "rest", "of", "the", "game",
+        ],
+    ]) {
         return Ok(None);
     }
     Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
@@ -387,12 +379,10 @@ fn pre_rule_tap_damage_this_way_followup(
     _sentence_idx: usize,
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(sentence_tokens);
-    if !matches!(
-        words.as_slice(),
-        ["tap", "each", "creature", "dealt", "damage", "this", "way"]
-            | ["tap", "all", "creatures", "dealt", "damage", "this", "way"]
-    ) {
+    if !LexedClause::new(sentence_tokens).matches_any_words(&[
+        &["tap", "each", "creature", "dealt", "damage", "this", "way"],
+        &["tap", "all", "creatures", "dealt", "damage", "this", "way"],
+    ]) {
         return Ok(None);
     }
 
@@ -437,18 +427,16 @@ fn pre_rule_still_lands_followup(
 }
 
 pub(super) fn is_still_lands_followup_sentence(sentence_tokens: &[OwnedLexToken]) -> bool {
-    let sentence_words = TokenWordView::new(sentence_tokens).to_word_refs();
-    matches!(
-        sentence_words.as_slice(),
-        ["theyre", "still", "land"]
-            | ["theyre", "still", "lands"]
-            | ["they", "re", "still", "land"]
-            | ["they", "re", "still", "lands"]
-            | ["its", "still", "a", "land"]
-            | ["its", "still", "land"]
-            | ["it", "s", "still", "a", "land"]
-            | ["it", "s", "still", "land"]
-    )
+    LexedClause::new(sentence_tokens).matches_any_words(&[
+        &["theyre", "still", "land"],
+        &["theyre", "still", "lands"],
+        &["they", "re", "still", "land"],
+        &["they", "re", "still", "lands"],
+        &["its", "still", "a", "land"],
+        &["its", "still", "land"],
+        &["it", "s", "still", "a", "land"],
+        &["it", "s", "still", "land"],
+    ])
 }
 
 pub(super) fn previous_sentence_is_temporary_land_animation(
@@ -459,17 +447,10 @@ pub(super) fn previous_sentence_is_temporary_land_animation(
         .checked_sub(1)
         .and_then(|idx| sentences.get(idx))
         .is_some_and(|previous_sentence| {
-            let previous_words =
-                crate::runtime_backend::token_word_refs(previous_sentence.lowered());
-            previous_words
-                .iter()
-                .any(|word| *word == "become" || *word == "becomes")
-                && previous_words
-                    .iter()
-                    .any(|word| *word == "creature" || *word == "creatures")
-                && previous_words
-                    .windows(4)
-                    .any(|window| window == ["until", "end", "of", "turn"])
+            let previous_clause = LexedClause::new(previous_sentence.lowered());
+            previous_clause.contains_any_word(&["become", "becomes"])
+                && previous_clause.contains_any_word(&["creature", "creatures"])
+                && previous_clause.contains_phrase(&["until", "end", "of", "turn"])
         })
 }
 
@@ -498,7 +479,7 @@ fn pre_rule_cant_be_regenerated_followup(
     }
     Err(CardTextError::ParseError(format!(
         "unsupported standalone cant-be-regenerated clause (clause: '{}')",
-        crate::runtime_backend::token_word_refs(sentence_tokens).join(" ")
+        LexedClause::new(sentence_tokens).text()
     )))
 }
 
@@ -548,7 +529,7 @@ fn pre_rule_copy_and_cast_followups(
         }
         return Err(CardTextError::ParseError(format!(
             "unsupported standalone copy cost-reduction clause (clause: '{}')",
-            crate::runtime_backend::token_word_refs(sentence_tokens).join(" ")
+            LexedClause::new(sentence_tokens).text()
         )));
     }
 
@@ -589,7 +570,7 @@ fn pre_rule_token_followups(
         }
         return Err(CardTextError::ParseError(format!(
             "unsupported standalone token mana reminder clause (clause: '{}')",
-            crate::runtime_backend::token_word_refs(sentence_tokens).join(" ")
+            LexedClause::new(sentence_tokens).text()
         )));
     }
     if let Some(effect) =
@@ -614,7 +595,7 @@ fn pre_rule_token_followups(
         && state.effects.last().is_some_and(effect_creates_any_token)
     {
         if append_token_reminder_to_last_create_effect(state.effects, sentence_tokens) {
-            let reminder_words = crate::runtime_backend::token_word_refs(sentence_tokens);
+            let reminder_words = LexedClause::new(sentence_tokens).word_refs();
             let route = matches!(
                 reminder_words.as_slice(),
                 ["exile", ..] | ["sacrifice", ..]
@@ -629,11 +610,11 @@ fn pre_rule_token_followups(
         }
         return Err(CardTextError::ParseError(format!(
             "unsupported standalone token reminder clause (clause: '{}')",
-            crate::runtime_backend::token_word_refs(sentence_tokens).join(" ")
+            LexedClause::new(sentence_tokens).text()
         )));
     }
     if is_generic_token_reminder_sentence(sentence_tokens) {
-        let reminder_words = crate::runtime_backend::token_word_refs(sentence_tokens);
+        let reminder_words = LexedClause::new(sentence_tokens).word_refs();
         let delayed_pronoun_lifecycle =
             matches!(reminder_words.first().copied(), Some("exile" | "sacrifice"))
                 && (grammar::contains_word(sentence_tokens, "it")
@@ -643,7 +624,7 @@ fn pre_rule_token_followups(
         if !delayed_pronoun_lifecycle && !pronoun_followup_clause {
             return Err(CardTextError::ParseError(format!(
                 "unsupported standalone token reminder clause (clause: '{}')",
-                crate::runtime_backend::token_word_refs(sentence_tokens).join(" ")
+                LexedClause::new(sentence_tokens).text()
             )));
         }
     }
@@ -699,15 +680,25 @@ fn parse_create_more_of_prior_tokens(
     let (name, player) = last_created_token_info(prior_effects)?;
     let after_create = &sentence_tokens[create_idx + 1..];
     let (count, used) = parse_number(after_create)?;
-    let tail_words = crate::runtime_backend::token_word_refs(&after_create[used..]);
-    if tail_words.len() < 3 || tail_words[..3] != ["of", "those", "tokens"] {
+    let tail_words = LexedClause::new(&after_create[used..]).word_refs();
+    if tail_words.len() < 3
+        || !crate::runtime_backend::lexer::word_slice_eq(
+            &tail_words[..3],
+            &["of", "those", "tokens"],
+        )
+    {
         return None;
     }
     let trailing_words = &tail_words[3..];
     let trailing_is_supported = trailing_words.is_empty()
-        || trailing_words == ["instead"]
-        || trailing_words == ["onto", "the", "battlefield"]
-        || trailing_words == ["onto", "the", "battlefield", "instead"];
+        || crate::runtime_backend::lexer::word_slice_eq_any(
+            trailing_words,
+            &[
+                &["instead"],
+                &["onto", "the", "battlefield"],
+                &["onto", "the", "battlefield", "instead"],
+            ],
+        );
     if !trailing_is_supported {
         return None;
     }
@@ -796,7 +787,7 @@ fn pre_rule_exile_this_way_followup(
     else {
         return Err(CardTextError::ParseError(format!(
             "missing comma after if-card-put-into-exile-this-way clause (clause: '{}')",
-            crate::runtime_backend::token_word_refs(sentence_tokens).join(" ")
+            LexedClause::new(sentence_tokens).text()
         )));
     };
 
@@ -811,8 +802,7 @@ fn pre_rule_when_milled_this_way_followup(
     _sentence_idx: usize,
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(sentence_tokens);
-    if !words.starts_with(&[
+    if !LexedClause::new(sentence_tokens).starts_with(&[
         "when", "one", "or", "more", "cards", "are", "milled", "this", "way",
     ]) {
         return Ok(None);
@@ -828,11 +818,10 @@ fn pre_rule_when_milled_this_way_followup(
 }
 
 fn is_destroy_those_creatures_sentence(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    matches!(
-        words.as_slice(),
-        ["destroy", "those", "creatures"] | ["then", "destroy", "those", "creatures"]
-    )
+    LexedClause::new(tokens).matches_any_words(&[
+        &["destroy", "those", "creatures"],
+        &["then", "destroy", "those", "creatures"],
+    ])
 }
 
 fn last_remove_abilities_all_filter(effects: &[EffectAst]) -> Option<ObjectFilter> {
@@ -894,7 +883,7 @@ fn post_rule_future_zone_and_self_replacement(
     sentence_tokens: &[OwnedLexToken],
     sentence_effects: &mut Vec<EffectAst>,
 ) -> Result<Option<PostParseFollowupResult>, CardTextError> {
-    let sentence_text = crate::runtime_backend::token_word_refs(sentence_tokens).join(" ");
+    let sentence_text = LexedClause::new(sentence_tokens).text();
     maybe_rewrite_future_zone_replacement_sentence(sentence_effects, &sentence_text);
     if matches!(
         classify_instead_followup_text(&sentence_text),

@@ -1,6 +1,11 @@
 use super::*;
 use crate::runtime_backend::SubjectAst;
 use crate::runtime_backend::ast::SubjectVerbActionAst;
+use crate::runtime_backend::lexer::LexedClause;
+use crate::runtime_backend::lexer::{
+    word_slice_contains_any_phrase_or_empty, word_slice_contains_phrase_or_empty,
+    word_slice_contains_word, word_slice_find_phrase_start_or_zero, word_slice_starts_with,
+};
 
 pub(crate) type ActivationRestrictionCompatWords<'a> = grammar::TokenWordView<'a>;
 
@@ -8,16 +13,18 @@ pub(crate) fn strip_prefix_phrase<'a>(
     tokens: &'a [OwnedLexToken],
     phrase: &'static [&'static str],
 ) -> Option<&'a [OwnedLexToken]> {
-    grammar::parse_prefix(tokens, grammar::phrase(phrase)).map(|(_, rest)| rest)
+    LexedClause::new(tokens)
+        .strip_prefix_clause(phrase)
+        .map(|rest| rest.tokens())
 }
 
-pub(crate) fn strip_prefix_phrases<'a>(
+pub(crate) fn strip_prefix_phrases<'a, 'p>(
     tokens: &'a [OwnedLexToken],
-    phrases: &[&'static [&'static str]],
-) -> Option<(&'static [&'static str], &'a [OwnedLexToken])> {
-    phrases
-        .iter()
-        .find_map(|phrase| strip_prefix_phrase(tokens, phrase).map(|rest| (*phrase, rest)))
+    phrases: &'p [&'p [&'p str]],
+) -> Option<(&'p [&'p str], &'a [OwnedLexToken])> {
+    LexedClause::new(tokens)
+        .strip_any_prefix_clause(phrases)
+        .map(|(phrase, rest)| (phrase, rest.tokens()))
 }
 
 pub(crate) fn joined_activation_clause_text(tokens: &[OwnedLexToken]) -> String {
@@ -211,24 +218,25 @@ pub(crate) fn parse_activated_line_with_raw(
                     .or_else(|| parse_add_mana_equal_amount_value(mana_tokens))
             };
 
-            let has_imprinted_colors = slice_contains(&mana_words, &"exiled")
-                && (slice_contains(&mana_words, &"card") || slice_contains(&mana_words, &"cards"))
+            let has_imprinted_colors = word_slice_contains_word(&mana_words, "exiled")
+                && (word_slice_contains_word(&mana_words, "card")
+                    || word_slice_contains_word(&mana_words, "cards"))
                 && mana_words
                     .iter()
                     .any(|word| *word == "color" || *word == "colors");
             let has_any_combination_mana =
                 contains_word_sequence(&mana_words, &["any", "combination", "of"]);
-            let has_any_choice_mana = slice_contains(&mana_words, &"any")
-                && (slice_contains(&mana_words, &"color")
-                    || slice_contains(&mana_words, &"type")
+            let has_any_choice_mana = word_slice_contains_word(&mana_words, "any")
+                && (word_slice_contains_word(&mana_words, "color")
+                    || word_slice_contains_word(&mana_words, "type")
                     || has_any_combination_mana);
-            let has_or_choice_mana = slice_contains(&mana_words, &"or");
-            let has_chosen_color =
-                slice_contains(&mana_words, &"chosen") && slice_contains(&mana_words, &"color");
+            let has_or_choice_mana = word_slice_contains_word(&mana_words, "or");
+            let has_chosen_color = word_slice_contains_word(&mana_words, "chosen")
+                && word_slice_contains_word(&mana_words, "color");
             let uses_commander_identity = mana_words
                 .iter()
                 .any(|word| *word == "commander" || *word == "commanders")
-                && slice_contains(&mana_words, &"identity");
+                && word_slice_contains_word(&mana_words, "identity");
             let loyalty_timing = if loyalty_shorthand_cost.is_some() {
                 ActivationTiming::SorcerySpeed
             } else {
@@ -474,7 +482,7 @@ pub(crate) fn resolve_activated_mana_x_requirements(
     }
 
     let x_defined_by_removed_this_way = contains_word_sequence(&clause_words, &["this", "way"])
-        && slice_contains(&clause_words, &"removed")
+        && word_slice_contains_word(&clause_words, "removed")
         && clause_words
             .iter()
             .any(|word| matches!(*word, "counter" | "counters"));
@@ -683,7 +691,7 @@ pub(crate) fn normalize_activate_only_restriction(
 }
 
 pub(crate) fn contains_word_sequence(words: &[&str], sequence: &[&str]) -> bool {
-    find_word_sequence_start(words, sequence).is_some()
+    word_slice_contains_phrase_or_empty(words, sequence)
 }
 
 pub(crate) fn is_for_each_color_among_add_mana_clause(tokens: &[OwnedLexToken]) -> bool {
@@ -693,17 +701,11 @@ pub(crate) fn is_for_each_color_among_add_mana_clause(tokens: &[OwnedLexToken]) 
 }
 
 pub(crate) fn find_word_sequence_start(words: &[&str], sequence: &[&str]) -> Option<usize> {
-    if sequence.is_empty() {
-        Some(0)
-    } else {
-        find_word_slice_phrase_start(words, sequence)
-    }
+    word_slice_find_phrase_start_or_zero(words, sequence)
 }
 
 pub(crate) fn contains_any_word_sequence(words: &[&str], sequences: &[&[&str]]) -> bool {
-    sequences
-        .iter()
-        .any(|sequence| contains_word_sequence(words, sequence))
+    word_slice_contains_any_phrase_or_empty(words, sequences)
 }
 
 pub(crate) fn flatten_mana_activation_conditions(
@@ -953,8 +955,8 @@ pub(crate) fn parse_enters_tapped_line(
         return Ok(None);
     }
     if is_negated_untap_clause(&clause_words) {
-        let has_enters_tapped =
-            slice_contains(&clause_words, &"enters") && slice_contains(&clause_words, &"tapped");
+        let has_enters_tapped = word_slice_contains_word(&clause_words, "enters")
+            && word_slice_contains_word(&clause_words, "tapped");
         if has_enters_tapped {
             return Err(CardTextError::ParseError(format!(
                 "unsupported mixed enters-tapped and negated-untap clause (clause: '{}')",
@@ -964,8 +966,8 @@ pub(crate) fn parse_enters_tapped_line(
         return Ok(None);
     }
     if clause_words.first().copied() == Some("this")
-        && slice_contains(&clause_words, &"enters")
-        && slice_contains(&clause_words, &"tapped")
+        && word_slice_contains_word(&clause_words, "enters")
+        && word_slice_contains_word(&clause_words, "tapped")
     {
         let tapped_word_idx =
             find_index(&clause_words, |word| *word == "tapped").ok_or_else(|| {
@@ -1004,7 +1006,7 @@ pub(crate) fn parse_cost_reduction_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let line_words = crate::runtime_backend::token_word_refs(tokens);
-    if slice_starts_with(&line_words, &["this", "cost", "is", "reduced", "by"])
+    if word_slice_starts_with(&line_words, &["this", "cost", "is", "reduced", "by"])
         && line_words.len() > 6
     {
         let amount_tokens = trim_commas(&tokens[5..]);
@@ -1017,8 +1019,8 @@ pub(crate) fn parse_cost_reduction_line(
         };
         let remaining_tokens = amount_tokens.get(used..).unwrap_or_default();
         let remaining_words = crate::runtime_backend::token_word_refs(remaining_tokens);
-        if slice_contains(&remaining_words, &"for")
-            && slice_contains(&remaining_words, &"each")
+        if word_slice_contains_word(&remaining_words, "for")
+            && word_slice_contains_word(&remaining_words, "each")
             && let Some(dynamic) = parse_dynamic_cost_modifier_value(remaining_tokens)?
         {
             let reduction = scale_dynamic_cost_modifier_value(dynamic, amount_fixed);
@@ -1044,7 +1046,7 @@ pub(crate) fn parse_cost_reduction_line(
         )));
     }
 
-    if slice_starts_with(&line_words, &["activated", "abilities", "of"]) {
+    if word_slice_starts_with(&line_words, &["activated", "abilities", "of"]) {
         let Some(cost_idx) = find_index(&line_words, |word| *word == "cost" || *word == "costs")
         else {
             return Ok(None);
@@ -1080,7 +1082,7 @@ pub(crate) fn parse_cost_reduction_line(
             }
         };
         let tail_words = crate::runtime_backend::token_word_refs(&amount_tokens[used..]);
-        if !slice_starts_with(&tail_words, &["less", "to", "activate"]) {
+        if !word_slice_starts_with(&tail_words, &["less", "to", "activate"]) {
             return Ok(None);
         }
 
@@ -1091,7 +1093,7 @@ pub(crate) fn parse_cost_reduction_line(
         )));
     }
 
-    if slice_starts_with(&line_words, &["this", "ability", "costs"]) {
+    if word_slice_starts_with(&line_words, &["this", "ability", "costs"]) {
         let amount_tokens = trim_commas(&tokens[3..]);
         let Some((amount_value, used)) = parse_cost_modifier_amount(&amount_tokens) else {
             return Ok(None);
@@ -1114,7 +1116,7 @@ pub(crate) fn parse_cost_reduction_line(
                 None,
             )));
         }
-        if slice_starts_with(&tail_words, &["less", "to", "activate", "if"]) {
+        if word_slice_starts_with(&tail_words, &["less", "to", "activate", "if"]) {
             let condition_tokens = trim_commas(&tail_tokens[4..]);
             let condition_words = crate::runtime_backend::token_word_refs(&condition_tokens);
             if condition_words.first().copied() == Some("it")
@@ -1153,7 +1155,7 @@ pub(crate) fn parse_cost_reduction_line(
                 line_words.join(" ")
             )));
         }
-        if slice_starts_with(&tail_words, &["less", "to", "activate", "for", "each"]) {
+        if word_slice_starts_with(&tail_words, &["less", "to", "activate", "for", "each"]) {
             if let Some(Value::BasicLandTypesAmong(lands_filter)) =
                 parse_dynamic_cost_modifier_value(&tail_tokens)?
             {
@@ -1186,7 +1188,7 @@ pub(crate) fn parse_cost_reduction_line(
         }
     }
 
-    if !slice_starts_with(&line_words, &["this", "spell", "costs"]) {
+    if !word_slice_starts_with(&line_words, &["this", "spell", "costs"]) {
         return Ok(None);
     }
 
@@ -1204,7 +1206,7 @@ pub(crate) fn parse_cost_reduction_line(
     let remaining_tokens = &tokens[costs_idx + 1 + used..];
     let remaining_words: Vec<&str> = crate::runtime_backend::token_word_refs(remaining_tokens);
 
-    if !slice_contains(&remaining_words, &"less") {
+    if !word_slice_contains_word(&remaining_words, "less") {
         return Ok(None);
     }
 
@@ -1218,9 +1220,9 @@ pub(crate) fn parse_cost_reduction_line(
         return Ok(None);
     }
 
-    let has_each = slice_contains(&remaining_words, &"each");
+    let has_each = word_slice_contains_word(&remaining_words, "each");
     let has_card_type = contains_word_sequence(&remaining_words, &["card", "type"]);
-    let has_graveyard = slice_contains(&remaining_words, &"graveyard");
+    let has_graveyard = word_slice_contains_word(&remaining_words, "graveyard");
 
     if has_each && has_card_type && has_graveyard {
         if amount_fixed != 1 {

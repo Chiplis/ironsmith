@@ -503,8 +503,8 @@ fn counter_effect_target(effect: &Effect) -> Option<&ChooseSpec> {
 }
 
 fn unless_pays_counter_target(effect: &Effect) -> Option<&ChooseSpec> {
-    let unless_pays = unwrap_tagged_effect(effect)
-        .downcast_ref::<crate::effects::UnlessPaysEffect>()?;
+    let unless_pays =
+        unwrap_tagged_effect(effect).downcast_ref::<crate::effects::UnlessPaysEffect>()?;
     let [counter_effect] = unless_pays.effects.as_slice() else {
         return None;
     };

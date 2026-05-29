@@ -19,27 +19,13 @@ fn activated_effect_may_be_mana_ability_lexed(tokens: &[OwnedLexToken]) -> bool 
             )
 }
 
-fn word_refs_contain_sequence(words: &[&str], sequence: &[&str]) -> bool {
-    if sequence.is_empty() {
-        return true;
-    }
-    if words.len() < sequence.len() {
-        return false;
-    }
-    let mut start = 0usize;
-    while start + sequence.len() <= words.len() {
-        if words[start..].starts_with(sequence) {
-            return true;
-        }
-        start += 1;
-    }
-    false
-}
-
 fn activated_effect_is_for_each_color_among_add_mana_lexed(tokens: &[OwnedLexToken]) -> bool {
     let words = token_word_refs(tokens);
-    word_refs_contain_sequence(&words, &["for", "each", "color", "among"])
-        && word_refs_contain_sequence(&words, &["add", "one", "mana", "of", "that", "color"])
+    word_slice_contains_phrase_or_empty(&words, &["for", "each", "color", "among"])
+        && word_slice_contains_phrase_or_empty(
+            &words,
+            &["add", "one", "mana", "of", "that", "color"],
+        )
 }
 
 fn activation_cost_defines_x_for_mana_ability(cost: &TotalCost) -> bool {
