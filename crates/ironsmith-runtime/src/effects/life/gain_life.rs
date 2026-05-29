@@ -2,14 +2,93 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
-use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
+use crate::effects::helpers::{
+    resolve_player_filter_to_list, resolve_player_from_spec, resolve_value,
+};
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::cause::CauseType;
 use crate::events::LifeGainEvent;
 use crate::events::processing::process_life_gain_with_event;
 use crate::game_state::GameState;
+use crate::ids::PlayerId;
 use crate::target::ChooseSpec;
 use crate::triggers::TriggerEvent;
 pub use ironsmith_core::GainLifeEffect;
+
+fn candidate_life_gain_players(
+    game: &GameState,
+    spec: &ChooseSpec,
+    ctx: &ExecutionContext,
+) -> Result<Vec<PlayerId>, ExecutionError> {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. }
+        | ChooseSpec::WithCount(spec, _)
+        | ChooseSpec::WithCountValue(spec, _, _) => candidate_life_gain_players(game, spec, ctx),
+        ChooseSpec::Player(filter)
+        | ChooseSpec::EachPlayer(filter)
+        | ChooseSpec::PlayerOrPlaneswalker(filter) => {
+            let filter_ctx = ctx.filter_context(game);
+            resolve_player_filter_to_list(game, filter, &filter_ctx, ctx)
+        }
+        _ => resolve_player_from_spec(game, spec, ctx).map(|player| vec![player]),
+    }
+}
+
+fn legal_life_gain_cost_recipients(
+    game: &GameState,
+    spec: &ChooseSpec,
+    ctx: &ExecutionContext,
+) -> Result<Vec<PlayerId>, ExecutionError> {
+    let mut players = candidate_life_gain_players(game, spec, ctx)?;
+    players.retain(|player| *player != ctx.controller && game.can_gain_life(*player));
+    players.sort_by_key(|player| player.0);
+    players.dedup();
+    Ok(players)
+}
+
+fn resolve_life_gain_cost_recipient(
+    game: &GameState,
+    spec: &ChooseSpec,
+    ctx: &mut ExecutionContext,
+) -> Result<PlayerId, ExecutionError> {
+    let candidates = legal_life_gain_cost_recipients(game, spec, ctx)?;
+    if let Some(chosen) = ctx.targets.iter().find_map(|target| match target {
+        crate::effects::ResolvedTarget::Player(player) if candidates.contains(player) => {
+            Some(*player)
+        }
+        _ => None,
+    }) {
+        return Ok(chosen);
+    }
+
+    match candidates.as_slice() {
+        [player] => Ok(*player),
+        [] => Err(ExecutionError::Impossible(
+            "no legal life-gain cost recipient".to_string(),
+        )),
+        _ => {
+            let options = candidates
+                .iter()
+                .filter_map(|player_id| {
+                    game.player(*player_id)
+                        .map(|player| (player.name.clone(), *player_id))
+                })
+                .collect::<Vec<_>>();
+            crate::decisions::ask_choose_one(
+                game,
+                &mut ctx.decision_maker,
+                ctx.controller,
+                ctx.source,
+                &options,
+            )
+            .ok_or_else(|| {
+                ExecutionError::UnresolvableValue(
+                    "life-gain cost recipient choice is pending".to_string(),
+                )
+            })
+        }
+    }
+}
 
 /// Effect that causes a player to gain life.
 ///
@@ -43,7 +122,11 @@ impl EffectExecutor for GainLifeEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let player_id = resolve_player_from_spec(game, &self.player, ctx)?;
+        let player_id = if ctx.cause.cause_type == CauseType::Cost {
+            resolve_life_gain_cost_recipient(game, &self.player, ctx)?
+        } else {
+            resolve_player_from_spec(game, &self.player, ctx)?
+        };
         let amount = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
 
         // Process through replacement effects and check "can't gain life"
@@ -90,17 +173,12 @@ impl CostExecutableEffect for GainLifeEffect {
         controller: crate::ids::PlayerId,
     ) -> Result<(), CostValidationError> {
         let ctx = ExecutionContext::new_default(source, controller);
-        let player = resolve_player_from_spec(game, &self.player, &ctx).map_err(|err| {
+        let candidates = legal_life_gain_cost_recipients(game, &self.player, &ctx).map_err(|err| {
             CostValidationError::Other(format!("unable to choose life-gain recipient: {err:?}"))
         })?;
-        if player == controller {
+        if candidates.is_empty() {
             return Err(CostValidationError::Other(
-                "life-gain costs must benefit another player".to_string(),
-            ));
-        }
-        if !game.can_gain_life(player) {
-            return Err(CostValidationError::Other(
-                "chosen player can't gain life".to_string(),
+                "no legal player can gain life for this cost".to_string(),
             ));
         }
         Ok(())

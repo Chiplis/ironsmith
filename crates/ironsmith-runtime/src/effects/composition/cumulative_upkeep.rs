@@ -6,6 +6,7 @@ use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
+use crate::events::cause::EventCause;
 use crate::game_state::GameState;
 use crate::object::CounterType;
 
@@ -135,7 +136,8 @@ fn payment_can_complete(
     let mut simulated_game = game.clone();
     let mut simulated_dm = SelectFirstDecisionMaker;
     let mut simulated_ctx = ExecutionContext::new_default(ctx.source, ctx.controller)
-        .with_decision_maker(&mut simulated_dm);
+        .with_decision_maker(&mut simulated_dm)
+        .with_cause(EventCause::from_cost(ctx.source, ctx.controller));
 
     for _ in 0..count {
         if !payment_effects_can_execute_as_cost(effects, &simulated_game, &simulated_ctx) {
@@ -177,6 +179,7 @@ fn execute_payment_atomically(
 ) -> Result<Option<EffectOutcome>, ExecutionError> {
     let game_checkpoint = game.clone();
     let ctx_checkpoint = ExecutionContextCheckpoint::from_context(ctx);
+    let original_cause = ctx.cause.clone();
     let mut outcomes = Vec::new();
     let mut failed_to_pay = false;
     let mut execution_error = None;
@@ -186,6 +189,7 @@ fn execute_payment_atomically(
             failed_to_pay = true;
             break;
         }
+        ctx.cause = EventCause::from_cost(ctx.source, ctx.controller);
         match execute_sequence(game, ctx, effects) {
             Ok(outcome) => {
                 let status = outcome.status;
@@ -211,6 +215,7 @@ fn execute_payment_atomically(
         return Ok(None);
     }
 
+    ctx.cause = original_cause;
     Ok(Some(EffectOutcome::aggregate_summing_counts(outcomes)))
 }
 
@@ -535,6 +540,61 @@ mod tests {
         assert!(
             !game.battlefield.contains(&source),
             "Wall of Shards should be sacrificed when its life-gain cost can't be paid"
+        );
+    }
+
+    #[test]
+    fn wall_of_shards_cumulative_upkeep_can_choose_legal_opponent_in_multiplayer() {
+        let mut game = GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        game.effect_store.cant_effects.add_cant_gain_life(bob);
+        let wall = CardBuilder::new(CardId::new(), "Wall of Shards")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let source = game.create_object_from_card(&wall, alice, Zone::Battlefield);
+        game.object_mut(source)
+            .expect("Wall of Shards exists")
+            .add_counters(CounterType::Age, 2);
+        let payment = Effect::new(crate::effects::GainLifeEffect::new(
+            1,
+            crate::target::ChooseSpec::Player(crate::target::PlayerFilter::Opponent),
+        ));
+        let cost_effect = payment
+            .downcast_ref::<crate::effects::GainLifeEffect>()
+            .expect("Wall of Shards payment should be a gain-life effect");
+        crate::effects::CostExecutableEffect::can_execute_as_cost(
+            cost_effect,
+            &game,
+            source,
+            alice,
+        )
+        .expect("one opponent who can gain life should make the upkeep cost payable");
+        let effect = Effect::cumulative_upkeep(
+            vec![payment],
+            crate::target::PlayerFilter::You,
+            vec![Effect::sacrifice_source()],
+        );
+        let mut dm = BooleanDecisionMaker { response: true };
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+
+        execute_effect(&mut game, &effect, &mut ctx)
+            .expect("multiplayer Wall of Shards upkeep should resolve");
+
+        assert!(game.battlefield.contains(&source));
+        assert_eq!(
+            game.player(bob).expect("bob").life,
+            20,
+            "an opponent who can't gain life should not be chosen for the payment"
+        );
+        assert_eq!(
+            game.player(charlie).expect("charlie").life,
+            22,
+            "the legal opponent should gain one life for each age-counter payment"
         );
     }
 
