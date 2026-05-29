@@ -421,6 +421,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::PreventAllCombatDamageFromSourceFilter { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageToPlayers { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }
+            | SubjectVerbActionAst::PreventAllCombatDamageToYouAndPermanentsMatching { .. }
             | SubjectVerbActionAst::PreventNextTimeDamage { .. }
             | SubjectVerbActionAst::RedirectNextTimeDamageToSource { .. }
             | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { .. }

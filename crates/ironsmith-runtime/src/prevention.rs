@@ -255,6 +255,7 @@ impl PreventionEffectManager {
         &self,
         permanent: ObjectId,
         controller: PlayerId,
+        target_filter_matches: &HashMap<PreventionShieldId, bool>,
     ) -> Vec<&PreventionShield> {
         self.shields
             .iter()
@@ -262,10 +263,8 @@ impl PreventionEffectManager {
             .filter(|s| match &s.protected {
                 PreventionTarget::Permanent(p) => *p == permanent,
                 PreventionTarget::YouAndPermanentsYouControl => s.controller == controller,
-                PreventionTarget::PermanentsMatching(_filter) => {
-                    // Would need object context to evaluate filter
-                    // For now, include all filter-based shields
-                    true
+                PreventionTarget::PermanentsMatching(_) => {
+                    target_filter_matches.get(&s.id).copied().unwrap_or(false)
                 }
                 PreventionTarget::All => true,
                 _ => false,
@@ -393,6 +392,7 @@ impl PreventionEffectManager {
         can_be_prevented: bool,
     ) -> u32 {
         let source_filter_matches = HashMap::new();
+        let target_filter_matches = HashMap::new();
         self.apply_prevention_to_permanent_with_follow_ups(
             permanent,
             controller,
@@ -403,6 +403,7 @@ impl PreventionEffectManager {
             source_card_types,
             can_be_prevented,
             &source_filter_matches,
+            &target_filter_matches,
         )
         .remaining
     }
@@ -419,6 +420,7 @@ impl PreventionEffectManager {
         source_card_types: &[CardType],
         can_be_prevented: bool,
         source_filter_matches: &HashMap<PreventionShieldId, bool>,
+        target_filter_matches: &HashMap<PreventionShieldId, bool>,
     ) -> PreventionApplicationResult {
         if damage == 0 {
             return PreventionApplicationResult::default();
@@ -429,7 +431,7 @@ impl PreventionEffectManager {
 
         // Find applicable shields
         let shield_ids: Vec<PreventionShieldId> = self
-            .get_shields_for_permanent(permanent, controller)
+            .get_shields_for_permanent(permanent, controller, target_filter_matches)
             .iter()
             .filter(|s| {
                 let source_filter_ok = s.damage_filter.from_source.is_none()

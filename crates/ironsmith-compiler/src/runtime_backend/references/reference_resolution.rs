@@ -1743,6 +1743,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::PreventAllCombatDamageFromSourceFilter { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageToPlayers { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }
+            | SubjectVerbActionAst::PreventAllCombatDamageToYouAndPermanentsMatching { .. }
             | SubjectVerbActionAst::PreventNextTimeDamage { .. }
             | SubjectVerbActionAst::RedirectNextTimeDamageToSource { .. }
             | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { .. }
@@ -2484,6 +2485,10 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::RevealTopChooseCardTypePutToHandRestBottom { .. }
             | SubjectVerbActionAst::GrantAbilityToSource { .. }
             | SubjectVerbActionAst::ExchangeZones { .. } => 0,
+            SubjectVerbActionAst::PreventAllCombatDamageToYouAndPermanentsMatching {
+                filter,
+                ..
+            } => bind_unresolved_it_in_filter(filter, seed_tag),
             SubjectVerbActionAst::ExchangeControlHeterogeneous {
                 permanent1,
                 permanent2,

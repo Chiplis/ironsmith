@@ -669,6 +669,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::PreventAllCombatDamageFromSourceFilter { .. }
         | SubjectVerbActionAst::PreventAllCombatDamageToPlayers { .. }
         | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }
+        | SubjectVerbActionAst::PreventAllCombatDamageToYouAndPermanentsMatching { .. }
         | SubjectVerbActionAst::PreventNextTimeDamage { .. }
         | SubjectVerbActionAst::RedirectNextTimeDamageToSource { .. }
         | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { .. }

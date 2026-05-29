@@ -851,6 +851,20 @@ pub(crate) fn parse_prevent_damage_target_scope_lexed(
             ),
         ));
     }
+    if target_words.first().copied() == Some("you")
+        && let Some(and_idx) = tokens.iter().position(|token| token.is_word("and"))
+    {
+        let permanent_tokens = trim_commas(&tokens[and_idx + 1..]);
+        let filter = parse_object_filter(&permanent_tokens, false)?;
+        if filter != ObjectFilter::default() {
+            return Ok(Some(
+                EffectAst::subject_verb_prevent_all_combat_damage_to_you_and_permanents_matching(
+                    filter,
+                    crate::effect::Until::EndOfTurn,
+                ),
+            ));
+        }
+    }
 
     Err(CardTextError::ParseError(format!(
         "unsupported prevent-all target scope '{}'",

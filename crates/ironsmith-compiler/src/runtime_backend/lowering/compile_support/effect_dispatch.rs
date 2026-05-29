@@ -1416,6 +1416,23 @@ fn compile_subject_verb_effect(
             vec![Effect::prevent_all_combat_damage_to_you(duration.clone())],
             Vec::new(),
         )),
+        SubjectVerbActionAst::PreventAllCombatDamageToYouAndPermanentsMatching {
+            duration,
+            filter,
+        } => {
+            let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            Ok((
+                vec![
+                    Effect::prevent_all_combat_damage_to_you(duration.clone()),
+                    Effect::new(crate::effects::PreventAllDamageEffect::matching_with_filter(
+                        resolved_filter,
+                        ironsmith_core::DamageFilter::combat(),
+                        duration.clone(),
+                    )),
+                ],
+                Vec::new(),
+            ))
+        }
         SubjectVerbActionAst::PreventNextTimeDamage {
             source,
             target,

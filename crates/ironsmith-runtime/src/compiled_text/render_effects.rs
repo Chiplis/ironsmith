@@ -3973,6 +3973,67 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
 
+    fn describe_tag_matching_untap_then_goad(effects: &[&Effect]) -> Option<String> {
+        let [tag_effect, untap_effect, goad_effect] = effects else {
+            return None;
+        };
+        let tag_matching = tag_effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+        let untap = untap_effect.downcast_ref::<crate::effects::UntapEffect>()?;
+        let ChooseSpec::All(untap_filter) = &untap.target else {
+            return None;
+        };
+        if untap_filter != &tag_matching.filter {
+            return None;
+        }
+        let goad = goad_view(goad_effect)?;
+        if !choose_spec_references_exact_tag(&goad.target, &tag_matching.tag) {
+            return None;
+        }
+        let subject = pluralize_noun_phrase(strip_leading_article(&tag_matching.filter.description()));
+        Some(format!("Untap all {subject} and goad them"))
+    }
+
+    if let Some(compact) = describe_tag_matching_untap_then_goad(&filtered) {
+        return compact;
+    }
+
+    fn describe_you_and_matching_combat_prevention_pair(
+        first: &Effect,
+        second: &Effect,
+    ) -> Option<String> {
+        let prevent_you = first.downcast_ref::<crate::effects::PreventAllCombatDamageEffect>()?;
+        if !matches!(
+            prevent_you.target,
+            crate::effects::CombatDamagePreventionTarget::You
+        ) {
+            return None;
+        }
+        let prevent_matching = second.downcast_ref::<crate::effects::PreventAllDamageEffect>()?;
+        if prevent_matching.until != prevent_you.until
+            || !prevent_matching.damage_filter.combat_only
+            || prevent_matching.damage_filter.noncombat_only
+            || prevent_matching.damage_filter.from_source.is_some()
+            || prevent_matching.damage_filter.from_colors.is_some()
+            || prevent_matching.damage_filter.from_card_types.is_some()
+            || prevent_matching.damage_filter.from_specific_source.is_some()
+        {
+            return None;
+        }
+        let crate::prevention::PreventionTarget::PermanentsMatching(filter) =
+            &prevent_matching.target
+        else {
+            return None;
+        };
+        let timing = match prevent_you.until {
+            Until::EndOfTurn => "this turn".to_string(),
+            _ => describe_until(&prevent_you.until),
+        };
+        Some(format!(
+            "Prevent all combat damage that would be dealt to you and {} {timing}",
+            pluralize_noun_phrase(strip_leading_article(&filter.description()))
+        ))
+    }
+
     fn tagged_apply_continuous_view(
         effect: &Effect,
     ) -> Option<&crate::effects::ApplyContinuousEffect> {
@@ -12038,6 +12099,21 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         {
             parts.push(compact);
             idx += 5;
+            continue;
+        }
+        if idx + 2 < filtered.len()
+            && let Some(compact) = describe_tag_matching_untap_then_goad(&filtered[idx..idx + 3])
+        {
+            parts.push(compact);
+            idx += 3;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) =
+                describe_you_and_matching_combat_prevention_pair(filtered[idx], filtered[idx + 1])
+        {
+            parts.push(compact);
+            idx += 2;
             continue;
         }
         if idx + 1 < filtered.len()

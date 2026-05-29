@@ -46250,6 +46250,212 @@ fn parse_full_throttle_two_additional_combats() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_oracle_take_the_bait_strict_and_keeps_all_effect_clauses() {
+    let def = parse_oracle_card_definition("Take the Bait");
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join(" ");
+
+    assert!(
+        rendered.contains(
+            "Prevent all combat damage that would be dealt to you and planeswalkers you control this turn"
+        ),
+        "Take the Bait should preserve the player-and-planeswalkers prevention clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Untap all attacking creatures and goad them"),
+        "Take the Bait should preserve the attacking-creature untap/goad clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("After this phase, there is an additional combat phase"),
+        "Take the Bait should preserve the extra-combat clause, got {rendered}"
+    );
+    assert!(
+        !rendered.to_ascii_lowercase().contains("unsupported"),
+        "Take the Bait should parse strictly without unsupported markers, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_take_the_bait(game: &mut crate::game_state::GameState, controller: PlayerId) {
+    let def = parse_oracle_card_definition("Take the Bait");
+    let spell_id = game.create_object_from_definition(&def, controller, Zone::Stack);
+    game.push_to_stack(crate::game_state::StackEntry::new(spell_id, controller));
+    crate::game_loop::resolve_stack_entry_with(
+        game,
+        &mut crate::decision::SelectFirstDecisionMaker,
+    )
+    .expect("Take the Bait should resolve");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn take_the_bait_cast_restriction_requires_combat_on_opponents_turn() {
+    let def = parse_oracle_card_definition("Take the Bait");
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Hand);
+
+    game.turn.active_player = bob;
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+    let spell = game
+        .object(spell_id)
+        .expect("Take the Bait should exist in hand");
+    assert!(
+        !crate::decision::spell_cast_restrictions_allow(&game, alice, spell),
+        "Take the Bait should not be cast outside combat"
+    );
+
+    game.turn.active_player = alice;
+    game.turn.phase = crate::game_state::Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+    let spell = game
+        .object(spell_id)
+        .expect("Take the Bait should exist in hand");
+    assert!(
+        !crate::decision::spell_cast_restrictions_allow(&game, alice, spell),
+        "Take the Bait should not be cast during combat on its controller's turn"
+    );
+
+    game.turn.active_player = bob;
+    let spell = game
+        .object(spell_id)
+        .expect("Take the Bait should exist in hand");
+    assert!(
+        crate::decision::spell_cast_restrictions_allow(&game, alice, spell),
+        "Take the Bait should be castable during combat on an opponent's turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn take_the_bait_runtime_prevents_combat_damage_untaps_goads_and_adds_combat() {
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.active_player = bob;
+    game.turn.phase = crate::game_state::Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let bob_attacker = create_winds_test_creature(&mut game, "Bob Attacker", bob, 3, 3);
+    let bob_attacker_two = create_winds_test_creature(&mut game, "Second Bob Attacker", bob, 2, 2);
+    let alice_creature = create_winds_test_creature(&mut game, "Alice Creature", alice, 2, 2);
+    let bystander = create_winds_test_creature(&mut game, "Bystander", bob, 1, 1);
+    let planeswalker = crate::card::CardBuilder::new(CardId::new(), "Alice Planeswalker")
+        .card_types(vec![CardType::Planeswalker])
+        .build();
+    let alice_planeswalker = game.create_object_from_card(&planeswalker, alice, Zone::Battlefield);
+
+    game.tap(bob_attacker);
+    game.tap(bob_attacker_two);
+    game.tap(bystander);
+
+    game.combat = Some(crate::combat_state::CombatState {
+        attackers: vec![
+            crate::combat_state::AttackerInfo {
+                creature: bob_attacker,
+                target: crate::combat_state::AttackTarget::Player(alice),
+            },
+            crate::combat_state::AttackerInfo {
+                creature: bob_attacker_two,
+                target: crate::combat_state::AttackTarget::Planeswalker(alice_planeswalker),
+            },
+        ],
+        blockers: std::collections::HashMap::new(),
+        ..Default::default()
+    });
+
+    resolve_take_the_bait(&mut game, alice);
+
+    assert!(
+        !game.is_tapped(bob_attacker) && !game.is_tapped(bob_attacker_two),
+        "Take the Bait should untap all attacking creatures"
+    );
+    assert!(
+        game.is_tapped(bystander),
+        "Take the Bait should not untap nonattacking creatures"
+    );
+    assert!(
+        game.is_goaded(bob_attacker) && game.is_goaded(bob_attacker_two),
+        "Take the Bait should goad every attacking creature"
+    );
+    assert!(
+        !game.is_goaded(bystander),
+        "Take the Bait should not goad nonattacking creatures"
+    );
+    assert_eq!(
+        game.turn_store.additional_phases,
+        vec![crate::game_state::Phase::Combat],
+        "Take the Bait should queue one additional combat phase"
+    );
+
+    let (damage_to_alice, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        bob_attacker,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        true,
+        crate::events::cause::EventCause::combat_damage(bob_attacker),
+    );
+    assert_eq!(damage_to_alice, 0, "combat damage to Alice should be prevented");
+
+    let (damage_to_planeswalker, _) =
+        crate::events::processing::process_damage_with_event(
+            &mut game,
+            bob_attacker,
+            crate::events::DamageTarget::Object(alice_planeswalker),
+            3,
+            true,
+            crate::events::cause::EventCause::combat_damage(bob_attacker),
+        );
+    assert_eq!(
+        damage_to_planeswalker, 0,
+        "combat damage to Alice's planeswalker should be prevented"
+    );
+
+    let (damage_to_creature, creature_prevented) =
+        crate::events::processing::process_damage_with_event(
+            &mut game,
+            bob_attacker,
+            crate::events::DamageTarget::Object(alice_creature),
+            3,
+            true,
+            crate::events::cause::EventCause::combat_damage(bob_attacker),
+        );
+    assert_eq!(
+        damage_to_creature, 3,
+        "Take the Bait should not prevent combat damage to non-planeswalker permanents"
+    );
+    assert!(!creature_prevented, "creature combat damage should not be prevented");
+
+    let (noncombat_to_planeswalker, noncombat_prevented) =
+        crate::events::processing::process_damage_with_event(
+            &mut game,
+            bob_attacker,
+            crate::events::DamageTarget::Object(alice_planeswalker),
+            3,
+            false,
+            crate::events::cause::EventCause::effect(),
+        );
+    assert_eq!(
+        noncombat_to_planeswalker, 3,
+        "Take the Bait should not prevent noncombat damage to planeswalkers"
+    );
+    assert!(
+        !noncombat_prevented,
+        "noncombat planeswalker damage should not be prevented"
+    );
+}
+
 #[test]
 fn parse_must_be_blocked_each_combat_this_turn_if_able() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Must Be Blocked Variant")

@@ -949,6 +949,10 @@ pub(crate) enum SubjectVerbActionAst {
     PreventAllCombatDamageToYou {
         duration: Until,
     },
+    PreventAllCombatDamageToYouAndPermanentsMatching {
+        duration: Until,
+        filter: ObjectFilter,
+    },
     PreventNextTimeDamage {
         source: PreventNextTimeDamageSourceAst,
         target: PreventNextTimeDamageTargetAst,
@@ -2056,6 +2060,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::PreventAllCombatDamageToYou { duration } => f
                 .debug_struct("PreventAllCombatDamageToYou")
                 .field("duration", duration)
+                .finish(),
+            Self::PreventAllCombatDamageToYouAndPermanentsMatching { duration, filter } => f
+                .debug_struct("PreventAllCombatDamageToYouAndPermanentsMatching")
+                .field("duration", duration)
+                .field("filter", filter)
                 .finish(),
             Self::PreventNextTimeDamage {
                 source,
@@ -3417,6 +3426,20 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::PreventAllCombatDamageToYou { duration },
+        )
+    }
+
+    pub(crate) fn subject_verb_prevent_all_combat_damage_to_you_and_permanents_matching(
+        filter: ObjectFilter,
+        duration: Until,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::PreventAllCombatDamageToYouAndPermanentsMatching {
+                duration,
+                filter,
+            },
         )
     }
 
