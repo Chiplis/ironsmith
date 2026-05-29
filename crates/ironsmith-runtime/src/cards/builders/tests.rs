@@ -31962,6 +31962,26 @@ fn twenty_toed_toad_strict_parser_and_compiled_text_regression() {
         "Twenty-Toed Toad should compile its exact maximum hand size as a static ability"
     );
 
+    let win_trigger = def.abilities.iter().find_map(|ability| match &ability.kind {
+        AbilityKind::Triggered(triggered) => {
+            format!("{:?}", triggered.trigger)
+                .contains("ThisAttacksTrigger")
+                .then_some(triggered)
+        }
+        _ => None,
+    });
+    let win_trigger = win_trigger.expect("Twenty-Toed Toad should have a this-attacks win trigger");
+    assert!(
+        win_trigger.intervening_if.is_none(),
+        "Twenty-Toed Toad's trailing win condition should be checked on resolution, not as an intervening-if trigger gate"
+    );
+    let win_effects_debug = format!("{:?}", win_trigger.effects);
+    assert!(
+        win_effects_debug.contains("ConditionalEffect")
+            && win_effects_debug.contains("WinTheGameEffect"),
+        "Twenty-Toed Toad's win trigger should compile to a conditional win effect, got {win_effects_debug}"
+    );
+
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
         rendered.contains("Your maximum hand size is twenty."),

@@ -137,8 +137,8 @@ fn twenty_toed_toad_two_creature_attack_puts_counter_and_draws() {
         .expect("Twenty-Toed Toad attack triggers should go on stack");
     assert_eq!(
         game.stack.len(),
-        1,
-        "toad attacking with another creature below the win threshold should create the counter/draw trigger"
+        2,
+        "toad attacking with another creature below the win threshold should still create both attack triggers"
     );
 
     while !game.stack.is_empty() {
@@ -175,6 +175,11 @@ fn twenty_toed_toad_win_trigger_checks_cards_in_hand_and_counters() {
     let mut trigger_queue = attack_with_toad(&mut below_threshold, toad_id, None);
     put_triggers_on_stack(&mut below_threshold, &mut trigger_queue)
         .expect("Twenty-Toed Toad attack trigger should go on stack");
+    assert_eq!(
+        below_threshold.stack.len(),
+        1,
+        "Twenty-Toed Toad's win trigger should still go on stack below the resolution threshold"
+    );
     while !below_threshold.stack.is_empty() {
         resolve_stack_entry(&mut below_threshold).expect("below-threshold trigger should resolve");
     }
