@@ -1268,7 +1268,10 @@ fn maybe_assign_effect_result_id(
     let next_is_result_gate = idx + 1 < effects.len()
         && matches!(
             effects[idx + 1],
-            EffectAst::IfResult { .. } | EffectAst::WhenResult { .. }
+            EffectAst::IfResult { .. }
+                | EffectAst::WhenResult { .. }
+                | EffectAst::ResolvedIfResult { .. }
+                | EffectAst::ResolvedWhenResult { .. }
         );
     let next_is_if_result_with_opponent_doesnt = next_is_result_gate
         && idx + 2 < effects.len()

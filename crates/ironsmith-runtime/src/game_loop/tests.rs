@@ -408,6 +408,217 @@ fn keeper_of_the_flame_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn goblin_kites_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_955), "Goblin Kites")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "{R}: Target creature you control with toughness 2 or less gains flying until end of turn. Flip a coin at the beginning of the next end step. If you lose the flip, sacrifice that creature.",
+        )
+        .expect("Goblin Kites should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_vanilla_creature(
+    game: &mut GameState,
+    name: &str,
+    controller: PlayerId,
+    power: i32,
+    toughness: i32,
+) -> ObjectId {
+    let card = CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(power, toughness))
+        .build();
+    game.create_object_from_card(&card, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn activate_goblin_kites_targeting(
+    game: &mut GameState,
+    controller: PlayerId,
+    kites_id: ObjectId,
+    target_id: ObjectId,
+) {
+    let ability_index = game
+        .object(kites_id)
+        .expect("Goblin Kites should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Goblin Kites should have an activated ability");
+    let activate_action = crate::decision::compute_legal_actions(game, controller)
+        .into_iter()
+        .find(|action| matches!(
+            action,
+            crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                if *source == kites_id && *idx == ability_index
+        ))
+        .expect("Goblin Kites activation should be legal");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Goblin Kites activation should start");
+    apply_priority_response_with_dm(
+        game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Object(target_id)]),
+        &mut dm,
+    )
+    .expect("choosing Goblin Kites target should complete activation");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_goblin_kites_delayed_trigger(game: &mut GameState) {
+    let mut trigger_queue = TriggerQueue::new();
+    let end_step_event = TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfEndStepEvent::new(game.turn.active_player),
+        crate::provenance::ProvNodeId::default(),
+    );
+    for trigger in crate::triggers::check_delayed_triggers(game, &end_step_event) {
+        trigger_queue.add(trigger);
+    }
+    put_triggers_on_stack(game, &mut trigger_queue)
+        .expect("Goblin Kites delayed trigger should go on stack");
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_stack_entry_with(game, &mut dm).expect("Goblin Kites delayed trigger should resolve");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn goblin_kites_activation_requires_creature_you_control_with_toughness_two_or_less() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let kites_id = game.create_object_from_definition(
+        &goblin_kites_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    create_vanilla_creature(&mut game, "Too Tough", alice, 2, 3);
+    create_vanilla_creature(&mut game, "Opponent's 1/1", bob, 1, 1);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    assert!(
+        !crate::decision::compute_legal_actions(&game, alice)
+            .into_iter()
+            .any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, .. } if source == kites_id
+            )),
+        "Goblin Kites should not be activatable without a legal controlled low-toughness target"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn goblin_kites_grants_flying_and_sacrifices_target_after_losing_delayed_flip() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.set_random_seed(7);
+
+    let kites_id = game.create_object_from_definition(
+        &goblin_kites_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    let target_id = create_vanilla_creature(&mut game, "Kited Goblin", alice, 1, 1);
+    let target_stable = game.object(target_id).expect("target should exist").stable_id;
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    activate_goblin_kites_targeting(&mut game, alice, kites_id, target_id);
+    resolve_stack_entry(&mut game).expect("Goblin Kites ability should resolve");
+    game.refresh_continuous_state();
+    assert!(
+        game.object_has_static_ability_id(
+            target_id,
+            crate::static_abilities::StaticAbilityId::Flying
+        ),
+        "Goblin Kites should grant flying to the targeted creature until end of turn"
+    );
+    assert_eq!(
+        game.effect_store.delayed_triggers.len(),
+        1,
+        "Goblin Kites should schedule exactly one delayed end-step coin flip"
+    );
+
+    resolve_goblin_kites_delayed_trigger(&mut game);
+    let moved_id = game
+        .find_object_by_stable_id(target_stable)
+        .expect("sacrificed target should still be tracked");
+    assert!(
+        game.player(alice)
+            .expect("Alice should exist")
+            .graveyard
+            .contains(&moved_id),
+        "losing the delayed Goblin Kites flip should sacrifice the targeted creature"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn goblin_kites_winning_delayed_flip_leaves_target_on_battlefield() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.set_random_seed(2);
+
+    let kites_id = game.create_object_from_definition(
+        &goblin_kites_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    let target_id = create_vanilla_creature(&mut game, "Lucky Goblin", alice, 1, 1);
+    let target_stable = game.object(target_id).expect("target should exist").stable_id;
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    activate_goblin_kites_targeting(&mut game, alice, kites_id, target_id);
+    resolve_stack_entry(&mut game).expect("Goblin Kites ability should resolve");
+    resolve_goblin_kites_delayed_trigger(&mut game);
+
+    let current_id = game
+        .find_object_by_stable_id(target_stable)
+        .expect("target should still be tracked");
+    assert!(
+        game.battlefield.contains(&current_id),
+        "winning the delayed Goblin Kites flip should leave the targeted creature on the battlefield"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn tsabos_assassin_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(72_960), "Tsabo's Assassin")
         .mana_cost(ManaCost::from_pips(vec![

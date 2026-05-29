@@ -26495,6 +26495,27 @@ fn parse_delayed_next_end_step_sentence_with_this_creature_keeps_source_referenc
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_goblin_kites_strictly_and_renders_delayed_coin_flip_clause() {
+    let def = parse_oracle_card_definition("Goblin Kites");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Flip a coin at the beginning of the next end step"),
+        "expected delayed coin-flip timing in rendered text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("If you lose the flip, sacrifice that creature"),
+        "expected lose-the-flip sacrifice branch in rendered text, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(debug.contains("ScheduleDelayedTriggerEffect"), "{debug}");
+    assert!(debug.contains("FlipCoinEffect"), "{debug}");
+    assert!(debug.contains("DidNotHappen"), "{debug}");
+    assert!(debug.contains("LessThanOrEqual") && debug.contains("2"), "{debug}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_object_filter_with_entered_since_last_turn_ended_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Premature Burial Variant")
         .card_types(vec![CardType::Sorcery])
