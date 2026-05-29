@@ -88,6 +88,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::MayMoveToZone { target, .. }
             | SubjectVerbActionAst::RegisterZoneReplacement { target, .. }
             | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { target }
+            | SubjectVerbActionAst::ShuffleObjectsOntoLibrary { target }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSource { source: target, .. }
             | SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget { target, .. }
             | SubjectVerbActionAst::RedirectNextTimeDamageToSource { target, .. }
@@ -663,6 +664,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::RearrangeLookedCardsInLibrary { .. }
         | SubjectVerbActionAst::ReorderTopOfLibrary { .. }
         | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { .. }
+        | SubjectVerbActionAst::ShuffleObjectsOntoLibrary { .. }
         | SubjectVerbActionAst::GrantProtectionChoice { .. }
         | SubjectVerbActionAst::PreventAllCombatDamage { .. }
         | SubjectVerbActionAst::PreventAllCombatDamageFromSource { .. }
@@ -966,6 +968,7 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
                 count,
                 tags,
                 accumulated_tags,
+                ..
             } => {
                 value_references_tag(count, IT_TAG)
                     || tags.iter().any(|tag| tag.as_str() == IT_TAG)

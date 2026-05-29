@@ -1676,6 +1676,15 @@ impl Effect {
         ))
     }
 
+    pub fn shuffle_objects_onto_library(
+        target: crate::target::ChooseSpec,
+        player: crate::target::PlayerFilter,
+    ) -> Self {
+        Self::new(crate::effects::ShuffleObjectsOntoLibraryEffect::new(
+            target, player,
+        ))
+    }
+
     pub fn exchange_life_totals(
         player1: crate::target::PlayerFilter,
         player2: crate::target::PlayerFilter,

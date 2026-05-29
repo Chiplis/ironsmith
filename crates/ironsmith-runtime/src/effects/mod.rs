@@ -196,5 +196,5 @@ pub use zones::{
     ReturnAllToBattlefieldEffect, ReturnAsAuraOptions,
     ReturnFromGraveyardOrExileToBattlefieldEffect, ReturnFromGraveyardToBattlefieldEffect,
     ReturnFromGraveyardToHandEffect, ReturnToHandEffect, SacrificeEffect, SacrificeTargetEffect,
-    ShuffleObjectsIntoLibraryEffect,
+    ShuffleObjectsIntoLibraryEffect, ShuffleObjectsOntoLibraryEffect,
 };

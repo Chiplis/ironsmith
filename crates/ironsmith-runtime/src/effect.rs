@@ -1925,6 +1925,13 @@ impl Effect {
         Self::new(ShuffleObjectsIntoLibraryEffect::new(target, player))
     }
 
+    /// Create an effect that shuffles specific objects as a pile and puts them
+    /// on top of a library without shuffling the rest of that library.
+    pub fn shuffle_objects_onto_library(target: ChooseSpec, player: PlayerFilter) -> Self {
+        use crate::effects::ShuffleObjectsOntoLibraryEffect;
+        Self::new(ShuffleObjectsOntoLibraryEffect::new(target, player))
+    }
+
     pub fn may_move_to_zone(target: ChooseSpec, zone: Zone, decider: PlayerFilter) -> Self {
         use crate::effects::MayMoveToZoneEffect;
         Self::new(MayMoveToZoneEffect::new(target, zone, decider))

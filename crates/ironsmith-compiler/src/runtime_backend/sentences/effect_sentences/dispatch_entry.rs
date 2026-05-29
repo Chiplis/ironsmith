@@ -2425,6 +2425,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::RearrangeLookedCardsInLibrary { .. }
             | SubjectVerbActionAst::ReorderTopOfLibrary { .. }
             | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { .. }
+            | SubjectVerbActionAst::ShuffleObjectsOntoLibrary { .. }
             | SubjectVerbActionAst::PutSticker { .. }
             | SubjectVerbActionAst::SwitchPowerToughness { .. }
             | SubjectVerbActionAst::ScalePowerToughnessAll { .. }

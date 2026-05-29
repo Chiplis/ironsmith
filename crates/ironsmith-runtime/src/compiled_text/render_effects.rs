@@ -338,6 +338,49 @@ fn describe_exile_it_then_return_all_to_battlefield(
     ))
 }
 
+fn describe_face_down_pile_shuffle_onto_library(effects: &[&Effect]) -> Option<String> {
+    let [with_id_effect, if_effect] = effects else {
+        return None;
+    };
+    let with_id = with_id_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let sequence = with_id
+        .effect
+        .downcast_ref::<crate::effects::SequenceEffect>()?;
+    let [source_exile_effect, top_exile_effect] = sequence.effects.as_slice() else {
+        return None;
+    };
+    let source_exile = source_exile_effect.downcast_ref::<crate::effects::ExileEffect>()?;
+    if !source_exile.face_down
+        || !choose_spec_references_exact_tag(&source_exile.spec, &TagKey::from("triggering"))
+    {
+        return None;
+    }
+    let top_exile = top_exile_effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
+    if !top_exile.face_down || top_exile.player != PlayerFilter::You {
+        return None;
+    }
+
+    let if_effect = if_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    if if_effect.condition != with_id.id
+        || if_effect.predicate != EffectPredicate::Happened
+        || !if_effect.else_.is_empty()
+    {
+        return None;
+    }
+    let [shuffle_back] = if_effect.then.as_slice() else {
+        return None;
+    };
+    let shuffle_back = shuffle_back.downcast_ref::<crate::effects::ShuffleObjectsOntoLibraryEffect>()?;
+    if shuffle_back.player != PlayerFilter::You {
+        return None;
+    }
+
+    let (count_text, noun, _) = describe_look_count_and_noun(&top_exile.count);
+    Some(format!(
+        "Exile it and the top {count_text} {noun} of your library in a face-down pile. If you do, shuffle that pile and put it back on top of your library"
+    ))
+}
+
 fn describe_prevention_follow_up_target(target: &ChooseSpec) -> &'static str {
     let described = describe_choose_spec(target);
     if described.contains("creature") {
@@ -3867,6 +3910,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
     if let Some(compact) = describe_exile_graveyard_reflexive_copy_artifact(&filtered) {
+        return compact;
+    }
+    if let Some(compact) = describe_face_down_pile_shuffle_onto_library(&filtered) {
         return compact;
     }
     if let Some(compact) = describe_may_choose_pay_for_each_then_untap_tagged(&filtered) {
@@ -31335,7 +31381,16 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(exile_top) = effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>() {
-        return describe_exile_top_of_library(&exile_top.player, &exile_top.count, false);
+        return describe_exile_top_of_library(
+            &exile_top.player,
+            &exile_top.count,
+            exile_top.face_down,
+        );
+    }
+    if let Some(shuffle_onto) = effect.downcast_ref::<crate::effects::ShuffleObjectsOntoLibraryEffect>() {
+        let target = describe_choose_spec(&shuffle_onto.target);
+        let library = describe_possessive_player_filter(&shuffle_onto.player);
+        return format!("Shuffle {target} and put them on top of {library} library");
     }
     if let Some(experience) = effect.downcast_ref::<crate::effects::ExperienceCountersEffect>() {
         let player = describe_player_filter(&experience.player);

@@ -3281,6 +3281,7 @@ pub struct ExileTopOfLibraryEffect {
     pub player: PlayerFilter,
     pub moved_tags: Vec<crate::tag::TagKey>,
     pub accumulated_tags: Vec<crate::tag::TagKey>,
+    pub face_down: bool,
 }
 
 impl ExileTopOfLibraryEffect {
@@ -3290,7 +3291,13 @@ impl ExileTopOfLibraryEffect {
             player,
             moved_tags: Vec::new(),
             accumulated_tags: Vec::new(),
+            face_down: false,
         }
+    }
+
+    pub fn face_down(mut self) -> Self {
+        self.face_down = true;
+        self
     }
 
     pub fn tag_moved(mut self, tag: impl Into<crate::tag::TagKey>) -> Self {
@@ -4987,6 +4994,18 @@ pub struct ShuffleObjectsIntoLibraryEffect {
 }
 
 impl ShuffleObjectsIntoLibraryEffect {
+    pub fn new(target: ChooseSpec, player: PlayerFilter) -> Self {
+        Self { target, player }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ShuffleObjectsOntoLibraryEffect {
+    pub target: ChooseSpec,
+    pub player: PlayerFilter,
+}
+
+impl ShuffleObjectsOntoLibraryEffect {
     pub fn new(target: ChooseSpec, player: PlayerFilter) -> Self {
         Self { target, player }
     }

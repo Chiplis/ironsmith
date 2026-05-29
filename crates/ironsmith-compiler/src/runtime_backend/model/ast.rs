@@ -886,6 +886,7 @@ pub(crate) enum SubjectVerbActionAst {
         count: Value,
         tags: Vec<TagKey>,
         accumulated_tags: Vec<TagKey>,
+        face_down: bool,
     },
     RevealTagged {
         tag: TagKey,
@@ -930,6 +931,9 @@ pub(crate) enum SubjectVerbActionAst {
     AddManaImprintedColors,
     ShuffleLibrary,
     ShuffleObjectsIntoLibrary {
+        target: TargetAst,
+    },
+    ShuffleObjectsOntoLibrary {
         target: TargetAst,
     },
     GrantProtectionChoice {
@@ -1969,11 +1973,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 count,
                 tags,
                 accumulated_tags,
+                face_down,
             } => f
                 .debug_struct("ExileTopOfLibrary")
                 .field("count", count)
                 .field("tags", tags)
                 .field("accumulated_tags", accumulated_tags)
+                .field("face_down", face_down)
                 .finish(),
             Self::RevealTagged { tag } => f.debug_tuple("RevealTagged").field(tag).finish(),
             Self::RevealCardsFromHand {
@@ -2026,6 +2032,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::ShuffleLibrary => f.write_str("ShuffleLibrary"),
             Self::ShuffleObjectsIntoLibrary { target } => f
                 .debug_tuple("ShuffleObjectsIntoLibrary")
+                .field(target)
+                .finish(),
+            Self::ShuffleObjectsOntoLibrary { target } => f
+                .debug_tuple("ShuffleObjectsOntoLibrary")
                 .field(target)
                 .finish(),
             Self::GrantProtectionChoice {
@@ -3099,8 +3109,11 @@ impl std::fmt::Debug for SubjectVerbEffectAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum EffectAst {
+    pub(crate) enum EffectAst {
     SubjectVerb(SubjectVerbEffectAst),
+    Sequence {
+        effects: Vec<EffectAst>,
+    },
     UnlessPays {
         effects: Vec<EffectAst>,
         player: PlayerAst,
@@ -5247,6 +5260,22 @@ impl EffectAst {
         tags: Vec<TagKey>,
         accumulated_tags: Vec<TagKey>,
     ) -> Self {
+        Self::subject_verb_exile_top_of_library_with_options(
+            player,
+            count,
+            tags,
+            accumulated_tags,
+            false,
+        )
+    }
+
+    pub(crate) fn subject_verb_exile_top_of_library_with_options(
+        player: PlayerAst,
+        count: Value,
+        tags: Vec<TagKey>,
+        accumulated_tags: Vec<TagKey>,
+        face_down: bool,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::LibraryOwner,
             player,
@@ -5254,6 +5283,7 @@ impl EffectAst {
                 count,
                 tags,
                 accumulated_tags,
+                face_down,
             },
         )
     }
@@ -5371,6 +5401,17 @@ impl EffectAst {
             SubjectVerbRoleAst::LibraryOwner,
             player,
             SubjectVerbActionAst::ShuffleObjectsIntoLibrary { target },
+        )
+    }
+
+    pub(crate) fn subject_verb_shuffle_objects_onto_library(
+        player: PlayerAst,
+        target: TargetAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::LibraryOwner,
+            player,
+            SubjectVerbActionAst::ShuffleObjectsOntoLibrary { target },
         )
     }
 

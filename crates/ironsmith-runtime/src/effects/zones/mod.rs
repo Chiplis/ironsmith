@@ -34,6 +34,7 @@ mod return_from_graveyard_to_hand;
 mod return_to_hand;
 mod sacrifice;
 mod shuffle_objects_into_library;
+mod shuffle_objects_onto_library;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AppliedZoneChange {
@@ -372,3 +373,4 @@ pub use sacrifice::{
     EachPlayerSacrificesEffect, SacrificeEffect, SacrificePlayerEffect, SacrificeTargetEffect,
 };
 pub use shuffle_objects_into_library::ShuffleObjectsIntoLibraryEffect;
+pub use shuffle_objects_onto_library::ShuffleObjectsOntoLibraryEffect;

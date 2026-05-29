@@ -24,6 +24,8 @@ pub struct ExileTopOfLibraryEffect {
     pub moved_tags: Vec<TagKey>,
     /// Optional tags that accumulate all cards moved across repeated executions.
     pub accumulated_tags: Vec<TagKey>,
+    /// Whether the exiled cards are exiled face down.
+    pub face_down: bool,
 }
 
 impl ExileTopOfLibraryEffect {
@@ -34,7 +36,13 @@ impl ExileTopOfLibraryEffect {
             player,
             moved_tags: Vec::new(),
             accumulated_tags: Vec::new(),
+            face_down: false,
         }
+    }
+
+    pub fn face_down(mut self) -> Self {
+        self.face_down = true;
+        self
     }
 
     pub fn tag_moved(mut self, tag: impl Into<TagKey>) -> Self {
@@ -76,6 +84,10 @@ impl EffectExecutor for ExileTopOfLibraryEffect {
         let mut moved_ids = Vec::new();
         for card_id in top_cards {
             if let Some(exiled_id) = game.move_object_by_effect(card_id, Zone::Exile) {
+                if self.face_down {
+                    game.set_face_down(exiled_id);
+                    game.grant_face_down_exile_view(exiled_id, player_id);
+                }
                 if (!self.moved_tags.is_empty() || !self.accumulated_tags.is_empty())
                     && let Some(obj) = game.object(exiled_id)
                 {

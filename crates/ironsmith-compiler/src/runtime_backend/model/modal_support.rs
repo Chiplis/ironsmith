@@ -414,6 +414,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::RearrangeLookedCardsInLibrary { .. }
             | SubjectVerbActionAst::ReorderTopOfLibrary { .. }
             | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { .. }
+            | SubjectVerbActionAst::ShuffleObjectsOntoLibrary { .. }
             | SubjectVerbActionAst::ScalePowerToughnessAll { .. }
             | SubjectVerbActionAst::GrantProtectionChoice { .. }
             | SubjectVerbActionAst::PreventAllCombatDamage { .. }

@@ -552,7 +552,8 @@ fn advance_reference_frame_for_effect(
                     }
                     track_target_player(target, frame);
                 }
-                SubjectVerbActionAst::ShuffleObjectsIntoLibrary { target } => {
+                SubjectVerbActionAst::ShuffleObjectsIntoLibrary { target }
+                | SubjectVerbActionAst::ShuffleObjectsOntoLibrary { target } => {
                     maybe_tag_target(target, frame, id_gen, "moved")?;
                 }
                 SubjectVerbActionAst::PutSticker { target, .. } => {
@@ -1026,7 +1027,8 @@ fn advance_reference_frame_for_effect(
             frame.last_object_tag = Some(chosen_tag);
         }
         EffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. } => {}
-        EffectAst::May { effects }
+        EffectAst::Sequence { effects }
+        | EffectAst::May { effects }
         | EffectAst::DelayedUntilNextEndStep { effects, .. }
         | EffectAst::DelayedUntilEndOfCombat { effects }
         | EffectAst::DelayedTriggerThisTurn { effects, .. }
@@ -1736,6 +1738,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::RearrangeLookedCardsInLibrary { .. }
             | SubjectVerbActionAst::ReorderTopOfLibrary { .. }
             | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { .. }
+            | SubjectVerbActionAst::ShuffleObjectsOntoLibrary { .. }
             | SubjectVerbActionAst::ScalePowerToughnessAll { .. }
             | SubjectVerbActionAst::GrantProtectionChoice { .. }
             | SubjectVerbActionAst::PreventAllCombatDamage { .. }
@@ -2191,6 +2194,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 count,
                 tags,
                 accumulated_tags,
+                ..
             } => {
                 let mut replacements = bind_unresolved_it_in_value(count, seed_tag);
                 for tag in tags {
@@ -2282,6 +2286,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::CounterUnlessPays { target, .. }
             | SubjectVerbActionAst::ReturnToHand { target, .. }
             | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { target }
+            | SubjectVerbActionAst::ShuffleObjectsOntoLibrary { target }
             | SubjectVerbActionAst::PutSticker { target, .. }
             | SubjectVerbActionAst::SwitchPowerToughness { target, .. }
             | SubjectVerbActionAst::Detain { target }

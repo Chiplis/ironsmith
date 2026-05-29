@@ -129,14 +129,15 @@ pub use effect::{
     SearchLibrarySlotsEffect, SearchSelectionMode, SequenceEffect, SetBasePowerToughnessEffect,
     SetLifeTotalEffect, SharedTypeConstraint, ShuffleGraveyardIntoLibraryEffect,
     ShuffleHandAndGraveyardIntoLibraryEffect, ShuffleLibraryEffect,
-    ShuffleObjectsIntoLibraryEffect, SkipCombatPhasesEffect, SkipDrawStepEffect,
-    SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, SoulbondPairEffect, SupportEffect,
-    SurveilEffect, SuspectEffect, TagAttachedToSourceEffect, TagMatchingObjectsEffect,
-    TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect, TagTriggeringSourceEffect,
-    TaggedEffect, TaggedLeavesAbilitySource, TakeInitiativeEffect, TapEffect, TargetOnlyEffect,
-    TicketCountersEffect, TransformEffect, UnearthEffect, UnlessActionEffect, UnlessPaysEffect,
-    UntapEffect, Until, VariableCasualtyPlaneswalkerCopyEffect, VentureIntoDungeonEffect,
-    VoteChoice, VoteEffect, VoteOption, WinTheGameEffect, WithIdEffect,
+    ShuffleObjectsIntoLibraryEffect, ShuffleObjectsOntoLibraryEffect, SkipCombatPhasesEffect,
+    SkipDrawStepEffect, SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, SoulbondPairEffect,
+    SupportEffect, SurveilEffect, SuspectEffect, TagAttachedToSourceEffect,
+    TagMatchingObjectsEffect, TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect,
+    TagTriggeringSourceEffect, TaggedEffect, TaggedLeavesAbilitySource, TakeInitiativeEffect,
+    TapEffect, TargetOnlyEffect, TicketCountersEffect, TransformEffect, UnearthEffect,
+    UnlessActionEffect, UnlessPaysEffect, UntapEffect, Until,
+    VariableCasualtyPlaneswalkerCopyEffect, VentureIntoDungeonEffect, VoteChoice, VoteEffect,
+    VoteOption, WinTheGameEffect, WithIdEffect,
 };
 pub use effect_model::{Comparison, EventValueSpec, ValueComparisonOperator};
 pub use event_model::KeywordActionKind;

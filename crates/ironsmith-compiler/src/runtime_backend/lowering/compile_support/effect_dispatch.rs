@@ -93,6 +93,19 @@ fn compile_effect_inner(
     if let EffectAst::SubjectVerb(subject_verb) = effect {
         return compile_subject_verb_effect(subject_verb, ctx);
     }
+    if let EffectAst::Sequence { effects } = effect {
+        let mut compiled_effects = Vec::new();
+        let mut choices = Vec::new();
+        for child in effects {
+            let (mut child_effects, mut child_choices) = compile_effect(child, ctx)?;
+            compiled_effects.append(&mut child_effects);
+            choices.append(&mut child_choices);
+        }
+        return Ok((
+            vec![Effect::new(crate::effects::SequenceEffect::new(compiled_effects))],
+            choices,
+        ));
+    }
     if let EffectAst::ManaRestricted {
         effects,
         restrictions,
@@ -1112,6 +1125,7 @@ fn compile_subject_verb_effect(
             count,
             tags,
             accumulated_tags,
+            face_down,
         } => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let resolved_count =
@@ -1119,6 +1133,9 @@ fn compile_subject_verb_effect(
             let player_filter = subject.clone_player_filter();
             let mut effect =
                 crate::effects::ExileTopOfLibraryEffect::new(resolved_count, player_filter.clone());
+            if *face_down {
+                effect = effect.face_down();
+            }
             for tag in tags {
                 let resolved_tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
                 effect = effect.tag_moved(resolved_tag);
@@ -1341,6 +1358,21 @@ fn compile_subject_verb_effect(
                 effect = effect.tag(tag);
             }
             Ok((vec![effect], choices))
+        }
+        SubjectVerbActionAst::ShuffleObjectsOntoLibrary { target } => {
+            let (spec, mut choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
+            for choice in subject.into_choices() {
+                push_choice(&mut choices, choice);
+            }
+            Ok((
+                vec![Effect::shuffle_objects_onto_library(
+                    spec,
+                    subject.into_player_filter(),
+                )],
+                choices,
+            ))
         }
         SubjectVerbActionAst::GrantProtectionChoice {
             target,

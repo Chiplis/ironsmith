@@ -148,6 +148,98 @@ fn parse_exile_top_library_then_play_bundle(
     Ok(Some(vec![exile_effect, permission_effect]))
 }
 
+fn parse_exile_it_and_top_library_face_down_pile_bundle(
+    first_sentence: &[OwnedLexToken],
+    second_sentence: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    use super::super::grammar::primitives as grammar;
+
+    let Some((verb, verb_idx)) = effect_sentences::find_verb(first_sentence) else {
+        return Ok(None);
+    };
+    if verb != Verb::Exile || verb_idx != 0 {
+        return Ok(None);
+    }
+    let Some((left, right)) = grammar::split_lexed_once_on_separator(first_sentence, || {
+        grammar::kw("and").void()
+    }) else {
+        return Ok(None);
+    };
+    let left_trimmed = trim_commas(left);
+    let left_words = crate::runtime_backend::token_word_refs(&left_trimmed);
+    if left_words != ["exile", "it"] {
+        return Ok(None);
+    }
+
+    let right = trim_commas(right);
+    let Some(top_tokens) = grammar::strip_lexed_suffix_phrase(
+        &right,
+        &["in", "a", "face-down", "pile"],
+    )
+    .or_else(|| grammar::strip_lexed_suffix_phrase(&right, &["in", "a", "facedown", "pile"]))
+    else {
+        return Ok(None);
+    };
+    let Some(mut top_exile) = parse_exile_top_library_clause(top_tokens, None) else {
+        return Ok(None);
+    };
+
+    let pile_tag = TagKey::from("face_down_pile");
+    match &mut top_exile {
+        EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+            SubjectVerbActionAst::ExileTopOfLibrary {
+                tags, face_down, ..
+            } => {
+                tags.clear();
+                tags.push(pile_tag.clone());
+                *face_down = true;
+            }
+            _ => return Ok(None),
+        },
+        _ => return Ok(None),
+    }
+
+    let second_words = crate::runtime_backend::token_word_refs(second_sentence);
+    if second_words
+        != [
+            "if", "you", "do", "shuffle", "that", "pile", "and", "put", "it", "back",
+            "on", "top", "of", "your", "library",
+        ]
+    {
+        return Ok(None);
+    }
+
+    let mut source_filter = ObjectFilter::tagged(crate::tag::SOURCE_EXILED_TAG);
+    source_filter.zone = Some(Zone::Exile);
+    let mut pile_filter = ObjectFilter::tagged(pile_tag.clone());
+    pile_filter.zone = Some(Zone::Exile);
+    let mut pile_target = ObjectFilter::default();
+    pile_target.any_of = vec![source_filter, pile_filter];
+
+    let source_exile = EffectAst::subject_verb_exile(
+        TargetAst::Tagged(
+            TagKey::from(IT_TAG),
+            span_from_tokens(&left_trimmed),
+        ),
+        true,
+    );
+    let make_pile = EffectAst::Sequence {
+        effects: vec![source_exile, top_exile],
+    };
+    let shuffle_back = EffectAst::subject_verb_shuffle_objects_onto_library(
+        PlayerAst::You,
+        TargetAst::Object(pile_target, span_from_tokens(second_sentence), None),
+    );
+
+    Ok(Some(vec![
+        make_pile,
+        EffectAst::IfResult {
+            predicate: crate::cards::builders::IfResultPredicate::Did,
+            effects: vec![shuffle_back],
+        },
+    ]))
+}
+
 fn parse_choose_type_then_phase_out_bundle(
     first_sentence: &[OwnedLexToken],
     second_sentence: &[OwnedLexToken],
@@ -1838,6 +1930,14 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
     if sentences.len() == 2
         && let Ok(Some(effects)) =
             parse_exile_top_library_then_play_bundle(sentences[0], sentences[1])
+    {
+        return Some(effects);
+    }
+    if sentences.len() == 2
+        && let Ok(Some(effects)) = parse_exile_it_and_top_library_face_down_pile_bundle(
+            sentences[0],
+            sentences[1],
+        )
     {
         return Some(effects);
     }
