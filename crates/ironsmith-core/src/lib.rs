@@ -164,11 +164,11 @@ pub use static_ability_model::{
     AttachedChosenLandwalkGrant, AttackCostCondition, AttackingGroupAttackCondition,
     CantAttackUnlessConditionSpec, ConditionalSpellKeywordKind, ConditionalSpellKeywordSpec,
     CopyActivatedAbilities, CopyTriggeredAbilities, CostIncrease, CostIncreaseManaCost, CostReduction,
-    CostReductionManaCost, DefendingPlayerAttackCondition, EnterAsCopyAsEntersSpec, GrantAbility,
-    GrantObjectAbilityForFilter, GraveyardCountMetric, LandwalkKind, PregameActionKind,
-    PregameBeginOnBattlefieldSpec, RemoveCardTypesForFilter, SetColorsForFilter, StaticAbility,
-    StaticAbilityPayload, ThisSpellCastRestrictionKind, ThisSpellCostReduction,
-    ThisSpellCostReductionManaCost,
+    CostReductionManaCost, DefendingPlayerAttackCondition, EnterAsCopyAsEntersSpec,
+    EnterAsCopyLinkedExilePairSpec, GrantAbility, GrantObjectAbilityForFilter,
+    GraveyardCountMetric, LandwalkKind, PregameActionKind, PregameBeginOnBattlefieldSpec,
+    RemoveCardTypesForFilter, SetColorsForFilter, StaticAbility, StaticAbilityPayload,
+    ThisSpellCastRestrictionKind, ThisSpellCostReduction, ThisSpellCostReductionManaCost,
 };
 pub use tag::{EXPLOITED_TAG, EXPLOITER_TAG, SOURCE_EXILED_TAG, TagKey};
 pub use target_model::{ChooseSpec, ChooseSpecSurfaceHint, SourceReferenceSurface};

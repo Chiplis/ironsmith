@@ -4271,7 +4271,7 @@ impl GameState {
         }
 
         // Proceed with normal battlefield entry
-        let new_id = self.move_object(old_id, Zone::Battlefield, cause)?;
+        let new_id = self.move_object(old_id, Zone::Battlefield, cause.clone())?;
         if let Some(controller) = result.controller_override {
             self.set_current_controller(new_id, controller);
         }
@@ -4337,6 +4337,18 @@ impl GameState {
             if let Some(obj) = self.object_mut(new_id) {
                 *obj.counters.entry(*counter_type).or_insert(0) += count;
             }
+        }
+
+        for linked_old_id in &result.linked_exile_with_entering {
+            if self.object(*linked_old_id).is_none() {
+                continue;
+            }
+            let Some(exiled_id) = self.move_object(*linked_old_id, Zone::Exile, cause.clone())
+            else {
+                continue;
+            };
+            self.add_exiled_with_source_link(new_id, exiled_id);
+            self.record_zone_change_results(*linked_old_id, vec![exiled_id]);
         }
 
         // Apply "as this enters, choose a color" selections.

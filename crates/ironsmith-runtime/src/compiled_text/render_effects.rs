@@ -13450,6 +13450,14 @@ fn describe_static_ability_with_subject(
     if trimmed.starts_with("This card ") || trimmed.starts_with("this card ") {
         return capitalize_first(trimmed);
     }
+    if !subject.starts_with("this ") {
+        if let Some(rest) = trimmed.strip_prefix("As this enters") {
+            return format!("As {subject} enters{rest}");
+        }
+        if let Some(rest) = trimmed.strip_prefix("as this enters") {
+            return format!("As {subject} enters{rest}");
+        }
+    }
     if trimmed.starts_with("Cards in ") || trimmed.starts_with("Each ") {
         if let Some(body) = trimmed.strip_suffix(" as long as it's your turn") {
             return format!("During your turn, {}", lowercase_first(body));

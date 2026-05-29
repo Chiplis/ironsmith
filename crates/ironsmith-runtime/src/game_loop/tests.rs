@@ -13624,6 +13624,7 @@ fn test_enter_as_copy_applies_copied_enters_with_echo_counter() {
                     affected_filter: None,
                     may: false,
                     enters_tapped_if_chosen: false,
+                    linked_exile_pair: None,
                     copy_source_self: false,
                     copy_source_enchanted: false,
                     name_override: None,
@@ -13683,6 +13684,7 @@ fn test_enter_as_copy_can_set_base_power_toughness_from_entering_object() {
                     affected_filter: None,
                     may: false,
                     enters_tapped_if_chosen: false,
+                    linked_exile_pair: None,
                     copy_source_self: false,
                     copy_source_enchanted: false,
                     name_override: None,
@@ -13735,6 +13737,7 @@ fn test_enter_as_copy_can_set_base_power_toughness_from_entering_stack_object() 
                     affected_filter: None,
                     may: false,
                     enters_tapped_if_chosen: false,
+                    linked_exile_pair: None,
                     copy_source_self: false,
                     copy_source_enchanted: false,
                     name_override: None,
@@ -13781,6 +13784,7 @@ fn test_static_source_can_make_matching_creatures_enter_as_copy_of_itself() {
                     affected_filter: Some(crate::target::ObjectFilter::creature().you_control()),
                     may: false,
                     enters_tapped_if_chosen: false,
+                    linked_exile_pair: None,
                     copy_source_self: true,
                     copy_source_enchanted: false,
                     name_override: None,
@@ -13840,6 +13844,7 @@ fn test_enter_as_copy_can_remove_legendary_add_artifact_and_add_myriad() {
                     affected_filter: None,
                     may: false,
                     enters_tapped_if_chosen: false,
+                    linked_exile_pair: None,
                     copy_source_self: false,
                     copy_source_enchanted: false,
                     name_override: None,
@@ -13921,6 +13926,7 @@ fn test_enter_as_copy_with_no_candidates_keeps_original_characteristics() {
                     affected_filter: None,
                     may: false,
                     enters_tapped_if_chosen: false,
+                    linked_exile_pair: None,
                     copy_source_self: false,
                     copy_source_enchanted: false,
                     name_override: None,
@@ -13968,6 +13974,156 @@ fn test_enter_as_copy_with_no_candidates_keeps_original_characteristics() {
     assert_eq!(entered.name, "Auton Soldier");
     assert_eq!(entered.base_power, Some(crate::card::PtValue::Fixed(4)));
     assert_eq!(entered.base_toughness, Some(crate::card::PtValue::Fixed(4)));
+}
+
+fn the_mimeoplasm_test_definition() -> crate::card::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "The Mimeoplasm")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Ooze])
+        .power_toughness(PowerToughness::fixed(0, 0))
+        .parse_text(
+            "As The Mimeoplasm enters, you may exile two creature cards from graveyards. If you do, it enters as a copy of one of those cards with a number of additional +1/+1 counters on it equal to the power of the other card.",
+        )
+        .expect("The Mimeoplasm should parse for runtime tests")
+}
+
+struct ChooseMimeoplasmPairDecisionMaker {
+    copy_name: &'static str,
+    counter_id: ObjectId,
+}
+
+impl DecisionMaker for ChooseMimeoplasmPairDecisionMaker {
+    fn decide_options(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        ctx.options
+            .iter()
+            .find(|option| {
+                option.legal
+                    && option.description.contains(self.copy_name)
+                    && option
+                        .related_object_ids
+                        .as_ref()
+                        .is_some_and(|ids| ids.contains(&self.counter_id))
+            })
+            .map(|option| vec![option.index])
+            .unwrap_or_else(|| vec![0])
+    }
+}
+
+#[test]
+fn the_mimeoplasm_exiles_two_graveyard_creatures_copies_one_and_gets_other_power_counters() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let copy_source = CardDefinitionBuilder::new(CardId::new(), "Copy Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let counter_source = CardDefinitionBuilder::new(CardId::new(), "Counter Wurm")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(6, 6))
+        .build();
+    game.create_object_from_definition(&copy_source, alice, Zone::Graveyard);
+    let counter_id = game.create_object_from_definition(&counter_source, bob, Zone::Graveyard);
+
+    let mimeoplasm = the_mimeoplasm_test_definition();
+    let mimeoplasm_id = game.create_object_from_definition(&mimeoplasm, alice, Zone::Hand);
+    let mut dm = ChooseMimeoplasmPairDecisionMaker {
+        copy_name: "Copy Bear",
+        counter_id,
+    };
+    let result = game
+        .move_object_with_etb_processing_with_dm(mimeoplasm_id, Zone::Battlefield, &mut dm)
+        .expect("The Mimeoplasm should enter");
+
+    let entered = game
+        .object(result.new_id)
+        .expect("The Mimeoplasm permanent should exist");
+    assert_eq!(entered.name, "Copy Bear");
+    assert_eq!(entered.base_power, Some(PtValue::Fixed(2)));
+    assert_eq!(entered.base_toughness, Some(PtValue::Fixed(2)));
+    assert_eq!(
+        entered
+            .counters
+            .get(&crate::object::CounterType::PlusOnePlusOne)
+            .copied()
+            .unwrap_or(0),
+        6,
+        "The Mimeoplasm should get +1/+1 counters equal to the other exiled card's power"
+    );
+
+    let linked_names = game
+        .get_exiled_with_source_links(result.new_id)
+        .iter()
+        .filter_map(|id| game.object(*id).map(|object| object.name.as_str()))
+        .collect::<Vec<_>>();
+    assert!(
+        linked_names.contains(&"Copy Bear") && linked_names.contains(&"Counter Wurm"),
+        "The Mimeoplasm should exile and link both chosen graveyard cards, got {linked_names:?}"
+    );
+}
+
+#[test]
+fn the_mimeoplasm_declined_optional_exile_enters_as_itself_and_leaves_graveyards_unchanged() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let first = CardDefinitionBuilder::new(CardId::new(), "First Graveyard Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let second = CardDefinitionBuilder::new(CardId::new(), "Second Graveyard Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    let first_id = game.create_object_from_definition(&first, alice, Zone::Graveyard);
+    let second_id = game.create_object_from_definition(&second, alice, Zone::Graveyard);
+
+    let mimeoplasm = the_mimeoplasm_test_definition();
+    let mimeoplasm_id = game.create_object_from_definition(&mimeoplasm, alice, Zone::Hand);
+    let mut dm = AutoPassDecisionMaker;
+    let result = game
+        .move_object_with_etb_processing_with_dm(mimeoplasm_id, Zone::Battlefield, &mut dm)
+        .expect("The Mimeoplasm should enter even when declined");
+
+    let entered = game
+        .object(result.new_id)
+        .expect("The Mimeoplasm permanent should exist");
+    assert_eq!(entered.name, "The Mimeoplasm");
+    assert!(entered.counters.is_empty());
+    assert!(game.object(first_id).is_some_and(|object| object.zone == Zone::Graveyard));
+    assert!(game.object(second_id).is_some_and(|object| object.zone == Zone::Graveyard));
+    assert!(game.get_exiled_with_source_links(result.new_id).is_empty());
+}
+
+#[test]
+fn the_mimeoplasm_needs_two_graveyard_creature_cards_to_apply_copy_replacement() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let lone = CardDefinitionBuilder::new(CardId::new(), "Lone Graveyard Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(5, 5))
+        .build();
+    let lone_id = game.create_object_from_definition(&lone, alice, Zone::Graveyard);
+
+    let mimeoplasm = the_mimeoplasm_test_definition();
+    let mimeoplasm_id = game.create_object_from_definition(&mimeoplasm, alice, Zone::Hand);
+    let result = game
+        .move_object_with_etb_processing(mimeoplasm_id, Zone::Battlefield)
+        .expect("The Mimeoplasm should enter without enough graveyard creature cards");
+
+    let entered = game
+        .object(result.new_id)
+        .expect("The Mimeoplasm permanent should exist");
+    assert_eq!(entered.name, "The Mimeoplasm");
+    assert!(entered.counters.is_empty());
+    assert!(game.object(lone_id).is_some_and(|object| object.zone == Zone::Graveyard));
+    assert!(game.get_exiled_with_source_links(result.new_id).is_empty());
 }
 
 #[test]

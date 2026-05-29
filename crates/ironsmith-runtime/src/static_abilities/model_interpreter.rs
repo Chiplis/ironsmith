@@ -437,6 +437,11 @@ impl StaticAbilityModelInterpreter {
                     affected_filter: spec.affected_filter.clone(),
                     may: spec.may,
                     enters_tapped_if_chosen: spec.enters_tapped_if_chosen,
+                    linked_exile_pair: spec.linked_exile_pair.map(|pair| {
+                        super::EnterAsCopyLinkedExilePairSpec {
+                            counter_type: pair.counter_type,
+                        }
+                    }),
                     copy_source_self: spec.copy_source_self,
                     copy_source_enchanted: spec.copy_source_enchanted,
                     name_override: spec.name_override.clone(),
@@ -1178,6 +1183,11 @@ impl StaticAbilityModelInterpreter {
                         affected_filter: spec.affected_filter.clone(),
                         may: spec.may,
                         enters_tapped_if_chosen: spec.enters_tapped_if_chosen,
+                        linked_exile_pair: spec.linked_exile_pair.map(|pair| {
+                            super::EnterAsCopyLinkedExilePairSpec {
+                                counter_type: pair.counter_type,
+                            }
+                        }),
                         copy_source_self: spec.copy_source_self,
                         copy_source_enchanted: spec.copy_source_enchanted,
                         name_override: spec.name_override.clone(),

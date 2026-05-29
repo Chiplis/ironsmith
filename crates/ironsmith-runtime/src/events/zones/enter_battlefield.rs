@@ -25,6 +25,8 @@ pub struct EnterBattlefieldEvent {
     pub enters_tapped: bool,
     /// Counters it enters with (may be modified by replacement effects)
     pub enters_with_counters: Vec<(CounterType, u32)>,
+    /// Objects exiled and linked to this permanent as part of an as-enters choice.
+    pub linked_exile_with_entering: Vec<ObjectId>,
     /// If set, the object enters as a copy of this source object.
     pub enters_as_copy_of: Option<ObjectId>,
     /// If set, overrides the copied object's name as it enters.
@@ -51,6 +53,7 @@ impl EnterBattlefieldEvent {
             from,
             enters_tapped: false,
             enters_with_counters: Vec::new(),
+            linked_exile_with_entering: Vec::new(),
             enters_as_copy_of: None,
             copy_name_override: None,
             added_card_types: Vec::new(),
@@ -69,6 +72,7 @@ impl EnterBattlefieldEvent {
             from,
             enters_tapped: true,
             enters_with_counters: Vec::new(),
+            linked_exile_with_entering: Vec::new(),
             enters_as_copy_of: None,
             copy_name_override: None,
             added_card_types: Vec::new(),
@@ -101,6 +105,19 @@ impl EnterBattlefieldEvent {
 
         Self {
             enters_with_counters: counters,
+            ..self.clone()
+        }
+    }
+
+    pub fn with_linked_exile_objects(&self, object_ids: &[ObjectId]) -> Self {
+        let mut linked_exile_with_entering = self.linked_exile_with_entering.clone();
+        for object_id in object_ids {
+            if !linked_exile_with_entering.contains(object_id) {
+                linked_exile_with_entering.push(*object_id);
+            }
+        }
+        Self {
+            linked_exile_with_entering,
             ..self.clone()
         }
     }

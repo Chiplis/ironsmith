@@ -1167,6 +1167,7 @@ where
                         affected_filter: spec.affected_filter,
                         may: spec.may,
                         enters_tapped_if_chosen: spec.enters_tapped_if_chosen,
+                        linked_exile_pair: spec.linked_exile_pair,
                         copy_source_self: spec.copy_source_self,
                         copy_source_enchanted: spec.copy_source_enchanted,
                         name_override: spec.name_override,
@@ -4219,6 +4220,7 @@ pub struct EnterAsCopyAsEntersSpec<T, E, C, Cond> {
     pub affected_filter: Option<ObjectFilter>,
     pub may: bool,
     pub enters_tapped_if_chosen: bool,
+    pub linked_exile_pair: Option<EnterAsCopyLinkedExilePairSpec>,
     pub copy_source_self: bool,
     pub copy_source_enchanted: bool,
     pub name_override: Option<String>,
@@ -4228,6 +4230,11 @@ pub struct EnterAsCopyAsEntersSpec<T, E, C, Cond> {
     pub added_abilities: Vec<AbilityModel<T, E, C, Cond>>,
     pub set_base_power_toughness: Option<(i32, i32)>,
     pub set_base_power_toughness_from_self: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EnterAsCopyLinkedExilePairSpec {
+    pub counter_type: CounterType,
 }
 
 impl<T, E, C, Cond> crate::GrantStaticAbility for StaticAbility<T, E, C, Cond>

@@ -51,7 +51,13 @@ fn replacement_effect_choice_description(game: &GameState, effect: &ReplacementE
 
 fn replacement_effect_related_objects(effect: &ReplacementEffect) -> Vec<crate::ids::ObjectId> {
     match &effect.replacement {
-        ReplacementAction::EnterAsCopy { source, .. } => vec![*source],
+        ReplacementAction::EnterAsCopy {
+            source,
+            linked_exile_objects,
+            ..
+        } => std::iter::once(*source)
+            .chain(linked_exile_objects.iter().copied())
+            .collect(),
         _ => Vec::new(),
     }
 }
@@ -120,6 +126,45 @@ fn push_enter_as_copy_effects_for_spec(
             .flatten()
     });
 
+    if let Some(linked_pair) = spec.linked_exile_pair {
+        if candidates.len() < 2 {
+            return;
+        }
+        for &copy_candidate in &candidates {
+            for &counter_candidate in &candidates {
+                if copy_candidate == counter_candidate {
+                    continue;
+                }
+                let counter_count = game
+                    .object(counter_candidate)
+                    .and_then(|object| object.power())
+                    .unwrap_or(0)
+                    .max(0) as u32;
+                copy_choice_effects.push(
+                    ReplacementEffect::with_matcher(
+                        entering_object,
+                        controller,
+                        crate::events::zones::matchers::ThisWouldEnterBattlefieldMatcher,
+                        ReplacementAction::EnterAsCopy {
+                            source: copy_candidate,
+                            enters_tapped: spec.enters_tapped_if_chosen,
+                            linked_exile_objects: vec![copy_candidate, counter_candidate],
+                            additional_counters: vec![(linked_pair.counter_type, counter_count)],
+                            name_override: spec.name_override.clone(),
+                            added_card_types: spec.added_card_types.clone(),
+                            removed_supertypes: spec.removed_supertypes.clone(),
+                            added_subtypes: spec.added_subtypes.clone(),
+                            added_abilities: spec.added_abilities.clone(),
+                            set_base_power_toughness,
+                        },
+                    )
+                    .with_priority_override(crate::events::ReplacementPriority::CopyEffect),
+                );
+            }
+        }
+        return;
+    }
+
     for candidate in candidates {
         copy_choice_effects.push(
             ReplacementEffect::with_matcher(
@@ -129,6 +174,8 @@ fn push_enter_as_copy_effects_for_spec(
                 ReplacementAction::EnterAsCopy {
                     source: candidate,
                     enters_tapped: spec.enters_tapped_if_chosen,
+                    linked_exile_objects: Vec::new(),
+                    additional_counters: Vec::new(),
                     name_override: spec.name_override.clone(),
                     added_card_types: spec.added_card_types.clone(),
                     removed_supertypes: spec.removed_supertypes.clone(),
@@ -1985,6 +2032,8 @@ pub struct EtbEventResult {
     pub enters_tapped: bool,
     /// Counters the permanent enters with (counter_type, count)
     pub enters_with_counters: Vec<(CounterType, u32)>,
+    /// Objects exiled and linked to the entering permanent by an as-enters choice.
+    pub linked_exile_with_entering: Vec<crate::ids::ObjectId>,
     /// Whether the ETB was prevented (e.g., creature entering from graveyard replaced with exile)
     pub prevented: bool,
     /// If zone was changed, the new destination
@@ -2734,6 +2783,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
             from,
             enters_tapped,
             enters_with_counters,
+            linked_exile_with_entering: Vec::new(),
             enters_as_copy_of: None,
             copy_name_override: None,
             added_card_types: Vec::new(),
@@ -2808,6 +2858,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                     return EtbEventResult {
                         enters_tapped: etb.enters_tapped,
                         enters_with_counters: etb.enters_with_counters.clone(),
+                        linked_exile_with_entering: etb.linked_exile_with_entering.clone(),
                         prevented: false,
                         new_destination: None,
                         enters_as_copy_of: etb.enters_as_copy_of,

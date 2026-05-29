@@ -2220,8 +2220,17 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                     continue;
                 }
             }
-            let mut ability_lines =
-                describe_ability(ability_idx + 1, ability, subject, rewrite_it_deals);
+            let ability_subject = if ability_prefers_card_name_subject(ability) {
+                def.card.name.as_str()
+            } else {
+                subject
+            };
+            let mut ability_lines = describe_ability(
+                ability_idx + 1,
+                ability,
+                ability_subject,
+                rewrite_it_deals,
+            );
             if ability_has_begin_on_battlefield_pregame(ability) {
                 for line in &mut ability_lines {
                     *line = substitute_pregame_self_reference(line, &def.card.name);
@@ -2284,6 +2293,15 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
         .into_iter()
         .map(|line| substitute_legendary_source_reference(&line, &def.card, subject))
         .collect()
+}
+
+fn ability_prefers_card_name_subject(ability: &Ability) -> bool {
+    let AbilityKind::Static(static_ability) = &ability.kind else {
+        return false;
+    };
+    static_ability
+        .enter_as_copy_as_enters()
+        .is_some_and(|spec| spec.linked_exile_pair.is_some())
 }
 
 fn rewrite_additional_sacrifice_reference_surface(def: &CardDefinition, text: &str) -> String {

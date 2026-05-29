@@ -3165,6 +3165,48 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
     }
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    if slice_starts_with(&clause_words, &["as"])
+        && let Some(enter_idx) = find_index(&clause_words, |word| {
+            *word == "enter" || *word == "enters"
+        })
+        && clause_words.get(enter_idx + 1..enter_idx + 8)
+            == Some(&["you", "may", "exile", "two", "creature", "cards", "from"])
+        && clause_words.get(enter_idx + 8).copied() == Some("graveyards")
+        && find_word_slice_phrase_start(
+            &clause_words,
+            &[
+                "if", "you", "do", "it", "enters", "as", "a", "copy", "of", "one", "of",
+                "those", "cards",
+            ],
+        )
+        .is_some()
+        && slice_contains(&clause_words, &"additional")
+        && slice_contains(&clause_words, &"counters")
+        && slice_contains(&clause_words, &"power")
+        && slice_contains(&clause_words, &"other")
+    {
+        return Ok(Some(StaticAbility::with_enter_as_copy_as_enters(
+            crate::static_abilities::EnterAsCopyAsEntersSpec {
+                filter: ObjectFilter::creature().in_zone(Zone::Graveyard),
+                affected_filter: None,
+                may: true,
+                enters_tapped_if_chosen: false,
+                linked_exile_pair: Some(crate::static_abilities::EnterAsCopyLinkedExilePairSpec {
+                    counter_type: CounterType::PlusOnePlusOne,
+                }),
+                copy_source_self: false,
+                copy_source_enchanted: false,
+                name_override: None,
+                added_card_types: Vec::new(),
+                removed_supertypes: Vec::new(),
+                added_subtypes: Vec::new(),
+                added_abilities: Vec::new(),
+                set_base_power_toughness: None,
+                set_base_power_toughness_from_self: false,
+            },
+            render_token_slice(tokens).trim().to_string(),
+        )));
+    }
     if !slice_starts_with(&clause_words, &["you", "may", "have"])
         && let Some(enter_idx) =
             find_index(&clause_words, |word| *word == "enter" || *word == "enters")
@@ -3202,6 +3244,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
                     affected_filter: Some(affected_filter),
                     may: false,
                     enters_tapped_if_chosen: false,
+                    linked_exile_pair: None,
                     copy_source_self,
                     copy_source_enchanted,
                     name_override: None,
@@ -3465,6 +3508,7 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
             affected_filter: None,
             may: true,
             enters_tapped_if_chosen,
+            linked_exile_pair: None,
             copy_source_self: false,
             copy_source_enchanted: false,
             name_override,
