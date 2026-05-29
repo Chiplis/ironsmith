@@ -229,7 +229,7 @@ fn parse_exile_it_and_top_library_face_down_pile_bundle(
     };
     let shuffle_back = EffectAst::subject_verb_shuffle_objects_onto_library(
         PlayerAst::You,
-        TargetAst::Object(pile_target, span_from_tokens(second_sentence), None),
+        TargetAst::Object(pile_target, None, None),
     );
 
     Ok(Some(vec![

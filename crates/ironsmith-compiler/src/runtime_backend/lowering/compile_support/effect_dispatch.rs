@@ -1362,6 +1362,10 @@ fn compile_subject_verb_effect(
         SubjectVerbActionAst::ShuffleObjectsOntoLibrary { target } => {
             let (spec, mut choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let spec = match spec {
+                ChooseSpec::Object(filter) => ChooseSpec::All(filter),
+                spec => spec,
+            };
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             for choice in subject.into_choices() {
                 push_choice(&mut choices, choice);

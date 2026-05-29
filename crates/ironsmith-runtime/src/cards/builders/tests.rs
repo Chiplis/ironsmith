@@ -36712,6 +36712,183 @@ fn parse_cloud_ex_soldier_strict_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_triumph_of_saint_katherine_strict_regression() {
+    assert_oracle_card_parses_strict("Triumph of Saint Katherine");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn triumph_of_saint_katherine_compiled_text_keeps_face_down_pile_clause() {
+    let def = parse_oracle_card_definition("Triumph of Saint Katherine");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    let praesidium = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered)
+                if triggered.presentation_label.as_deref() == Some("praesidium protectiva") =>
+            {
+                Some(triggered)
+            }
+            _ => None,
+        })
+        .expect("Triumph of Saint Katherine should have Praesidium Protectiva");
+
+    assert!(
+        praesidium.choices.is_empty(),
+        "Praesidium Protectiva should not require targets, got {:?}",
+        praesidium.choices
+    );
+    assert!(
+        rendered.contains(
+            "exile it and the top six cards of your library in a face-down pile. If you do, shuffle that pile and put it back on top of your library"
+        ) && !rendered.contains("target card exiled with this creature"),
+        "expected compact face-down pile text without a target, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn triumph_of_saint_katherine_death_trigger_shuffles_pile_back_on_top() {
+    let def = parse_oracle_card_definition("Triumph of Saint Katherine");
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let bottom_card = CardDefinitionBuilder::new(CardId::new(), "Library Bottom")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let bottom_id = game.create_object_from_definition(&bottom_card, alice, Zone::Library);
+    for idx in 1..=6 {
+        let pile_card = CardDefinitionBuilder::new(CardId::new(), format!("Pile Card {idx}"))
+            .card_types(vec![CardType::Instant])
+            .build();
+        game.create_object_from_definition(&pile_card, alice, Zone::Library);
+    }
+
+    let source_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(source_id).expect("Triumph should be on the battlefield"),
+        &game,
+    );
+    game.move_object_by_effect(source_id, Zone::Graveyard)
+        .expect("Triumph should move to graveyard");
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::ZoneChangeEvent::with_cause(
+            source_id,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::effect(),
+            Some(source_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for entry in crate::triggers::check_triggers(&game, &event)
+        .into_iter()
+        .filter(|entry| entry.source == source_id)
+    {
+        trigger_queue.add(entry);
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Triumph should trigger once when put into its owner's graveyard from the battlefield"
+    );
+
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Triumph trigger should be put on the stack");
+    crate::game_loop::resolve_stack_entry(&mut game)
+        .expect("Triumph trigger should resolve");
+
+    let library = game.player(alice).expect("alice should exist").library.clone();
+    assert_eq!(library.first().copied(), Some(bottom_id));
+    assert_eq!(library.len(), 8, "the source plus six exiled cards should return to the library");
+    assert!(game.exile.is_empty(), "the face-down pile should leave exile");
+    assert!(
+        game.player(alice)
+            .expect("alice should exist")
+            .graveyard
+            .is_empty(),
+        "Triumph should leave the graveyard when the trigger resolves"
+    );
+
+    let top_names = library[library.len() - 7..]
+        .iter()
+        .filter_map(|id| game.object(*id).map(|object| object.name.clone()))
+        .collect::<Vec<_>>();
+    assert!(
+        top_names.iter().any(|name| name == "Triumph of Saint Katherine"),
+        "Triumph should be part of the shuffled pile on top, got {top_names:?}"
+    );
+    for idx in 1..=6 {
+        let expected = format!("Pile Card {idx}");
+        assert!(
+            top_names.iter().any(|name| name == &expected),
+            "{expected} should be part of the shuffled pile on top, got {top_names:?}"
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn triumph_of_saint_katherine_if_you_do_false_branch_does_not_shuffle_pile() {
+    let def = parse_oracle_card_definition("Triumph of Saint Katherine");
+    let praesidium = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered)
+                if triggered.presentation_label.as_deref() == Some("praesidium protectiva") =>
+            {
+                Some(triggered)
+            }
+            _ => None,
+        })
+        .expect("Triumph of Saint Katherine should have Praesidium Protectiva");
+    let if_effect = praesidium.effects.segments[0]
+        .default_effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::IfEffect>())
+        .expect("Praesidium Protectiva should lower the shuffle as an if-you-do branch")
+        .clone();
+
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let library_card = CardDefinitionBuilder::new(CardId::new(), "Library Card")
+        .card_types(vec![CardType::Instant])
+        .build();
+    game.create_object_from_definition(&library_card, alice, Zone::Library);
+    let pile_card = CardDefinitionBuilder::new(CardId::new(), "Unshuffled Pile Card")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let pile_id = game.create_object_from_definition(&pile_card, alice, Zone::Exile);
+    let pile_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(pile_id).expect("pile card should be in exile"),
+        &game,
+    );
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source_id, alice);
+    ctx.store_outcome(if_effect.condition, crate::effect::EffectOutcome::target_invalid());
+    ctx.set_tagged_objects(crate::TagKey::from("face_down_pile"), vec![pile_snapshot]);
+
+    crate::effects::execute_effect(&mut game, &crate::effect::Effect::new(if_effect), &mut ctx)
+        .expect("false if-you-do branch should resolve without shuffling");
+
+    assert!(
+        game.object(pile_id)
+            .is_some_and(|object| object.zone == Zone::Exile),
+        "a failed if-you-do antecedent should leave the pile in exile"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice should exist").library.len(),
+        1,
+        "a failed if-you-do antecedent should not put the tagged pile on the library"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_cephalid_vandal_strict_regression() {
     assert_oracle_card_parses_strict("Cephalid Vandal");
 }
