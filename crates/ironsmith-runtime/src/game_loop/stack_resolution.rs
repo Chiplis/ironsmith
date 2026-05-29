@@ -718,6 +718,10 @@ pub(super) fn resolve_stack_entry_full(
     };
     // ETB replacement is resolved when the spell actually moves to the battlefield.
     let etb_replacement_result: Option<(bool, bool, Zone)> = None;
+    let chapter_resolution = entry
+        .is_ability
+        .then(|| resolved_chapter_ability_event(game, &entry))
+        .flatten();
 
     let all_events = execute_resolution_program(
         game,
@@ -741,6 +745,24 @@ pub(super) fn resolve_stack_entry_full(
     // Process pending primitive trigger events emitted by effects and zone changes.
     if let Some(ref mut tq) = trigger_queue {
         drain_pending_trigger_events(game, tq);
+    }
+
+    if let Some(chapter_resolution) = chapter_resolution {
+        let event_provenance = game
+            .provenance_graph_mut()
+            .alloc_root_event(crate::events::EventKind::ChapterAbilityResolved);
+        let event = TriggerEvent::new_with_provenance(
+            crate::events::other::ChapterAbilityResolvedEvent::new(
+                chapter_resolution.saga_id,
+                chapter_resolution.controller,
+                true,
+            ),
+            event_provenance,
+        )
+        .with_source_snapshot(chapter_resolution.source_snapshot);
+        if let Some(ref mut tq) = trigger_queue {
+            queue_triggers_from_event(game, tq, event, false);
+        }
     }
 
     if !entry.is_ability
@@ -1319,6 +1341,47 @@ pub(super) fn resolve_stack_entry_full(
     }
 
     Ok(())
+}
+
+struct ChapterAbilityResolutionInfo {
+    saga_id: ObjectId,
+    controller: PlayerId,
+    source_snapshot: crate::snapshot::ObjectSnapshot,
+}
+
+fn resolved_chapter_ability_event(
+    game: &GameState,
+    entry: &StackEntry,
+) -> Option<ChapterAbilityResolutionInfo> {
+    let saga_id = entry.chapter_ability_source?;
+    let trigger_identity = entry.trigger_identity?;
+    let source_snapshot = game
+        .object(saga_id)
+        .map(|obj| {
+            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
+        })
+        .or_else(|| entry.source_snapshot.clone())?;
+    let final_chapter = crate::game_loop::final_chapter_number_from_abilities(
+        source_snapshot.abilities.as_slice(),
+    )?;
+    let resolved_final_chapter = source_snapshot.abilities.iter().any(|ability| {
+        let AbilityKind::Triggered(triggered) = &ability.kind else {
+            return false;
+        };
+        crate::triggers::compute_trigger_identity(triggered) == trigger_identity
+            && triggered
+                .trigger
+                .saga_chapters()
+                .is_some_and(|chapters| chapters.contains(&final_chapter))
+    });
+    if !resolved_final_chapter {
+        return None;
+    }
+    Some(ChapterAbilityResolutionInfo {
+        saga_id,
+        controller: source_snapshot.controller,
+        source_snapshot,
+    })
 }
 
 fn stack_entry_is_countered_by_unpaid_ward(

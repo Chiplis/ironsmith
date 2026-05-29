@@ -293,6 +293,9 @@ pub enum TriggerKind {
     SagaChapter {
         chapters: Vec<u32>,
     },
+    FinalChapterAbilityResolved {
+        filter: ObjectFilter,
+    },
     Custom {
         id: String,
         label: String,
@@ -976,6 +979,12 @@ impl Trigger {
     }
     pub fn saga_chapter(chapters: Vec<u32>) -> Self {
         Self::typed("saga_chapter", TriggerKind::SagaChapter { chapters })
+    }
+    pub fn final_chapter_ability_resolved(filter: ObjectFilter) -> Self {
+        Self::typed(
+            "final_chapter_ability_resolved",
+            TriggerKind::FinalChapterAbilityResolved { filter },
+        )
     }
     pub fn custom(id: impl Into<String>, label: String) -> Self {
         let id = id.into();

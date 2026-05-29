@@ -401,6 +401,9 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::WinsClash { player } => Trigger::wins_clash(player),
         TriggerSpec::Expend { player, amount } => Trigger::expend(amount, player),
         TriggerSpec::SagaChapter(chapters) => Trigger::saga_chapter(chapters),
+        TriggerSpec::FinalChapterAbilityResolved(filter) => {
+            Trigger::final_chapter_ability_resolved(filter)
+        }
         TriggerSpec::HauntedCreatureDies => Trigger::custom(
             "haunted_creature_dies",
             "When the creature it haunts dies".to_string(),

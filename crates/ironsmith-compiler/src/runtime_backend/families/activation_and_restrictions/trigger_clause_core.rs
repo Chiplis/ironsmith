@@ -505,6 +505,21 @@ pub(crate) fn parse_trigger_clause_lexed(
         );
     }
 
+    if words.len() > 6
+        && words[..5] == ["the", "final", "chapter", "ability", "of"]
+        && words.last() == Some(&"resolves")
+    {
+        let mut filter = parse_object_filter_lexed(&tokens[5..tokens.len() - 1], false)
+            .map_err(|err| {
+                CardTextError::ParseError(format!(
+                    "unsupported final chapter trigger filter: {} [{err:?}]",
+                    words[5..words.len() - 1].join(" ")
+                ))
+            })?;
+        filter.zone.get_or_insert(Zone::Battlefield);
+        return Ok(TriggerSpec::FinalChapterAbilityResolved(filter));
+    }
+
     if matches!(
         words.as_slice(),
         ["day", "becomes", "night", "or", "night", "becomes", "day"]

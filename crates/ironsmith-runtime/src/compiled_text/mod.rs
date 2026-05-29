@@ -41,10 +41,16 @@ pub fn debug_compiled_lines(def: &CardDefinition) -> Vec<String> {
 /// Render the structured compiled-text surface used for DB scoring.
 pub fn compiled_text_lines(def: &CardDefinition) -> Vec<String> {
     normalize_ast_surface_lines(debug_compiled_lines(def))
+        .into_iter()
+        .map(|line| substitute_legendary_source_reference(&line, &def.card, ""))
+        .collect()
 }
 
 pub fn unprocessed_compiled_lines(def: &CardDefinition) -> Vec<String> {
     normalize_ast_surface_lines(debug_compiled_lines(def))
+        .into_iter()
+        .map(|line| substitute_legendary_source_reference(&line, &def.card, ""))
+        .collect()
 }
 
 /// Render a single ability using the same surface renderer as compiled oracle text.

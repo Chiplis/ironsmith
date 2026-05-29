@@ -121,6 +121,8 @@ pub enum EventKind {
     CardRevealed,
     /// A state-triggered ability's condition became true
     StateTrigger,
+    /// A Saga chapter ability resolved
+    ChapterAbilityResolved,
 }
 
 /// A target within an event that can potentially be redirected.
