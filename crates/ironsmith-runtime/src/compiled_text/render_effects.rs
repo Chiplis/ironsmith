@@ -2033,7 +2033,8 @@ fn choose_spec_contains_hand_advantage_player_filter(spec: &ChooseSpec) -> bool 
 
 fn player_filter_contains_hand_advantage_filter(filter: &PlayerFilter) -> bool {
     match filter {
-        PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => true,
+        PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
+        | PlayerFilter::HasMoreLifeThanYou { .. } => true,
         PlayerFilter::Target(inner) => player_filter_contains_hand_advantage_filter(inner),
         PlayerFilter::Excluding { base, excluded } => {
             player_filter_contains_hand_advantage_filter(base)
@@ -5401,6 +5402,35 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         ))
     }
 
+    fn describe_target_only_then_damage_that_player(
+        target_only: &crate::effects::TargetOnlyEffect,
+        damage: &crate::effects::DealDamageEffect,
+    ) -> Option<String> {
+        let ChooseSpec::Target(target_inner) = &target_only.target else {
+            return None;
+        };
+        let ChooseSpec::Player(chosen_filter) = target_inner.as_ref() else {
+            return None;
+        };
+        let ChooseSpec::Player(PlayerFilter::Target(damage_filter)) = &damage.target else {
+            return None;
+        };
+        if chosen_filter != damage_filter.as_ref() {
+            return None;
+        }
+
+        let damage_text = describe_effect_impl(&Effect::new(damage.clone()));
+        let damage_target = describe_choose_spec(&damage.target);
+        if !damage_text.contains(&damage_target) {
+            return None;
+        }
+        Some(format!(
+            "Choose {}. {}",
+            describe_choose_spec(&target_only.target),
+            damage_text.replace(&damage_target, "that player")
+        ))
+    }
+
     fn downcast_exile<'a>(effect: &'a Effect) -> Option<&'a crate::effects::ExileEffect> {
         if let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>() {
             return Some(exile);
@@ -7849,6 +7879,15 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     }
     if let Some(compact) = render_search_reveal_opponent_choose_rest_bundle(&filtered) {
         return compact;
+    }
+
+    if effects.len() == 2
+        && let Some(target_only) = effects[0].downcast_ref::<crate::effects::TargetOnlyEffect>()
+        && let Some(damage) = unwrap_tag_wrappers(&effects[1])
+            .downcast_ref::<crate::effects::DealDamageEffect>()
+        && let Some(rendered) = describe_target_only_then_damage_that_player(target_only, damage)
+    {
+        return rendered;
     }
 
     if effects.len() == 2

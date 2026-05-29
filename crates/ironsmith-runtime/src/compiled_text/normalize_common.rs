@@ -50,7 +50,13 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, count } => {
             let count_text = small_number_word(*count).unwrap_or_else(|| count.to_string());
             format!(
-                "{} who has at least {count_text} more cards in hand than you do",
+                "{} who has at least {count_text} more cards in hand than you do as you activate this ability",
+                strip_leading_article(&describe_player_filter(base))
+            )
+        }
+        PlayerFilter::HasMoreLifeThanYou { base } => {
+            format!(
+                "{} who has more life than you do as you activate this ability",
                 strip_leading_article(&describe_player_filter(base))
             )
         }

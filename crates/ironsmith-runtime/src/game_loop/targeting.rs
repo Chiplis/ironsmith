@@ -1240,6 +1240,9 @@ fn specialize_iterated_player_filter(filter: &PlayerFilter, player: PlayerId) ->
                 count: *count,
             }
         }
+        PlayerFilter::HasMoreLifeThanYou { base } => PlayerFilter::HasMoreLifeThanYou {
+            base: Box::new(specialize_iterated_player_filter(base, player)),
+        },
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,
@@ -1918,6 +1921,13 @@ pub fn player_matches_filter_with_combat(
             let your_hand = game.player(controller).map(|p| p.hand.len()).unwrap_or(0);
             candidate_hand >= your_hand.saturating_add(*count as usize)
         }
+        PlayerFilter::HasMoreLifeThanYou { base } => {
+            player_matches_filter_with_combat(player_id, base, game, controller, combat)
+                && game
+                    .player(player_id)
+                    .zip(game.player(controller))
+                    .is_some_and(|(candidate, you)| candidate.life > you.life)
+        }
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,
@@ -2187,6 +2197,68 @@ fn replace_damaged_player_choose_spec(spec: &mut crate::target::ChooseSpec, play
     }
 }
 
+// Activation-time comparisons are target-selection gates; resolution only rechecks
+// that the chosen player still satisfies the underlying player class.
+fn player_filter_for_resolution_target_validation(
+    filter: &crate::target::PlayerFilter,
+) -> crate::target::PlayerFilter {
+    use crate::target::PlayerFilter;
+
+    match filter {
+        PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
+        | PlayerFilter::HasMoreLifeThanYou { base } => {
+            player_filter_for_resolution_target_validation(base)
+        }
+        PlayerFilter::Target(inner) => PlayerFilter::Target(Box::new(
+            player_filter_for_resolution_target_validation(inner),
+        )),
+        PlayerFilter::Excluding { base, excluded } => PlayerFilter::Excluding {
+            base: Box::new(player_filter_for_resolution_target_validation(base)),
+            excluded: Box::new(player_filter_for_resolution_target_validation(excluded)),
+        },
+        PlayerFilter::MaxSpeed {
+            base,
+            has_max_speed,
+        } => PlayerFilter::MaxSpeed {
+            base: Box::new(player_filter_for_resolution_target_validation(base)),
+            has_max_speed: *has_max_speed,
+        },
+        _ => filter.clone(),
+    }
+}
+
+fn choose_spec_for_resolution_target_validation(
+    spec: &crate::target::ChooseSpec,
+) -> crate::target::ChooseSpec {
+    use crate::target::ChooseSpec;
+
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, hints } => ChooseSpec::SurfaceHinted {
+            spec: Box::new(choose_spec_for_resolution_target_validation(spec)),
+            hints: hints.clone(),
+        },
+        ChooseSpec::Target(inner) => ChooseSpec::Target(Box::new(
+            choose_spec_for_resolution_target_validation(inner),
+        )),
+        ChooseSpec::WithCount(inner, count) => ChooseSpec::WithCount(
+            Box::new(choose_spec_for_resolution_target_validation(inner)),
+            *count,
+        ),
+        ChooseSpec::WithCountValue(inner, count, value) => ChooseSpec::WithCountValue(
+            Box::new(choose_spec_for_resolution_target_validation(inner)),
+            *count,
+            value.clone(),
+        ),
+        ChooseSpec::Player(filter) => ChooseSpec::Player(
+            player_filter_for_resolution_target_validation(filter),
+        ),
+        ChooseSpec::PlayerOrPlaneswalker(filter) => ChooseSpec::PlayerOrPlaneswalker(
+            player_filter_for_resolution_target_validation(filter),
+        ),
+        _ => spec.clone(),
+    }
+}
+
 pub(super) fn validate_stack_entry_targets_with_view(
     game: &GameState,
     entry: &StackEntry,
@@ -2211,6 +2283,7 @@ pub(super) fn validate_stack_entry_targets_with_view(
                 &assignment.spec,
                 entry.triggering_event.as_ref(),
             );
+            let resolved_spec = choose_spec_for_resolution_target_validation(&resolved_spec);
             let legal_targets = compute_legal_targets_with_source_snapshot_and_view(
                 game,
                 &resolved_spec,
@@ -2275,6 +2348,7 @@ pub(super) fn validate_stack_entry_targets_with_view(
         .map(|spec| {
             let resolved_spec =
                 choose_spec_with_damaged_player_from_event(spec, entry.triggering_event.as_ref());
+            let resolved_spec = choose_spec_for_resolution_target_validation(&resolved_spec);
             if entry.defending_player.is_some() {
                 return compute_legal_targets_with_tagged_objects_combat_context_and_view(
                     game,

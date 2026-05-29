@@ -98,6 +98,106 @@ fn rise_from_the_grave_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn keeper_of_the_flame_activation_requires_higher_life_opponent_and_damages_that_player() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice).expect("Alice should exist").life = 20;
+    game.player_mut(bob).expect("Bob should exist").life = 20;
+
+    let keeper_def = keeper_of_the_flame_definition();
+    let keeper_id = game.create_object_from_definition(&keeper_def, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(keeper_id);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    assert!(
+        !crate::decision::compute_legal_actions(&game, alice)
+            .into_iter()
+            .any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, .. }
+                    if source == keeper_id
+            )),
+        "Keeper of the Flame should not be activatable without a higher-life opponent target"
+    );
+
+    game.player_mut(bob).expect("Bob should exist").life = 21;
+    let ability_index = game
+        .object(keeper_id)
+        .expect("Keeper of the Flame should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Keeper of the Flame should have an activated ability");
+    let activate_action = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| matches!(
+            action,
+            crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                if *source == keeper_id && *idx == ability_index
+        ))
+        .expect("Keeper of the Flame activation should be legal once Bob has more life");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Keeper of the Flame activation should start");
+    match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::Targets(_),
+        ) => {}
+        other => panic!("expected target selection for Keeper of the Flame, got {other:?}"),
+    }
+
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Player(bob)]),
+        &mut dm,
+    )
+    .expect("choosing the higher-life opponent should complete activation");
+
+    game.player_mut(bob).expect("Bob should exist").life = 18;
+
+    resolve_stack_entry(&mut game).expect("Keeper of the Flame ability should resolve");
+    assert_eq!(
+        game.player(bob).expect("Bob should exist").life,
+        16,
+        "Keeper of the Flame should remember that the chosen player had more life during activation"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn keeper_of_the_flame_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_950), "Keeper of the Flame")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red], vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Wizard])
+        .power_toughness(PowerToughness::fixed(1, 2))
+        .parse_text(
+            "{R}, {T}: Choose target opponent who has more life than you do as you activate this ability. This creature deals 2 damage to that player.",
+        )
+        .expect("Keeper of the Flame should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn explore_event_for(game: &GameState, controller: PlayerId, source: ObjectId) -> TriggerEvent {
     let snapshot = game
         .object(source)

@@ -154,6 +154,9 @@ pub enum PlayerFilter {
         base: Box<PlayerFilter>,
         count: u32,
     },
+    HasMoreLifeThanYou {
+        base: Box<PlayerFilter>,
+    },
     MaxSpeed {
         base: Box<PlayerFilter>,
         has_max_speed: bool,
@@ -208,6 +211,7 @@ impl PlayerFilter {
             Self::IteratedPlayer => true,
             Self::Target(inner) => inner.mentions_iterated_player(),
             Self::CardsInHandAtLeastMoreThanYou { base, .. } => base.mentions_iterated_player(),
+            Self::HasMoreLifeThanYou { base } => base.mentions_iterated_player(),
             Self::MaxSpeed { base, .. } => base.mentions_iterated_player(),
             Self::Excluding { base, excluded } => {
                 base.mentions_iterated_player() || excluded.mentions_iterated_player()
@@ -262,9 +266,15 @@ impl PlayerFilter {
             Self::CardsInHandAtLeastMoreThanYou { base, count } => {
                 let count_text = crate::cardinal_word(*count).unwrap_or_else(|| count.to_string());
                 format!(
-                    "{} who has at least {} more cards in hand than you do",
+                    "{} who has at least {} more cards in hand than you do as you activate this ability",
                     base.description(),
                     count_text
+                )
+            }
+            Self::HasMoreLifeThanYou { base } => {
+                format!(
+                    "{} who has more life than you do as you activate this ability",
+                    base.description()
                 )
             }
             Self::MaxSpeed {
@@ -1169,6 +1179,9 @@ impl ObjectFilter {
                 PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
+                PlayerFilter::HasMoreLifeThanYou { .. } => {
+                    parts.push(describe_possessive_player_filter(ctrl));
+                }
                 PlayerFilter::MaxSpeed { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
@@ -1244,6 +1257,9 @@ impl ObjectFilter {
                     card_type.to_string().to_ascii_lowercase()
                 ),
                 PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => {
+                    format!("{} owns", describe_player_filter(owner))
+                }
+                PlayerFilter::HasMoreLifeThanYou { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::MaxSpeed { .. } => {
@@ -2171,7 +2187,13 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, count } => {
             let count_text = crate::cardinal_word(*count).unwrap_or_else(|| count.to_string());
             format!(
-                "{} who has at least {count_text} more cards in hand than you do's",
+                "{} who has at least {count_text} more cards in hand than you do as you activate this ability's",
+                describe_player_filter(base)
+            )
+        }
+        PlayerFilter::HasMoreLifeThanYou { base } => {
+            format!(
+                "{} who has more life than you do as you activate this ability's",
                 describe_player_filter(base)
             )
         }
@@ -2237,7 +2259,13 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, count } => {
             let count_text = crate::cardinal_word(*count).unwrap_or_else(|| count.to_string());
             format!(
-                "{} who has at least {count_text} more cards in hand than you do",
+                "{} who has at least {count_text} more cards in hand than you do as you activate this ability",
+                describe_player_filter(base)
+            )
+        }
+        PlayerFilter::HasMoreLifeThanYou { base } => {
+            format!(
+                "{} who has more life than you do as you activate this ability",
                 describe_player_filter(base)
             )
         }
