@@ -259,6 +259,8 @@ pub struct TurnStore {
     pub entered_battlefield_last_turn: Vec<ObjectSnapshot>,
     /// Static or temporary grant sources whose once-per-turn cast permission was used.
     pub grant_cast_uses_this_turn: HashSet<(PlayerId, ObjectId)>,
+    /// Exhaust activated abilities that have been activated by this object instance.
+    pub exhaust_abilities_activated: HashSet<(ObjectId, usize)>,
     /// Explicit combat damage assignments keyed by attacker then damage recipient.
     pub combat_damage_assignments: HashMap<ObjectId, HashMap<ObjectId, u32>>,
 }
@@ -430,6 +432,10 @@ pub struct TurnCounterTracker {
 
 fn activated_ability_turn_counter_name(source: ObjectId, ability_index: usize) -> String {
     format!("activated_ability:{}:{}", source.0, ability_index)
+}
+
+fn exhaust_ability_turn_counter_name(player: PlayerId) -> String {
+    format!("exhaust_ability:{}", player.0)
 }
 
 fn activated_ability_resolution_turn_counter_name(
@@ -7397,6 +7403,13 @@ impl GameState {
     /// Records that an activated ability was used.
     /// Used for OncePerTurn timing restrictions.
     pub fn record_ability_activation(&mut self, source: ObjectId, ability_index: usize) {
+        let exhaust_controller = self.object(source).and_then(|object| {
+            object.abilities.get(ability_index).and_then(|ability| match &ability.kind {
+                crate::ability::AbilityKind::Activated(activated)
+                    if activated.is_exhaust_ability() => Some(self.controller_of(object)),
+                _ => None,
+            })
+        });
         self.turn_store
             .turn_history
             .activated_abilities_this_turn
@@ -7405,6 +7418,15 @@ impl GameState {
             .turn_history
             .turn_counters
             .increment_named(activated_ability_turn_counter_name(source, ability_index));
+        if let Some(controller) = exhaust_controller {
+            self.turn_store
+                .exhaust_abilities_activated
+                .insert((source, ability_index));
+            self.turn_store
+                .turn_history
+                .turn_counters
+                .increment_named(exhaust_ability_turn_counter_name(controller));
+        }
     }
 
     /// Check if an activated ability has been used this turn.
@@ -7422,6 +7444,18 @@ impl GameState {
         ability_index: usize,
     ) -> u32 {
         self.named_turn_counter(&activated_ability_turn_counter_name(source, ability_index))
+    }
+
+    /// Check if an exhaust ability has already been activated by this object instance.
+    pub fn exhaust_ability_activated(&self, source: ObjectId, ability_index: usize) -> bool {
+        self.turn_store
+            .exhaust_abilities_activated
+            .contains(&(source, ability_index))
+    }
+
+    /// Count exhaust activations by this player during the current turn.
+    pub fn exhaust_ability_activation_count_this_turn(&self, player: PlayerId) -> u32 {
+        self.named_turn_counter(&exhaust_ability_turn_counter_name(player))
     }
 
     /// Record that a specific activated ability resolved this turn.

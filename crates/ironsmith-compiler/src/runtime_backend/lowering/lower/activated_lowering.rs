@@ -529,6 +529,14 @@ fn lower_rewrite_activated_to_chunk_impl(
 
     let normalized_cost = line.cost.clone();
     let ability_text = rewrite_activated_display_text(line);
+    let additional_activation_restrictions = if ability_text
+        .as_deref()
+        .is_some_and(|text| text.trim_start().starts_with("Exhaust"))
+    {
+        vec!["Activate each exhaust ability only once.".to_string()]
+    } else {
+        Vec::new()
+    };
     let normalized_effect_text = effect_text.to_ascii_lowercase();
     let normalized_raw_line = line.info.raw_line.to_ascii_lowercase();
 
@@ -556,7 +564,7 @@ fn lower_rewrite_activated_to_chunk_impl(
                     choices: vec![],
                     timing: line.timing_hint.clone(),
                     is_loyalty_ability: line.is_loyalty_ability,
-                    additional_restrictions: vec![],
+                    additional_restrictions: additional_activation_restrictions.clone(),
                     activation_restrictions: vec![],
                     mana_output: Some(mana_output),
                     activation_condition: None,
@@ -612,7 +620,7 @@ fn lower_rewrite_activated_to_chunk_impl(
                         choices: vec![],
                         timing: line.timing_hint.clone(),
                         is_loyalty_ability: line.is_loyalty_ability,
-                        additional_restrictions: vec![],
+                        additional_restrictions: additional_activation_restrictions.clone(),
                         activation_restrictions: vec![],
                         mana_output: Some(vec![]),
                         activation_condition: None,
@@ -673,7 +681,7 @@ fn lower_rewrite_activated_to_chunk_impl(
                 choices: vec![],
                 timing: line.timing_hint.clone(),
                 is_loyalty_ability: line.is_loyalty_ability,
-                additional_restrictions: vec![],
+                additional_restrictions: additional_activation_restrictions,
                 activation_restrictions: vec![],
                 mana_output: None,
                 activation_condition: None,
@@ -723,6 +731,7 @@ fn rewrite_activated_display_text(line: &RewriteActivatedLine) -> Option<String>
 
     for display in [
         "Boast",
+        "Exhaust",
         "Renew",
         "Channel",
         "Cohort",
@@ -738,6 +747,7 @@ fn rewrite_activated_display_text(line: &RewriteActivatedLine) -> Option<String>
     if let Some(chosen) = line.chosen_option_label.as_deref() {
         for display in [
             "Boast",
+            "Exhaust",
             "Renew",
             "Channel",
             "Cohort",

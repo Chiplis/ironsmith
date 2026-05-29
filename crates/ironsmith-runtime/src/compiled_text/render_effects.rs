@@ -13618,6 +13618,8 @@ pub(super) fn describe_inline_ability_with_self_subject(
             }
             if line.is_empty() {
                 "an activated ability".to_string()
+            } else if activated.is_exhaust_ability() {
+                format!("Exhaust — {}", normalize_ability_self_reference_surface(&line, self_subject))
             } else {
                 normalize_ability_self_reference_surface(&line, self_subject)
             }
@@ -32681,6 +32683,9 @@ pub(super) fn collect_activation_restriction_clauses(
     }
 
     for raw in additional_restrictions {
+        if raw.to_ascii_lowercase().contains("exhaust ability only once") {
+            continue;
+        }
         let normalized = normalize_activation_restriction_clause(raw);
         push_activation_restriction_clause(&mut clauses, normalized);
     }
@@ -35733,7 +35738,8 @@ pub(super) fn describe_ability(
                 return vec![line];
             }
             let is_grandeur = is_grandeur_activation_cost(activated);
-            let mut line = if is_grandeur {
+            let is_exhaust = activated.is_exhaust_ability();
+            let mut line = if is_grandeur || is_exhaust {
                 String::new()
             } else {
                 format!("Activated ability {index}")
@@ -35801,6 +35807,9 @@ pub(super) fn describe_ability(
             }
             if is_grandeur_activation_cost(activated) {
                 line = format!("Grandeur — {line}");
+            }
+            if is_exhaust {
+                line = format!("Exhaust — {line}");
             }
             line = normalize_ability_self_reference_surface(&line, subject);
             line = normalize_graveyard_source_return_surface(&line, ability);

@@ -100,6 +100,9 @@ impl StaticAbility {
             Some(StaticAbilityId::DoesntUntap) => Self::doesnt_untap(),
             Some(StaticAbilityId::BoastTwiceEachTurn) => Self::boast_twice_each_turn(),
             Some(StaticAbilityId::EquipAbilitiesAnyTime) => Self::equip_abilities_any_time(),
+            Some(StaticAbilityId::ExhaustAbilitiesAsThoughUnactivatedThisTurn) => {
+                Self::exhaust_abilities_as_though_unactivated_this_turn()
+            }
             Some(StaticAbilityId::VoteAdditionalTimeWhileVoting) => {
                 Self::vote_additional_time_while_voting()
             }

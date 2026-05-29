@@ -1927,6 +1927,10 @@ impl StaticAbility {
         Self::new(EquipAbilitiesAnyTime)
     }
 
+    pub fn exhaust_abilities_as_though_unactivated_this_turn() -> Self {
+        Self::new(ExhaustAbilitiesAsThoughUnactivatedThisTurn)
+    }
+
     pub fn vote_additional_time_while_voting() -> Self {
         Self::new(VoteAdditionalTimeWhileVoting)
     }

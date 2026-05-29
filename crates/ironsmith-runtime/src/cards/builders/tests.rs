@@ -23304,6 +23304,47 @@ fn parse_equip_with_once_each_turn_restriction() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn elvish_refueler_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Elvish Refueler");
+    let lines = canonical_compiled_lines(&def);
+
+    assert!(
+        lines.iter().any(|line| line
+            == "During your turn, as long as you haven't activated an exhaust ability this turn, you may activate exhaust abilities as though they haven't been activated."),
+        "expected Elvish Refueler exhaust permission line, got {lines:?}"
+    );
+    assert!(
+        lines.iter().any(|line| line
+            == "Exhaust — {1}{G}: Put a +1/+1 counter on this creature."),
+        "expected Elvish Refueler exhaust activated line, got {lines:?}"
+    );
+    assert!(
+        def.abilities.iter().any(|ability| matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.id()
+                    == StaticAbilityId::ExhaustAbilitiesAsThoughUnactivatedThisTurn
+        )),
+        "expected Elvish Refueler static exhaust permission ability, got {:#?}",
+        def.abilities
+    );
+    let exhaust = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) if activated.is_exhaust_ability() => Some(activated),
+            _ => None,
+        })
+        .expect("Elvish Refueler should have an exhaust activated ability");
+    let effects_debug = format!("{:#?}", exhaust.effects);
+    assert!(
+        effects_debug.contains("PutCountersEffect") && effects_debug.contains("PlusOnePlusOne"),
+        "expected Elvish Refueler exhaust ability to put a +1/+1 counter on itself, got {effects_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_mercenary_token_with_tap_pump_ability() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Mercenary Token Variant")
         .card_types(vec![CardType::Creature])

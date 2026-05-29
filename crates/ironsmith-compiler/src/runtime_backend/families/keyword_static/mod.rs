@@ -904,6 +904,13 @@ fn parse_static_ability_ast_line_early_lexed(
             .into(),
         ]));
     }
+    if rendered
+        == "during your turn as long as you havent activated an exhaust ability this turn you may activate exhaust abilities as though they havent been activated"
+    {
+        return Ok(Some(vec![
+            StaticAbility::exhaust_abilities_as_though_unactivated_this_turn().into(),
+        ]));
+    }
     if rendered == "this creature cant attack unless youve cast a creature spell this turn"
         || rendered == "this cant attack unless youve cast a creature spell this turn"
     {

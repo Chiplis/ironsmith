@@ -2578,6 +2578,12 @@ impl<
             "activate equip abilities any time",
         )
     }
+    pub fn exhaust_abilities_as_though_unactivated_this_turn() -> Self {
+        Self::identified(
+            StaticAbilityId::ExhaustAbilitiesAsThoughUnactivatedThisTurn,
+            "activate exhaust abilities as though unactivated this turn",
+        )
+    }
     pub fn vote_additional_time_while_voting() -> Self {
         Self::identified(
             StaticAbilityId::VoteAdditionalTimeWhileVoting,

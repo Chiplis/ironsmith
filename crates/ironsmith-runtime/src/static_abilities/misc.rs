@@ -385,6 +385,21 @@ impl StaticAbilityKind for EquipAbilitiesAnyTime {
     }
 }
 
+/// "During your turn, as long as you haven't activated an exhaust ability this turn,
+/// you may activate exhaust abilities as though they haven't been activated."
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ExhaustAbilitiesAsThoughUnactivatedThisTurn;
+
+impl StaticAbilityKind for ExhaustAbilitiesAsThoughUnactivatedThisTurn {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ExhaustAbilitiesAsThoughUnactivatedThisTurn
+    }
+
+    fn display(&self) -> String {
+        "During your turn, as long as you haven't activated an exhaust ability this turn, you may activate exhaust abilities as though they haven't been activated".to_string()
+    }
+}
+
 /// "While voting, you may vote an additional time."
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct VoteAdditionalTimeWhileVoting;
