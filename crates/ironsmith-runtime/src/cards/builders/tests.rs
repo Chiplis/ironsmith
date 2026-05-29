@@ -11512,6 +11512,225 @@ fn test_peek_targets_opponent_hand() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+#[derive(Debug)]
+struct SpyNetworkViewCall {
+    viewer: PlayerId,
+    subject: PlayerId,
+    zone: Zone,
+    cards: Vec<ObjectId>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[derive(Debug, Default)]
+struct SpyNetworkCaptureDm {
+    calls: Vec<SpyNetworkViewCall>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl crate::decision::DecisionMaker for SpyNetworkCaptureDm {
+    fn view_cards(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        viewer: PlayerId,
+        cards: &[ObjectId],
+        ctx: &crate::decisions::context::ViewCardsContext,
+    ) {
+        self.calls.push(SpyNetworkViewCall {
+            viewer,
+            subject: ctx.subject,
+            zone: ctx.zone,
+            cards: cards.to_vec(),
+        });
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn spy_network_oracle_text() -> &'static str {
+    concat!(
+        "Look at target player's hand, the top card of that player's library, ",
+        "and any face-down creatures they control. Look at the top four cards ",
+        "of your library, then put them back in any order."
+    )
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn spy_network_definition() -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(1), "Spy Network")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(spy_network_oracle_text())
+        .expect("Spy Network should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn spy_network_test_card(name: &str, card_types: Vec<CardType>) -> crate::card::Card {
+    let is_creature = card_types.contains(&CardType::Creature);
+    let mut builder = crate::card::CardBuilder::new(CardId::new(), name)
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .card_types(card_types);
+    if is_creature {
+        builder = builder.power_toughness(PowerToughness::fixed(2, 2));
+    }
+    builder.build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn spy_network_add_card(
+    game: &mut crate::game_state::GameState,
+    owner: PlayerId,
+    zone: Zone,
+    name: &str,
+    card_types: Vec<CardType>,
+) -> ObjectId {
+    let card = spy_network_test_card(name, card_types);
+    game.create_object_from_card(&card, owner, zone)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn spy_network_resolve(def: &CardDefinition, include_face_down: bool) -> SpyNetworkCaptureDm {
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    spy_network_add_card(
+        &mut game,
+        bob,
+        Zone::Hand,
+        "Hand Card",
+        vec![CardType::Instant],
+    );
+    spy_network_add_card(
+        &mut game,
+        bob,
+        Zone::Library,
+        "Library Card",
+        vec![CardType::Sorcery],
+    );
+    for idx in 0..4 {
+        spy_network_add_card(
+            &mut game,
+            alice,
+            Zone::Library,
+            &format!("Alice Library Card {idx}"),
+            vec![CardType::Instant],
+        );
+    }
+    let face_up = spy_network_add_card(
+        &mut game,
+        bob,
+        Zone::Battlefield,
+        "Face-Up Creature",
+        vec![CardType::Creature],
+    );
+    let face_down = spy_network_add_card(
+        &mut game,
+        bob,
+        Zone::Battlefield,
+        "Face-Down Creature",
+        vec![CardType::Creature],
+    );
+    if include_face_down {
+        game.set_face_down(face_down);
+    }
+
+    let source = game.create_object_from_definition(def, alice, Zone::Stack);
+    let mut dm = SpyNetworkCaptureDm::default();
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)]);
+    for effect in def.spell_effect.as_ref().expect("Spy Network spell effects") {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Spy Network effect should resolve");
+    }
+
+    assert!(
+        !dm.calls
+            .iter()
+            .any(|call| call.zone == Zone::Battlefield && call.cards.contains(&face_up)),
+        "Spy Network should not show face-up creatures as part of the face-down clause"
+    );
+    dm
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn spy_network_parses_strictly_and_compiles_look_clauses() {
+    let def = spy_network_definition();
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert_eq!(rendered, spy_network_oracle_text());
+
+    let debug = format!("{:?}", def.spell_effect.as_ref().expect("spell effects"));
+    assert!(debug.contains("LookAtHandEffect"), "{debug}");
+    assert!(debug.contains("LookAtTopCardsEffect"), "{debug}");
+    assert!(debug.contains("LookAtObjectsEffect"), "{debug}");
+    assert!(
+        debug.contains("ReorderLibraryTopEffect"),
+        "{debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn spy_network_runtime_views_hand_library_and_face_down_creatures() {
+    let def = spy_network_definition();
+    let dm = spy_network_resolve(&def, true);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    assert!(
+        dm.calls.iter().any(|call| call.viewer == alice
+            && call.subject == bob
+            && call.zone == Zone::Hand
+            && call.cards.len() == 1),
+        "Spy Network should show the target player's hand, got {:?}",
+        dm.calls
+    );
+    assert!(
+        dm.calls.iter().any(|call| call.viewer == alice
+            && call.subject == bob
+            && call.zone == Zone::Library
+            && call.cards.len() == 1),
+        "Spy Network should show the top card of the target player's library, got {:?}",
+        dm.calls
+    );
+    assert!(
+        dm.calls.iter().any(|call| call.viewer == alice
+            && call.subject == alice
+            && call.zone == Zone::Library
+            && call.cards.len() == 4),
+        "Spy Network should show the top four cards of your library, got {:?}",
+        dm.calls
+    );
+    assert!(
+        dm.calls.iter().any(|call| call.viewer == alice
+            && call.subject == bob
+            && call.zone == Zone::Battlefield
+            && call.cards.len() == 1),
+        "Spy Network should show target player's face-down creatures, got {:?}",
+        dm.calls
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn spy_network_runtime_without_face_down_creatures_still_views_hand_and_library() {
+    let def = spy_network_definition();
+    let dm = spy_network_resolve(&def, false);
+
+    assert!(
+        dm.calls.iter().any(|call| call.zone == Zone::Hand),
+        "Spy Network should still show hand when there are no face-down creatures"
+    );
+    assert!(
+        dm.calls.iter().any(|call| call.zone == Zone::Library),
+        "Spy Network should still show library when there are no face-down creatures"
+    );
+    assert!(
+        !dm.calls.iter().any(|call| call.zone == Zone::Battlefield),
+        "Spy Network should not create a battlefield view when no face-down creatures match, got {:?}",
+        dm.calls
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_keeper_of_the_mind_target_condition_survives_rendering() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Keeper of the Mind Probe")

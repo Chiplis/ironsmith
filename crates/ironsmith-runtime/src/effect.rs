@@ -3795,6 +3795,16 @@ impl Effect {
         Self::new(LookAtTopCardsEffect::new(player, count, tag))
     }
 
+    /// Create a "look at objects" effect for objects matched by a filter.
+    pub fn look_at_objects(
+        filter: ObjectFilter,
+        viewer: PlayerFilter,
+        subject: PlayerFilter,
+    ) -> Self {
+        use crate::effects::LookAtObjectsEffect;
+        Self::new(LookAtObjectsEffect::new(filter, viewer, subject))
+    }
+
     /// Create a "reveal the top N cards" effect, tagging the revealed cards.
     pub fn reveal_top_cards(
         player: PlayerFilter,

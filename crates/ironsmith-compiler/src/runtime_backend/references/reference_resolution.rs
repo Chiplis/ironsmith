@@ -352,6 +352,9 @@ fn advance_reference_frame_for_effect(
     frame: &mut ReferenceFrame,
 ) -> Result<(), CardTextError> {
     match effect {
+        EffectAst::Sequence { effects } => {
+            advance_reference_frames(effects, id_gen, frame)?;
+        }
         EffectAst::SubjectVerb(subject_verb) => {
             track_effect_player(subject_verb.subject.player, frame, true, true)?;
             match &subject_verb.action {
@@ -1629,6 +1632,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::RevealHand
             | SubjectVerbActionAst::EmitKeywordAction { .. }
             | SubjectVerbActionAst::Amass { .. }
+            | SubjectVerbActionAst::LookAtObjects { .. }
             | SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { .. }
             | SubjectVerbActionAst::PutSomeIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::Bolster { .. }

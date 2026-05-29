@@ -93,6 +93,16 @@ fn compile_effect_inner(
     if let EffectAst::SubjectVerb(subject_verb) = effect {
         return compile_subject_verb_effect(subject_verb, ctx);
     }
+    if let EffectAst::Sequence { effects } = effect {
+        let mut compiled_effects = Vec::new();
+        let mut choices = Vec::new();
+        for child in effects {
+            let (mut child_effects, mut child_choices) = compile_effect(child, ctx)?;
+            compiled_effects.append(&mut child_effects);
+            choices.append(&mut child_choices);
+        }
+        return Ok((compiled_effects, choices));
+    }
     if let EffectAst::ManaRestricted {
         effects,
         restrictions,
@@ -1203,6 +1213,20 @@ fn compile_subject_verb_effect(
             };
             Ok((
                 vec![effect],
+                subject.into_choices(),
+            ))
+        }
+        SubjectVerbActionAst::LookAtObjects { filter } => {
+            let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
+            let player_filter = subject.clone_player_filter();
+            let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            resolved_filter.controller.get_or_insert(player_filter.clone());
+            Ok((
+                vec![Effect::new(crate::effects::LookAtObjectsEffect::new(
+                    resolved_filter,
+                    PlayerFilter::You,
+                    player_filter,
+                ))],
                 subject.into_choices(),
             ))
         }

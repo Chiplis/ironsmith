@@ -2321,6 +2321,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::RevealHand
             | SubjectVerbActionAst::RevealTagged { .. }
             | SubjectVerbActionAst::RevealCardsFromHand { .. }
+            | SubjectVerbActionAst::LookAtObjects { .. }
             | SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { .. }
             | SubjectVerbActionAst::PutSomeIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::EmitKeywordAction { .. }
