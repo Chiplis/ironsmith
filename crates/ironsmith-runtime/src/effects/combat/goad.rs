@@ -15,12 +15,19 @@ use crate::zone::Zone;
 pub struct GoadEffect {
     /// Creature target specification.
     pub target: ChooseSpec,
+    /// How long the goad effect lasts.
+    pub duration: Until,
 }
 
 impl GoadEffect {
     /// Create a new goad effect.
     pub fn new(target: ChooseSpec) -> Self {
-        Self { target }
+        Self::new_with_duration(target, Until::YourNextTurn)
+    }
+
+    /// Create a new goad effect with an explicit duration.
+    pub fn new_with_duration(target: ChooseSpec, duration: Until) -> Self {
+        Self { target, duration }
     }
 }
 
@@ -40,7 +47,7 @@ impl EffectExecutor for GoadEffect {
             if object.zone != Zone::Battlefield || !game.current_is_creature(object_id) {
                 continue;
             }
-            game.add_goad_effect(object_id, ctx.controller, Until::YourNextTurn, ctx.source);
+            game.add_goad_effect(object_id, ctx.controller, self.duration.clone(), ctx.source);
             count += 1;
         }
         Ok(EffectOutcome::count(count))
@@ -110,6 +117,7 @@ mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::decision::AutoPassDecisionMaker;
+    use crate::effect::Effect;
     use crate::filter::{TaggedObjectConstraint, TaggedOpbjectRelation};
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::object::Object;
@@ -208,5 +216,65 @@ mod tests {
 
         assert!(game.is_goaded(ObjectId::from_raw(1)));
         assert!(!game.is_goaded(ObjectId::from_raw(2)));
+    }
+
+    #[test]
+    fn vislor_turlough_goad_lasts_as_long_as_gained_controller_controls_it() {
+        let mut game = GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        let vislor_id = ObjectId::from_raw(968);
+        let mut vislor = battlefield_creature(968, "Vislor Turlough", alice, 2, 5);
+        vislor.id = vislor_id;
+        game.add_object(vislor);
+
+        game.set_current_controller(vislor_id, bob);
+        let effect =
+            GoadEffect::new_with_duration(ChooseSpec::Source, Until::YouStopControllingThis);
+        let mut dm = AutoPassDecisionMaker;
+        let mut ctx = ExecutionContext::new(vislor_id, alice, &mut dm);
+
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("Vislor Turlough goad should resolve after control changes");
+
+        assert!(game.is_goaded(vislor_id));
+        let goaders = game.active_goaders_for(vislor_id);
+        assert_eq!(goaders.len(), 1);
+        assert!(goaders.contains(&alice));
+
+        game.set_current_controller(vislor_id, charlie);
+
+        assert!(
+            !game.is_goaded(vislor_id),
+            "Vislor Turlough should stop being goaded once the chosen opponent no longer controls it"
+        );
+    }
+
+    #[test]
+    fn vislor_turlough_declined_black_guardian_branch_does_not_goad() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let vislor_id = ObjectId::from_raw(968);
+        let mut vislor = battlefield_creature(968, "Vislor Turlough", alice, 2, 5);
+        vislor.id = vislor_id;
+        game.add_object(vislor);
+
+        let may_goad = crate::effects::MayEffect::new(vec![Effect::goad_until(
+            ChooseSpec::Source,
+            Until::YouStopControllingThis,
+        )]);
+        let mut dm = AutoPassDecisionMaker;
+        let mut ctx = ExecutionContext::new(vislor_id, alice, &mut dm);
+
+        may_goad
+            .execute(&mut game, &mut ctx)
+            .expect("declining Vislor Turlough's optional branch should be valid");
+
+        assert!(!game.is_goaded(vislor_id));
     }
 }

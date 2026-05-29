@@ -1239,8 +1239,9 @@ where
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::GoadEffect>(&effect) {
-        return Ok(Effect::new(crate::effects::GoadEffect::new(
+        return Ok(Effect::new(crate::effects::GoadEffect::new_with_duration(
             payload.target.clone(),
+            payload.duration.clone(),
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::SuspectEffect>(&effect) {

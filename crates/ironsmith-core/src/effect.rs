@@ -1996,11 +1996,16 @@ impl DetainEffect {
 #[derive(Debug, Clone, PartialEq)]
 pub struct GoadEffect {
     pub target: ChooseSpec,
+    pub duration: Until,
 }
 
 impl GoadEffect {
     pub fn new(target: ChooseSpec) -> Self {
-        Self { target }
+        Self::new_with_duration(target, Until::YourNextTurn)
+    }
+
+    pub fn new_with_duration(target: ChooseSpec, duration: Until) -> Self {
+        Self { target, duration }
     }
 }
 

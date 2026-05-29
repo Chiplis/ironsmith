@@ -1401,30 +1401,42 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     Ok(effect)
 }
 
-fn parse_passive_goad_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+fn parse_passive_goad_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
     let words = ClauseDispatchCompatWords::new(tokens).to_word_refs();
-    let Some(is_word_idx) = find_word_index(&words, "is") else {
+    let Some(goaded_word_idx) =
+        find_word_index_by(&words, |word| matches!(word, "goaded" | "goad"))
+    else {
         return Ok(None);
     };
-    if !matches!(words.get(is_word_idx + 1).copied(), Some("goaded" | "goad")) {
-        return Ok(None);
-    }
-
-    let duration_tail = &words[is_word_idx + 2..];
-    let duration_ok = duration_tail.is_empty()
-        || matches!(
-            duration_tail,
-            ["for", "the", "rest", "of", "the", "game"]
-                | ["for", "the", "rest", "of", "this", "game"]
-        );
-    if !duration_ok {
-        return Ok(None);
-    }
-
-    let Some(is_token_idx) = token_index_for_word_index(tokens, is_word_idx) else {
+    let Some(copula_word_idx) = goaded_word_idx.checked_sub(1) else {
         return Ok(None);
     };
-    let subject_tokens = trim_commas(&tokens[..is_token_idx]);
+    let subject_end_word_idx = match words.get(copula_word_idx).copied() {
+        Some("is" | "are") => copula_word_idx,
+        Some("s") => copula_word_idx,
+        Some("its") if copula_word_idx == 0 => goaded_word_idx,
+        _ => return Ok(None),
+    };
+
+    let duration_tail = &words[goaded_word_idx + 1..];
+    let duration = match duration_tail {
+        [] => Until::YourNextTurn,
+        ["for", "the", "rest", "of", "the", "game"]
+        | ["for", "the", "rest", "of", "this", "game"] => Until::Forever,
+        ["for", "as", "long", "as", "they", "control", "it"]
+        | ["for", "as", "long", "as", "that", "player", "controls", "it"] => {
+            Until::YouStopControllingThis
+        }
+        _ => return Ok(None),
+    };
+
+    let Some(subject_end_token_idx) = token_index_for_word_index(tokens, subject_end_word_idx)
+    else {
+        return Ok(None);
+    };
+    let subject_tokens = trim_commas(&tokens[..subject_end_token_idx]);
     if subject_tokens.is_empty() {
         return Ok(None);
     }
@@ -1432,7 +1444,7 @@ fn parse_passive_goad_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
     let subject_words = ClauseDispatchCompatWords::new(&subject_tokens).to_word_refs();
     let target = if matches!(
         subject_words.as_slice(),
-        ["the", "token"] | ["the", "tokens"]
+        ["it"] | ["its"] | ["the", "token"] | ["the", "tokens"]
     ) {
         TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&subject_tokens))
     } else {
@@ -1448,7 +1460,7 @@ fn parse_passive_goad_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
         )));
     }
 
-    Ok(Some(EffectAst::subject_verb_goad(target)))
+    Ok(Some(EffectAst::subject_verb_goad_until(target, duration)))
 }
 
 fn parse_hexproof_targeting_override_clause(

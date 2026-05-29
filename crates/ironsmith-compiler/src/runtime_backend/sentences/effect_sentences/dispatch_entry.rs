@@ -1956,7 +1956,7 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
             | SubjectVerbActionAst::PutCounters { target, .. }
             | SubjectVerbActionAst::ReturnToHand { target, .. }
             | SubjectVerbActionAst::Detain { target }
-            | SubjectVerbActionAst::Goad { target }
+            | SubjectVerbActionAst::Goad { target, .. }
             | SubjectVerbActionAst::Suspect { target }
             | SubjectVerbActionAst::RemoveFromCombat { target }
             | SubjectVerbActionAst::Flip { target }
@@ -2664,6 +2664,7 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
             }
             | SubjectVerbActionAst::Goad {
                 target: effect_target,
+                ..
             }
             | SubjectVerbActionAst::Suspect {
                 target: effect_target,

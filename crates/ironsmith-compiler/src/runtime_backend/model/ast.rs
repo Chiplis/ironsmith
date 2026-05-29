@@ -1619,6 +1619,7 @@ pub(crate) enum SubjectVerbActionAst {
     },
     Goad {
         target: TargetAst,
+        duration: Until,
     },
     Suspect {
         target: TargetAst,
@@ -3074,7 +3075,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::LoseGame => f.write_str("LoseGame"),
             Self::WinGame => f.write_str("WinGame"),
             Self::Detain { target } => f.debug_tuple("Detain").field(target).finish(),
-            Self::Goad { target } => f.debug_tuple("Goad").field(target).finish(),
+            Self::Goad { target, duration } => f
+                .debug_struct("Goad")
+                .field("target", target)
+                .field("duration", duration)
+                .finish(),
             Self::Suspect { target } => f.debug_tuple("Suspect").field(target).finish(),
             Self::ClearSuspected { target } => f
                 .debug_tuple("ClearSuspected")
@@ -6167,10 +6172,14 @@ impl EffectAst {
     }
 
     pub(crate) fn subject_verb_goad(target: TargetAst) -> Self {
+        Self::subject_verb_goad_until(target, Until::YourNextTurn)
+    }
+
+    pub(crate) fn subject_verb_goad_until(target: TargetAst, duration: Until) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Goad { target },
+            SubjectVerbActionAst::Goad { target, duration },
         )
     }
 

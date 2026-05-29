@@ -1482,6 +1482,12 @@ impl Effect {
         Self::new(crate::effects::GoadEffect::new(target))
     }
 
+    pub fn goad_until(target: crate::target::ChooseSpec, duration: Until) -> Self {
+        Self::new(crate::effects::GoadEffect::new_with_duration(
+            target, duration,
+        ))
+    }
+
     pub fn suspect(target: crate::target::ChooseSpec) -> Self {
         Self::new(crate::effects::SuspectEffect::new(target))
     }

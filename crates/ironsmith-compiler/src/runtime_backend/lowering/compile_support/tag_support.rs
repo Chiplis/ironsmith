@@ -67,7 +67,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::ReturnToBattlefield { target, .. }
             | SubjectVerbActionAst::FightIterated { creature2: target }
             | SubjectVerbActionAst::Detain { target }
-            | SubjectVerbActionAst::Goad { target }
+            | SubjectVerbActionAst::Goad { target, .. }
             | SubjectVerbActionAst::Suspect { target }
             | SubjectVerbActionAst::RemoveFromCombat { target }
             | SubjectVerbActionAst::Flip { target }

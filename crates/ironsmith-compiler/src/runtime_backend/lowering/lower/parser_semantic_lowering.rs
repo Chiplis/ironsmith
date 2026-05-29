@@ -72,7 +72,7 @@ fn presentation_label_from_raw_trigger_line(raw_line: &str) -> Option<&str> {
     if label.is_empty()
         || label.contains('.')
         || label.contains(':')
-        || label.split_whitespace().count() > 4
+        || label.split_whitespace().count() > 5
     {
         return None;
     }

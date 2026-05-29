@@ -2409,7 +2409,7 @@ fn looks_like_ability_word_label(label: &str, preserve_as_choice_label: bool) ->
     !trimmed.is_empty()
         && !trimmed.contains('.')
         && !trimmed.contains(':')
-        && trimmed.split_whitespace().count() <= 4
+        && trimmed.split_whitespace().count() <= 5
 }
 
 fn rewrite_line_normalized(
@@ -2599,6 +2599,10 @@ fn try_parse_labeled_line_dispatch(
     };
 
     let is_named_label = is_named_ability_label(label.as_str());
+    let presentation_label = split_label_prefix(line.info.raw_line.as_str())
+        .map(|(raw_label, _)| raw_label.trim())
+        .unwrap_or(label.trim())
+        .to_string();
     let preserve_as_choice_label = labeled_choice_block_has_peer(&preprocessed.items, idx);
     if preserve_keyword_prefix_for_parse(label.as_str()) {
         return Ok(None);
@@ -2630,7 +2634,7 @@ fn try_parse_labeled_line_dispatch(
                 triggered.chosen_option_label = Some(label.to_ascii_lowercase());
             }
             if looks_like_ability_word_label(label.as_str(), preserve_as_choice_label) {
-                triggered.presentation_label = Some(label.trim().to_string());
+                triggered.presentation_label = Some(presentation_label.clone());
             }
             let (triggered, next_idx) =
                 extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
@@ -2644,7 +2648,7 @@ fn try_parse_labeled_line_dispatch(
                 triggered.chosen_option_label = Some(label.to_ascii_lowercase());
             }
             if looks_like_ability_word_label(label.as_str(), preserve_as_choice_label) {
-                triggered.presentation_label = Some(label.trim().to_string());
+                triggered.presentation_label = Some(presentation_label.clone());
             }
             let (triggered, next_idx) =
                 extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
@@ -2662,7 +2666,7 @@ fn try_parse_labeled_line_dispatch(
                 triggered.chosen_option_label = Some(label.to_ascii_lowercase());
             }
             if looks_like_ability_word_label(label.as_str(), preserve_as_choice_label) {
-                triggered.presentation_label = Some(label.trim().to_string());
+                triggered.presentation_label = Some(presentation_label.clone());
             }
             let (triggered, next_idx) =
                 extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);

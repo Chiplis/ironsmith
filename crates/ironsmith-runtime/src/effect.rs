@@ -1514,6 +1514,12 @@ impl Effect {
         Self::new(GoadEffect::new(target))
     }
 
+    /// Create a "goad target creature" effect with an explicit duration.
+    pub fn goad_until(target: ChooseSpec, duration: Until) -> Self {
+        use crate::effects::GoadEffect;
+        Self::new(GoadEffect::new_with_duration(target, duration))
+    }
+
     /// Create a "detain target permanent" effect.
     pub fn detain(target: ChooseSpec) -> Self {
         use crate::effects::DetainEffect;

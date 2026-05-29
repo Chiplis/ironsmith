@@ -19991,6 +19991,130 @@ fn parse_partial_reveal_from_hand_choose_one_of_them_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_vislor_turlough_black_guardian_strict_text_regression() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Vislor Turlough")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Rogue])
+        .parse_text(
+            "Deal with the Black Guardian — When Vislor Turlough enters, you may have an opponent gain control of it. If you do, it's goaded for as long as they control it.\n\
+             At the beginning of your end step, draw a card, then you lose life equal to the number of cards in your hand.\n\
+             Doctor's companion (You can have two commanders if the other is the Doctor.)",
+        )
+        .expect("Vislor Turlough should parse strictly");
+
+    let debug = format!("{def:#?}");
+    assert!(!debug.contains("UnsupportedParserLine"), "{debug}");
+    assert!(
+        debug.contains("MayEffect")
+            && debug.contains("ChoosePlayerEffect")
+            && debug.contains("TaggedPlayer")
+            && debug.contains("IfEffect")
+            && debug.contains("GoadEffect")
+            && debug.contains("YouStopControllingThis"),
+        "expected optional chosen-opponent control branch followed by duration-bound goad, got {debug}"
+    );
+
+    let lines = unprocessed_compiled_lines(&def);
+    assert_eq!(
+        lines[0],
+        "Deal with the Black Guardian — When Vislor Turlough enters, you may have an opponent gain control of it. If you do, it's goaded for as long as they control it."
+    );
+    assert_eq!(
+        lines[1],
+        "At the beginning of your end step, draw a card, then you lose life equal to the number of cards in your hand."
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn vislor_turlough_black_guardian_runtime_accept_and_decline_branches() {
+    let def = parse_oracle_card_definition("Vislor Turlough");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered.clone()),
+            _ => None,
+        })
+        .expect("Vislor Turlough should have an enters trigger");
+
+    let resolve = |accept: bool| {
+        let mut game = crate::game_state::GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+        let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+            game.object(source).expect("Vislor should exist"),
+            &game,
+        );
+        let event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::zones::ZoneChangeEvent::with_cause(
+                source,
+                Zone::Hand,
+                Zone::Battlefield,
+                crate::events::cause::EventCause::effect(),
+                Some(snapshot),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        if accept {
+            let mut dm = crate::decision::SelectFirstDecisionMaker;
+            let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+                .with_triggering_event(event);
+            crate::game_loop::execute_resolution_program(
+                &mut game,
+                &mut ctx,
+                alice,
+                source,
+                &triggered.effects,
+                None,
+                &[],
+            )
+            .expect("accepted Vislor trigger should resolve");
+        } else {
+            let mut dm = crate::decision::AutoPassDecisionMaker;
+            let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+                .with_triggering_event(event);
+            crate::game_loop::execute_resolution_program(
+                &mut game,
+                &mut ctx,
+                alice,
+                source,
+                &triggered.effects,
+                None,
+                &[],
+            )
+            .expect("declined Vislor trigger should resolve");
+        }
+        (game, source)
+    };
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+
+    let (declined_game, declined_source) = resolve(false);
+    assert_eq!(declined_game.current_controller(declined_source), Some(alice));
+    assert!(!declined_game.is_goaded(declined_source));
+
+    let (mut accepted_game, accepted_source) = resolve(true);
+    assert_eq!(accepted_game.current_controller(accepted_source), Some(bob));
+    assert!(accepted_game.is_goaded(accepted_source));
+    assert!(accepted_game.active_goaders_for(accepted_source).contains(&alice));
+
+    accepted_game.set_current_controller(accepted_source, charlie);
+    assert!(
+        !accepted_game.is_goaded(accepted_source),
+        "Vislor should stop being goaded when the chosen opponent no longer controls it"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_trigger_target_opponent_gains_control_of_it_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Gain Control Of It Variant")
         .parse_text("When this creature enters, target opponent gains control of it.")

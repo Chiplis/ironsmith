@@ -567,7 +567,7 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::Detain { target } => {
                     maybe_tag_target(target, frame, id_gen, "detained")?;
                 }
-                SubjectVerbActionAst::Goad { target } => {
+                SubjectVerbActionAst::Goad { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "goaded")?;
                 }
                 SubjectVerbActionAst::Suspect { target } => {
@@ -2495,7 +2495,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::PutSticker { target, .. }
             | SubjectVerbActionAst::SwitchPowerToughness { target, .. }
             | SubjectVerbActionAst::Detain { target }
-            | SubjectVerbActionAst::Goad { target }
+                | SubjectVerbActionAst::Goad { target, .. }
             | SubjectVerbActionAst::Suspect { target }
             | SubjectVerbActionAst::RemoveFromCombat { target }
             | SubjectVerbActionAst::Flip { target }

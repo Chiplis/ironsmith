@@ -738,6 +738,7 @@ pub struct GoadEffectInstance {
     pub goaded_by: PlayerId,
     pub source: ObjectId,
     pub duration: crate::effect::Until,
+    pub duration_controller: Option<PlayerId>,
     pub expires_end_of_turn: u32,
 }
 
@@ -761,11 +762,9 @@ impl GoadEffectInstance {
             crate::effect::Until::ThisLeavesTheBattlefield => game
                 .object(self.source)
                 .is_some_and(|obj| obj.zone == Zone::Battlefield),
-            crate::effect::Until::YouStopControllingThis => {
-                game.object(self.source).is_some_and(|obj| {
-                    obj.zone == Zone::Battlefield && game.controller_of(obj) == self.goaded_by
-                })
-            }
+            crate::effect::Until::YouStopControllingThis => self
+                .duration_controller
+                .is_some_and(|controller| game.current_controller(self.creature) == Some(controller)),
             _ => true,
         }
     }
@@ -2709,11 +2708,16 @@ impl GameState {
             _ => self.turn.turn_number,
         };
 
+        let duration_controller = matches!(duration, crate::effect::Until::YouStopControllingThis)
+            .then(|| self.current_controller(creature))
+            .flatten();
+
         self.effect_store.goad_effects.push(GoadEffectInstance {
             creature,
             goaded_by,
             source,
             duration,
+            duration_controller,
             expires_end_of_turn,
         });
     }

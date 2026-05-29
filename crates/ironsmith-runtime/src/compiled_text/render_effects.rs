@@ -155,6 +155,44 @@ fn may_causative_clause(inner: &str) -> Option<String> {
     })
 }
 
+fn describe_may_opponent_gain_control(may: &crate::effects::MayEffect) -> Option<String> {
+    if !matches!(may.decider, None | Some(PlayerFilter::You)) {
+        return None;
+    }
+    let [choose_effect, control_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChoosePlayerEffect>()?;
+    if choose.chooser != PlayerFilter::You
+        || choose.filter != PlayerFilter::Opponent
+        || choose.random
+        || choose.remember_as_chosen_player
+        || !choose.excluded_tags.is_empty()
+    {
+        return None;
+    }
+    let tagged = control_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let control = tagged
+        .effect
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if control.modification.is_some()
+        || !control.additional_modifications.is_empty()
+        || !matches!(control.until, Until::Forever)
+        || !matches!(
+            control.runtime_modifications.as_slice(),
+            [crate::effects::continuous::RuntimeModification::ChangeControllerToPlayer(
+                PlayerFilter::TaggedPlayer(tag)
+            )] if tag == &choose.tag
+        )
+    {
+        return None;
+    }
+
+    let control_text = describe_effect(control_effect);
+    let target = control_text.strip_prefix("that player gains control of ")?;
+    Some(format!("You may have an opponent gain control of {target}"))
+}
+
 fn prevention_put_counters_follow_up(
     follow_up_effects: &[Effect],
 ) -> Option<&crate::effects::PutCountersEffect> {
@@ -27985,6 +28023,17 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             );
         }
         if let Value::Count(filter) = &lose.amount {
+            if filter.zone == Some(Zone::Hand)
+                && filter.owner == Some(PlayerFilter::You)
+                && filter.card_types.is_empty()
+                && filter.subtypes.is_empty()
+            {
+                return format!(
+                    "{} {} life equal to the number of cards in your hand",
+                    player,
+                    player_verb(&player, "lose", "loses")
+                );
+            }
             return format!(
                 "{} {} 1 life for each {}",
                 player,
@@ -29315,6 +29364,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         return text;
     }
     if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() {
+        if let Some(compact) = describe_may_opponent_gain_control(may) {
+            return compact;
+        }
         if let Some(compact) = describe_may_enlist(may) {
             return compact;
         }
@@ -30416,7 +30468,21 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         return format!("Detain {}", describe_choose_spec(&detain.target));
     }
     if let Some(goad) = effect.downcast_ref::<crate::effects::GoadEffect>() {
-        return format!("Goad {}", describe_goad_target(&goad.target));
+        let target = if matches!(goad.duration, crate::effect::Until::YouStopControllingThis)
+            && matches!(goad.target, ChooseSpec::Tagged(_))
+        {
+            "it".to_string()
+        } else {
+            describe_goad_target(&goad.target)
+        };
+        return match goad.duration {
+            crate::effect::Until::YourNextTurn => format!("Goad {target}"),
+            crate::effect::Until::Forever => format!("{target} is goaded for the rest of the game"),
+            crate::effect::Until::YouStopControllingThis => {
+                format!("{target}'s goaded for as long as they control it")
+            }
+            _ => format!("Goad {target} {}", describe_until(&goad.duration)),
+        };
     }
     if let Some(suspect) = effect.downcast_ref::<crate::effects::SuspectEffect>() {
         return format!("Suspect {}", describe_choose_spec(&suspect.target));
