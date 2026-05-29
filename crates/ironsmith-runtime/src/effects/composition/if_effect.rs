@@ -7,6 +7,70 @@ use crate::game_state::GameState;
 use crate::target::ChooseSpec;
 pub type IfEffect = ironsmith_core::IfEffect<crate::effect::Effect>;
 
+fn object_filter_mentions_iterated_player(filter: &crate::target::ObjectFilter) -> bool {
+    filter
+        .controller
+        .as_ref()
+        .is_some_and(crate::target::PlayerFilter::mentions_iterated_player)
+        || filter
+            .owner
+            .as_ref()
+            .is_some_and(crate::target::PlayerFilter::mentions_iterated_player)
+        || filter
+            .targets_player
+            .as_ref()
+            .is_some_and(crate::target::PlayerFilter::mentions_iterated_player)
+        || filter
+            .targets_only_player
+            .as_ref()
+            .is_some_and(crate::target::PlayerFilter::mentions_iterated_player)
+        || filter
+            .attacking_player_or_planeswalker_controlled_by
+            .as_ref()
+            .is_some_and(crate::target::PlayerFilter::mentions_iterated_player)
+        || filter
+            .attached_to_player
+            .as_ref()
+            .is_some_and(crate::target::PlayerFilter::mentions_iterated_player)
+        || filter
+            .entered_battlefield_controller
+            .as_ref()
+            .is_some_and(crate::target::PlayerFilter::mentions_iterated_player)
+        || filter.any_of.iter().any(object_filter_mentions_iterated_player)
+}
+
+fn restriction_mentions_iterated_player(restriction: &crate::effect::Restriction) -> bool {
+    match restriction {
+        crate::effect::Restriction::AttackPlayerOrPlaneswalkersControlledBy {
+            attackers,
+            player,
+        } => {
+            object_filter_mentions_iterated_player(attackers) || player.mentions_iterated_player()
+        }
+        _ => false,
+    }
+}
+
+fn effect_mentions_iterated_player(effect: &crate::effect::Effect) -> bool {
+    if let Some(cant) = effect.downcast_ref::<crate::effects::CantEffect>()
+        && restriction_mentions_iterated_player(&cant.restriction)
+    {
+        return true;
+    }
+
+    let mut found = false;
+    effect.visit_child_effects(&mut |child| {
+        if effect_mentions_iterated_player(child) {
+            found = true;
+        }
+    });
+    found
+}
+
+fn effect_list_mentions_iterated_player(effects: &[crate::effect::Effect]) -> bool {
+    effects.iter().any(effect_mentions_iterated_player)
+}
+
 /// Effect that branches based on a prior effect's result.
 ///
 /// Looks up the result of an effect executed with `WithId`, evaluates the predicate,
@@ -54,6 +118,39 @@ impl EffectExecutor for IfEffect {
         let outcome = ctx
             .get_outcome(self.condition)
             .ok_or(ExecutionError::EffectNotFound(self.condition))?;
+
+        if matches!(self.predicate, EffectPredicate::Happened | EffectPredicate::DidNotHappen)
+            && (effect_list_mentions_iterated_player(&self.then)
+                || effect_list_mentions_iterated_player(&self.else_))
+            && let Some(player_counts) = outcome
+                .execution_facts
+                .iter()
+                .find_map(|fact| match fact {
+                    ExecutionFact::PlayerCounts(counts) => Some(counts.clone()),
+                    _ => None,
+                })
+        {
+            let mut outcomes = Vec::new();
+            for (player_id, count) in player_counts {
+                let predicate_matches = match self.predicate {
+                    EffectPredicate::Happened => count > 0,
+                    EffectPredicate::DidNotHappen => count <= 0,
+                    _ => false,
+                };
+                let branch = if predicate_matches {
+                    &self.then
+                } else {
+                    &self.else_
+                };
+                ctx.with_temp_iterated_player(Some(player_id), |ctx| {
+                    for eff in branch {
+                        outcomes.push(execute_effect(game, eff, ctx)?);
+                    }
+                    Ok::<(), ExecutionError>(())
+                })?;
+            }
+            return Ok(EffectOutcome::aggregate(outcomes));
+        }
 
         let match_repetitions = if let EffectPredicate::Value(cmp) = &self.predicate {
             let chosen_numbers = outcome

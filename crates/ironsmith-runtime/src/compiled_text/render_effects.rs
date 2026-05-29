@@ -23382,6 +23382,29 @@ fn describe_with_id_if_clause(
                 }
             }
         }
+    } else if let Some(for_players) = with_id
+        .effect
+        .downcast_ref::<crate::effects::ForPlayersEffect>()
+    {
+        if for_players.effects.len() == 1
+            && for_players.effects[0]
+                .downcast_ref::<crate::effects::MayEffect>()
+                .is_some()
+        {
+            let who = describe_player_filter(&for_players.filter);
+            match if_effect.predicate {
+                EffectPredicate::DidNotHappen => format!("If {who} doesn't"),
+                _ => format!("If {who} does"),
+            }
+        } else {
+            match if_effect.predicate {
+                EffectPredicate::Happened => "If it happened".to_string(),
+                EffectPredicate::HappenedNotReplaced => {
+                    "If it happened and wasn't replaced".to_string()
+                }
+                _ => format!("If {}", describe_effect_predicate(&if_effect.predicate)),
+            }
+        }
     } else if let Some(roll_die) = with_id
         .effect
         .downcast_ref::<crate::effects::RollDieEffect>()
@@ -26032,6 +26055,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 inner = rest.to_string();
             }
             inner = normalize_you_verb_phrase(&inner);
+            inner = lowercase_first(&inner);
             return format!("For each {each_player}, that player may {inner}");
         }
         let player_filter_text = describe_player_filter(&for_players.filter);

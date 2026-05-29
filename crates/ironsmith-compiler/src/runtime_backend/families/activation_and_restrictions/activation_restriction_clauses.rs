@@ -1291,6 +1291,9 @@ pub(crate) fn parse_negated_object_restriction_clause(
     let restriction = match remainder_words.as_slice() {
         ["attack"] => Restriction::attack(filter),
         ["attack", "this", "turn"] => Restriction::attack(filter),
+        ["attack", "you", "or", "planeswalkers", "you", "control"] => {
+            Restriction::attack_player_or_planeswalkers_controlled_by(filter, PlayerFilter::You)
+        }
         ["attack", "alone"] => Restriction::attack_alone(filter),
         ["attack", "alone", "this", "turn"] => Restriction::attack_alone(filter),
         ["attack", "or", "block"] => Restriction::attack_or_block(filter),

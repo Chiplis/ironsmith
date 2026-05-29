@@ -137,6 +137,12 @@ fn normalize_restriction_for_resolution(
         Restriction::Attack(filter) => Restriction::attack(
             collapse_filter_to_current_matching_objects(filter, ctx, game),
         ),
+        Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, player } => {
+            Restriction::attack_player_or_planeswalkers_controlled_by(
+                collapse_filter_to_current_matching_objects(attackers, ctx, game),
+                player.clone(),
+            )
+        }
         Restriction::Block(filter) => Restriction::block(
             collapse_filter_to_current_matching_objects(filter, ctx, game),
         ),
