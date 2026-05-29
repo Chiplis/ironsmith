@@ -264,7 +264,7 @@ fn resolve_tsabos_assassin_conditional_effect_targeting(
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn tsabos_assassin_activation_is_legal_and_taps_source() {
+fn tsabos_assassin_activation_is_legal_taps_source_and_resolves_from_stack() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
@@ -285,6 +285,7 @@ fn tsabos_assassin_activation_is_legal_and_taps_source() {
         bob,
         Some(crate::color::ColorSet::GREEN),
     );
+    let target_stable = game.object(target_id).expect("target exists").stable_id;
     let ability_index = game
         .object(assassin_id)
         .expect("Tsabo's Assassin should exist")
@@ -325,6 +326,18 @@ fn tsabos_assassin_activation_is_legal_and_taps_source() {
     assert!(
         game.is_tapped(assassin_id),
         "paying Tsabo's Assassin's activation cost should tap it"
+    );
+
+    resolve_stack_entry(&mut game).expect("Tsabo's Assassin ability should resolve");
+    let graveyard_id = game
+        .find_object_by_stable_id(target_stable)
+        .expect("destroyed target should still be tracked by stable id");
+    assert!(
+        game.player(bob)
+            .expect("Bob exists")
+            .graveyard
+            .contains(&graveyard_id),
+        "resolving Tsabo's Assassin from the stack should destroy a target sharing a tied most-common color"
     );
 }
 
