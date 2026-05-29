@@ -1671,6 +1671,10 @@ impl<
         Self::identified(StaticAbilityId::KeywordFallbackText, text)
     }
 
+    pub fn draft_rule_text(text: impl Into<String>) -> Self {
+        Self::identified(StaticAbilityId::DraftRuleText, text)
+    }
+
     pub fn rule_fallback_text(text: impl Into<String>) -> Self {
         Self::identified(StaticAbilityId::RuleFallbackText, text)
     }
