@@ -778,6 +778,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_assign_damage_as_unblocked_line),
         single_static_ability_ast_rule!(parse_fixed_mana_cost_instead_of_mana_cost_grant_line),
         single_static_ability_ast_rule!(parse_mana_value_instead_of_mana_cost_grant_line),
+        single_static_ability_ast_rule!(parse_life_mana_value_instead_of_mana_cost_grant_line),
         single_static_ability_ast_rule!(parse_as_enters_becomes_characteristics_for_filter_line),
         single_static_ability_ast_rule!(parse_enter_as_copy_as_enters_line),
         multi_static_ability_ast_rule!(
@@ -7396,6 +7397,71 @@ pub(crate) fn parse_mana_value_instead_of_mana_cost_grant_line(
     let filter = parse_spell_filter_with_grammar_entrypoint_lexed(subject_tokens);
     Ok(Some(StaticAbility::grants(crate::grant::GrantSpec::new(
         crate::grant::Grantable::mana_value_as_generic_from_hand(),
+        filter,
+        Zone::Hand,
+    ))))
+}
+
+pub(crate) fn parse_life_mana_value_instead_of_mana_cost_grant_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let tokens = if tokens
+        .last()
+        .is_some_and(|token| token.kind == TokenKind::Period)
+    {
+        &tokens[..tokens.len() - 1]
+    } else {
+        tokens
+    };
+
+    let words = super::lexer::parser_token_word_refs(tokens);
+    if !slice_starts_with(
+        words.as_slice(),
+        &[
+            "once", "during", "each", "of", "your", "turns", "you", "may", "cast",
+        ],
+    ) {
+        return Ok(None);
+    }
+
+    let Some(cast_idx) = find_index(tokens, |token| token.is_word("cast")) else {
+        return Ok(None);
+    };
+    let Some(by_idx) = find_index(tokens, |token| token.is_word("by")) else {
+        return Ok(None);
+    };
+    if by_idx <= cast_idx + 1 {
+        return Ok(None);
+    }
+    let subject_tokens = trim_lexed_commas(tokens.get(cast_idx + 1..by_idx).unwrap_or_default());
+    let subject_words = crate::runtime_backend::token_word_refs(subject_tokens);
+    if subject_tokens.is_empty()
+        || !slice_contains(&subject_words, &"spell") && !slice_contains(&subject_words, &"spells")
+    {
+        return Ok(None);
+    }
+
+    let tail_words =
+        crate::runtime_backend::token_word_refs(tokens.get(by_idx + 1..).unwrap_or_default());
+    if tail_words
+        != [
+            "paying", "life", "equal", "to", "its", "mana", "value", "rather", "than",
+            "paying", "its", "mana", "cost",
+        ]
+        && tail_words
+            != [
+                "pay", "life", "equal", "to", "its", "mana", "value", "rather", "than", "pay",
+                "its", "mana", "cost",
+            ]
+    {
+        return Ok(None);
+    }
+
+    let filter = parse_spell_filter_with_grammar_entrypoint_lexed(subject_tokens);
+    Ok(Some(StaticAbility::grants(crate::grant::GrantSpec::new(
+        crate::grant::Grantable::life_equal_mana_value_from_hand(Some(
+            crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns,
+        )),
         filter,
         Zone::Hand,
     ))))

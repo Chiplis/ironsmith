@@ -663,6 +663,9 @@ where
                 DerivedAlternativeCast::ManaValueAsGenericFromHand => {
                     DerivedAlternativeCast::ManaValueAsGenericFromHand
                 }
+                DerivedAlternativeCast::LifeEqualManaValueFromHand { usage_limit } => {
+                    DerivedAlternativeCast::LifeEqualManaValueFromHand { usage_limit }
+                }
                 DerivedAlternativeCast::GraveyardCastFromCardManaCost {
                     additional_costs,
                     usage_limit,

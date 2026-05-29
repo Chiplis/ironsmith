@@ -17898,6 +17898,65 @@ fn parse_rooftop_storm_static_free_zombie_permission() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_demon_of_fates_design_life_cost_and_sacrifice_pump_regression() {
+    let def = parse_oracle_card_definition("Demon of Fate's Design");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "once during each of your turns, you may cast an enchantment spell by paying life equal to its mana value rather than paying its mana cost"
+        ),
+        "expected Demon of Fate's Design life-cost cast permission, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "sacrifice another enchantment: this creature gets +x/+0 until end of turn, where x is the sacrificed enchantment's mana value"
+        ),
+        "expected Demon of Fate's Design sacrificed-enchantment pump wording, got {rendered}"
+    );
+
+    let has_life_cost_grant = def.abilities.iter().any(|ability| {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return false;
+        };
+        let Some(spec) = static_ability.grant_spec() else {
+            return false;
+        };
+        matches!(
+            spec.grantable,
+            crate::grant::Grantable::DerivedAlternativeCast(
+                crate::grant::DerivedAlternativeCast::LifeEqualManaValueFromHand {
+                    usage_limit: Some(crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns)
+                }
+            )
+        ) && spec.zone == Zone::Hand
+            && spec.filter.card_types == [CardType::Enchantment]
+    });
+    assert!(
+        has_life_cost_grant,
+        "expected Demon of Fate's Design to grant a once-per-turn enchantment life-cost alternative cast"
+    );
+
+    let activated_debug = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(format!("{activated:?}")),
+            _ => None,
+        })
+        .expect("Demon of Fate's Design should have an activated ability");
+    assert!(
+        activated_debug.contains("sacrifice_cost_0")
+            && activated_debug.contains("ManaValueOf")
+            && activated_debug.contains("WhereXIs"),
+        "expected sacrificed enchantment mana value to drive the pump amount, got {activated_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_creature_spell_emerge_grant_uses_hand_derived_alternative_cast() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Herigast Probe")
         .card_types(vec![CardType::Creature])

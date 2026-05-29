@@ -1107,6 +1107,18 @@ fn parse_effect_sentence_with_where_x_lexed(
                     "tap_cost_0",
                 ))))
             }
+            Some(["the", "sacrificed", sacrificed_kind, "mana", "value"])
+            | Some(["sacrificed", sacrificed_kind, "mana", "value"]) => {
+                let sacrificed_kind = sacrificed_kind.trim_end_matches('s');
+                Value::ManaValueOf(Box::new(
+                    crate::target::ChooseSpec::Tagged(TagKey::from("sacrifice_cost_0"))
+                        .with_surface_hint(crate::target::ChooseSpecSurfaceHint::SourceReference(
+                            crate::target::SourceReferenceSurface::ThisPermanentType(format!(
+                                "the sacrificed {sacrificed_kind}"
+                            )),
+                        )),
+                ))
+            }
             Some(
                 [
                     "2",

@@ -341,6 +341,9 @@ fn convert_derived_alternative_cast(
         compiler::grant::DerivedAlternativeCast::ManaValueAsGenericFromHand => {
             ironsmith::grant::DerivedAlternativeCast::ManaValueAsGenericFromHand
         }
+        compiler::grant::DerivedAlternativeCast::LifeEqualManaValueFromHand { usage_limit } => {
+            ironsmith::grant::DerivedAlternativeCast::LifeEqualManaValueFromHand { usage_limit }
+        }
         compiler::grant::DerivedAlternativeCast::GraveyardCastFromCardManaCost {
             additional_costs,
             usage_limit,

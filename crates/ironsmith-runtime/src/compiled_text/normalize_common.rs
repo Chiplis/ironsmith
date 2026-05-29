@@ -6447,9 +6447,7 @@ pub(super) fn describe_demonstrative_tagged_object_spec(spec: &ChooseSpec) -> Op
 
 pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
     match spec {
-        ChooseSpec::SurfaceHinted { spec, hints }
-            if matches!(spec.as_ref().unhinted(), ChooseSpec::Source) =>
-        {
+        ChooseSpec::SurfaceHinted { spec, hints } => {
             match hints.iter().find_map(|hint| match hint {
                 crate::target::ChooseSpecSurfaceHint::SourceReference(surface) => Some(surface),
             }) {
@@ -6461,7 +6459,6 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                 None => describe_choose_spec(spec),
             }
         }
-        ChooseSpec::SurfaceHinted { spec, .. } => describe_choose_spec(spec),
         ChooseSpec::Target(inner) => {
             if let Some(tagged_text) = describe_demonstrative_tagged_object_spec(inner.as_ref()) {
                 return tagged_text;
