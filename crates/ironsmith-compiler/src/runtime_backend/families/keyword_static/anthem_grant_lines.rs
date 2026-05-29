@@ -2522,7 +2522,33 @@ pub(crate) fn parse_static_condition_clause(
             )));
         }
 
-        let filter_words = crate::runtime_backend::token_word_refs(filter_tokens);
+        let filter_word_view = AnthemNormalizedWords::new(filter_tokens);
+        let filter_words = filter_word_view.word_refs();
+        if let Some(counter_word_idx) = anthem_find_word_index(&filter_words, |word| {
+            matches!(word, "counter" | "counters")
+        })
+        && counter_word_idx > 0
+        && filter_words
+            .get(counter_word_idx + 1)
+            .is_some_and(|word| *word == "among")
+        && let Some(counter_type) = parse_counter_type_word(filter_words[counter_word_idx - 1])
+        && let Some(among_filter_start) = filter_word_view
+            .token_index_for_word_index(counter_word_idx + 2)
+        {
+            let filter = parse_object_filter(&filter_tokens[among_filter_start..], false)
+                .map_err(|_| {
+                    CardTextError::ParseError(format!(
+                        "unsupported counter-among filter in static condition (clause: '{}')",
+                        clause_words.join(" ")
+                    ))
+                })?;
+            return Ok(crate::ConditionExpr::CountComparison {
+                count: AnthemCountExpression::CountersAmong(filter, counter_type),
+                comparison,
+                display: Some(clause_words.join(" ")),
+            });
+        }
+
         let filter =
             if let Some(in_idx) = anthem_find_word_index(&filter_words, |word| word == "in") {
                 let subject_words = &filter_words[..in_idx];

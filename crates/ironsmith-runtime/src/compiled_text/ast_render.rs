@@ -739,22 +739,25 @@ fn substitute_pregame_card_self_reference(line: &str, subject: &str, card_name: 
         .replace(&capitalized, card_name)
 }
 
-fn substitute_legendary_source_reference(
+pub(super) fn substitute_legendary_source_reference(
     line: &str,
     card: &crate::card::Card,
-    subject: &str,
+    _subject: &str,
 ) -> String {
-    if !card.supertypes.contains(&Supertype::Legendary) || card.name.contains(" // ") {
+    if card.name.contains(" // ") {
         return line.to_string();
     }
 
     let lower = line.to_ascii_lowercase();
+    let conditional_static_self_surface = (lower.starts_with("as long as ")
+        || lower.contains(": as long as "))
+        && (lower.contains(", this creature has ") || lower.contains(" this creature has "));
     let uses_named_source_surface = lower.starts_with("this creature gets ")
-        || (lower.starts_with("as long as ") && lower.contains(", this creature has "))
+        || conditional_static_self_surface
         || lower.starts_with("whenever this creature deals combat damage to a player")
         || lower.contains(": this creature gets ")
         || lower.contains(": whenever this creature deals combat damage to a player");
-    if !uses_named_source_surface {
+    if !card.supertypes.contains(&Supertype::Legendary) || !uses_named_source_surface {
         return line.to_string();
     }
 
@@ -2278,6 +2281,9 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     }
     out.extend(alternative_cast_lines);
     merge_adjacent_keyword_surface_lines(out)
+        .into_iter()
+        .map(|line| substitute_legendary_source_reference(&line, &def.card, subject))
+        .collect()
 }
 
 fn rewrite_additional_sacrifice_reference_surface(def: &CardDefinition, text: &str) -> String {

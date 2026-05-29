@@ -611,6 +611,11 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
         AnthemCountExpression::CountersOnSource(counter_type) => {
             format!("{} counter on this permanent", counter_type.description())
         }
+        AnthemCountExpression::CountersAmong(filter, counter_type) => format!(
+            "{} counter among {}",
+            counter_type.description(),
+            pluralized_subject_text(filter)
+        ),
         AnthemCountExpression::BasicLandTypesAmong(_) => {
             "basic land type among lands you control".to_string()
         }
@@ -707,6 +712,11 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
         AnthemCountExpression::CountersOnSource(counter_type) => {
             Some(format!("{} counter on it", counter_type.description()))
         }
+        AnthemCountExpression::CountersAmong(filter, counter_type) => Some(format!(
+            "{} counter among {}",
+            counter_type.description(),
+            pluralized_subject_text(filter)
+        )),
         AnthemCountExpression::BasicLandTypesAmong(_) => {
             Some("basic land type among lands you control".to_string())
         }
@@ -1426,6 +1436,12 @@ pub(crate) fn resolve_anthem_count_expression(
         AnthemCountExpression::CountersOnSource(counter_type) => {
             game.counter_count(source, *counter_type) as i32
         }
+        AnthemCountExpression::CountersAmong(filter, counter_type) => all_game_object_ids(game)
+            .into_iter()
+            .filter_map(|id| game.object(id))
+            .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, game))
+            .map(|obj| obj.counters.get(counter_type).copied().unwrap_or(0) as i32)
+            .sum(),
         AnthemCountExpression::BasicLandTypesAmong(filter) => {
             use std::collections::HashSet;
 

@@ -68,6 +68,27 @@ fn desmond_miles_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn tom_bombadil_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_920), "Tom Bombadil")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Green],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::God, Subtype::Bard])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .from_text_with_metadata(
+            "As long as there are four or more lore counters among Sagas you control, Tom Bombadil has hexproof and indestructible.\n\
+             Whenever the final chapter ability of a Saga you control resolves, reveal cards from the top of your library until you reveal a Saga card. Put that card onto the battlefield and the rest on the bottom of your library in a random order. This ability triggers only once each turn.",
+        )
+        .expect("Tom Bombadil should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn merfolk_cave_diver_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(72_930), "Merfolk Cave-Diver")
         .mana_cost(ManaCost::from_pips(vec![
@@ -33409,6 +33430,236 @@ fn quandrix_apprentice_magecraft_can_decline_the_land_pick() {
 // ============================================================================
 // Saga Integration Tests
 // ============================================================================
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn tom_bombadil_strict_parser_and_compiled_text_regression() {
+    let def = tom_bombadil_definition();
+    let rendered = crate::compiled_text::canonical_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains(
+            "As long as there are four or more lore counters among sagas you control, Tom Bombadil has hexproof and indestructible."
+        ),
+        "Tom Bombadil should render the lore-counter static ability with the named legendary source, got:\n{rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Whenever the final chapter ability of a Saga you control resolves, you reveal cards from the top of your library until you reveal a Saga card. Put that card onto the battlefield and the rest on the bottom of your library in a random order. This ability triggers only once each turn."
+        ),
+        "Tom Bombadil should render the final-Saga-chapter trigger and once-per-turn cap, got:\n{rendered}"
+    );
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Tom Bombadil should have a final chapter trigger");
+    let final_chapter = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::other::FinalChapterAbilityResolvedTrigger>()
+        .expect("Tom Bombadil should use the final chapter ability resolved trigger");
+    assert_eq!(final_chapter.filter.subtypes, vec![Subtype::Saga]);
+    assert_eq!(final_chapter.filter.controller, Some(PlayerFilter::You));
+    assert!(matches!(
+        triggered.intervening_if,
+        Some(crate::ConditionExpr::MaxTimesEachTurn(1))
+    ));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn tom_bombadil_counts_lore_counters_among_sagas_you_control_for_keywords() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let tom_id =
+        game.create_object_from_definition(&tom_bombadil_definition(), alice, Zone::Battlefield);
+    let saga_def = CardDefinitionBuilder::new(CardId::from_raw(72_921), "Lore Counter Probe")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Saga])
+        .build();
+    let alice_sagas = (0..4)
+        .map(|_| game.create_object_from_definition(&saga_def, alice, Zone::Battlefield))
+        .collect::<Vec<_>>();
+    let bob_saga = game.create_object_from_definition(&saga_def, bob, Zone::Battlefield);
+    game.object_mut(bob_saga)
+        .expect("opponent Saga exists")
+        .add_counters(CounterType::Lore, 4);
+
+    assert!(
+        !game.object_has_static_ability_id(
+            tom_id,
+            crate::static_abilities::StaticAbilityId::Hexproof
+        ) && !game.object_has_static_ability_id(
+            tom_id,
+            crate::static_abilities::StaticAbilityId::Indestructible
+        ),
+        "Tom Bombadil should not count zero-counter Sagas or an opponent's lore counters"
+    );
+
+    game.object_mut(alice_sagas[0])
+        .expect("first Saga exists")
+        .add_counters(CounterType::Lore, 3);
+    assert!(
+        !game.object_has_static_ability_id(
+            tom_id,
+            crate::static_abilities::StaticAbilityId::Hexproof
+        ) && !game.object_has_static_ability_id(
+            tom_id,
+            crate::static_abilities::StaticAbilityId::Indestructible
+        ),
+        "Tom Bombadil should require at least four controlled lore counters among Sagas"
+    );
+
+    game.object_mut(alice_sagas[1])
+        .expect("second Saga exists")
+        .add_counters(CounterType::Lore, 1);
+    assert!(
+        game.object_has_static_ability_id(
+            tom_id,
+            crate::static_abilities::StaticAbilityId::Hexproof
+        ) && game.object_has_static_ability_id(
+            tom_id,
+            crate::static_abilities::StaticAbilityId::Indestructible
+        ),
+        "Tom Bombadil should gain both keywords from four lore counters distributed among controlled Sagas"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn tom_bombadil_final_chapter_trigger_matches_once_each_turn() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let tom_id =
+        game.create_object_from_definition(&tom_bombadil_definition(), alice, Zone::Battlefield);
+    let saga_def = CardDefinitionBuilder::new(CardId::from_raw(72_922), "Final Chapter Probe")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Saga])
+        .build();
+    let alice_saga = game.create_object_from_definition(&saga_def, alice, Zone::Battlefield);
+    let bob_saga = game.create_object_from_definition(&saga_def, bob, Zone::Battlefield);
+
+    let non_final_event = TriggerEvent::new_with_provenance(
+        crate::events::other::ChapterAbilityResolvedEvent::new(alice_saga, alice, false),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert!(
+        check_triggers(&game, &non_final_event).is_empty(),
+        "Tom Bombadil should not trigger from a non-final Saga chapter ability"
+    );
+
+    let opponent_event = TriggerEvent::new_with_provenance(
+        crate::events::other::ChapterAbilityResolvedEvent::new(bob_saga, bob, true),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert!(
+        check_triggers(&game, &opponent_event).is_empty(),
+        "Tom Bombadil should not trigger from an opponent's Saga"
+    );
+
+    let final_event = TriggerEvent::new_with_provenance(
+        crate::events::other::ChapterAbilityResolvedEvent::new(alice_saga, alice, true),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in check_triggers(&game, &final_event) {
+        trigger_queue.add(trigger);
+    }
+    assert_eq!(trigger_queue.entries.len(), 1);
+    assert_eq!(trigger_queue.entries[0].source, tom_id);
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Tom Bombadil trigger should stack");
+    assert_eq!(game.stack.len(), 1);
+    assert!(
+        check_triggers(&game, &final_event).is_empty(),
+        "Tom Bombadil's final-chapter ability should trigger only once each turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn tom_bombadil_final_chapter_resolution_reveals_until_saga() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let tom_def = tom_bombadil_definition();
+    let tom_id = game.create_object_from_definition(&tom_def, alice, Zone::Battlefield);
+    let triggered = tom_def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Tom Bombadil should have a final chapter trigger");
+
+    let bottom_def = CardDefinitionBuilder::new(CardId::from_raw(72_923), "Unrevealed Bottom")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let top_non_saga_def = CardDefinitionBuilder::new(CardId::from_raw(72_924), "Top Non-Saga")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let saga_def = CardDefinitionBuilder::new(CardId::from_raw(72_925), "Revealed Saga")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Saga])
+        .build();
+    let bottom_id = game.create_object_from_definition(&bottom_def, alice, Zone::Library);
+    let saga_id = game.create_object_from_definition(&saga_def, alice, Zone::Library);
+    let top_non_saga_id =
+        game.create_object_from_definition(&top_non_saga_def, alice, Zone::Library);
+    let saga_stable_id = game.object(saga_id).expect("Saga exists").stable_id;
+    assert!(game.set_player_library_order_with_audit(
+        alice,
+        vec![bottom_id, saga_id, top_non_saga_id],
+        "Tom Bombadil test library order",
+    ));
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(tom_id, alice);
+    execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        tom_id,
+        &triggered.effects,
+        None,
+        &[],
+    )
+    .expect("Tom Bombadil final chapter ability should resolve");
+
+    let moved_saga_id = game
+        .find_object_by_stable_id(saga_stable_id)
+        .expect("revealed Saga should still exist");
+    assert_eq!(
+        game.object(moved_saga_id).expect("moved Saga exists").zone,
+        Zone::Battlefield,
+        "Tom Bombadil should put the revealed Saga onto the battlefield"
+    );
+    assert_eq!(
+        game.object(top_non_saga_id)
+            .expect("non-Saga should still exist")
+            .zone,
+        Zone::Library,
+        "Tom Bombadil should leave revealed non-Saga cards in the library"
+    );
+    assert_eq!(
+        game.player(alice)
+            .expect("Alice exists")
+            .library
+            .first()
+            .copied(),
+        Some(top_non_saga_id),
+        "the revealed non-Saga remainder should be on the bottom of the library"
+    );
+}
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
