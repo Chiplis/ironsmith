@@ -317,6 +317,7 @@ impl Event {
                 from,
                 enters_tapped,
                 enters_with_counters,
+                linked_exile_with_entering: Vec::new(),
                 enters_as_copy_of: None,
                 copy_name_override: None,
                 added_card_types: Vec::new(),

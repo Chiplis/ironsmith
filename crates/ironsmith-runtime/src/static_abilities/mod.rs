@@ -968,6 +968,7 @@ pub struct EnterAsCopyAsEntersSpec {
     pub affected_filter: Option<crate::target::ObjectFilter>,
     pub may: bool,
     pub enters_tapped_if_chosen: bool,
+    pub linked_exile_pair: Option<EnterAsCopyLinkedExilePairSpec>,
     pub copy_source_self: bool,
     pub copy_source_enchanted: bool,
     pub name_override: Option<String>,
@@ -977,6 +978,11 @@ pub struct EnterAsCopyAsEntersSpec {
     pub added_abilities: Vec<crate::ability::Ability>,
     pub set_base_power_toughness: Option<(i32, i32)>,
     pub set_base_power_toughness_from_self: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EnterAsCopyLinkedExilePairSpec {
+    pub counter_type: crate::object::CounterType,
 }
 
 /// Spec for static abilities that duplicate matching triggered abilities.

@@ -17690,6 +17690,38 @@ fn parse_phyrexian_metamorph_style_enter_as_copy_with_added_card_type() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_the_mimeoplasm_linked_graveyard_copy_replacement() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "The Mimeoplasm")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Ooze])
+        .power_toughness(crate::card::PowerToughness::fixed(0, 0))
+        .parse_text(
+            "As The Mimeoplasm enters, you may exile two creature cards from graveyards. If you do, it enters as a copy of one of those cards with a number of additional +1/+1 counters on it equal to the power of the other card.",
+        )
+        .expect("The Mimeoplasm linked graveyard copy replacement should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("you may exile two creature cards from graveyards")
+            && rendered.contains("it enters as a copy of one of those cards")
+            && rendered.contains("additional +1/+1 counters"),
+        "expected The Mimeoplasm compiled text to preserve linked exile/copy/counter clause, got {rendered}"
+    );
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("linked_exile_pair")
+            && debug.contains("PlusOnePlusOne")
+            && debug.contains("nontoken: true"),
+        "expected The Mimeoplasm lowering to record linked exile pair with +1/+1 counters for nontoken creature cards, got {debug}"
+    );
+    assert!(
+        !debug.to_ascii_lowercase().contains("unsupported"),
+        "expected The Mimeoplasm parse to avoid unsupported placeholders, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_omni_changeling_copy_exception_stays_localized() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Omni-Changeling")
         .card_types(vec![CardType::Creature])
