@@ -734,6 +734,10 @@ fn substitute_pregame_card_self_reference(line: &str, subject: &str, card_name: 
     if subject.is_empty() || subject.eq_ignore_ascii_case("this source") {
         return line.to_string();
     }
+    let lower = line.to_ascii_lowercase();
+    if !lower.contains("begin the game") {
+        return line.to_string();
+    }
     let capitalized = capitalize_first_ascii(subject);
     line.replace(subject, card_name)
         .replace(&capitalized, card_name)

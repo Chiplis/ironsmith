@@ -455,8 +455,10 @@ fn merge_ast_surface_lines(mut lines: Vec<String>) -> Vec<String> {
             merge_conditioned_spell_and_activation_tax_lines(merge_adjacent_simple_mana_add_lines(
                 drop_redundant_spell_cost_lines(merge_specific_adjacent_surface_lines(
                     merge_lose_all_transform_lines(merge_blockability_lines(
-                        annotate_color_choice_exclusions(merge_same_true_keyword_grant_lines(
-                            merge_subject_predicate_surface_lines(previous.clone()),
+                        annotate_color_choice_exclusions(merge_same_true_type_addition_lines(
+                            merge_same_true_keyword_grant_lines(
+                                merge_subject_predicate_surface_lines(previous.clone()),
+                            ),
                         )),
                     )),
                 )),
@@ -894,6 +896,26 @@ mod tests {
             lines,
             vec![
                 "At the beginning of each combat, creatures you control gain first strike until end of turn if a creature you control has first strike. The same is true for flying and vigilance."
+                    .to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn repeated_type_additions_use_same_is_true_surface() {
+        let lines = merge_ast_surface_lines(vec![
+            "Creatures you control are the chosen type in addition to their other types."
+                .to_string(),
+            "Creature spells you control are the chosen type in addition to their other types."
+                .to_string(),
+            "Creature cards you own that aren't on the battlefield are the chosen type in addition to their other types."
+                .to_string(),
+        ]);
+
+        assert_eq!(
+            lines,
+            vec![
+                "Creatures you control are the chosen type in addition to their other types. The same is true for creature spells you control and creature cards you own that aren't on the battlefield."
                     .to_string()
             ]
         );

@@ -7205,6 +7205,134 @@ fn roshan_hidden_magister_applies_assassin_subtype_across_zones_for_you_only() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn leyline_of_transformation_applies_chosen_type_across_its_three_scopes() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let leyline = CardDefinitionBuilder::new(CardId::new(), "Leyline of Transformation")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "If this card is in your opening hand, you may begin the game with it on the battlefield.\nAs this enchantment enters, choose a creature type.\nCreatures you control are the chosen type in addition to their other types. The same is true for creature spells you control and creature cards you own that aren't on the battlefield.",
+        )
+        .expect("Leyline of Transformation text should parse");
+    let leyline_in_hand = game.create_object_from_definition(&leyline, alice, Zone::Hand);
+    let mut dm = SelectFirstDecisionMaker;
+    let leyline_id = game
+        .move_object_with_etb_processing_with_dm(leyline_in_hand, Zone::Battlefield, &mut dm)
+        .expect("Leyline should enter and record its creature-type choice")
+        .new_id;
+    let chosen_type = game
+        .chosen_creature_type(leyline_id)
+        .expect("Leyline should choose a creature type as it enters");
+
+    let ally = CardBuilder::new(CardId::new(), "Leyline Ally")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Bear])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let ally_id = game.create_object_from_card(&ally, alice, Zone::Battlefield);
+
+    let opponent = CardBuilder::new(CardId::new(), "Leyline Opponent")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Bear])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let opponent_id = game.create_object_from_card(&opponent, bob, Zone::Battlefield);
+
+    let creature_spell = CardBuilder::new(CardId::new(), "Leyline Stack Creature")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elf])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let creature_spell_id = game.create_object_from_card(&creature_spell, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(creature_spell_id, alice));
+
+    let noncreature_spell = CardBuilder::new(CardId::new(), "Leyline Stack Instant")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let noncreature_spell_id = game.create_object_from_card(&noncreature_spell, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(noncreature_spell_id, alice));
+
+    let opponent_creature_spell = CardBuilder::new(CardId::new(), "Leyline Opposing Stack Creature")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elf])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let opponent_creature_spell_id =
+        game.create_object_from_card(&opponent_creature_spell, bob, Zone::Stack);
+    game.push_to_stack(StackEntry::new(opponent_creature_spell_id, bob));
+
+    let graveyard_creature = CardBuilder::new(CardId::new(), "Leyline Graveyard Creature")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Wizard])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let graveyard_creature_id =
+        game.create_object_from_card(&graveyard_creature, alice, Zone::Graveyard);
+
+    let opponent_graveyard_creature =
+        CardBuilder::new(CardId::new(), "Leyline Opposing Graveyard Creature")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Wizard])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+    let opponent_graveyard_creature_id =
+        game.create_object_from_card(&opponent_graveyard_creature, bob, Zone::Graveyard);
+
+    let graveyard_noncreature = CardBuilder::new(CardId::new(), "Leyline Graveyard Instant")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let graveyard_noncreature_id =
+        game.create_object_from_card(&graveyard_noncreature, alice, Zone::Graveyard);
+
+    assert!(
+        game.current_has_subtype(ally_id, chosen_type),
+        "creatures you control should gain Leyline's chosen type"
+    );
+    assert!(
+        game.current_has_subtype(ally_id, Subtype::Bear),
+        "Leyline should add to, not replace, existing creature types"
+    );
+    assert!(
+        game.current_has_subtype(creature_spell_id, chosen_type),
+        "creature spells you control should gain Leyline's chosen type"
+    );
+    assert!(
+        game.current_has_subtype(graveyard_creature_id, chosen_type),
+        "creature cards you own off the battlefield should gain Leyline's chosen type"
+    );
+    assert!(
+        !game.current_has_subtype(opponent_id, chosen_type),
+        "opposing creatures should not gain Leyline's chosen type"
+    );
+    assert!(
+        !game.current_has_subtype(noncreature_spell_id, chosen_type),
+        "noncreature spells should not gain Leyline's chosen type"
+    );
+    assert!(
+        !game.current_has_subtype(opponent_creature_spell_id, chosen_type),
+        "creature spells controlled by opponents should not gain Leyline's chosen type"
+    );
+    assert!(
+        !game.current_has_subtype(opponent_graveyard_creature_id, chosen_type),
+        "creature cards opponents own off the battlefield should not gain Leyline's chosen type"
+    );
+    assert!(
+        !game.current_has_subtype(graveyard_noncreature_id, chosen_type),
+        "noncreature cards off the battlefield should not gain Leyline's chosen type"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn roshan_hidden_magister_face_up_trigger_only_for_your_permanents() {
     use crate::cards::builders::CardDefinitionBuilder;
     use crate::decision::{LegalAction, SelectFirstDecisionMaker};

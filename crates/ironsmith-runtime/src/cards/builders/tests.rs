@@ -34226,6 +34226,74 @@ fn parse_oracle_roshan_hidden_magister_regression() {
 }
 
 #[test]
+fn parse_oracle_leyline_of_transformation_regression() {
+    let def = parse_oracle_card_definition("Leyline of Transformation");
+
+    let ids: Vec<StaticAbilityId> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&StaticAbilityId::PregameAction),
+        "expected Leyline opening-hand pregame ability, got {ids:?}"
+    );
+    assert!(
+        ids.contains(&StaticAbilityId::ChooseCreatureTypeAsEnters),
+        "expected Leyline to choose a creature type as it enters, got {ids:?}"
+    );
+    assert_eq!(
+        ids.iter()
+            .filter(|id| **id == StaticAbilityId::AddChosenCreatureType)
+            .count(),
+        3,
+        "expected battlefield, stack, and off-battlefield chosen-type static abilities, got {ids:?}"
+    );
+
+    let raw = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        raw.matches("addchosencreaturetype").count() >= 3,
+        "expected Leyline to lower chosen-type additions structurally, got {raw}"
+    );
+
+    let compiled_lines = unprocessed_compiled_lines(&def);
+    assert_eq!(
+        compiled_lines,
+        vec![
+            "If this card is in your opening hand, you may begin the game with it on the battlefield.".to_string(),
+            "As this enchantment enters, choose a creature type.".to_string(),
+            "Creatures you control are the chosen type in addition to their other types. The same is true for creature spells you control and creature cards you own that aren't on the battlefield.".to_string(),
+        ],
+        "expected Leyline compiled text to match oracle wording"
+    );
+
+    let rendered = compiled_lines.join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("as this enchantment enters, choose a creature type"),
+        "expected Leyline choose-as-enters wording to keep the enchantment self-reference, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "creatures you control are the chosen type in addition to their other types"
+        ),
+        "expected Leyline battlefield chosen-type clause to render, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "the same is true for creature spells you control and creature cards you own that aren't on the battlefield"
+        ),
+        "expected Leyline chosen-type clauses to merge through same-is-true wording, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported"),
+        "expected Leyline to avoid unsupported markers, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_oracle_leyline_of_the_guildpact_static_characteristics_regression() {
     let def = parse_oracle_card_definition("Leyline of the Guildpact");
 
