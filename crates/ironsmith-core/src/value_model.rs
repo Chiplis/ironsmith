@@ -33,6 +33,7 @@ pub enum EffectMetric {
     CardTypesAmong,
     GreatestPlayerCount,
     IteratedPlayerCount,
+    OtherNumber,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

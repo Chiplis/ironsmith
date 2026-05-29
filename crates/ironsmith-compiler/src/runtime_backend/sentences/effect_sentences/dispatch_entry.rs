@@ -2341,6 +2341,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Clash { .. }
             | SubjectVerbActionAst::FlipCoin
             | SubjectVerbActionAst::RollDie { .. }
+            | SubjectVerbActionAst::RollDiceChooseResult { .. }
             | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
             | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary
             | SubjectVerbActionAst::ReorderGraveyard

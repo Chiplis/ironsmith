@@ -168,7 +168,8 @@ pub use player::{
     GrantPlayTaggedEffect, GrantTaggedSpellFreeCastUntilEndOfTurnEffect,
     GrantTaggedSpellLifeCostByManaValueEffect, IncreaseSpeedEffect, LoseTheGameEffect,
     MayCastMatchingSpellWithoutPayingManaCostEffect, PayAnyEnergyEffect, PayEnergyEffect,
-    PoisonCountersEffect, ReduceSpeedEffect, RingTemptsYouEffect, RollDieEffect,
+    PoisonCountersEffect, ReduceSpeedEffect, RingTemptsYouEffect, RollDiceChooseResultEffect,
+    RollDieEffect,
     SkipCombatPhasesEffect, SkipDrawStepEffect, SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect,
     TakeInitiativeEffect, TicketCountersEffect, VentureIntoDungeonEffect, WinTheGameEffect,
 };

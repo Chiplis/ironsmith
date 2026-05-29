@@ -26,6 +26,33 @@ pub(super) fn run_sentence_parse_rules_lexed(
         return Ok(("x_cant_be_zero_activation_restriction", Vec::new()));
     }
 
+    if matches!(
+        words.as_slice(),
+        ["roll", count, die, "and", "choose", "one", "result"]
+            if die.starts_with('d')
+                && die[1..].parse::<u32>().is_ok()
+                && (count.parse::<u32>().is_ok()
+                    || ironsmith_core::parse_cardinal_word(count).is_some())
+    ) {
+        let count = words[1]
+            .parse::<u32>()
+            .ok()
+            .or_else(|| ironsmith_core::parse_cardinal_word(words[1]))
+            .expect("count was validated above");
+        let sides = words[2][1..]
+            .parse::<u32>()
+            .expect("die size was validated above");
+        return Ok((
+            "roll_dice_choose_one_result",
+            vec![EffectAst::subject_verb_roll_dice_choose_result_with_die_text(
+                crate::cards::builders::PlayerAst::Implicit,
+                count,
+                sides,
+                Some(words[2].to_string()),
+            )],
+        ));
+    }
+
     let view = LexClauseView::from_tokens(tokens);
     for family in [
         &SUBJECT_VERB_PRE_DIAGNOSTIC_INDEX_LEXED,

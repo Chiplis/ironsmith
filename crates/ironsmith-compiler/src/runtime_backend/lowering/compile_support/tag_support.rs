@@ -576,6 +576,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Clash { .. }
         | SubjectVerbActionAst::FlipCoin
         | SubjectVerbActionAst::RollDie { .. }
+        | SubjectVerbActionAst::RollDiceChooseResult { .. }
         | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
         | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary
         | SubjectVerbActionAst::ReorderGraveyard

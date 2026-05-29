@@ -1,6 +1,7 @@
 use crate::{
     CardType, ChoiceCount, ChooseSpec, Color, ColorSet, CounterType, ObjectId, PlayerId,
-    StaticAbilityId, Subtype, Supertype, TagKey, Value, Zone, effect_model::EventValueSpec,
+    EffectMetric, StaticAbilityId, Subtype, Supertype, TagKey, Value, Zone,
+    effect_model::EventValueSpec,
 };
 
 /// A reference to an object for use in filters and effects.
@@ -2424,6 +2425,7 @@ fn describe_filter_static_ability(ability_id: StaticAbilityId) -> Option<&'stati
 fn describe_comparison(cmp: &Comparison) -> String {
     fn describe_value_expr(value: &Value) -> String {
         match value {
+            Value::SurfaceHinted { value, .. } => describe_value_expr(value),
             Value::Fixed(v) => v.to_string(),
             Value::X => "X".to_string(),
             Value::Count(filter) => format!("the number of {}", filter.description()),
@@ -2496,6 +2498,11 @@ fn describe_comparison(cmp: &Comparison) -> String {
             Value::EventValue(EventValueSpec::BlockersBeyondFirst { .. }) => {
                 "a dynamic blocker count".to_string()
             }
+            Value::EffectValue(_) => "that result".to_string(),
+            Value::EffectMetric {
+                metric: EffectMetric::OtherNumber,
+                ..
+            } => "the other result".to_string(),
             _ => "a dynamic value".to_string(),
         }
     }

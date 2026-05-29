@@ -1571,6 +1571,18 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
     if matches!(words.get(..2), Some(["the", "result"])) {
         return Some((Value::EventValue(EventValueSpec::Amount), 2));
     }
+    if matches!(words.get(..2), Some(["that", "result"])) {
+        return Some((Value::EventValue(EventValueSpec::Amount), 2));
+    }
+    if matches!(words.get(..3), Some(["the", "other", "result"])) {
+        return Some((
+            Value::PendingEffectMetric {
+                source: ironsmith_core::EffectMetricSource::Outcome,
+                metric: ironsmith_core::EffectMetric::OtherNumber,
+            },
+            3,
+        ));
+    }
     if words.first().copied() == Some("result") {
         return Some((Value::EventValue(EventValueSpec::Amount), 1));
     }

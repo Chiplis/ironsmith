@@ -377,6 +377,8 @@ fn is_statement_verb_word(word: &str) -> bool {
             | "returns"
             | "reveal"
             | "reveals"
+            | "roll"
+            | "rolls"
             | "sacrifice"
             | "sacrifices"
             | "search"

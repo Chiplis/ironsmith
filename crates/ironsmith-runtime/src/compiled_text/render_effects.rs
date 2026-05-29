@@ -2384,11 +2384,65 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         return describe_structural_multisentence_effect_list(rest);
     }
 
-    describe_draw_discard_then_create_structural(effects)
+    describe_roll_choose_destroy_create_structural(effects)
+        .or_else(|| describe_draw_discard_then_create_structural(effects))
         .or_else(|| describe_reveal_top_choice_to_hand_rest_graveyard_structural(effects))
         .or_else(|| describe_gain_control_untap_haste_structural(effects))
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
         .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
+}
+
+fn describe_roll_choose_destroy_create_structural(effects: &[Effect]) -> Option<String> {
+    let [roll_effect, destroy_effect, create_effect] = effects else {
+        return None;
+    };
+    let with_id = roll_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    with_id
+        .effect
+        .downcast_ref::<crate::effects::RollDiceChooseResultEffect>()?;
+
+    fn unwrap_tags(effect: &Effect) -> &Effect {
+        if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+            return unwrap_tags(&tag_all.effect);
+        }
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            return unwrap_tags(&tagged.effect);
+        }
+        effect
+    }
+
+    let destroy = unwrap_tags(destroy_effect).downcast_ref::<crate::effects::DestroyEffect>()?;
+    let ChooseSpec::All(filter) = &destroy.spec else {
+        return None;
+    };
+    if filter.card_types.as_slice() != [CardType::Creature] {
+        return None;
+    }
+    let Some(crate::filter::Comparison::GreaterThanOrEqualExpr(value)) = &filter.power else {
+        return None;
+    };
+    if !matches!(value.unhinted(), Value::EffectValue(id) if *id == with_id.id) {
+        return None;
+    }
+
+    let create = unwrap_tags(create_effect).downcast_ref::<crate::effects::CreateTokenEffect>()?;
+    if !matches!(
+        create.count.unhinted(),
+        Value::EffectMetric {
+            effect_id,
+            metric: crate::effect::EffectMetric::OtherNumber,
+            ..
+        } if *effect_id == with_id.id
+    ) {
+        return None;
+    }
+
+    let roll_text = describe_effect(roll_effect).trim_end_matches('.').to_string();
+    let destroy_text = describe_effect(destroy_effect)
+        .trim_end_matches('.')
+        .to_string();
+    let create_text = lowercase_first(describe_effect(create_effect).trim_end_matches('.'));
+    Some(format!("{roll_text}. {destroy_text}. Then {create_text}."))
 }
 
 fn describe_draw_discard_then_create_structural(effects: &[Effect]) -> Option<String> {
@@ -19498,6 +19552,14 @@ pub(super) fn describe_compact_token_count(value: &Value, token_name: &str) -> S
     match value.unhinted() {
         Value::Fixed(1) => format!("a {token_name} token"),
         Value::Fixed(n) => format!("{n} {token_name} tokens"),
+        Value::EffectMetric {
+            metric: crate::effect::EffectMetric::OtherNumber,
+            ..
+        }
+        | Value::PendingEffectMetric {
+            metric: crate::effect::EffectMetric::OtherNumber,
+            ..
+        } => format!("a number of {token_name} tokens equal to the other result"),
         Value::Count(filter) => {
             format!(
                 "a {token_name} token for each {}",
@@ -26829,6 +26891,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         if let ChooseSpec::All(filter) = &destroy.spec
             && filter.card_types.as_slice() == [crate::types::CardType::Creature]
+            && let Some(crate::filter::Comparison::GreaterThanOrEqualExpr(value)) = &filter.power
+            && matches!(value.unhinted(), Value::EffectValue(_))
+        {
+            return "Destroy each creature with power greater than or equal to that result"
+                .to_string();
+        }
+        if let ChooseSpec::All(filter) = &destroy.spec
+            && filter.card_types.as_slice() == [crate::types::CardType::Creature]
             && filter.with_counter.is_none()
             && matches!(
                 filter.without_counter,
@@ -28917,6 +28987,25 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             player_verb(&player, "roll", "rolls"),
         );
     }
+    if let Some(roll_dice) = effect.downcast_ref::<crate::effects::RollDiceChooseResultEffect>() {
+        let player = describe_player_filter(&roll_dice.player);
+        let die_text = roll_dice
+            .die_text
+            .clone()
+            .unwrap_or_else(|| format!("d{}", roll_dice.sides));
+        let count = match roll_dice.count {
+            1 => "one".to_string(),
+            2 => "two".to_string(),
+            n => n.to_string(),
+        };
+        if player == "you" {
+            return format!("Roll {count} {die_text} and choose one result");
+        }
+        return format!(
+            "{player} {} {count} {die_text} and chooses one result",
+            player_verb(&player, "roll", "rolls"),
+        );
+    }
     if let Some(flip_coin) = effect.downcast_ref::<crate::effects::FlipCoinEffect>() {
         let player = describe_player_filter(&flip_coin.player);
         if player == "you" {
@@ -29378,12 +29467,34 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             "X".to_string()
         } else if singular_count {
             "a".to_string()
+        } else if matches!(
+            create_token.count.unhinted(),
+            Value::EffectMetric {
+                metric: crate::effect::EffectMetric::OtherNumber,
+                ..
+            } | Value::PendingEffectMetric {
+                metric: crate::effect::EffectMetric::OtherNumber,
+                ..
+            }
+        ) {
+            "a number of".to_string()
         } else {
             describe_effect_count_backref(&create_token.count)
                 .unwrap_or_else(|| describe_value(&create_token.count))
         };
         let object_text = if singular_count && token_main.contains(", a ") {
             token_main.to_string()
+        } else if matches!(
+            create_token.count.unhinted(),
+            Value::EffectMetric {
+                metric: crate::effect::EffectMetric::OtherNumber,
+                ..
+            } | Value::PendingEffectMetric {
+                metric: crate::effect::EffectMetric::OtherNumber,
+                ..
+            }
+        ) {
+            format!("{} {} equal to the other result", count_text, token_main)
         } else {
             format!("{} {}", count_text, token_main)
         };

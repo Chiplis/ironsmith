@@ -352,6 +352,14 @@ fn resolve_effect_metric(
                 })
                 .unwrap_or(0)
         }
+        EffectMetric::OtherNumber => outcome
+            .execution_facts
+            .iter()
+            .find_map(|fact| match fact {
+                crate::effect::ExecutionFact::OtherNumber(value) => Some(*value as i32),
+                _ => None,
+            })
+            .unwrap_or(0),
     };
 
     Ok(resolved)

@@ -36592,6 +36592,21 @@ fn guardian_of_the_ages_strict_parser_and_text_regression() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn valiant_endeavor_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition("Valiant Endeavor");
+
+    let rendered_lines = canonical_compiled_lines(&def);
+    assert_eq!(
+        rendered_lines,
+        vec![
+            "Roll two d6 and choose one result. Destroy each creature with power greater than or equal to that result. Then create a number of 2/2 white Knight creature tokens with vigilance equal to the other result.".to_string(),
+        ],
+        "Valiant Endeavor should render the dice choice, destroy threshold, and other-result token count"
+    );
+}
+
 #[test]
 fn calamity_bearer_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("Calamity Bearer");

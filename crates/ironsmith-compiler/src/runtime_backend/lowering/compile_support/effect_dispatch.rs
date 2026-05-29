@@ -581,6 +581,18 @@ fn compile_subject_verb_effect(
                 )
             })
         }
+        SubjectVerbActionAst::RollDiceChooseResult {
+            count,
+            sides,
+            die_text,
+        } => compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
+            Effect::roll_dice_choose_result_with_die_text(
+                *count,
+                *sides,
+                subject.into_player_filter(),
+                die_text.clone(),
+            )
+        }),
         SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary => {
             compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
                 Effect::shuffle_hand_and_graveyard_into_library_player(subject.into_player_filter())
