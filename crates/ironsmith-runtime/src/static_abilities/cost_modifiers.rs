@@ -8,7 +8,7 @@ use crate::effect::Value;
 use crate::filter::ObjectFilterExt as _;
 use crate::filter::{AlternativeCastKind, Comparison, PlayerFilterExt};
 use crate::mana::{ManaCost, ManaSymbol};
-use crate::target::{ObjectFilter, PlayerFilter};
+use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::types::CardType;
 use crate::zone::Zone;
 
@@ -509,6 +509,28 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
         Some(PlayerFilter::You) => description.push_str(" you cast"),
         Some(PlayerFilter::Opponent) => description.push_str(" your opponents cast"),
         _ => {}
+    }
+    for constraint in &filter.tagged_constraints {
+        match constraint.relation {
+            TaggedOpbjectRelation::SharesCardType => {
+                if constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG {
+                    description.push_str(" that share a card type with the exiled card");
+                } else {
+                    description.push_str(" that share a card type with that object");
+                }
+            }
+            TaggedOpbjectRelation::SharesColorWithTagged => {
+                if constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG {
+                    description.push_str(" that share a color with the exiled card");
+                } else {
+                    description.push_str(" that share a color with that object");
+                }
+            }
+            TaggedOpbjectRelation::SharesSubtypeWithTagged => {
+                description.push_str(" that share a creature type with that object");
+            }
+            _ => {}
+        }
     }
     if let Some(zone_suffix) = match filter.zone {
         Some(Zone::Hand) => Some(match filter.owner.as_ref() {

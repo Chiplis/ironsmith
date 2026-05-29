@@ -106,6 +106,7 @@ impl EffectExecutor for ImprintFromHandEffect {
             if let Some(exiled_id) = exiled_id {
                 // Imprint it on the source permanent
                 game.imprint_card(source_id, exiled_id);
+                game.add_exiled_with_source_link(source_id, exiled_id);
                 Ok(EffectOutcome::with_objects(vec![exiled_id]))
             } else {
                 Ok(EffectOutcome::count(0))

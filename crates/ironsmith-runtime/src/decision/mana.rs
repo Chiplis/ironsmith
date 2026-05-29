@@ -2,6 +2,26 @@ use super::*;
 use crate::ability::ActivatedAbilityRuntimeExt as _;
 use crate::filter::ObjectFilterExt as _;
 
+fn with_source_exiled_tagged_objects(
+    game: &GameState,
+    mut ctx: crate::filter::FilterContext,
+    source: ObjectId,
+) -> crate::filter::FilterContext {
+    let source_exiled = game
+        .get_exiled_with_source_links(source)
+        .iter()
+        .filter_map(|id| {
+            game.object(*id)
+                .map(|obj| crate::snapshot::ObjectSnapshot::from_object(obj, game))
+        })
+        .collect::<Vec<_>>();
+    if !source_exiled.is_empty() {
+        ctx.tagged_objects
+            .insert(crate::tag::SOURCE_EXILED_TAG.into(), source_exiled);
+    }
+    ctx
+}
+
 fn count_basic_land_types_among_filter(
     game: &GameState,
     filter: &crate::target::ObjectFilter,
@@ -2862,10 +2882,14 @@ pub(crate) fn apply_spell_cost_modifiers(
     let mut total_reduction: i32 = 0;
     let mut increase_pips: Vec<Vec<ManaSymbol>> = Vec::new();
     let mut reduction_pips: Vec<Vec<ManaSymbol>> = Vec::new();
-    let ctx = FilterContext::new(player)
-        .with_source(spell.id)
-        .with_active_player(game.turn.active_player)
-        .with_opponents(opponents_of(game, player));
+    let ctx = with_source_exiled_tagged_objects(
+        game,
+        FilterContext::new(player)
+            .with_source(spell.id)
+            .with_active_player(game.turn.active_player)
+            .with_opponents(opponents_of(game, player)),
+        spell.id,
+    );
 
     for ability in &spell.abilities {
         let AbilityKind::Static(static_ability) = &ability.kind else {
@@ -3038,10 +3062,14 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
             continue;
         };
         let controller = game.controller_of(perm);
-        let ctx = FilterContext::new(controller)
-            .with_source(perm_id)
-            .with_active_player(game.turn.active_player)
-            .with_opponents(opponents_of(game, controller));
+        let ctx = with_source_exiled_tagged_objects(
+            game,
+            FilterContext::new(controller)
+                .with_source(perm_id)
+                .with_active_player(game.turn.active_player)
+                .with_opponents(opponents_of(game, controller)),
+            perm_id,
+        );
 
         if let Some(static_abilities) = view.static_abilities_rc(perm_id) {
             for static_ability in static_abilities.iter() {
