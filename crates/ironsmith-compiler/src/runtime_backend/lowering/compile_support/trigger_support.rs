@@ -513,6 +513,11 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         | TriggerSpec::ThisDealsCombatDamageToPlayer
         | TriggerSpec::DealsCombatDamageToPlayer { .. } => Some(PlayerFilter::DamagedPlayer),
         TriggerSpec::ThisAttacks | TriggerSpec::ThisBecomesBlocked => Some(PlayerFilter::Defending),
+        TriggerSpec::Attacks(filter) | TriggerSpec::AttacksOneOrMore(filter)
+            if filter.attacking_player_or_planeswalker_controlled_by.is_some() =>
+        {
+            Some(PlayerFilter::Defending)
+        }
         TriggerSpec::AttacksYouOrPlaneswalkerYouControl(_)
         | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_) => {
             Some(PlayerFilter::IteratedPlayer)

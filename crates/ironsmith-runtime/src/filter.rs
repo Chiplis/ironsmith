@@ -4841,6 +4841,7 @@ mod tests {
             blockers: std::collections::HashMap::from([(attacker.id, vec![blocker.id])]),
             damage_assignment_order: std::collections::HashMap::new(),
             attacking_bands: Vec::new(),
+            had_to_attack_this_combat: Default::default(),
         });
 
         let blocker_snapshot =

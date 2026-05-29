@@ -698,6 +698,19 @@ fn condition_filter_context(
     ctx
 }
 
+fn triggering_object_had_to_attack_this_combat(
+    game: &GameState,
+    triggering_event: Option<&TriggerEvent>,
+) -> bool {
+    triggering_event
+        .and_then(|event| event.object_id())
+        .is_some_and(|object_id| {
+            game.combat
+                .as_ref()
+                .is_some_and(|combat| combat.creature_had_to_attack_this_combat(object_id))
+        })
+}
+
 fn evaluate_condition_shared_core(
     game: &GameState,
     condition: &Condition,
@@ -996,6 +1009,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::MaxTimesEachTurn(..) => {}
         Condition::DoThisMaxTimesEachTurn(..) => {}
         Condition::TriggeringObjectWasEnchanted => {}
+        Condition::TriggeringObjectHadToAttackThisCombat => {}
         Condition::TriggeringObjectHadCounters { .. } => {}
         Condition::ControlCreaturesTotalPowerAtLeast(..) => {}
         Condition::CardInYourGraveyard { .. } => {}
@@ -1359,6 +1373,9 @@ pub fn evaluate_condition_external(
             .triggering_event
             .and_then(|event| event.snapshot())
             .is_some_and(|snapshot| snapshot.was_enchanted),
+        Condition::TriggeringObjectHadToAttackThisCombat => {
+            triggering_object_had_to_attack_this_combat(game, ctx.triggering_event)
+        }
         Condition::TriggeringObjectHadCounters {
             counter_type,
             min_count,
@@ -2455,9 +2472,9 @@ fn evaluate_condition_simple(
         Condition::FirstTimeThisTurn
         | Condition::MaxTimesEachTurn(_)
         | Condition::DoThisMaxTimesEachTurn(_) => true,
-        Condition::TriggeringObjectWasEnchanted | Condition::TriggeringObjectHadCounters { .. } => {
-            false
-        }
+        Condition::TriggeringObjectWasEnchanted
+        | Condition::TriggeringObjectHadToAttackThisCombat
+        | Condition::TriggeringObjectHadCounters { .. } => false,
         Condition::ControlCreaturesTotalPowerAtLeast(_)
         | Condition::CardInYourGraveyard { .. }
         | Condition::ActivationTiming(_)
@@ -3418,6 +3435,9 @@ fn evaluate_condition(
             .as_ref()
             .and_then(|event| event.snapshot())
             .is_some_and(|snapshot| snapshot.was_enchanted)),
+        Condition::TriggeringObjectHadToAttackThisCombat => Ok(
+            triggering_object_had_to_attack_this_combat(game, ctx.triggering_event.as_ref()),
+        ),
         Condition::TriggeringObjectHadCounters {
             counter_type,
             min_count,

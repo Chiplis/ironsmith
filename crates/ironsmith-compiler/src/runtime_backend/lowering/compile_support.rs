@@ -535,6 +535,9 @@ pub(crate) fn compile_condition_from_predicate_ast(
         PredicateAst::SourceIsTapped => Condition::SourceIsTapped,
         PredicateAst::SourceIsSaddled => Condition::SourceIsSaddled,
         PredicateAst::SourceMatches(filter) => Condition::SourceMatches(filter.clone()),
+        PredicateAst::TriggeringObjectHadToAttackThisCombat => {
+            Condition::TriggeringObjectHadToAttackThisCombat
+        }
         PredicateAst::SourceHasNoCounter(counter_type) => {
             Condition::SourceHasNoCounter(*counter_type)
         }

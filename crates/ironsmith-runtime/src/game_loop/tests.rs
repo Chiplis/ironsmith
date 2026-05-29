@@ -11442,6 +11442,290 @@ fn create_creature(
     game.create_object_from_card(&card, owner, Zone::Battlefield)
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn firkraag_cunning_instigator_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_940), "Firkraag, Cunning Instigator")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Red],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Dragon])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "Flying, haste\n\
+             Whenever one or more Dragons you control attack an opponent, goad target creature that player controls.\n\
+             Whenever a creature deals combat damage to one of your opponents, if that creature had to attack this combat, you put a +1/+1 counter on Firkraag and you draw a card.",
+        )
+        .expect("Firkraag, Cunning Instigator should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_firkraag_game() -> (GameState, PlayerId, PlayerId, PlayerId, ObjectId) {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let firkraag = game.create_object_from_definition(
+        &firkraag_cunning_instigator_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    (game, alice, bob, charlie, firkraag)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn firkraag_attack_trigger_goads_only_creature_that_attacked_player_controls() {
+    let (mut game, alice, bob, charlie, _firkraag) = create_firkraag_game();
+    let dragon = create_creature(&mut game, "Dragon Ally", alice, 4, 4);
+    game.object_mut(dragon)
+        .expect("Dragon Ally should exist")
+        .subtypes
+        .push(Subtype::Dragon);
+    let bob_creature = create_creature(&mut game, "Bob Creature", bob, 2, 2);
+    let charlie_creature = create_creature(&mut game, "Charlie Creature", charlie, 2, 2);
+
+    game.combat = Some(crate::combat_state::CombatState {
+        attackers: vec![crate::combat_state::AttackerInfo {
+            creature: dragon,
+            target: AttackTarget::Player(bob),
+        }],
+        ..Default::default()
+    });
+    let event = TriggerEvent::new_with_provenance(
+        crate::events::combat::CreatureAttackedEvent::with_total_attackers(
+            dragon,
+            crate::triggers::AttackEventTarget::Player(bob),
+            1,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &event) {
+        trigger_queue.add(trigger);
+    }
+    let mut dm = ChooseSpecificObjectDecisionMaker::new(bob_creature);
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Firkraag attack trigger should go on the stack");
+
+    assert!(
+        dm.seen_candidates.contains(&bob_creature),
+        "Bob's creature should be a legal goad target"
+    );
+    assert!(
+        !dm.seen_candidates.contains(&charlie_creature),
+        "Charlie's creature should not be targetable by the trigger for attacking Bob"
+    );
+
+    let mut auto = AutoPassDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut auto).expect("Firkraag goad trigger should resolve");
+    assert!(game.is_goaded(bob_creature));
+    assert!(!game.is_goaded(charlie_creature));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn firkraag_attack_trigger_fires_once_for_each_attacked_opponent() {
+    let (mut game, alice, bob, charlie, _firkraag) = create_firkraag_game();
+    let bob_dragon = create_creature(&mut game, "Bob-Bound Dragon", alice, 4, 4);
+    game.object_mut(bob_dragon)
+        .expect("Bob-Bound Dragon should exist")
+        .subtypes
+        .push(Subtype::Dragon);
+    let charlie_dragon = create_creature(&mut game, "Charlie-Bound Dragon", alice, 4, 4);
+    game.object_mut(charlie_dragon)
+        .expect("Charlie-Bound Dragon should exist")
+        .subtypes
+        .push(Subtype::Dragon);
+    game.remove_summoning_sickness(bob_dragon);
+    game.remove_summoning_sickness(charlie_dragon);
+    let bob_creature = create_creature(&mut game, "Bob Creature", bob, 2, 2);
+    let charlie_creature = create_creature(&mut game, "Charlie Creature", charlie, 2, 2);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+    let mut combat = crate::combat_state::CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[
+            AttackerDeclaration {
+                creature: bob_dragon,
+                target: AttackTarget::Player(bob),
+            },
+            AttackerDeclaration {
+                creature: charlie_dragon,
+                target: AttackTarget::Player(charlie),
+            },
+        ],
+    )
+    .expect("both Dragons should be declared as attackers");
+    game.combat = Some(combat);
+
+    assert_eq!(
+        trigger_queue.entries.len(),
+        2,
+        "Firkraag should trigger once for each opponent attacked by Dragons"
+    );
+
+    let mut dm =
+        ChooseObjectByOnlyLegalSetDecisionMaker::new(vec![bob_creature, charlie_creature]);
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Firkraag attack triggers should go on the stack");
+
+    assert_eq!(dm.chosen.len(), 2);
+    assert!(dm.chosen.contains(&bob_creature));
+    assert!(dm.chosen.contains(&charlie_creature));
+    assert!(
+        dm.seen_candidate_sets.iter().any(|candidates| {
+            candidates.contains(&bob_creature) && !candidates.contains(&charlie_creature)
+        }),
+        "one trigger should target only the attacked Bob's creatures"
+    );
+    assert!(
+        dm.seen_candidate_sets.iter().any(|candidates| {
+            candidates.contains(&charlie_creature) && !candidates.contains(&bob_creature)
+        }),
+        "one trigger should target only the attacked Charlie's creatures"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn firkraag_attack_trigger_does_not_fire_for_dragon_attacking_planeswalker() {
+    let (mut game, alice, bob, _charlie, _firkraag) = create_firkraag_game();
+    let dragon = create_creature(&mut game, "Planeswalker-Bound Dragon", alice, 4, 4);
+    game.object_mut(dragon)
+        .expect("Planeswalker-Bound Dragon should exist")
+        .subtypes
+        .push(Subtype::Dragon);
+    game.remove_summoning_sickness(dragon);
+    let planeswalker = CardBuilder::new(CardId::from_raw(72_942), "Bob Planeswalker")
+        .card_types(vec![CardType::Planeswalker])
+        .loyalty(4)
+        .build();
+    let planeswalker_id = game.create_object_from_card(&planeswalker, bob, Zone::Battlefield);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+    let mut combat = crate::combat_state::CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[AttackerDeclaration {
+            creature: dragon,
+            target: AttackTarget::Planeswalker(planeswalker_id),
+        }],
+    )
+    .expect("Dragon should be able to attack an opponent's planeswalker");
+
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Firkraag should trigger only for Dragons attacking an opponent, not a planeswalker"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn firkraag_damage_trigger_requires_creature_that_had_to_attack() {
+    let (mut game, alice, bob, charlie, firkraag) = create_firkraag_game();
+    let forced_attacker = create_creature(&mut game, "Forced Attacker", bob, 2, 2);
+    game.add_goad_effect(forced_attacker, alice, Until::Forever, firkraag);
+    game.remove_summoning_sickness(forced_attacker);
+    let library_card = CardBuilder::new(CardId::from_raw(72_941), "Drawn Card").build();
+    game.create_object_from_card(&library_card, alice, Zone::Library);
+
+    game.turn.active_player = bob;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+    let mut combat = crate::combat_state::CombatState::default();
+    let mut declaration_triggers = TriggerQueue::new();
+    apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut declaration_triggers,
+        &[AttackerDeclaration {
+            creature: forced_attacker,
+            target: AttackTarget::Player(charlie),
+        }],
+    )
+    .expect("goaded creature should be declared as an attacker");
+    assert!(
+        combat.creature_had_to_attack_this_combat(forced_attacker),
+        "combat state should snapshot that the creature had to attack when declared"
+    );
+    game.combat = Some(combat);
+    game.effect_store.goad_effects.clear();
+    assert!(
+        !game.is_goaded(forced_attacker),
+        "the runtime check must not rely on current goad state at damage time"
+    );
+
+    let damage_event = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            forced_attacker,
+            crate::events::DamageTarget::Player(charlie),
+            2,
+            true,
+            crate::events::EventCause::from_combat_damage(forced_attacker, bob),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &damage_event) {
+        trigger_queue.add(trigger);
+    }
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Firkraag damage trigger should go on the stack for forced attacker");
+    assert_eq!(game.stack.len(), 1);
+
+    let mut auto = AutoPassDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut auto).expect("Firkraag damage trigger should resolve");
+    assert_eq!(
+        game.object(firkraag)
+            .expect("Firkraag should still exist")
+            .counters
+            .get(&crate::object::CounterType::PlusOnePlusOne)
+            .copied()
+            .unwrap_or(0),
+        1,
+        "Firkraag should get a +1/+1 counter"
+    );
+    assert_eq!(game.player(alice).expect("Alice should exist").hand.len(), 1);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn firkraag_damage_trigger_does_not_fire_when_creature_did_not_have_to_attack() {
+    let (game, _alice, bob, charlie, _firkraag) = create_firkraag_game();
+    let mut game = game;
+    let voluntary_attacker = create_creature(&mut game, "Voluntary Attacker", bob, 2, 2);
+    let damage_event = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            voluntary_attacker,
+            crate::events::DamageTarget::Player(charlie),
+            2,
+            true,
+            crate::events::EventCause::from_combat_damage(voluntary_attacker, bob),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    assert!(
+        crate::triggers::check_triggers(&game, &damage_event).is_empty(),
+        "Firkraag should not trigger for a creature that did not have to attack"
+    );
+}
+
 #[test]
 fn awaken_cast_action_is_available_even_when_normal_cast_is_legal() {
     use crate::cards::definitions::{basic_plains, basic_swamp};
@@ -11796,6 +12080,13 @@ struct ChooseSpecificObjectDecisionMaker {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+struct ChooseObjectByOnlyLegalSetDecisionMaker {
+    allowed: Vec<ObjectId>,
+    chosen: Vec<ObjectId>,
+    seen_candidate_sets: Vec<Vec<ObjectId>>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 impl ChooseSpecificObjectDecisionMaker {
     fn new(desired: ObjectId) -> Self {
         Self {
@@ -11806,7 +12097,44 @@ impl ChooseSpecificObjectDecisionMaker {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+impl ChooseObjectByOnlyLegalSetDecisionMaker {
+    fn new(allowed: Vec<ObjectId>) -> Self {
+        Self {
+            allowed,
+            chosen: Vec::new(),
+            seen_candidate_sets: Vec::new(),
+        }
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 impl DecisionMaker for ChooseSpecificObjectDecisionMaker {
+    fn decide_targets(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::TargetsContext,
+    ) -> Vec<Target> {
+        self.seen_candidates = ctx
+            .requirements
+            .iter()
+            .flat_map(|requirement| requirement.legal_targets.iter())
+            .filter_map(|target| match target {
+                Target::Object(id) => Some(*id),
+                Target::Player(_) => None,
+            })
+            .collect();
+        assert!(
+            ctx.requirements
+                .iter()
+                .any(|requirement| requirement
+                    .legal_targets
+                    .contains(&Target::Object(self.desired))),
+            "expected desired object target to be legal, got {:?}",
+            ctx.requirements
+        );
+        vec![Target::Object(self.desired)]
+    }
+
     fn decide_objects(
         &mut self,
         _game: &GameState,
@@ -11825,6 +12153,33 @@ impl DecisionMaker for ChooseSpecificObjectDecisionMaker {
             ctx.candidates
         );
         vec![self.desired]
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for ChooseObjectByOnlyLegalSetDecisionMaker {
+    fn decide_targets(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::TargetsContext,
+    ) -> Vec<Target> {
+        let candidates: Vec<ObjectId> = ctx
+            .requirements
+            .iter()
+            .flat_map(|requirement| requirement.legal_targets.iter())
+            .filter_map(|target| match target {
+                Target::Object(id) => Some(*id),
+                Target::Player(_) => None,
+            })
+            .collect();
+        self.seen_candidate_sets.push(candidates.clone());
+        let chosen = candidates
+            .iter()
+            .copied()
+            .find(|candidate| self.allowed.contains(candidate))
+            .expect("expected one allowed object target to be legal");
+        self.chosen.push(chosen);
+        vec![Target::Object(chosen)]
     }
 }
 

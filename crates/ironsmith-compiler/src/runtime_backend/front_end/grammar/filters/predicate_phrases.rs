@@ -2430,6 +2430,16 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::YouAttackedThisTurn);
     }
 
+    if matches!(
+        filtered.as_slice(),
+        ["that", "creature", "had", "to", "attack", "this", "combat"]
+            | ["it", "had", "to", "attack", "this", "combat"]
+            | ["that", "creature", "must", "attack", "this", "combat"]
+            | ["it", "must", "attack", "this", "combat"]
+    ) {
+        return Ok(PredicateAst::TriggeringObjectHadToAttackThisCombat);
+    }
+
     if filtered.len() == 9
         && filtered[0] == "you"
         && filtered[1] == "attacked"

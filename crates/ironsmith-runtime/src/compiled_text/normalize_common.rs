@@ -6672,6 +6672,17 @@ pub(super) fn describe_attach_objects_spec(spec: &ChooseSpec) -> String {
 
 pub(super) fn describe_goad_target(spec: &ChooseSpec) -> String {
     match spec {
+        ChooseSpec::Target(inner) => {
+            if let ChooseSpec::Object(filter) = inner.as_ref()
+                && filter.zone == Some(Zone::Battlefield)
+                && filter.card_types == vec![CardType::Creature]
+                && filter.controller == Some(PlayerFilter::Defending)
+                && filter.subtypes.is_empty()
+            {
+                return "target creature that player controls".to_string();
+            }
+            describe_choose_spec(spec)
+        }
         ChooseSpec::Tagged(tag) => {
             if tag.as_str().starts_with("counters_") {
                 return "each creature that had counters put on it this way".to_string();
@@ -11370,6 +11381,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             format!("this effect has been used fewer than {limit} times this turn")
         }
         Condition::TriggeringObjectWasEnchanted => "the triggering object was enchanted".to_string(),
+        Condition::TriggeringObjectHadToAttackThisCombat => {
+            "that creature had to attack this combat".to_string()
+        }
         Condition::TriggeringObjectHadCounters {
             counter_type,
             min_count,

@@ -6,7 +6,7 @@
 //! - Damage assignment order
 //! - Combat queries
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
@@ -28,6 +28,14 @@ pub struct CombatState {
     pub damage_assignment_order: HashMap<ObjectId, Vec<ObjectId>>,
     /// Attacking bands declared for the current combat.
     pub attacking_bands: Vec<Vec<ObjectId>>,
+    /// Creatures that were required to attack when they were declared this combat.
+    pub had_to_attack_this_combat: HashSet<ObjectId>,
+}
+
+impl CombatState {
+    pub fn creature_had_to_attack_this_combat(&self, creature: ObjectId) -> bool {
+        self.had_to_attack_this_combat.contains(&creature)
+    }
 }
 
 /// Information about an attacking creature.
@@ -265,6 +273,7 @@ pub fn end_combat(combat: &mut CombatState) {
     combat.attackers.clear();
     combat.blockers.clear();
     combat.damage_assignment_order.clear();
+    combat.had_to_attack_this_combat.clear();
 }
 
 fn battlefield_static_abilities(game: &GameState) -> Vec<StaticAbility> {
@@ -553,6 +562,14 @@ pub fn declare_attackers(
         }
     }
 
+    let had_to_attack: HashSet<ObjectId> = declarations
+        .iter()
+        .filter_map(|(creature_id, _)| {
+            let creature = game.object(*creature_id)?;
+            crate::rules::combat::must_attack_with_game(creature, game).then_some(*creature_id)
+        })
+        .collect();
+
     // Second pass: apply declarations and tap attackers without vigilance
     for (creature_id, target) in declarations {
         // Add to attackers list
@@ -563,6 +580,9 @@ pub fn declare_attackers(
 
         // Initialize empty blocker list
         combat.blockers.insert(creature_id, Vec::new());
+        if had_to_attack.contains(&creature_id) {
+            combat.had_to_attack_this_combat.insert(creature_id);
+        }
 
         // Tap the creature unless it has vigilance
         let creature = game.object(creature_id).unwrap();
