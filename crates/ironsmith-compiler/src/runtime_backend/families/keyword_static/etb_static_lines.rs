@@ -132,13 +132,13 @@ pub(crate) fn parse_enters_with_counters_line(
         })?;
     let mut added_abilities: Vec<Ability> = Vec::new();
     let mut after_with = &clause_tokens[with_idx + 1..];
-    if let Some(and_with_idx) =
-        crate::runtime_backend::lexer::find_token_word_sequence(after_with, &["and", "with"])
+    if let Some((and_with_idx, and_with_end)) =
+        crate::runtime_backend::lexer::find_token_word_sequence_span(after_with, &["and", "with"])
     {
         let ability_prefix = trim_commas(&after_with[..and_with_idx]);
         if let Some(abilities) = parse_enters_with_added_abilities_prefix(&ability_prefix) {
             added_abilities.extend(abilities);
-            after_with = &after_with[and_with_idx + 2..];
+            after_with = &after_with[and_with_end..];
         }
     }
     let (mut count, used) = if after_with
@@ -241,8 +241,11 @@ pub(crate) fn parse_enters_with_counters_line(
                 (crate::ConditionExpr::Not(Box::new(parsed)), display),
             ));
         } else if word_slice_starts_with(&tail_words, &["plus"]) {
-            let for_each_idx =
-                crate::runtime_backend::lexer::find_token_word_sequence(&tail, &["for", "each"]);
+            let for_each_idx = crate::runtime_backend::lexer::find_token_word_sequence_span(
+                &tail,
+                &["for", "each"],
+            )
+            .map(|(idx, _)| idx);
             if let Some(for_each_idx) = for_each_idx {
                 let extra =
                     parse_dynamic_cost_modifier_value(&tail[for_each_idx..])?.ok_or_else(|| {
@@ -2556,7 +2559,9 @@ pub(crate) fn parse_enters_with_additional_counter_for_filter_line(
         return Ok(None);
     };
 
-    let and_as_idx = crate::runtime_backend::lexer::find_token_word_sequence(tokens, &["and", "as"]);
+    let and_as_idx =
+        crate::runtime_backend::lexer::find_token_word_sequence_span(tokens, &["and", "as"])
+            .map(|(idx, _)| idx);
     let base_tokens = and_as_idx.map_or(tokens, |idx| &tokens[..idx]);
 
     let additional_idx = etb_find_token_index(base_tokens, |token| token.is_word("additional"))

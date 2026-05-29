@@ -1,9 +1,10 @@
 use super::super::grammar::primitives::{self as grammar, find_phrase_start};
 use super::super::keyword_static::parse_pt_modifier;
 use super::super::lexer::{
-    LexedClause, OwnedLexToken, find_token_word_sequence, word_slice_contains_phrase,
-    word_slice_ends_with, word_slice_ends_with_any, word_slice_eq, word_slice_eq_any,
-    word_slice_find_phrase_start, word_slice_matching_value, word_slice_starts_with,
+    LexedClause, OwnedLexToken, find_any_token_word_sequence_span, find_token_word_sequence,
+    find_token_word_sequence_span, word_slice_contains_phrase, word_slice_ends_with,
+    word_slice_ends_with_any, word_slice_eq, word_slice_eq_any, word_slice_find_phrase_start,
+    word_slice_matching_value, word_slice_starts_with,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{find_window_by, rfind_index};
@@ -223,7 +224,8 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
             return Ok(None);
         }
 
-        let Some(split_idx) = find_token_word_sequence(target_tokens, &["and", "each", "other"])
+        let Some((split_idx, split_end)) =
+            find_token_word_sequence_span(target_tokens, &["and", "each", "other"])
         else {
             return Ok(None);
         };
@@ -236,7 +238,7 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
             return Ok(None);
         }
 
-        let second_clause_tokens = target_tokens[split_idx + 3..].to_vec();
+        let second_clause_tokens = target_tokens[split_end..].to_vec();
         if second_clause_tokens.is_empty() {
             return Ok(None);
         }
@@ -255,7 +257,8 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
         return Ok(None);
     }
 
-    let Some(and_idx) = find_token_word_sequence(tokens, &["and", "all", "other"]) else {
+    let Some((and_idx, _and_end)) = find_token_word_sequence_span(tokens, &["and", "all", "other"])
+    else {
         return Ok(None);
     };
     if and_idx <= 1 {
@@ -1294,17 +1297,17 @@ pub(crate) fn parse_compound_damage_fanout_sentence(
         return Ok(None);
     }
 
-    let Some(split_idx) = find_token_word_sequence(&target_tokens, &["and", "each"])
-        .or_else(|| find_token_word_sequence(&target_tokens, &["and", "all"]))
+    let Some((_phrase, split_idx, split_end)) =
+        find_any_token_word_sequence_span(&target_tokens, &[&["and", "each"], &["and", "all"]])
     else {
         return Ok(None);
     };
-    if split_idx == 0 || split_idx + 2 >= target_tokens.len() {
+    if split_idx == 0 || split_end >= target_tokens.len() {
         return Ok(None);
     }
 
     let left_tokens = trim_commas(&target_tokens[..split_idx]);
-    let right_tokens = trim_commas(&target_tokens[split_idx + 2..]);
+    let right_tokens = trim_commas(&target_tokens[split_end..]);
     let Some(left) = parse_damage_part(&left_tokens, None)? else {
         return Ok(None);
     };
@@ -1329,7 +1332,9 @@ pub(crate) fn parse_same_name_gets_fanout_sentence(
     }
 
     let subject_tokens = &tokens[..verb_idx];
-    let Some(and_idx) = find_token_word_sequence(subject_tokens, &["and", "all", "other"]) else {
+    let Some((and_idx, _and_end)) =
+        find_token_word_sequence_span(subject_tokens, &["and", "all", "other"])
+    else {
         return Ok(None);
     };
     if and_idx == 0 {

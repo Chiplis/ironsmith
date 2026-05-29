@@ -588,6 +588,38 @@ pub fn find_token_word_sequence(tokens: &[OwnedLexToken], expected: &[&str]) -> 
     })
 }
 
+pub fn find_token_word_sequence_span(
+    tokens: &[OwnedLexToken],
+    expected: &[&str],
+) -> Option<(usize, usize)> {
+    find_token_word_sequence(tokens, expected).map(|start| (start, start + expected.len()))
+}
+
+pub fn find_any_token_word_sequence_span<'p>(
+    tokens: &[OwnedLexToken],
+    expected: &'p [&'p [&'p str]],
+) -> Option<(&'p [&'p str], usize, usize)> {
+    expected
+        .iter()
+        .filter_map(|phrase| {
+            find_token_word_sequence_span(tokens, phrase).map(|(start, end)| (*phrase, start, end))
+        })
+        .min_by_key(|(_, start, _)| *start)
+}
+
+pub fn find_token_word_sequence_value<T: Clone>(
+    tokens: &[OwnedLexToken],
+    expected: &[(&[&str], T)],
+) -> Option<(T, usize, usize)> {
+    expected
+        .iter()
+        .filter_map(|(phrase, value)| {
+            find_token_word_sequence_span(tokens, phrase)
+                .map(|(start, end)| (value.clone(), start, end))
+        })
+        .min_by_key(|(_, start, _)| *start)
+}
+
 pub fn contains_token_word_sequence(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
     find_token_word_sequence(tokens, expected).is_some()
 }

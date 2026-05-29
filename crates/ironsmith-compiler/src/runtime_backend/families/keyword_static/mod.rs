@@ -69,8 +69,8 @@ pub(crate) use super::grammar::values::parse_add_mana_equal_amount_value_lexed a
 use super::grammar::values::parse_max_cards_in_hand_value_lexed;
 use super::keyword_static_helpers::*;
 use super::lexer::{
-    OwnedLexToken, TokenKind, find_token_word_sequence, parser_token_word_refs, render_token_slice,
-    split_lexed_sentences, trim_lexed_commas, word_slice_contains_all_words,
+    OwnedLexToken, TokenKind, find_token_word_sequence_span, parser_token_word_refs,
+    render_token_slice, split_lexed_sentences, trim_lexed_commas, word_slice_contains_all_words,
     word_slice_contains_any_phrase, word_slice_contains_any_word, word_slice_contains_phrase,
     word_slice_contains_word, word_slice_ends_with, word_slice_find_any_phrase_start,
     word_slice_find_phrase_start, word_slice_find_phrase_start_or_zero, word_slice_find_word_where,
@@ -133,15 +133,15 @@ const AS_ENTERS_AURA_SUBJECTS: &[(&str, &str)] = &[("aura", "this Aura")];
 pub(crate) fn parse_can_be_attached_only_to_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
-    let Some(phrase_idx) =
-        find_token_word_sequence(tokens, &["can", "be", "attached", "only", "to"])
+    let Some((phrase_idx, phrase_end)) =
+        find_token_word_sequence_span(tokens, &["can", "be", "attached", "only", "to"])
     else {
         return Ok(None);
     };
     if phrase_idx == 0 {
         return Ok(None);
     }
-    let target_tokens = trim_commas(&tokens[phrase_idx + 5..]);
+    let target_tokens = trim_commas(&tokens[phrase_end..]);
     if target_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "attachment restriction missing target filter (clause: '{}')",
