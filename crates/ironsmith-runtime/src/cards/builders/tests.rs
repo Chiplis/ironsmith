@@ -36636,7 +36636,7 @@ fn aminatous_augury_runtime_exiles_top_eight_puts_land_and_grants_one_spell_per_
 }
 
 #[test]
-fn aminatous_augury_runtime_multitype_spell_consumes_each_of_its_nonland_types() {
+fn aminatous_augury_runtime_multitype_spells_can_use_different_type_permissions() {
     let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
     let alice = PlayerId::from_index(0);
     game.turn.active_player = alice;
@@ -36657,18 +36657,27 @@ fn aminatous_augury_runtime_multitype_spell_consumes_each_of_its_nonland_types()
     game.create_object_from_card(
         &aminatou_augury_test_card(
             91_162,
-            "Augury Hybrid",
+            "Augury Hybrid One",
             vec![CardType::Artifact, CardType::Creature],
         ),
         alice,
         Zone::Library,
     );
     game.create_object_from_card(
-        &aminatou_augury_test_card(91_163, "Augury Bear", vec![CardType::Creature]),
+        &aminatou_augury_test_card(
+            91_163,
+            "Augury Hybrid Two",
+            vec![CardType::Artifact, CardType::Creature],
+        ),
         alice,
         Zone::Library,
     );
-    for idx in 0..4 {
+    game.create_object_from_card(
+        &aminatou_augury_test_card(91_168, "Augury Bear", vec![CardType::Creature]),
+        alice,
+        Zone::Library,
+    );
+    for idx in 0..3 {
         game.create_object_from_card(
             &aminatou_augury_test_card(
                 91_164 + idx,
@@ -36682,8 +36691,20 @@ fn aminatous_augury_runtime_multitype_spell_consumes_each_of_its_nonland_types()
 
     execute_aminatous_augury(&mut game, alice);
 
-    let cast_bauble = aminatou_free_cast_action_named(&game, "Augury Bauble", alice)
-        .expect("Aminatou's Augury should offer the artifact spell before that type is used");
+    let cast_hybrid_one = aminatou_free_cast_action_named(&game, "Augury Hybrid One", alice)
+        .expect("Aminatou's Augury should offer an artifact creature before either type is used");
+    let grant_source = match &cast_hybrid_one {
+        crate::decision::LegalAction::CastSpell {
+            casting_method:
+                crate::alternative_cast::CastingMethod::PlayFrom {
+                    source,
+                    use_alternative: Some(_),
+                    ..
+                },
+            ..
+        } => *source,
+        other => panic!("expected Aminatou free-cast action, got {other:?}"),
+    };
     let mut state = crate::game_loop::PriorityLoopState::new(game.players_in_game());
     let mut trigger_queue = crate::triggers::TriggerQueue::new();
     let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
@@ -36691,38 +36712,63 @@ fn aminatous_augury_runtime_multitype_spell_consumes_each_of_its_nonland_types()
         &mut game,
         &mut trigger_queue,
         &mut state,
-        &crate::game_loop::PriorityResponse::PriorityAction(cast_bauble),
+        &crate::game_loop::PriorityResponse::PriorityAction(cast_hybrid_one),
         &mut decision_maker,
     )
-    .expect("Aminatou's Augury artifact free cast should not require mana");
-    crate::game_loop::resolve_stack_entry(&mut game).expect("resolve free-cast artifact");
+    .expect("Aminatou's Augury first artifact creature free cast should not require mana");
+    assert!(
+        game.turn_store
+            .grant_cast_card_type_uses_this_turn
+            .contains(&(alice, grant_source, CardType::Artifact)),
+        "Aminatou's Augury should let the first artifact creature consume the artifact permission"
+    );
+    assert!(
+        !game
+            .turn_store
+            .grant_cast_card_type_uses_this_turn
+            .contains(&(alice, grant_source, CardType::Creature)),
+        "Aminatou's Augury should not consume every type on a multitype spell"
+    );
+    crate::game_loop::resolve_stack_entry(&mut game)
+        .expect("resolve first free-cast artifact creature");
 
     assert!(
-        aminatou_free_cast_action_named(&game, "Augury Hybrid", alice).is_some(),
-        "Aminatou's Augury should still offer an artifact creature while its creature type is unused"
+        aminatou_free_cast_action_named(&game, "Augury Hybrid Two", alice).is_some(),
+        "Aminatou's Augury should still offer another artifact creature while its creature type is unused"
     );
     assert!(
         aminatou_free_cast_action_named(&game, "Augury Relic", alice).is_none(),
         "Aminatou's Augury should not offer another pure artifact after the artifact type is used"
     );
 
-    let cast_hybrid = aminatou_free_cast_action_named(&game, "Augury Hybrid", alice)
+    let cast_hybrid_two = aminatou_free_cast_action_named(&game, "Augury Hybrid Two", alice)
         .expect(
-            "Aminatou's Augury should allow the multitype spell through its unused creature type",
+            "Aminatou's Augury should allow the second multitype spell through its unused creature type",
         );
     crate::game_loop::apply_priority_response_with_dm(
         &mut game,
         &mut trigger_queue,
         &mut state,
-        &crate::game_loop::PriorityResponse::PriorityAction(cast_hybrid),
+        &crate::game_loop::PriorityResponse::PriorityAction(cast_hybrid_two),
         &mut decision_maker,
     )
-    .expect("Aminatou's Augury multitype free cast should not require mana");
-    crate::game_loop::resolve_stack_entry(&mut game).expect("resolve free-cast artifact creature");
+    .expect("Aminatou's Augury second artifact creature free cast should not require mana");
+    assert!(
+        game.turn_store
+            .grant_cast_card_type_uses_this_turn
+            .contains(&(alice, grant_source, CardType::Creature)),
+        "Aminatou's Augury should let the second artifact creature consume the creature permission"
+    );
+    crate::game_loop::resolve_stack_entry(&mut game)
+        .expect("resolve second free-cast artifact creature");
 
     assert!(
         aminatou_free_cast_action_named(&game, "Augury Bear", alice).is_none(),
-        "Aminatou's Augury should mark all nonland types on a multitype spell as used"
+        "Aminatou's Augury should not offer another creature after the creature permission is used"
+    );
+    assert!(
+        aminatou_free_cast_action_named(&game, "Augury Bauble", alice).is_none(),
+        "Aminatou's Augury should not offer another artifact after the artifact permission is used"
     );
 }
 

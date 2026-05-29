@@ -3911,19 +3911,20 @@ pub(super) fn finalize_spell_cast(
     }
     if let Some((source, crate::grant::GrantUsageLimit::OncePerNonlandCardType)) =
         play_from_granted_usage_limit(game, caster, new_id, &casting_method)
-        && let Some(spell_obj) = game.object(new_id)
     {
-        let used_types = spell_obj
-            .card_types
-            .iter()
-            .copied()
-            .filter(|card_type| *card_type != crate::types::CardType::Land)
-            .collect::<Vec<_>>();
-        for card_type in used_types {
-            game.turn_store
-                .grant_cast_card_type_uses_this_turn
-                .insert((caster, source, card_type));
-        }
+        let used_type = game.object(new_id).and_then(|spell_obj| {
+            crate::decision::unused_nonland_card_type_for_grant_use(
+                game, caster, source, spell_obj,
+            )
+        });
+        let Some(used_type) = used_type else {
+            return Err(GameLoopError::InvalidState(
+                "No unused nonland card type remains for this cast grant".to_string(),
+            ));
+        };
+        game.turn_store
+            .grant_cast_card_type_uses_this_turn
+            .insert((caster, source, used_type));
     }
 
     // Create stack entry with targets, X value, casting method, optional costs, and chosen modes

@@ -1,6 +1,21 @@
 use super::*;
 use crate::ability::ActivatedAbilityRuntimeExt as _;
 
+pub(crate) fn unused_nonland_card_type_for_grant_use(
+    game: &GameState,
+    player: PlayerId,
+    source_id: ObjectId,
+    card: &crate::object::Object,
+) -> Option<crate::types::CardType> {
+    card.card_types.iter().copied().find(|card_type| {
+        *card_type != crate::types::CardType::Land
+            && !game
+                .turn_store
+                .grant_cast_card_type_uses_this_turn
+                .contains(&(player, source_id, *card_type))
+    })
+}
+
 fn grant_usage_limit_allows(
     game: &GameState,
     player: PlayerId,
@@ -17,13 +32,7 @@ fn grant_usage_limit_allows(
                     .contains(&(player, source_id))
         }
         Some(crate::grant::GrantUsageLimit::OncePerNonlandCardType) => {
-            card.card_types.iter().any(|card_type| {
-                *card_type != crate::types::CardType::Land
-                    && !game
-                        .turn_store
-                        .grant_cast_card_type_uses_this_turn
-                        .contains(&(player, source_id, *card_type))
-            })
+            unused_nonland_card_type_for_grant_use(game, player, source_id, card).is_some()
         }
         None => true,
     }
