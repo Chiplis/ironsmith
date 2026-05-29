@@ -36581,6 +36581,10 @@ fn aminatous_augury_runtime_exiles_top_eight_puts_land_and_grants_one_spell_per_
             .is_some_and(|object| object.name == "Augury Island")),
         "Aminatou's Augury should put a land from the exiled cards onto the battlefield"
     );
+    assert!(
+        !has_aminatou_free_cast_grant_named(&game, "Augury Island", alice),
+        "Aminatou's Augury should not grant the nonland free-cast permission to a land card"
+    );
 
     let granted_instants = ["Augury Trick", "Augury Ruse"]
         .into_iter()
@@ -36622,6 +36626,12 @@ fn aminatous_augury_runtime_exiles_top_eight_puts_land_and_grants_one_spell_per_
     assert!(
         aminatou_free_cast_action_named(&game, "Augury Ruse", alice).is_none(),
         "Aminatou's Augury should not offer a second instant after its instant permission is used"
+    );
+    crate::game_loop::resolve_stack_entry(&mut game)
+        .expect("resolve the cast instant before checking sorcery-speed permissions");
+    assert!(
+        aminatou_free_cast_action_named(&game, "Augury Bauble", alice).is_some(),
+        "Aminatou's Augury should still offer a different represented card type after its instant permission is used"
     );
 }
 

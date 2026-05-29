@@ -447,33 +447,6 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(effect);
     }
 
-    if word_slice_starts_with(
-        &clause_words,
-        &[
-            "until", "end", "of", "turn", "for", "each", "nonland", "card", "type", "you",
-            "may", "cast", "a", "spell", "of", "that", "type", "from", "among",
-        ],
-    ) && word_slice_ends_with(
-        &clause_words,
-        &["without", "paying", "its", "mana", "cost"],
-    ) && find_word_sequence_index(&clause_words, &["exiled", "cards"]).is_some()
-    {
-        return Ok(EffectAst::GrantFreeCastFromTaggedForEachCardTypeUntilEndOfTurn {
-            tag: TagKey::from(IT_TAG),
-            player: PlayerAst::You,
-            card_types: vec![
-                CardType::Artifact,
-                CardType::Battle,
-                CardType::Creature,
-                CardType::Enchantment,
-                CardType::Instant,
-                CardType::Kindred,
-                CardType::Planeswalker,
-                CardType::Sorcery,
-            ],
-        });
-    }
-
     if word_slice_starts_with(&clause_words, &["cast", "any", "number", "of", "spells"])
         && find_word_sequence_index(
             &clause_words,
