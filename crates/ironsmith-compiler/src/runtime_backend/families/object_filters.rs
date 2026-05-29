@@ -130,6 +130,7 @@ fn contains_any_word_slice_phrase(words: &[&str], phrases: &[&[&str]]) -> bool {
 enum SimpleObjectFilterSuffix {
     Controller(PlayerFilter),
     Owner(PlayerFilter),
+    ControllerOwner(PlayerFilter, PlayerFilter),
     OwnerZone(PlayerFilter, Zone),
     Zone(Zone),
 }
@@ -174,6 +175,29 @@ fn parse_simple_object_filter_suffix_inner<'a>(
 ) -> Result<SimpleObjectFilterSuffix, ErrMode<ContextError>> {
     alt((
         alt((
+            (
+                word_slice_eq("you"),
+                word_slice_eq("control"),
+                word_slice_eq("but"),
+                alt((word_slice_eq("dont"), word_slice_eq("don't"))),
+                word_slice_eq("own"),
+            )
+                .value(SimpleObjectFilterSuffix::ControllerOwner(
+                    PlayerFilter::You,
+                    PlayerFilter::NotYou,
+                )),
+            (
+                word_slice_eq("you"),
+                word_slice_eq("control"),
+                word_slice_eq("but"),
+                word_slice_eq("do"),
+                word_slice_eq("not"),
+                word_slice_eq("own"),
+            )
+                .value(SimpleObjectFilterSuffix::ControllerOwner(
+                    PlayerFilter::You,
+                    PlayerFilter::NotYou,
+                )),
             (word_slice_eq("you"), word_slice_eq("control"))
                 .value(SimpleObjectFilterSuffix::Controller(PlayerFilter::You)),
             (
@@ -253,7 +277,7 @@ fn parse_simple_object_filter_suffix_inner<'a>(
 }
 
 fn parse_simple_object_filter_suffix(words: &[&str]) -> Option<(SimpleObjectFilterSuffix, usize)> {
-    for suffix_len in [4usize, 3, 2] {
+    for suffix_len in [6usize, 5, 4, 3, 2] {
         let tail = words.get(words.len().checked_sub(suffix_len)?..)?;
         if let Some(parsed) = parse_full_word_slice(tail, parse_simple_object_filter_suffix_inner) {
             return Some((parsed, suffix_len));
@@ -475,6 +499,11 @@ fn parse_simple_object_filter_lexed(tokens: &[OwnedLexToken], other: bool) -> Op
             }
             SimpleObjectFilterSuffix::Owner(owner) => {
                 filter.owner = Some(owner);
+            }
+            SimpleObjectFilterSuffix::ControllerOwner(controller, owner) => {
+                filter.controller = Some(controller);
+                filter.owner = Some(owner);
+                filter.zone = Some(Zone::Battlefield);
             }
             SimpleObjectFilterSuffix::OwnerZone(owner, zone) => {
                 filter.owner = Some(owner);
@@ -909,6 +938,18 @@ mod tests {
         assert_eq!(filter.owner, Some(PlayerFilter::You));
         assert_eq!(filter.zone, Some(Zone::Graveyard));
         assert_eq!(filter.card_types, vec![CardType::Artifact]);
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_parses_controller_without_owner_suffix() {
+        let tokens = tokenize_line("land you control but don't own", 0);
+
+        let filter = parse_object_filter_lexed(&tokens, false).expect("object filter should parse");
+
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        assert_eq!(filter.owner, Some(PlayerFilter::NotYou));
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+        assert_eq!(filter.card_types, vec![CardType::Land]);
     }
 
     #[test]

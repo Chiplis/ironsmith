@@ -3850,6 +3850,11 @@ impl ObjectFilterExt for ObjectFilter {
                 parts.push("you both own and control".to_string());
             }
             (Some(controller), Some(owner))
+                if controller == "you control" && owner == "you don't own" =>
+            {
+                parts.push("you control but don't own".to_string());
+            }
+            (Some(controller), Some(owner))
                 if controller == "that player controls" && owner == "that player owns" =>
             {
                 parts.push("that player both owns and controls".to_string());

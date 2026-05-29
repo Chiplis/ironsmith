@@ -252,6 +252,66 @@ pub(super) fn try_apply_negated_you_relation_clause(
     if let Some((_, consumed)) = parse_filter_prefix_words(
         words,
         (
+            alt((
+                primitives::word_slice_eq("dont"),
+                primitives::word_slice_eq("don't"),
+            )),
+            alt((
+                primitives::word_slice_eq("control"),
+                primitives::word_slice_eq("controls"),
+            )),
+        ),
+    ) {
+        filter.controller = Some(PlayerFilter::NotYou);
+        return Some(consumed);
+    }
+    if let Some((_, consumed)) = parse_filter_prefix_words(
+        words,
+        (
+            alt((
+                primitives::word_slice_eq("dont"),
+                primitives::word_slice_eq("don't"),
+            )),
+            alt((
+                primitives::word_slice_eq("own"),
+                primitives::word_slice_eq("owns"),
+            )),
+        ),
+    ) {
+        filter.owner = Some(PlayerFilter::NotYou);
+        return Some(consumed);
+    }
+    if let Some((_, consumed)) = parse_filter_prefix_words(
+        words,
+        (
+            primitives::word_slice_eq("do"),
+            primitives::word_slice_eq("not"),
+            alt((
+                primitives::word_slice_eq("control"),
+                primitives::word_slice_eq("controls"),
+            )),
+        ),
+    ) {
+        filter.controller = Some(PlayerFilter::NotYou);
+        return Some(consumed);
+    }
+    if let Some((_, consumed)) = parse_filter_prefix_words(
+        words,
+        (
+            primitives::word_slice_eq("do"),
+            primitives::word_slice_eq("not"),
+            alt((
+                primitives::word_slice_eq("own"),
+                primitives::word_slice_eq("owns"),
+            )),
+        ),
+    ) {
+        filter.owner = Some(PlayerFilter::NotYou);
+        return Some(consumed);
+    }
+    if let Some((_, consumed)) = parse_filter_prefix_words(
+        words,
+        (
             primitives::word_slice_eq("you"),
             alt((
                 primitives::word_slice_eq("dont"),

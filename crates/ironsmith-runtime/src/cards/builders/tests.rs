@@ -31109,6 +31109,231 @@ fn goddric_cloaked_reveler_keeps_conditional_dragon_animation() {
     );
 }
 
+fn herald_of_leshrac_definition() -> CardDefinition {
+    let oracle = oracle_text_by_name()
+        .get("Herald of Leshrac")
+        .expect("missing Herald of Leshrac oracle text")
+        .clone();
+    CardDefinitionBuilder::new(CardId::new(), "Herald of Leshrac")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(6)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Avatar])
+        .power_toughness(PowerToughness::fixed(2, 4))
+        .parse_text(oracle)
+        .expect("Herald of Leshrac should parse strictly")
+}
+
+struct PayCumulativeUpkeep;
+
+impl crate::decision::DecisionMaker for PayCumulativeUpkeep {
+    fn decide_boolean(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        true
+    }
+}
+
+fn herald_upkeep_trigger(def: &CardDefinition) -> &crate::ability::TriggeredAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered)
+                if format!("{triggered:?}").contains("CumulativeUpkeepEffect") =>
+            {
+                Some(triggered)
+            }
+            _ => None,
+        })
+        .expect("Herald of Leshrac should have a cumulative upkeep trigger")
+}
+
+fn herald_leaves_trigger(def: &CardDefinition) -> &crate::ability::TriggeredAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered)
+                if format!("{:?}", triggered.effects)
+                    .contains("ChangeControllerToPlayer(IteratedPlayer)") =>
+            {
+                Some(triggered)
+            }
+            _ => None,
+        })
+        .expect("Herald of Leshrac should have a leaves-the-battlefield trigger")
+}
+
+fn test_land_definition(name: &str) -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Land])
+        .build()
+}
+
+#[test]
+fn herald_of_leshrac_strict_parser_and_compiled_text_regression() {
+    let def = herald_of_leshrac_definition();
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("CumulativeUpkeepEffect")
+            && abilities_debug.contains("ChangeControllerToEffectController")
+            && abilities_debug.contains("ChangeControllerToPlayer(IteratedPlayer)"),
+        "expected Herald control-changing cumulative upkeep and leaves trigger, got {abilities_debug}"
+    );
+    assert!(
+        !crate::cards::generated_definition_has_unimplemented_content(&def),
+        "Herald of Leshrac should not contain unsupported markers: {abilities_debug}"
+    );
+
+    let rendered_lines = unprocessed_compiled_lines(&def);
+    let rendered = rendered_lines.join("\n");
+    assert!(
+        rendered.contains("Cumulative upkeep—Gain control of a land you don't control."),
+        "expected cumulative upkeep control cost in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("This creature gets +1/+1 for each land you control but don't own."),
+        "expected unowned-land scaling text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("When this creature leaves the battlefield, each player gains control of each land they own that you control."),
+        "expected owner-restoration leaves trigger text, got {rendered}"
+    );
+
+    let oracle = oracle_text_by_name()
+        .get("Herald of Leshrac")
+        .expect("missing Herald oracle text");
+    let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+        crate::semantic_compare::compare_card_semantics_scored(
+            "Herald of Leshrac",
+            oracle,
+            &rendered_lines,
+            crate::semantic_compare::report_embedding_config(),
+        );
+    assert!(
+        similarity >= 0.99 && !mismatch,
+        "expected Herald compiled text to match oracle, got similarity={similarity}, mismatch={mismatch}, text={rendered}"
+    );
+}
+
+#[test]
+fn herald_of_leshrac_cumulative_upkeep_gains_land_and_scales_power() {
+    let def = herald_of_leshrac_definition();
+    let upkeep = herald_upkeep_trigger(&def);
+    let land_def = test_land_definition("Stolen Land");
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let herald = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let bob_land = game.create_object_from_definition(&land_def, bob, Zone::Battlefield);
+
+    let mut dm = PayCumulativeUpkeep;
+    let mut ctx = crate::effects::ExecutionContext::new(herald, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        herald,
+        &upkeep.effects,
+        None,
+        &[],
+    )
+    .expect("Herald cumulative upkeep should resolve");
+
+    assert_eq!(
+        game.counter_count(herald, crate::object::CounterType::Age),
+        1,
+        "cumulative upkeep should add one age counter"
+    );
+    assert_eq!(
+        game.current_controller(bob_land),
+        Some(alice),
+        "paying Herald's upkeep should gain control of a land you don't control"
+    );
+    assert_eq!(
+        game.calculated_power(herald),
+        Some(3),
+        "Herald should get +1/+1 for the land Alice controls but doesn't own"
+    );
+    assert_eq!(game.calculated_toughness(herald), Some(5));
+}
+
+#[test]
+fn herald_of_leshrac_cumulative_upkeep_sacrifices_when_no_land_can_be_gained() {
+    let def = herald_of_leshrac_definition();
+    let upkeep = herald_upkeep_trigger(&def);
+
+    let alice = PlayerId::from_index(0);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let herald = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let mut dm = PayCumulativeUpkeep;
+    let mut ctx = crate::effects::ExecutionContext::new(herald, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        herald,
+        &upkeep.effects,
+        None,
+        &[],
+    )
+    .expect("Herald cumulative upkeep failure branch should resolve");
+
+    assert_eq!(
+        game.object(herald).map(|object| object.zone),
+        Some(Zone::Graveyard),
+        "Herald should be sacrificed when its cumulative upkeep cost cannot be paid"
+    );
+}
+
+#[test]
+fn herald_of_leshrac_leaves_trigger_returns_lands_to_their_owners() {
+    let def = herald_of_leshrac_definition();
+    let leaves = herald_leaves_trigger(&def);
+    let land_def = test_land_definition("Recovered Land");
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let herald = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let alice_land = game.create_object_from_definition(&land_def, alice, Zone::Battlefield);
+    let bob_land = game.create_object_from_definition(&land_def, bob, Zone::Battlefield);
+    game.set_current_controller(bob_land, alice);
+    assert_eq!(game.current_controller(bob_land), Some(alice));
+
+    let mut dm = PayCumulativeUpkeep;
+    let mut ctx = crate::effects::ExecutionContext::new(herald, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        herald,
+        &leaves.effects,
+        None,
+        &[],
+    )
+    .expect("Herald leaves trigger should resolve");
+
+    assert_eq!(
+        game.current_controller(bob_land),
+        Some(bob),
+        "Bob should regain each land they own that Alice controls"
+    );
+    assert_eq!(
+        game.current_controller(alice_land),
+        Some(alice),
+        "Alice should retain lands they already own and control"
+    );
+}
+
 #[test]
 fn bello_bard_of_the_brambles_compacts_conditional_animation_bundle() {
     let def = parse_oracle_card_definition("Bello, Bard of the Brambles");

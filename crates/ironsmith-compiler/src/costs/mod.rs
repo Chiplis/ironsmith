@@ -5,6 +5,23 @@ use ironsmith_core::CostComponent as _;
 fn is_payment_effect(effect: &crate::effect::Effect) -> bool {
     use crate::effects;
 
+    fn is_controller_change_continuous_cost(effect: &effects::ApplyContinuousEffect) -> bool {
+        let base_is_controller_change = effect.modification.is_none();
+        let additional_are_controller_changes = effect.additional_modifications.is_empty();
+        let runtime_are_controller_changes = !effect.runtime_modifications.is_empty()
+            && effect.runtime_modifications.iter().all(|modification| {
+                matches!(
+                    modification,
+                    effects::continuous::RuntimeModification::ChangeControllerToEffectController
+                        | effects::continuous::RuntimeModification::ChangeControllerToPlayer(_)
+                )
+            });
+
+        base_is_controller_change
+            && additional_are_controller_changes
+            && runtime_are_controller_changes
+    }
+
     if effect.payload_type_name().ends_with("MoveToZoneEffect") {
         return true;
     }
@@ -62,6 +79,9 @@ fn is_payment_effect(effect: &crate::effect::Effect) -> bool {
         || effect
             .downcast_ref::<effects::RevealTaggedEffect>()
             .is_some()
+        || effect
+            .downcast_ref::<effects::ApplyContinuousEffect>()
+            .is_some_and(is_controller_change_continuous_cost)
         || effect.downcast_ref::<effects::CrewCostEffect>().is_some()
         || effect
             .downcast_ref::<effects::ConspireCostEffect>()

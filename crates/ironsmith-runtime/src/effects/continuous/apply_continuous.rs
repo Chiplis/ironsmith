@@ -1,8 +1,9 @@
 //! Apply continuous effect implementation.
 
 use crate::continuous::{ContinuousEffect, EffectSourceType, EffectTarget, Modification};
+use crate::decision::SelectFirstDecisionMaker;
 use crate::effect::{ChoiceCount, EffectOutcome, Until, Value};
-use crate::effects::EffectExecutor;
+use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::helpers::{
     resolve_objects_for_effect, resolve_objects_from_spec, resolve_player_filter, resolve_value,
     validate_target,
@@ -345,7 +346,49 @@ fn control_change_target_object_ids(
     }
 }
 
+fn is_controller_change_cost(effect: &ApplyContinuousEffect) -> bool {
+    let base_is_controller_change = effect
+        .modification
+        .as_ref()
+        .is_none_or(|modification| matches!(modification, Modification::ChangeController(_)));
+    let additional_are_controller_changes = effect
+        .additional_modifications
+        .iter()
+        .all(|modification| matches!(modification, Modification::ChangeController(_)));
+    let runtime_are_controller_changes = effect.runtime_modifications.iter().all(|modification| {
+        matches!(
+            modification,
+            RuntimeModification::ChangeControllerToEffectController
+                | RuntimeModification::ChangeControllerToPlayer(_)
+        )
+    });
+    let has_controller_change = effect
+        .modification
+        .as_ref()
+        .is_some_and(|modification| matches!(modification, Modification::ChangeController(_)))
+        || effect
+            .additional_modifications
+            .iter()
+            .any(|modification| matches!(modification, Modification::ChangeController(_)))
+        || effect.runtime_modifications.iter().any(|modification| {
+            matches!(
+                modification,
+                RuntimeModification::ChangeControllerToEffectController
+                    | RuntimeModification::ChangeControllerToPlayer(_)
+            )
+        });
+
+    has_controller_change
+        && base_is_controller_change
+        && additional_are_controller_changes
+        && runtime_are_controller_changes
+}
+
 impl EffectExecutor for ApplyContinuousEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        is_controller_change_cost(self).then_some(self)
+    }
+
     fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
         if let Some(spec) = &self.target_spec {
             return vec![spec.clone()];
@@ -469,6 +512,35 @@ impl EffectExecutor for ApplyContinuousEffect {
 
     fn target_description(&self) -> &'static str {
         "target"
+    }
+}
+
+impl CostExecutableEffect for ApplyContinuousEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Result<(), CostValidationError> {
+        if !is_controller_change_cost(self) {
+            return Err(CostValidationError::Other(
+                "only controller-change continuous effects can be paid as costs".to_string(),
+            ));
+        }
+
+        let mut simulated_game = game.clone();
+        let mut simulated_decision_maker = SelectFirstDecisionMaker;
+        let mut simulated_ctx = ExecutionContext::new(source, controller, &mut simulated_decision_maker);
+        match self.execute(&mut simulated_game, &mut simulated_ctx) {
+            Ok(outcome) if !outcome.status.is_failure() => Ok(()),
+            Ok(outcome) => Err(CostValidationError::Other(format!(
+                "controller-change cost could not resolve: {:?}",
+                outcome.status
+            ))),
+            Err(err) => Err(CostValidationError::Other(format!(
+                "controller-change cost could not resolve: {err:?}"
+            ))),
+        }
     }
 }
 
