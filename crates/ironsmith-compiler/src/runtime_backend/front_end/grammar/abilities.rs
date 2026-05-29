@@ -2452,8 +2452,7 @@ pub(crate) fn parse_can_block_subtype_as_though_reach_line_lexed(
         _ => return None,
     };
 
-    parse_subtype_word(subtype_word)
-        .or_else(|| subtype_word.strip_suffix('s').and_then(parse_subtype_word))
+    parse_subtype_flexible(subtype_word)
         .filter(|subtype| subtype.is_creature_type())
 }
 

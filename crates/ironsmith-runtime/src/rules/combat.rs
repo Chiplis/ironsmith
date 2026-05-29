@@ -105,6 +105,13 @@ pub(crate) fn can_block_with_view(
     // Helper to check if abilities contain a specific ability ID
     let attacker_has = |id: StaticAbilityId| attacker_abilities.iter().any(|a| a.id() == id);
     let blocker_has = |id: StaticAbilityId| blocker_abilities.iter().any(|a| a.id() == id);
+    let blocker_has_subtype_scoped_reach = blocker_abilities.iter().any(|ability| {
+        ability
+            .can_block_as_though_reach_subtype()
+            .is_some_and(|subtype| attacker_subtypes.contains(&subtype))
+    });
+    let blocker_has_reach_for_attacker =
+        blocker_has(StaticAbilityId::Reach) || blocker_has_subtype_scoped_reach;
 
     // Unblockable creatures and live "can't be blocked" restrictions can't be blocked.
     if attacker_has(StaticAbilityId::Unblockable) || !game.can_be_blocked(attacker.id) {
@@ -114,7 +121,7 @@ pub(crate) fn can_block_with_view(
     // Flying: can only be blocked by flying or reach
     if attacker_has(StaticAbilityId::Flying) {
         let blocker_has_flying = blocker_has(StaticAbilityId::Flying);
-        let blocker_has_reach = blocker_has(StaticAbilityId::Reach);
+        let blocker_has_reach = blocker_has_reach_for_attacker;
         let blocker_can_block_flying = blocker_abilities.iter().any(|ability| {
             if ability.id() == StaticAbilityId::CanBlockOnlyFlying {
                 return true;
@@ -137,7 +144,7 @@ pub(crate) fn can_block_with_view(
     // "Can't be blocked except by creatures with flying or reach" (without requiring flying)
     if attacker_has(StaticAbilityId::FlyingRestriction) {
         let blocker_has_flying = blocker_has(StaticAbilityId::Flying);
-        let blocker_has_reach = blocker_has(StaticAbilityId::Reach);
+        let blocker_has_reach = blocker_has_reach_for_attacker;
         if !blocker_has_flying && !blocker_has_reach {
             return false;
         }
@@ -707,6 +714,7 @@ mod tests {
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::static_abilities::StaticAbility;
     use crate::target::PlayerFilter;
+    use crate::types::Subtype;
     use crate::zone::Zone;
     use std::collections::HashMap;
 
@@ -797,6 +805,42 @@ mod tests {
         add_ability(&mut blocker, StaticAbility::reach());
 
         assert!(can_block(&attacker, &blocker, &game));
+    }
+
+    #[test]
+    fn test_subtype_scoped_reach_blocks_matching_subtype_only() {
+        let game = test_game_state();
+        let mut dragon = make_creature("Dragon", 2, 2);
+        dragon.subtypes.push(Subtype::Dragon);
+        add_ability(&mut dragon, StaticAbility::flying());
+        let mut bird = make_creature("Bird", 2, 2);
+        bird.subtypes.push(Subtype::Bird);
+        add_ability(&mut bird, StaticAbility::flying());
+
+        let mut blocker = make_creature("Dragon Hunter", 2, 1);
+        add_ability(
+            &mut blocker,
+            StaticAbility::can_block_subtype_as_though_reach(Subtype::Dragon),
+        );
+
+        assert!(can_block(&dragon, &blocker, &game));
+        assert!(!can_block(&bird, &blocker, &game));
+    }
+
+    #[test]
+    fn test_subtype_scoped_reach_satisfies_reach_blocking_restriction() {
+        let game = test_game_state();
+        let mut dragon = make_creature("Restricted Dragon", 2, 2);
+        dragon.subtypes.push(Subtype::Dragon);
+        add_ability(&mut dragon, StaticAbility::flying_restriction());
+
+        let mut blocker = make_creature("Dragon Hunter", 2, 1);
+        add_ability(
+            &mut blocker,
+            StaticAbility::can_block_subtype_as_though_reach(Subtype::Dragon),
+        );
+
+        assert!(can_block(&dragon, &blocker, &game));
     }
 
     #[test]
