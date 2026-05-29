@@ -408,6 +408,7 @@ pub(super) fn parse_object_filter_inner(
     );
 
     try_apply_attached_exclusion_phrases(&mut filter, &mut all_words);
+    try_apply_chosen_this_way_clause(&mut filter, &mut all_words);
     let exclude_basic_land_cards =
         strip_other_than_basic_land_cards_clause(&mut all_words, &mut segment_tokens);
 
@@ -1841,4 +1842,33 @@ fn try_apply_distinct_creature_types_clause(
         return true;
     }
     false
+}
+
+fn try_apply_chosen_this_way_clause(filter: &mut ObjectFilter, all_words: &mut Vec<&str>) -> bool {
+    let Some((idx, negated, consumed)) = find_word_slice_phrase_start(
+        all_words.as_slice(),
+        &["not", "chosen", "this", "way"],
+    )
+    .map(|idx| (idx, true, 4usize))
+    .or_else(|| {
+        find_word_slice_phrase_start(all_words.as_slice(), &["nonchosen", "this", "way"])
+            .map(|idx| (idx, true, 3usize))
+    })
+    .or_else(|| {
+        find_word_slice_phrase_start(all_words.as_slice(), &["chosen", "this", "way"])
+            .map(|idx| (idx, false, 3usize))
+    }) else {
+        return false;
+    };
+
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: TagKey::from(IT_TAG),
+        relation: if negated {
+            TaggedOpbjectRelation::IsNotTaggedObject
+        } else {
+            TaggedOpbjectRelation::IsTaggedObject
+        },
+    });
+    all_words.drain(idx..idx + consumed);
+    true
 }

@@ -473,6 +473,21 @@ mod tests {
     }
 
     #[test]
+    fn parse_object_filter_lexed_handles_not_chosen_this_way_phrase() {
+        let tokens = lex_line("creature not chosen this way", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            *constraint
+                == TaggedObjectConstraint {
+                    tag: TagKey::from(IT_TAG),
+                    relation: TaggedOpbjectRelation::IsNotTaggedObject,
+                }
+        }));
+    }
+
+    #[test]
     fn parse_object_filter_lexed_handles_different_one_of_prefix() {
         let tokens = lex_line("different one of those creatures", 0).unwrap();
 

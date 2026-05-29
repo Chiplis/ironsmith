@@ -1089,7 +1089,9 @@ pub(super) fn run_statement_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     Ok(parse_statement_line_cst(ctx.line)?.map(|statement_line| {
-        LineDispatchResult::single(RewriteLineCst::Statement(statement_line), ctx.idx + 1)
+        let (statement_line, next_idx) =
+            extend_statement_line_with_result_followups(&ctx.preprocessed.items, ctx.idx, statement_line);
+        LineDispatchResult::single(RewriteLineCst::Statement(statement_line), next_idx)
     }))
 }
 

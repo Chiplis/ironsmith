@@ -674,6 +674,21 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         ));
     }
 
+    if matches!(
+        choice_words,
+        ["choose", "a" | "an", "artifact" | "battle" | "creature" | "enchantment" | "land" | "permanent" | "planeswalker"]
+    ) && let Some((_chooser, mut choose_filter, choose_count)) = parse_you_choose_objects_clause(tokens)?
+    {
+        choose_filter.controller = Some(PlayerFilter::Any);
+        return Ok(EffectAst::ChooseObjects {
+            filter: choose_filter,
+            count: choose_count,
+            count_value: None,
+            player: PlayerAst::Implicit,
+            tag: TagKey::from(IT_TAG),
+        });
+    }
+
     if let Some((consumed, options)) = parse_choose_card_type_phrase_words(choice_words)?
         && consumed == choice_words.len()
     {

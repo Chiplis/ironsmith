@@ -924,6 +924,40 @@ fn parse_effect_sentences_from_sentence_inputs(
         let sentence_text = crate::runtime_backend::token_word_refs(sentence).join(" ");
         let _sentence_scope = parse_trace::scope(format!("effect sentence: \"{}\"", sentence_text));
 
+        if sentence
+            .first()
+            .is_some_and(|token| token.kind == TokenKind::Number)
+            && let Some(prefix) =
+                super::super::grammar::structure::split_leading_result_prefix_lexed(sentence)
+        {
+            let mut branch_sentences = vec![SentenceInput::from_lexed(prefix.trailing_tokens)];
+            let mut next_idx = sentence_idx + 1;
+            while next_idx < sentences.len() {
+                let next_sentence = sentences[next_idx].lowered();
+                if next_sentence
+                    .first()
+                    .is_some_and(|token| token.kind == TokenKind::Number)
+                    && super::super::grammar::structure::split_leading_result_prefix_lexed(
+                        next_sentence,
+                    )
+                    .is_some()
+                {
+                    break;
+                }
+                branch_sentences.push(SentenceInput::from_lexed(next_sentence));
+                next_idx += 1;
+            }
+
+            let branch_effects = parse_effect_sentences_from_sentence_inputs(branch_sentences)?;
+            effects.push(EffectAst::IfResult {
+                predicate: prefix.predicate,
+                effects: branch_effects,
+            });
+            carried_context = None;
+            sentence_idx = next_idx;
+            continue;
+        }
+
         if let Some(mut matched) = try_parse_subject_verb_sequence_rule(&sentences, sentence_idx)? {
             let stage = if let Some(feature_tag) = matched.feature_tag {
                 format!(
