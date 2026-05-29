@@ -23893,6 +23893,54 @@ fn parse_spells_cost_modifier_target_clause_does_not_add_spell_type() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_semblance_anvil_keeps_shared_exiled_card_type_cost_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Semblance Anvil")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Imprint — When this artifact enters, you may exile a nonland card from your hand.\n\
+             Spells you cast that share a card type with the exiled card cost {2} less to cast.",
+        )
+        .expect("Semblance Anvil should parse strictly");
+
+    let reduction = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => static_ability.cost_reduction(),
+            _ => None,
+        })
+        .expect("Semblance Anvil should have a cost reduction static ability");
+
+    assert_eq!(reduction.filter.cast_by, Some(PlayerFilter::You));
+    assert!(
+        reduction.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                && constraint.relation == crate::target::TaggedOpbjectRelation::SharesCardType
+        }),
+        "Semblance Anvil cost filter should require sharing a card type with the exiled card, got {:?}",
+        reduction.filter
+    );
+
+    let joined = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        joined.contains(
+            "imprint — when this artifact enters, you may exile a nonland card from your hand"
+        ),
+        "expected compiled text to preserve Semblance Anvil's imprint trigger, got {joined}"
+    );
+    assert!(
+        joined.contains(
+            "spells you cast that share a card type with the exiled card cost {2} less to cast"
+        ),
+        "expected compiled text to preserve Semblance Anvil's shared-card-type cost clause, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_spells_cost_modifier_keeps_noncreature_qualifier() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Glowrider Variant")
         .card_types(vec![CardType::Creature])

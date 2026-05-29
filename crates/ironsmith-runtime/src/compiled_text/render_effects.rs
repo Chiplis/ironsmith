@@ -35849,7 +35849,23 @@ pub(super) fn describe_imprint_from_hand_phrase(
     {
         card_text = format!("{subject} from {zone_phrase}");
     }
-    format!("imprint, you may exile {card_text}")
+    let lower = card_text.to_ascii_lowercase();
+    if !matches!(
+        lower.split_whitespace().next(),
+        Some("a" | "an" | "one" | "two" | "three" | "each" | "another")
+    ) && (lower.ends_with("card") || lower.contains(" card "))
+    {
+        let article = if matches!(
+            lower.split_whitespace().next(),
+            Some("artifact" | "enchantment" | "instant")
+        ) {
+            "an"
+        } else {
+            "a"
+        };
+        card_text = format!("{article} {card_text}");
+    }
+    format!("you may exile {card_text}")
 }
 
 pub(super) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> String {

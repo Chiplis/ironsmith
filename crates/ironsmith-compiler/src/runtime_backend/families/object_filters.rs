@@ -774,6 +774,7 @@ pub(crate) fn spell_filter_has_identity(filter: &ObjectFilter) -> bool {
         || filter.target_count.is_some()
         || filter.could_be_targeted_by.is_some()
         || filter.alternative_cast.is_some()
+        || !filter.tagged_constraints.is_empty()
         || !filter.any_of.is_empty()
 }
 
@@ -839,6 +840,11 @@ pub(crate) fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) 
     }
     if base.could_be_targeted_by.is_none() {
         base.could_be_targeted_by = extra.could_be_targeted_by;
+    }
+    for constraint in extra.tagged_constraints {
+        if !base.tagged_constraints.contains(&constraint) {
+            base.tagged_constraints.push(constraint);
+        }
     }
 }
 
