@@ -5,6 +5,7 @@ fn grant_usage_limit_allows(
     game: &GameState,
     player: PlayerId,
     source_id: ObjectId,
+    card: &crate::object::Object,
     limit: Option<crate::grant::GrantUsageLimit>,
 ) -> bool {
     match limit {
@@ -14,6 +15,15 @@ fn grant_usage_limit_allows(
                     .turn_store
                     .grant_cast_uses_this_turn
                     .contains(&(player, source_id))
+        }
+        Some(crate::grant::GrantUsageLimit::OncePerNonlandCardType) => {
+            card.card_types.iter().any(|card_type| {
+                *card_type != crate::types::CardType::Land
+                    && !game
+                        .turn_store
+                        .grant_cast_card_type_uses_this_turn
+                        .contains(&(player, source_id, *card_type))
+            })
         }
         None => true,
     }
@@ -83,7 +93,14 @@ fn append_granted_play_from_actions_for_card(
 
         let base_alt_idx = card.alternative_casts.len();
         for (offset, granted_alt) in granted_alternatives.iter().enumerate() {
-            if can_cast_with_alternative_with_view(game, player, card, &granted_alt.method, view) {
+            if grant_usage_limit_allows(
+                game,
+                player,
+                granted_alt.source_id,
+                card,
+                granted_alt.usage_limit,
+            ) && can_cast_with_alternative_with_view(game, player, card, &granted_alt.method, view)
+            {
                 actions.push(LegalAction::CastSpell {
                     spell_id: card_id,
                     from_zone,
@@ -169,7 +186,7 @@ fn append_graveyard_granted_alternative_cast_actions_for_card(
     let base_alt_idx = card.alternative_casts.len();
     for (offset, grant) in granted_casts.into_iter().enumerate() {
         let method = &grant.method;
-        if !grant_usage_limit_allows(game, player, grant.source_id, grant.usage_limit) {
+        if !grant_usage_limit_allows(game, player, grant.source_id, card, grant.usage_limit) {
             continue;
         }
         let requirements = build_requirements_for_method(method);
@@ -247,7 +264,7 @@ fn append_graveyard_granted_adventure_alternative_cast_actions_for_card(
     for (offset, grant) in granted_casts.into_iter().enumerate() {
         let method = &grant.method;
         if method.cast_from_zone() != Zone::Graveyard
-            || !grant_usage_limit_allows(game, player, grant.source_id, grant.usage_limit)
+            || !grant_usage_limit_allows(game, player, grant.source_id, card, grant.usage_limit)
         {
             continue;
         }
@@ -298,7 +315,7 @@ fn append_hand_granted_alternative_cast_actions_for_card(
 
     for (offset, grant) in granted_casts.iter().enumerate() {
         if grant.method.cast_from_zone() != Zone::Hand
-            || !grant_usage_limit_allows(game, player, grant.source_id, grant.usage_limit)
+            || !grant_usage_limit_allows(game, player, grant.source_id, card, grant.usage_limit)
             || !can_cast_with_alternative_from_hand_with_view(
                 game,
                 player,

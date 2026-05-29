@@ -182,6 +182,8 @@ pub struct Grant {
     pub player: PlayerId,
     /// What is being granted (ability or alternative casting method).
     pub grantable: Grantable,
+    /// Optional usage limit for effect-created alternative casts.
+    pub usage_limit: Option<GrantUsageLimit>,
     /// How this grant was created.
     pub source: GrantSource,
 }
@@ -220,6 +222,7 @@ impl GrantRegistry {
             zone,
             player,
             grantable,
+            usage_limit: None,
             source,
         });
     }
@@ -241,6 +244,7 @@ impl GrantRegistry {
             zone,
             player,
             grantable,
+            usage_limit: None,
             source,
         });
     }
@@ -262,6 +266,7 @@ impl GrantRegistry {
             zone,
             player,
             grantable,
+            usage_limit: None,
             source,
         });
     }
@@ -301,6 +306,28 @@ impl GrantRegistry {
             Grantable::AlternativeCast(method),
             source,
         );
+    }
+
+    /// Add a usage-limited alternative cast grant for a specific card.
+    pub fn grant_limited_alternative_cast_to_card(
+        &mut self,
+        target_id: ObjectId,
+        zone: Zone,
+        player: PlayerId,
+        method: AlternativeCastingMethod,
+        usage_limit: GrantUsageLimit,
+        source: GrantSource,
+    ) {
+        self.grants.push(Grant {
+            target_id: Some(target_id),
+            target_stable_id: None,
+            filter: None,
+            zone,
+            player,
+            grantable: Grantable::AlternativeCast(method),
+            usage_limit: Some(usage_limit),
+            source,
+        });
     }
 
     /// Add an alternative cast grant for cards matching a filter.
@@ -587,6 +614,7 @@ impl GrantRegistry {
                         zone: spec.zone,
                         player: player.id,
                         grantable: spec.grantable.clone(),
+                        usage_limit: None,
                         source: GrantSource::StaticAbility { source_id },
                     });
                 }
@@ -616,10 +644,10 @@ fn materialize_granted_alternative_cast(
     grant: Grant,
 ) -> Option<GrantedAlternativeCast> {
     let (method, usage_limit) = match grant.grantable {
-        Grantable::AlternativeCast(method) => (method, None),
+        Grantable::AlternativeCast(method) => (method, grant.usage_limit),
         Grantable::DerivedAlternativeCast(spec) => {
             let card = game.object(card_id)?;
-            let usage_limit = spec.usage_limit();
+            let usage_limit = grant.usage_limit.or_else(|| spec.usage_limit());
             (
                 materialize_derived_alternative_cast(card, spec)?,
                 usage_limit,

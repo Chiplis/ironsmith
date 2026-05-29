@@ -128,6 +128,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ChooseObjects { .. } => {}
         EffectAst::ChooseObjectsAcrossZones { .. } => {}
         EffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. } => {}
+        EffectAst::GrantFreeCastFromTaggedForEachCardTypeUntilEndOfTurn { .. } => {}
         EffectAst::RepeatThisProcess => {}
         EffectAst::RepeatThisProcessMay => {}
         EffectAst::RepeatThisProcessOnce => {}

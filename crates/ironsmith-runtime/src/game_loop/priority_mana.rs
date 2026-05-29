@@ -3572,6 +3572,43 @@ fn alternative_cast_label(
     (!name.is_empty()).then(|| name.to_string())
 }
 
+fn play_from_granted_usage_limit(
+    game: &GameState,
+    caster: PlayerId,
+    obj_id: ObjectId,
+    casting_method: &CastingMethod,
+) -> Option<(ObjectId, crate::grant::GrantUsageLimit)> {
+    let obj = game.object(obj_id)?;
+    let CastingMethod::PlayFrom {
+        source,
+        use_alternative: Some(idx),
+        zone,
+    } = casting_method
+    else {
+        return None;
+    };
+    let granted_idx = idx.checked_sub(obj.alternative_casts.len())?;
+    let granted = game
+        .effect_store
+        .grant_registry
+        .granted_alternative_casts_for_card(game, obj.id, *zone, caster);
+    granted
+        .get(granted_idx)
+        .and_then(|grant| grant.usage_limit.map(|limit| (*source, limit)))
+        .or_else(|| {
+            game.effect_store
+                .grant_registry
+                .grants
+                .iter()
+                .find(|grant| {
+                    grant.player == caster
+                        && grant.source.source_id() == *source
+                        && grant.usage_limit.is_some()
+                })
+                .and_then(|grant| grant.usage_limit.map(|limit| (*source, limit)))
+        })
+}
+
 /// Finalize a spell cast by paying remaining costs and creating the stack entry.
 /// Returns the spell cast info for trigger checking.
 ///
@@ -3870,6 +3907,22 @@ pub(super) fn finalize_spell_cast(
             game.turn_store
                 .grant_cast_uses_this_turn
                 .insert((caster, *source));
+        }
+    }
+    if let Some((source, crate::grant::GrantUsageLimit::OncePerNonlandCardType)) =
+        play_from_granted_usage_limit(game, caster, new_id, &casting_method)
+        && let Some(spell_obj) = game.object(new_id)
+    {
+        let used_types = spell_obj
+            .card_types
+            .iter()
+            .copied()
+            .filter(|card_type| *card_type != crate::types::CardType::Land)
+            .collect::<Vec<_>>();
+        for card_type in used_types {
+            game.turn_store
+                .grant_cast_card_type_uses_this_turn
+                .insert((caster, source, card_type));
         }
     }
 

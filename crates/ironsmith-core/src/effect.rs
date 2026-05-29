@@ -2946,6 +2946,7 @@ impl<E> VoteEffect<E> {
 pub struct GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
     pub tag: crate::tag::TagKey,
     pub player: PlayerFilter,
+    pub usage_limit: Option<crate::grant_model::GrantUsageLimit>,
 }
 
 impl GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
@@ -2953,7 +2954,16 @@ impl GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
         Self {
             tag: tag.into(),
             player,
+            usage_limit: None,
         }
+    }
+
+    pub fn with_usage_limit(
+        mut self,
+        usage_limit: crate::grant_model::GrantUsageLimit,
+    ) -> Self {
+        self.usage_limit = Some(usage_limit);
+        self
     }
 }
 

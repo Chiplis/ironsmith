@@ -173,6 +173,104 @@ pub(crate) fn parse_choose_land_or_nonland_then_consult_to_hand_bottom(
     ]))
 }
 
+pub(crate) fn parse_exile_top_put_land_then_cast_each_nonland_type(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first = trim_commas(sentences[sentence_idx].lowered());
+    let second = trim_commas(sentences[sentence_idx + 1].lowered());
+    let third = trim_commas(sentences[sentence_idx + 2].lowered());
+
+    let first_words = crate::runtime_backend::token_word_refs(&first);
+    if !slice_starts_with(&first_words, &["exile", "the", "top"])
+        || first_words.get(4..) != Some(["cards", "of", "your", "library"].as_slice())
+    {
+        return Ok(None);
+    }
+
+    let second_words = crate::runtime_backend::token_word_refs(&second);
+    if second_words.as_slice()
+        != [
+            "you",
+            "may",
+            "put",
+            "a",
+            "land",
+            "card",
+            "from",
+            "among",
+            "them",
+            "onto",
+            "the",
+            "battlefield",
+        ]
+    {
+        return Ok(None);
+    }
+
+    let third_words = crate::runtime_backend::token_word_refs(&third);
+    if !slice_starts_with(
+        &third_words,
+        &[
+            "until", "end", "of", "turn", "for", "each", "nonland", "card", "type", "you",
+            "may", "cast", "a", "spell", "of", "that", "type", "from", "among", "the",
+            "exiled", "cards",
+        ],
+    ) || !slice_ends_with(&third_words, &["without", "paying", "its", "mana", "cost"])
+    {
+        return Ok(None);
+    }
+
+    let mut effects = effect_sentences::parse_effect_sentence_lexed(&first)?;
+    let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::ExileTopOfLibrary { tags, .. },
+        ..
+    })) = effects.first()
+    else {
+        return Ok(None);
+    };
+    let Some(exiled_tag) = tags.first().cloned() else {
+        return Ok(None);
+    };
+
+    let mut land_filter = ObjectFilter::default()
+        .in_zone(Zone::Exile)
+        .with_type(CardType::Land)
+        .match_tagged(exiled_tag.clone(), TaggedOpbjectRelation::IsTaggedObject);
+    land_filter.zone = Some(Zone::Exile);
+    let land_target = TargetAst::WithCount(
+        Box::new(TargetAst::Object(land_filter, None, None)),
+        ChoiceCount::up_to(1),
+    );
+
+    effects.push(EffectAst::May {
+        effects: vec![EffectAst::subject_verb_move_to_zone(
+            land_target,
+            Zone::Battlefield,
+            false,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
+        )],
+    });
+    effects.push(EffectAst::GrantFreeCastFromTaggedForEachCardTypeUntilEndOfTurn {
+        tag: exiled_tag,
+        player: PlayerAst::You,
+        card_types: vec![
+            CardType::Artifact,
+            CardType::Battle,
+            CardType::Creature,
+            CardType::Enchantment,
+            CardType::Instant,
+            CardType::Kindred,
+            CardType::Planeswalker,
+            CardType::Sorcery,
+        ],
+    });
+
+    Ok(Some(effects))
+}
+
 pub(crate) fn parse_mill_then_may_put_from_among_into_hand_then_if_you_dont(
     sentences: &[SentenceInput],
     sentence_idx: usize,

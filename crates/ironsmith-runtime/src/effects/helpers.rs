@@ -2833,6 +2833,9 @@ pub fn resolve_objects_from_spec(
                     .collect();
 
                 if objects.is_empty() {
+                    if count.min == 0 {
+                        return Ok(Vec::new());
+                    }
                     return Err(ExecutionError::InvalidTarget);
                 }
 

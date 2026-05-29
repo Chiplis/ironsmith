@@ -126,6 +126,33 @@ fn compile_effect_inner(
             choices,
         ));
     }
+    if let EffectAst::GrantFreeCastFromTaggedForEachCardTypeUntilEndOfTurn {
+        tag,
+        player,
+        card_types: _,
+    } = effect
+    {
+        let source_tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
+        let player_filter = resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
+        let compiled = vec![
+            Effect::new(crate::effects::GrantPlayTaggedEffect::new(
+                source_tag.clone(),
+                player_filter.clone(),
+                crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn,
+                false,
+                false,
+            )),
+            Effect::new(
+                crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect::new(
+                    source_tag,
+                    player_filter.clone(),
+                )
+                .with_usage_limit(crate::grant::GrantUsageLimit::OncePerNonlandCardType),
+            ),
+        ];
+
+        return Ok((compiled, Vec::new()));
+    }
     if let EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
         player,
         filter,

@@ -259,6 +259,8 @@ pub struct TurnStore {
     pub entered_battlefield_last_turn: Vec<ObjectSnapshot>,
     /// Static or temporary grant sources whose once-per-turn cast permission was used.
     pub grant_cast_uses_this_turn: HashSet<(PlayerId, ObjectId)>,
+    /// Card types already used for source-scoped "one spell of each type" cast grants.
+    pub grant_cast_card_type_uses_this_turn: HashSet<(PlayerId, ObjectId, CardType)>,
     /// Explicit combat damage assignments keyed by attacker then damage recipient.
     pub combat_damage_assignments: HashMap<ObjectId, HashMap<ObjectId, u32>>,
 }
@@ -6940,6 +6942,9 @@ impl GameState {
             self.set_daytime(false);
         }
         self.turn_store.grant_cast_uses_this_turn.clear();
+        self.turn_store
+            .grant_cast_card_type_uses_this_turn
+            .clear();
         self.saddled_until_end_of_turn.clear();
         self.ninjutsu_attack_targets.clear();
         self.combat_damage_player_batch_hits.clear();

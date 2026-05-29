@@ -36413,6 +36413,256 @@ fn assert_oracle_card_fails_strict(name: &str) {
 }
 
 #[test]
+fn aminatous_augury_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Aminatou's Augury");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains("exile the top 8 cards of your library")
+            || rendered_lower.contains("exile the top eight cards of your library"),
+        "expected Aminatou's Augury to strictly parse its top-eight exile, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("you may put a land card from among them onto the battlefield"),
+        "expected Aminatou's Augury land branch to render from the exiled set, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("for each nonland card type")
+            && rendered_lower.contains("you may cast a spell of that type")
+            && rendered_lower.contains("without paying its mana cost"),
+        "expected Aminatou's Augury card-type free-cast clause to render, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("ExileTopOfLibraryEffect")
+            && debug.contains("MoveToZoneEffect")
+            && debug.contains("GrantTaggedSpellFreeCastUntilEndOfTurnEffect"),
+        "expected Aminatou's Augury to lower into exile, land move, and free-cast grants, got {debug}"
+    );
+    assert!(
+        debug.contains("zone: Some(") && debug.contains("Exile,"),
+        "expected Aminatou's Augury choices to reference exiled cards structurally, got {debug}"
+    );
+}
+
+fn aminatou_augury_test_card(
+    id: u32,
+    name: &str,
+    card_types: Vec<CardType>,
+) -> crate::card::Card {
+    CardBuilder::new(CardId::from_raw(id), name)
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .card_types(card_types)
+        .build()
+}
+
+fn execute_aminatous_augury(game: &mut crate::game_state::GameState, alice: PlayerId) {
+    let def = parse_oracle_card_definition("Aminatou's Augury");
+    let source = game.new_object_id();
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
+    for effect in def.spell_effect.as_ref().expect("Aminatou spell effects") {
+        crate::effects::execute_effect(game, effect, &mut ctx)
+            .expect("Aminatou's Augury effect should resolve");
+    }
+}
+
+fn has_aminatou_free_cast_grant(
+    game: &crate::game_state::GameState,
+    object_id: ObjectId,
+    player: PlayerId,
+) -> bool {
+    game.effect_store
+        .grant_registry
+        .card_can_play_from_zone(game, object_id, Zone::Exile, player)
+        && !game
+            .effect_store
+            .grant_registry
+            .granted_alternative_casts_for_card(game, object_id, Zone::Exile, player)
+            .is_empty()
+}
+
+fn has_aminatou_free_cast_grant_named(
+    game: &crate::game_state::GameState,
+    name: &str,
+    player: PlayerId,
+) -> bool {
+    game.exile
+        .iter()
+        .chain(game.battlefield.iter())
+        .copied()
+        .filter(|&id| game.object(id).is_some_and(|object| object.name == name))
+        .any(|id| has_aminatou_free_cast_grant(game, id, player))
+}
+
+fn aminatou_free_cast_action_named(
+    game: &crate::game_state::GameState,
+    name: &str,
+    player: PlayerId,
+) -> Option<crate::decision::LegalAction> {
+    crate::decision::compute_legal_actions(game, player)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Exile,
+                    casting_method:
+                        crate::alternative_cast::CastingMethod::PlayFrom {
+                            use_alternative: Some(_),
+                            ..
+                        },
+                } if game.object(*spell_id).is_some_and(|object| object.name == name)
+            )
+        })
+}
+
+#[test]
+fn aminatous_augury_runtime_exiles_top_eight_puts_land_and_grants_one_spell_per_type() {
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+
+    let _land = game.create_object_from_card(
+        &aminatou_augury_test_card(91_100, "Augury Island", vec![CardType::Land]),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &aminatou_augury_test_card(91_101, "Augury Bauble", vec![CardType::Artifact]),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &aminatou_augury_test_card(91_102, "Augury Relic", vec![CardType::Artifact]),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &aminatou_augury_test_card(91_103, "Augury Trick", vec![CardType::Instant]),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &aminatou_augury_test_card(91_104, "Augury Ruse", vec![CardType::Instant]),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &aminatou_augury_test_card(91_105, "Augury Echo", vec![CardType::Sorcery]),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &aminatou_augury_test_card(91_106, "Augury Omen", vec![CardType::Enchantment]),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &aminatou_augury_test_card(91_107, "Augury Walker", vec![CardType::Planeswalker]),
+        alice,
+        Zone::Library,
+    );
+
+    execute_aminatous_augury(&mut game, alice);
+
+    assert!(
+        game.player(alice).expect("alice exists").library.is_empty(),
+        "Aminatou's Augury should exile the top eight cards before moving/granting"
+    );
+    assert!(
+        game.battlefield.iter().any(|&id| game
+            .object(id)
+            .is_some_and(|object| object.name == "Augury Island")),
+        "Aminatou's Augury should put a land from the exiled cards onto the battlefield"
+    );
+
+    let granted_instants = ["Augury Trick", "Augury Ruse"]
+        .into_iter()
+        .filter(|name| has_aminatou_free_cast_grant_named(&game, name, alice))
+        .count();
+    assert_eq!(
+        granted_instants, 2,
+        "Aminatou's Augury should leave duplicated type choices available until a spell of that type is cast"
+    );
+    for name in [
+        "Augury Bauble",
+        "Augury Relic",
+        "Augury Trick",
+        "Augury Ruse",
+        "Augury Echo",
+        "Augury Omen",
+        "Augury Walker",
+    ] {
+        assert!(
+            has_aminatou_free_cast_grant_named(&game, name, alice),
+            "Aminatou's Augury should grant a free cast to the selected spell for each represented nonland card type"
+        );
+    }
+
+    let cast_trick = aminatou_free_cast_action_named(&game, "Augury Trick", alice)
+        .expect("Aminatou's Augury should offer either exiled instant before one is cast");
+    let mut state = crate::game_loop::PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+    crate::game_loop::apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &crate::game_loop::PriorityResponse::PriorityAction(cast_trick),
+        &mut decision_maker,
+    )
+    .expect("Aminatou free-cast instant should cast without paying mana");
+
+    assert!(
+        aminatou_free_cast_action_named(&game, "Augury Ruse", alice).is_none(),
+        "Aminatou's Augury should not offer a second instant after its instant permission is used"
+    );
+}
+
+#[test]
+fn aminatous_augury_runtime_no_land_branch_still_grants_nonland_card_type_casts() {
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+
+    game.create_object_from_card(
+        &aminatou_augury_test_card(91_120, "Augury Trick", vec![CardType::Instant]),
+        alice,
+        Zone::Library,
+    );
+    for idx in 0..7 {
+        game.create_object_from_card(
+            &aminatou_augury_test_card(
+                91_121 + idx,
+                &format!("Augury Filler {idx}"),
+                vec![CardType::Creature],
+            ),
+            alice,
+            Zone::Library,
+        );
+    }
+
+    execute_aminatous_augury(&mut game, alice);
+
+    assert!(
+        !game
+            .battlefield
+            .iter()
+            .any(|&id| game.object(id).is_some_and(|object| object.is_land())),
+        "Aminatou's Augury should not move a land when no exiled land card exists"
+    );
+    assert!(
+        has_aminatou_free_cast_grant_named(&game, "Augury Trick", alice),
+        "Aminatou's Augury should still grant the represented nonland card type when the land branch does nothing"
+    );
+}
+
+#[test]
 fn when_we_were_young_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("When We Were Young");
     let rendered = canonical_compiled_lines(&def).join(" ");

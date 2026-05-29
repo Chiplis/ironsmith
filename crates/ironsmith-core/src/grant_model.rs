@@ -66,6 +66,7 @@ impl<C> DerivedAlternativeCast<C> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GrantUsageLimit {
     OnceDuringEachOfYourTurns,
+    OncePerNonlandCardType,
 }
 
 impl<C: CostComponent> DerivedAlternativeCast<C> {
@@ -674,11 +675,11 @@ where
         ) = &self.grantable
             && self.zone == Zone::Hand
         {
-            let prefix = if matches!(usage_limit, Some(GrantUsageLimit::OnceDuringEachOfYourTurns))
-            {
-                "Once during each of your turns, "
-            } else {
-                ""
+            let prefix = match usage_limit {
+                Some(GrantUsageLimit::OnceDuringEachOfYourTurns) => {
+                    "Once during each of your turns, "
+                }
+                Some(GrantUsageLimit::OncePerNonlandCardType) | None => "",
             };
             let filter_desc = castable_filter_description(&self.filter);
             let singular_filter_desc = filter_desc
@@ -726,13 +727,11 @@ where
                 }
                 return line;
             }
-            let prefix = if matches!(
-                usage_limit,
-                Some(GrantUsageLimit::OnceDuringEachOfYourTurns)
-            ) {
-                "Once during each of your turns, "
-            } else {
-                ""
+            let prefix = match usage_limit {
+                Some(GrantUsageLimit::OnceDuringEachOfYourTurns) => {
+                    "Once during each of your turns, "
+                }
+                Some(GrantUsageLimit::OncePerNonlandCardType) | None => "",
             };
             return format!(
                 "{prefix}{} cast {} from your graveyard by {}",

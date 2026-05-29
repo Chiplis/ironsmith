@@ -209,6 +209,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
             generic_subject_verb_sequences::quads::parse_look_at_top_may_reveal_match_bargain_battlefield_else_hand_then_shuffle,
     },
     SequenceRuleDef {
+        name: "exile-top-put-land-cast-each-nonland-type",
+        feature_tag: Some("exiled-cards-card-type-cast"),
+        priority: 342,
+        consumed_sentences: 3,
+        predicate: first_word_if_target_exile_or_reveal,
+        parser: generic_subject_verb_sequences::triples::parse_exile_top_put_land_then_cast_each_nonland_type,
+    },
+    SequenceRuleDef {
         name: "choose-land-or-nonland-consult-hand-bottom",
         feature_tag: Some("consult-choice-kind"),
         priority: 341,

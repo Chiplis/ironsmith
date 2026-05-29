@@ -3173,6 +3173,11 @@ pub(crate) enum EffectAst {
         filter: ObjectFilter,
         zone: Zone,
     },
+    GrantFreeCastFromTaggedForEachCardTypeUntilEndOfTurn {
+        tag: TagKey,
+        player: PlayerAst,
+        card_types: Vec<CardType>,
+    },
     RepeatThisProcess,
     RepeatThisProcessMay,
     RepeatThisProcessOnce,

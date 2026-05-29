@@ -409,6 +409,97 @@ fn choose_primary_zone(choose: &crate::effects::ChooseObjectsEffect) -> Option<Z
     choose.filter.zone.or(choose.zone)
 }
 
+fn describe_card_type_free_cast_grant_sequence(effects: &[&Effect]) -> Option<(String, usize)> {
+    let [grant_play_effect, grant_free_effect, ..] = effects else {
+        return None;
+    };
+    let grant_play = grant_play_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let grant_free = grant_free_effect
+        .downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>()?;
+    if grant_play.tag != grant_free.tag
+        || grant_play.player != grant_free.player
+        || grant_play.duration != crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
+        || grant_play.allow_land
+        || grant_free.usage_limit != Some(crate::grant::GrantUsageLimit::OncePerNonlandCardType)
+    {
+        return None;
+    }
+
+    let player_text = describe_player_filter(&grant_play.player);
+    let subject = if player_text == "you" {
+        "you may".to_string()
+    } else {
+        format!("{player_text} may")
+    };
+    Some((
+        format!(
+            "Until end of turn, for each nonland card type, {subject} cast a spell of that type from among the exiled cards without paying its mana cost"
+        ),
+        2,
+    ))
+}
+
+fn describe_exile_top_land_then_card_type_free_cast(effects: &[Effect]) -> Option<String> {
+    let [exile_effect, land_may_effect, rest @ ..] = effects else {
+        return None;
+    };
+    let exile = exile_effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
+    if exile.player != PlayerFilter::You || exile.moved_tags.len() != 1 {
+        return None;
+    }
+    let exiled_tag = &exile.moved_tags[0];
+
+    let land_may = land_may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+    let [land_move_effect] = land_may.effects.as_slice() else {
+        return None;
+    };
+    let land_move = unwrap_tag_wrapped_effect(land_move_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if land_move.zone != Zone::Battlefield {
+        return None;
+    }
+    let ChooseSpec::WithCount(inner, count) = &land_move.target else {
+        return None;
+    };
+    if count.min > 1 || count.max != Some(1) {
+        return None;
+    }
+    let ChooseSpec::Object(filter) = inner.as_ref() else {
+        return None;
+    };
+    if filter.zone != Some(Zone::Exile)
+        || filter.card_types != vec![CardType::Land]
+        || !filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == *exiled_tag
+                && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+        })
+    {
+        return None;
+    }
+
+    let rest_refs = rest.iter().collect::<Vec<_>>();
+    let grant_play = rest_refs
+        .first()
+        .and_then(|effect| effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>())?;
+    if grant_play.tag != *exiled_tag {
+        return None;
+    }
+    let (cast_text, consumed) = describe_card_type_free_cast_grant_sequence(&rest_refs)?;
+    if consumed != rest_refs.len() {
+        return None;
+    }
+
+    let count_text = describe_value(&exile.count);
+    let card_noun = if matches!(exile.count, Value::Fixed(1)) {
+        "card"
+    } else {
+        "cards"
+    };
+    Some(format!(
+        "Exile the top {count_text} {card_noun} of your library. You may put a land card from among them onto the battlefield. {cast_text}"
+    ))
+}
+
 fn describe_reveal_hand_subset_choose_then_discard(effects: &[&Effect]) -> Option<String> {
     let [reveal_effect, choose_effect, discard_effect] = effects else {
         return None;
@@ -2382,6 +2473,10 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
             .is_some()
     {
         return describe_structural_multisentence_effect_list(rest);
+    }
+
+    if let Some(compact) = describe_exile_top_land_then_card_type_free_cast(effects) {
+        return Some(compact);
     }
 
     describe_draw_discard_then_create_structural(effects)
@@ -8313,6 +8408,12 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     let mut parts = Vec::new();
     let mut idx = 0usize;
     while idx < filtered.len() {
+        if let Some((compact, consumed)) = describe_card_type_free_cast_grant_sequence(&filtered[idx..]) {
+            parts.push(compact);
+            idx += consumed;
+            continue;
+        }
+
         if idx + 1 < filtered.len()
             && let Some(compact) =
                 describe_exile_source_and_unless_pays_target(&[filtered[idx], filtered[idx + 1]])

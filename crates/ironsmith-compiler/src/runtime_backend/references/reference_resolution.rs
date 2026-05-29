@@ -1026,6 +1026,9 @@ fn advance_reference_frame_for_effect(
             frame.last_object_tag = Some(chosen_tag);
         }
         EffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. } => {}
+        EffectAst::GrantFreeCastFromTaggedForEachCardTypeUntilEndOfTurn { player, .. } => {
+            track_effect_player(*player, frame, true, true)?;
+        }
         EffectAst::May { effects }
         | EffectAst::DelayedUntilNextEndStep { effects, .. }
         | EffectAst::DelayedUntilEndOfCombat { effects }
