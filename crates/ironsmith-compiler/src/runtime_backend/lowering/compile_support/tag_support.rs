@@ -555,6 +555,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::RevealTop
         | SubjectVerbActionAst::RevealTagged { .. }
         | SubjectVerbActionAst::RevealCardsFromHand { .. }
+        | SubjectVerbActionAst::LookAtObjects { .. }
         | SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { .. }
         | SubjectVerbActionAst::PutSomeIntoHandRestOnBottomOfLibrary { .. }
         | SubjectVerbActionAst::EmitKeywordAction { .. }

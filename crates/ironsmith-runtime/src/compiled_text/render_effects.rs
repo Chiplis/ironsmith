@@ -3632,6 +3632,41 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
 
+    fn describe_look_at_hand_top_and_face_down_creatures(effects: &[&Effect]) -> Option<String> {
+        let [hand_effect, top_effect, objects_effect] = effects else {
+            return None;
+        };
+        let hand = hand_effect.downcast_ref::<crate::effects::LookAtHandEffect>()?;
+        if hand.reveal || hand.target != ChooseSpec::target_player() {
+            return None;
+        }
+        let top = top_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+        if top.reveal
+            || top.count != Value::Fixed(1)
+            || top.player != PlayerFilter::target_player()
+        {
+            return None;
+        }
+        let objects = objects_effect.downcast_ref::<crate::effects::LookAtObjectsEffect>()?;
+        if objects.viewer != PlayerFilter::You
+            || objects.subject != PlayerFilter::target_player()
+            || objects.filter
+                != ObjectFilter::creature()
+                    .face_down()
+                    .controlled_by(PlayerFilter::target_player())
+        {
+            return None;
+        }
+        Some(
+            "Look at target player's hand, the top card of that player's library, and any face-down creatures they control"
+                .to_string(),
+        )
+    }
+
+    if let Some(compact) = describe_look_at_hand_top_and_face_down_creatures(&raw_effects) {
+        return compact;
+    }
+
     fn describe_reveal_hand_choose_move(effects: &[&Effect]) -> Option<String> {
         let [look_effect, choose_effect, move_effect] = effects else {
             return None;
@@ -8424,6 +8459,17 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     let mut parts = Vec::new();
     let mut idx = 0usize;
     while idx < filtered.len() {
+        if idx + 2 < filtered.len()
+            && let Some(compact) = describe_look_at_hand_top_and_face_down_creatures(&[
+                filtered[idx],
+                filtered[idx + 1],
+                filtered[idx + 2],
+            ])
+        {
+            parts.push(compact);
+            idx += 3;
+            continue;
+        }
         if idx + 1 < filtered.len()
             && let Some(compact) =
                 describe_exile_source_and_unless_pays_target(&[filtered[idx], filtered[idx + 1]])
@@ -12831,6 +12877,31 @@ fn normalize_haunting_echoes_text(text: &str) -> Option<String> {
 pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> {
     if effects.len() < 2 {
         return None;
+    }
+
+    if effects.len() >= 3
+        && let Some(hand) = effects[0].downcast_ref::<crate::effects::LookAtHandEffect>()
+        && !hand.reveal
+        && hand.target == ChooseSpec::target_player()
+        && let Some(top) = effects[1].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+        && !top.reveal
+        && top.count == Value::Fixed(1)
+        && top.player == PlayerFilter::target_player()
+        && let Some(objects) = effects[2].downcast_ref::<crate::effects::LookAtObjectsEffect>()
+        && objects.viewer == PlayerFilter::You
+        && objects.subject == PlayerFilter::target_player()
+        && objects.filter
+            == ObjectFilter::creature()
+                .face_down()
+                .controlled_by(PlayerFilter::target_player())
+    {
+        let first = "look at target player's hand, the top card of that player's library, and any face-down creatures they control";
+        if effects.len() == 3 {
+            return Some(first.to_string());
+        }
+        let rest = describe_effect_clause_list(&effects[3..])
+            .unwrap_or_else(|| lowercase_first(&describe_effect_list(&effects[3..])));
+        return Some(format!("{first}. {rest}"));
     }
 
     if let Some(compact) = describe_structural_multisentence_effect_list(effects) {
@@ -28754,17 +28825,22 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         let owner = describe_possessive_player_filter(&look_at_top.player);
         let (count_text, noun, where_clause) =
             describe_top_count_noun_and_where_clause(&look_at_top.count);
+        let top_phrase = if look_at_top.count == Value::Fixed(1) {
+            format!("top {noun}")
+        } else {
+            format!("top {count_text} {noun}")
+        };
         if look_at_top.reveal {
             if look_at_top.player == PlayerFilter::You {
-                return format!("Reveal the top {count_text} {noun} of your library{where_clause}");
+                return format!("Reveal the {top_phrase} of your library{where_clause}");
             }
             let subject = describe_player_filter(&look_at_top.player);
             let verb = player_verb(&subject, "reveal", "reveals");
             return format!(
-                "{subject} {verb} the top {count_text} {noun} of {owner} library{where_clause}"
+                "{subject} {verb} the {top_phrase} of {owner} library{where_clause}"
             );
         }
-        return format!("Look at the top {count_text} {noun} of {owner} library{where_clause}");
+        return format!("Look at the {top_phrase} of {owner} library{where_clause}");
     }
     if let Some(rearrange) =
         effect.downcast_ref::<crate::effects::RearrangeLookedCardsInLibraryEffect>()
@@ -28796,6 +28872,13 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         let owner = describe_possessive_choose_spec(&look_at_hand.target);
         return format!("Look at {owner} hand");
+    }
+    if let Some(look_at_objects) = effect.downcast_ref::<crate::effects::LookAtObjectsEffect>() {
+        let description = look_at_objects.filter.description();
+        if description == "target player's face-down creature" {
+            return "Look at any face-down creatures they control".to_string();
+        }
+        return format!("Look at {}", look_at_objects.filter.description());
     }
     if let Some(apply_continuous) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>() {
         if let Some(text) = describe_apply_continuous_effect(apply_continuous) {

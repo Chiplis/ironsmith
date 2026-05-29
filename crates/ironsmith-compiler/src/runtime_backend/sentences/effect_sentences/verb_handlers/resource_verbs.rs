@@ -316,6 +316,53 @@ pub(crate) fn parse_look(
         None
     }
 
+    fn parse_look_tail_at_same_player(words: &[&str]) -> Option<Vec<EffectAst>> {
+        let top_library_prefixes: &[&[&str]] = &[
+            &["the", "top", "card", "of", "that", "player", "library"],
+            &["the", "top", "card", "of", "that", "players", "library"],
+            &["top", "card", "of", "that", "player", "library"],
+            &["top", "card", "of", "that", "players", "library"],
+            &["the", "top", "card", "of", "their", "library"],
+            &["top", "card", "of", "their", "library"],
+        ];
+        let (top_prefix, _) = top_library_prefixes
+            .iter()
+            .find_map(|prefix| slice_starts_with(&words, prefix).then_some((*prefix, ())))?;
+        let mut rest = &words[top_prefix.len()..];
+        let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
+            PlayerAst::That,
+            Value::Fixed(1),
+            TagKey::from(IT_TAG),
+        )];
+
+        if rest.is_empty() {
+            return Some(effects);
+        }
+        if rest.first().copied() == Some("and") {
+            rest = &rest[1..];
+        }
+        if matches!(rest.first().copied(), Some("any" | "all")) {
+            rest = &rest[1..];
+        }
+        if matches!(
+            rest,
+            ["face", "down", "creatures", "they", "control"]
+                | ["face", "down", "creature", "they", "control"]
+                | ["face", "down", "creatures", "that", "player", "controls"]
+                | ["face", "down", "creatures", "that", "players", "control"]
+                | ["face", "down", "creature", "that", "player", "controls"]
+                | ["face", "down", "creature", "that", "players", "control"]
+        ) {
+            effects.push(EffectAst::subject_verb_look_at_objects(
+                PlayerAst::That,
+                ObjectFilter::creature().face_down(),
+            ));
+            return Some(effects);
+        }
+
+        None
+    }
+
     // "Look at the top N cards of your library."
     let mut clause_tokens = trim_commas(tokens);
     if clause_tokens
@@ -366,22 +413,15 @@ pub(crate) fn parse_look(
         .map(String::as_str)
         .collect::<Vec<_>>();
     if let Some((player, used_words)) = parse_hand_owner(&hand_words) {
-        if used_words < hand_words.len() {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported trailing look clause (clause: '{}')",
-                clause_words.join(" ")
-            )));
-        }
-
         let target = match player {
             PlayerAst::You => TargetAst::Player(PlayerFilter::You, None),
             PlayerAst::Opponent => TargetAst::Player(PlayerFilter::Opponent, None),
             PlayerAst::Target => TargetAst::Player(
-                PlayerFilter::target_player(),
+                PlayerFilter::Any,
                 span_from_tokens(&hand_tokens),
             ),
             PlayerAst::TargetOpponent => TargetAst::Player(
-                PlayerFilter::target_opponent(),
+                PlayerFilter::Opponent,
                 span_from_tokens(&hand_tokens),
             ),
             PlayerAst::That => TargetAst::Player(PlayerFilter::IteratedPlayer, None),
@@ -400,6 +440,18 @@ pub(crate) fn parse_look(
                 )));
             }
         };
+
+        if used_words < hand_words.len() {
+            if let Some(mut followups) = parse_look_tail_at_same_player(&hand_words[used_words..]) {
+                let mut effects = vec![EffectAst::subject_verb_look_at_hand(target)];
+                effects.append(&mut followups);
+                return Ok(EffectAst::Sequence { effects });
+            }
+            return Err(CardTextError::ParseError(format!(
+                "unsupported trailing look clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
 
         return Ok(EffectAst::subject_verb_look_at_hand(target));
     }

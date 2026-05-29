@@ -912,6 +912,9 @@ pub(crate) enum SubjectVerbActionAst {
         tag: TagKey,
         reveal: bool,
     },
+    LookAtObjects {
+        filter: ObjectFilter,
+    },
     PutIntoHand {
         object: ObjectRefAst,
     },
@@ -2013,6 +2016,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("count", count)
                 .field("tag", tag)
                 .field("reveal", reveal)
+                .finish(),
+            Self::LookAtObjects { filter } => f
+                .debug_struct("LookAtObjects")
+                .field("filter", filter)
                 .finish(),
             Self::PutIntoHand { object } => f.debug_tuple("PutIntoHand").field(object).finish(),
             Self::MayMoveToZone { target, zone } => f
@@ -3123,6 +3130,9 @@ impl std::fmt::Debug for SubjectVerbEffectAst {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum EffectAst {
     SubjectVerb(SubjectVerbEffectAst),
+    Sequence {
+        effects: Vec<EffectAst>,
+    },
     UnlessPays {
         effects: Vec<EffectAst>,
         player: PlayerAst,
@@ -5319,6 +5329,14 @@ impl EffectAst {
         tag: TagKey,
     ) -> Self {
         Self::subject_verb_top_library_cards(player, count, tag, true)
+    }
+
+    pub(crate) fn subject_verb_look_at_objects(player: PlayerAst, filter: ObjectFilter) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::LookAtObjects { filter },
+        )
     }
 
     fn subject_verb_top_library_cards(

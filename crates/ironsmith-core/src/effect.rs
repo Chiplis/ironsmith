@@ -1042,6 +1042,27 @@ impl LookAtHandEffect {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct LookAtObjectsEffect {
+    pub filter: ObjectFilter,
+    pub viewer: PlayerFilter,
+    pub subject: PlayerFilter,
+}
+
+impl LookAtObjectsEffect {
+    pub fn new(
+        filter: ObjectFilter,
+        viewer: PlayerFilter,
+        subject: PlayerFilter,
+    ) -> Self {
+        Self {
+            filter,
+            viewer,
+            subject,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RevealTaggedEffect {
     pub tag: crate::tag::TagKey,
