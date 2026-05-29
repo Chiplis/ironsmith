@@ -281,6 +281,70 @@ fn subtype_addition_predicate(predicate: &str) -> Option<String> {
     None
 }
 
+#[derive(Debug, Clone)]
+struct TypeAdditionLine {
+    subject: String,
+    verb: String,
+    type_phrase: String,
+}
+
+fn parse_type_addition_line(line: &str) -> Option<TypeAdditionLine> {
+    let trimmed = line.trim().trim_end_matches('.');
+    let (subject, verb, predicate) = split_subject_predicate_clause(trimmed)?;
+    if !matches!(verb, "is" | "are") {
+        return None;
+    }
+    let type_phrase = subtype_addition_predicate(predicate)?;
+    Some(TypeAdditionLine {
+        subject: subject.trim().to_string(),
+        verb: verb.trim().to_string(),
+        type_phrase,
+    })
+}
+
+pub(super) fn merge_same_true_type_addition_lines(lines: Vec<String>) -> Vec<String> {
+    let mut merged = Vec::with_capacity(lines.len());
+    let mut idx = 0usize;
+
+    while idx < lines.len() {
+        let Some(first) = parse_type_addition_line(&lines[idx]) else {
+            merged.push(lines[idx].clone());
+            idx += 1;
+            continue;
+        };
+
+        let mut same_true_subjects = Vec::new();
+        let mut consumed = 1usize;
+        while idx + consumed < lines.len() {
+            let Some(next) = parse_type_addition_line(&lines[idx + consumed]) else {
+                break;
+            };
+            if !first.type_phrase.eq_ignore_ascii_case(&next.type_phrase)
+                || !first.verb.eq_ignore_ascii_case(&next.verb)
+            {
+                break;
+            }
+            same_true_subjects.push(lowercase_first(&next.subject));
+            consumed += 1;
+        }
+
+        if same_true_subjects.len() < 2 {
+            merged.push(lines[idx].clone());
+            idx += 1;
+            continue;
+        }
+
+        merged.push(format!(
+            "{} The same is true for {}.",
+            lines[idx].trim(),
+            join_with_and(&same_true_subjects)
+        ));
+        idx += consumed;
+    }
+
+    merged
+}
+
 fn indefinite_article_for_phrase(phrase: &str) -> &'static str {
     match phrase.chars().next().map(|ch| ch.to_ascii_lowercase()) {
         Some('a' | 'e' | 'i' | 'o' | 'u') => "an",

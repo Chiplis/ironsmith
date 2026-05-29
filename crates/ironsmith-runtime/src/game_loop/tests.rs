@@ -7061,23 +7061,52 @@ fn leyline_of_transformation_applies_chosen_type_across_its_three_scopes() {
     let opponent_id = game.create_object_from_card(&opponent, bob, Zone::Battlefield);
 
     let creature_spell = CardBuilder::new(CardId::new(), "Leyline Stack Creature")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
         .card_types(vec![CardType::Creature])
         .subtypes(vec![Subtype::Elf])
         .power_toughness(PowerToughness::fixed(1, 1))
         .build();
     let creature_spell_id = game.create_object_from_card(&creature_spell, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(creature_spell_id, alice));
 
     let noncreature_spell = CardBuilder::new(CardId::new(), "Leyline Stack Instant")
         .card_types(vec![CardType::Instant])
         .build();
     let noncreature_spell_id = game.create_object_from_card(&noncreature_spell, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(noncreature_spell_id, alice));
+
+    let opponent_creature_spell = CardBuilder::new(CardId::new(), "Leyline Opposing Stack Creature")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elf])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let opponent_creature_spell_id =
+        game.create_object_from_card(&opponent_creature_spell, bob, Zone::Stack);
+    game.push_to_stack(StackEntry::new(opponent_creature_spell_id, bob));
 
     let graveyard_creature = CardBuilder::new(CardId::new(), "Leyline Graveyard Creature")
         .card_types(vec![CardType::Creature])
         .subtypes(vec![Subtype::Wizard])
         .power_toughness(PowerToughness::fixed(1, 1))
         .build();
-    let graveyard_creature_id = game.create_object_from_card(&graveyard_creature, alice, Zone::Graveyard);
+    let graveyard_creature_id =
+        game.create_object_from_card(&graveyard_creature, alice, Zone::Graveyard);
+
+    let opponent_graveyard_creature =
+        CardBuilder::new(CardId::new(), "Leyline Opposing Graveyard Creature")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Wizard])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+    let opponent_graveyard_creature_id =
+        game.create_object_from_card(&opponent_graveyard_creature, bob, Zone::Graveyard);
+
+    let graveyard_noncreature = CardBuilder::new(CardId::new(), "Leyline Graveyard Instant")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let graveyard_noncreature_id =
+        game.create_object_from_card(&graveyard_noncreature, alice, Zone::Graveyard);
 
     assert!(
         game.current_has_subtype(ally_id, chosen_type),
@@ -7102,6 +7131,18 @@ fn leyline_of_transformation_applies_chosen_type_across_its_three_scopes() {
     assert!(
         !game.current_has_subtype(noncreature_spell_id, chosen_type),
         "noncreature spells should not gain Leyline's chosen type"
+    );
+    assert!(
+        !game.current_has_subtype(opponent_creature_spell_id, chosen_type),
+        "creature spells controlled by opponents should not gain Leyline's chosen type"
+    );
+    assert!(
+        !game.current_has_subtype(opponent_graveyard_creature_id, chosen_type),
+        "creature cards opponents own off the battlefield should not gain Leyline's chosen type"
+    );
+    assert!(
+        !game.current_has_subtype(graveyard_noncreature_id, chosen_type),
+        "noncreature cards off the battlefield should not gain Leyline's chosen type"
     );
 }
 

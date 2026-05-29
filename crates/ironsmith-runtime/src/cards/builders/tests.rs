@@ -33846,9 +33846,22 @@ fn parse_oracle_leyline_of_transformation_regression() {
         "expected Leyline to lower chosen-type additions structurally, got {raw}"
     );
 
-    let rendered = unprocessed_compiled_lines(&def)
-        .join(" ")
-        .to_ascii_lowercase();
+    let compiled_lines = unprocessed_compiled_lines(&def);
+    assert_eq!(
+        compiled_lines,
+        vec![
+            "If this card is in your opening hand, you may begin the game with it on the battlefield.".to_string(),
+            "As this enchantment enters, choose a creature type.".to_string(),
+            "Creatures you control are the chosen type in addition to their other types. The same is true for creature spells you control and creature cards you own that aren't on the battlefield.".to_string(),
+        ],
+        "expected Leyline compiled text to match oracle wording"
+    );
+
+    let rendered = compiled_lines.join(" ").to_ascii_lowercase();
+    assert!(
+        rendered.contains("as this enchantment enters, choose a creature type"),
+        "expected Leyline choose-as-enters wording to keep the enchantment self-reference, got {rendered}"
+    );
     assert!(
         rendered.contains(
             "creatures you control are the chosen type in addition to their other types"
@@ -33857,15 +33870,9 @@ fn parse_oracle_leyline_of_transformation_regression() {
     );
     assert!(
         rendered.contains(
-            "creature spells you control are the chosen type in addition to their other types"
+            "the same is true for creature spells you control and creature cards you own that aren't on the battlefield"
         ),
-        "expected Leyline stack chosen-type clause to render, got {rendered}"
-    );
-    assert!(
-        rendered.contains(
-            "creature cards you own that aren't on the battlefield are the chosen type in addition to their other types"
-        ),
-        "expected Leyline off-battlefield chosen-type clause to render, got {rendered}"
+        "expected Leyline chosen-type clauses to merge through same-is-true wording, got {rendered}"
     );
     assert!(
         !rendered.contains("unsupported"),
