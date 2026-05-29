@@ -6244,6 +6244,70 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         ))
     }
 
+    fn describe_library_face_pile_choice_bundle(filtered: &[&Effect]) -> Option<String> {
+        let [choose_player_effect, look_effect, choose_effect, unless_effect] = filtered else {
+            return None;
+        };
+
+        let choose_player = choose_player_effect
+            .downcast_ref::<crate::effects::ChoosePlayerEffect>()?;
+        let look = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+        let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+        let unless_action = unless_effect.downcast_ref::<crate::effects::UnlessActionEffect>()?;
+        let chosen_opponent = PlayerFilter::TaggedPlayer(choose_player.tag.clone());
+
+        if choose_player.chooser != PlayerFilter::You
+            || choose_player.filter != PlayerFilter::Opponent
+            || choose_player.random
+            || look.player != PlayerFilter::You
+            || look.tag.as_str() != "divvy_source"
+            || choose.tag.as_str() != "divvy_pile"
+            || choose.chooser != chosen_opponent
+            || choose_primary_zone(choose) != Some(Zone::Library)
+            || choose.is_search
+            || !choose.count.is_any_number()
+            || !filter_is_tagged_as(&choose.filter, look.tag.as_str())
+            || unless_action.player != PlayerFilter::You
+        {
+            return None;
+        }
+
+        let [main_selected, main_rest] = unless_action.effects.as_slice() else {
+            return None;
+        };
+        let [alt_selected, alt_rest] = unless_action.alternative.as_slice() else {
+            return None;
+        };
+        let main_selected = downcast_move_to_zone(main_selected)?;
+        let alt_selected = downcast_move_to_zone(alt_selected)?;
+        let (_, main_rest) = for_each_tagged_for_compaction(main_rest)?;
+        let (_, alt_rest) = for_each_tagged_for_compaction(alt_rest)?;
+
+        if !move_to_zone_uses_tag(main_selected, choose.tag.as_str(), Zone::Graveyard)
+            || !move_to_zone_uses_tag(alt_selected, choose.tag.as_str(), Zone::Hand)
+            || !for_each_moves_unselected_to_zone(
+                main_rest,
+                look.tag.as_str(),
+                choose.tag.as_str(),
+                Zone::Hand,
+            )
+            || !for_each_moves_unselected_to_zone(
+                alt_rest,
+                look.tag.as_str(),
+                choose.tag.as_str(),
+                Zone::Graveyard,
+            )
+        {
+            return None;
+        }
+
+        let (count_text, noun, count_where_clause) =
+            describe_top_count_noun_and_where_clause(&look.count);
+        Some(format!(
+            "Choose an opponent. They look at the top {count_text} {noun} of your library{count_where_clause} and separate them into a face-down pile and a face-up pile. Put one pile into your hand and the other into your graveyard"
+        ))
+    }
+
     fn filter_has_not_tagged_constraint(filter: &ObjectFilter, tag: &str) -> bool {
         filter.tagged_constraints.iter().any(|constraint| {
             constraint.relation == crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
@@ -10777,6 +10841,14 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         if idx + 3 < filtered.len()
             && let Some(rendered) =
                 describe_exile_split_pile_opponent_choice_bundle(&filtered[idx..idx + 4])
+        {
+            parts.push(rendered);
+            idx += 4;
+            continue;
+        }
+        if idx + 3 < filtered.len()
+            && let Some(rendered) =
+                describe_library_face_pile_choice_bundle(&filtered[idx..idx + 4])
         {
             parts.push(rendered);
             idx += 4;

@@ -32135,6 +32135,33 @@ fn parse_split_the_spoils_divvy_uses_splitter_then_opponent_choice() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_saurons_ransom_face_pile_regression() {
+    let def = parse_oracle_card_definition("Sauron's Ransom");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert!(
+        rendered.contains(
+            "Choose an opponent. They look at the top four cards of your library and separate \
+             them into a face-down pile and a face-up pile. Put one pile into your hand and the \
+             other into your graveyard."
+        ),
+        "expected Sauron's Ransom to render the opponent face-pile clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("The Ring tempts you"),
+        "expected Sauron's Ransom to keep the Ring temptation tail, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(debug.contains("ChoosePlayerEffect"), "{debug}");
+    assert!(debug.contains("LookAtTopCardsEffect"), "{debug}");
+    assert!(debug.contains("ChooseObjectsEffect"), "{debug}");
+    assert!(debug.contains("UnlessActionEffect"), "{debug}");
+    assert!(debug.contains("RingTemptsYouEffect"), "{debug}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn render_make_an_example_preserves_choose_then_sacrifice_surface() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Make an Example")
         .mana_cost(ManaCost::from_pips(vec![

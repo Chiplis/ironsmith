@@ -24347,6 +24347,171 @@ fn test_split_the_spoils_opponent_can_take_the_other_pile_into_hand() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn run_saurons_ransom_face_pile_resolution(
+    keep_opponent_pile: bool,
+    expected_hand_names: &[&str],
+    expected_graveyard_names: &[&str],
+) {
+    use crate::decision::DecisionMaker;
+    use crate::decisions::context::SelectObjectsContext;
+    use crate::effects::{ExecutionContext, execute_effect};
+
+    struct SauronsRansomDecisionMaker {
+        opponent: PlayerId,
+        split_names: &'static [&'static str],
+        keep_opponent_pile: bool,
+    }
+
+    impl DecisionMaker for SauronsRansomDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            self.keep_opponent_pile
+        }
+
+        fn decide_objects(
+            &mut self,
+            game: &GameState,
+            ctx: &SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            let legal = ctx
+                .candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .collect::<Vec<_>>();
+            let split_selection = self
+                .split_names
+                .iter()
+                .filter_map(|wanted_name| {
+                    legal
+                        .iter()
+                        .find(|candidate| {
+                            game.object(candidate.id)
+                                .is_some_and(|object| object.name == *wanted_name)
+                        })
+                        .map(|candidate| candidate.id)
+                })
+                .collect::<Vec<_>>();
+
+            if split_selection.len() == self.split_names.len() {
+                assert_eq!(
+                    ctx.player, self.opponent,
+                    "the chosen opponent should separate the library cards into piles"
+                );
+                return split_selection;
+            }
+
+            legal.first()
+                .map(|candidate| vec![candidate.id])
+                .unwrap_or_default()
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let saurons_ransom = CardDefinitionBuilder::new(CardId::from_raw(91_130), "Sauron's Ransom")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Choose an opponent. They look at the top four cards of your library and separate them into a face-down pile and a face-up pile. Put one pile into your hand and the other into your graveyard. The Ring tempts you.",
+        )
+        .expect("Sauron's Ransom should parse");
+
+    let source_id = game.create_object_from_definition(&saurons_ransom, alice, Zone::Stack);
+    let bearer = CardBuilder::new(CardId::from_raw(91_131), "Ransom Ring-bearer")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let bearer_id = game.create_object_from_card(&bearer, alice, Zone::Battlefield);
+    for (idx, name) in [
+        "Ransom Bottom",
+        "Ransom Alpha",
+        "Ransom Beta",
+        "Ransom Gamma",
+        "Ransom Delta",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let card = CardBuilder::new(CardId::from_raw(91_140 + idx as u32), *name).build();
+        game.create_object_from_card(&card, alice, Zone::Library);
+    }
+
+    let spell_effects = saurons_ransom
+        .spell_effect
+        .as_ref()
+        .expect("Sauron's Ransom should have spell effects");
+    let mut dm = SauronsRansomDecisionMaker {
+        opponent: bob,
+        split_names: &["Ransom Alpha", "Ransom Beta"],
+        keep_opponent_pile,
+    };
+    let mut ctx = ExecutionContext::new_default(source_id, alice).with_decision_maker(&mut dm);
+
+    for effect in spell_effects {
+        execute_effect(&mut game, effect, &mut ctx)
+            .expect("Sauron's Ransom effect should resolve");
+    }
+
+    let alice_hand = game.player(alice).expect("alice exists").hand.clone();
+    let alice_graveyard = game.player(alice).expect("alice exists").graveyard.clone();
+    for expected in expected_hand_names {
+        assert!(
+            alice_hand.iter().any(|&id| game
+                .object(id)
+                .is_some_and(|object| object.name == *expected)),
+            "expected {expected} in Alice's hand"
+        );
+    }
+    for expected in expected_graveyard_names {
+        assert!(
+            alice_graveyard.iter().any(|&id| game
+                .object(id)
+                .is_some_and(|object| object.name == *expected)),
+            "expected {expected} in Alice's graveyard"
+        );
+    }
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .library
+            .iter()
+            .any(|&id| game
+                .object(id)
+                .is_some_and(|object| object.name == "Ransom Bottom")),
+        "the fifth library card should stay in the library"
+    );
+    assert_eq!(game.ring_temptations(alice), 1);
+    assert_eq!(game.current_ring_bearer(alice), Some(bearer_id));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_saurons_ransom_can_put_opponents_face_pile_into_hand() {
+    run_saurons_ransom_face_pile_resolution(
+        true,
+        &["Ransom Alpha", "Ransom Beta"],
+        &["Ransom Gamma", "Ransom Delta"],
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_saurons_ransom_can_put_the_other_face_pile_into_hand() {
+    run_saurons_ransom_face_pile_resolution(
+        false,
+        &["Ransom Gamma", "Ransom Delta"],
+        &["Ransom Alpha", "Ransom Beta"],
+    );
+}
+
 #[test]
 fn test_dash_grants_haste_and_returns_to_hand_at_next_end_step() {
     use crate::cards::CardDefinitionBuilder;

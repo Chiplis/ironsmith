@@ -1,5 +1,6 @@
 use super::super::grammar::primitives::TokenWordView;
 use super::super::lexer::{OwnedLexToken, split_lexed_sentences};
+use super::super::util::parse_value;
 use super::dispatch_entry::SentenceInput;
 use super::dispatch_inner::parse_effect_sentence_lexed;
 use crate::cards::builders::{
@@ -61,6 +62,27 @@ fn sentence_has_phrase(sentence_words: &[TokenWordView<'_>], phrase: &[&str]) ->
     sentence_words.iter().any(|words| words.has_phrase(phrase))
 }
 
+fn parse_top_library_count(tokens: &[OwnedLexToken]) -> Result<Value, CardTextError> {
+    let Some(top_idx) = tokens.iter().position(|token| token.is_word("top")) else {
+        return Err(CardTextError::ParseError(
+            "missing top-library pile count".to_string(),
+        ));
+    };
+    let (count, used) = parse_value(&tokens[top_idx + 1..]).ok_or_else(|| {
+        CardTextError::ParseError("missing top-library pile count".to_string())
+    })?;
+    let card_idx = top_idx + 1 + used;
+    if !tokens
+        .get(card_idx)
+        .is_some_and(|token| token.is_word("card") || token.is_word("cards"))
+    {
+        return Err(CardTextError::ParseError(
+            "missing top-library pile card noun".to_string(),
+        ));
+    }
+    Ok(count)
+}
+
 pub(super) fn try_parse_divvy_sentence_sequence(
     sentences: &[SentenceInput],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -68,6 +90,113 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         .iter()
         .map(|sentence| TokenWordView::new(sentence.lowered()))
         .collect::<Vec<_>>();
+
+    if sentences.len() >= 3
+        && matches_sentence(&sentence_words[0], &["choose", "an", "opponent"])
+        && sentence_words[1].starts_with(&["they", "look", "at", "the", "top"])
+        && sentence_words[1].has_phrase(&["of", "your", "library"])
+        && sentence_words[1].has_phrase(&[
+            "separate", "them", "into", "a", "face", "down", "pile", "and", "a", "face",
+            "up", "pile",
+        ])
+        && matches_sentence(
+            &sentence_words[2],
+            &[
+                "put",
+                "one",
+                "pile",
+                "into",
+                "your",
+                "hand",
+                "and",
+                "the",
+                "other",
+                "into",
+                "your",
+                "graveyard",
+            ],
+        )
+    {
+        let source_tag = TagKey::from("divvy_source");
+        let pile_tag = TagKey::from("divvy_pile");
+        let count = parse_top_library_count(sentences[1].lowered())?;
+        let mut effects = vec![
+            EffectAst::subject_verb_choose_player(
+                PlayerAst::Implicit,
+                PlayerFilter::Opponent,
+                TagKey::from("divvy_opponent"),
+                false,
+                0,
+            ),
+            EffectAst::subject_verb_look_at_top_cards(PlayerAst::You, count, source_tag.clone()),
+            EffectAst::ChooseObjectsAcrossZones {
+                filter: ObjectFilter::tagged(source_tag.clone()),
+                count: ChoiceCount::any_number(),
+                count_value: None,
+                player: PlayerAst::That,
+                tag: pile_tag.clone(),
+                zones: vec![Zone::Library],
+                search_mode: None,
+            },
+            EffectAst::UnlessAction {
+                player: PlayerAst::You,
+                effects: vec![
+                    EffectAst::subject_verb_move_to_zone(
+                        TargetAst::Tagged(pile_tag.clone(), None),
+                        Zone::Graveyard,
+                        false,
+                        ReturnControllerAst::Preserve,
+                        false,
+                        None,
+                    ),
+                    EffectAst::ForEachTagged {
+                        tag: source_tag.clone(),
+                        effects: vec![EffectAst::Conditional {
+                            predicate: membership_predicate_for_iterated_object(pile_tag.as_str()),
+                            if_true: Vec::new(),
+                            if_false: vec![EffectAst::subject_verb_move_to_zone(
+                                TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                                Zone::Hand,
+                                false,
+                                ReturnControllerAst::Preserve,
+                                false,
+                                None,
+                            )],
+                        }],
+                    },
+                ],
+                alternative: vec![
+                    EffectAst::subject_verb_move_to_zone(
+                        TargetAst::Tagged(pile_tag.clone(), None),
+                        Zone::Hand,
+                        false,
+                        ReturnControllerAst::Preserve,
+                        false,
+                        None,
+                    ),
+                    EffectAst::ForEachTagged {
+                        tag: source_tag.clone(),
+                        effects: vec![EffectAst::Conditional {
+                            predicate: membership_predicate_for_iterated_object(pile_tag.as_str()),
+                            if_true: Vec::new(),
+                            if_false: vec![EffectAst::subject_verb_move_to_zone(
+                                TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                                Zone::Graveyard,
+                                false,
+                                ReturnControllerAst::Preserve,
+                                false,
+                                None,
+                            )],
+                        }],
+                    },
+                ],
+            },
+        ];
+        for sentence in sentences.iter().skip(3) {
+            effects.extend(parse_effect_sentence_lexed(sentence.lowered())?);
+        }
+        return Ok(Some(effects));
+    }
 
     if sentences.len() == 1 {
         let words = TokenWordView::new(sentences[0].lowered());
