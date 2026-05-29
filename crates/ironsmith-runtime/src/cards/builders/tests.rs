@@ -36636,6 +36636,97 @@ fn aminatous_augury_runtime_exiles_top_eight_puts_land_and_grants_one_spell_per_
 }
 
 #[test]
+fn aminatous_augury_runtime_multitype_spell_consumes_each_of_its_nonland_types() {
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+
+    game.create_object_from_card(
+        &aminatou_augury_test_card(91_160, "Augury Bauble", vec![CardType::Artifact]),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &aminatou_augury_test_card(91_161, "Augury Relic", vec![CardType::Artifact]),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &aminatou_augury_test_card(
+            91_162,
+            "Augury Hybrid",
+            vec![CardType::Artifact, CardType::Creature],
+        ),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &aminatou_augury_test_card(91_163, "Augury Bear", vec![CardType::Creature]),
+        alice,
+        Zone::Library,
+    );
+    for idx in 0..4 {
+        game.create_object_from_card(
+            &aminatou_augury_test_card(
+                91_164 + idx,
+                &format!("Augury Filler {idx}"),
+                vec![CardType::Enchantment],
+            ),
+            alice,
+            Zone::Library,
+        );
+    }
+
+    execute_aminatous_augury(&mut game, alice);
+
+    let cast_bauble = aminatou_free_cast_action_named(&game, "Augury Bauble", alice)
+        .expect("Aminatou's Augury should offer the artifact spell before that type is used");
+    let mut state = crate::game_loop::PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+    crate::game_loop::apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &crate::game_loop::PriorityResponse::PriorityAction(cast_bauble),
+        &mut decision_maker,
+    )
+    .expect("Aminatou's Augury artifact free cast should not require mana");
+    crate::game_loop::resolve_stack_entry(&mut game).expect("resolve free-cast artifact");
+
+    assert!(
+        aminatou_free_cast_action_named(&game, "Augury Hybrid", alice).is_some(),
+        "Aminatou's Augury should still offer an artifact creature while its creature type is unused"
+    );
+    assert!(
+        aminatou_free_cast_action_named(&game, "Augury Relic", alice).is_none(),
+        "Aminatou's Augury should not offer another pure artifact after the artifact type is used"
+    );
+
+    let cast_hybrid = aminatou_free_cast_action_named(&game, "Augury Hybrid", alice)
+        .expect(
+            "Aminatou's Augury should allow the multitype spell through its unused creature type",
+        );
+    crate::game_loop::apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &crate::game_loop::PriorityResponse::PriorityAction(cast_hybrid),
+        &mut decision_maker,
+    )
+    .expect("Aminatou's Augury multitype free cast should not require mana");
+    crate::game_loop::resolve_stack_entry(&mut game).expect("resolve free-cast artifact creature");
+
+    assert!(
+        aminatou_free_cast_action_named(&game, "Augury Bear", alice).is_none(),
+        "Aminatou's Augury should mark all nonland types on a multitype spell as used"
+    );
+}
+
+#[test]
 fn aminatous_augury_runtime_no_land_branch_still_grants_nonland_card_type_casts() {
     let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
     let alice = PlayerId::from_index(0);
