@@ -155,6 +155,7 @@ pub enum StaticAbilityId {
     ChooseBasicLandTypeAsEnters,
     ChooseLandTypeAsEnters,
     ChooseNamedOptionAsEnters,
+    ChoosePowerToughnessAsEntersOrTurnsFaceUp,
     BoastTwiceEachTurn,
     FirstEquipCostAlternative,
     EquipAbilitiesAnyTime,
@@ -403,6 +404,7 @@ impl StaticAbilityId {
             | ChooseBasicLandTypeAsEnters
             | ChooseLandTypeAsEnters
             | ChooseNamedOptionAsEnters
+            | ChoosePowerToughnessAsEntersOrTurnsFaceUp
             | BoastTwiceEachTurn
             | FirstEquipCostAlternative
             | EquipAbilitiesAnyTime

@@ -1161,6 +1161,13 @@ impl StaticAbilityModelInterpreter {
                 options,
                 display,
             } => StaticAbility::choose_named_option_as_enters(options.clone(), display.clone()),
+            ironsmith_core::StaticAbilityPayload::ChoosePowerToughnessAsEntersOrTurnsFaceUp {
+                options,
+                display,
+            } => StaticAbility::choose_power_toughness_as_enters_or_turns_face_up(
+                options.clone(),
+                display.clone(),
+            ),
             ironsmith_core::StaticAbilityPayload::EnterAsCopyAsEnters { spec, display } => {
                 StaticAbility::with_enter_as_copy_as_enters(
                     super::EnterAsCopyAsEntersSpec {
@@ -1839,6 +1846,23 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::ChooseCreatureTypeAsEnters(_)
         )
         .then_some(super::ChooseCreatureTypeAsEntersSpec)
+    }
+
+    fn power_toughness_choice_as_enters_or_turns_face_up(
+        &self,
+    ) -> Option<super::ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec> {
+        if let Some(ability) = self.leaf_static_ability() {
+            return ability.power_toughness_choice_as_enters_or_turns_face_up();
+        }
+        match self.payload() {
+            ironsmith_core::StaticAbilityPayload::ChoosePowerToughnessAsEntersOrTurnsFaceUp {
+                options,
+                ..
+            } => Some(super::ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec {
+                options: options.clone(),
+            }),
+            _ => None,
+        }
     }
 
     fn pregame_action_kind(&self) -> Option<super::PregameActionKind> {

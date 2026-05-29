@@ -4540,6 +4540,11 @@ impl GameState {
                     }
                 }
             }
+            self.apply_power_toughness_choice_as_enters_or_turns_face_up(
+                new_id,
+                controller,
+                decision_maker,
+            );
         }
 
         // If this is an Aura entering from a non-stack zone, choose what to attach to
@@ -8568,6 +8573,58 @@ impl GameState {
         self.choice_store
             .chosen_named_options
             .insert(permanent_id, option);
+    }
+
+    pub(crate) fn apply_power_toughness_choice_as_enters_or_turns_face_up(
+        &mut self,
+        permanent_id: ObjectId,
+        controller: PlayerId,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) {
+        let abilities = self
+            .object(permanent_id)
+            .map(|object| object.abilities.clone())
+            .unwrap_or_default();
+        for ability in abilities {
+            let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+                continue;
+            };
+            let Some(spec) = static_ability.power_toughness_choice_as_enters_or_turns_face_up()
+            else {
+                continue;
+            };
+            if spec.options.is_empty() {
+                continue;
+            }
+            let display_options = spec
+                .options
+                .iter()
+                .enumerate()
+                .map(|(idx, (power, toughness))| {
+                    crate::decisions::spec::DisplayOption::new(
+                        idx,
+                        format!("{power}/{toughness}"),
+                    )
+                })
+                .collect::<Vec<_>>();
+            let choice_spec =
+                crate::decisions::specs::ChoiceSpec::single(permanent_id, display_options);
+            let mut chosen = crate::decisions::make_decision(
+                self,
+                decision_maker,
+                controller,
+                Some(permanent_id),
+                choice_spec,
+            );
+            if let Some(chosen_idx) = chosen.pop().filter(|idx| *idx < spec.options.len()) {
+                let (power, toughness) = spec.options[chosen_idx];
+                if let Some(object) = self.object_mut(permanent_id) {
+                    object.base_power = Some(crate::card::PtValue::Fixed(power));
+                    object.base_toughness = Some(crate::card::PtValue::Fixed(toughness));
+                    self.mark_continuous_state_dirty();
+                }
+            }
+        }
     }
 
     /// Get a chosen named option for a permanent, if any.

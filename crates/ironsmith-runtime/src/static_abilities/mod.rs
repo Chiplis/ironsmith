@@ -632,6 +632,13 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Returns info for "as this enters or is turned face up, choose a P/T" abilities.
+    fn power_toughness_choice_as_enters_or_turns_face_up(
+        &self,
+    ) -> Option<ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec> {
+        None
+    }
+
     /// Returns info for "you may have this enter as a copy ..." abilities.
     fn enter_as_copy_as_enters(&self) -> Option<&EnterAsCopyAsEntersSpec> {
         None
@@ -948,6 +955,12 @@ pub struct ChooseNamedOptionAsEntersSpec {
     pub options: Vec<String>,
 }
 
+/// Spec for "as this enters or is turned face up, choose a P/T" abilities.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec {
+    pub options: Vec<(i32, i32)>,
+}
+
 /// Spec for "you may have this enter as a copy ..." abilities.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnterAsCopyAsEntersSpec {
@@ -1061,6 +1074,12 @@ impl StaticAbility {
 
     pub fn named_option_choice_as_enters(&self) -> Option<ChooseNamedOptionAsEntersSpec> {
         self.0.named_option_choice_as_enters()
+    }
+
+    pub fn power_toughness_choice_as_enters_or_turns_face_up(
+        &self,
+    ) -> Option<ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec> {
+        self.0.power_toughness_choice_as_enters_or_turns_face_up()
     }
 
     pub fn enter_as_copy_as_enters(&self) -> Option<&EnterAsCopyAsEntersSpec> {
@@ -2540,6 +2559,15 @@ impl StaticAbility {
 
     pub fn choose_named_option_as_enters(options: Vec<String>, display: String) -> Self {
         Self::new(ChooseNamedOptionAsEnters::new(options, display))
+    }
+
+    pub fn choose_power_toughness_as_enters_or_turns_face_up(
+        options: Vec<(i32, i32)>,
+        display: String,
+    ) -> Self {
+        Self::new(ChoosePowerToughnessAsEntersOrTurnsFaceUp::new(
+            options, display,
+        ))
     }
 
     pub fn with_enter_as_copy_as_enters(spec: EnterAsCopyAsEntersSpec, display: String) -> Self {
