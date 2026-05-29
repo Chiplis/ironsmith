@@ -8277,6 +8277,104 @@ fn test_rageform_parses_and_renders_aura_become_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn runes_of_the_deus_strict_parse_and_compiled_text_conditions() {
+    let oracle = oracle_text_by_name()
+        .get("Runes of the Deus")
+        .expect("missing oracle text for Runes of the Deus")
+        .clone();
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Runes of the Deus")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(oracle)
+        .expect("Runes of the Deus should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("enchant creature"),
+        "expected Aura enchant restriction in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("enchanted creature gets +1/+1 and has double strike")
+            && rendered.contains("as long as enchanted creature is red"),
+        "expected red conditional double-strike grant in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("enchanted creature gets +1/+1 and has trample")
+            && rendered.contains("as long as enchanted creature is green"),
+        "expected green conditional trample grant in compiled text, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported parser line fallback"),
+        "Runes of the Deus should not rely on parser fallback markers: {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn runes_of_the_deus_runtime_applies_color_condition_branches() {
+    fn assert_runes_branch(
+        target_colors: crate::color::ColorSet,
+        expected_power: i32,
+        expected_toughness: i32,
+        has_double_strike: bool,
+        has_trample: bool,
+    ) {
+        let oracle = oracle_text_by_name()
+            .get("Runes of the Deus")
+            .expect("missing oracle text for Runes of the Deus")
+            .clone();
+        let runes = CardDefinitionBuilder::new(CardId::new(), "Runes of the Deus")
+            .card_types(vec![CardType::Enchantment])
+            .subtypes(vec![Subtype::Aura])
+            .parse_text(oracle)
+            .expect("Runes of the Deus should parse strictly");
+        let enchanted = CardDefinitionBuilder::new(CardId::new(), "Enchanted Test Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .color_indicator(target_colors)
+            .build();
+
+        let alice = PlayerId::from_index(0);
+        let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+        let creature_id = game.create_object_from_definition(&enchanted, alice, Zone::Battlefield);
+        let runes_id = game.create_object_from_definition(&runes, alice, Zone::Battlefield);
+        game.object_mut(runes_id)
+            .expect("Runes of the Deus object should exist")
+            .attached_to = Some(crate::object::AttachmentTarget::Object(creature_id));
+        game.object_mut(creature_id)
+            .expect("enchanted creature should exist")
+            .attachments
+            .push(runes_id);
+
+        assert_eq!(game.calculated_power(creature_id), Some(expected_power));
+        assert_eq!(game.calculated_toughness(creature_id), Some(expected_toughness));
+        assert_eq!(
+            game.object_has_static_ability_id(creature_id, StaticAbilityId::DoubleStrike),
+            has_double_strike
+        );
+        assert_eq!(
+            game.object_has_static_ability_id(creature_id, StaticAbilityId::Trample),
+            has_trample
+        );
+    }
+
+    assert_runes_branch(crate::color::ColorSet::RED, 3, 3, true, false);
+    assert_runes_branch(crate::color::ColorSet::GREEN, 3, 3, false, true);
+    assert_runes_branch(
+        crate::color::ColorSet::RED.union(crate::color::ColorSet::GREEN),
+        4,
+        4,
+        true,
+        true,
+    );
+    assert_runes_branch(crate::color::ColorSet::BLUE, 2, 2, false, false);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_manifest_dread_trigger_without_fallback_marker() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Manifest Dread Probe")
         .card_types(vec![CardType::Creature])
