@@ -6810,6 +6810,252 @@ fn test_parse_conspire_keyword_line_compiles_to_optional_cost() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn excavation_technique_parses_demonstrate_and_renders_keyword_text() {
+    let def = parse_oracle_card_definition("Excavation Technique");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Demonstrate"),
+        "expected Excavation Technique to render the demonstrate keyword, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Destroy target nonland permanent")
+            && rendered.contains("creates two Treasure tokens"),
+        "expected Excavation Technique spell text to remain intact, got {rendered}"
+    );
+    assert!(
+        !rendered.to_ascii_lowercase().contains("unsupported"),
+        "strict parser should not emit unsupported fallback text, got {rendered}"
+    );
+
+    let demonstrate = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered)
+                if ability.functional_zones == [Zone::Stack]
+                    && triggered.trigger.display() == "When you cast this spell" =>
+            {
+                Some(triggered)
+            }
+            _ => None,
+        })
+        .expect("Excavation Technique should compile demonstrate as a stack trigger");
+    let debug = format!("{:#?}", demonstrate.effects);
+    assert!(
+        debug.contains("MayEffect")
+            && debug.contains("CopySpellEffect")
+            && debug.contains("ChoosePlayerEffect")
+            && debug.contains("ChooseNewTargetsEffect")
+            && debug.contains("Opponent"),
+        "expected demonstrate trigger to copy for you and a chosen opponent with retarget choices, got {debug}"
+    );
+}
+
+#[test]
+fn excavation_technique_demonstrate_decline_creates_no_spell_copies() {
+    use crate::decision::DecisionMaker;
+    use crate::effects::{ExecutionContext, execute_effect};
+    use crate::game_state::Target;
+
+    #[derive(Default)]
+    struct DeclineDemonstrate;
+    impl DecisionMaker for DeclineDemonstrate {}
+
+    let (mut game, source, triggered) = setup_excavation_technique_demonstrate_runtime();
+    let mut dm = DeclineDemonstrate;
+    let mut ctx = ExecutionContext::new_default(source, PlayerId::from_index(0))
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(
+            game.stack
+                .iter()
+                .find(|entry| entry.object_id == source)
+                .and_then(|entry| entry.targets.first())
+                .and_then(|target| match target {
+                    Target::Object(id) => Some(*id),
+                    Target::Player(_) => None,
+                })
+                .expect("original spell should have a target"),
+        )])
+        .with_decision_maker(&mut dm);
+
+    for effect in &triggered.effects {
+        execute_effect(&mut game, effect, &mut ctx).expect("declining demonstrate should resolve");
+    }
+
+    assert_eq!(
+        stack_entries_named(&game, "Excavation Technique").len(),
+        1,
+        "declining demonstrate should leave only the original spell on the stack"
+    );
+    assert!(
+        game.stack.iter().all(|entry| entry.object_id == source),
+        "no copy stack entries should be created when demonstrate is declined"
+    );
+}
+
+fn setup_excavation_technique_demonstrate_runtime() -> (
+    crate::game_state::GameState,
+    ObjectId,
+    crate::ability::TriggeredAbility,
+) {
+    use crate::game_state::{StackEntry, Target};
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let original_target = crate::card::CardBuilder::new(CardId::from_raw(60_001), "Alice Relic")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let replacement_target =
+        crate::card::CardBuilder::new(CardId::from_raw(60_002), "Bob Replacement Relic")
+            .card_types(vec![CardType::Artifact])
+            .build();
+    let original_target = game.create_object_from_card(&original_target, alice, Zone::Battlefield);
+    game.create_object_from_card(&replacement_target, bob, Zone::Battlefield);
+
+    let def = CardDefinitionBuilder::new(CardId::from_raw(60_003), "Excavation Technique")
+        .card_types(vec![CardType::Sorcery])
+        .demonstrate()
+        .with_spell_effect(vec![Effect::destroy(ChooseSpec::target(ChooseSpec::Object(
+            ObjectFilter::nonland_permanent(),
+        )))])
+        .build();
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered.clone()),
+            _ => None,
+        })
+        .expect("demonstrate trigger should exist");
+
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut entry = StackEntry::new(source, alice);
+    entry.targets = vec![Target::Object(original_target)];
+    game.push_to_stack(entry);
+
+    (game, source, triggered)
+}
+
+fn stack_entries_named(
+    game: &crate::game_state::GameState,
+    name: &str,
+) -> Vec<crate::game_state::StackEntry> {
+    game.stack
+        .iter()
+        .filter(|entry| {
+            game.object(entry.object_id)
+                .is_some_and(|object| object.name == name)
+        })
+        .cloned()
+        .collect()
+}
+
+#[test]
+fn excavation_technique_demonstrate_creates_player_and_opponent_copies_with_retargets() {
+    use crate::decision::DecisionMaker;
+    use crate::decisions::context::{BooleanContext, SelectOptionsContext, TargetsContext};
+    use crate::effects::{ExecutionContext, execute_effect};
+    use crate::game_state::{GameState, Target};
+
+    struct AcceptDemonstrateAndRetarget {
+        replacement_target: ObjectId,
+        boolean_calls: usize,
+    }
+
+    impl DecisionMaker for AcceptDemonstrateAndRetarget {
+        fn decide_boolean(&mut self, _game: &GameState, _ctx: &BooleanContext) -> bool {
+            self.boolean_calls += 1;
+            true
+        }
+
+        fn decide_options(&mut self, _game: &GameState, ctx: &SelectOptionsContext) -> Vec<usize> {
+            ctx.options
+                .iter()
+                .filter(|option| option.legal)
+                .map(|option| option.index)
+                .take(ctx.min)
+                .collect()
+        }
+
+        fn decide_targets(&mut self, _game: &GameState, ctx: &TargetsContext) -> Vec<Target> {
+            assert_eq!(ctx.requirements.len(), 1, "expected one copied spell target choice");
+            assert!(
+                ctx.requirements[0]
+                    .legal_targets
+                    .contains(&Target::Object(self.replacement_target)),
+                "replacement target should be legal for the copied Excavation Technique"
+            );
+            vec![Target::Object(self.replacement_target)]
+        }
+    }
+
+    let (mut game, source, triggered) = setup_excavation_technique_demonstrate_runtime();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let replacement_target = game
+        .battlefield
+        .iter()
+        .copied()
+        .find(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Bob Replacement Relic")
+        })
+        .expect("replacement target should exist");
+    let original_target = game
+        .stack
+        .iter()
+        .find(|entry| entry.object_id == source)
+        .and_then(|entry| entry.targets.first().copied())
+        .expect("original spell should have a target");
+
+    let mut dm = AcceptDemonstrateAndRetarget {
+        replacement_target,
+        boolean_calls: 0,
+    };
+    let mut ctx = ExecutionContext::new_default(source, alice)
+        .with_targets(vec![match original_target {
+            Target::Object(id) => crate::effects::ResolvedTarget::Object(id),
+            Target::Player(id) => crate::effects::ResolvedTarget::Player(id),
+        }])
+        .with_decision_maker(&mut dm);
+
+    for effect in &triggered.effects {
+        execute_effect(&mut game, effect, &mut ctx).expect("demonstrate should resolve");
+    }
+
+    let entries = stack_entries_named(&game, "Excavation Technique");
+    assert_eq!(
+        entries.len(),
+        3,
+        "accepting demonstrate should leave the original plus two spell copies on the stack"
+    );
+
+    let alice_copies = entries
+        .iter()
+        .filter(|entry| entry.object_id != source && entry.controller == alice)
+        .collect::<Vec<_>>();
+    let bob_copies = entries
+        .iter()
+        .filter(|entry| entry.object_id != source && entry.controller == bob)
+        .collect::<Vec<_>>();
+    assert_eq!(alice_copies.len(), 1, "Alice should control one demonstrate copy");
+    assert_eq!(bob_copies.len(), 1, "chosen opponent should control one demonstrate copy");
+    assert_eq!(
+        alice_copies[0].targets,
+        vec![Target::Object(replacement_target)],
+        "Alice should be able to choose new targets for her demonstrate copy"
+    );
+    assert_eq!(
+        bob_copies[0].targets,
+        vec![Target::Object(replacement_target)],
+        "the chosen opponent should be able to choose new targets for their demonstrate copy"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_offspring_trigger_creates_one_one_copy_when_paid() {
     use crate::ability::AbilityKind;
     use crate::cost::OptionalCostsPaid;

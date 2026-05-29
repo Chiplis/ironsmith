@@ -32508,6 +32508,11 @@ pub(super) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
         return Some(storm);
     }
     if let AbilityKind::Triggered(triggered) = &ability.kind
+        && let Some(demonstrate) = describe_structural_demonstrate_keyword(triggered)
+    {
+        return Some(demonstrate);
+    }
+    if let AbilityKind::Triggered(triggered) = &ability.kind
         && let Some(soulbond) = describe_structural_soulbond_keyword(triggered)
     {
         return Some(soulbond);
@@ -34274,6 +34279,81 @@ fn describe_structural_storm_keyword(
         return None;
     }
     Some("Storm".to_string())
+}
+
+fn describe_structural_demonstrate_keyword(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<String> {
+    if triggered.intervening_if.is_some()
+        || !triggered.choices.is_empty()
+        || triggered
+            .trigger
+            .downcast_ref::<crate::triggers::YouCastThisSpellTrigger>()
+            .is_none()
+    {
+        return None;
+    }
+
+    let [effect] = triggered.effects.flattened_default_effects() else {
+        return None;
+    };
+    let may = effect.downcast_ref::<crate::effects::MayEffect>()?;
+    let [copy_you, choose_opponent, copy_opponent, retarget_you, retarget_opponent] =
+        may.effects.as_slice()
+    else {
+        return None;
+    };
+
+    let copy_you = copy_you.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let copy_you_spell = copy_you
+        .effect
+        .downcast_ref::<crate::effects::CopySpellEffect>()?;
+    if copy_you.id != crate::effect::EffectId(0)
+        || !matches!(copy_you_spell.target, ChooseSpec::Source)
+        || copy_you_spell.count != Value::Fixed(1)
+        || copy_you_spell.copier != PlayerFilter::You
+        || !copy_you_spell.removed_supertypes.is_empty()
+    {
+        return None;
+    }
+
+    let choose_opponent = choose_opponent.downcast_ref::<crate::effects::ChoosePlayerEffect>()?;
+    if choose_opponent.chooser != PlayerFilter::You || choose_opponent.filter != PlayerFilter::Opponent
+    {
+        return None;
+    }
+    let opponent = PlayerFilter::TaggedPlayer(choose_opponent.tag.clone());
+
+    let copy_opponent = copy_opponent.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let copy_opponent_spell = copy_opponent
+        .effect
+        .downcast_ref::<crate::effects::CopySpellEffect>()?;
+    if copy_opponent.id != crate::effect::EffectId(1)
+        || !matches!(copy_opponent_spell.target, ChooseSpec::Source)
+        || copy_opponent_spell.count != Value::Fixed(1)
+        || copy_opponent_spell.copier != opponent
+        || !copy_opponent_spell.removed_supertypes.is_empty()
+    {
+        return None;
+    }
+
+    let retarget_you = retarget_you.downcast_ref::<crate::effects::ChooseNewTargetsEffect>()?;
+    if retarget_you.from_effect != copy_you.id
+        || !retarget_you.may
+        || retarget_you.chooser.as_ref() != Some(&PlayerFilter::You)
+    {
+        return None;
+    }
+    let retarget_opponent =
+        retarget_opponent.downcast_ref::<crate::effects::ChooseNewTargetsEffect>()?;
+    if retarget_opponent.from_effect != copy_opponent.id
+        || !retarget_opponent.may
+        || retarget_opponent.chooser.as_ref() != Some(&opponent)
+    {
+        return None;
+    }
+
+    Some("Demonstrate".to_string())
 }
 
 fn describe_structural_soulbond_keyword(
