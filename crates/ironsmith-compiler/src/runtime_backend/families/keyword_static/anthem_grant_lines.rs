@@ -796,10 +796,8 @@ pub(crate) fn parse_granted_keyword_static_line(
 
     let mut keyword_tokens = tail_tokens.clone();
     let mut suffix_condition = None;
-    if let Some(idx) = anthem_find_word_sequence_index(
-        &crate::runtime_backend::token_word_refs(&tail_tokens),
-        &["as", "long", "as"],
-    ) {
+    let tail_words = crate::runtime_backend::token_word_refs(&tail_tokens);
+    if let Some(idx) = anthem_find_word_sequence_index(&tail_words, &["as", "long", "as"]) {
         if idx + 3 >= tail_tokens.len() {
             return Err(CardTextError::ParseError(format!(
                 "missing condition after trailing 'as long as' clause (clause: '{}')",
@@ -808,6 +806,17 @@ pub(crate) fn parse_granted_keyword_static_line(
         }
         keyword_tokens = trim_commas(&tail_tokens[..idx]);
         suffix_condition = Some(parse_static_condition_clause(&tail_tokens[idx + 3..])?);
+    } else if let Some(idx) = anthem_find_word_sequence_index(&tail_words, &["unless"]) {
+        if idx + 1 >= tail_tokens.len() {
+            return Err(CardTextError::ParseError(format!(
+                "missing condition after trailing 'unless' clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        keyword_tokens = trim_commas(&tail_tokens[..idx]);
+        suffix_condition = Some(crate::ConditionExpr::Not(Box::new(
+            parse_static_condition_clause(&tail_tokens[idx + 1..])?,
+        )));
     }
     if keyword_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
