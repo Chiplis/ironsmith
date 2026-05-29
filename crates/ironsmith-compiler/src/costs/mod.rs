@@ -58,6 +58,9 @@ fn is_payment_effect(effect: &crate::effect::Effect) -> bool {
         || effect
             .downcast_ref::<effects::ChooseCreatureTypeEffect>()
             .is_some()
+        || effect
+            .downcast_ref::<effects::GainLifeEffect>()
+            .is_some_and(gain_life_effect_is_payment)
         || effect.downcast_ref::<effects::BeholdEffect>().is_some()
         || effect
             .downcast_ref::<effects::RevealTaggedEffect>()
@@ -103,6 +106,47 @@ fn is_payment_effect(effect: &crate::effect::Effect) -> bool {
     }
 
     false
+}
+
+fn gain_life_effect_is_payment(effect: &crate::effects::GainLifeEffect) -> bool {
+    gain_life_recipient_is_non_payer(&effect.player)
+}
+
+fn gain_life_recipient_is_non_payer(spec: &crate::target::ChooseSpec) -> bool {
+    match spec {
+        crate::target::ChooseSpec::SurfaceHinted { spec, .. }
+        | crate::target::ChooseSpec::Target(spec)
+        | crate::target::ChooseSpec::WithCount(spec, _)
+        | crate::target::ChooseSpec::WithCountValue(spec, _, _) => {
+            gain_life_recipient_is_non_payer(spec)
+        }
+        crate::target::ChooseSpec::Player(filter)
+        | crate::target::ChooseSpec::EachPlayer(filter)
+        | crate::target::ChooseSpec::PlayerOrPlaneswalker(filter) => {
+            gain_life_player_filter_is_non_payer(filter)
+        }
+        crate::target::ChooseSpec::SpecificPlayer(_) | crate::target::ChooseSpec::Tagged(_) => {
+            false
+        }
+        crate::target::ChooseSpec::SourceController | crate::target::ChooseSpec::SourceOwner => {
+            false
+        }
+        _ => false,
+    }
+}
+
+fn gain_life_player_filter_is_non_payer(filter: &crate::target::PlayerFilter) -> bool {
+    match filter {
+        crate::target::PlayerFilter::Opponent | crate::target::PlayerFilter::NotYou => true,
+        crate::target::PlayerFilter::Target(inner) => {
+            gain_life_player_filter_is_non_payer(inner)
+        }
+        crate::target::PlayerFilter::Excluding { base, excluded } => {
+            matches!(excluded.as_ref(), crate::target::PlayerFilter::You)
+                || gain_life_player_filter_is_non_payer(base)
+        }
+        _ => false,
+    }
 }
 
 pub(crate) fn payment_effect_to_cost(effect: crate::effect::Effect) -> Result<Cost, String> {

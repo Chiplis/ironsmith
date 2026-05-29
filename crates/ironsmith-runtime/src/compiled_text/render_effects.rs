@@ -14048,6 +14048,32 @@ mod tests {
     }
 
     #[test]
+    fn wall_of_shards_cumulative_upkeep_renders_opponent_life_payment() {
+        let triggered = crate::ability::TriggeredAbility {
+            trigger: crate::triggers::Trigger::beginning_of_upkeep(PlayerFilter::You),
+            effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                Effect::put_counters_on_source(CounterType::Age, 1),
+                Effect::cumulative_upkeep(
+                    vec![Effect::gain_life_player(
+                        1,
+                        ChooseSpec::Player(PlayerFilter::Opponent),
+                    )],
+                    PlayerFilter::You,
+                    vec![Effect::sacrifice_source()],
+                ),
+            ]),
+            choices: Vec::new(),
+            intervening_if: None,
+            presentation_label: None,
+        };
+
+        assert_eq!(
+            describe_structural_cumulative_upkeep_keyword(&triggered),
+            Some("Cumulative upkeep—An opponent gains 1 life".to_string())
+        );
+    }
+
+    #[test]
     fn describe_false_only_conditional_prefers_unless_surface() {
         assert_eq!(
             describe_false_only_conditional(
@@ -33218,6 +33244,13 @@ fn cumulative_upkeep_payment_text(payment: &[Effect]) -> Option<String> {
             {
                 parts.push(format!("Pay {} life", describe_value(&lose_life.amount)));
             }
+        } else if let Some(gain_life) = effect.downcast_ref::<crate::effects::GainLifeEffect>() {
+            if cumulative_upkeep_gain_life_recipient_is_opponent(&gain_life.player) {
+                parts.push(format!(
+                    "An opponent gains {} life",
+                    describe_value(&gain_life.amount)
+                ));
+            }
         } else if let Some(put_counters) =
             effect.downcast_ref::<crate::effects::PutCountersEffect>()
         {
@@ -33236,6 +33269,21 @@ fn cumulative_upkeep_payment_text(payment: &[Effect]) -> Option<String> {
         None
     } else {
         Some(parts.join(" and "))
+    }
+}
+
+fn cumulative_upkeep_gain_life_recipient_is_opponent(spec: &ChooseSpec) -> bool {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. }
+        | ChooseSpec::Target(spec)
+        | ChooseSpec::WithCount(spec, _)
+        | ChooseSpec::WithCountValue(spec, _, _) => {
+            cumulative_upkeep_gain_life_recipient_is_opponent(spec)
+        }
+        ChooseSpec::Player(PlayerFilter::Opponent | PlayerFilter::NotYou)
+        | ChooseSpec::PlayerOrPlaneswalker(PlayerFilter::Opponent | PlayerFilter::NotYou)
+        | ChooseSpec::EachPlayer(PlayerFilter::Opponent | PlayerFilter::NotYou) => true,
+        _ => false,
     }
 }
 

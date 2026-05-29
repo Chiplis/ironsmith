@@ -138,6 +138,9 @@ fn payment_can_complete(
         .with_decision_maker(&mut simulated_dm);
 
     for _ in 0..count {
+        if !payment_effects_can_execute_as_cost(effects, &simulated_game, &simulated_ctx) {
+            return false;
+        }
         let Ok(outcome) = execute_sequence(&mut simulated_game, &mut simulated_ctx, effects) else {
             return false;
         };
@@ -146,6 +149,24 @@ fn payment_can_complete(
         }
     }
     true
+}
+
+fn payment_effects_can_execute_as_cost(
+    effects: &[Effect],
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> bool {
+    effects.iter().all(|effect| {
+        effect.0.as_cost_executable().is_none_or(|cost_effect| {
+            crate::effects::CostExecutableEffect::can_execute_as_cost(
+                cost_effect,
+                game,
+                ctx.source,
+                ctx.controller,
+            )
+            .is_ok()
+        })
+    })
 }
 
 fn execute_payment_atomically(
@@ -161,6 +182,10 @@ fn execute_payment_atomically(
     let mut execution_error = None;
 
     for _ in 0..count {
+        if !payment_effects_can_execute_as_cost(effects, game, ctx) {
+            failed_to_pay = true;
+            break;
+        }
         match execute_sequence(game, ctx, effects) {
             Ok(outcome) => {
                 let status = outcome.status;
@@ -377,6 +402,140 @@ mod tests {
 
         assert_eq!(game.player(alice).expect("alice").life, 18);
         assert!(game.battlefield.contains(&source));
+    }
+
+    #[test]
+    fn wall_of_shards_cumulative_upkeep_paid_gives_opponent_life_per_age_counter() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let wall = CardBuilder::new(CardId::new(), "Wall of Shards")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let source = game.create_object_from_card(&wall, alice, Zone::Battlefield);
+        let payment = Effect::new(crate::effects::GainLifeEffect::new(
+            1,
+            crate::target::ChooseSpec::Player(crate::target::PlayerFilter::Opponent),
+        ));
+        let cost_effect = payment
+            .downcast_ref::<crate::effects::GainLifeEffect>()
+            .expect("Wall of Shards payment should be a gain-life effect");
+        crate::effects::CostExecutableEffect::can_execute_as_cost(
+            cost_effect,
+            &game,
+            source,
+            alice,
+        )
+        .expect("opponent life gain should be executable as a cumulative upkeep cost");
+        let effects = vec![
+            Effect::put_counters_on_source(CounterType::Age, 1),
+            Effect::cumulative_upkeep(
+                vec![payment],
+                crate::target::PlayerFilter::You,
+                vec![Effect::sacrifice_source()],
+            ),
+        ];
+        let mut dm = ScriptedBooleanDecisionMaker::new(vec![true, true]);
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+
+        for effect in &effects {
+            execute_effect(&mut game, effect, &mut ctx).expect("first upkeep should resolve");
+        }
+        for effect in &effects {
+            execute_effect(&mut game, effect, &mut ctx).expect("second upkeep should resolve");
+        }
+
+        let source_obj = game.object(source).expect("Wall of Shards should remain paid");
+        assert_eq!(
+            source_obj.counters.get(&CounterType::Age).copied().unwrap_or(0),
+            2,
+            "two upkeeps should leave two age counters"
+        );
+        assert_eq!(
+            game.player(bob).expect("bob").life,
+            23,
+            "Wall of Shards should give an opponent one life per age counter paid"
+        );
+        assert!(game.battlefield.contains(&source));
+    }
+
+    #[test]
+    fn wall_of_shards_cumulative_upkeep_declined_sacrifices_without_life_gain() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let wall = CardBuilder::new(CardId::new(), "Wall of Shards")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let source = game.create_object_from_card(&wall, alice, Zone::Battlefield);
+        let effects = vec![
+            Effect::put_counters_on_source(CounterType::Age, 1),
+            Effect::cumulative_upkeep(
+                vec![Effect::new(crate::effects::GainLifeEffect::new(
+                    1,
+                    crate::target::ChooseSpec::Player(crate::target::PlayerFilter::Opponent),
+                ))],
+                crate::target::PlayerFilter::You,
+                vec![Effect::sacrifice_source()],
+            ),
+        ];
+        let mut dm = BooleanDecisionMaker { response: false };
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+
+        for effect in &effects {
+            execute_effect(&mut game, effect, &mut ctx)
+                .expect("declined Wall of Shards upkeep should resolve");
+        }
+
+        assert_eq!(
+            game.player(bob).expect("bob").life,
+            20,
+            "declining the upkeep should not grant the opponent life"
+        );
+        assert!(
+            !game.battlefield.contains(&source),
+            "declining cumulative upkeep should sacrifice Wall of Shards"
+        );
+    }
+
+    #[test]
+    fn wall_of_shards_cumulative_upkeep_sacrifices_when_opponent_cant_gain_life() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.effect_store.cant_effects.add_cant_gain_life(bob);
+        let wall = CardBuilder::new(CardId::new(), "Wall of Shards")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let source = game.create_object_from_card(&wall, alice, Zone::Battlefield);
+        let effects = vec![
+            Effect::put_counters_on_source(CounterType::Age, 1),
+            Effect::cumulative_upkeep(
+                vec![Effect::new(crate::effects::GainLifeEffect::new(
+                    1,
+                    crate::target::ChooseSpec::Player(crate::target::PlayerFilter::Opponent),
+                ))],
+                crate::target::PlayerFilter::You,
+                vec![Effect::sacrifice_source()],
+            ),
+        ];
+        let mut dm = BooleanDecisionMaker { response: true };
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+
+        for effect in &effects {
+            execute_effect(&mut game, effect, &mut ctx)
+                .expect("unpayable Wall of Shards upkeep should resolve");
+        }
+
+        assert_eq!(
+            game.player(bob).expect("bob").life,
+            20,
+            "an opponent who can't gain life should not satisfy the upkeep cost"
+        );
+        assert!(
+            !game.battlefield.contains(&source),
+            "Wall of Shards should be sacrificed when its life-gain cost can't be paid"
+        );
     }
 
     #[test]

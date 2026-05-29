@@ -1,7 +1,7 @@
 //! Gain life effect implementation.
 
 use crate::effect::EffectOutcome;
-use crate::effects::EffectExecutor;
+use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::LifeGainEvent;
@@ -34,6 +34,10 @@ pub use ironsmith_core::GainLifeEffect;
 /// };
 /// ```
 impl EffectExecutor for GainLifeEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
     fn execute(
         &self,
         game: &mut GameState,
@@ -75,6 +79,31 @@ impl EffectExecutor for GainLifeEffect {
 
     fn target_description(&self) -> &'static str {
         "player to gain life"
+    }
+}
+
+impl CostExecutableEffect for GainLifeEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+    ) -> Result<(), CostValidationError> {
+        let ctx = ExecutionContext::new_default(source, controller);
+        let player = resolve_player_from_spec(game, &self.player, &ctx).map_err(|err| {
+            CostValidationError::Other(format!("unable to choose life-gain recipient: {err:?}"))
+        })?;
+        if player == controller {
+            return Err(CostValidationError::Other(
+                "life-gain costs must benefit another player".to_string(),
+            ));
+        }
+        if !game.can_gain_life(player) {
+            return Err(CostValidationError::Other(
+                "chosen player can't gain life".to_string(),
+            ));
+        }
+        Ok(())
     }
 }
 

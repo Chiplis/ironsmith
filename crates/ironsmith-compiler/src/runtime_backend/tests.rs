@@ -5260,6 +5260,35 @@ fn flashback_keyword_accepts_non_mana_total_cost() {
 }
 
 #[test]
+fn wall_of_shards_strict_parse_accepts_opponent_life_cumulative_upkeep_cost() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(23), "Wall of Shards")
+        .mana_cost(crate::mana::ManaCost::from_pips(vec![
+            vec![crate::mana::ManaSymbol::Generic(1)],
+            vec![crate::mana::ManaSymbol::White],
+        ]))
+        .supertypes(vec![Supertype::Snow])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Wall])
+        .power_toughness(crate::card::PowerToughness::fixed(1, 8))
+        .parse_text("Defender, flying\nCumulative upkeep—An opponent gains 1 life. (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)")
+        .expect("Wall of Shards should parse strictly");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("CumulativeUpkeepEffect")
+            && debug.contains("GainLifeEffect")
+            && debug.contains("Opponent")
+            && debug.contains("Defender")
+            && debug.contains("Flying"),
+        "expected Wall of Shards to lower into defender, flying, and opponent-life cumulative upkeep, got {debug}"
+    );
+    assert!(
+        !debug.contains("KeywordFallbackText") && !debug.contains("RuleFallbackText"),
+        "Wall of Shards should not compile through fallback text: {debug}"
+    );
+}
+
+#[test]
 fn jump_start_keyword_line_is_classified_as_alternative_cast() {
     let tokens = lex_line(
         "Jump-start (You may cast this card from your graveyard by discarding a card in addition to paying its other costs. Then exile this card.)",
