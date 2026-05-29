@@ -4684,6 +4684,7 @@ fn describe_comparison(cmp: &Comparison) -> String {
     fn describe_value_expr(value: &crate::effect::Value) -> String {
         use crate::effect::Value;
         match value {
+            Value::SurfaceHinted { value, .. } => describe_value_expr(value),
             Value::Fixed(v) => v.to_string(),
             Value::X => "X".to_string(),
             Value::Count(filter) => format!("the number of {}", filter.description()),

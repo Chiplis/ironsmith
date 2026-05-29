@@ -36066,6 +36066,27 @@ fn guardian_of_the_ages_strict_parser_and_text_regression() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn valiant_endeavor_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition("Valiant Endeavor");
+
+    let rendered = canonical_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Roll two d6 and choose one result"),
+        "Valiant Endeavor should render the dice-choice clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("that result"),
+        "Valiant Endeavor should render the destroy threshold as the chosen result, got {rendered}"
+    );
+    assert!(
+        rendered.contains("a number of 2/2 white Knight creature tokens")
+            && rendered.contains("equal to the other result"),
+        "Valiant Endeavor should render the token count as the other result, got {rendered}"
+    );
+}
+
 #[test]
 fn calamity_bearer_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("Calamity Bearer");
