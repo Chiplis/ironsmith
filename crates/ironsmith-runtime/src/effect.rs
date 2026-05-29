@@ -987,6 +987,28 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, player } => {
+                let defenders = game
+                    .players
+                    .iter()
+                    .filter(|player_state| {
+                        player_state.is_in_game()
+                            && player_matches_restriction_filter(player_state.id, player)
+                    })
+                    .map(|player_state| player_state.id)
+                    .collect::<Vec<_>>();
+                if defenders.is_empty() {
+                    return;
+                }
+
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && attackers.matches(obj, &ctx, game)
+                    {
+                        tracker.add_cant_attack_defenders(obj_id, defenders.iter().copied());
+                    }
+                }
+            }
             Restriction::AttackAlone(filter) => {
                 for &obj_id in &game.battlefield {
                     if let Some(obj) = game.object(obj_id)

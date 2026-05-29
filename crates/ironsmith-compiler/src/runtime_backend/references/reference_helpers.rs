@@ -444,6 +444,12 @@ pub(crate) fn resolve_restriction_it_tag(
             Restriction::BecomeMonarch(resolve_contextual_player_filter(player, refs)?)
         }
         Restriction::Attack(filter) => Restriction::attack(resolve_it_tag(filter, refs)?),
+        Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, player } => {
+            Restriction::attack_player_or_planeswalkers_controlled_by(
+                resolve_it_tag(attackers, refs)?,
+                resolve_contextual_player_filter(player, refs)?,
+            )
+        }
         Restriction::Block(filter) => Restriction::block(resolve_it_tag(filter, refs)?),
         Restriction::BlockSpecificAttacker { blockers, attacker } => {
             Restriction::block_specific_attacker(

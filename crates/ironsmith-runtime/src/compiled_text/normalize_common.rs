@@ -9703,6 +9703,35 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         crate::effect::Restriction::Attack(filter) => {
             format!("{} can't attack", filter.description())
         }
+        crate::effect::Restriction::AttackPlayerOrPlaneswalkersControlledBy {
+            attackers,
+            player,
+        } => {
+            let attacker_text = if attackers
+                == &crate::target::ObjectFilter::creature()
+                    .controlled_by(PlayerFilter::IteratedPlayer)
+            {
+                "creatures that player controls".to_string()
+            } else {
+                attackers.description()
+            };
+            let planeswalker_controller = match player {
+                PlayerFilter::You => "you control".to_string(),
+                PlayerFilter::Opponent => "your opponents control".to_string(),
+                PlayerFilter::Any => "players control".to_string(),
+                PlayerFilter::IteratedPlayer => "that player controls".to_string(),
+                PlayerFilter::Target(inner) if inner.as_ref() == &PlayerFilter::You => {
+                    "you control".to_string()
+                }
+                _ => format!("{} controls", describe_player_filter(player)),
+            };
+            format!(
+                "{} can't attack {} or planeswalkers {}",
+                attacker_text,
+                describe_player_filter(player),
+                planeswalker_controller
+            )
+        }
         crate::effect::Restriction::AttackAlone(filter) => {
             format!("{} can't attack alone", filter.description())
         }

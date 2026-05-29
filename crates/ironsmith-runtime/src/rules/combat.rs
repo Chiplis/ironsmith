@@ -572,6 +572,10 @@ pub(crate) fn can_attack_defending_player_with_view(
         return false;
     }
 
+    if !game.can_attack_defending_player(creature.id, defending_player) {
+        return false;
+    }
+
     let abilities = view
         .calculated_characteristics(creature.id)
         .map(|c| c.static_abilities)

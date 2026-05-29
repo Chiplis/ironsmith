@@ -1133,6 +1133,13 @@ pub(crate) fn restriction_references_tag(
         return blockers_reference || attacker_reference;
     }
 
+    if let Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, .. } = restriction {
+        return attackers
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.tag.as_str() == tag);
+    }
+
     false
 }
 

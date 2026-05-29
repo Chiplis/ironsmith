@@ -514,6 +514,10 @@ pub struct CantEffectTracker {
     /// Example: Pacifism, Propaganda (if unpaid), Maze of Ith
     pub cant_attack: HashSet<ObjectId>,
 
+    /// Creature -> defending players this creature can't attack or attack planeswalkers of.
+    /// Example: "Creatures that player controls can't attack you or planeswalkers you control."
+    pub cant_attack_defenders: HashMap<ObjectId, HashSet<PlayerId>>,
+
     /// Creatures that can't attack alone.
     /// Example: "This creature can't attack alone."
     pub cant_attack_alone: HashSet<ObjectId>,
@@ -809,6 +813,12 @@ impl CantEffectTracker {
         self.cant_gain_life.extend(other.cant_gain_life);
         self.cant_search.extend(other.cant_search);
         self.cant_attack.extend(other.cant_attack);
+        for (creature, defenders) in other.cant_attack_defenders {
+            self.cant_attack_defenders
+                .entry(creature)
+                .or_default()
+                .extend(defenders);
+        }
         self.cant_attack_alone.extend(other.cant_attack_alone);
         self.cant_block.extend(other.cant_block);
         for (blocker, attackers) in other.cant_block_specific_attackers {
@@ -879,6 +889,7 @@ impl CantEffectTracker {
         self.cant_gain_life.clear();
         self.cant_search.clear();
         self.cant_attack.clear();
+        self.cant_attack_defenders.clear();
         self.cant_attack_alone.clear();
         self.cant_block.clear();
         self.cant_block_specific_attackers.clear();
@@ -938,6 +949,19 @@ impl CantEffectTracker {
     /// Check if a creature can attack.
     pub fn can_attack(&self, creature: ObjectId) -> bool {
         !self.cant_attack.contains(&creature)
+    }
+
+    /// Check if a creature can attack a defending player or planeswalker they control.
+    pub fn can_attack_defending_player(
+        &self,
+        creature: ObjectId,
+        defending_player: PlayerId,
+    ) -> bool {
+        self.can_attack(creature)
+            && self
+                .cant_attack_defenders
+                .get(&creature)
+                .is_none_or(|defenders| !defenders.contains(&defending_player))
     }
 
     /// Check if a creature can attack alone (as the only attacker).
@@ -1237,6 +1261,17 @@ impl CantEffectTracker {
     /// Add a creature to the "can't attack" set.
     pub fn add_cant_attack(&mut self, creature: ObjectId) {
         self.cant_attack.insert(creature);
+    }
+
+    /// Add defender-specific attack prohibitions for a creature.
+    pub fn add_cant_attack_defenders<I>(&mut self, creature: ObjectId, defenders: I)
+    where
+        I: IntoIterator<Item = PlayerId>,
+    {
+        self.cant_attack_defenders
+            .entry(creature)
+            .or_default()
+            .extend(defenders);
     }
 
     /// Add a creature to the "can't attack alone" set.
@@ -3027,6 +3062,17 @@ impl GameState {
     /// Can the creature attack?
     pub fn can_attack(&self, creature: ObjectId) -> bool {
         self.effect_store.cant_effects.can_attack(creature)
+    }
+
+    /// Can the creature attack this player or planeswalkers they control?
+    pub fn can_attack_defending_player(
+        &self,
+        creature: ObjectId,
+        defending_player: PlayerId,
+    ) -> bool {
+        self.effect_store
+            .cant_effects
+            .can_attack_defending_player(creature, defending_player)
     }
 
     /// Can the creature attack as the only attacker?

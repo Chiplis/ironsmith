@@ -3024,6 +3024,9 @@ fn bind_unresolved_it_in_restriction(
             bind_unresolved_it_in_filter(blockers, seed_tag)
                 + bind_unresolved_it_in_filter(attacker, seed_tag)
         }
+        Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, .. } => {
+            bind_unresolved_it_in_filter(attackers, seed_tag)
+        }
         _ => 0,
     }
 }

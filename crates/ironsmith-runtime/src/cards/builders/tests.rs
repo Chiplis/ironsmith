@@ -18862,6 +18862,58 @@ fn parse_fixed_attack_tax_line() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_orzhov_advokist_strictly_and_renders_attack_defender_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Orzhov Advokist")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Advisor])
+        .power_toughness(PowerToughness::fixed(1, 4))
+        .parse_text(
+            "At the beginning of your upkeep, each player may put two +1/+1 counters on a creature they control. If a player does, creatures that player controls can't attack you or planeswalkers you control until your next turn.",
+        )
+        .expect("Orzhov Advokist should parse strictly");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        !ids.contains(&StaticAbilityId::RuleFallbackText)
+            && !ids.contains(&StaticAbilityId::UnsupportedParserLine),
+        "Orzhov Advokist should not emit parser fallback placeholders, got {ids:?}"
+    );
+    assert!(
+        def.abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, AbilityKind::Triggered(_))),
+        "Orzhov Advokist should compile to a triggered upkeep ability"
+    );
+
+    let compiled = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        compiled.contains("if a player does"),
+        "expected compiled text to preserve the per-player conditional, got {compiled}"
+    );
+    assert!(
+        compiled.contains(
+            "creatures that player controls can't attack you or planeswalkers you control until your next turn"
+        ),
+        "expected compiled text to include the attack-defender restriction, got {compiled}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_morph_keyword_line() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Morph Variant")
         .card_types(vec![CardType::Creature])
