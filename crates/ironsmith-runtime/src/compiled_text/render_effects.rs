@@ -2380,7 +2380,7 @@ fn describe_may_choose_then_affect_not_chosen_this_way(effects: &[Effect]) -> Op
         return None;
     };
     let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
-    if may.decider.is_some() {
+    if !matches!(may.decider, None | Some(PlayerFilter::You)) {
         return None;
     }
     let [choose_effect] = may.effects.as_slice() else {

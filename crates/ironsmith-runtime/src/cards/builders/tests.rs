@@ -36032,12 +36032,12 @@ fn thunderwave_compiled_text_preserves_choice_and_exact_twenty_branch() {
 
     assert_eq!(
         rendered,
-        vec![
-            "Roll a d20.",
-            "1—9 | Thunderwave deals 3 damage to each creature.",
-            "10—19 | You may choose a creature. Thunderwave deals 3 damage to each creature not chosen this way.",
+        vec![concat!(
+            "Roll a d20.\n",
+            "1—9 | Thunderwave deals 3 damage to each creature.\n",
+            "10—19 | You may choose a creature. Thunderwave deals 3 damage to each creature not chosen this way.\n",
             "20 | Thunderwave deals 6 damage to each creature your opponents control.",
-        ]
+        )]
     );
 }
 
