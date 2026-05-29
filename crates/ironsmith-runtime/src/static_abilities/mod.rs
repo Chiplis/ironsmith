@@ -2474,6 +2474,10 @@ impl StaticAbility {
         Self::new(NoMaximumHandSize)
     }
 
+    pub fn set_maximum_hand_size(player: crate::target::PlayerFilter, amount: u32) -> Self {
+        Self::new(SetMaximumHandSize::new(player, amount))
+    }
+
     pub fn reduce_maximum_hand_size(player: crate::target::PlayerFilter, amount: u32) -> Self {
         Self::new(ReduceMaximumHandSize::new(player, amount))
     }

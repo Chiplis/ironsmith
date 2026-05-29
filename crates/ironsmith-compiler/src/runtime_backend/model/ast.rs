@@ -518,6 +518,7 @@ pub(crate) enum PredicateAst {
         counter_type: CounterType,
         count: u32,
     },
+    SourceHasCountersAtLeast(u32),
     SourceHasAttachmentsMatching {
         filter: ObjectFilter,
         comparison: crate::effect::Comparison,
@@ -585,6 +586,7 @@ impl PredicateAst {
             | PredicateAst::SourceMatches(_)
             | PredicateAst::SourceHasNoCounter(_)
             | PredicateAst::SourceHasCounterAtLeast { .. }
+            | PredicateAst::SourceHasCountersAtLeast(_)
             | PredicateAst::SourceHasAttachmentsMatching { .. }
             | PredicateAst::SourcePowerAtLeast(_)
             | PredicateAst::SourceAttackedThisTurn

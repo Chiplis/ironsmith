@@ -738,6 +738,7 @@ pub enum Condition {
         counter_type: CounterType,
         count: u32,
     },
+    SourceHasCountersAtLeast(u32),
     SourcePowerAtLeast(u32),
     SourceDealtCombatDamageToPlayerThisTurn,
     ManaSpentToCastThisSpellAtLeast {

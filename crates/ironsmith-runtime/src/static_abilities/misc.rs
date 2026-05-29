@@ -3541,6 +3541,45 @@ impl StaticAbilityKind for NoMaximumHandSize {
     }
 }
 
+/// "Your/Each opponent's maximum hand size is N."
+#[derive(Debug, Clone, PartialEq)]
+pub struct SetMaximumHandSize {
+    pub player: PlayerFilter,
+    pub amount: u32,
+}
+
+impl SetMaximumHandSize {
+    pub fn new(player: PlayerFilter, amount: u32) -> Self {
+        Self { player, amount }
+    }
+}
+
+impl StaticAbilityKind for SetMaximumHandSize {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::SetMaximumHandSize
+    }
+
+    fn display(&self) -> String {
+        let amount = number_word_u32(self.amount).unwrap_or_else(|| self.amount.to_string());
+        match self.player {
+            PlayerFilter::You => format!("Your maximum hand size is {amount}."),
+            PlayerFilter::Opponent => {
+                format!("Each opponent's maximum hand size is {amount}.")
+            }
+            PlayerFilter::Any => format!("Each player's maximum hand size is {amount}."),
+            _ => format!("Maximum hand size is {amount}."),
+        }
+    }
+
+    fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
+        for player_id in player_ids_for_filter(game, self.player.clone(), controller) {
+            if let Some(player) = game.player_mut(player_id) {
+                player.max_hand_size = self.amount as i32;
+            }
+        }
+    }
+}
+
 /// "Your/Each opponent's maximum hand size is reduced by N."
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReduceMaximumHandSize {
@@ -5047,6 +5086,27 @@ mod tests {
                 .max_hand_size,
             i32::MAX
         );
+    }
+
+    #[test]
+    fn test_set_maximum_hand_size_for_you() {
+        let ability = SetMaximumHandSize::new(PlayerFilter::You, 20);
+        assert_eq!(ability.id(), StaticAbilityId::SetMaximumHandSize);
+        assert_eq!(ability.display(), "Your maximum hand size is twenty.");
+
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = ObjectId::from_raw(43);
+        ability.apply_restrictions(&mut game, source, alice);
+
+        assert_eq!(
+            game.player(alice)
+                .expect("alice should exist")
+                .max_hand_size,
+            20
+        );
+        assert_eq!(game.player(bob).expect("bob should exist").max_hand_size, 7);
     }
 
     #[test]

@@ -402,6 +402,29 @@ fn parse_repeated_if_or_predicate(
     Ok(Some(PredicateAst::Or(Box::new(left), Box::new(right))))
 }
 
+fn parse_or_predicate(filtered: &[&str]) -> Result<Option<PredicateAst>, CardTextError> {
+    let Some(or_idx) = filtered.iter().enumerate().rev().find_map(|(idx, word)| {
+        if *word != "or" || idx == 0 || idx + 1 >= filtered.len() {
+            return None;
+        }
+        if matches!(
+            filtered.get(idx + 1).copied(),
+            Some("more" | "fewer" | "less" | "greater" | "equal")
+        ) {
+            return None;
+        }
+        Some(idx)
+    }) else {
+        return Ok(None);
+    };
+
+    let left_tokens = predicate_tokens_from_words(&filtered[..or_idx]);
+    let right_tokens = predicate_tokens_from_words(&filtered[or_idx + 1..]);
+    let left = parse_predicate(&left_tokens)?;
+    let right = parse_predicate(&right_tokens)?;
+    Ok(Some(PredicateAst::Or(Box::new(left), Box::new(right))))
+}
+
 fn player_filter_for_turn_value(player: PlayerAst) -> Option<PlayerFilter> {
     match player {
         PlayerAst::You | PlayerAst::Implicit => Some(PlayerFilter::You),
@@ -693,6 +716,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some(predicate) = parse_repeated_if_or_predicate(&filtered)? {
+        return Ok(predicate);
+    }
+
+    if let Some(predicate) = parse_or_predicate(&filtered)? {
         return Ok(predicate);
     }
 
@@ -1431,13 +1458,19 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             }) && rest_words.len() >= 4
                 && rest_words[0] == "or"
                 && rest_words[1] == "more"
-                && counter_idx > 2
-                && let Some(counter_type) = parse_counter_type_from_tokens(&rest[2..=counter_idx])
             {
-                return Ok(PredicateAst::SourceHasCounterAtLeast {
-                    counter_type,
-                    count,
-                });
+                if counter_idx == 2 {
+                    return Ok(PredicateAst::SourceHasCountersAtLeast(count));
+                }
+                if counter_idx > 2
+                    && let Some(counter_type) =
+                        parse_counter_type_from_tokens(&rest[2..=counter_idx])
+                {
+                    return Ok(PredicateAst::SourceHasCounterAtLeast {
+                        counter_type,
+                        count,
+                    });
+                }
             }
         }
     }
