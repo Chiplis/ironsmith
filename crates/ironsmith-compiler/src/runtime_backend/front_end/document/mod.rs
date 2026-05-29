@@ -2718,7 +2718,7 @@ fn try_parse_labeled_line_dispatch(
         }
     }
 
-    if is_named_label && let Some(keyword_line) = parse_keyword_line_cst(&body_line)? {
+    if !preserve_as_choice_label && let Some(keyword_line) = parse_keyword_line_cst(&body_line)? {
         return Ok(Some(LineDispatchResult::single(
             RewriteLineCst::Keyword(keyword_line),
             idx + 1,

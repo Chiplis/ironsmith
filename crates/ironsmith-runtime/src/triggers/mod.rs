@@ -105,6 +105,7 @@ pub(crate) fn describe_player_filter_subject(filter: &PlayerFilter) -> String {
         | PlayerFilter::MostCardsInHand
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
         | PlayerFilter::HasMoreLifeThanYou { .. }
+        | PlayerFilter::LostLifeThisTurn { .. }
         | PlayerFilter::MaxSpeed { .. }
         | PlayerFilter::CastCardTypeThisTurn(_)
         | PlayerFilter::ChosenPlayer
@@ -144,6 +145,7 @@ pub(crate) fn describe_player_filter_possessive(filter: &PlayerFilter) -> String
         | PlayerFilter::MostCardsInHand
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
         | PlayerFilter::HasMoreLifeThanYou { .. }
+        | PlayerFilter::LostLifeThisTurn { .. }
         | PlayerFilter::MaxSpeed { .. }
         | PlayerFilter::CastCardTypeThisTurn(_)
         | PlayerFilter::ChosenPlayer

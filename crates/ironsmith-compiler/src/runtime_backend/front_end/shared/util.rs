@@ -461,6 +461,22 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
     }
 
     match &words[idx..filter_end] {
+        ["player" | "players", "who", "lost", "life", "this", "turn"] => {
+            return Some((
+                Value::CountPlayers(PlayerFilter::LostLifeThisTurn {
+                    base: Box::new(PlayerFilter::Any),
+                }),
+                filter_end,
+            ));
+        }
+        ["opponent" | "opponents", "who", "lost", "life", "this", "turn"] => {
+            return Some((
+                Value::CountPlayers(PlayerFilter::LostLifeThisTurn {
+                    base: Box::new(PlayerFilter::Opponent),
+                }),
+                filter_end,
+            ));
+        }
         ["time", "it", "regenerated", "this", "turn"]
         | ["times", "it", "regenerated", "this", "turn"] => {
             return Some((Value::SourceRegeneratedThisTurnCount, filter_end));

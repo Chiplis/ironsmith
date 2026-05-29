@@ -60,6 +60,12 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
                 strip_leading_article(&describe_player_filter(base))
             )
         }
+        PlayerFilter::LostLifeThisTurn { base } => {
+            format!(
+                "{} who lost life this turn",
+                strip_leading_article(&describe_player_filter(base))
+            )
+        }
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,
@@ -7681,6 +7687,16 @@ pub(crate) fn describe_value(value: &Value) -> String {
             PlayerFilter::Opponent => "the number of opponents".to_string(),
             PlayerFilter::NotYou => "the number of players other than you".to_string(),
             PlayerFilter::You => "the number of you".to_string(),
+            PlayerFilter::LostLifeThisTurn { base } => match base.as_ref() {
+                PlayerFilter::Any => "the number of players who lost life this turn".to_string(),
+                PlayerFilter::Opponent => {
+                    "the number of opponents who lost life this turn".to_string()
+                }
+                _ => format!(
+                    "the number of {}",
+                    pluralize_noun_phrase(&describe_player_filter(filter))
+                ),
+            },
             _ => format!("the number of {}", describe_player_filter(filter)),
         },
         Value::PlayersWhoControlMoreThanYou(filter) => {

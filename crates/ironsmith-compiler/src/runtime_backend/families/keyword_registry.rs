@@ -388,11 +388,31 @@ pub(super) fn lower_equip(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
-    Ok(LineAst::Ability(require_keyword_parse(
+    let mut parsed = require_keyword_parse(
         line,
         "equip",
         parse_equip_line_lexed(tokens)?,
-    )?))
+    )?;
+    if let Some(label) = labeled_keyword_presentation_label(line.info.raw_line.as_str(), "equip")
+        && let crate::ability::AbilityKind::Activated(activated) = parsed.kind_mut()
+    {
+        activated
+            .additional_restrictions
+            .push(format!("__presentation_label: {label}"));
+    }
+    Ok(LineAst::Ability(parsed))
+}
+
+fn labeled_keyword_presentation_label(raw: &str, keyword: &str) -> Option<String> {
+    let (label, body) = raw
+        .split_once('—')
+        .or_else(|| raw.split_once('–'))
+        .or_else(|| raw.split_once(" - "))?;
+    if !body.trim_start().to_ascii_lowercase().starts_with(keyword) {
+        return None;
+    }
+    let label = label.trim();
+    (!label.is_empty()).then(|| label.to_string())
 }
 
 pub(super) fn lower_reconfigure(

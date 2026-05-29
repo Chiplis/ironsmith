@@ -1928,6 +1928,13 @@ pub fn player_matches_filter_with_combat(
                     .zip(game.player(controller))
                     .is_some_and(|(candidate, you)| candidate.life > you.life)
         }
+        PlayerFilter::LostLifeThisTurn { base } => {
+            player_matches_filter_with_combat(player_id, base, game, controller, combat)
+                && game
+                    .turn_store
+                    .turn_history
+                    .player_lost_life_this_turn(player_id)
+        }
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,

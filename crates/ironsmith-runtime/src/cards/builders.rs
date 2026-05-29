@@ -598,6 +598,7 @@ pub(crate) enum KeywordAction {
     Unblockable,
     Devoid,
     Annihilator(u32),
+    JobSelect,
     ForMirrodin,
     LivingWeapon,
     Crew {
@@ -871,6 +872,7 @@ impl KeywordAction {
             Self::Unblockable => "This can't be blocked".to_string(),
             Self::Devoid => "Devoid".to_string(),
             Self::Annihilator(amount) => format!("Annihilator {amount}"),
+            Self::JobSelect => "Job select".to_string(),
             Self::ForMirrodin => "For Mirrodin!".to_string(),
             Self::LivingWeapon => "Living weapon".to_string(),
             Self::Crew { amount, .. } => format!("Crew {amount}"),
@@ -1798,6 +1800,7 @@ impl CardDefinitionBuilder {
                 }),
                 functional_zones: vec![Zone::Battlefield],
             }),
+            KeywordAction::JobSelect => self.job_select(),
             KeywordAction::ForMirrodin => self.for_mirrodin(),
             KeywordAction::LivingWeapon => self.living_weapon(),
             KeywordAction::Crew {
@@ -3670,6 +3673,20 @@ impl CardDefinitionBuilder {
         ))
     }
 
+    /// Add job select.
+    ///
+    /// "When this Equipment enters, create a 1/1 colorless Hero creature token, then attach this to it."
+    pub fn job_select(self) -> Self {
+        let created_tag = TagKey::from("job_select_created");
+        self.with_ability(Ability::triggered(
+            Trigger::this_enters_battlefield(),
+            vec![
+                Effect::create_tokens(Self::job_select_hero_token(), 1).tag(created_tag.clone()),
+                Effect::attach_to(ChooseSpec::Tagged(created_tag)),
+            ],
+        ))
+    }
+
     /// Add living weapon.
     ///
     /// "When this Equipment enters, create a 0/0 black Phyrexian Germ creature token, then attach this to it."
@@ -4354,6 +4371,15 @@ impl CardDefinitionBuilder {
             .build()
     }
 
+    fn job_select_hero_token() -> CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), "Hero")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Hero])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build()
+    }
+
     fn living_weapon_germ_token() -> CardDefinition {
         CardDefinitionBuilder::new(CardId::new(), "Phyrexian Germ")
             .token()
@@ -4555,6 +4581,32 @@ mod keyword_behavior_tests {
                 && debug.contains("rebel")
                 && debug.contains("attachtoeffect"),
             "expected For Mirrodin trigger to create Rebel token and attach equipment, got {debug}"
+        );
+    }
+
+    #[test]
+    fn job_select_adds_etb_create_and_attach_trigger() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Job Select Variant")
+            .card_types(vec![CardType::Artifact])
+            .subtypes(vec![Subtype::Equipment])
+            .job_select()
+            .build();
+
+        let ability = def
+            .abilities
+            .iter()
+            .find(|ability| matches!(&ability.kind, AbilityKind::Triggered(_)))
+            .expect("expected job select ability");
+        let AbilityKind::Triggered(triggered) = &ability.kind else {
+            panic!("expected job select to add a triggered ability");
+        };
+
+        let debug = format!("{triggered:?}").to_ascii_lowercase();
+        assert!(
+            debug.contains("createtokeneffect")
+                && debug.contains("hero")
+                && debug.contains("attachtoeffect"),
+            "expected job select trigger to create Hero token and attach equipment, got {debug}"
         );
     }
 

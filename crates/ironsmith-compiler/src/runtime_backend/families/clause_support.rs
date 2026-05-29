@@ -486,6 +486,7 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
                 ["battle", "cry"] => Some(KeywordAction::BattleCry),
                 ["split", "second"] => Some(KeywordAction::SplitSecond),
                 ["read", "ahead"] => Some(KeywordAction::ReadAhead),
+                ["job", "select"] => Some(KeywordAction::JobSelect),
                 ["for", "mirrodin"] => Some(KeywordAction::ForMirrodin),
                 ["living", "weapon"] => Some(KeywordAction::LivingWeapon),
                 ["umbra", "armor"] => Some(KeywordAction::UmbraArmor),

@@ -1158,6 +1158,9 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             crate::target::PlayerFilter::HasMoreLifeThanYou { .. } => {
                 "as long as that player is the monarch".to_string()
             }
+            crate::target::PlayerFilter::LostLifeThisTurn { .. } => {
+                "as long as that player is the monarch".to_string()
+            }
             crate::target::PlayerFilter::MaxSpeed { .. } => {
                 "as long as that player is the monarch".to_string()
             }
@@ -1675,7 +1678,7 @@ impl StaticAbilityKind for Anthem {
                 },
             ) if power_counter == toughness_counter && *power == 1 && *toughness == 1 => {
                 format!(
-                    "{subject} {verb} +X/+X, where X is the number of {} counters on this permanent",
+                    "{subject} {verb} +1/+1 for each {} counter on this permanent",
                     power_counter.description(),
                 )
             }

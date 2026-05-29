@@ -1982,6 +1982,13 @@ pub fn player_filter_matches_with_context(
                     .zip(game.player(controller))
                     .is_some_and(|(candidate, you)| candidate.life > you.life)
         }
+        PlayerFilter::LostLifeThisTurn { base } => {
+            player_filter_matches_with_context(base, player, controller, game, defending_player)
+                && game
+                    .turn_store
+                    .turn_history
+                    .player_lost_life_this_turn(player)
+        }
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,

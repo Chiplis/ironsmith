@@ -1331,6 +1331,71 @@ fn test_parse_repeated_backup_keyword_line_compiles_each_instance() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_reapers_scythe_strictly_renders_lost_life_count_and_labeled_equip() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(81_087), "Reaper's Scythe")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .parse_text(
+            "Job select\n\
+             At the beginning of your end step, put a soul counter on this Equipment for each player who lost life this turn.\n\
+             Equipped creature gets +1/+1 for each soul counter on this Equipment and is an Assassin in addition to its other types.\n\
+             Death Sickle — Equip {2}",
+        )
+        .expect("Reaper's Scythe should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Job select"),
+        "expected Job select keyword text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("for each player who lost life this turn"),
+        "expected lost-life player count text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("for each soul counter on this Equipment"),
+        "expected source-counter scaling text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Death Sickle — Equip {2}"),
+        "expected labeled equip text, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("LostLifeThisTurn") && debug.contains("CountPlayers"),
+        "expected lost-life player count in structured definition, got {debug}"
+    );
+    assert!(
+        debug.contains("CreateTokenEffect")
+            && debug.contains("Hero")
+            && debug.contains("AttachToEffect"),
+        "expected job select to create a Hero token and attach Reaper's Scythe, got {debug}"
+    );
+    assert!(
+        !debug.contains("KeywordFallbackText") && !debug.contains("UnsupportedParserLine"),
+        "Reaper's Scythe should not lower to unsupported fallbacks, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_labeled_equip_keyword_preserves_generic_presentation_label() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(81_088), "Labeled Equip Test")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .parse_text("Limit Break — Equip {3}")
+        .expect("labeled equip keyword should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Limit Break — Equip {3}"),
+        "expected generic labeled equip rendering, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_backup_copy_trigger() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Mirror-Shield Hoplite")
         .card_types(vec![CardType::Creature])

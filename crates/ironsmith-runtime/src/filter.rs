@@ -1129,6 +1129,7 @@ impl PlayerFilterExt for PlayerFilter {
                 base.matches_player(player, ctx)
             }
             PlayerFilter::HasMoreLifeThanYou { base } => base.matches_player(player, ctx),
+            PlayerFilter::LostLifeThisTurn { .. } => false,
             PlayerFilter::MaxSpeed { .. } => false,
             PlayerFilter::ChosenPlayer => ctx.chosen_player.is_some_and(|chosen| chosen == player),
             PlayerFilter::TaggedPlayer(tag) => ctx
@@ -1202,6 +1203,13 @@ pub(crate) fn player_filter_matches_game(
             let candidate_life = game.player(player).map(|p| p.life).unwrap_or(0);
             let your_life = game.player(you).map(|p| p.life).unwrap_or(0);
             candidate_life > your_life
+        }
+        PlayerFilter::LostLifeThisTurn { base } => {
+            player_filter_matches_game(base, player, game, ctx)
+                && game
+                    .turn_store
+                    .turn_history
+                    .player_lost_life_this_turn(player)
         }
         PlayerFilter::MaxSpeed {
             base,
@@ -2990,6 +2998,9 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::HasMoreLifeThanYou { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
+                PlayerFilter::LostLifeThisTurn { .. } => {
+                    parts.push(describe_possessive_player_filter(ctrl));
+                }
                 PlayerFilter::MaxSpeed { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
@@ -3067,6 +3078,9 @@ impl ObjectFilterExt for ObjectFilter {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::HasMoreLifeThanYou { .. } => {
+                    format!("{} owns", describe_player_filter(owner))
+                }
+                PlayerFilter::LostLifeThisTurn { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::MaxSpeed { .. } => {
@@ -4118,6 +4132,7 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
             format!("{}'s", describe_player_filter(filter))
         }
         PlayerFilter::HasMoreLifeThanYou { .. } => format!("{}'s", describe_player_filter(filter)),
+        PlayerFilter::LostLifeThisTurn { .. } => format!("{}'s", describe_player_filter(filter)),
         PlayerFilter::MaxSpeed { .. } => format!("{}'s", describe_player_filter(filter)),
         PlayerFilter::ChosenPlayer => "the chosen player's".to_string(),
         PlayerFilter::TaggedPlayer(_) => "that player's".to_string(),
@@ -4179,6 +4194,9 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
                 "{} who has more life than you do as you activate this ability",
                 describe_player_filter(base)
             )
+        }
+        PlayerFilter::LostLifeThisTurn { base } => {
+            format!("{} who lost life this turn", describe_player_filter(base))
         }
         PlayerFilter::MaxSpeed {
             base,

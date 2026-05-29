@@ -2613,6 +2613,7 @@ fn resolve_condition_player_simple(
         }
         PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
         | PlayerFilter::HasMoreLifeThanYou { .. }
+        | PlayerFilter::LostLifeThisTurn { .. }
         | PlayerFilter::MaxSpeed { .. } => {
             let filter_ctx = crate::target::FilterContext::new(controller)
                 .with_opponents(

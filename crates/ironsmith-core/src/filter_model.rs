@@ -157,6 +157,9 @@ pub enum PlayerFilter {
     HasMoreLifeThanYou {
         base: Box<PlayerFilter>,
     },
+    LostLifeThisTurn {
+        base: Box<PlayerFilter>,
+    },
     MaxSpeed {
         base: Box<PlayerFilter>,
         has_max_speed: bool,
@@ -212,6 +215,7 @@ impl PlayerFilter {
             Self::Target(inner) => inner.mentions_iterated_player(),
             Self::CardsInHandAtLeastMoreThanYou { base, .. } => base.mentions_iterated_player(),
             Self::HasMoreLifeThanYou { base } => base.mentions_iterated_player(),
+            Self::LostLifeThisTurn { base } => base.mentions_iterated_player(),
             Self::MaxSpeed { base, .. } => base.mentions_iterated_player(),
             Self::Excluding { base, excluded } => {
                 base.mentions_iterated_player() || excluded.mentions_iterated_player()
@@ -276,6 +280,9 @@ impl PlayerFilter {
                     "{} who has more life than you do as you activate this ability",
                     base.description()
                 )
+            }
+            Self::LostLifeThisTurn { base } => {
+                format!("{} who lost life this turn", base.description())
             }
             Self::MaxSpeed {
                 base,
@@ -1182,6 +1189,9 @@ impl ObjectFilter {
                 PlayerFilter::HasMoreLifeThanYou { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
+                PlayerFilter::LostLifeThisTurn { .. } => {
+                    parts.push(describe_possessive_player_filter(ctrl));
+                }
                 PlayerFilter::MaxSpeed { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
@@ -1260,6 +1270,9 @@ impl ObjectFilter {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::HasMoreLifeThanYou { .. } => {
+                    format!("{} owns", describe_player_filter(owner))
+                }
+                PlayerFilter::LostLifeThisTurn { .. } => {
                     format!("{} owns", describe_player_filter(owner))
                 }
                 PlayerFilter::MaxSpeed { .. } => {
@@ -2197,6 +2210,9 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
                 describe_player_filter(base)
             )
         }
+        PlayerFilter::LostLifeThisTurn { base } => {
+            format!("{} who lost life this turn's", describe_player_filter(base))
+        }
         PlayerFilter::MaxSpeed {
             base,
             has_max_speed,
@@ -2268,6 +2284,9 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
                 "{} who has more life than you do as you activate this ability",
                 describe_player_filter(base)
             )
+        }
+        PlayerFilter::LostLifeThisTurn { base } => {
+            format!("{} who lost life this turn", describe_player_filter(base))
         }
         PlayerFilter::MaxSpeed {
             base,

@@ -57,6 +57,80 @@ fn twenty_toed_toad_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn reapers_scythe_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(81_087), "Reaper's Scythe")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .parse_text(
+            "Job select\n\
+             At the beginning of your end step, put a soul counter on this Equipment for each player who lost life this turn.\n\
+             Equipped creature gets +1/+1 for each soul counter on this Equipment and is an Assassin in addition to its other types.\n\
+             Death Sickle — Equip {2}",
+        )
+        .expect("Reaper's Scythe should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn record_life_loss_this_turn(game: &mut GameState, player: PlayerId, amount: u32) {
+    let mut trigger_queue = TriggerQueue::new();
+    let event = TriggerEvent::new_with_provenance(
+        crate::events::life::LifeLossEvent::from_effect(player, amount),
+        crate::provenance::ProvNodeId::default(),
+    );
+    queue_triggers_from_event(game, &mut trigger_queue, event, false);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_reapers_scythe_end_step_trigger(game: &mut GameState) {
+    let alice = PlayerId::from_index(0);
+    let mut trigger_queue = TriggerQueue::new();
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Ending;
+    game.turn.step = Some(crate::game_state::Step::End);
+
+    generate_and_queue_step_triggers(game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Reaper's Scythe should trigger at its controller's end step"
+    );
+    put_triggers_on_stack(game, &mut trigger_queue)
+        .expect("Reaper's Scythe trigger should go on the stack");
+    resolve_stack_entry(game).expect("Reaper's Scythe trigger should resolve");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_reapers_scythe_job_select_trigger(game: &mut GameState, scythe_id: ObjectId) {
+    let alice = PlayerId::from_index(0);
+    let mut trigger_queue = TriggerQueue::new();
+    let event = TriggerEvent::new_with_provenance(
+        crate::events::ZoneChangeEvent::with_cause(
+            scythe_id,
+            Zone::Hand,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    queue_triggers_from_event(game, &mut trigger_queue, event, false);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Reaper's Scythe should queue its job select ETB trigger"
+    );
+    put_triggers_on_stack(game, &mut trigger_queue)
+        .expect("Reaper's Scythe job select trigger should go on the stack");
+    resolve_stack_entry(game).expect("Reaper's Scythe job select trigger should resolve");
+
+    assert!(
+        game.current_controller(scythe_id) == Some(alice),
+        "Reaper's Scythe should remain under its controller's control"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn put_test_cards_in_zone(game: &mut GameState, player: PlayerId, zone: Zone, count: u32) {
     for index in 0..count {
         let card = CardBuilder::new(
@@ -112,6 +186,104 @@ fn twenty_toed_toad_static_ability_sets_maximum_hand_size_to_twenty() {
 
     assert_eq!(game.player(alice).unwrap().max_hand_size, 20);
     assert_eq!(game.player(bob).unwrap().max_hand_size, 7);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn reapers_scythe_end_step_adds_no_soul_counters_when_no_player_lost_life() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let scythe = reapers_scythe_definition();
+    let scythe_id = game.create_object_from_definition(&scythe, alice, Zone::Battlefield);
+
+    resolve_reapers_scythe_end_step_trigger(&mut game);
+
+    assert_eq!(
+        game.counter_count(scythe_id, crate::object::CounterType::Named("soul")),
+        0,
+        "Reaper's Scythe should add no soul counters when no player lost life"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn reapers_scythe_job_select_creates_hero_and_attaches_equipment() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let scythe = reapers_scythe_definition();
+    let scythe_id = game.create_object_from_definition(&scythe, alice, Zone::Battlefield);
+
+    resolve_reapers_scythe_job_select_trigger(&mut game, scythe_id);
+
+    let heroes: Vec<_> = game
+        .battlefield
+        .iter()
+        .copied()
+        .filter(|id| game.object(*id).is_some_and(|object| object.name == "Hero"))
+        .collect();
+    assert_eq!(heroes.len(), 1, "job select should create one Hero token");
+    let hero_id = heroes[0];
+
+    assert_eq!(game.calculated_power(hero_id), Some(1));
+    assert_eq!(game.calculated_toughness(hero_id), Some(1));
+    assert!(game.current_has_subtype(hero_id, Subtype::Hero));
+    assert_eq!(
+        game.object(scythe_id).and_then(|object| object.attached_to),
+        Some(crate::object::AttachmentTarget::Object(hero_id)),
+        "Reaper's Scythe should attach itself to the Hero token"
+    );
+    assert!(
+        game.object(hero_id)
+            .is_some_and(|object| object.attachments.contains(&scythe_id)),
+        "Hero token should track Reaper's Scythe as attached"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn reapers_scythe_end_step_counts_each_player_who_lost_life_once() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let scythe = reapers_scythe_definition();
+    let scythe_id = game.create_object_from_definition(&scythe, alice, Zone::Battlefield);
+
+    record_life_loss_this_turn(&mut game, alice, 2);
+    record_life_loss_this_turn(&mut game, bob, 5);
+    record_life_loss_this_turn(&mut game, bob, 1);
+    resolve_reapers_scythe_end_step_trigger(&mut game);
+
+    assert_eq!(
+        game.counter_count(scythe_id, crate::object::CounterType::Named("soul")),
+        2,
+        "Reaper's Scythe should count players, not life-loss events or amount lost"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn reapers_scythe_soul_counters_scale_equipped_creature_and_add_assassin() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let scythe = reapers_scythe_definition();
+    let scythe_id = game.create_object_from_definition(&scythe, alice, Zone::Battlefield);
+    game.add_counters(scythe_id, crate::object::CounterType::Named("soul"), 3)
+        .expect("should add soul counters to Reaper's Scythe");
+
+    let bearer_id = create_creature(&mut game, "Bearer", alice, 2, 2);
+    if let Some(scythe_object) = game.object_mut(scythe_id) {
+        scythe_object.attached_to = Some(crate::object::AttachmentTarget::Object(bearer_id));
+    }
+    if let Some(bearer) = game.object_mut(bearer_id) {
+        bearer.attachments.push(scythe_id);
+    }
+
+    assert_eq!(game.calculated_power(bearer_id), Some(5));
+    assert_eq!(game.calculated_toughness(bearer_id), Some(5));
+    assert!(
+        game.current_has_subtype(bearer_id, Subtype::Assassin),
+        "equipped creature should be an Assassin in addition to its other types"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

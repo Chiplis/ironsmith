@@ -824,7 +824,7 @@ pub fn resolve_value(
                 .players
                 .iter()
                 .filter(|p| p.is_in_game())
-                .filter(|p| player_filter.matches_player(p.id, &filter_ctx))
+                .filter(|p| player_filter_matches_game(player_filter, p.id, game, &filter_ctx))
                 .count();
             Ok(count as i32)
         }
@@ -2065,6 +2065,7 @@ pub fn resolve_player_filter(
         | PlayerFilter::CastCardTypeThisTurn(_)
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
         | PlayerFilter::HasMoreLifeThanYou { .. }
+        | PlayerFilter::LostLifeThisTurn { .. }
         | PlayerFilter::MaxSpeed { .. } => {
             let filter_ctx = ctx.filter_context(game);
             let mut players = resolve_player_filter_to_list(game, spec, &filter_ctx, ctx)?;
@@ -3196,7 +3197,8 @@ pub(crate) fn resolve_player_filter_to_list(
             .map(|player| player.id)
             .collect()),
         PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
-        | PlayerFilter::HasMoreLifeThanYou { .. } => Ok(game
+        | PlayerFilter::HasMoreLifeThanYou { .. }
+        | PlayerFilter::LostLifeThisTurn { .. } => Ok(game
             .players
             .iter()
             .filter(|player| player.is_in_game())

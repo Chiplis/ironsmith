@@ -467,6 +467,7 @@ where
                 ),
                 PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => "That player may".to_string(),
                 PlayerFilter::HasMoreLifeThanYou { .. } => "That player may".to_string(),
+                PlayerFilter::LostLifeThisTurn { .. } => "That player may".to_string(),
                 PlayerFilter::MaxSpeed { .. } => "That player may".to_string(),
                 PlayerFilter::ChosenPlayer => "The chosen player may".to_string(),
                 PlayerFilter::TaggedPlayer(_)

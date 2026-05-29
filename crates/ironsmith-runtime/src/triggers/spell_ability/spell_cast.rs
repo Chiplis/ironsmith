@@ -277,6 +277,7 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
                 }
                 PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
                 | PlayerFilter::HasMoreLifeThanYou { .. }
+                | PlayerFilter::LostLifeThisTurn { .. }
                 | PlayerFilter::MaxSpeed { .. } => player_filter.description(),
                 PlayerFilter::CastCardTypeThisTurn(card_type) => format!(
                     "a player who cast one or more {} spells this turn",

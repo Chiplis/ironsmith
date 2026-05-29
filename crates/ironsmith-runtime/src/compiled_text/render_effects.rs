@@ -3,6 +3,15 @@ use crate::effect::SearchSelectionMode;
 use crate::filter::StackObjectKind;
 use ironsmith_core::{LibraryBottomOrder, ValueSurfaceHint, ordinal_word};
 
+const PRESENTATION_LABEL_RESTRICTION_PREFIX: &str = "__presentation_label: ";
+
+fn activated_presentation_label(activated: &crate::ability::ActivatedAbility) -> Option<&str> {
+    activated
+        .additional_restrictions
+        .iter()
+        .find_map(|restriction| restriction.strip_prefix(PRESENTATION_LABEL_RESTRICTION_PREFIX))
+}
+
 fn value_has_surface_hint(value: &Value, hint: ValueSurfaceHint) -> bool {
     value.has_surface_hint(hint)
 }
@@ -27089,6 +27098,13 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         {
             target = format!("each of {target}");
         }
+        if let Value::CountPlayers(player_filter) = &put_counters.amount {
+            return format!(
+                "Put a {} counter on {target} for each {}",
+                describe_counter_type(put_counters.counter_type),
+                describe_player_filter(player_filter)
+            );
+        }
         if let Value::Count(filter) = &put_counters.amount
             && matches!(
                 put_counters.counter_type,
@@ -32247,6 +32263,9 @@ pub(super) fn collect_activation_restriction_clauses(
     }
 
     for raw in additional_restrictions {
+        if raw.starts_with(PRESENTATION_LABEL_RESTRICTION_PREFIX) {
+            continue;
+        }
         let normalized = normalize_activation_restriction_clause(raw);
         push_activation_restriction_clause(&mut clauses, normalized);
     }
@@ -32995,6 +33014,10 @@ fn describe_structural_equip_keyword(
     } else {
         format!("Equip {cost}")
     };
+
+    if let Some(label) = activated_presentation_label(activated) {
+        rendered = format!("{label} — {rendered}");
+    }
 
     let mut restriction_clauses = collect_activation_restriction_clauses(
         &activated.timing,

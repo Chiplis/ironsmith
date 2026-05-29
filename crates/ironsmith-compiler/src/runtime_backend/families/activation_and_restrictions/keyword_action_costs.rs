@@ -1105,7 +1105,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
     ) {
         return match matched_phrase {
             ["emerge", "from"] => marker_text_from_words(&words).map(KeywordAction::MarkerText),
-            ["job", "select"] => Some(KeywordAction::MarkerText("Job select".to_string())),
+            ["job", "select"] => Some(KeywordAction::JobSelect),
             ["umbra", "armor"] => Some(KeywordAction::UmbraArmor),
             _ => None,
         };
@@ -1222,6 +1222,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
     if let Some((matched_phrase, _)) = strip_prefix_phrases(
         phrase_tokens,
         &[
+            &["job", "select"],
             &["for", "mirrodin"],
             &["living", "weapon"],
             &["battle", "cry"],
@@ -1231,6 +1232,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         ],
     ) {
         return Some(match matched_phrase {
+            ["job", "select"] => KeywordAction::JobSelect,
             ["for", "mirrodin"] => KeywordAction::ForMirrodin,
             ["living", "weapon"] => KeywordAction::LivingWeapon,
             ["battle", "cry"] => KeywordAction::BattleCry,
@@ -1343,6 +1345,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         ["affinity", "for", "artifacts"] => KeywordAction::AffinityForArtifacts,
         ["first", "strike"] => KeywordAction::FirstStrike,
         ["double", "strike"] => KeywordAction::DoubleStrike,
+        ["job", "select"] => KeywordAction::JobSelect,
         ["for", "mirrodin"] => KeywordAction::ForMirrodin,
         ["living", "weapon"] => KeywordAction::LivingWeapon,
         ["fading", amount] => {

@@ -144,6 +144,7 @@ pub enum KeywordAction {
     Unblockable,
     Devoid,
     Annihilator(u32),
+    JobSelect,
     ForMirrodin,
     LivingWeapon,
     Crew {
@@ -429,6 +430,7 @@ impl KeywordAction {
             Self::Unblockable => "This can't be blocked".to_string(),
             Self::Devoid => "Devoid".to_string(),
             Self::Annihilator(amount) => format!("Annihilator {amount}"),
+            Self::JobSelect => "Job select".to_string(),
             Self::ForMirrodin => "For Mirrodin!".to_string(),
             Self::LivingWeapon => "Living weapon".to_string(),
             Self::Crew { amount, .. } => format!("Crew {amount}"),

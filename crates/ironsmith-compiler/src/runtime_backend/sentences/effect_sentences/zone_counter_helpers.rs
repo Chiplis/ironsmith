@@ -27,8 +27,9 @@ use super::super::token_primitives::{
 };
 use super::super::util::{
     parse_counter_type_from_tokens, parse_counter_type_word, parse_number, parse_target_phrase,
-    parse_value, record_source_reference_surface, source_reference_surface_for_words,
-    span_from_tokens, this_source_surface_for_words, trim_commas,
+    parse_for_each_count_value_words, parse_value, record_source_reference_surface,
+    source_reference_surface_for_words, span_from_tokens, this_source_surface_for_words,
+    trim_commas,
 };
 use super::super::value_helpers::{
     parse_equal_to_aggregate_filter_value, parse_equal_to_number_of_filter_value,
@@ -590,6 +591,18 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
                     dynamic
                 } else if tokens_reference_objects_this_way(&count_filter_tokens) {
                     this_way_object_count_value()
+                } else if let Some(value) = {
+                    let count_words = ZoneCounterCompatWords::new(&count_filter_tokens)
+                        .to_word_refs();
+                    let mut prefixed_words = Vec::with_capacity(count_words.len() + 2);
+                    prefixed_words.push("for");
+                    prefixed_words.push("each");
+                    prefixed_words.extend(count_words);
+                    parse_for_each_count_value_words(&prefixed_words).and_then(|(value, used)| {
+                        (used == prefixed_words.len()).then_some(value)
+                    })
+                } {
+                    value
                 } else {
                     Value::Count(parse_object_filter(&count_filter_tokens, false)?)
                 };

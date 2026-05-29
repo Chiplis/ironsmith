@@ -430,6 +430,7 @@ impl CardDefinitionBuilder {
             KeywordAction::ProtectionFromSubtype(subtype) => self.protection_from_subtype(subtype),
             KeywordAction::Devoid => self.devoid(),
             KeywordAction::Annihilator(amount) => self.annihilator(amount),
+            KeywordAction::JobSelect => self.job_select(),
             KeywordAction::ForMirrodin => self.for_mirrodin(),
             KeywordAction::LivingWeapon => self.living_weapon(),
             KeywordAction::Marker(name) if name.eq_ignore_ascii_case("fuse") => self.has_fuse(),
@@ -1794,6 +1795,18 @@ impl CardDefinitionBuilder {
         ))
     }
 
+    pub fn job_select(self) -> Self {
+        let created_tag = crate::tag::TagKey::from("job_select_created");
+        self.with_ability(crate::ability::Ability::triggered(
+            crate::triggers::Trigger::this_enters_battlefield(),
+            vec![
+                crate::effect::Effect::create_tokens(Self::job_select_hero_token(), 1)
+                    .tag(created_tag.clone()),
+                crate::effect::Effect::attach_to(crate::target::ChooseSpec::Tagged(created_tag)),
+            ],
+        ))
+    }
+
     pub fn living_weapon(self) -> Self {
         let created_tag = crate::tag::TagKey::from("living_weapon_created");
         self.with_ability(crate::ability::Ability::triggered(
@@ -2264,6 +2277,15 @@ impl CardDefinitionBuilder {
             .subtypes(vec![Subtype::Rebel])
             .color_indicator(ColorSet::RED)
             .power_toughness(PowerToughness::fixed(2, 2))
+            .build()
+    }
+
+    fn job_select_hero_token() -> CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), "Hero")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Hero])
+            .power_toughness(PowerToughness::fixed(1, 1))
             .build()
     }
 

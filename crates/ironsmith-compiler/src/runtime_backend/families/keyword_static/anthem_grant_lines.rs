@@ -2693,11 +2693,7 @@ pub(crate) fn parse_static_condition_clause(
                 )));
             };
 
-            let counter_type = if counter_word_idx > 0 {
-                parse_counter_type_word(counter_words[counter_word_idx - 1])
-            } else {
-                None
-            };
+            let counter_type = parse_counter_type_from_tokens(counter_tokens);
 
             let tail = &counter_words[counter_word_idx + 1..];
             let on_source_tail = anthem_word_slice_starts_with(tail, &["on", "it"])
@@ -3014,7 +3010,7 @@ pub(crate) fn parse_anthem_for_each_expression(
     if let Some(counter_word_idx) =
         anthem_find_word_index(&rest_words, |word| matches!(word, "counter" | "counters"))
         && counter_word_idx > 0
-        && let Some(counter_type) = parse_counter_type_word(rest_words[counter_word_idx - 1])
+        && let Some(counter_type) = parse_counter_type_from_tokens(rest)
     {
         let tail_words = &rest_words[counter_word_idx + 1..];
         let on_source_tail = anthem_word_slice_starts_with(tail_words, &["on", "it"])
