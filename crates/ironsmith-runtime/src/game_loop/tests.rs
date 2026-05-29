@@ -1429,7 +1429,7 @@ impl DecisionMaker for CaptureRevealDecisionMaker {
         _game: &GameState,
         _ctx: &crate::decisions::context::SelectObjectsContext,
     ) -> Vec<ObjectId> {
-        panic!("Ignite Memories should not prompt for object selection when revealing at random");
+        panic!("random hand reveal should not prompt for object selection");
     }
 
     fn view_cards(
@@ -2390,6 +2390,112 @@ fn ignite_memories_reveals_a_random_card_from_target_players_hand_and_damages_th
         game.player(bob).expect("bob exists").life,
         bob_life_before - expected_damage,
         "Ignite Memories should deal damage equal to the revealed card's mana value"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn singe_mind_ogre_reveals_a_random_card_from_target_players_hand_and_makes_them_lose_life() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let singe_mind_ogre = CardDefinitionBuilder::new(CardId::from_raw(70_010), "Singe-Mind Ogre")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Ogre, Subtype::Mutant])
+        .power_toughness(PowerToughness::fixed(3, 2))
+        .parse_text(
+            "When this creature enters, target player reveals a card at random from their hand, then loses life equal to that card's mana value.",
+        )
+        .expect("Singe-Mind Ogre should parse");
+
+    let low_card = CardBuilder::new(CardId::from_raw(70_011), "Low Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let high_card = CardBuilder::new(CardId::from_raw(70_012), "High Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(5)]]))
+        .card_types(vec![CardType::Artifact])
+        .build();
+
+    let low_id = game.create_object_from_card(&low_card, bob, Zone::Hand);
+    let high_id = game.create_object_from_card(&high_card, bob, Zone::Hand);
+    let source_id = game.create_object_from_definition(&singe_mind_ogre, alice, Zone::Battlefield);
+    let triggered_effects = game
+        .object(source_id)
+        .expect("Singe-Mind Ogre should be on the battlefield")
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered.effects.clone()),
+            _ => None,
+        })
+        .expect("Singe-Mind Ogre should have an enters trigger");
+    game.stack.push(
+        crate::game_state::StackEntry::ability(source_id, alice, triggered_effects)
+            .with_targets(vec![crate::game_state::Target::Player(bob)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: crate::target::ChooseSpec::target_player(),
+                range: 0..1,
+            }])
+            .with_triggering_event(TriggerEvent::new_with_provenance(
+                EnterBattlefieldEvent::new(source_id, Zone::Hand),
+                crate::provenance::ProvNodeId::default(),
+            )),
+    );
+
+    let bob_life_before = game.player(bob).expect("bob exists").life;
+    let mut dm = CaptureRevealDecisionMaker::default();
+
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Singe-Mind Ogre trigger should resolve");
+
+    assert!(
+        dm.view_calls.len() >= 2,
+        "the random reveal should be shown to all players"
+    );
+    let mut unique_reveals = dm
+        .view_calls
+        .iter()
+        .map(|(_, subject, zone, public, cards)| {
+            assert_eq!(
+                *subject, bob,
+                "the revealed card should come from Bob's hand"
+            );
+            assert_eq!(*zone, Zone::Hand, "the reveal should come from hand");
+            assert!(*public, "the reveal should be public");
+            assert_eq!(cards.len(), 1, "only one card should be revealed");
+            cards[0]
+        })
+        .collect::<Vec<_>>();
+    unique_reveals.sort();
+    unique_reveals.dedup();
+    assert_eq!(
+        unique_reveals.len(),
+        1,
+        "the same random card should be shown to each viewer"
+    );
+
+    let revealed_id = unique_reveals[0];
+    assert!(
+        revealed_id == low_id || revealed_id == high_id,
+        "the revealed card should come from Bob's hand"
+    );
+
+    let revealed_card = game.object(revealed_id).expect("revealed card exists");
+    let expected_life_loss = revealed_card
+        .mana_cost
+        .as_ref()
+        .expect("revealed card should have a mana cost")
+        .mana_value() as i32;
+    assert_eq!(
+        game.player(bob).expect("bob exists").life,
+        bob_life_before - expected_life_loss,
+        "Singe-Mind Ogre should make that player lose life equal to the revealed card's mana value"
     );
 }
 

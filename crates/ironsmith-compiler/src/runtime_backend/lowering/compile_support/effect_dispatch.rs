@@ -216,7 +216,7 @@ fn compile_subject_verb_effect(
             true,
             true,
             true,
-            false,
+            true,
             Effect::lose_life,
             Effect::lose_life_player,
         ),
