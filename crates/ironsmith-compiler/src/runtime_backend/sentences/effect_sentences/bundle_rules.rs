@@ -224,19 +224,16 @@ fn parse_exile_it_and_top_library_face_down_pile_bundle(
         ),
         true,
     );
-    let make_pile = EffectAst::Sequence {
-        effects: vec![source_exile, top_exile],
-    };
     let shuffle_back = EffectAst::subject_verb_shuffle_objects_onto_library(
         PlayerAst::You,
         TargetAst::Object(pile_target, None, None),
     );
 
     Ok(Some(vec![
-        make_pile,
+        source_exile,
         EffectAst::IfResult {
             predicate: crate::cards::builders::IfResultPredicate::Did,
-            effects: vec![shuffle_back],
+            effects: vec![top_exile, shuffle_back],
         },
     ]))
 }

@@ -36,8 +36,7 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
             normalize_effects_vec(if_true);
             normalize_effects_vec(if_false);
         }
-        EffectAst::Sequence { effects }
-        | EffectAst::UnlessPays { effects, .. }
+        EffectAst::UnlessPays { effects, .. }
         | EffectAst::May { effects }
         | EffectAst::MayByPlayer { effects, .. }
         | EffectAst::ResolvedIfResult { effects, .. }

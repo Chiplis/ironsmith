@@ -351,20 +351,10 @@ fn describe_face_down_pile_shuffle_onto_library(effects: &[&Effect]) -> Option<S
         return None;
     };
     let with_id = with_id_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
-    let sequence = with_id
-        .effect
-        .downcast_ref::<crate::effects::SequenceEffect>()?;
-    let [source_exile_effect, top_exile_effect] = sequence.effects.as_slice() else {
-        return None;
-    };
-    let source_exile = source_exile_effect.downcast_ref::<crate::effects::ExileEffect>()?;
+    let source_exile = with_id.effect.downcast_ref::<crate::effects::ExileEffect>()?;
     if !source_exile.face_down
         || !choose_spec_references_exact_tag(&source_exile.spec, &TagKey::from("triggering"))
     {
-        return None;
-    }
-    let top_exile = top_exile_effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
-    if !top_exile.face_down || top_exile.player != PlayerFilter::You {
         return None;
     }
 
@@ -375,9 +365,13 @@ fn describe_face_down_pile_shuffle_onto_library(effects: &[&Effect]) -> Option<S
     {
         return None;
     }
-    let [shuffle_back] = if_effect.then.as_slice() else {
+    let [top_exile_effect, shuffle_back] = if_effect.then.as_slice() else {
         return None;
     };
+    let top_exile = top_exile_effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
+    if !top_exile.face_down || top_exile.player != PlayerFilter::You {
+        return None;
+    }
     let shuffle_back = shuffle_back.downcast_ref::<crate::effects::ShuffleObjectsOntoLibraryEffect>()?;
     if shuffle_back.player != PlayerFilter::You {
         return None;

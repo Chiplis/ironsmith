@@ -4,8 +4,7 @@ use crate::cards::builders::EffectAst;
 // This avoids drift between immutable/mutable/fallible traversal helpers.
 macro_rules! nested_effects_variants {
     ($effects:ident) => {
-        EffectAst::Sequence { effects: $effects }
-            | EffectAst::UnlessPays {
+        EffectAst::UnlessPays {
             effects: $effects,
             ..
         } | EffectAst::May { effects: $effects }
@@ -114,7 +113,6 @@ macro_rules! nested_effects_variants {
 pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
     match effect {
         EffectAst::SubjectVerb(_) => {}
-        EffectAst::Sequence { .. } => {}
         EffectAst::UnlessPays { .. } => {}
         EffectAst::UnlessAction { .. } => {}
         EffectAst::DelayedUntilNextEndStep { .. } => {}

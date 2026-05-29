@@ -36745,6 +36745,15 @@ fn triumph_of_saint_katherine_compiled_text_keeps_face_down_pile_clause() {
         ) && !rendered.contains("target card exiled with this creature"),
         "expected compact face-down pile text without a target, got {rendered}"
     );
+    assert!(
+        rendered.contains("Miracle {1}{W}")
+            && def.alternative_casts.iter().any(|method| matches!(
+                method,
+                AlternativeCastingMethod::Miracle { cost } if cost.to_oracle() == "{1}{W}"
+            )),
+        "expected Triumph to keep its Miracle alternative cost, got {rendered} and {:?}",
+        def.alternative_casts
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -36831,6 +36840,46 @@ fn triumph_of_saint_katherine_death_trigger_shuffles_pile_back_on_top() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn triumph_of_saint_katherine_only_triggers_for_your_graveyard() {
+    let def = parse_oracle_card_definition("Triumph of Saint Katherine");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let source_id = game.create_object_from_definition(&def, bob, Zone::Battlefield);
+    game.set_current_controller(source_id, alice);
+
+    let source_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(source_id).expect("Triumph should be on the battlefield"),
+        &game,
+    );
+    game.move_object_by_effect(source_id, Zone::Graveyard)
+        .expect("Triumph should move to its owner's graveyard");
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::ZoneChangeEvent::with_cause(
+            source_id,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::effect(),
+            Some(source_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let source_triggers = crate::triggers::check_triggers(&game, &event)
+        .into_iter()
+        .filter(|entry| entry.source == source_id)
+        .count();
+    assert_eq!(
+        source_triggers, 0,
+        "Triumph should not trigger for Alice when Bob's card goes to Bob's graveyard"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn triumph_of_saint_katherine_if_you_do_false_branch_does_not_shuffle_pile() {
     let def = parse_oracle_card_definition("Triumph of Saint Katherine");
     let praesidium = def
@@ -36851,6 +36900,38 @@ fn triumph_of_saint_katherine_if_you_do_false_branch_does_not_shuffle_pile() {
         .find_map(|effect| effect.downcast_ref::<crate::effects::IfEffect>())
         .expect("Praesidium Protectiva should lower the shuffle as an if-you-do branch")
         .clone();
+    let source_exile_id = praesidium.effects.segments[0]
+        .default_effects
+        .iter()
+        .find_map(|effect| {
+            effect
+                .downcast_ref::<crate::effects::WithIdEffect>()
+                .map(|with_id| with_id.id)
+        })
+        .expect("Praesidium Protectiva should label exiling Triumph as the if-you-do antecedent");
+
+    assert_eq!(
+        if_effect.condition, source_exile_id,
+        "Praesidium Protectiva should only shuffle if Triumph itself was exiled"
+    );
+    assert!(
+        if_effect
+            .then
+            .first()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>())
+            .is_some_and(|exile_top| exile_top.face_down),
+        "the if-you-do true branch should build the face-down library pile before shuffling"
+    );
+    assert!(
+        if_effect
+            .then
+            .last()
+            .and_then(|effect| {
+                effect.downcast_ref::<crate::effects::ShuffleObjectsOntoLibraryEffect>()
+            })
+            .is_some(),
+        "the if-you-do true branch should shuffle the completed pile back on top"
+    );
 
     let alice = PlayerId::from_index(0);
     let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);

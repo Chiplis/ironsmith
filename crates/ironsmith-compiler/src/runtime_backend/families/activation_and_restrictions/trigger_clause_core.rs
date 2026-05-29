@@ -1693,8 +1693,10 @@ pub(crate) fn parse_trigger_clause_lexed(
             let subject_words = subject_view.to_word_refs();
             let one_or_more = subject_words.starts_with(&["one", "or", "more"]);
             if is_source_reference_words(&subject_words) {
+                let mut filter = ObjectFilter::source();
+                filter.owner = Some(PlayerFilter::You);
                 return Ok(TriggerSpec::PutIntoGraveyardFromZone {
-                    filter: ObjectFilter::source(),
+                    filter,
                     from: Zone::Battlefield,
                     one_or_more,
                 });

@@ -3109,11 +3109,8 @@ impl std::fmt::Debug for SubjectVerbEffectAst {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-    pub(crate) enum EffectAst {
+pub(crate) enum EffectAst {
     SubjectVerb(SubjectVerbEffectAst),
-    Sequence {
-        effects: Vec<EffectAst>,
-    },
     UnlessPays {
         effects: Vec<EffectAst>,
         player: PlayerAst,

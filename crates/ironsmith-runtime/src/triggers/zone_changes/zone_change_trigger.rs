@@ -433,6 +433,11 @@ impl ZoneChangeTrigger {
         {
             filter_desc = stripped.to_string();
         }
+        if self.to == ZonePattern::Specific(Zone::Graveyard)
+            && let Some(stripped) = filter_desc.strip_suffix(" you own")
+        {
+            filter_desc = stripped.to_string();
+        }
         let has_article = filter_desc.starts_with("a ")
             || filter_desc.starts_with("an ")
             || filter_desc.starts_with("the ")
@@ -460,7 +465,14 @@ impl ZoneChangeTrigger {
                 parts.push("dies".to_string());
             }
             (ZonePattern::Specific(Zone::Battlefield), ZonePattern::Specific(Zone::Graveyard)) => {
-                parts.push("is put into a graveyard from the battlefield".to_string());
+                let destination = match self.object_filter.owner {
+                    Some(crate::target::PlayerFilter::You) => "your graveyard",
+                    Some(crate::target::PlayerFilter::Opponent) => "an opponent's graveyard",
+                    _ => "a graveyard",
+                };
+                parts.push(format!(
+                    "is put into {destination} from the battlefield"
+                ));
             }
             (ZonePattern::Specific(Zone::Hand), ZonePattern::Specific(Zone::Graveyard)) => {
                 parts.push("is discarded".to_string());
