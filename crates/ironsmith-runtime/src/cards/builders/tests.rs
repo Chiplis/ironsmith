@@ -5412,6 +5412,41 @@ fn test_do_not_replace_keyword_named_card_reference_in_enchanted_grant_line() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_shield_of_the_oversoul_strict_oracle_and_compiled_text_regression() {
+    let oracle = oracle_text_by_name()
+        .get("Shield of the Oversoul")
+        .expect("Shield of the Oversoul oracle text should be present")
+        .clone();
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Shield of the Oversoul")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(oracle)
+        .expect("Shield of the Oversoul should parse strictly");
+
+    let rendered_lines = canonical_compiled_lines(&def);
+    assert_eq!(
+        rendered_lines,
+        vec![
+            "Enchant creature".to_string(),
+            "Enchanted creature gets +1/+1 and has indestructible as long as enchanted creature is green."
+                .to_string(),
+            "Enchanted creature gets +1/+1 and has flying as long as enchanted creature is white."
+                .to_string(),
+        ],
+        "expected Shield of the Oversoul to preserve both attached-color branches"
+    );
+
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("countcomparison")
+            && debug.contains("enchanted creature is green")
+            && debug.contains("enchanted creature is white"),
+        "expected attached-color conditions to be structural count comparisons, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_source_deals_damage_to_target_equal_to_number_of_filter() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ben-Ben Variant")
         .card_types(vec![CardType::Creature])

@@ -1730,6 +1730,79 @@ fn sharpened_pitchfork_boosts_only_humans_but_always_grants_first_strike() {
     assert_eq!(game.calculated_toughness(non_human_id), Some(2));
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn shield_of_the_oversoul_applies_each_attached_color_branch_independently() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let shield = CardDefinitionBuilder::new(CardId::from_raw(72_114), "Shield of the Oversoul")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(
+            "Enchant creature\n\
+             As long as enchanted creature is green, it gets +1/+1 and has indestructible.\n\
+             As long as enchanted creature is white, it gets +1/+1 and has flying.",
+        )
+        .expect("Shield of the Oversoul should parse");
+
+    let green_id = create_colored_creature(
+        &mut game,
+        "Green Bearer",
+        alice,
+        Some(crate::color::ColorSet::GREEN),
+    );
+    let white_id = create_colored_creature(
+        &mut game,
+        "White Bearer",
+        alice,
+        Some(crate::color::ColorSet::WHITE),
+    );
+    let green_white_id = create_colored_creature(
+        &mut game,
+        "Green White Bearer",
+        alice,
+        Some(crate::color::ColorSet::GREEN.union(crate::color::ColorSet::WHITE)),
+    );
+    let colorless_id = create_colored_creature(&mut game, "Colorless Bearer", alice, None);
+
+    for creature_id in [green_id, white_id, green_white_id, colorless_id] {
+        let aura_id = game.create_object_from_definition(&shield, alice, Zone::Battlefield);
+        if let Some(aura) = game.object_mut(aura_id) {
+            aura.attached_to = Some(crate::object::AttachmentTarget::Object(creature_id));
+        }
+        if let Some(creature) = game.object_mut(creature_id) {
+            creature.attachments.push(aura_id);
+        }
+    }
+
+    assert_eq!(game.calculated_power(green_id), Some(3));
+    assert_eq!(game.calculated_toughness(green_id), Some(3));
+    assert!(game.object_has_ability(green_id, &StaticAbility::indestructible()));
+    assert!(!game.object_has_ability(green_id, &StaticAbility::flying()));
+
+    assert_eq!(game.calculated_power(white_id), Some(3));
+    assert_eq!(game.calculated_toughness(white_id), Some(3));
+    assert!(game.object_has_ability(white_id, &StaticAbility::flying()));
+    assert!(!game.object_has_ability(white_id, &StaticAbility::indestructible()));
+
+    assert_eq!(game.calculated_power(green_white_id), Some(4));
+    assert_eq!(game.calculated_toughness(green_white_id), Some(4));
+    assert!(game.object_has_ability(green_white_id, &StaticAbility::flying()));
+    assert!(game.object_has_ability(
+        green_white_id,
+        &StaticAbility::indestructible()
+    ));
+
+    assert_eq!(game.calculated_power(colorless_id), Some(2));
+    assert_eq!(game.calculated_toughness(colorless_id), Some(2));
+    assert!(!game.object_has_ability(colorless_id, &StaticAbility::flying()));
+    assert!(!game.object_has_ability(
+        colorless_id,
+        &StaticAbility::indestructible()
+    ));
+}
+
 #[test]
 fn proposed_granted_emerge_cast_keeps_sacrifice_cost_on_stack_spell() {
     let mut game = setup_game();

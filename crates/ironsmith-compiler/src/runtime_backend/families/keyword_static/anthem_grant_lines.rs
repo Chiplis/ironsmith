@@ -2271,8 +2271,8 @@ pub(crate) fn parse_static_condition_clause(
         return Ok(crate::ConditionExpr::EquippedCreatureAttacking);
     }
     if clause_words.len() >= 4
-        && clause_words[0] == "equipped"
-        && clause_words[1] == "creature"
+        && matches!(clause_words[0], "equipped" | "enchanted")
+        && matches!(clause_words[1], "artifact" | "creature" | "land" | "permanent")
         && clause_words[2] == "is"
     {
         let mut descriptor_words = &clause_words[3..];
@@ -2282,8 +2282,13 @@ pub(crate) fn parse_static_condition_clause(
 
         if descriptor_words.len() == 1 {
             let descriptor = descriptor_words[0];
-            let mut filter = ObjectFilter::creature()
-                .match_tagged(crate::TagKey::from("equipped"), crate::target::TaggedOpbjectRelation::IsTaggedObject);
+            let subject_end = token_index_for_word_index(&tokens, 2).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unable to map attached-object static condition subject (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
+            let mut filter = parse_object_filter(&tokens[..subject_end], false)?;
             if let Some(color) = parse_color(descriptor) {
                 filter.colors = Some(color);
                 return Ok(crate::ConditionExpr::CountComparison {
