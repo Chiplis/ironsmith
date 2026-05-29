@@ -2429,6 +2429,34 @@ pub(crate) fn is_can_block_only_flying_line_lexed(tokens: &[OwnedLexToken]) -> b
     )
 }
 
+pub(crate) fn parse_can_block_subtype_as_though_reach_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<crate::types::Subtype> {
+    let words = TokenWordView::new(tokens).to_word_refs();
+    let subtype_word = match words.as_slice() {
+        [
+            "this",
+            "creature",
+            "can",
+            "block",
+            subtype,
+            "as",
+            "though",
+            "it",
+            "had",
+            "reach",
+        ]
+        | [
+            "this", "can", "block", subtype, "as", "though", "it", "had", "reach",
+        ] => *subtype,
+        _ => return None,
+    };
+
+    parse_subtype_word(subtype_word)
+        .or_else(|| subtype_word.strip_suffix('s').and_then(parse_subtype_word))
+        .filter(|subtype| subtype.is_creature_type())
+}
+
 pub(crate) fn is_skulk_rules_text_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches_any_exact_phrase_line_lexed(
         tokens,
