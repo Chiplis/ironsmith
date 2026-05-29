@@ -467,10 +467,45 @@ fn runtime_definition_from_core_model(
         runtime_optional_cost_from_core_model,
     )?;
     definition.abilities = combine_level_ability_statics(definition.abilities);
+    add_miracle_trigger_for_alternative_cast(&mut definition);
     if let Some(spell_effect) = &mut definition.spell_effect {
         remove_redundant_target_only_effects_in_program(spell_effect);
     }
     Ok(definition)
+}
+
+fn add_miracle_trigger_for_alternative_cast(definition: &mut ironsmith::cards::CardDefinition) {
+    if !definition
+        .alternative_casts
+        .iter()
+        .any(ironsmith::alternative_cast::AlternativeCastingMethod::is_miracle)
+    {
+        return;
+    }
+    if definition.abilities.iter().any(|ability| {
+        matches!(
+            &ability.kind,
+            ironsmith::ability::AbilityKind::Triggered(triggered)
+                if triggered.trigger == ironsmith::triggers::Trigger::miracle()
+        )
+    }) {
+        return;
+    }
+
+    definition.abilities.push(
+        ironsmith::ability::Ability {
+            kind: ironsmith::ability::AbilityKind::Triggered(ironsmith::ability::TriggeredAbility {
+                trigger: ironsmith::triggers::Trigger::miracle(),
+                effects: ironsmith::resolution::ResolutionProgram::from_effects(vec![
+                    ironsmith::effect::Effect::may_cast_for_miracle_cost(),
+                ]),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: None,
+            }),
+            functional_zones: vec![ironsmith::zone::Zone::Hand],
+        },
+    );
 }
 
 pub fn into_runtime_definition(

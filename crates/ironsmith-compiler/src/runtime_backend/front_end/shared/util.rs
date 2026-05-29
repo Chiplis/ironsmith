@@ -4078,6 +4078,27 @@ pub(crate) fn parse_madness_line_lexed(
     parse_madness_line(tokens)
 }
 
+pub(crate) fn parse_miracle_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+    if !tokens.first().is_some_and(|token| token.is_word("miracle")) {
+        return Ok(None);
+    }
+
+    let cost_tokens = tokens.get(1..).unwrap_or_default();
+    let (cost, _) = leading_mana_cost_from_tokens(cost_tokens).ok_or_else(|| {
+        CardTextError::ParseError("miracle keyword missing mana cost".to_string())
+    })?;
+
+    Ok(Some(AlternativeCastingMethod::Miracle { cost }))
+}
+
+pub(crate) fn parse_miracle_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+    parse_miracle_line(tokens)
+}
+
 pub(crate) fn parse_buyback_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<OptionalCost>, CardTextError> {

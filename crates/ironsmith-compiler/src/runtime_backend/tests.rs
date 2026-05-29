@@ -5279,6 +5279,29 @@ fn jump_start_keyword_line_is_classified_as_alternative_cast() {
 }
 
 #[test]
+fn entreat_the_angels_miracle_keyword_line_is_classified_as_miracle() {
+    let tokens = lex_line(
+        "Miracle {X}{W}{W} (You may cast this card for its miracle cost when you draw it if it's the first card you drew this turn.)",
+        0,
+    )
+    .expect("rewrite lexer should classify Entreat the Angels miracle keyword line");
+
+    assert!(matches!(
+        super::families::keyword_families::parse_keyword_dispatch_hint(&tokens),
+        Some(super::families::keyword_families::KeywordDispatchHint::Miracle)
+    ));
+
+    let parsed = super::front_end::shared::util::parse_miracle_line_lexed(&tokens)
+        .expect("Entreat the Angels miracle keyword should not error")
+        .expect("Entreat the Angels miracle keyword should parse");
+
+    let debug = format!("{parsed:?}");
+    assert!(debug.contains("Miracle"), "{debug}");
+    assert!(debug.contains('X'), "{debug}");
+    assert!(debug.contains("White"), "{debug}");
+}
+
+#[test]
 fn equal_to_number_of_cards_you_ve_discarded_this_turn_parses() {
     let tokens = lex_line("equal to the number of cards you've discarded this turn", 0)
         .expect("rewrite lexer should classify value clause");

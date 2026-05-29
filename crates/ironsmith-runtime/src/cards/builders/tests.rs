@@ -35496,6 +35496,201 @@ fn assert_oracle_card_fails_strict(name: &str) {
     );
 }
 
+fn entreat_the_angels_runtime_definition() -> CardDefinition {
+    let angel = CardDefinitionBuilder::new(CardId::new(), "Angel")
+        .color_indicator(crate::color::ColorSet::WHITE)
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Angel])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .flying()
+        .token()
+        .build();
+
+    CardDefinitionBuilder::new(CardId::new(), "Entreat the Angels")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::X],
+            vec![ManaSymbol::X],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .with_spell_effect(vec![Effect::create_tokens(angel, Value::X)])
+        .miracle(ManaCost::from_pips(vec![
+            vec![ManaSymbol::X],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::White],
+        ]))
+        .build()
+}
+
+#[test]
+fn entreat_the_angels_runtime_model_has_miracle_cost_and_hidden_helper_trigger() {
+    let def = entreat_the_angels_runtime_definition();
+    let lines = canonical_compiled_lines(&def);
+
+    assert!(
+        def.alternative_casts.iter().any(|method| matches!(
+            method,
+            crate::alternative_cast::AlternativeCastingMethod::Miracle { cost }
+                if cost.to_oracle() == "{X}{W}{W}"
+        )),
+        "Entreat the Angels should expose its miracle alternative cost"
+    );
+    assert!(
+        lines.iter().any(|line| line == "Miracle {X}{W}{W}."),
+        "compiled text should render Entreat the Angels' miracle keyword, got {lines:?}"
+    );
+    assert!(
+        !lines.iter().any(|line| line.contains("you may cast it for its miracle cost")),
+        "compiled text should not duplicate the structural miracle helper trigger, got {lines:?}"
+    );
+}
+
+#[test]
+fn entreat_the_angels_miracle_trigger_matches_only_first_drawn_card() {
+    use crate::triggers::matcher_trait::TriggerContext;
+
+    let def = entreat_the_angels_runtime_definition();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let entreat_id = game.create_object_from_definition(&def, alice, Zone::Hand);
+    let filler = CardDefinitionBuilder::new(CardId::new(), "Filler")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let filler_id = game.create_object_from_definition(&filler, alice, Zone::Hand);
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Entreat the Angels should have a miracle helper trigger");
+    let ctx = TriggerContext::new(
+        entreat_id,
+        alice,
+        crate::filter::FilterContext::new(alice).with_source(entreat_id),
+        &game,
+    );
+    let raw_event = |event| {
+        crate::events::RawEvent::new(event, crate::provenance::ProvNodeId::default())
+    };
+
+    assert!(triggered.trigger.matches(
+        &raw_event(crate::events::other::CardsDrawnEvent::single(
+            alice, entreat_id, true,
+        )),
+        &ctx,
+    ));
+    assert!(!triggered.trigger.matches(
+        &raw_event(crate::events::other::CardsDrawnEvent::new(
+            alice,
+            vec![filler_id, entreat_id],
+            true,
+        )),
+        &ctx,
+    ));
+    assert!(!triggered.trigger.matches(
+        &raw_event(crate::events::other::CardsDrawnEvent::single(
+            alice, entreat_id, false,
+        )),
+        &ctx,
+    ));
+    assert!(!triggered.trigger.matches(
+        &raw_event(crate::events::other::CardsDrawnEvent::single(
+            bob, entreat_id, true,
+        )),
+        &ctx,
+    ));
+}
+
+#[test]
+fn entreat_the_angels_miracle_cast_uses_chosen_x_and_creates_that_many_angels() {
+    struct ChooseMiracleX(u32);
+
+    impl crate::decision::DecisionMaker for ChooseMiracleX {
+        fn decide_boolean(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            true
+        }
+
+        fn decide_number(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::NumberContext,
+        ) -> u32 {
+            self.0.min(ctx.max)
+        }
+    }
+
+    let def = entreat_the_angels_runtime_definition();
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let entreat_id = game.create_object_from_definition(&def, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::White, 2);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 3);
+
+    let miracle_effect = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => {
+                triggered.effects.flattened_default_effects().first().cloned()
+            }
+            _ => None,
+        })
+        .expect("Entreat the Angels should have a miracle cast effect")
+        .clone();
+    let event = crate::events::RawEvent::new(
+        crate::events::other::CardsDrawnEvent::single(alice, entreat_id, true),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut dm = ChooseMiracleX(3);
+    let mut ctx = crate::effects::ExecutionContext::new(entreat_id, alice, &mut dm)
+        .with_triggering_event(event);
+
+    miracle_effect
+        .0
+        .execute(&mut game, &mut ctx)
+        .expect("Entreat the Angels miracle effect should resolve");
+    let stack_entry = game.stack.last().expect("Entreat should be on the stack");
+    assert_eq!(stack_entry.x_value, Some(3));
+    assert!(matches!(
+        stack_entry.casting_method,
+        crate::alternative_cast::CastingMethod::Alternative(_)
+    ));
+
+    let mut resolve_dm = crate::decision::AutoPassDecisionMaker;
+    crate::game_loop::resolve_stack_entry_with(&mut game, &mut resolve_dm)
+        .expect("Entreat the Angels should resolve");
+
+    let angels: Vec<_> = game
+        .objects_in_zone(Zone::Battlefield)
+        .into_iter()
+        .filter_map(|id| game.object(id))
+        .filter(|object| object.name == "Angel" && object.owner == alice)
+        .collect();
+    assert_eq!(angels.len(), 3, "Entreat should create X Angel tokens");
+    assert!(angels.iter().all(|angel| {
+        angel.base_power == Some(crate::card::PtValue::Fixed(4))
+            && angel.base_toughness == Some(crate::card::PtValue::Fixed(4))
+            && angel.subtypes.contains(&Subtype::Angel)
+            && angel.has_static_ability_id(crate::static_abilities::StaticAbilityId::Flying)
+    }));
+}
+
 #[test]
 fn guardian_of_the_ages_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("Guardian of the Ages");

@@ -50,6 +50,7 @@ pub(super) enum KeywordDispatchHint {
     Epic,
     Offspring,
     Madness,
+    Miracle,
     Escape,
     MorphFamily,
     Mutate,
@@ -266,6 +267,12 @@ mod spell_keywords {
             lower: registry::lower_madness,
         },
         KeywordLineRule {
+            cst_kind: super::super::cst::KeywordLineKindCst::Miracle,
+            hints: &[KeywordDispatchHint::Miracle],
+            matches: registry::matches_miracle,
+            lower: registry::lower_miracle,
+        },
+        KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Escape,
             hints: &[KeywordDispatchHint::Escape],
             matches: registry::matches_escape,
@@ -362,6 +369,7 @@ pub(super) fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<Ke
             winnow::combinator::alt((
                 grammar::kw("gift").value(KeywordDispatchHint::Gift),
                 grammar::kw("warp").value(KeywordDispatchHint::Warp),
+                grammar::kw("miracle").value(KeywordDispatchHint::Miracle),
                 grammar::kw("prowl").value(KeywordDispatchHint::AlternativeOrExertFamily),
                 grammar::kw("escalate").value(KeywordDispatchHint::Escalate),
                 grammar::kw("evoke").value(KeywordDispatchHint::Evoke),

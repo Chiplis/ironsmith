@@ -115,24 +115,43 @@ impl EffectExecutor for MayCastForMiracleCostEffect {
             return Ok(EffectOutcome::resolved());
         }
 
-        // Player wants to cast for miracle cost.
-        let x_value = if miracle_cost.has_x() {
-            Some(0u32)
-        } else {
-            None
-        };
-
         // Try to pay now; if payment fails, card stays in hand.
         let Some(card_obj) = game.object(card_id) else {
             return Ok(EffectOutcome::resolved());
         };
         let effective_cost =
             crate::decision::calculate_effective_mana_cost(game, owner, card_obj, &miracle_cost);
+        let x_value = if miracle_cost.has_x() {
+            let max_x = game
+                .player(owner)
+                .map(|player| {
+                    let available = player.mana_pool.total();
+                    (0..=available)
+                        .filter(|x| player.mana_pool.can_pay(&effective_cost, *x))
+                        .max()
+                        .unwrap_or(0)
+                })
+                .unwrap_or(0);
+            let number_ctx =
+                crate::decisions::context::NumberContext::x_value(owner, card_id, max_x)
+                    .with_context_text(format!(
+                        "Choose X for {}'s miracle cost ({})",
+                        card_name,
+                        miracle_cost.to_oracle()
+                    ));
+            let chosen_x = ctx.decision_maker.decide_number(game, &number_ctx).min(max_x);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            Some(chosen_x)
+        } else {
+            None
+        };
         if !game.try_pay_mana_cost_with_reason(
             owner,
             Some(card_id),
             &effective_cost,
-            0,
+            x_value.unwrap_or(0),
             crate::costs::PaymentReason::CastSpell,
         ) {
             return Ok(EffectOutcome::resolved());

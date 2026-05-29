@@ -1594,6 +1594,26 @@ fn is_suspend_helper_ability(ability: &Ability) -> bool {
             || is_suspend_cast_when_last_counter_removed_trigger(triggered))
 }
 
+fn is_miracle_helper_ability(ability: &Ability) -> bool {
+    let AbilityKind::Triggered(triggered) = &ability.kind else {
+        return false;
+    };
+    if ability.functional_zones != [Zone::Hand]
+        || triggered.trigger != crate::triggers::Trigger::miracle()
+        || !triggered.choices.is_empty()
+        || triggered.intervening_if.is_some()
+    {
+        return false;
+    }
+
+    let [effect] = triggered.effects.flattened_default_effects() else {
+        return false;
+    };
+    effect
+        .downcast_ref::<crate::effects::player::MayCastForMiracleCostEffect>()
+        .is_some()
+}
+
 fn is_conspire_helper_ability(ability: &Ability) -> bool {
     let AbilityKind::Triggered(triggered) = &ability.kind else {
         return false;
@@ -2098,10 +2118,18 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
             .alternative_casts
             .iter()
             .any(|method| matches!(method, AlternativeCastingMethod::Suspend { .. }));
+        let has_miracle = def
+            .alternative_casts
+            .iter()
+            .any(AlternativeCastingMethod::is_miracle);
         let mut ability_idx = 0usize;
         while ability_idx < def.abilities.len() {
             let ability = &def.abilities[ability_idx];
             if has_suspend && is_suspend_helper_ability(ability) {
+                ability_idx += 1;
+                continue;
+            }
+            if has_miracle && is_miracle_helper_ability(ability) {
                 ability_idx += 1;
                 continue;
             }
