@@ -641,6 +641,7 @@ pub(crate) fn parse_single_word_keyword_action(word: &str) -> Option<KeywordActi
         "exalted" => Some(KeywordAction::Exalted),
         "cascade" => Some(KeywordAction::Cascade),
         "storm" => Some(KeywordAction::Storm),
+        "demonstrate" => Some(KeywordAction::Demonstrate),
         "rebound" => Some(KeywordAction::Rebound),
         "ascend" => Some(KeywordAction::Ascend),
         "compleated" => Some(KeywordAction::Marker("compleated")),
@@ -1242,6 +1243,9 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
     }
     if head == "cascade" {
         return Some(KeywordAction::Cascade);
+    }
+    if head == "demonstrate" {
+        return Some(KeywordAction::Demonstrate);
     }
 
     // Casualty N - "as you cast this spell, you may sacrifice a creature with power N or greater"

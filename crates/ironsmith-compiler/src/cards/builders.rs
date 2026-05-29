@@ -344,6 +344,7 @@ impl CardDefinitionBuilder {
             KeywordAction::VariableCasualtyPlaneswalkerCopy => {
                 self.variable_casualty_planeswalker_copy()
             }
+            KeywordAction::Demonstrate => self.demonstrate(),
             KeywordAction::Conspire => self.conspire(),
             KeywordAction::Amplify(amount) => self.amplify(amount),
             KeywordAction::Devour(multiplier) => self.devour(multiplier),
@@ -1459,6 +1460,46 @@ impl CardDefinitionBuilder {
                 vec![crate::effect::Effect::new(
                     crate::effects::VariableCasualtyPlaneswalkerCopyEffect::new(),
                 )],
+            )
+            .in_zones(vec![crate::zone::Zone::Stack]),
+        )
+    }
+
+    pub fn demonstrate(self) -> Self {
+        let opponent_tag = crate::tag::TagKey::from("demonstrate_opponent");
+        let opponent = crate::target::PlayerFilter::TaggedPlayer(opponent_tag.clone());
+        self.with_ability(
+            crate::ability::Ability::triggered(
+                crate::triggers::Trigger::you_cast_this_spell(),
+                vec![crate::effect::Effect::may(vec![
+                    crate::effect::Effect::with_id(
+                        0,
+                        crate::effect::Effect::new(crate::effects::CopySpellEffect::single(
+                            crate::target::ChooseSpec::Source,
+                        )),
+                    ),
+                    crate::effect::Effect::new(crate::effects::ChoosePlayerEffect::new(
+                        crate::target::PlayerFilter::You,
+                        crate::target::PlayerFilter::Opponent,
+                        opponent_tag.clone(),
+                    )),
+                    crate::effect::Effect::with_id(
+                        1,
+                        crate::effect::Effect::new(crate::effects::CopySpellEffect::new_for_player(
+                            crate::target::ChooseSpec::Source,
+                            1,
+                            opponent.clone(),
+                        )),
+                    ),
+                    crate::effect::Effect::may_choose_new_targets_player(
+                        crate::effect::EffectId(0),
+                        crate::target::PlayerFilter::You,
+                    ),
+                    crate::effect::Effect::may_choose_new_targets_player(
+                        crate::effect::EffectId(1),
+                        opponent,
+                    ),
+                ])],
             )
             .in_zones(vec![crate::zone::Zone::Stack]),
         )
