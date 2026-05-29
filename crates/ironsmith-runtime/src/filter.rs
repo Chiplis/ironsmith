@@ -4735,6 +4735,11 @@ fn describe_comparison(cmp: &Comparison) -> String {
                     "that card's mana value".to_string()
                 }
             }
+            Value::EffectValue(_) => "that result".to_string(),
+            Value::EffectMetric {
+                metric: crate::effect::EffectMetric::OtherNumber,
+                ..
+            } => "the other result".to_string(),
             Value::Add(left, right) => {
                 format!(
                     "{} plus {}",

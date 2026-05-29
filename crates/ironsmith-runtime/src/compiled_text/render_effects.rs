@@ -28800,6 +28800,25 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             player_verb(&player, "roll", "rolls"),
         );
     }
+    if let Some(roll_dice) = effect.downcast_ref::<crate::effects::RollDiceChooseResultEffect>() {
+        let player = describe_player_filter(&roll_dice.player);
+        let die_text = roll_dice
+            .die_text
+            .clone()
+            .unwrap_or_else(|| format!("d{}", roll_dice.sides));
+        let count = match roll_dice.count {
+            1 => "one".to_string(),
+            2 => "two".to_string(),
+            n => n.to_string(),
+        };
+        if player == "you" {
+            return format!("Roll {count} {die_text} and choose one result");
+        }
+        return format!(
+            "{player} {} {count} {die_text} and chooses one result",
+            player_verb(&player, "roll", "rolls"),
+        );
+    }
     if let Some(flip_coin) = effect.downcast_ref::<crate::effects::FlipCoinEffect>() {
         let player = describe_player_filter(&flip_coin.player);
         if player == "you" {

@@ -1276,6 +1276,16 @@ where
             payload.die_text.clone(),
         )));
     }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::RollDiceChooseResultEffect>(&effect) {
+        return Ok(Effect::new(
+            crate::effects::RollDiceChooseResultEffect::new_with_die_text(
+                payload.player.clone(),
+                payload.count,
+                payload.sides,
+                payload.die_text.clone(),
+            ),
+        ));
+    }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::EmitGiftGivenEffect>(&effect) {
         return Ok(Effect::new(crate::effects::EmitGiftGivenEffect::new(
             payload.recipient.clone(),

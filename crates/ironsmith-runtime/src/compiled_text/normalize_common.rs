@@ -7544,6 +7544,7 @@ fn describe_effect_metric_value(
             "the greatest number of cards a player discarded this way".to_string()
         }
         crate::effect::EffectMetric::IteratedPlayerCount => "that many".to_string(),
+        crate::effect::EffectMetric::OtherNumber => "the other result".to_string(),
     };
     match offset {
         Some(0) | None => base,

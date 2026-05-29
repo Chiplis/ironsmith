@@ -676,6 +676,35 @@ pub(crate) fn resolve_value_it_tag(
             }
             Ok(value.clone())
         }
+        Value::PendingEffectMetric { source, metric } => {
+            let id = refs.known_last_effect_id().ok_or_else(|| {
+                CardTextError::ParseError(
+                    "pending effect metric requires a prior memory-producing effect".to_string(),
+                )
+            })?;
+            Ok(Value::EffectMetric {
+                effect_id: id,
+                source: *source,
+                metric: *metric,
+            })
+        }
+        Value::PendingEffectMetricOffset {
+            source,
+            metric,
+            offset,
+        } => {
+            let id = refs.known_last_effect_id().ok_or_else(|| {
+                CardTextError::ParseError(
+                    "pending effect metric requires a prior memory-producing effect".to_string(),
+                )
+            })?;
+            Ok(Value::EffectMetricOffset {
+                effect_id: id,
+                source: *source,
+                metric: *metric,
+                offset: *offset,
+            })
+        }
         _ => Ok(value.clone()),
     }
 }

@@ -747,6 +747,11 @@ pub(crate) enum SubjectVerbActionAst {
         sides: u32,
         die_text: Option<String>,
     },
+    RollDiceChooseResult {
+        count: u32,
+        sides: u32,
+        die_text: Option<String>,
+    },
     ShuffleHandAndGraveyardIntoLibrary,
     ShuffleGraveyardIntoLibrary,
     ReorderGraveyard,
@@ -1752,6 +1757,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                     f.debug_tuple("RollDie").field(sides).finish()
                 }
             }
+            Self::RollDiceChooseResult {
+                count,
+                sides,
+                die_text,
+            } => f
+                .debug_struct("RollDiceChooseResult")
+                .field("count", count)
+                .field("sides", sides)
+                .field("die_text", die_text)
+                .finish(),
             Self::ShuffleHandAndGraveyardIntoLibrary => {
                 f.write_str("ShuffleHandAndGraveyardIntoLibrary")
             }
@@ -5403,6 +5418,23 @@ impl EffectAst {
             SubjectVerbRoleAst::AffectedPlayer,
             player,
             SubjectVerbActionAst::RollDie { sides, die_text },
+        )
+    }
+
+    pub(crate) fn subject_verb_roll_dice_choose_result_with_die_text(
+        player: PlayerAst,
+        count: u32,
+        sides: u32,
+        die_text: Option<String>,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::RollDiceChooseResult {
+                count,
+                sides,
+                die_text,
+            },
         )
     }
 

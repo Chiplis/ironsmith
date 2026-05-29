@@ -1648,6 +1648,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Clash { .. }
             | SubjectVerbActionAst::FlipCoin
             | SubjectVerbActionAst::RollDie { .. }
+            | SubjectVerbActionAst::RollDiceChooseResult { .. }
             | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
             | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary
             | SubjectVerbActionAst::ReorderGraveyard
@@ -2144,6 +2145,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::Clash { .. }
             | SubjectVerbActionAst::FlipCoin
             | SubjectVerbActionAst::RollDie { .. }
+            | SubjectVerbActionAst::RollDiceChooseResult { .. }
             | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
             | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary
             | SubjectVerbActionAst::ReorderGraveyard

@@ -4163,6 +4163,39 @@ impl RollDieEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct RollDiceChooseResultEffect {
+    pub player: PlayerFilter,
+    pub count: u32,
+    pub sides: u32,
+    pub die_text: Option<String>,
+}
+
+impl RollDiceChooseResultEffect {
+    pub fn new(player: PlayerFilter, count: u32, sides: u32) -> Self {
+        Self {
+            player,
+            count,
+            sides,
+            die_text: None,
+        }
+    }
+
+    pub fn new_with_die_text(
+        player: PlayerFilter,
+        count: u32,
+        sides: u32,
+        die_text: Option<String>,
+    ) -> Self {
+        Self {
+            player,
+            count,
+            sides,
+            die_text,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct EmitGiftGivenEffect {
     pub recipient: PlayerFilter,
 }

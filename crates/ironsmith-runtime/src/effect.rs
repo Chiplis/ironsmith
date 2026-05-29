@@ -197,6 +197,7 @@ pub enum ExecutionFact {
     PlayerCounts(Vec<(PlayerId, i32)>),
     ChosenOptions(Vec<usize>),
     ChosenNumber(u32),
+    OtherNumber(u32),
 }
 
 impl ExecutionFact {
@@ -2900,6 +2901,19 @@ impl Effect {
     ) -> Self {
         use crate::effects::RollDieEffect;
         Self::new(RollDieEffect::new_with_die_text(player, sides, die_text))
+    }
+
+    pub fn roll_dice_choose_result_with_die_text(
+        count: u32,
+        sides: u32,
+        player: PlayerFilter,
+        die_text: Option<String>,
+    ) -> Self {
+        use crate::effects::RollDiceChooseResultEffect;
+
+        Self::new(RollDiceChooseResultEffect::new_with_die_text(
+            player, count, sides, die_text,
+        ))
     }
 
     // === Effect composition builders ===
