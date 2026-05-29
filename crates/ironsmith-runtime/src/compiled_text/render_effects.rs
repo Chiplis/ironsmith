@@ -2375,6 +2375,55 @@ fn describe_choose_then_put_counter_on_each(effects: &[&Effect]) -> Option<Strin
     }
 }
 
+fn describe_may_choose_then_affect_not_chosen_this_way(effects: &[Effect]) -> Option<String> {
+    let [may_effect, for_each_effect] = effects else {
+        return None;
+    };
+    let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+    if may.decider.is_some() {
+        return None;
+    }
+    let [choose_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if choose.chooser != PlayerFilter::You
+        || choose.is_search
+        || choose_primary_zone(choose) != Some(Zone::Battlefield)
+    {
+        return None;
+    }
+    let for_each = for_each_effect.downcast_ref::<crate::effects::ForEachObject>()?;
+    let not_chosen_idx = for_each.filter.tagged_constraints.iter().position(|constraint| {
+        constraint.tag == choose.tag
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+    })?;
+
+    let mut affected_filter = for_each.filter.clone();
+    affected_filter.tagged_constraints.remove(not_chosen_idx);
+    let affected_text = strip_indefinite_article(&affected_filter.description()).to_string();
+    let effect_text = describe_effect_list(&for_each.effects);
+    let replacements = [
+        " to that object",
+        " to that creature",
+        " to that permanent",
+        " to that artifact",
+        " to that enchantment",
+        " to that land",
+        " to that spell",
+        " to that card",
+    ];
+    let suffix = replacements
+        .iter()
+        .find(|suffix| effect_text.ends_with(**suffix))?;
+    let subject_text = effect_text.trim_end_matches(*suffix);
+
+    Some(format!(
+        "You may choose {}. {subject_text} to each {affected_text} not chosen this way",
+        describe_choose_selection(choose)
+    ))
+}
+
 fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<String> {
     if let [first, rest @ ..] = effects
         && first
@@ -2384,7 +2433,8 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         return describe_structural_multisentence_effect_list(rest);
     }
 
-    describe_draw_discard_then_create_structural(effects)
+    describe_may_choose_then_affect_not_chosen_this_way(effects)
+        .or_else(|| describe_draw_discard_then_create_structural(effects))
         .or_else(|| describe_reveal_top_choice_to_hand_rest_graveyard_structural(effects))
         .or_else(|| describe_gain_control_untap_haste_structural(effects))
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
@@ -11191,6 +11241,36 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             parts.push(rendered);
             idx += 2;
             continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(with_id) = filtered[idx].downcast_ref::<crate::effects::WithIdEffect>()
+        {
+            let mut roll_branches = Vec::new();
+            let mut lookahead = idx + 1;
+            while lookahead < filtered.len() {
+                let Some(if_effect) = filtered[lookahead]
+                    .downcast_ref::<crate::effects::IfEffect>()
+                    .or_else(|| {
+                        filtered[lookahead]
+                            .downcast_ref::<crate::effects::WithIdEffect>()
+                            .and_then(|nested| {
+                                nested.effect.downcast_ref::<crate::effects::IfEffect>()
+                            })
+                    })
+                else {
+                    break;
+                };
+                if if_effect.condition != with_id.id {
+                    break;
+                }
+                roll_branches.push(if_effect);
+                lookahead += 1;
+            }
+            if let Some(table) = describe_roll_result_table(with_id, &roll_branches) {
+                parts.push(table);
+                idx = lookahead;
+                continue;
+            }
         }
         if idx + 1 < filtered.len()
             && let Some(with_id) = filtered[idx].downcast_ref::<crate::effects::WithIdEffect>()
@@ -23712,6 +23792,7 @@ fn describe_optional_setup_effect_for_if_happened(
 fn describe_roll_result_comparison(cmp: &Comparison) -> Option<String> {
     match cmp {
         Comparison::Equal(n) => Some(n.to_string()),
+        Comparison::BetweenInclusive(min, max) if min == max => Some(min.to_string()),
         Comparison::BetweenInclusive(min, max) => Some(format!("{min}-{max}")),
         Comparison::OneOf(values) if !values.is_empty() => {
             let nums = values.iter().map(i32::to_string).collect::<Vec<_>>();
@@ -23729,6 +23810,56 @@ fn describe_roll_result_comparison(cmp: &Comparison) -> Option<String> {
         }
         _ => None,
     }
+}
+
+fn describe_roll_result_table_prefix(cmp: &Comparison) -> Option<String> {
+    match cmp {
+        Comparison::Equal(n) => Some(n.to_string()),
+        Comparison::BetweenInclusive(min, max) if min == max => Some(min.to_string()),
+        Comparison::BetweenInclusive(min, max) => Some(format!("{min}—{max}")),
+        _ => None,
+    }
+}
+
+fn normalize_roll_result_table_branch_text(text: String) -> String {
+    text.replace(
+        "to each opponent's creature",
+        "to each creature your opponents control",
+    )
+}
+
+fn describe_roll_result_table(
+    with_id: &crate::effects::WithIdEffect,
+    branches: &[&crate::effects::IfEffect],
+) -> Option<String> {
+    with_id
+        .effect
+        .downcast_ref::<crate::effects::RollDieEffect>()?;
+    if branches.len() < 2 {
+        return None;
+    }
+
+    let mut rows = Vec::new();
+    for branch in branches {
+        if !branch.else_.is_empty() {
+            return None;
+        }
+        let EffectPredicate::Value(cmp) = &branch.predicate else {
+            return None;
+        };
+        let prefix = describe_roll_result_table_prefix(cmp)?;
+        let body = describe_effect_clause_list(&branch.then)
+            .unwrap_or_else(|| describe_effect_list(&branch.then));
+        let body = normalize_roll_result_table_branch_text(body);
+        let body = body.trim().trim_end_matches('.');
+        if body.is_empty() {
+            return None;
+        }
+        rows.push(format!("{prefix} | {}.", capitalize_first(body)));
+    }
+
+    let setup = describe_effect(&with_id.effect);
+    Some(format!("{setup}.\n{}", rows.join("\n")))
 }
 
 fn describe_for_players_may_clause(
@@ -35458,7 +35589,9 @@ pub(super) fn rewrite_damage_phrases_for_permanent_abilities(
         .replace(". Deal ", &format!(". {capitalized_subject} deals "))
         .replace(". deal ", &format!(". {subject} deals "))
         .replace(", Deal ", &format!(", {subject} deals "))
-        .replace(", deal ", &format!(", {subject} deals "));
+        .replace(", deal ", &format!(", {subject} deals "))
+        .replace("| Deal ", &format!("| {capitalized_subject} deals "))
+        .replace("| deal ", &format!("| {subject} deals "));
     if rewrite_it_deals {
         if let Some(rest) = effect_text.strip_prefix("It deals ") {
             return format!("{subject} deals {rest}");

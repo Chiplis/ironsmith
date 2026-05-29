@@ -36005,6 +36005,181 @@ fn parse_oracle_card_definition(name: &str) -> CardDefinition {
         .unwrap_or_else(|err| panic!("strict parser regression failed for '{name}': {err:?}"))
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn thunderwave_definition() -> CardDefinition {
+    parse_oracle_card_definition("Thunderwave")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn thunderwave_parses_strictly_with_d20_choice_and_not_chosen_filter() {
+    let def = thunderwave_definition();
+    let debug = format!("{:?}", def.spell_effect);
+
+    assert!(debug.contains("RollDieEffect"), "{debug}");
+    assert!(debug.contains("BetweenInclusive(1, 9)"), "{debug}");
+    assert!(debug.contains("BetweenInclusive(10, 19)"), "{debug}");
+    assert!(debug.contains("Equal(20)"), "{debug}");
+    assert!(debug.contains("ChooseObjectsEffect"), "{debug}");
+    assert!(debug.contains("IsNotTaggedObject"), "{debug}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn thunderwave_compiled_text_preserves_choice_and_exact_twenty_branch() {
+    let def = thunderwave_definition();
+    let rendered = unprocessed_compiled_lines(&def);
+
+    assert_eq!(
+        rendered,
+        vec![
+            "Roll a d20.",
+            "1—9 | Thunderwave deals 3 damage to each creature.",
+            "10—19 | You may choose a creature. Thunderwave deals 3 damage to each creature not chosen this way.",
+            "20 | Thunderwave deals 6 damage to each creature your opponents control.",
+        ]
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn thunderwave_test_creature(
+    game: &mut crate::game_state::GameState,
+    name: &str,
+    controller: PlayerId,
+) -> ObjectId {
+    let creature = CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(10, 10))
+        .build();
+    game.create_object_from_definition(&creature, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct ThunderwaveDecisionMaker {
+    accept_choice: bool,
+    chosen: Option<ObjectId>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl crate::decision::DecisionMaker for ThunderwaveDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        self.accept_choice
+    }
+
+    fn decide_objects(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        self.chosen
+            .filter(|chosen| {
+                ctx.candidates
+                    .iter()
+                    .any(|candidate| candidate.legal && candidate.id == *chosen)
+            })
+            .into_iter()
+            .collect()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_thunderwave_with_roll(
+    game: &mut crate::game_state::GameState,
+    roll: u32,
+    accept_choice: bool,
+    chosen: Option<ObjectId>,
+) {
+    let alice = PlayerId::from_index(0);
+    let def = thunderwave_definition();
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut dm = ThunderwaveDecisionMaker {
+        accept_choice,
+        chosen,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+    game.force_next_die_roll(roll);
+    crate::game_loop::execute_resolution_program(
+        game,
+        &mut ctx,
+        alice,
+        source,
+        def.spell_effect.as_ref().expect("Thunderwave spell effect"),
+        None,
+        &[],
+    )
+    .expect("Thunderwave should resolve");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn thunderwave_roll_one_to_nine_damages_each_creature() {
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let first = thunderwave_test_creature(&mut game, "Alice Creature", alice);
+    let second = thunderwave_test_creature(&mut game, "Second Alice Creature", alice);
+    let opponent = thunderwave_test_creature(&mut game, "Bob Creature", bob);
+
+    resolve_thunderwave_with_roll(&mut game, 7, false, None);
+
+    assert_eq!(game.damage_on(first), 3);
+    assert_eq!(game.damage_on(second), 3);
+    assert_eq!(game.damage_on(opponent), 3);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn thunderwave_roll_ten_to_nineteen_spares_chosen_creature_only() {
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let chosen = thunderwave_test_creature(&mut game, "Chosen Creature", alice);
+    let other = thunderwave_test_creature(&mut game, "Other Creature", alice);
+    let opponent = thunderwave_test_creature(&mut game, "Opponent Creature", bob);
+
+    resolve_thunderwave_with_roll(&mut game, 12, true, Some(chosen));
+
+    assert_eq!(game.damage_on(chosen), 0);
+    assert_eq!(game.damage_on(other), 3);
+    assert_eq!(game.damage_on(opponent), 3);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn thunderwave_roll_ten_to_nineteen_declined_choice_damages_all_creatures() {
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let first = thunderwave_test_creature(&mut game, "Alice Creature", alice);
+    let second = thunderwave_test_creature(&mut game, "Second Alice Creature", alice);
+    let opponent = thunderwave_test_creature(&mut game, "Bob Creature", bob);
+
+    resolve_thunderwave_with_roll(&mut game, 15, false, Some(first));
+
+    assert_eq!(game.damage_on(first), 3);
+    assert_eq!(game.damage_on(second), 3);
+    assert_eq!(game.damage_on(opponent), 3);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn thunderwave_roll_twenty_damages_only_opponent_creatures_for_six() {
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let yours = thunderwave_test_creature(&mut game, "Alice Creature", alice);
+    let opponent = thunderwave_test_creature(&mut game, "Bob Creature", bob);
+
+    resolve_thunderwave_with_roll(&mut game, 20, false, None);
+
+    assert_eq!(game.damage_on(yours), 0);
+    assert_eq!(game.damage_on(opponent), 6);
+}
+
 fn assert_oracle_card_parses_strict(name: &str) {
     let oracle = oracle_text_by_name()
         .get(name)

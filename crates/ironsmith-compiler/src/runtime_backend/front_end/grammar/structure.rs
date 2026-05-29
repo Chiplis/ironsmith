@@ -1228,10 +1228,12 @@ fn split_leading_numeric_result_prefix_lexed<'a>(
         return None;
     }
 
-    Some((
-        IfResultPredicate::Value(Comparison::BetweenInclusive(min, max)),
-        trailing_tokens,
-    ))
+    let comparison = if min == max {
+        Comparison::Equal(min)
+    } else {
+        Comparison::BetweenInclusive(min, max)
+    };
+    Some((IfResultPredicate::Value(comparison), trailing_tokens))
 }
 
 pub(crate) fn split_trailing_if_clause_lexed<'a>(
