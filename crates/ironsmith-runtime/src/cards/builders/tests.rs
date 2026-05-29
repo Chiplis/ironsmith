@@ -36504,6 +36504,31 @@ fn target_assignment_for_first_targeted_effect(
     }
 }
 
+fn target_assignments_for_requirements(
+    requirements: &[crate::decision::TargetRequirement],
+    targets: &[crate::game_state::Target],
+) -> Vec<crate::game_state::TargetAssignment> {
+    let requirement_contexts = requirements
+        .iter()
+        .map(|requirement| crate::decisions::context::TargetRequirementContext {
+            description: requirement.description.clone(),
+            legal_targets: requirement.legal_targets.clone(),
+            min_targets: requirement.min_targets,
+            max_targets: requirement.max_targets,
+        })
+        .collect::<Vec<_>>();
+    let ranges = crate::targeting::assigned_target_ranges(&requirement_contexts, targets)
+        .expect("selected targets should satisfy requirements");
+    requirements
+        .iter()
+        .zip(ranges)
+        .map(|(requirement, range)| crate::game_state::TargetAssignment {
+            spec: requirement.spec.clone(),
+            range,
+        })
+        .collect()
+}
+
 #[test]
 fn season_of_the_burrow_strict_parser_and_weighted_modal_text_regression() {
     let def = parse_oracle_card_definition("Season of the Burrow");
@@ -36653,6 +36678,114 @@ fn season_of_the_burrow_exile_mode_exiles_nonland_permanent_and_draws_for_contro
 }
 
 #[test]
+fn season_of_the_burrow_repeated_exile_modes_use_separate_target_slots() {
+    let def = parse_oracle_card_definition("Season of the Burrow");
+    let modal = season_of_the_burrow_modal_effect(&def).clone();
+    let effects = def
+        .spell_effect
+        .as_ref()
+        .expect("Season of the Burrow should compile to spell effects")
+        .clone();
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let first = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_712), "Bob's First Relic")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let second = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_713), "Bob's Second Relic")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    for idx in 0..2 {
+        game.create_object_from_definition(
+            &CardDefinitionBuilder::new(CardId::from_raw(91_714 + idx), "Bob's Draw")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(1, 1))
+                .build(),
+            bob,
+            Zone::Library,
+        );
+    }
+
+    let chosen_modes = [1usize, 1usize];
+    assert!(
+        crate::game_loop::spell_program_has_legal_targets_with_modes(
+            &game,
+            &effects,
+            alice,
+            Some(source),
+            Some(&chosen_modes),
+        ),
+        "choosing Season's exile mode twice should be legal within the five {{P}} budget"
+    );
+    let requirements = crate::game_loop::extract_target_requirements_from_program_with_modes(
+        &game,
+        &effects,
+        alice,
+        Some(source),
+        Some(&chosen_modes),
+    );
+    assert_eq!(
+        requirements.len(),
+        2,
+        "repeated targeted modes should expose one target slot per selected mode instance"
+    );
+    for requirement in &requirements {
+        assert_eq!(requirement.min_targets, 1);
+        assert_eq!(requirement.max_targets, Some(1));
+        assert!(
+            requirement
+                .legal_targets
+                .contains(&crate::game_state::Target::Object(first))
+        );
+        assert!(
+            requirement
+                .legal_targets
+                .contains(&crate::game_state::Target::Object(second))
+        );
+    }
+
+    let selected_targets = vec![
+        crate::game_state::Target::Object(first),
+        crate::game_state::Target::Object(second),
+    ];
+    let assignments = target_assignments_for_requirements(&requirements, &selected_targets);
+    assert_eq!(assignments[0].range, 0..1);
+    assert_eq!(assignments[1].range, 1..2);
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_chosen_modes(Some(chosen_modes.to_vec()))
+        .with_targets(vec![
+            crate::effects::ResolvedTarget::Object(first),
+            crate::effects::ResolvedTarget::Object(second),
+        ])
+        .with_target_assignments(assignments);
+
+    modal
+        .execute(&mut game, &mut ctx)
+        .expect("Season of the Burrow repeated exile modes should resolve");
+
+    let exiled_names = game
+        .objects_in_zone(Zone::Exile)
+        .into_iter()
+        .filter_map(|id| game.object(id).map(|object| object.name.clone()))
+        .collect::<Vec<_>>();
+    assert!(exiled_names.contains(&"Bob's First Relic".to_string()));
+    assert!(exiled_names.contains(&"Bob's Second Relic".to_string()));
+    assert_eq!(game.player(bob).expect("Bob should exist").hand.len(), 2);
+}
+
+#[test]
 fn season_of_the_burrow_return_mode_returns_small_permanent_with_indestructible_counter() {
     let def = parse_oracle_card_definition("Season of the Burrow");
     let modal = season_of_the_burrow_modal_effect(&def).clone();
@@ -36696,6 +36829,115 @@ fn season_of_the_burrow_return_mode_returns_small_permanent_with_indestructible_
             .copied(),
         Some(1)
     );
+}
+
+#[test]
+fn season_of_the_burrow_return_and_exile_modes_keep_target_assignments_ordered() {
+    let def = parse_oracle_card_definition("Season of the Burrow");
+    let modal = season_of_the_burrow_modal_effect(&def).clone();
+    let effects = def
+        .spell_effect
+        .as_ref()
+        .expect("Season of the Burrow should compile to spell effects")
+        .clone();
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let graveyard_card = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_721), "Alice's Buried Keepsake")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Graveyard,
+    );
+    let battlefield_card = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_722), "Bob's Exiled Relic")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_723), "Bob's Draw")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build(),
+        bob,
+        Zone::Library,
+    );
+
+    let chosen_modes = [2usize, 1usize];
+    assert!(
+        crate::game_loop::spell_program_has_legal_targets_with_modes(
+            &game,
+            &effects,
+            alice,
+            Some(source),
+            Some(&chosen_modes),
+        ),
+        "Season's return plus exile modes should be legal at exactly five {{P}}"
+    );
+    let requirements = crate::game_loop::extract_target_requirements_from_program_with_modes(
+        &game,
+        &effects,
+        alice,
+        Some(source),
+        Some(&chosen_modes),
+    );
+    assert_eq!(
+        requirements.len(),
+        2,
+        "return and exile modes should keep separate target slots in selected-mode order"
+    );
+
+    let selected_targets = vec![
+        crate::game_state::Target::Object(graveyard_card),
+        crate::game_state::Target::Object(battlefield_card),
+    ];
+    let assignments = target_assignments_for_requirements(&requirements, &selected_targets);
+    assert_eq!(assignments[0].range, 0..1);
+    assert_eq!(assignments[1].range, 1..2);
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_chosen_modes(Some(chosen_modes.to_vec()))
+        .with_targets(vec![
+            crate::effects::ResolvedTarget::Object(graveyard_card),
+            crate::effects::ResolvedTarget::Object(battlefield_card),
+        ])
+        .with_target_assignments(assignments);
+
+    modal
+        .execute(&mut game, &mut ctx)
+        .expect("Season of the Burrow return plus exile modes should resolve");
+
+    let returned_id = game
+        .objects_in_zone(Zone::Battlefield)
+        .into_iter()
+        .find(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Alice's Buried Keepsake")
+        })
+        .expect("returned permanent should be on the battlefield");
+    let returned = game.object(returned_id).expect("returned permanent should exist");
+    assert_eq!(returned.zone, Zone::Battlefield);
+    assert_eq!(
+        returned
+            .counters
+            .get(&crate::object::CounterType::Indestructible)
+            .copied(),
+        Some(1)
+    );
+    assert!(
+        game.objects_in_zone(Zone::Exile).into_iter().any(|id| game
+            .object(id)
+            .is_some_and(|object| object.name == "Bob's Exiled Relic")),
+        "exile mode should use the second selected target"
+    );
+    assert_eq!(game.player(bob).expect("Bob should exist").hand.len(), 1);
 }
 
 #[test]
