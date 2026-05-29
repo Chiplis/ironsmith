@@ -36663,6 +36663,47 @@ fn aminatous_augury_runtime_no_land_branch_still_grants_nonland_card_type_casts(
 }
 
 #[test]
+fn aminatous_augury_runtime_free_cast_permissions_expire_after_turn() {
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+
+    game.create_object_from_card(
+        &aminatou_augury_test_card(91_140, "Augury Trick", vec![CardType::Instant]),
+        alice,
+        Zone::Library,
+    );
+    for idx in 0..7 {
+        game.create_object_from_card(
+            &aminatou_augury_test_card(
+                91_141 + idx,
+                &format!("Augury Filler {idx}"),
+                vec![CardType::Creature],
+            ),
+            alice,
+            Zone::Library,
+        );
+    }
+
+    execute_aminatous_augury(&mut game, alice);
+
+    assert!(
+        aminatou_free_cast_action_named(&game, "Augury Trick", alice).is_some(),
+        "Aminatou's Augury should offer the exiled spell during the current turn"
+    );
+
+    game.next_turn();
+
+    assert!(
+        aminatou_free_cast_action_named(&game, "Augury Trick", alice).is_none(),
+        "Aminatou's Augury free-cast permission should expire after the turn ends"
+    );
+}
+
+#[test]
 fn when_we_were_young_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("When We Were Young");
     let rendered = canonical_compiled_lines(&def).join(" ");
