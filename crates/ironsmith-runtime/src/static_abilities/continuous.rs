@@ -1155,6 +1155,9 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             crate::target::PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => {
                 "as long as that player is the monarch".to_string()
             }
+            crate::target::PlayerFilter::HasMoreLifeThanYou { .. } => {
+                "as long as that player is the monarch".to_string()
+            }
             crate::target::PlayerFilter::MaxSpeed { .. } => {
                 "as long as that player is the monarch".to_string()
             }

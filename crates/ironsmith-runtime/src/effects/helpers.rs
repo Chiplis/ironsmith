@@ -2064,6 +2064,7 @@ pub fn resolve_player_filter(
         | PlayerFilter::LowestLifeTied
         | PlayerFilter::CastCardTypeThisTurn(_)
         | PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
+        | PlayerFilter::HasMoreLifeThanYou { .. }
         | PlayerFilter::MaxSpeed { .. } => {
             let filter_ctx = ctx.filter_context(game);
             let mut players = resolve_player_filter_to_list(game, spec, &filter_ctx, ctx)?;
@@ -3190,7 +3191,8 @@ pub(crate) fn resolve_player_filter_to_list(
             })
             .map(|player| player.id)
             .collect()),
-        PlayerFilter::CardsInHandAtLeastMoreThanYou { .. } => Ok(game
+        PlayerFilter::CardsInHandAtLeastMoreThanYou { .. }
+        | PlayerFilter::HasMoreLifeThanYou { .. } => Ok(game
             .players
             .iter()
             .filter(|player| player.is_in_game())

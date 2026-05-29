@@ -11056,6 +11056,37 @@ fn test_keeper_of_the_mind_target_condition_survives_rendering() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_keeper_of_the_flame_life_target_condition_parses_and_renders() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Keeper of the Flame")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red], vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "{R}, {T}: Choose target opponent who has more life than you do as you activate this ability. This creature deals 2 damage to that player.",
+        )
+        .expect("parse Keeper of the Flame ability");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("HasMoreLifeThanYou")
+            && debug.contains("base: Opponent")
+            && debug.contains("TargetOnlyEffect")
+            && debug.contains("DealDamageEffect"),
+        "expected a life-gated opponent target followed by damage, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" | ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "choose target opponent who has more life than you do as you activate this ability"
+        ) && rendered.contains("this creature deals 2 damage to that player"),
+        "expected Keeper of the Flame target condition and damage text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_untap_another_target_permanent_rendering() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Untap Probe")
         .card_types(vec![CardType::Creature])
