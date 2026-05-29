@@ -4891,6 +4891,81 @@ mod tests {
     }
 
     #[test]
+    fn semblance_anvil_declined_imprint_leaves_card_in_hand_and_costs_unchanged() {
+        struct DeclineImprint;
+
+        impl DecisionMaker for DeclineImprint {
+            fn decide_objects(
+                &mut self,
+                _game: &GameState,
+                _ctx: &crate::decisions::context::SelectObjectsContext,
+            ) -> Vec<ObjectId> {
+                Vec::new()
+            }
+        }
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let semblance = CardDefinitionBuilder::new(CardId::from_raw(9012), "Semblance Anvil")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+            .card_types(vec![CardType::Artifact])
+            .parse_text(
+                "Imprint — When this artifact enters, you may exile a nonland card from your hand.\n\
+                 Spells you cast that share a card type with the exiled card cost {2} less to cast.",
+            )
+            .expect("Semblance Anvil should parse");
+        let anvil_id = game.create_object_from_definition(&semblance, alice, Zone::Battlefield);
+        let imprinted_candidate = CardBuilder::new(
+            CardId::from_raw(9013),
+            "Semblance Anvil Declined Imprint Probe",
+        )
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let original_card_id =
+            game.create_object_from_card(&imprinted_candidate, alice, Zone::Hand);
+
+        let triggered = semblance
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered) => Some(triggered),
+                _ => None,
+            })
+            .expect("Semblance Anvil should have an imprint trigger");
+        let mut dm = DeclineImprint;
+        let mut ctx = ExecutionContext::new_default(anvil_id, alice).with_decision_maker(&mut dm);
+        for effect in &triggered.effects {
+            effect.0.execute(&mut game, &mut ctx).unwrap();
+        }
+
+        assert_eq!(
+            game.object(original_card_id).map(|obj| obj.zone),
+            Some(Zone::Hand)
+        );
+        assert!(game.get_imprinted_cards(anvil_id).is_empty());
+        assert!(game.get_exiled_with_source_links(anvil_id).is_empty());
+
+        let artifact_spell = CardBuilder::new(
+            CardId::from_raw(9014),
+            "Semblance Anvil Declined Cost Probe",
+        )
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let artifact_spell_id = game.create_object_from_card(&artifact_spell, alice, Zone::Hand);
+        let artifact_spell = game.object(artifact_spell_id).expect("artifact spell exists");
+        let unreduced = calculate_effective_mana_cost(
+            &game,
+            alice,
+            artifact_spell,
+            artifact_spell.mana_cost.as_ref().unwrap(),
+        );
+
+        assert_eq!(unreduced.to_oracle(), "{4}");
+    }
+
+    #[test]
     fn semblance_anvil_reduces_only_your_spells_sharing_imprinted_card_type() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
