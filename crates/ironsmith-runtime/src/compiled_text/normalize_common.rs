@@ -1466,6 +1466,51 @@ pub(super) fn normalize_same_name_search_bundle_clause(line: &str) -> Option<Str
     Some(rewritten)
 }
 
+pub(super) fn normalize_target_exile_same_name_search_draw_clause(line: &str) -> Option<String> {
+    let (before_search, search_tail) = split_once_ascii_ci(
+        line,
+        ", you search its controller's graveyard, hand, and library for ",
+    )
+    .or_else(|| {
+        split_once_ascii_ci(
+            line,
+            ", you search that object's controller's graveyard, hand, and library for ",
+        )
+    })?;
+    let (selection, after_selection) = split_once_ascii_ci(
+        search_tail,
+        ", for each card searched for this way, exile the tagged object '",
+    )?;
+    let (_tag, after_tag) = after_selection.split_once('\'')?;
+    let after_tag = strip_prefix_ascii_ci(
+        after_tag,
+        ", shuffle its controller's library, then its controller draws a card for each card exiled from their hand this way.",
+    )
+    .or_else(|| {
+        strip_prefix_ascii_ci(
+            after_tag,
+            ", shuffle that object's controller's library, then that object's controller draws a card for each card exiled from their hand this way.",
+        )
+    })?;
+    if !after_tag.trim().is_empty() {
+        return None;
+    }
+
+    let selection = selection
+        .trim()
+        .replace("any number permanents", "any number of cards")
+        .replace("any number permanent", "any number of cards")
+        .replace("all permanents", "all cards")
+        .replace("all permanent", "all cards")
+        .replace(
+            " with the same name as that object that object's controller owns",
+            " with the same name as that permanent",
+        );
+    Some(format!(
+        "{before_search}. Search its controller's graveyard, hand, and library for {selection} and exile them. That player shuffles, then draws a card for each card exiled from their hand this way."
+    ))
+}
+
 fn normalize_zero_zero_token_with_base_pt(line: &str) -> Option<String> {
     let (before_create, create_tail) = split_once_ascii_ci(line, "Create a 0/0 ")
         .or_else(|| split_once_ascii_ci(line, "Create an 0/0 "))?;
@@ -2205,6 +2250,9 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         normalized = rewritten;
     }
     if let Some(rewritten) = normalize_same_name_search_bundle_clause(&normalized) {
+        normalized = rewritten;
+    }
+    if let Some(rewritten) = normalize_target_exile_same_name_search_draw_clause(&normalized) {
         normalized = rewritten;
     }
     if let Some(rewritten) = normalize_repeated_dynamic_buff(&normalized) {

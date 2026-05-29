@@ -1108,7 +1108,9 @@ pub fn describe_this_spell_cost_condition(condition: &ThisSpellCostCondition) ->
         ThisSpellCostCondition::Always => None,
         ThisSpellCostCondition::YourTurn => Some("it's your turn".to_string()),
         ThisSpellCostCondition::NotYourTurn => Some("it isn't your turn".to_string()),
-        ThisSpellCostCondition::YouLifeTotalOrLess(n) => Some(format!("you have {n} or less life")),
+        ThisSpellCostCondition::YouLifeTotalOrLess(n) => {
+            Some(format!("your life total is {n} or less"))
+        }
         ThisSpellCostCondition::OpponentHasNoCardsInHand => {
             Some("an opponent has no cards in hand".to_string())
         }

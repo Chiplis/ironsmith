@@ -194,13 +194,22 @@ fn compile_subject_verb_effect(
             Effect::target_draws,
         ),
         SubjectVerbActionAst::DrawForEachTaggedMatching { tag, filter } => {
+            let prior_player_filter = ctx.last_player_filter.clone();
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
+            let mut player_filter = subject.into_player_filter();
             let resolved_tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
-            let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            if let Some(tag) = prior_player_filter
+                .as_ref()
+                .and_then(tagged_object_reference_from_player_filter)
+            {
+                bind_target_object_refs_to_tag_in_player_filter(&mut player_filter, &tag);
+                bind_target_object_refs_to_tag_in_filter(&mut resolved_filter, &tag);
+            }
             Ok((
                 vec![Effect::new(
                     crate::effects::DrawForEachTaggedMatchingEffect::new(
-                        subject.into_player_filter(),
+                        player_filter,
                         resolved_tag,
                         resolved_filter,
                     ),
@@ -5340,6 +5349,21 @@ fn compile_subject_verb_effect(
             effects.push(effect);
             Ok((effects, subject.into_choices()))
         }
+    }
+}
+
+fn tagged_object_reference_from_player_filter(filter: &PlayerFilter) -> Option<TagKey> {
+    match filter {
+        PlayerFilter::ControllerOf(ObjectRef::Tagged(tag))
+        | PlayerFilter::OwnerOf(ObjectRef::Tagged(tag))
+        | PlayerFilter::AliasedControllerOf(ObjectRef::Tagged(tag))
+        | PlayerFilter::AliasedOwnerOf(ObjectRef::Tagged(tag)) => Some(tag.clone()),
+        PlayerFilter::Target(inner) => tagged_object_reference_from_player_filter(inner),
+        PlayerFilter::Excluding { base, excluded } => {
+            tagged_object_reference_from_player_filter(base)
+                .or_else(|| tagged_object_reference_from_player_filter(excluded))
+        }
+        _ => None,
     }
 }
 

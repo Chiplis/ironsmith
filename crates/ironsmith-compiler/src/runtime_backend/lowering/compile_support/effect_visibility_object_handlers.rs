@@ -241,6 +241,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
         } => {
             let subject = LoweredSubject::resolve_chooser(*player, ctx, true, true, false)?;
             let chooser = subject.as_chooser();
+            let last_object_tag = ctx.last_object_tag.clone().map(TagKey::from);
             let references_revealed_hand = filter.zone == Some(Zone::Hand)
                 && filter.owner.is_none()
                 && filter.controller.is_none()
@@ -264,6 +265,9 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                         !matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
                     });
                 }
+            }
+            if let Some(tag) = last_object_tag.as_ref() {
+                bind_target_object_refs_to_tag_in_filter(&mut resolved_filter, tag);
             }
             if !matches!(chooser, PlayerFilter::ChosenPlayer) {
                 preserve_chooser_relative_player_filters(filter, &mut resolved_filter, &chooser);

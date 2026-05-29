@@ -295,9 +295,13 @@ impl LoweredSubject {
     pub(crate) fn bind_library_filter(
         &self,
         filter: &ObjectFilter,
-        _ctx: &mut EffectLoweringContext,
+        ctx: &mut EffectLoweringContext,
     ) -> Result<ObjectFilter, CardTextError> {
-        let mut resolved = filter.clone();
+        let last_object_tag = ctx.last_object_tag.clone().map(TagKey::from);
+        let mut resolved = self.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?;
+        if let Some(tag) = last_object_tag.as_ref() {
+            bind_target_object_refs_to_tag_in_filter(&mut resolved, tag);
+        }
         if resolved.zone.is_none() {
             resolved.zone = Some(Zone::Library);
         }
@@ -415,6 +419,66 @@ impl LoweredSubject {
 
     pub(crate) fn build_target_prelude_if_needed(&self, effect: Effect) -> Vec<Effect> {
         self.prepend_target_prelude_if_needed(effect)
+    }
+}
+
+pub(crate) fn bind_target_object_refs_to_tag_in_filter(filter: &mut ObjectFilter, tag: &TagKey) {
+    if let Some(owner) = filter.owner.as_mut() {
+        bind_target_object_refs_to_tag_in_player_filter(owner, tag);
+    }
+    if let Some(controller) = filter.controller.as_mut() {
+        bind_target_object_refs_to_tag_in_player_filter(controller, tag);
+    }
+    if let Some(cast_by) = filter.cast_by.as_mut() {
+        bind_target_object_refs_to_tag_in_player_filter(cast_by, tag);
+    }
+    if let Some(targets_player) = filter.targets_player.as_mut() {
+        bind_target_object_refs_to_tag_in_player_filter(targets_player, tag);
+    }
+    if let Some(targets_object) = filter.targets_object.as_mut() {
+        bind_target_object_refs_to_tag_in_filter(targets_object, tag);
+    }
+    if let Some(targets_only_player) = filter.targets_only_player.as_mut() {
+        bind_target_object_refs_to_tag_in_player_filter(targets_only_player, tag);
+    }
+    if let Some(targets_only_object) = filter.targets_only_object.as_mut() {
+        bind_target_object_refs_to_tag_in_filter(targets_only_object, tag);
+    }
+    if let Some(targetability) = filter.could_be_targeted_by.as_mut() {
+        bind_target_object_ref_to_tag(&mut targetability.stack_object, tag);
+    }
+    if let Some(attacking_player) = filter.attacking_player_or_planeswalker_controlled_by.as_mut() {
+        bind_target_object_refs_to_tag_in_player_filter(attacking_player, tag);
+    }
+    if let Some(entered_controller) = filter.entered_battlefield_controller.as_mut() {
+        bind_target_object_refs_to_tag_in_player_filter(entered_controller, tag);
+    }
+    for nested in &mut filter.any_of {
+        bind_target_object_refs_to_tag_in_filter(nested, tag);
+    }
+}
+
+pub(crate) fn bind_target_object_refs_to_tag_in_player_filter(
+    filter: &mut PlayerFilter,
+    tag: &TagKey,
+) {
+    match filter {
+        PlayerFilter::Target(inner) => bind_target_object_refs_to_tag_in_player_filter(inner, tag),
+        PlayerFilter::Excluding { base, excluded } => {
+            bind_target_object_refs_to_tag_in_player_filter(base, tag);
+            bind_target_object_refs_to_tag_in_player_filter(excluded, tag);
+        }
+        PlayerFilter::ControllerOf(reference)
+        | PlayerFilter::OwnerOf(reference)
+        | PlayerFilter::AliasedControllerOf(reference)
+        | PlayerFilter::AliasedOwnerOf(reference) => bind_target_object_ref_to_tag(reference, tag),
+        _ => {}
+    }
+}
+
+fn bind_target_object_ref_to_tag(reference: &mut ObjectRef, tag: &TagKey) {
+    if matches!(reference, ObjectRef::Target) {
+        *reference = ObjectRef::tagged(tag.clone());
     }
 }
 

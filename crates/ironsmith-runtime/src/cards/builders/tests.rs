@@ -40830,6 +40830,223 @@ fn parse_oracle_necromentia_uses_shared_subject_role_lowering() {
 }
 
 #[test]
+fn parse_oracle_the_end_strict_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("The End");
+    let rendered_lines = crate::compiled_text::compiled_text_lines(&def);
+    assert_eq!(
+        rendered_lines.as_slice(),
+        [
+            "This spell costs {2} less to cast if your life total is 5 or less.",
+            "Exile target creature or planeswalker. Search its controller's graveyard, hand, and library for any number of cards with the same name as that permanent and exile them. That player shuffles, then draws a card for each card exiled from their hand this way.",
+        ],
+        "The End compiled text should match its oracle text exactly"
+    );
+    let rendered = rendered_lines.join("\n");
+    let lower = rendered.to_ascii_lowercase();
+    assert!(
+        !lower.contains("tagged object") && !lower.contains("tagged '"),
+        "The End compiled text should not expose internal tagged-object markers, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_the_end_lowers_controller_search_draw_and_life_cost_condition() {
+    let def = parse_oracle_card_definition("The End");
+    let reduction = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => static_ability.this_spell_cost_reduction(),
+            _ => None,
+        })
+        .expect("The End should have a conditional this-spell cost reduction");
+    assert!(matches!(reduction.reduction, crate::effect::Value::Fixed(2)));
+    assert!(matches!(
+        reduction.condition,
+        crate::static_abilities::ThisSpellCostCondition::YouLifeTotalOrLess(5)
+    ));
+
+    let program = def.spell_effect.as_ref().expect("The End spell effect");
+    let effects = &program.segments[0].default_effects;
+    let search = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<ChooseObjectsEffect>())
+        .expect("The End should search the target permanent controller's zones");
+    assert!(
+        search.is_search,
+        "search choice should be marked as search: {search:#?}"
+    );
+    assert_eq!(search.chooser, PlayerFilter::You);
+    assert!(
+        matches!(
+            search.filter.owner,
+            Some(PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(_)))
+        ),
+        "The End search owner should follow the exiled target tag, got {search:#?}"
+    );
+    let Some(PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(target_tag))) =
+        search.filter.owner.as_ref()
+    else {
+        panic!("The End search owner should follow the exiled target tag, got {search:#?}");
+    };
+    assert_eq!(search.zone, Some(Zone::Graveyard));
+    assert_eq!(search.additional_zones, vec![Zone::Hand, Zone::Library]);
+    assert!(
+        search.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == *target_tag
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::SameNameAsTagged
+        }),
+        "The End search should constrain cards to the exiled target's name, got {search:#?}"
+    );
+
+    let draw = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::DrawForEachTaggedMatchingEffect>())
+        .expect("The End should draw for matching cards exiled from hand this way");
+    assert_eq!(draw.tag, search.tag);
+    assert!(matches!(
+        draw.player,
+        PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(_))
+            | PlayerFilter::ControllerOf(crate::target::ObjectRef::Target)
+    ));
+    assert_eq!(draw.filter.zone, Some(Zone::Hand));
+    assert!(
+        matches!(
+            draw.filter.owner,
+            Some(PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(_)))
+                | Some(PlayerFilter::ControllerOf(crate::target::ObjectRef::Target))
+        ),
+        "The End draw count should count cards from the exiled target controller's hand, got {draw:#?}"
+    );
+}
+
+#[test]
+fn the_end_cost_reduction_condition_tracks_controller_life_total_boundary() {
+    let def = parse_oracle_card_definition("The End");
+    let reduction = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => static_ability.this_spell_cost_reduction(),
+            _ => None,
+        })
+        .expect("The End should have a conditional this-spell cost reduction");
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+
+    game.players[0].life = 6;
+    assert!(
+        !crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
+            &game,
+            source,
+            &reduction.condition,
+            &[],
+        ),
+        "The End cost reduction should be inactive above five life"
+    );
+    game.players[0].life = 5;
+    assert!(
+        crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
+            &game,
+            source,
+            &reduction.condition,
+            &[],
+        ),
+        "The End cost reduction should be active at five life"
+    );
+}
+
+#[test]
+fn the_end_exiles_target_controller_same_name_cards_and_draws_for_hand_exiles() {
+    struct TheEndDecisionMaker;
+
+    impl crate::decision::DecisionMaker for TheEndDecisionMaker {
+        fn decide_objects(
+            &mut self,
+            _game: &crate::GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .take(ctx.max.unwrap_or(ctx.candidates.len()))
+                .collect()
+        }
+    }
+
+    fn simple_creature(name: &str) -> crate::card::Card {
+        CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build()
+    }
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let def = parse_oracle_card_definition("The End");
+    let mut game = crate::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+
+    let hedge_witch = simple_creature("Hedge Witch");
+    let opt = simple_creature("Opt");
+    let island = simple_creature("Island");
+    let target = game.create_object_from_card(&hedge_witch, bob, Zone::Battlefield);
+    game.create_object_from_card(&hedge_witch, bob, Zone::Hand);
+    game.create_object_from_card(&hedge_witch, bob, Zone::Hand);
+    game.create_object_from_card(&hedge_witch, bob, Zone::Graveyard);
+    game.create_object_from_card(&hedge_witch, bob, Zone::Library);
+    game.create_object_from_card(&opt, bob, Zone::Hand);
+    game.create_object_from_card(&island, bob, Zone::Library);
+    game.create_object_from_card(&island, bob, Zone::Library);
+    game.create_object_from_card(&hedge_witch, alice, Zone::Hand);
+
+    let mut dm = TheEndDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target)]);
+    ctx.snapshot_targets(&game);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        def.spell_effect.as_ref().expect("The End spell effect"),
+        None,
+        &[],
+    )
+    .expect("The End should resolve");
+
+    let exiled_bob_hedge_witches = game
+        .objects_in_deterministic_order()
+        .into_iter()
+        .filter(|object| {
+            object.owner == bob && object.name == "Hedge Witch" && object.zone == Zone::Exile
+        })
+        .count();
+    assert_eq!(
+        exiled_bob_hedge_witches, 5,
+        "The End should exile the target plus same-name cards from its controller's hand, graveyard, and library"
+    );
+    let alice_hand_hedge_witches = game
+        .objects_in_deterministic_order()
+        .into_iter()
+        .filter(|object| {
+            object.owner == alice && object.name == "Hedge Witch" && object.zone == Zone::Hand
+        })
+        .count();
+    assert_eq!(
+        alice_hand_hedge_witches, 1,
+        "The End should not search other players' zones for same-name cards"
+    );
+    assert_eq!(
+        game.players[1].hand.len(),
+        3,
+        "Bob should keep the nonmatching hand card and draw two cards for the two hand cards exiled this way"
+    );
+}
+
+#[test]
 fn parse_oracle_garruk_emblem_search_stays_inside_quoted_text() {
     let cases = [
         (

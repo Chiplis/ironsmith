@@ -138,7 +138,8 @@ pub(crate) use control_flow_handlers::{
 pub(crate) use effect_dispatch::compile_effect;
 pub(crate) use iterated_player_validation::validate_iterated_player_bindings_in_lowered_effects;
 pub(crate) use player_effect_helpers::{
-    LoweredSubject, SubjectBindingMode, SubjectRole, compile_player_dual_effect,
+    LoweredSubject, SubjectBindingMode, SubjectRole, bind_target_object_refs_to_tag_in_filter,
+    bind_target_object_refs_to_tag_in_player_filter, compile_player_dual_effect,
     compile_player_effect_from_resolved_filter, compile_player_filter_effect,
     compile_player_role_effect, compile_player_value_effect,
 };

@@ -1763,6 +1763,18 @@ fn describe_structural_counter_keyword_bundle(abilities: &[Ability]) -> Option<(
     None
 }
 
+fn is_this_spell_cost_reduction_ability(ability: &Ability) -> bool {
+    matches!(
+        &ability.kind,
+        AbilityKind::Static(static_ability)
+            if matches!(
+                static_ability.id(),
+                crate::static_abilities::StaticAbilityId::ThisSpellCostReduction
+                    | crate::static_abilities::StaticAbilityId::ThisSpellCostReductionManaCost
+            )
+    )
+}
+
 fn is_ascend_condition(condition: &Condition) -> bool {
     let Condition::And(left, right) = condition else {
         return false;
@@ -2101,6 +2113,10 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
         let mut ability_idx = 0usize;
         while ability_idx < def.abilities.len() {
             let ability = &def.abilities[ability_idx];
+            if spell_like_card && is_this_spell_cost_reduction_ability(ability) {
+                ability_idx += 1;
+                continue;
+            }
             if has_suspend && is_suspend_helper_ability(ability) {
                 ability_idx += 1;
                 continue;
@@ -2256,6 +2272,18 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     }
     if !spell_like_card {
         push_abilities(&mut out);
+    }
+    if spell_like_card {
+        for (ability_idx, ability) in def.abilities.iter().enumerate() {
+            if is_this_spell_cost_reduction_ability(ability) {
+                out.extend(describe_ability(
+                    ability_idx + 1,
+                    ability,
+                    subject,
+                    rewrite_it_deals,
+                ));
+            }
+        }
     }
     if let Some(spell_effects) = &def.spell_effect
         && !spell_effects.is_empty()
