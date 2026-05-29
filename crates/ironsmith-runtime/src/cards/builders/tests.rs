@@ -11524,10 +11524,25 @@ struct SpyNetworkViewCall {
 #[derive(Debug, Default)]
 struct SpyNetworkCaptureDm {
     calls: Vec<SpyNetworkViewCall>,
+    order_calls: Vec<Vec<ObjectId>>,
+    reverse_order: bool,
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
 impl crate::decision::DecisionMaker for SpyNetworkCaptureDm {
+    fn decide_order(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::OrderContext,
+    ) -> Vec<ObjectId> {
+        let mut order = ctx.items.iter().map(|(id, _)| *id).collect::<Vec<_>>();
+        self.order_calls.push(order.clone());
+        if self.reverse_order {
+            order.reverse();
+        }
+        order
+    }
+
     fn view_cards(
         &mut self,
         _game: &crate::game_state::GameState,
@@ -11542,6 +11557,18 @@ impl crate::decision::DecisionMaker for SpyNetworkCaptureDm {
             cards: cards.to_vec(),
         });
     }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[derive(Debug)]
+struct SpyNetworkResolution {
+    game: crate::game_state::GameState,
+    dm: SpyNetworkCaptureDm,
+    bob_hand: ObjectId,
+    bob_library: ObjectId,
+    alice_library: Vec<ObjectId>,
+    face_up: ObjectId,
+    face_down: ObjectId,
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -11587,32 +11614,37 @@ fn spy_network_add_card(
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
-fn spy_network_resolve(def: &CardDefinition, include_face_down: bool) -> SpyNetworkCaptureDm {
+fn spy_network_resolve(
+    def: &CardDefinition,
+    include_face_down: bool,
+    reverse_order: bool,
+) -> SpyNetworkResolution {
     let mut game = crate::tests::test_helpers::setup_two_player_game();
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
-    spy_network_add_card(
+    let bob_hand = spy_network_add_card(
         &mut game,
         bob,
         Zone::Hand,
         "Hand Card",
         vec![CardType::Instant],
     );
-    spy_network_add_card(
+    let bob_library = spy_network_add_card(
         &mut game,
         bob,
         Zone::Library,
         "Library Card",
         vec![CardType::Sorcery],
     );
+    let mut alice_library = Vec::new();
     for idx in 0..4 {
-        spy_network_add_card(
+        alice_library.push(spy_network_add_card(
             &mut game,
             alice,
             Zone::Library,
             &format!("Alice Library Card {idx}"),
             vec![CardType::Instant],
-        );
+        ));
     }
     let face_up = spy_network_add_card(
         &mut game,
@@ -11633,7 +11665,10 @@ fn spy_network_resolve(def: &CardDefinition, include_face_down: bool) -> SpyNetw
     }
 
     let source = game.create_object_from_definition(def, alice, Zone::Stack);
-    let mut dm = SpyNetworkCaptureDm::default();
+    let mut dm = SpyNetworkCaptureDm {
+        reverse_order,
+        ..Default::default()
+    };
     let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
         .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)]);
     for effect in def.spell_effect.as_ref().expect("Spy Network spell effects") {
@@ -11647,7 +11682,15 @@ fn spy_network_resolve(def: &CardDefinition, include_face_down: bool) -> SpyNetw
             .any(|call| call.zone == Zone::Battlefield && call.cards.contains(&face_up)),
         "Spy Network should not show face-up creatures as part of the face-down clause"
     );
-    dm
+    SpyNetworkResolution {
+        game,
+        dm,
+        bob_hand,
+        bob_library,
+        alice_library,
+        face_up,
+        face_down,
+    }
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -11671,15 +11714,18 @@ fn spy_network_parses_strictly_and_compiles_look_clauses() {
 #[test]
 fn spy_network_runtime_views_hand_library_and_face_down_creatures() {
     let def = spy_network_definition();
-    let dm = spy_network_resolve(&def, true);
+    let result = spy_network_resolve(&def, true, false);
+    let dm = &result.dm;
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
+    let mut alice_top_four = result.alice_library.clone();
+    alice_top_four.reverse();
 
     assert!(
         dm.calls.iter().any(|call| call.viewer == alice
             && call.subject == bob
             && call.zone == Zone::Hand
-            && call.cards.len() == 1),
+            && call.cards == vec![result.bob_hand]),
         "Spy Network should show the target player's hand, got {:?}",
         dm.calls
     );
@@ -11687,7 +11733,7 @@ fn spy_network_runtime_views_hand_library_and_face_down_creatures() {
         dm.calls.iter().any(|call| call.viewer == alice
             && call.subject == bob
             && call.zone == Zone::Library
-            && call.cards.len() == 1),
+            && call.cards == vec![result.bob_library]),
         "Spy Network should show the top card of the target player's library, got {:?}",
         dm.calls
     );
@@ -11695,7 +11741,7 @@ fn spy_network_runtime_views_hand_library_and_face_down_creatures() {
         dm.calls.iter().any(|call| call.viewer == alice
             && call.subject == alice
             && call.zone == Zone::Library
-            && call.cards.len() == 4),
+            && call.cards == alice_top_four),
         "Spy Network should show the top four cards of your library, got {:?}",
         dm.calls
     );
@@ -11703,8 +11749,15 @@ fn spy_network_runtime_views_hand_library_and_face_down_creatures() {
         dm.calls.iter().any(|call| call.viewer == alice
             && call.subject == bob
             && call.zone == Zone::Battlefield
-            && call.cards.len() == 1),
+            && call.cards == vec![result.face_down]),
         "Spy Network should show target player's face-down creatures, got {:?}",
+        dm.calls
+    );
+    assert!(
+        !dm.calls
+            .iter()
+            .any(|call| call.cards.contains(&result.face_up)),
+        "Spy Network should not show face-up creatures, got {:?}",
         dm.calls
     );
 }
@@ -11713,20 +11766,74 @@ fn spy_network_runtime_views_hand_library_and_face_down_creatures() {
 #[test]
 fn spy_network_runtime_without_face_down_creatures_still_views_hand_and_library() {
     let def = spy_network_definition();
-    let dm = spy_network_resolve(&def, false);
+    let result = spy_network_resolve(&def, false, false);
+    let dm = &result.dm;
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut alice_top_four = result.alice_library.clone();
+    alice_top_four.reverse();
 
     assert!(
-        dm.calls.iter().any(|call| call.zone == Zone::Hand),
-        "Spy Network should still show hand when there are no face-down creatures"
+        dm.calls.iter().any(|call| call.viewer == alice
+            && call.subject == bob
+            && call.zone == Zone::Hand
+            && call.cards == vec![result.bob_hand]),
+        "Spy Network should still show the target player's hand when there are no face-down creatures, got {:?}",
+        dm.calls
     );
     assert!(
-        dm.calls.iter().any(|call| call.zone == Zone::Library),
-        "Spy Network should still show library when there are no face-down creatures"
+        dm.calls.iter().any(|call| call.viewer == alice
+            && call.subject == bob
+            && call.zone == Zone::Library
+            && call.cards == vec![result.bob_library]),
+        "Spy Network should still show the target player's top library card when there are no face-down creatures, got {:?}",
+        dm.calls
+    );
+    assert!(
+        dm.calls.iter().any(|call| call.viewer == alice
+            && call.subject == alice
+            && call.zone == Zone::Library
+            && call.cards == alice_top_four),
+        "Spy Network should still show your top four library cards when there are no face-down creatures, got {:?}",
+        dm.calls
     );
     assert!(
         !dm.calls.iter().any(|call| call.zone == Zone::Battlefield),
         "Spy Network should not create a battlefield view when no face-down creatures match, got {:?}",
         dm.calls
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn spy_network_runtime_reorders_your_top_four_library_cards() {
+    let def = spy_network_definition();
+    let result = spy_network_resolve(&def, false, true);
+    let alice = PlayerId::from_index(0);
+    let mut original_top_four = result.alice_library.clone();
+    original_top_four.reverse();
+    let mut expected_top_four = original_top_four.clone();
+    expected_top_four.reverse();
+
+    assert_eq!(
+        result.dm.order_calls,
+        vec![original_top_four],
+        "Spy Network should ask you to reorder exactly the four looked-at library cards"
+    );
+
+    let actual_top_four = result
+        .game
+        .player(alice)
+        .expect("Alice exists")
+        .library
+        .iter()
+        .rev()
+        .take(4)
+        .copied()
+        .collect::<Vec<_>>();
+    assert_eq!(
+        actual_top_four, expected_top_four,
+        "Spy Network should put the looked-at cards back in the chosen order"
     );
 }
 
