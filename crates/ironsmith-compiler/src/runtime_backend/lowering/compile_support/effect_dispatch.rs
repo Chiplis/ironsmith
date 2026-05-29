@@ -4490,8 +4490,16 @@ fn compile_subject_verb_effect(
             if let Some(target_count) = target_count {
                 spec = spec.with_count(*target_count);
             }
+            let count = if let Value::CountersOn(counter_source, amount_counter_type) = count
+                && matches!(counter_source.as_ref(), ChooseSpec::Source)
+                && amount_counter_type == &Some(*counter_type)
+            {
+                Value::CountersOn(Box::new(spec.clone()), Some(*counter_type))
+            } else {
+                count.clone()
+            };
             let mut put_counters =
-                crate::effects::PutCountersEffect::new(*counter_type, count.clone(), spec.clone());
+                crate::effects::PutCountersEffect::new(*counter_type, count, spec.clone());
             if let Some(target_count) = target_count {
                 put_counters = put_counters.with_target_count(*target_count);
             }

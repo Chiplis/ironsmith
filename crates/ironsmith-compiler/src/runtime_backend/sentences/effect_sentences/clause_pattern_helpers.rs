@@ -5,7 +5,7 @@ use crate::cards::builders::{
 };
 use crate::effect::{EventValueSpec, Until, Value};
 use crate::static_abilities::StaticAbilityId;
-use crate::target::{ObjectFilter, PlayerFilter};
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 use crate::{ChoiceCount, Supertype};
 
@@ -239,6 +239,17 @@ pub(crate) fn parse_double_counters_clause(
         return Err(CardTextError::ParseError(format!(
             "missing filter in double-counters clause (clause: '{}')",
             clause_words.join(" ")
+        )));
+    }
+
+    if starts_with_target_indicator(filter_tokens) {
+        let target = parse_target_phrase(filter_tokens)?;
+        return Ok(Some(EffectAst::subject_verb_put_counters(
+            counter_type,
+            Value::CountersOn(Box::new(ChooseSpec::Source), Some(counter_type)),
+            target,
+            None,
+            false,
         )));
     }
 

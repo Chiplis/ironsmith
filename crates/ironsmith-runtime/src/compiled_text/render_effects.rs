@@ -14876,6 +14876,38 @@ mod tests {
     }
 
     #[test]
+    fn tagged_put_counters_then_block_specific_attacker_renders_that_creature() {
+        let counter_target = ChooseSpec::target_creature();
+        let targeted = TagKey::from("counters_0");
+        let tagged = Effect::new(crate::effects::PutCountersEffect::new(
+            crate::object::CounterType::PlusOnePlusOne,
+            Value::CountersOn(
+                Box::new(counter_target.clone()),
+                Some(crate::object::CounterType::PlusOnePlusOne),
+            ),
+            counter_target,
+        ))
+        .tag(targeted.clone());
+        let mut attacker = ObjectFilter::creature();
+        attacker.tagged_constraints.push(TaggedObjectConstraint {
+            tag: targeted,
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        let cant = Effect::new(crate::effects::CantEffect::until_end_of_turn(
+            crate::effect::Restriction::BlockSpecificAttacker {
+                blockers: ObjectFilter::creature()
+                    .with_power(crate::filter::Comparison::LessThanOrEqual(2)),
+                attacker,
+            },
+        ));
+
+        assert_eq!(
+            describe_effect_list(&[tagged, cant]),
+            "Double the number of +1/+1 counters on target creature. That creature can't be blocked by creatures with power 2 or less this turn"
+        );
+    }
+
+    #[test]
     fn choose_color_as_enters_uses_oracle_static_surface() {
         let choose_any = crate::static_abilities::StaticAbility::choose_color_as_enters(
             None,
@@ -18249,9 +18281,6 @@ pub(super) fn describe_tagged_target_then_cant_restriction(
     tagged: &crate::effects::TaggedEffect,
     cant: &crate::effects::CantEffect,
 ) -> Option<String> {
-    let target_only = tagged
-        .effect
-        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
     if cant.duration != crate::effect::Until::EndOfTurn {
         return None;
     }
@@ -18262,12 +18291,31 @@ pub(super) fn describe_tagged_target_then_cant_restriction(
                 && constraint.tag.as_str() == tagged.tag.as_str()
         })
     {
-        let subject = capitalize_first(&describe_choose_spec(&target_only.target));
         let blockers = pluralize_noun_phrase(strip_leading_article(&blockers.description()));
-        return Some(format!(
-            "{subject} can't be blocked by {blockers} this turn"
-        ));
+        if let Some(target_only) = tagged
+            .effect
+            .downcast_ref::<crate::effects::TargetOnlyEffect>()
+        {
+            let subject = capitalize_first(&describe_choose_spec(&target_only.target));
+            return Some(format!(
+                "{subject} can't be blocked by {blockers} this turn"
+            ));
+        }
+        if tagged
+            .effect
+            .downcast_ref::<crate::effects::PutCountersEffect>()
+            .is_some()
+        {
+            return Some(format!(
+                "{}. That creature can't be blocked by {blockers} this turn",
+                describe_effect(&tagged.effect)
+            ));
+        }
     }
+
+    let target_only = tagged
+        .effect
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
     let (filter, restriction_text) = match &cant.restriction {
         crate::effect::Restriction::Block(filter) => (filter, "can't block this turn"),
         crate::effect::Restriction::BeBlocked(filter) => (filter, "can't be blocked this turn"),
@@ -26984,6 +27032,17 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 "Put a {} counter on {target} for each {}",
                 describe_counter_type(put_counters.counter_type),
                 describe_for_each_count_filter(&filter)
+            );
+        }
+        if let Value::CountersOn(spec, Some(counter_type)) = &put_counters.amount
+            && !put_counters.distributed
+            && put_counters.target_count.is_none()
+            && *counter_type == put_counters.counter_type
+            && spec.unhinted() == put_counters.target.unhinted()
+        {
+            return format!(
+                "Double the number of {} counters on {target}",
+                describe_counter_type(*counter_type)
             );
         }
         if let Some((counter_text, where_x)) =

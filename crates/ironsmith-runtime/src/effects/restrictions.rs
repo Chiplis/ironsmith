@@ -140,6 +140,18 @@ fn normalize_restriction_for_resolution(
         Restriction::Block(filter) => Restriction::block(
             collapse_filter_to_current_matching_objects(filter, ctx, game),
         ),
+        Restriction::BlockSpecificAttacker { blockers, attacker } => {
+            Restriction::block_specific_attacker(
+                blockers.clone(),
+                collapse_tagged_filter_to_specific_objects(attacker, ctx, game),
+            )
+        }
+        Restriction::MustBlockSpecificAttacker { blockers, attacker } => {
+            Restriction::must_block_specific_attacker(
+                blockers.clone(),
+                collapse_tagged_filter_to_specific_objects(attacker, ctx, game),
+            )
+        }
         _ => restriction.clone(),
     }
 }

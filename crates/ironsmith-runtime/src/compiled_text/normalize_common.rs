@@ -9710,10 +9710,11 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             format!("{} can't block", filter.description())
         }
         crate::effect::Restriction::BlockSpecificAttacker { blockers, attacker } => {
+            let blockers = pluralize_noun_phrase(strip_leading_article(&blockers.description()));
             format!(
-                "{} can't block {}",
-                blockers.description(),
-                attacker.description()
+                "{} can't be blocked by {}",
+                attacker.description(),
+                blockers
             )
         }
         crate::effect::Restriction::MustBlockSpecificAttacker { blockers, attacker } => {

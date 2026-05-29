@@ -16,7 +16,7 @@ use crate::filter::ObjectFilterExt as _;
 use crate::game_state::Phase;
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
-use crate::object::ObjectKind;
+use crate::object::{CounterType, ObjectKind};
 use crate::static_abilities::StaticAbility;
 use crate::target::{ObjectRef, PlayerFilter};
 use crate::triggers::Trigger;
@@ -81,6 +81,26 @@ fn merfolk_cave_diver_definition() -> crate::cards::CardDefinition {
             "Whenever a creature you control explores, this creature gets +1/+0 until end of turn and can't be blocked this turn.",
         )
         .expect("Merfolk Cave-Diver should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn bright_palm_soul_awakener_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_945), "Bright-Palm, Soul Awakener")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::White],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Fox, Subtype::Shaman])
+        .power_toughness(PowerToughness::fixed(4, 3))
+        .parse_text(
+            "Backup 1 (When this creature enters, put a +1/+1 counter on target creature. If that's another creature, it gains the following ability until end of turn.)\n\
+             Whenever this creature attacks, double the number of +1/+1 counters on target creature. That creature can't be blocked by creatures with power 2 or less this turn.",
+        )
+        .expect("Bright-Palm, Soul Awakener should parse")
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -500,6 +520,124 @@ fn merfolk_cave_diver_ignores_opponent_creatures_exploring() {
     assert!(
         game.can_be_blocked(merfolk_id),
         "Merfolk Cave-Diver should remain blockable without a matching explore trigger"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn bright_palm_soul_awakener_parses_and_renders_targeted_unblockable_clause() {
+    let bright_palm = bright_palm_soul_awakener_definition();
+    let rendered = crate::compiled_text::compiled_text_lines(&bright_palm).join("\n");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains("backup 1"),
+        "Bright-Palm should render backup, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("double the number of +1/+1 counters on target creature"),
+        "Bright-Palm should render targeted counter doubling, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("that creature can't be blocked by creatures with power 2 or less"),
+        "Bright-Palm should render the can't-be-blocked marker, got {rendered}"
+    );
+    assert!(
+        !rendered_lower.contains("each creature"),
+        "Bright-Palm must not render the target as each creature, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn bright_palm_soul_awakener_attack_trigger_doubles_target_and_limits_blockers() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let bright_palm = bright_palm_soul_awakener_definition();
+    let bright_palm_id =
+        game.create_object_from_definition(&bright_palm, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(bright_palm_id);
+    game.add_counters(bright_palm_id, CounterType::PlusOnePlusOne, 2);
+
+    let bystander_id = create_creature(&mut game, "Bystander", alice, 1, 1);
+    game.add_counters(bystander_id, CounterType::PlusOnePlusOne, 3);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[AttackerDeclaration {
+            creature: bright_palm_id,
+            target: AttackTarget::Player(bob),
+        }],
+    )
+    .expect("Bright-Palm should be able to attack");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Bright-Palm attack trigger should go on the stack");
+
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Bright-Palm attack trigger should resolve");
+
+    assert_eq!(
+        game.counter_count(bright_palm_id, CounterType::PlusOnePlusOne),
+        4,
+        "Bright-Palm should double the +1/+1 counters on the chosen target"
+    );
+    assert_eq!(
+        game.counter_count(bystander_id, CounterType::PlusOnePlusOne),
+        3,
+        "Bright-Palm should not double counters on every creature"
+    );
+
+    let small_blocker_id = create_creature(&mut game, "Small Blocker", bob, 2, 2);
+    let large_blocker_id = create_creature(&mut game, "Large Blocker", bob, 3, 3);
+    game.update_cant_effects();
+    assert!(
+        !game.can_block_attacker(small_blocker_id, bright_palm_id),
+        "creatures with power 2 or less should be unable to block the targeted creature"
+    );
+    assert!(
+        game.can_block_attacker(large_blocker_id, bright_palm_id),
+        "creatures with power 3 or greater should remain able to block the targeted creature"
+    );
+
+    let mut block_combat = CombatState::default();
+    block_combat
+        .attackers
+        .push(crate::combat_state::AttackerInfo {
+            creature: bright_palm_id,
+            target: AttackTarget::Player(bob),
+        });
+    let err = apply_blocker_declarations(
+        &mut game,
+        &mut block_combat,
+        &mut TriggerQueue::new(),
+        &[BlockerDeclaration {
+            blocker: small_blocker_id,
+            blocking: bright_palm_id,
+        }],
+        bob,
+    )
+    .expect_err("small blocker should be illegal for Bright-Palm's targeted creature");
+    assert!(
+        format!("{err:?}").contains("InvalidBlockers"),
+        "expected low-power block to be rejected, got {err:?}"
+    );
+
+    execute_cleanup_step(&mut game);
+    game.update_cant_effects();
+    assert!(
+        game.can_block_attacker(small_blocker_id, bright_palm_id),
+        "Bright-Palm's blocker restriction should expire at cleanup"
     );
 }
 

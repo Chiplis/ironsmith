@@ -9284,6 +9284,25 @@ fn rewrite_lexed_effect_sentence_parses_remove_all_named_counters_from_target() 
 }
 
 #[test]
+fn bright_palm_double_counters_clause_keeps_targeted_creature() {
+    let text = "double the number of +1/+1 counters on target creature";
+    let tokens = lex_line(text, 0).expect("Bright-Palm counter clause should lex");
+
+    let parsed = parse_effect_sentence_lexed(&tokens)
+        .expect("Bright-Palm counter clause should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(
+        debug.contains("PutCounters")
+            && debug.contains("CountersOn(")
+            && debug.contains("Some(TextSpan")
+            && debug.contains("card_types: [Creature]")
+            && !debug.contains("DoubleCountersOnEach"),
+        "expected Bright-Palm to double counters on one target creature, got {debug}"
+    );
+}
+
+#[test]
 fn rewrite_lexed_effect_entrypoint_matches_wrapper_comma_then_chain() {
     let text = "Discard your hand, then draw four cards.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify comma-then effect");
