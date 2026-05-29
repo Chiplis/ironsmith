@@ -11585,6 +11585,64 @@ fn valiant_endeavor_uses_chosen_result_for_destroy_and_other_result_for_tokens()
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn valiant_endeavor_first_result_choice_uses_second_result_for_tokens() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let def = valiant_endeavor_definition();
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let medium = create_creature(&mut game, "Medium Creature", bob, 4, 4);
+    let large = create_creature(&mut game, "Large Creature", bob, 5, 5);
+    let large_stable = game.object(large).expect("large creature exists").stable_id;
+
+    game.force_next_die_roll(5);
+    game.force_next_die_roll(2);
+
+    let mut decisions = SelectFirstDecisionMaker;
+    let mut ctx = ExecutionContext::new(source, alice, &mut decisions);
+    execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        def.spell_effect
+            .as_ref()
+            .expect("Valiant Endeavor should have a spell effect"),
+        None,
+        &[],
+    )
+    .expect("Valiant Endeavor spell effect should resolve");
+
+    assert!(
+        game.battlefield.contains(&medium),
+        "creature below the chosen first result should survive"
+    );
+    let large_graveyard_id = game
+        .find_object_by_stable_id(large_stable)
+        .expect("destroyed large creature should still be tracked by stable id");
+    assert!(
+        !game.battlefield.contains(&large)
+            && game
+                .player(bob)
+                .unwrap()
+                .graveyard
+                .contains(&large_graveyard_id),
+        "creature with power equal to the chosen first result should be destroyed"
+    );
+
+    let knight_count = game
+        .battlefield
+        .iter()
+        .filter(|&&id| game.object(id).is_some_and(|object| object.name == "Knight"))
+        .count();
+    assert_eq!(
+        knight_count, 2,
+        "choosing the first die result should create tokens equal to the second result"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn firkraag_cunning_instigator_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(72_940), "Firkraag, Cunning Instigator")
         .mana_cost(ManaCost::from_pips(vec![
