@@ -1355,6 +1355,47 @@ pub(crate) fn parse_trigger_clause_lexed(
         (words.as_slice(), None)
     };
 
+    for tail in [
+        ["leave", "your", "graveyard"].as_slice(),
+        ["leaves", "your", "graveyard"].as_slice(),
+    ] {
+        if slice_ends_with(zone_change_words, tail) {
+            let subject_word_len = zone_change_words.len().saturating_sub(tail.len());
+            let mut subject_tokens = ActivationRestrictionCompatWords::new(tokens)
+                .token_index_for_word_index(subject_word_len)
+                .map(|idx| &tokens[..idx])
+                .unwrap_or_default();
+            let one_or_more = has_leading_one_or_more(subject_tokens);
+            subject_tokens = strip_leading_one_or_more_lexed(subject_tokens);
+            let subject_view = ActivationRestrictionCompatWords::new(subject_tokens);
+            let subject_words = subject_view.to_word_refs();
+            let mut filter = if matches!(subject_words.as_slice(), ["card"] | ["cards"]) {
+                ObjectFilter::default()
+            } else {
+                parse_object_filter_lexed(subject_tokens, false).map_err(|_| {
+                    CardTextError::ParseError(format!(
+                        "unsupported filter in leave-your-graveyard trigger clause (clause: '{}')",
+                        words.join(" ")
+                    ))
+                })?
+            };
+            filter.zone = None;
+            filter.controller = None;
+            filter.owner = None;
+            if subject_words
+                .iter()
+                .any(|word| matches!(*word, "card" | "cards"))
+            {
+                filter.nontoken = true;
+            }
+            return Ok(TriggerSpec::CardsLeaveYourGraveyard {
+                filter,
+                one_or_more,
+                during_your_turn: during_turn == Some(PlayerFilter::You),
+            });
+        }
+    }
+
     for (tail, from_zones) in [
         (["is", "put", "into", "exile"].as_slice(), Vec::new()),
         (["are", "put", "into", "exile"].as_slice(), Vec::new()),

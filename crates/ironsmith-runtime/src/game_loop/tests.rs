@@ -6587,6 +6587,347 @@ fn test_bridge_from_below_token_trigger_fizzles_if_bridge_leaves_graveyard() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn skeleton_crew_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(640_045), "Skeleton Crew")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Skeleton, Subtype::Pirate])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "Each other creature you control that's a Skeleton or Pirate gets +1/+1.\n\
+             Whenever one or more creature cards leave your graveyard, create a 2/2 black Skeleton Pirate creature token. (This ability triggers only from the battlefield.)\n\
+             {5}{B}: Return this card from your graveyard to the battlefield tapped.",
+        )
+        .expect("Skeleton Crew should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_skeleton_crew_test_card(
+    game: &mut GameState,
+    name: &str,
+    owner: PlayerId,
+    zone: Zone,
+    card_types: Vec<CardType>,
+    subtypes: Vec<Subtype>,
+    power: i32,
+    toughness: i32,
+) -> ObjectId {
+    let card = CardBuilder::new(CardId::new(), name)
+        .card_types(card_types)
+        .subtypes(subtypes)
+        .power_toughness(PowerToughness::fixed(power, toughness))
+        .build();
+    game.create_object_from_card(&card, owner, zone)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn skeleton_crew_anthem_buffs_other_skeletons_and_pirates_only() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let crew_id = game.create_object_from_definition(
+        &skeleton_crew_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    let skeleton_id = create_skeleton_crew_test_card(
+        &mut game,
+        "Ally Skeleton",
+        alice,
+        Zone::Battlefield,
+        vec![CardType::Creature],
+        vec![Subtype::Skeleton],
+        2,
+        2,
+    );
+    let pirate_id = create_skeleton_crew_test_card(
+        &mut game,
+        "Ally Pirate",
+        alice,
+        Zone::Battlefield,
+        vec![CardType::Creature],
+        vec![Subtype::Pirate],
+        2,
+        2,
+    );
+    let bear_id = create_skeleton_crew_test_card(
+        &mut game,
+        "Ally Bear",
+        alice,
+        Zone::Battlefield,
+        vec![CardType::Creature],
+        vec![Subtype::Bear],
+        2,
+        2,
+    );
+    let opponent_pirate_id = create_skeleton_crew_test_card(
+        &mut game,
+        "Opponent Pirate",
+        bob,
+        Zone::Battlefield,
+        vec![CardType::Creature],
+        vec![Subtype::Pirate],
+        2,
+        2,
+    );
+
+    assert_eq!(game.calculated_power(skeleton_id), Some(3));
+    assert_eq!(game.calculated_toughness(skeleton_id), Some(3));
+    assert_eq!(game.calculated_power(pirate_id), Some(3));
+    assert_eq!(game.calculated_toughness(pirate_id), Some(3));
+    assert_eq!(game.calculated_power(bear_id), Some(2));
+    assert_eq!(game.calculated_toughness(bear_id), Some(2));
+    assert_eq!(game.calculated_power(opponent_pirate_id), Some(2));
+    assert_eq!(game.calculated_toughness(opponent_pirate_id), Some(2));
+    assert_eq!(game.calculated_power(crew_id), Some(3));
+    assert_eq!(game.calculated_toughness(crew_id), Some(3));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn skeleton_crew_creates_token_when_your_creature_card_leaves_graveyard() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    game.create_object_from_definition(&skeleton_crew_definition(), alice, Zone::Battlefield);
+    let creature_card_id = create_skeleton_crew_test_card(
+        &mut game,
+        "Graveyard Creature",
+        alice,
+        Zone::Graveyard,
+        vec![CardType::Creature],
+        vec![Subtype::Zombie],
+        2,
+        2,
+    );
+
+    let moved = game.move_object_by_effect(creature_card_id, Zone::Battlefield);
+    assert!(moved.is_some(), "creature card should leave your graveyard");
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Skeleton Crew should trigger once when a creature card leaves your graveyard"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Skeleton Crew trigger should be put on stack");
+    resolve_stack_entry(&mut game).expect("Skeleton Crew trigger should resolve");
+
+    let skeleton_pirate_tokens = game
+        .battlefield
+        .iter()
+        .filter(|&&id| {
+            game.object(id).is_some_and(|object| {
+                object.kind == ObjectKind::Token
+                    && game.calculated_subtypes(id).contains(&Subtype::Skeleton)
+                    && game.calculated_subtypes(id).contains(&Subtype::Pirate)
+            })
+        })
+        .count();
+    assert_eq!(
+        skeleton_pirate_tokens, 1,
+        "Skeleton Crew should create one Skeleton Pirate token"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn skeleton_crew_one_or_more_graveyard_leave_batches_once() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    game.create_object_from_definition(&skeleton_crew_definition(), alice, Zone::Battlefield);
+    let first_id = create_skeleton_crew_test_card(
+        &mut game,
+        "First Graveyard Creature",
+        alice,
+        Zone::Graveyard,
+        vec![CardType::Creature],
+        vec![Subtype::Zombie],
+        2,
+        2,
+    );
+    let second_id = create_skeleton_crew_test_card(
+        &mut game,
+        "Second Graveyard Creature",
+        alice,
+        Zone::Graveyard,
+        vec![CardType::Creature],
+        vec![Subtype::Zombie],
+        2,
+        2,
+    );
+    let snapshots = [first_id, second_id]
+        .into_iter()
+        .map(|id| {
+            let object = game.object(id).expect("graveyard creature should exist");
+            crate::snapshot::ObjectSnapshot::from_object(object, &game)
+        })
+        .collect();
+    let event = TriggerEvent::new_with_provenance(
+        crate::events::zones::ZoneChangeEvent::batch_with_snapshots(
+            vec![first_id, second_id],
+            Zone::Graveyard,
+            Zone::Exile,
+            crate::events::cause::EventCause::effect(),
+            snapshots,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Skeleton Crew should trigger once when multiple creature cards leave your graveyard together"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn skeleton_crew_does_not_trigger_for_noncreatures_opponents_graveyard_or_off_battlefield() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let battlefield_crew_id = game.create_object_from_definition(
+        &skeleton_crew_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    let noncreature_id = create_skeleton_crew_test_card(
+        &mut game,
+        "Graveyard Artifact",
+        alice,
+        Zone::Graveyard,
+        vec![CardType::Artifact],
+        vec![],
+        0,
+        0,
+    );
+    let opponent_creature_id = create_skeleton_crew_test_card(
+        &mut game,
+        "Opponent Graveyard Creature",
+        bob,
+        Zone::Graveyard,
+        vec![CardType::Creature],
+        vec![Subtype::Zombie],
+        2,
+        2,
+    );
+
+    assert!(game.move_object_by_effect(noncreature_id, Zone::Battlefield).is_some());
+    assert!(game.move_object_by_effect(opponent_creature_id, Zone::Battlefield).is_some());
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Skeleton Crew should ignore noncreature cards and opponents' graveyards"
+    );
+
+    assert!(game.move_object_by_effect(battlefield_crew_id, Zone::Exile).is_some());
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    trigger_queue.entries.clear();
+
+    let graveyard_crew_id = game.create_object_from_definition(
+        &skeleton_crew_definition(),
+        alice,
+        Zone::Graveyard,
+    );
+    let second_creature_id = create_skeleton_crew_test_card(
+        &mut game,
+        "Second Graveyard Creature",
+        alice,
+        Zone::Graveyard,
+        vec![CardType::Creature],
+        vec![Subtype::Zombie],
+        2,
+        2,
+    );
+
+    assert!(game.move_object_by_effect(graveyard_crew_id, Zone::Exile).is_some());
+    assert!(game.move_object_by_effect(second_creature_id, Zone::Battlefield).is_some());
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Skeleton Crew's creature-card trigger should function only from the battlefield"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn skeleton_crew_graveyard_activation_returns_it_tapped() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let crew_id = game.create_object_from_definition(
+        &skeleton_crew_definition(),
+        alice,
+        Zone::Graveyard,
+    );
+    let crew_stable_id = game
+        .object(crew_id)
+        .expect("Skeleton Crew should exist")
+        .stable_id;
+    {
+        let player = game.player_mut(alice).expect("Alice should exist");
+        player.mana_pool.add(ManaSymbol::Colorless, 5);
+        player.mana_pool.add(ManaSymbol::Black, 1);
+    }
+
+    let ability_index = game
+        .object(crew_id)
+        .expect("Skeleton Crew should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Skeleton Crew should have a graveyard activated ability");
+    let activate_action = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| matches!(
+            action,
+            crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                if *source == crew_id && *idx == ability_index
+        ))
+        .expect("Skeleton Crew graveyard activation should be legal with mana available");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Skeleton Crew activation should be put on the stack");
+    resolve_stack_entry(&mut game).expect("Skeleton Crew activation should resolve");
+
+    let returned_id = game
+        .find_object_by_stable_id(crew_stable_id)
+        .expect("Skeleton Crew should still be tracked after changing zones");
+    assert!(
+        game.battlefield.contains(&returned_id),
+        "Skeleton Crew should return to the battlefield"
+    );
+    assert!(game.is_tapped(returned_id), "Skeleton Crew should return tapped");
+}
+
 #[test]
 fn test_mortuary_triggers_for_owned_creatures_even_if_control_changed() {
     let mut game = setup_game();
