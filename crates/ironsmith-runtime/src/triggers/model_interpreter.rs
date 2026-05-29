@@ -303,6 +303,15 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::PutIntoGraveyard { filter } => {
             crate::triggers::Trigger::put_into_graveyard(filter)
         }
+        TriggerKind::CardsLeaveYourGraveyard {
+            filter,
+            one_or_more,
+            during_your_turn,
+        } => crate::triggers::Trigger::cards_leave_your_graveyard(
+            filter,
+            one_or_more,
+            during_your_turn,
+        ),
         TriggerKind::DiesCreatureDealtDamageByThisTurn { victim, damager } => match damager {
             DamagedBySource::ThisCreature => {
                 crate::triggers::Trigger::creature_dealt_damage_by_this_creature_this_turn_dies(

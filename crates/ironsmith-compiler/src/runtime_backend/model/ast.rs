@@ -247,6 +247,11 @@ pub(crate) enum TriggerSpec {
         one_or_more: bool,
         during_turn: Option<PlayerFilter>,
     },
+    CardsLeaveYourGraveyard {
+        filter: ObjectFilter,
+        one_or_more: bool,
+        during_your_turn: bool,
+    },
     CounterPutOn {
         filter: ObjectFilter,
         counter_type: Option<CounterType>,

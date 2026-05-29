@@ -236,6 +236,11 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             }
             Trigger::new(trigger)
         }
+        TriggerSpec::CardsLeaveYourGraveyard {
+            filter,
+            one_or_more,
+            during_your_turn,
+        } => Trigger::cards_leave_your_graveyard(filter, one_or_more, during_your_turn),
         TriggerSpec::CounterPutOn {
             filter,
             counter_type,

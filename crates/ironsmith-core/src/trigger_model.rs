@@ -215,6 +215,11 @@ pub enum TriggerKind {
     PutIntoGraveyard {
         filter: ObjectFilter,
     },
+    CardsLeaveYourGraveyard {
+        filter: ObjectFilter,
+        one_or_more: bool,
+        during_your_turn: bool,
+    },
     DiesCreatureDealtDamageByThisTurn {
         victim: ObjectFilter,
         damager: DamagedBySource,
@@ -773,6 +778,20 @@ impl Trigger {
         Self::typed(
             "put_into_graveyard",
             TriggerKind::PutIntoGraveyard { filter },
+        )
+    }
+    pub fn cards_leave_your_graveyard(
+        filter: ObjectFilter,
+        one_or_more: bool,
+        during_your_turn: bool,
+    ) -> Self {
+        Self::typed(
+            "cards_leave_your_graveyard",
+            TriggerKind::CardsLeaveYourGraveyard {
+                filter,
+                one_or_more,
+                during_your_turn,
+            },
         )
     }
     pub fn creature_dealt_damage_by_this_creature_this_turn_dies(victim: ObjectFilter) -> Self {

@@ -17,7 +17,7 @@ use crate::filter::{PlayerFilterExt, TaggedConstraintSubject, TaggedOpbjectRelat
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
-use crate::target::ObjectFilter;
+use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
 
@@ -220,6 +220,33 @@ fn pluralized_subject_text(filter: &ObjectFilter) -> String {
     }
 
     subject
+}
+
+fn subtype_creature_anthem_subject(filter: &ObjectFilter) -> Option<String> {
+    if filter.zone != Some(Zone::Battlefield)
+        || filter.controller != Some(PlayerFilter::You)
+        || filter.owner.is_some()
+        || filter.card_types != [CardType::Creature]
+        || !filter.all_card_types.is_empty()
+        || filter.subtypes.len() < 2
+        || filter.type_or_subtype_union
+        || !filter.excluded_card_types.is_empty()
+        || !filter.excluded_subtypes.is_empty()
+    {
+        return None;
+    }
+
+    let subtype_text = filter
+        .subtypes
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(" or ");
+    let article = indefinite_article_for(&subtype_text);
+    let other = if filter.other { "other " } else { "" };
+    Some(format!(
+        "Each {other}creature you control that's {article} {subtype_text}"
+    ))
 }
 
 fn pluralize_subject_clause(subject: &str) -> String {
@@ -1624,7 +1651,8 @@ impl StaticAbilityKind for Anthem {
         let subject = if self.source_only {
             "this creature".to_string()
         } else {
-            pluralized_subject_text(&self.filter)
+            subtype_creature_anthem_subject(&self.filter)
+                .unwrap_or_else(|| pluralized_subject_text(&self.filter))
         };
         let subject_mentions_plural = subject.contains("creatures")
             || subject.contains("tokens")
@@ -1638,6 +1666,7 @@ impl StaticAbilityKind for Anthem {
             || subject.contains("cards")
             || subject.contains("allies");
         let singular = self.source_only
+            || subject.starts_with("Each ")
             || subject.starts_with("a ")
             || subject.starts_with("an ")
             || subject.starts_with("this ")

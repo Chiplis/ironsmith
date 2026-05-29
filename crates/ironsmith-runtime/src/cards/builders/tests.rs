@@ -39271,6 +39271,7 @@ strict_parse_card_test!(strict_parse_genesis_chamber, "Genesis Chamber");
 strict_parse_card_test!(strict_parse_inviolability, "Inviolability");
 strict_parse_card_test!(strict_parse_saving_grace, "Saving Grace");
 strict_parse_card_test!(strict_parse_sacrifice, "Sacrifice");
+strict_parse_card_test!(strict_parse_skeleton_crew, "Skeleton Crew");
 strict_parse_card_test!(
     strict_parse_sephiroth_fabled_soldier,
     "Sephiroth, Fabled SOLDIER"
@@ -39311,6 +39312,19 @@ fn inviolability_compiled_text_keeps_damage_prevention_clause() {
     assert!(
         rendered.contains("prevent all damage that would be dealt to enchanted creature"),
         "expected Inviolability compiled text to preserve enchanted-creature prevention semantics, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn skeleton_crew_compiled_text_keeps_graveyard_leave_trigger() {
+    let def = parse_oracle_card_definition("Skeleton Crew");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Each other creature you control that's a Skeleton or Pirate gets +1/+1")
+            && rendered.contains("Whenever one or more creature cards leave your graveyard, create a 2/2 black Skeleton Pirate creature token")
+            && rendered.contains("{5}{B}: Return this card from your graveyard to the battlefield tapped"),
+        "expected Skeleton Crew compiled text to preserve anthem, graveyard-leave trigger, and graveyard activation, got {rendered}"
     );
 }
 
