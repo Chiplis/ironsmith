@@ -386,6 +386,18 @@ pub(crate) fn interpret_trigger_model(
         }
         TriggerKind::DayNightChanged => crate::triggers::Trigger::day_night_changed(),
         TriggerKind::ThisEntersBattlefield => crate::triggers::Trigger::this_enters_battlefield(),
+        TriggerKind::ThisTransforms { destination_name } => {
+            crate::triggers::Trigger::transforms_with_destination(destination_name)
+        }
+        TriggerKind::ThisTransformsWithSurface {
+            surface,
+            destination_name,
+        } => {
+            crate::triggers::Trigger::transforms_with_surface_and_destination(
+                surface,
+                destination_name,
+            )
+        }
         TriggerKind::YouCastThisSpell => crate::triggers::Trigger::you_cast_this_spell(),
         TriggerKind::KeywordActionMatchingObject {
             action,

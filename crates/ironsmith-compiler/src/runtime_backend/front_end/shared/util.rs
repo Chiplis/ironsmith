@@ -48,6 +48,7 @@ struct SourceReferenceAlias {
 
 #[derive(Clone, Default)]
 struct SourceReferenceContext {
+    source_name: String,
     aliases: Vec<SourceReferenceAlias>,
     surfaces_by_span: HashMap<TextSpan, SourceReferenceSurface>,
 }
@@ -61,12 +62,20 @@ pub(crate) fn with_source_reference_context<T>(card_name: &str, f: impl FnOnce()
     let aliases = source_reference_aliases_for_name(card_name);
     SOURCE_REFERENCE_CONTEXT.with(|context| {
         let previous = context.replace(SourceReferenceContext {
+            source_name: card_name.trim().to_string(),
             aliases,
             surfaces_by_span: HashMap::new(),
         });
         let result = f();
         context.replace(previous);
         result
+    })
+}
+
+pub(crate) fn current_source_reference_name() -> Option<String> {
+    SOURCE_REFERENCE_CONTEXT.with(|context| {
+        let source_name = context.borrow().source_name.trim().to_string();
+        (!source_name.is_empty()).then_some(source_name)
     })
 }
 

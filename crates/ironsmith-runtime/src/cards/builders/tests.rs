@@ -36950,6 +36950,46 @@ fn rebbec_architect_of_ascension_runtime_blocking_uses_controller_artifact_mana_
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn trystan_faces_strict_parser_and_text_regression() {
+    let front_oracle = "Deathtouch\n\
+        Whenever this creature enters or transforms into Trystan, Callous Cultivator, mill three cards. Then if there is an Elf card in your graveyard, you gain 2 life.\n\
+        At the beginning of your first main phase, you may pay {B}. If you do, transform Trystan.";
+    let front = CardDefinitionBuilder::new(CardId::new(), "Trystan, Callous Cultivator")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .parse_text(front_oracle)
+        .expect("Trystan, Callous Cultivator should parse strictly");
+    let front_rendered = canonical_compiled_lines(&front).join("\n");
+    assert!(
+        front_rendered.contains(
+            "Whenever this creature enters or transforms into Trystan, Callous Cultivator"
+        )
+            && front_rendered.contains("mill three cards")
+            && front_rendered.contains("Then if there is an Elf card in your graveyard, you gain 2 life"),
+        "expected front-face transform trigger and Elf-card graveyard condition, got {front_rendered}"
+    );
+
+    let back_oracle = "Deathtouch\n\
+        Whenever this creature transforms into Trystan, Penitent Culler, mill three cards, then you may exile an Elf card from your graveyard. If you do, each opponent loses 2 life.\n\
+        At the beginning of your first main phase, you may pay {G}. If you do, transform Trystan.";
+    let back = CardDefinitionBuilder::new(CardId::new(), "Trystan, Penitent Culler")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .parse_text(back_oracle)
+        .expect("Trystan, Penitent Culler should parse strictly");
+    let back_rendered = canonical_compiled_lines(&back).join("\n");
+    assert!(
+        back_rendered.contains("Whenever this creature transforms into Trystan, Penitent Culler")
+            && back_rendered.contains("mill three cards")
+            && back_rendered.contains("You may exile an Elf card")
+            && back_rendered.contains("If you do, each opponent loses 2 life")
+            && back_rendered.contains("At the beginning of your first main phase, you may pay {G}"),
+        "expected back-face transform trigger, optional Elf exile, opponent life loss, and green transform trigger, got {back_rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_sporeweb_weaver_strict_regression() {
     assert_oracle_card_parses_strict("Sporeweb Weaver");
     let def = parse_oracle_card_definition("Sporeweb Weaver");

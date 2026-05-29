@@ -311,6 +311,13 @@ pub(crate) enum TriggerSpec {
         from: Zone,
         owner: Option<PlayerFilter>,
     },
+    ThisTransforms {
+        destination_name: Option<String>,
+    },
+    ThisTransformsWithSurface {
+        surface: crate::target::SourceReferenceSurface,
+        destination_name: Option<String>,
+    },
     ThisDealsCombatDamageToPlayer,
     DealsCombatDamageToPlayer {
         source: ObjectFilter,

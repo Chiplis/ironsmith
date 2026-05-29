@@ -366,6 +366,15 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
                     .this(),
             )
         }
+        TriggerSpec::ThisTransforms { destination_name } => {
+            Trigger::transforms_with_destination(destination_name.clone())
+        }
+        TriggerSpec::ThisTransformsWithSurface {
+            surface,
+            destination_name,
+        } => {
+            Trigger::transforms_with_surface_and_destination(surface.clone(), destination_name.clone())
+        }
         TriggerSpec::ThisDealsCombatDamageToPlayer => Trigger::this_deals_combat_damage_to_player(),
         TriggerSpec::DealsCombatDamageToPlayer { source, player } => {
             Trigger::deals_combat_damage_to_player(source, player)

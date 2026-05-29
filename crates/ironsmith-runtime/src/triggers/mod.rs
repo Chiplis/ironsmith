@@ -913,7 +913,29 @@ impl Trigger {
 
     /// Create a "when this permanent transforms" trigger.
     pub fn transforms() -> Self {
-        Self::new(TransformsTrigger)
+        Self::transforms_with_destination(None)
+    }
+
+    /// Create a transform trigger that may require the destination face name.
+    pub fn transforms_with_destination(destination_name: Option<String>) -> Self {
+        Self::new(TransformsTrigger::new().destination_name(destination_name))
+    }
+
+    /// Create a transform trigger preserving the parsed source-reference surface.
+    pub fn transforms_with_surface(surface: crate::target::SourceReferenceSurface) -> Self {
+        Self::transforms_with_surface_and_destination(surface, None)
+    }
+
+    /// Create a transform trigger preserving the parsed source surface and destination face.
+    pub fn transforms_with_surface_and_destination(
+        surface: crate::target::SourceReferenceSurface,
+        destination_name: Option<String>,
+    ) -> Self {
+        Self::new(
+            TransformsTrigger::new()
+                .this_surface(surface)
+                .destination_name(destination_name),
+        )
     }
 
     /// Create a "when this creature becomes monstrous" trigger.

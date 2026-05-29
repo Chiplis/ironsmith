@@ -9010,6 +9010,13 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
     .expect("rewrite lexer should classify exile zone-change trigger probe");
     let dealt_combat_damage_tokens = lex_line("this creature is dealt combat damage", 0)
         .expect("rewrite lexer should classify dealt-combat-damage trigger probe");
+    let enters_or_transforms_tokens = lex_line(
+        "this creature enters or transforms into Trystan, Callous Cultivator",
+        0,
+    )
+    .expect("rewrite lexer should classify enter-or-transform trigger probe");
+    let transforms_tokens = lex_line("this creature transforms into Trystan, Penitent Culler", 0)
+        .expect("rewrite lexer should classify standalone transforms trigger probe");
 
     assert!(matches!(
         super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
@@ -9051,6 +9058,37 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
                 | crate::cards::builders::TriggerSpec::EntersBattlefield { .. }
         )
     ));
+    let enters_or_transforms =
+        super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+            &enters_or_transforms_tokens,
+        );
+    assert!(
+        matches!(
+            enters_or_transforms,
+            Ok(crate::cards::builders::TriggerSpec::Either(ref left, ref right))
+                if matches!(left.as_ref(), crate::cards::builders::TriggerSpec::ThisEntersBattlefield)
+                    && matches!(
+                        right.as_ref(),
+                        crate::cards::builders::TriggerSpec::ThisTransforms { destination_name }
+                            | crate::cards::builders::TriggerSpec::ThisTransformsWithSurface { destination_name, .. }
+                            if destination_name.as_deref() == Some("Trystan, Callous Cultivator")
+                    )
+        ),
+        "expected enter-or-transform trigger pair, got {enters_or_transforms:?}"
+    );
+    let transforms =
+        super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+            &transforms_tokens,
+        );
+    assert!(
+        matches!(
+            transforms,
+            Ok(crate::cards::builders::TriggerSpec::ThisTransforms { ref destination_name })
+                | Ok(crate::cards::builders::TriggerSpec::ThisTransformsWithSurface { ref destination_name, .. })
+                    if destination_name.as_deref() == Some("Trystan, Penitent Culler")
+        ),
+        "expected standalone transform trigger, got {transforms:?}"
+    );
     assert!(matches!(
         super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
             &spell_tokens,

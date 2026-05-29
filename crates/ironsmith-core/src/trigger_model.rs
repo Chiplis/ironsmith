@@ -262,6 +262,13 @@ pub enum TriggerKind {
     },
     DayNightChanged,
     ThisEntersBattlefield,
+    ThisTransforms {
+        destination_name: Option<String>,
+    },
+    ThisTransformsWithSurface {
+        surface: SourceReferenceSurface,
+        destination_name: Option<String>,
+    },
     YouCastThisSpell,
     KeywordActionMatchingObject {
         action: KeywordActionKind,
@@ -922,6 +929,30 @@ impl Trigger {
         Self::typed(
             "this_enters_battlefield",
             TriggerKind::ThisEntersBattlefield,
+        )
+    }
+    pub fn transforms() -> Self {
+        Self::transforms_with_destination(None)
+    }
+    pub fn transforms_with_destination(destination_name: Option<String>) -> Self {
+        Self::typed(
+            "this_transforms",
+            TriggerKind::ThisTransforms { destination_name },
+        )
+    }
+    pub fn transforms_with_surface(surface: SourceReferenceSurface) -> Self {
+        Self::transforms_with_surface_and_destination(surface, None)
+    }
+    pub fn transforms_with_surface_and_destination(
+        surface: SourceReferenceSurface,
+        destination_name: Option<String>,
+    ) -> Self {
+        Self::typed(
+            "this_transforms",
+            TriggerKind::ThisTransformsWithSurface {
+                surface,
+                destination_name,
+            },
         )
     }
     pub fn you_cast_this_spell() -> Self {
