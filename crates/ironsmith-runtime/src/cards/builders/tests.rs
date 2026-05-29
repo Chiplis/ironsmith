@@ -512,6 +512,36 @@ fn cogwork_librarian_draft_rules_do_not_create_runtime_effects() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn firkraag_cunning_instigator_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition("Firkraag, Cunning Instigator");
+    let rendered = canonical_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains(
+            "Whenever one or more Dragons you control attack an opponent, goad target creature that player controls."
+        ),
+        "Firkraag should bind the attacked opponent for the goad target, got {rendered}"
+    );
+    assert!(
+        rendered.contains("if that creature had to attack this combat"),
+        "Firkraag should preserve its combat-damage intervening-if condition, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("AttacksTrigger")
+            && debug.contains("attacking_player_or_planeswalker_controlled_by: Some(\n                                    Opponent")
+            && debug.contains("controller: Some(\n                                                        Defending"),
+        "Firkraag attack trigger should structurally bind the defending opponent, got {debug}"
+    );
+    assert!(
+        debug.contains("TriggeringObjectHadToAttackThisCombat"),
+        "Firkraag combat-damage trigger should carry the had-to-attack condition, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn happily_ever_after_keeps_life_draw_and_win_gate() {
     let lines = [
         "When this enchantment enters, each player gains 5 life and draws a card.",

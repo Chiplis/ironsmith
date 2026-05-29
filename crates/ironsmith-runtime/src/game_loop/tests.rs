@@ -10916,6 +10916,155 @@ fn create_creature(
     game.create_object_from_card(&card, owner, Zone::Battlefield)
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn firkraag_cunning_instigator_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_940), "Firkraag, Cunning Instigator")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Red],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Dragon])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "Flying, haste\n\
+             Whenever one or more Dragons you control attack an opponent, goad target creature that player controls.\n\
+             Whenever a creature deals combat damage to one of your opponents, if that creature had to attack this combat, you put a +1/+1 counter on Firkraag and you draw a card.",
+        )
+        .expect("Firkraag, Cunning Instigator should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_firkraag_game() -> (GameState, PlayerId, PlayerId, PlayerId, ObjectId) {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let firkraag = game.create_object_from_definition(
+        &firkraag_cunning_instigator_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    (game, alice, bob, charlie, firkraag)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn firkraag_attack_trigger_goads_only_creature_that_attacked_player_controls() {
+    let (mut game, alice, bob, charlie, _firkraag) = create_firkraag_game();
+    let dragon = create_creature(&mut game, "Dragon Ally", alice, 4, 4);
+    game.object_mut(dragon)
+        .expect("Dragon Ally should exist")
+        .subtypes
+        .push(Subtype::Dragon);
+    let bob_creature = create_creature(&mut game, "Bob Creature", bob, 2, 2);
+    let charlie_creature = create_creature(&mut game, "Charlie Creature", charlie, 2, 2);
+
+    game.combat = Some(crate::combat_state::CombatState {
+        attackers: vec![crate::combat_state::AttackerInfo {
+            creature: dragon,
+            target: AttackTarget::Player(bob),
+        }],
+        ..Default::default()
+    });
+    let event = TriggerEvent::new_with_provenance(
+        crate::events::combat::CreatureAttackedEvent::with_total_attackers(
+            dragon,
+            crate::triggers::AttackEventTarget::Player(bob),
+            1,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &event) {
+        trigger_queue.add(trigger);
+    }
+    let mut dm = ChooseSpecificObjectDecisionMaker::new(bob_creature);
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Firkraag attack trigger should go on the stack");
+
+    assert!(
+        dm.seen_candidates.contains(&bob_creature),
+        "Bob's creature should be a legal goad target"
+    );
+    assert!(
+        !dm.seen_candidates.contains(&charlie_creature),
+        "Charlie's creature should not be targetable by the trigger for attacking Bob"
+    );
+
+    let mut auto = AutoPassDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut auto).expect("Firkraag goad trigger should resolve");
+    assert!(game.is_goaded(bob_creature));
+    assert!(!game.is_goaded(charlie_creature));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn firkraag_damage_trigger_requires_creature_that_had_to_attack() {
+    let (mut game, alice, bob, charlie, firkraag) = create_firkraag_game();
+    let forced_attacker = create_creature(&mut game, "Forced Attacker", bob, 2, 2);
+    game.add_goad_effect(forced_attacker, alice, Until::Forever, firkraag);
+    let library_card = CardBuilder::new(CardId::from_raw(72_941), "Drawn Card").build();
+    game.create_object_from_card(&library_card, alice, Zone::Library);
+
+    let damage_event = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            forced_attacker,
+            crate::events::DamageTarget::Player(charlie),
+            2,
+            true,
+            crate::events::EventCause::from_combat_damage(forced_attacker, bob),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &damage_event) {
+        trigger_queue.add(trigger);
+    }
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Firkraag damage trigger should go on the stack for forced attacker");
+    assert_eq!(game.stack.len(), 1);
+
+    let mut auto = AutoPassDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut auto).expect("Firkraag damage trigger should resolve");
+    assert_eq!(
+        game.object(firkraag)
+            .expect("Firkraag should still exist")
+            .counters
+            .get(&crate::object::CounterType::PlusOnePlusOne)
+            .copied()
+            .unwrap_or(0),
+        1,
+        "Firkraag should get a +1/+1 counter"
+    );
+    assert_eq!(game.player(alice).expect("Alice should exist").hand.len(), 1);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn firkraag_damage_trigger_does_not_fire_when_creature_did_not_have_to_attack() {
+    let (game, _alice, bob, charlie, _firkraag) = create_firkraag_game();
+    let mut game = game;
+    let voluntary_attacker = create_creature(&mut game, "Voluntary Attacker", bob, 2, 2);
+    let damage_event = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            voluntary_attacker,
+            crate::events::DamageTarget::Player(charlie),
+            2,
+            true,
+            crate::events::EventCause::from_combat_damage(voluntary_attacker, bob),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    assert!(
+        crate::triggers::check_triggers(&game, &damage_event).is_empty(),
+        "Firkraag should not trigger for a creature that did not have to attack"
+    );
+}
+
 #[test]
 fn awaken_cast_action_is_available_even_when_normal_cast_is_legal() {
     use crate::cards::definitions::{basic_plains, basic_swamp};

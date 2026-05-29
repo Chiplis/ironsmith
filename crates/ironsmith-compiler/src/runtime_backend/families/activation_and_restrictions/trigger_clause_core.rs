@@ -3108,6 +3108,10 @@ pub(crate) fn parse_trigger_clause_lexed(
             let tail = &words[attacks_word_idx + 1..];
             if matches!(tail, ["a", "player"]) {
                 (&words[..=attacks_word_idx], Some(PlayerFilter::Any), true)
+            } else if matches!(tail, ["an", "opponent"] | ["opponent"])
+                || matches!(tail, ["one", "of", "your", "opponents"])
+            {
+                (&words[..=attacks_word_idx], Some(PlayerFilter::Opponent), true)
             } else if matches!(
                 tail,
                 ["the", "defending", "player"] | ["defending", "player"]

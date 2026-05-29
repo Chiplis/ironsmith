@@ -783,6 +783,7 @@ pub enum Condition {
     MaxTimesEachTurn(u32),
     DoThisMaxTimesEachTurn(u32),
     TriggeringObjectWasEnchanted,
+    TriggeringObjectHadToAttackThisCombat,
     TriggeringObjectHadCounters {
         counter_type: CounterType,
         min_count: u32,

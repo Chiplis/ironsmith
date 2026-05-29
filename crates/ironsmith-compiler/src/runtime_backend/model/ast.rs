@@ -507,6 +507,7 @@ pub(crate) enum PredicateAst {
     SourceIsTapped,
     SourceIsSaddled,
     SourceMatches(ObjectFilter),
+    TriggeringObjectHadToAttackThisCombat,
 
     SourceHasNoCounter(CounterType),
     TriggeringObjectHadNoCounter(CounterType),

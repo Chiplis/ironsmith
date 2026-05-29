@@ -4,7 +4,7 @@ use crate::events::EventKind;
 use crate::events::combat::CreatureAttackedEvent;
 use crate::filter::{ObjectFilterExt as _, PlayerFilterExt as _};
 use crate::ids::ObjectId;
-use crate::target::ObjectFilter;
+use crate::target::{ObjectFilter, PlayerFilter};
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 
@@ -161,29 +161,48 @@ impl TriggerMatcher for AttacksTrigger {
     }
 
     fn display(&self) -> String {
-        let mut subject = self.filter.description();
+        let mut display_filter = self.filter.clone();
+        let attacked_player = display_filter
+            .attacking_player_or_planeswalker_controlled_by
+            .take();
+        let attacked_target_must_be_player = display_filter.targets_only_player.take().is_some();
+        let mut subject = display_filter.description();
         if let Some(stripped) = subject.strip_prefix("a ") {
             subject = stripped.to_string();
         } else if let Some(stripped) = subject.strip_prefix("an ") {
             subject = stripped.to_string();
         }
+        let subject = if self.one_or_more {
+            pluralize_one_or_more_attack_subject(&subject)
+        } else {
+            subject
+        };
+        let target_tail = match (attacked_player.as_ref(), attacked_target_must_be_player) {
+            (Some(PlayerFilter::Opponent), true) => " an opponent",
+            (Some(PlayerFilter::Any), true) => " a player",
+            (Some(PlayerFilter::Opponent), false) => {
+                " an opponent or a planeswalker controlled by an opponent"
+            }
+            (Some(PlayerFilter::You), true) => " you",
+            _ => "",
+        };
 
         if self.one_or_more {
             if self.min_total_attackers > 1 {
                 return format!(
-                    "Whenever {} or more {subject} attack",
-                    self.min_total_attackers
+                    "Whenever {} or more {subject} attack{target_tail}",
+                    self.min_total_attackers,
                 );
             }
-            return format!("Whenever one or more {subject} attack");
+            return format!("Whenever one or more {subject} attack{target_tail}");
         }
         if self.min_total_attackers > 1 {
             return format!(
-                "Whenever {} or more {subject} attack",
-                self.min_total_attackers
+                "Whenever {} or more {subject} attack{target_tail}",
+                self.min_total_attackers,
             );
         }
-        format!("Whenever {} attacks", self.filter.description())
+        format!("Whenever {} attacks{target_tail}", display_filter.description())
     }
 
     fn event_value_amount(&self, event: &TriggerEvent, ctx: &TriggerContext) -> Option<i32> {
@@ -192,6 +211,35 @@ impl TriggerMatcher for AttacksTrigger {
         }
         self.matching_attacker_count_this_combat(ctx)
     }
+}
+
+fn pluralize_one_or_more_attack_subject(subject: &str) -> String {
+    if let Some((head, tail)) = subject.split_once(" creature ") {
+        if !head.contains(' ')
+            && head.chars().next().is_some_and(|ch| ch.is_ascii_uppercase())
+        {
+            return format!("{head}s {tail}");
+        }
+        return format!("{head} creatures {tail}");
+    }
+    if let Some(stripped) = subject.strip_suffix(" creature") {
+        if !stripped.contains(' ')
+            && stripped
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_ascii_uppercase())
+        {
+            return format!("{stripped}s");
+        }
+        return format!("{stripped} creatures");
+    }
+    if let Some((head, tail)) = subject.split_once(" permanent ") {
+        return format!("{head} permanents {tail}");
+    }
+    if let Some(stripped) = subject.strip_suffix(" permanent") {
+        return format!("{stripped} permanents");
+    }
+    subject.to_string()
 }
 
 #[cfg(test)]

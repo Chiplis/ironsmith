@@ -990,6 +990,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::MaxTimesEachTurn(..) => {}
         Condition::DoThisMaxTimesEachTurn(..) => {}
         Condition::TriggeringObjectWasEnchanted => {}
+        Condition::TriggeringObjectHadToAttackThisCombat => {}
         Condition::TriggeringObjectHadCounters { .. } => {}
         Condition::ControlCreaturesTotalPowerAtLeast(..) => {}
         Condition::CardInYourGraveyard { .. } => {}
@@ -1353,6 +1354,11 @@ pub fn evaluate_condition_external(
             .triggering_event
             .and_then(|event| event.snapshot())
             .is_some_and(|snapshot| snapshot.was_enchanted),
+        Condition::TriggeringObjectHadToAttackThisCombat => ctx
+            .triggering_event
+            .and_then(|event| event.object_id())
+            .and_then(|object_id| game.object(object_id))
+            .is_some_and(|object| crate::rules::combat::must_attack_with_game(object, game)),
         Condition::TriggeringObjectHadCounters {
             counter_type,
             min_count,
@@ -2446,9 +2452,9 @@ fn evaluate_condition_simple(
         Condition::FirstTimeThisTurn
         | Condition::MaxTimesEachTurn(_)
         | Condition::DoThisMaxTimesEachTurn(_) => true,
-        Condition::TriggeringObjectWasEnchanted | Condition::TriggeringObjectHadCounters { .. } => {
-            false
-        }
+        Condition::TriggeringObjectWasEnchanted
+        | Condition::TriggeringObjectHadToAttackThisCombat
+        | Condition::TriggeringObjectHadCounters { .. } => false,
         Condition::ControlCreaturesTotalPowerAtLeast(_)
         | Condition::CardInYourGraveyard { .. }
         | Condition::ActivationTiming(_)
@@ -3405,6 +3411,12 @@ fn evaluate_condition(
             .as_ref()
             .and_then(|event| event.snapshot())
             .is_some_and(|snapshot| snapshot.was_enchanted)),
+        Condition::TriggeringObjectHadToAttackThisCombat => Ok(ctx
+            .triggering_event
+            .as_ref()
+            .and_then(|event| event.object_id())
+            .and_then(|object_id| game.object(object_id))
+            .is_some_and(|object| crate::rules::combat::must_attack_with_game(object, game))),
         Condition::TriggeringObjectHadCounters {
             counter_type,
             min_count,
