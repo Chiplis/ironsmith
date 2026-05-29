@@ -11080,6 +11080,52 @@ fn parse_flying_only_restriction_does_not_widen_to_reach() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn ox_drover_parses_oxen_block_restriction_and_trigger_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ox Drover")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Peasant])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Vigilance\n\
+             This creature can't be blocked by Oxen.\n\
+             Whenever this creature enters or attacks, target opponent creates a 2/4 white Ox creature token and you draw a card.",
+        )
+        .expect("Ox Drover should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("vigilance"),
+        "expected vigilance in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("can't be blocked by oxen"),
+        "expected Oxen block restriction in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("target opponent creates a 2/4 white ox creature token")
+            && rendered.contains("draw a card"),
+        "expected token-and-draw trigger text in compiled text, got {rendered}"
+    );
+
+    let ability_debug = format!("{:?}", def.abilities);
+    assert!(
+        ability_debug.contains("subtypes: [Ox]"),
+        "expected Oxen to lower to the Ox subtype in the block restriction, got {ability_debug}"
+    );
+    assert!(
+        ability_debug.contains("CreateTokenEffect") && ability_debug.contains("DrawCardsEffect"),
+        "expected Ox Drover trigger to create a token and draw a card, got {ability_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_conditional_spell_cost_if_it_targets_compiles_target_filter() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Conditional Cost Probe")
         .card_types(vec![CardType::Sorcery])

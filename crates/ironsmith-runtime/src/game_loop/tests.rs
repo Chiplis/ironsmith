@@ -57,6 +57,44 @@ fn twenty_toed_toad_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn ox_drover_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(73_950), "Ox Drover")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Peasant])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Vigilance\n\
+             This creature can't be blocked by Oxen.\n\
+             Whenever this creature enters or attacks, target opponent creates a 2/4 white Ox creature token and you draw a card.",
+        )
+        .expect("Ox Drover should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn ox_tokens_controlled_by(game: &GameState, player: PlayerId) -> Vec<ObjectId> {
+    game.battlefield
+        .iter()
+        .copied()
+        .filter(|&id| {
+            game.object(id).is_some_and(|object| {
+                game.controller_of(object) == player
+                    && object.kind == ObjectKind::Token
+                    && object.name == "Ox"
+                    && object.card_types.contains(&CardType::Creature)
+                    && object.subtypes.contains(&Subtype::Ox)
+                    && game.current_power(id) == Some(2)
+                    && game.current_toughness(id) == Some(4)
+                    && game.current_colors(id) == Some(crate::color::ColorSet::WHITE)
+            })
+        })
+        .collect()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn put_test_cards_in_zone(game: &mut GameState, player: PlayerId, zone: Zone, count: u32) {
     for index in 0..count {
         let card = CardBuilder::new(
@@ -97,6 +135,153 @@ fn attack_with_toad(
     apply_attacker_declarations(&mut *game, &mut combat, &mut trigger_queue, &declarations)
         .expect("Twenty-Toed Toad attack declaration should be legal");
     trigger_queue
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn ox_drover_cannot_be_blocked_by_oxen_but_can_be_blocked_by_other_creatures() {
+    let can_block = |blocker_is_ox: bool| {
+        let mut game = setup_game();
+        let mut trigger_queue = TriggerQueue::new();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let drover = ox_drover_definition();
+        let attacker = game.create_object_from_definition(&drover, alice, Zone::Battlefield);
+        let blocker = if blocker_is_ox {
+            let ox = CardBuilder::new(CardId::from_raw(73_951), "Ox Blocker")
+                .card_types(vec![CardType::Creature])
+                .subtypes(vec![Subtype::Ox])
+                .power_toughness(PowerToughness::fixed(2, 4))
+                .build();
+            game.create_object_from_card(&ox, bob, Zone::Battlefield)
+        } else {
+            create_creature(&mut game, "Non-Ox Blocker", bob, 2, 2)
+        };
+
+        let mut combat = CombatState::default();
+        combat.attackers.push(crate::combat_state::AttackerInfo {
+            creature: attacker,
+            target: AttackTarget::Player(bob),
+        });
+        game.update_cant_effects();
+
+        apply_blocker_declarations(
+            &mut game,
+            &mut combat,
+            &mut trigger_queue,
+            &[BlockerDeclaration {
+                blocker,
+                blocking: attacker,
+            }],
+            bob,
+        )
+        .is_ok()
+    };
+
+    assert!(
+        can_block(false),
+        "Ox Drover should still be blockable by non-Ox creatures"
+    );
+    assert!(
+        !can_block(true),
+        "Ox Drover's Oxen restriction should reject Ox blockers"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn ox_drover_enter_trigger_targets_opponent_creates_ox_and_draws() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let drover = ox_drover_definition();
+    put_test_cards_in_zone(&mut game, alice, Zone::Library, 1);
+    let drover_in_hand = game.create_object_from_definition(&drover, alice, Zone::Hand);
+    game.move_object_by_effect(drover_in_hand, Zone::Battlefield)
+        .expect("Ox Drover should enter from hand");
+
+    let mut trigger_queue = TriggerQueue::new();
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Ox Drover should trigger once when it enters"
+    );
+
+    let mut dm = SelectFirstDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Ox Drover enter trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Ox Drover enter trigger should resolve");
+
+    assert_eq!(
+        ox_tokens_controlled_by(&game, bob).len(),
+        1,
+        "target opponent should create one 2/4 white Ox token"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice exists").hand.len(),
+        1,
+        "Ox Drover's controller should draw one card"
+    );
+    assert_eq!(
+        game.player(bob).expect("Bob exists").hand.len(),
+        0,
+        "the target opponent should not draw from Ox Drover's trigger"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn ox_drover_attack_trigger_creates_ox_draws_and_vigilance_keeps_it_untapped() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let drover = ox_drover_definition();
+    put_test_cards_in_zone(&mut game, alice, Zone::Library, 1);
+    let drover_id = game.create_object_from_definition(&drover, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(drover_id);
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[AttackerDeclaration {
+            creature: drover_id,
+            target: AttackTarget::Player(bob),
+        }],
+    )
+    .expect("Ox Drover should be able to attack");
+    assert!(
+        !game.is_tapped(drover_id),
+        "vigilance should keep Ox Drover untapped as it attacks"
+    );
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Ox Drover should trigger once when it attacks"
+    );
+
+    let mut dm = SelectFirstDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Ox Drover attack trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Ox Drover attack trigger should resolve");
+
+    assert_eq!(
+        ox_tokens_controlled_by(&game, bob).len(),
+        1,
+        "target opponent should create one 2/4 white Ox token from the attack trigger"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice exists").hand.len(),
+        1,
+        "Ox Drover's controller should draw one card from the attack trigger"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
