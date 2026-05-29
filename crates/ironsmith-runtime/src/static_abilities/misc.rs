@@ -5,7 +5,8 @@
 use super::{
     ChooseBasicLandTypeAsEntersSpec, ChooseCardNameAsEntersSpec, ChooseColorAsBecomesAttachedSpec,
     ChooseColorAsEntersSpec, ChooseCreatureTypeAsEntersSpec, ChooseLandTypeAsEntersSpec,
-    ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec, ConditionalSpellKeywordKind,
+    ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec,
+    ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec, ConditionalSpellKeywordKind,
     ConditionalSpellKeywordSpec, EnterAsCopyAsEntersSpec, GraveyardCountMetric, StaticAbilityId,
     StaticAbilityKind, ThisSpellCastRestrictionKind, TriggerDuplicationSpec,
     TriggerSuppressionSpec,
@@ -1593,6 +1594,37 @@ impl StaticAbilityKind for ChooseNamedOptionAsEnters {
 
     fn named_option_choice_as_enters(&self) -> Option<ChooseNamedOptionAsEntersSpec> {
         Some(ChooseNamedOptionAsEntersSpec {
+            options: self.options.clone(),
+        })
+    }
+}
+
+/// "As this enters or is turned face up, choose a power/toughness."
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChoosePowerToughnessAsEntersOrTurnsFaceUp {
+    pub options: Vec<(i32, i32)>,
+    pub display: String,
+}
+
+impl ChoosePowerToughnessAsEntersOrTurnsFaceUp {
+    pub fn new(options: Vec<(i32, i32)>, display: String) -> Self {
+        Self { options, display }
+    }
+}
+
+impl StaticAbilityKind for ChoosePowerToughnessAsEntersOrTurnsFaceUp {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ChoosePowerToughnessAsEntersOrTurnsFaceUp
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn power_toughness_choice_as_enters_or_turns_face_up(
+        &self,
+    ) -> Option<ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec> {
+        Some(ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec {
             options: self.options.clone(),
         })
     }

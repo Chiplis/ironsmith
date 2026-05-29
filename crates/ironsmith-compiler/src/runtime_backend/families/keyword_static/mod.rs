@@ -779,6 +779,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_fixed_mana_cost_instead_of_mana_cost_grant_line),
         single_static_ability_ast_rule!(parse_mana_value_instead_of_mana_cost_grant_line),
         single_static_ability_ast_rule!(parse_life_mana_value_instead_of_mana_cost_grant_line),
+        single_static_ability_ast_rule!(parse_as_enters_or_turns_face_up_pt_choice_line),
         single_static_ability_ast_rule!(parse_as_enters_becomes_characteristics_for_filter_line),
         single_static_ability_ast_rule!(parse_enter_as_copy_as_enters_line),
         multi_static_ability_ast_rule!(

@@ -353,6 +353,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         options: Vec<String>,
         display: String,
     },
+    ChoosePowerToughnessAsEntersOrTurnsFaceUp {
+        options: Vec<(i32, i32)>,
+        display: String,
+    },
     EnterAsCopyAsEnters {
         spec: EnterAsCopyAsEntersSpec<T, E, C, Cond>,
         display: String,
@@ -1133,6 +1137,13 @@ where
             StaticAbilityPayload::ChooseNamedOptionAsEnters { options, display } => {
                 StaticAbilityPayload::ChooseNamedOptionAsEnters { options, display }
             }
+            StaticAbilityPayload::ChoosePowerToughnessAsEntersOrTurnsFaceUp {
+                options,
+                display,
+            } => StaticAbilityPayload::ChoosePowerToughnessAsEntersOrTurnsFaceUp {
+                options,
+                display,
+            },
             StaticAbilityPayload::EnterAsCopyAsEnters { spec, display } => {
                 let mut added_abilities = Vec::with_capacity(spec.added_abilities.len());
                 for ability in spec.added_abilities {
@@ -2933,6 +2944,22 @@ impl<
             payload: StaticAbilityPayload::ChooseNamedOptionAsEnters { options, display },
         }
     }
+
+    pub fn choose_power_toughness_as_enters_or_turns_face_up(
+        options: Vec<(i32, i32)>,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ChoosePowerToughnessAsEntersOrTurnsFaceUp),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ChoosePowerToughnessAsEntersOrTurnsFaceUp {
+                options,
+                display,
+            },
+        }
+    }
+
     pub fn duplicate_matching_triggered_abilities(
         source_filter: Option<ObjectFilter>,
         event_matcher: Option<T>,

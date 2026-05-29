@@ -23847,6 +23847,146 @@ fn test_face_down_cast_matches_panoptic_filter_and_enters_battlefield_face_down(
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn aquamorph_entity_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(386300), "Aquamorph Entity")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Shapeshifter])
+        .power_toughness(PowerToughness::new(PtValue::Star, PtValue::Star))
+        .parse_text(
+            "As this creature enters or is turned face up, it becomes your choice of 5/1 or 1/5.\nMorph {2}{U}",
+        )
+        .expect("Aquamorph Entity should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct ChooseAquamorphPowerToughness {
+    option_index: usize,
+    choices_seen: usize,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for ChooseAquamorphPowerToughness {
+    fn decide_options(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        if ctx.options.iter().any(|option| option.description == "5/1")
+            && ctx.options.iter().any(|option| option.description == "1/5")
+        {
+            self.choices_seen += 1;
+            return vec![self.option_index];
+        }
+        ctx.options
+            .iter()
+            .filter(|option| option.legal)
+            .map(|option| option.index)
+            .take(ctx.min)
+            .collect()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn aquamorph_entity_enters_with_chosen_power_toughness() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let aquamorph = aquamorph_entity_definition();
+    let hand_id = game.create_object_from_definition(&aquamorph, alice, Zone::Hand);
+
+    let mut dm = ChooseAquamorphPowerToughness {
+        option_index: 1,
+        choices_seen: 0,
+    };
+    let result = game
+        .move_object_with_etb_processing_with_dm(hand_id, Zone::Battlefield, &mut dm)
+        .expect("Aquamorph Entity should enter the battlefield");
+    let object = game
+        .object(result.new_id)
+        .expect("Aquamorph Entity should exist on the battlefield");
+    assert_eq!(object.power(), Some(1));
+    assert_eq!(object.toughness(), Some(5));
+    assert_eq!(dm.choices_seen, 1);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn aquamorph_entity_turns_face_up_with_chosen_power_toughness() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let aquamorph = aquamorph_entity_definition();
+    let hand_id = game.create_object_from_definition(&aquamorph, alice, Zone::Hand);
+    let stack_id = super::priority_mana::propose_spell_cast(
+        &mut game,
+        hand_id,
+        Zone::Hand,
+        alice,
+        &CastingMethod::FaceDown,
+    )
+    .expect("Aquamorph Entity should be castable face down");
+    let battlefield_id = game
+        .move_object_by_effect(stack_id, Zone::Battlefield)
+        .expect("face-down Aquamorph Entity should resolve");
+    let face_down = game
+        .object(battlefield_id)
+        .expect("face-down Aquamorph Entity should exist");
+    assert!(game.is_face_down(battlefield_id));
+    assert_eq!(face_down.power(), Some(2));
+    assert_eq!(face_down.toughness(), Some(2));
+
+    game.player_mut(alice)
+        .expect("alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+    game.player_mut(alice)
+        .expect("alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Blue, 1);
+    let action = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| matches!(
+            action,
+            crate::decision::LegalAction::TurnFaceUp { creature_id, .. }
+                if *creature_id == battlefield_id
+        ))
+        .expect("Aquamorph Entity should be turnable face up for its morph cost");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = ChooseAquamorphPowerToughness {
+        option_index: 0,
+        choices_seen: 0,
+    };
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(action),
+        &mut dm,
+    )
+    .expect("turning Aquamorph Entity face up should succeed");
+
+    let face_up = game
+        .object(battlefield_id)
+        .expect("Aquamorph Entity should remain on the battlefield");
+    assert!(!game.is_face_down(battlefield_id));
+    assert_eq!(face_up.power(), Some(5));
+    assert_eq!(face_up.toughness(), Some(1));
+    assert_eq!(dm.choices_seen, 1);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_bestow_cast_enters_as_aura_and_reverts_when_unattached() {
     use crate::cards::CardDefinitionBuilder;

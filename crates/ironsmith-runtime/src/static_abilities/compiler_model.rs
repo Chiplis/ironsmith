@@ -190,6 +190,9 @@ impl StaticAbility {
             Some(StaticAbilityId::ChooseColorAsBecomesAttached) => {
                 Self::choose_color_as_becomes_attached(label)
             }
+            Some(StaticAbilityId::ChoosePowerToughnessAsEntersOrTurnsFaceUp) => {
+                Self::rule_fallback_text(label)
+            }
             Some(StaticAbilityId::NoMaximumHandSize) => Self::no_maximum_hand_size(),
             Some(StaticAbilityId::CreaturesEnteringDontCauseAbilitiesToTrigger) => {
                 Self::creatures_entering_dont_cause_abilities_to_trigger()
