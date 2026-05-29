@@ -462,6 +462,87 @@ fn trystan_penitent_culler_transform_trigger_can_decline_exiling_elf() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn trystan_callous_cultivator_first_main_phase_black_payment_transforms_to_back_face() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let (front, back) = trystan_linked_face_definitions();
+    game.register_linked_face_definition(&front);
+    game.register_linked_face_definition(&back);
+    let trystan_id = game.create_object_from_definition(&front, alice, Zone::Battlefield);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Black, 1);
+
+    let first_main = TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfPrecombatMainPhaseEvent::new(alice),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &first_main) {
+        trigger_queue.add(trigger);
+    }
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Callous Cultivator first-main-phase trigger should stack");
+    assert_eq!(game.stack.len(), 1, "expected first-main-phase transform trigger");
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Callous Cultivator first-main-phase trigger should resolve");
+
+    assert_eq!(
+        game.object(trystan_id).expect("Trystan should still exist").name,
+        back.card.name,
+        "paying {{B}} during the first main phase trigger should transform to the back face"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").mana_pool.black,
+        0,
+        "the {{B}} payment should be spent"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn trystan_callous_cultivator_first_main_phase_can_decline_black_payment() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let (front, back) = trystan_linked_face_definitions();
+    game.register_linked_face_definition(&front);
+    game.register_linked_face_definition(&back);
+    let trystan_id = game.create_object_from_definition(&front, alice, Zone::Battlefield);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Black, 1);
+
+    let first_main = TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfPrecombatMainPhaseEvent::new(alice),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &first_main) {
+        trigger_queue.add(trigger);
+    }
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Callous Cultivator first-main-phase trigger should stack");
+    let mut dm = AutoPassDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Callous Cultivator first-main-phase trigger should resolve");
+
+    assert_eq!(
+        game.object(trystan_id).expect("Trystan should still exist").name,
+        front.card.name,
+        "declining the {{B}} payment should leave Trystan on the front face"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").mana_pool.black,
+        1,
+        "declining the optional payment should not spend black mana"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn trystan_penitent_culler_first_main_phase_green_payment_transforms_to_front_face() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
@@ -498,6 +579,46 @@ fn trystan_penitent_culler_first_main_phase_green_payment_transforms_to_front_fa
         game.player(alice).expect("alice exists").mana_pool.green,
         0,
         "the {{G}} payment should be spent"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn trystan_penitent_culler_first_main_phase_can_decline_green_payment() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let (front, back) = trystan_linked_face_definitions();
+    game.register_linked_face_definition(&front);
+    game.register_linked_face_definition(&back);
+    let trystan_id = game.create_object_from_definition(&back, alice, Zone::Battlefield);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Green, 1);
+
+    let first_main = TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfPrecombatMainPhaseEvent::new(alice),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &first_main) {
+        trigger_queue.add(trigger);
+    }
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Penitent Culler first-main-phase trigger should stack");
+    let mut dm = AutoPassDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Penitent Culler first-main-phase trigger should resolve");
+
+    assert_eq!(
+        game.object(trystan_id).expect("Trystan should still exist").name,
+        back.card.name,
+        "declining the {{G}} payment should leave Trystan on the back face"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").mana_pool.green,
+        1,
+        "declining the optional payment should not spend green mana"
     );
 }
 
