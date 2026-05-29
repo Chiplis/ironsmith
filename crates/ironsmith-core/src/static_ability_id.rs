@@ -71,6 +71,7 @@ pub enum StaticAbilityId {
     CantBeBlockedByPowerOrLess,
     CantBeBlockedByPowerOrGreater,
     CantBeBlockedByLowerPowerThanSource,
+    CantBeBlockedByGreaterPowerThanSource,
     CantBeBlockedByMoreThan,
     CantBeBlockedExceptByNOrMore,
     CanAttackAsThoughNoDefender,
@@ -319,6 +320,7 @@ impl StaticAbilityId {
             | CantBeBlockedByPowerOrLess
             | CantBeBlockedByPowerOrGreater
             | CantBeBlockedByLowerPowerThanSource
+            | CantBeBlockedByGreaterPowerThanSource
             | CantBeBlockedByMoreThan
             | CantBeBlockedExceptByNOrMore
             | CanAttackAsThoughNoDefender
@@ -569,6 +571,7 @@ impl StaticAbilityId {
                 | CantBeBlockedByPowerOrLess
                 | CantBeBlockedByPowerOrGreater
                 | CantBeBlockedByLowerPowerThanSource
+                | CantBeBlockedByGreaterPowerThanSource
                 | CantBeBlockedByMoreThan
                 | CantBeBlockedExceptByNOrMore
                 | Landwalk
@@ -609,6 +612,7 @@ impl StaticAbilityId {
                 | CantBeBlockedByPowerOrLess
                 | CantBeBlockedByPowerOrGreater
                 | CantBeBlockedByLowerPowerThanSource
+                | CantBeBlockedByGreaterPowerThanSource
                 | CantBeBlockedByMoreThan
                 | CantBeBlockedExceptByNOrMore
                 | CantBeBlockedAsLongAsDefendingPlayerControlsCardType

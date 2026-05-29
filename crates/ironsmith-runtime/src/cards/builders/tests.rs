@@ -35759,6 +35759,39 @@ fn assert_oracle_card_fails_strict(name: &str) {
 }
 
 #[test]
+fn tadeas_juniper_ascendant_strict_parser_and_text_regression() {
+    let oracle = oracle_text_by_name()
+        .get("Tadeas, Juniper Ascendant")
+        .expect("missing Tadeas oracle text")
+        .clone();
+    let def = CardDefinitionBuilder::new(CardId::new(), "Tadeas, Juniper Ascendant")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("Tadeas should parse strictly");
+
+    let rendered_lines = canonical_compiled_lines(&def);
+    assert_eq!(
+        rendered_lines,
+        vec![
+            "Reach".to_string(),
+            "Tadeas has hexproof unless it's attacking.".to_string(),
+            "Whenever a creature you control with reach attacks, untap it and it can't be blocked by creatures with greater power this combat.".to_string(),
+            "Whenever one or more creatures you control deal combat damage to a player, draw a card.".to_string(),
+        ]
+    );
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("Not(SourceIsAttacking)")
+            && debug.contains("CantBeBlockedByGreaterPowerThanSource")
+            && !debug.contains("Skulk")
+            && debug.contains("EndOfCombat"),
+        "Tadeas should compile unless-attacking hexproof and this-combat greater-power blocking restriction: {debug}"
+    );
+}
+
+#[test]
 fn guardian_of_the_ages_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("Guardian of the Ages");
 

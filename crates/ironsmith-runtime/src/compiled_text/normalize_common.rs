@@ -8862,6 +8862,9 @@ pub(super) fn describe_apply_continuous_effect(
     effect: &crate::effects::ApplyContinuousEffect,
 ) -> Option<String> {
     let (target, plural_target) = describe_apply_continuous_target(effect);
+    if let Some(text) = describe_greater_power_blocking_grant_effect(effect, &target) {
+        return Some(text);
+    }
     if let Some(text) = describe_dies_return_counter_grant(effect, &target) {
         return Some(text);
     }
@@ -8965,6 +8968,39 @@ pub(super) fn describe_apply_continuous_effect(
     if let Some(tail) = describe_apply_continuous_tail(effect) {
         text.push(' ');
         text.push_str(&tail);
+    }
+    Some(text)
+}
+
+fn describe_greater_power_blocking_grant_effect(
+    effect: &crate::effects::ApplyContinuousEffect,
+    target: &str,
+) -> Option<String> {
+    if effect.condition.is_some()
+        || !effect.additional_modifications.is_empty()
+        || !effect.runtime_modifications.is_empty()
+    {
+        return None;
+    }
+
+    let crate::continuous::Modification::AddAbility(ability) = effect.modification.as_ref()? else {
+        return None;
+    };
+    if ability.id()
+        != crate::static_abilities::StaticAbilityId::CantBeBlockedByGreaterPowerThanSource
+    {
+        return None;
+    }
+
+    let mut text = format!("{target} can't be blocked by creatures with greater power");
+    match effect.until {
+        Until::Forever => {}
+        Until::EndOfCombat => text.push_str(" this combat"),
+        Until::EndOfTurn => text.push_str(" this turn"),
+        _ => {
+            text.push(' ');
+            text.push_str(&describe_until(&effect.until));
+        }
     }
     Some(text)
 }

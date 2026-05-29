@@ -276,6 +276,23 @@ fn starts_with_player_may_clause_lexed(words: &[&str]) -> bool {
     )
 }
 
+fn starts_with_pronoun_cant_be_blocked_clause_lexed(words: &[&str]) -> bool {
+    let words = match words {
+        ["it", tail @ ..]
+        | ["this", "creature", tail @ ..]
+        | ["that", "creature", tail @ ..]
+        | ["those", "creatures", tail @ ..]
+        | ["they", tail @ ..] => tail,
+        _ => words,
+    };
+
+    matches!(
+        words,
+        ["cant" | "can't" | "cannot", "be", "blocked", ..]
+            | ["can", "not", "be", "blocked", ..]
+    )
+}
+
 pub(crate) fn is_token_creation_context(tokens: &[OwnedLexToken]) -> bool {
     tokens.first().is_some_and(|t| t.is_word("create"))
         && (grammar::contains_word(tokens, "token") || grammar::contains_word(tokens, "tokens"))
@@ -886,6 +903,7 @@ pub(crate) fn has_effect_head_without_verb_lexed(tokens: &[OwnedLexToken]) -> bo
 
     is_prevent_next_damage_clause_words_lexed(&token_words)
         || is_prevent_all_damage_clause_words_lexed(&token_words)
+        || starts_with_pronoun_cant_be_blocked_clause_lexed(&token_words)
         || is_can_attack_as_though_no_defender_clause_words_lexed(&token_words)
         || is_attack_or_block_this_turn_if_able_clause_words_lexed(&token_words)
         || is_attack_this_turn_if_able_clause_words_lexed(&token_words)

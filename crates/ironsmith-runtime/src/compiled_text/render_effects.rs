@@ -2387,6 +2387,7 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
     describe_draw_discard_then_create_structural(effects)
         .or_else(|| describe_reveal_top_choice_to_hand_rest_graveyard_structural(effects))
         .or_else(|| describe_gain_control_untap_haste_structural(effects))
+        .or_else(|| describe_untap_then_greater_power_blocking_structural(effects))
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
         .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
 }
@@ -2620,6 +2621,43 @@ fn is_haste_until_eot_for_tag(
             Some(crate::continuous::Modification::AddAbility(ability))
                 if ability.id() == crate::static_abilities::StaticAbilityId::Haste
         )
+}
+
+fn is_greater_power_blocking_until_end_of_combat_for_tag(
+    apply: &crate::effects::ApplyContinuousEffect,
+    tag: &crate::TagKey,
+) -> bool {
+    apply.target == crate::continuous::EffectTarget::Source
+        && apply.until == Until::EndOfCombat
+        && apply.condition.is_none()
+        && apply.additional_modifications.is_empty()
+        && apply.runtime_modifications.is_empty()
+        && matches!(&apply.target_spec, Some(ChooseSpec::Tagged(target_tag)) if target_tag == tag)
+        && matches!(
+            &apply.modification,
+            Some(crate::continuous::Modification::AddAbility(ability))
+                if ability.id()
+                    == crate::static_abilities::StaticAbilityId::CantBeBlockedByGreaterPowerThanSource
+        )
+}
+
+fn describe_untap_then_greater_power_blocking_structural(effects: &[Effect]) -> Option<String> {
+    let [first, second] = effects else {
+        return None;
+    };
+    let (_, untap) = tagged_untap_effect_view(first)?;
+    let apply = second.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    let ChooseSpec::Tagged(target_tag) = &untap.target else {
+        return None;
+    };
+    if !is_greater_power_blocking_until_end_of_combat_for_tag(apply, target_tag) {
+        return None;
+    }
+
+    let target = describe_choose_spec(&untap.target);
+    Some(format!(
+        "Untap {target} and {target} can't be blocked by creatures with greater power this combat"
+    ))
 }
 
 fn describe_gain_control_untap_haste_structural(effects: &[Effect]) -> Option<String> {

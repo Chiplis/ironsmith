@@ -2846,6 +2846,13 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
+    pub fn cant_be_blocked_by_greater_power_than_source() -> Self {
+        Self {
+            id: Some(StaticAbilityId::CantBeBlockedByGreaterPowerThanSource),
+            label: "can't be blocked by creatures with greater power".into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
     pub fn doctors_companion() -> Self {
         Self {
             id: Some(StaticAbilityId::DoctorsCompanion),

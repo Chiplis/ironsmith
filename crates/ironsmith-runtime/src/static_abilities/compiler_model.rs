@@ -91,6 +91,9 @@ impl StaticAbility {
             Some(StaticAbilityId::CantBeBlockedByLowerPowerThanSource) => {
                 Self::cant_be_blocked_by_lower_power_than_source()
             }
+            Some(StaticAbilityId::CantBeBlockedByGreaterPowerThanSource) => {
+                Self::cant_be_blocked_by_greater_power_than_source()
+            }
             Some(StaticAbilityId::CanAttackAsThoughNoDefender) => {
                 Self::can_attack_as_though_no_defender()
             }

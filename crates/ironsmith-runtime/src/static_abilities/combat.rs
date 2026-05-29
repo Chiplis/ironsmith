@@ -653,6 +653,24 @@ impl StaticAbilityKind for CantBeBlockedByLowerPowerThanSource {
     }
 }
 
+/// This creature can't be blocked by creatures with greater power.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CantBeBlockedByGreaterPowerThanSource;
+
+impl StaticAbilityKind for CantBeBlockedByGreaterPowerThanSource {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CantBeBlockedByGreaterPowerThanSource
+    }
+
+    fn display(&self) -> String {
+        "This creature can't be blocked by creatures with greater power".to_string()
+    }
+
+    fn grants_evasion(&self) -> bool {
+        true
+    }
+}
+
 /// Can't be blocked by more than N creatures.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CantBeBlockedByMoreThan {

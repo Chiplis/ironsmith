@@ -3,11 +3,12 @@ use winnow::error::{ContextError, ErrMode};
 use winnow::prelude::*;
 
 use crate::cards::builders::{
-    CardTextError, ChoiceCount, EffectAst, IT_TAG, LibraryBottomOrderAst, LibraryConsultModeAst,
-    LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst,
-    SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst, TextSpan,
+    CardTextError, ChoiceCount, EffectAst, GrantedAbilityAst, IT_TAG, LibraryBottomOrderAst,
+    LibraryConsultModeAst, LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst,
+    SubjectAst, SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst, TextSpan,
 };
 use crate::effect::SearchSelectionMode;
+use crate::static_abilities::StaticAbility;
 use crate::target::PlayerFilter;
 use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::zone::Zone;
@@ -202,6 +203,55 @@ pub(crate) fn prepare_cant_sentence_restriction_clause_lexed(
         duration,
         clause_tokens,
     }))
+}
+
+fn parse_cant_be_blocked_by_greater_power_grant_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let (neg_start, neg_end) = find_cant_sentence_negation_span_lexed(tokens)?;
+    let subject_tokens = trim_lexed_commas(&tokens[..neg_start]);
+    let subject_words = token_word_refs(subject_tokens);
+    let target = match subject_words.as_slice() {
+        [] | ["it"] | ["that", "creature"] | ["they"] => {
+            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(subject_tokens))
+        }
+        ["this", "creature"] => TargetAst::Source(span_from_tokens(subject_tokens)),
+        _ => return None,
+    };
+
+    let remainder_tokens = trim_lexed_commas(&tokens[neg_end..]);
+    let mut remainder_words = token_word_refs(remainder_tokens);
+    let duration = if remainder_words.ends_with(&["this", "combat"]) {
+        remainder_words.truncate(remainder_words.len().saturating_sub(2));
+        crate::effect::Until::EndOfCombat
+    } else if remainder_words.ends_with(&["until", "end", "of", "combat"])
+        || remainder_words.ends_with(&["until", "the", "end", "of", "combat"])
+    {
+        let suffix_len = if remainder_words.ends_with(&["until", "the", "end", "of", "combat"])
+        {
+            5
+        } else {
+            4
+        };
+        remainder_words.truncate(remainder_words.len().saturating_sub(suffix_len));
+        crate::effect::Until::EndOfCombat
+    } else {
+        return None;
+    };
+
+    if remainder_words.as_slice()
+        != ["be", "blocked", "by", "creatures", "with", "greater", "power"]
+    {
+        return None;
+    }
+
+    Some(vec![EffectAst::subject_verb_grant_abilities_to_target(
+        target,
+        vec![GrantedAbilityAst::StaticAbility(
+            StaticAbility::cant_be_blocked_by_greater_power_than_source(),
+        )],
+        duration,
+    )])
 }
 
 fn conditional_label_delimiter<'a>(input: &mut LexStream<'a>) -> Result<(), ErrMode<ContextError>> {
@@ -919,6 +969,10 @@ pub(crate) fn parse_conditional_sentence_family_lexed(
 pub(crate) fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(effects) = parse_cant_be_blocked_by_greater_power_grant_lexed(tokens) {
+        return Ok(Some(effects));
+    }
+
     if let Some(prefix_tokens) = split_cant_sentence_next_turn_prefix_lexed(tokens) {
         let prefix_tokens = prefix_tokens.as_slice();
         if let Some(parsed) = parse_cant_restriction_clause(prefix_tokens)? {

@@ -204,6 +204,23 @@ pub(crate) fn can_block_with_view(
         }
     }
 
+    // Non-keyword text: can't be blocked by creatures with greater power.
+    if attacker_has(StaticAbilityId::CantBeBlockedByGreaterPowerThanSource) {
+        let attacker_power = attacker_chars
+            .as_ref()
+            .and_then(|c| c.power)
+            .or_else(|| attacker.power());
+        let blocker_power = blocker_chars
+            .as_ref()
+            .and_then(|c| c.power)
+            .or_else(|| blocker.power());
+        if let (Some(attacker_power), Some(blocker_power)) = (attacker_power, blocker_power)
+            && blocker_power > attacker_power
+        {
+            return false;
+        }
+    }
+
     if let Some(attacker_controller) = game.current_controller(attacker.id)
         && game.ring_level(attacker_controller) >= 1
         && game.current_ring_bearer(attacker_controller) == Some(attacker.id)

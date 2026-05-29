@@ -880,6 +880,166 @@ fn frontier_warmonger_grants_menace_only_to_qualifying_attackers_until_cleanup()
     );
 }
 
+fn tadeas_definition_for_tests() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(1), "Tadeas, Juniper Ascendant")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Monk])
+        .power_toughness(PowerToughness::fixed(1, 3))
+        .parse_text(
+            "Reach\n\
+             Tadeas has hexproof unless it's attacking.\n\
+             Whenever a creature you control with reach attacks, untap it and it can't be blocked by creatures with greater power this combat.\n\
+             Whenever one or more creatures you control deal combat damage to a player, draw a card.",
+        )
+        .expect("Tadeas should parse")
+}
+
+#[test]
+fn tadeas_has_hexproof_only_while_not_attacking() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let tadeas_id = game.create_object_from_definition(
+        &tadeas_definition_for_tests(),
+        alice,
+        Zone::Battlefield,
+    );
+    assert!(
+        game.object_has_static_ability_id(
+            tadeas_id,
+            crate::static_abilities::StaticAbilityId::Hexproof,
+        ),
+        "Tadeas should have hexproof while not attacking"
+    );
+
+    let mut combat = CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: tadeas_id,
+        target: AttackTarget::Player(bob),
+    });
+    game.combat = Some(combat);
+
+    assert!(
+        !game.object_has_static_ability_id(
+            tadeas_id,
+            crate::static_abilities::StaticAbilityId::Hexproof,
+        ),
+        "Tadeas should lose hexproof while attacking"
+    );
+}
+
+#[test]
+fn tadeas_attack_trigger_untaps_reach_attacker_and_grants_greater_power_restriction() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.create_object_from_definition(&tadeas_definition_for_tests(), alice, Zone::Battlefield);
+    let reach_attacker_def = CardDefinitionBuilder::new(CardId::from_raw(2), "Reach Attacker")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text("Reach")
+        .expect("reach attacker should parse");
+    let attacker_id =
+        game.create_object_from_definition(&reach_attacker_def, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(attacker_id);
+    let greater_blocker = create_creature(&mut game, "Greater Blocker", bob, 3, 3);
+    let equal_blocker = create_creature(&mut game, "Equal Blocker", bob, 2, 2);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[AttackerDeclaration {
+            creature: attacker_id,
+            target: AttackTarget::Player(bob),
+        }],
+    )
+    .expect("reach attacker should attack");
+    assert!(game.is_tapped(attacker_id), "attacking should tap the attacker");
+    put_triggers_on_stack(&mut game, &mut trigger_queue).expect("Tadeas trigger should stack");
+    resolve_stack_entry(&mut game).expect("Tadeas trigger should resolve");
+
+    assert!(!game.is_tapped(attacker_id), "Tadeas should untap the attacker");
+    assert!(
+        game.object_has_static_ability_id(
+            attacker_id,
+            crate::static_abilities::StaticAbilityId::CantBeBlockedByGreaterPowerThanSource,
+        ),
+        "Tadeas should grant the greater-power blocking restriction for this combat"
+    );
+    assert!(
+        !game.object_has_static_ability_id(
+            attacker_id,
+            crate::static_abilities::StaticAbilityId::Skulk,
+        ),
+        "Tadeas text should not grant the skulk keyword"
+    );
+    assert!(
+        !crate::rules::combat::can_block(
+            game.object(attacker_id).expect("attacker exists"),
+            game.object(greater_blocker).expect("greater blocker exists"),
+            &game,
+        ),
+        "greater-power blockers should be illegal after Tadeas resolves"
+    );
+    assert!(
+        crate::rules::combat::can_block(
+            game.object(attacker_id).expect("attacker exists"),
+            game.object(equal_blocker).expect("equal blocker exists"),
+            &game,
+        ),
+        "equal-power blockers should remain legal"
+    );
+}
+
+#[test]
+fn tadeas_attack_trigger_ignores_non_reach_attackers() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.create_object_from_definition(&tadeas_definition_for_tests(), alice, Zone::Battlefield);
+    let attacker_id = create_creature(&mut game, "Ground Attacker", alice, 2, 2);
+    game.remove_summoning_sickness(attacker_id);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[AttackerDeclaration {
+            creature: attacker_id,
+            target: AttackTarget::Player(bob),
+        }],
+    )
+    .expect("non-reach attacker should attack");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("trigger queue processing succeeds");
+
+    assert!(
+        game.stack.is_empty(),
+        "Tadeas should not trigger for a non-reach attacker"
+    );
+    assert!(
+        !game.object_has_static_ability_id(
+            attacker_id,
+            crate::static_abilities::StaticAbilityId::CantBeBlockedByGreaterPowerThanSource,
+        ),
+        "non-reach attacker should not gain the greater-power blocking restriction"
+    );
+}
+
 #[test]
 fn guardian_of_the_ages_loses_defender_and_stops_triggering() {
     let mut game = setup_game();

@@ -83,6 +83,12 @@ fn finalize_ast_surface_line(line: String) -> String {
     {
         line = line.replace("that permanent's mana value", "that card's mana value");
     }
+    line = line
+        .replace("creature with reach you control", "creature you control with reach")
+        .replace(
+            "creatures with reach you control",
+            "creatures you control with reach",
+        );
     if lower.contains("if it's a permanent, exile it")
         && lower.contains("at the beginning of the next end step, exile it")
     {

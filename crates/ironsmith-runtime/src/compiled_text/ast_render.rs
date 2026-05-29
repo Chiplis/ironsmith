@@ -753,8 +753,10 @@ fn substitute_legendary_source_reference(
 
     let lower = line.to_ascii_lowercase();
     let uses_named_source_surface = lower.starts_with("this creature gets ")
+        || lower.starts_with("this creature has ")
         || lower.starts_with("whenever this creature deals combat damage to a player")
         || lower.contains(": this creature gets ")
+        || lower.contains(": this creature has ")
         || lower.contains(": whenever this creature deals combat damage to a player");
     if !uses_named_source_surface {
         return line.to_string();

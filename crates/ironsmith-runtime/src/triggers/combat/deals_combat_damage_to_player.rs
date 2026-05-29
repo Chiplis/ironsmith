@@ -53,6 +53,16 @@ impl DealsCombatDamageToPlayerTrigger {
     }
 }
 
+fn pluralize_one_or_more_subject(subject: String) -> String {
+    if subject == "creature" {
+        return "creatures".to_string();
+    }
+    if let Some(rest) = subject.strip_prefix("creature ") {
+        return format!("creatures {rest}");
+    }
+    subject
+}
+
 impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
         if event.kind() != EventKind::Damage {
@@ -91,6 +101,7 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
             } else if let Some(stripped) = subject.strip_prefix("an ") {
                 subject = stripped.to_string();
             }
+            subject = pluralize_one_or_more_subject(subject);
             let player = if matches!(self.player, PlayerFilter::Opponent) {
                 "one or more of your opponents".to_string()
             } else {
@@ -153,7 +164,7 @@ mod tests {
         );
         assert_eq!(
             trigger.display(),
-            "Whenever one or more creature deal combat damage to one or more of your opponents"
+            "Whenever one or more creatures deal combat damage to one or more of your opponents"
         );
     }
 
