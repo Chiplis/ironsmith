@@ -229,6 +229,19 @@ pub(super) fn lower_alternative_cast(
         ));
     }
 
+    if tokens.first().is_some_and(|token| token.is_word("miracle")) {
+        let (cost, _) = leading_mana_cost_from_tokens(tokens.get(1..).unwrap_or_default())
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "miracle keyword missing mana cost '{}'",
+                    line.info.raw_line
+                ))
+            })?;
+        return Ok(LineAst::AlternativeCastingMethod(
+            crate::alternative_cast::AlternativeCastingMethod::Miracle { cost }.into(),
+        ));
+    }
+
     if line.text.trim_start().starts_with("Surge ") {
         let raw_tokens = lex_line(line.text.as_str(), line.info.line_index)?;
         let cost_tokens = raw_tokens.get(1..).unwrap_or_default();
@@ -977,6 +990,7 @@ fn parse_additional_cost_kind(tokens: &[OwnedLexToken]) -> Result<bool, CardText
 fn parse_alternative_cast_kind(tokens: &[OwnedLexToken]) -> Result<bool, CardTextError> {
     let rendered = render_token_slice(tokens).trim().to_ascii_lowercase();
     Ok(tokens.first().is_some_and(|token| token.is_word("encore"))
+        || tokens.first().is_some_and(|token| token.is_word("miracle"))
         || parse_self_free_cast_alternative_cost_line_lexed(tokens).is_some()
         || parse_you_may_rather_than_spell_cost_line_lexed(tokens, rendered.as_str())?.is_some()
         || parse_flash_with_additional_cost_line_lexed(tokens).is_some()

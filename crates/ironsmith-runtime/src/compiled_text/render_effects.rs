@@ -339,6 +339,14 @@ fn describe_exile_it_then_return_all_to_battlefield(
 }
 
 fn describe_face_down_pile_shuffle_onto_library(effects: &[&Effect]) -> Option<String> {
+    let effects = if effects
+        .first()
+        .is_some_and(|effect| effect.downcast_ref::<crate::effects::TagTriggeringObjectEffect>().is_some())
+    {
+        &effects[1..]
+    } else {
+        effects
+    };
     let [with_id_effect, if_effect] = effects else {
         return None;
     };

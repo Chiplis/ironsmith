@@ -177,6 +177,7 @@ fn parse_exile_it_and_top_library_face_down_pile_bundle(
         &["in", "a", "face-down", "pile"],
     )
     .or_else(|| grammar::strip_lexed_suffix_phrase(&right, &["in", "a", "facedown", "pile"]))
+    .or_else(|| grammar::strip_lexed_suffix_phrase(&right, &["in", "a", "face", "down", "pile"]))
     else {
         return Ok(None);
     };

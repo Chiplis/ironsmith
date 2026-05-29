@@ -390,6 +390,9 @@ pub(super) fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<Ke
     if first == "encore" {
         return Some(KeywordDispatchHint::AlternativeOrExertFamily);
     }
+    if first == "miracle" {
+        return Some(KeywordDispatchHint::AlternativeOrExertFamily);
+    }
     if matches!(first, "jumpstart" | "jump-start")
         || (first == "jump" && word_view.get(1) == Some("start"))
     {

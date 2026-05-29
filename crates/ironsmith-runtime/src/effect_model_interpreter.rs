@@ -823,6 +823,9 @@ where
             payload.count.clone(),
             payload.player.clone(),
         );
+        if payload.face_down {
+            converted = converted.face_down();
+        }
         for tag in &payload.moved_tags {
             converted = converted.tag_moved(tag.clone());
         }

@@ -211,6 +211,15 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
         &mut self,
         effect: &compiler::effect::Effect,
     ) -> Result<Option<ironsmith::effect::Effect>, Self::Error> {
+        if let Some(payload) = effect.downcast_ref::<compiler::effects::ShuffleObjectsOntoLibraryEffect>()
+        {
+            return Ok(Some(ironsmith::effect::Effect::new(
+                ironsmith::effects::ShuffleObjectsOntoLibraryEffect::new(
+                    payload.target.clone(),
+                    payload.player.clone(),
+                ),
+            )));
+        }
         if let Some(payload) =
             effect.downcast_ref::<compiler::effects::cards::ImprintFromHandEffect>()
         {
@@ -470,6 +479,24 @@ fn runtime_definition_from_core_model(
         runtime_optional_cost_from_core_model,
     )?;
     definition.abilities = combine_level_ability_statics(definition.abilities);
+    if definition
+        .alternative_casts
+        .iter()
+        .any(|method| matches!(method, ironsmith::alternative_cast::AlternativeCastingMethod::Miracle { .. }))
+    {
+        definition.abilities.push(ironsmith::ability::Ability {
+            kind: ironsmith::ability::AbilityKind::Triggered(ironsmith::ability::TriggeredAbility {
+                trigger: ironsmith::triggers::Trigger::miracle(),
+                effects: ironsmith::resolution::ResolutionProgram::from_effects(vec![
+                    ironsmith::effect::Effect::may_cast_for_miracle_cost(),
+                ]),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: None,
+            }),
+            functional_zones: vec![ironsmith::zone::Zone::Hand],
+        });
+    }
     if let Some(spell_effect) = &mut definition.spell_effect {
         remove_redundant_target_only_effects_in_program(spell_effect);
     }
