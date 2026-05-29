@@ -200,6 +200,32 @@ pub(super) fn extend_triggered_line_with_result_followups(
     (triggered, next_idx)
 }
 
+pub(super) fn extend_statement_line_with_result_followups(
+    items: &[PreprocessedItem],
+    idx: usize,
+    mut statement: StatementLineCst,
+) -> (StatementLineCst, usize) {
+    let mut next_idx = idx + 1;
+
+    while let Some(PreprocessedItem::Line(line)) = items.get(next_idx) {
+        if !is_trigger_result_followup_line(line) {
+            break;
+        }
+
+        let followup_text = render_token_slice(&line.tokens).trim().to_string();
+        if !statement.text.is_empty() {
+            statement.text.push('\n');
+        }
+        statement.text.push_str(followup_text.as_str());
+        append_joined_line_tokens(&mut statement.parse_tokens, &line.tokens);
+        statement.parse_groups = normalize_statement_parse_groups_lexed(&statement.parse_tokens);
+
+        next_idx += 1;
+    }
+
+    (statement, next_idx)
+}
+
 fn looks_like_statement_line_tokens(tokens: &[OwnedLexToken]) -> bool {
     if matches!(
         structure::classify_static_line_family_lexed(tokens),

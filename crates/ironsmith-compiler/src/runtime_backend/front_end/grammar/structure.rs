@@ -1195,12 +1195,10 @@ fn split_leading_numeric_result_prefix_lexed<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<(IfResultPredicate, &'a [OwnedLexToken])> {
     let first = tokens.first()?;
-    let second = tokens.get(1)?;
-    let third = tokens.get(2)?;
     let pipe_idx = tokens
         .iter()
         .position(|token| token.kind == TokenKind::Pipe)?;
-    if pipe_idx < 3 {
+    if pipe_idx < 1 {
         return None;
     }
 
@@ -1208,12 +1206,18 @@ fn split_leading_numeric_result_prefix_lexed<'a>(
         TokenKind::Number => first.parser_text().parse::<i32>().ok()?,
         _ => return None,
     };
-    if !matches!(second.kind, TokenKind::Dash | TokenKind::EmDash) {
-        return None;
-    }
-    let max = match third.kind {
-        TokenKind::Number => third.parser_text().parse::<i32>().ok()?,
-        _ => return None,
+    let max = if pipe_idx == 1 {
+        min
+    } else {
+        let second = tokens.get(1)?;
+        let third = tokens.get(2)?;
+        if pipe_idx < 3 || !matches!(second.kind, TokenKind::Dash | TokenKind::EmDash) {
+            return None;
+        }
+        match third.kind {
+            TokenKind::Number => third.parser_text().parse::<i32>().ok()?,
+            _ => return None,
+        }
     };
     if min > max {
         return None;

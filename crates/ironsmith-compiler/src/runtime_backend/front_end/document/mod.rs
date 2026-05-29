@@ -76,9 +76,9 @@ use line_dispatch::{LineDispatchResult, dispatch_standard_line_cst};
 #[cfg(test)]
 use statement_cst_support::looks_like_statement_line;
 use statement_cst_support::{
-    extend_triggered_line_with_result_followups, looks_like_statement_line_lexed,
-    normalize_statement_parse_groups_lexed, parse_colon_nonactivation_statement_fallback,
-    parse_statement_line_cst,
+    extend_statement_line_with_result_followups, extend_triggered_line_with_result_followups,
+    looks_like_statement_line_lexed, normalize_statement_parse_groups_lexed,
+    parse_colon_nonactivation_statement_fallback, parse_statement_line_cst,
 };
 use unsupported::diagnose_known_unsupported_rewrite_line;
 
@@ -530,19 +530,24 @@ fn tokens_after_non_keyword_label_prefix(line: &PreprocessedLine) -> Option<&[Ow
 }
 
 fn looks_like_numeric_result_prefix_lexed(tokens: &[OwnedLexToken]) -> bool {
-    matches!(
+    if !matches!(
         tokens.first().map(|token| token.kind),
         Some(TokenKind::Number)
-    ) && matches!(
+    ) {
+        return false;
+    }
+
+    if matches!(tokens.get(1).map(|token| token.kind), Some(TokenKind::Pipe)) {
+        return true;
+    }
+
+    matches!(
         tokens.get(1).map(|token| token.kind),
         Some(TokenKind::Dash | TokenKind::EmDash)
     ) && matches!(
         tokens.get(2).map(|token| token.kind),
         Some(TokenKind::Number)
-    ) && tokens
-        .iter()
-        .skip(3)
-        .any(|token| token.kind == TokenKind::Pipe)
+    ) && tokens.iter().skip(3).any(|token| token.kind == TokenKind::Pipe)
 }
 
 fn should_skip_keyword_action_static_probe(tokens: &[OwnedLexToken]) -> bool {
@@ -1318,6 +1323,12 @@ fn strip_non_keyword_label_prefix(text: &str) -> &str {
 
 fn looks_like_numeric_result_prefix_text(text: &str) -> bool {
     let trimmed = text.trim_start();
+    let Some((head, _)) = trimmed.split_once('|') else {
+        return false;
+    };
+    if head.trim().chars().all(|ch| ch.is_ascii_digit()) {
+        return true;
+    }
     let Some((head, rest)) = trimmed.split_once('—').or_else(|| trimmed.split_once('-')) else {
         return false;
     };
@@ -3161,9 +3172,17 @@ pub(crate) fn parse_document_cst(
                             if let Some(statement_line) =
                                 parse_statement_line_cst(&rewritten_prefix_line)?
                             {
+                                let (statement_line, next_idx) =
+                                    extend_statement_line_with_result_followups(
+                                        &preprocessed.items,
+                                        idx,
+                                        statement_line,
+                                    );
                                 let cst = RewriteLineCst::Statement(statement_line);
                                 trace_cst_line(&cst);
                                 lines.push(cst);
+                                idx = next_idx;
+                                continue;
                             } else if let Some(static_line) =
                                 parse_static_line_cst(&rewritten_prefix_line)?
                             {
