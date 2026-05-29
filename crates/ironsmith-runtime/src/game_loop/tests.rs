@@ -13976,7 +13976,7 @@ fn test_enter_as_copy_with_no_candidates_keeps_original_characteristics() {
     assert_eq!(entered.base_toughness, Some(crate::card::PtValue::Fixed(4)));
 }
 
-fn the_mimeoplasm_test_definition() -> crate::card::CardDefinition {
+fn the_mimeoplasm_test_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "The Mimeoplasm")
         .card_types(vec![CardType::Creature])
         .subtypes(vec![Subtype::Ooze])
@@ -14056,8 +14056,15 @@ fn the_mimeoplasm_exiles_two_graveyard_creatures_copies_one_and_gets_other_power
         "The Mimeoplasm should get +1/+1 counters equal to the other exiled card's power"
     );
 
-    let linked_names = game
-        .get_exiled_with_source_links(result.new_id)
+    let linked_ids = game.get_exiled_with_source_links(result.new_id);
+    assert!(
+        linked_ids
+            .iter()
+            .all(|id| game.object(*id).is_some_and(|object| object.zone == Zone::Exile)),
+        "The Mimeoplasm should link only exiled objects, got {linked_ids:?}"
+    );
+
+    let linked_names = linked_ids
         .iter()
         .filter_map(|id| game.object(*id).map(|object| object.name.as_str()))
         .collect::<Vec<_>>();
