@@ -982,6 +982,7 @@ pub(crate) fn parse_subtype_word(word: &str) -> Option<Subtype> {
     match candidate.as_str() {
         "mice" => return Some(Subtype::Mouse),
         "ouphe" => return Some(Subtype::Ouphe),
+        "oxen" => return Some(Subtype::Ox),
         "spacecraft" => return Some(Subtype::Spacecraft),
         _ => {}
     }
