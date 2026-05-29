@@ -9430,14 +9430,16 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
-    fn parse_rejects_most_common_color_constraint_clause() {
-        let result = CardDefinitionBuilder::new(CardId::new(), "Barrin Unmaking Variant")
+    fn parse_supports_most_common_color_constraint_clause() {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Barrin Unmaking Variant")
             .parse_text(
                 "Return target permanent to its owner's hand if that permanent shares a color with the most common color among all permanents or a color tied for most common.",
-            );
+            )
+            .expect("most-common-color conditional should parse structurally");
+        let debug = format!("{:#?}", definition.spell_effect);
         assert!(
-            result.is_err(),
-            "unsupported most-common-color conditional should fail parse instead of dropping the condition"
+            debug.contains("ConditionalEffect") && debug.contains("SharesMostCommonPermanentColor"),
+            "expected most-common-color target condition in lowered effects, got {debug}"
         );
     }
 

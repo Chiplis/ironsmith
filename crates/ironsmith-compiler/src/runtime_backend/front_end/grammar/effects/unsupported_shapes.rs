@@ -142,6 +142,33 @@ pub(crate) fn has_different_mana_value_constraint_sentence_lexed(tokens: &[Owned
 }
 
 pub(crate) fn has_most_common_color_constraint_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
+    if primitives::words_find_phrase(
+        tokens,
+        &[
+            "shares",
+            "a",
+            "color",
+            "with",
+            "the",
+            "most",
+            "common",
+            "color",
+            "among",
+            "all",
+            "permanents",
+            "or",
+            "a",
+            "color",
+            "tied",
+            "for",
+            "most",
+            "common",
+        ],
+    )
+    .is_some()
+    {
+        return false;
+    }
     primitives::words_find_phrase(tokens, &["most", "common", "color", "among", "all"]).is_some()
         && primitives::contains_word(tokens, "permanents")
 }

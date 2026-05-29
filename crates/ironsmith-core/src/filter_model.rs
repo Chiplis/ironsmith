@@ -50,6 +50,7 @@ pub enum TaggedOpbjectRelation {
     SharesCardType,
     SharesSubtypeWithTagged,
     SharesColorWithTagged,
+    SharesMostCommonPermanentColor,
     SameStableId,
     SameNameAsTagged,
     DifferentNameFromTagged,
@@ -1075,6 +1076,13 @@ impl ObjectFilter {
         self.match_tagged(tag, TaggedOpbjectRelation::SharesColorWithTagged)
     }
 
+    pub fn shares_most_common_permanent_color(self) -> Self {
+        self.match_tagged(
+            TagKey::from("most_common_permanent_color"),
+            TaggedOpbjectRelation::SharesMostCommonPermanentColor,
+        )
+    }
+
     pub fn shares_subtype_with_tagged(self, tag: impl Into<TagKey>) -> Self {
         self.match_tagged(tag, TaggedOpbjectRelation::SharesSubtypeWithTagged)
     }
@@ -1396,6 +1404,12 @@ impl ObjectFilter {
                 }
                 TaggedOpbjectRelation::SharesColorWithTagged => {
                     post_noun_qualifiers.push("that shares a color with that object".to_string());
+                }
+                TaggedOpbjectRelation::SharesMostCommonPermanentColor => {
+                    post_noun_qualifiers.push(
+                        "that shares a color with the most common color among all permanents or a color tied for most common"
+                            .to_string(),
+                    );
                 }
                 TaggedOpbjectRelation::SharesSubtypeWithTagged => {
                     post_noun_qualifiers

@@ -9,7 +9,7 @@
 //! - Cost requirements (for sacrifice costs, etc.)
 //! - Triggered ability conditions (for triggers that watch for specific events)
 
-use crate::color::ColorSet;
+use crate::color::{Color, ColorSet};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::object::{CounterType, Object, ObjectKind};
@@ -389,6 +389,9 @@ fn tagged_constraint_matches_subject(
                 .intersection(snapshot.colors)
                 .is_empty()
         }),
+        TaggedOpbjectRelation::SharesMostCommonPermanentColor => {
+            subject_shares_most_common_permanent_color(subject, game)
+        }
         TaggedOpbjectRelation::SameStableId => tagged_snapshots
             .iter()
             .any(|snapshot| snapshot.stable_id == subject.subject_stable_id()),
@@ -432,6 +435,44 @@ fn tagged_constraint_matches_subject(
             .iter()
             .all(|snapshot| snapshot.object_id != subject.subject_object_id()),
     }
+}
+
+fn most_common_permanent_colors(game: &GameState) -> ColorSet {
+    let mut counts = [0u32; 5];
+    for object_id in game.objects_in_zone(Zone::Battlefield) {
+        let Some(object) = game.object(object_id) else {
+            continue;
+        };
+        let colors = game.current_colors(object_id).unwrap_or_else(|| object.colors());
+        for (idx, color) in Color::ALL.into_iter().enumerate() {
+            if colors.contains(color) {
+                counts[idx] += 1;
+            }
+        }
+    }
+
+    let max_count = counts.into_iter().max().unwrap_or(0);
+    if max_count == 0 {
+        return ColorSet::new();
+    }
+
+    Color::ALL
+        .into_iter()
+        .enumerate()
+        .filter_map(|(idx, color)| (counts[idx] == max_count).then_some(color))
+        .collect()
+}
+
+fn subject_shares_most_common_permanent_color(
+    subject: &impl TaggedConstraintSubject,
+    game: &GameState,
+) -> bool {
+    let most_common_colors = most_common_permanent_colors(game);
+    let subject_colors = game
+        .current_colors(subject.subject_object_id())
+        .unwrap_or_else(|| subject.subject_colors());
+    !most_common_colors.is_empty()
+        && !subject_colors.intersection(most_common_colors).is_empty()
 }
 
 // ============================================================================
@@ -1445,6 +1486,12 @@ impl ObjectFilterExt for ObjectFilter {
         }
 
         for constraint in &self.tagged_constraints {
+            if constraint.relation == TaggedOpbjectRelation::SharesMostCommonPermanentColor {
+                if !subject_shares_most_common_permanent_color(subject, game) {
+                    return false;
+                }
+                continue;
+            }
             let Some(tagged_snapshots) = ctx.tagged_objects.get(constraint.tag.as_str()) else {
                 if let Some(matches) = intrinsic_attachment_tag_constraint_matches_subject(
                     subject,
@@ -2408,6 +2455,7 @@ impl ObjectFilterExt for ObjectFilter {
             relation,
             TaggedOpbjectRelation::IsNotTaggedObject
                 | TaggedOpbjectRelation::DifferentNameFromTagged
+                | TaggedOpbjectRelation::SharesMostCommonPermanentColor
         )
     }
 
@@ -3212,6 +3260,12 @@ impl ObjectFilterExt for ObjectFilter {
                 }
                 TaggedOpbjectRelation::SharesColorWithTagged => {
                     post_noun_qualifiers.push("that shares a color with that object".to_string());
+                }
+                TaggedOpbjectRelation::SharesMostCommonPermanentColor => {
+                    post_noun_qualifiers.push(
+                        "that shares a color with the most common color among all permanents or a color tied for most common"
+                            .to_string(),
+                    );
                 }
                 TaggedOpbjectRelation::SharesSubtypeWithTagged => {
                     post_noun_qualifiers
