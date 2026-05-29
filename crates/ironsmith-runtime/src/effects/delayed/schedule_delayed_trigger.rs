@@ -99,9 +99,31 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let controller_id = resolve_player_filter(game, &self.controller, ctx)?;
+        let mut tagged_objects = ctx.tagged_objects.clone();
+        if !ctx.targets_are_cost_choices {
+            for (idx, target) in ctx.targets.iter().enumerate() {
+                let crate::effects::ResolvedTarget::Object(object_id) = target else {
+                    continue;
+                };
+                let Some(object) = game.object(*object_id) else {
+                    continue;
+                };
+                let tag = TagKey::from(format!("targeted_{idx}"));
+                if !tagged_objects.contains_key(&tag) {
+                    tagged_objects.insert(
+                        tag,
+                        vec![
+                            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                                object, game,
+                            ),
+                        ],
+                    );
+                }
+            }
+        }
 
         if let Some(tag) = &self.target_tag {
-            let Some(tagged) = ctx.get_tagged_all(tag) else {
+            let Some(tagged) = tagged_objects.get(tag) else {
                 return Ok(EffectOutcome::count(0));
             };
             let filter_ctx = ctx.filter_context(game);
@@ -112,8 +134,8 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                 {
                     continue;
                 }
-                let mut tagged_objects = ctx.tagged_objects.clone();
-                tagged_objects.insert(tag.clone(), vec![snapshot.clone()]);
+                let mut delayed_tagged_objects = tagged_objects.clone();
+                delayed_tagged_objects.insert(tag.clone(), vec![snapshot.clone()]);
                 let delayed = DelayedTriggerTemplate::new(
                     self.trigger.clone(),
                     self.effects.clone(),
@@ -132,7 +154,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                 } else {
                     None
                 })
-                .with_tagged_objects(tagged_objects);
+                .with_tagged_objects(delayed_tagged_objects);
                 queue_delayed_from_template(
                     game,
                     DelayedWatcherIdentity::combined(vec![snapshot.object_id]),
@@ -161,7 +183,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
         } else {
             None
         })
-        .with_tagged_objects(ctx.tagged_objects.clone());
+        .with_tagged_objects(tagged_objects);
         queue_delayed_from_template(
             game,
             DelayedWatcherIdentity::combined(self.target_objects.clone()),

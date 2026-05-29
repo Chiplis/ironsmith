@@ -951,7 +951,13 @@ fn post_rule_delayed_trigger_result_followup(
     else {
         return Ok(None);
     };
-    let Some(EffectAst::DelayedTriggerThisTurn { effects, .. }) = state.effects.last_mut() else {
+    let Some(
+        EffectAst::DelayedTriggerThisTurn { effects, .. }
+        | EffectAst::DelayedUntilNextEndStep { effects, .. }
+        | EffectAst::DelayedUntilNextUpkeep { effects, .. }
+        | EffectAst::DelayedUntilNextDrawStep { effects, .. },
+    ) = state.effects.last_mut()
+    else {
         return Ok(None);
     };
     effects.extend(sentence_effects.drain(..));

@@ -86,6 +86,22 @@ fn compile_delayed_trigger_spec(
     }
 }
 
+fn compile_delayed_effects_preserving_outer_context(
+    effects: &[EffectAst],
+    ctx: &mut EffectLoweringContext,
+) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
+    let saved_frame = ctx.lowering_frame();
+    let mut delayed_frame = saved_frame.clone();
+    delayed_frame.last_effect_id = None;
+    let mut id_gen = ctx.id_gen_context();
+    let (compiled, choices, mut frame_out) =
+        compile_effects_with_explicit_frame(effects, &mut id_gen, delayed_frame)?;
+    frame_out.last_effect_id = saved_frame.last_effect_id;
+    ctx.apply_id_gen_context(id_gen);
+    ctx.apply_lowering_frame(frame_out);
+    Ok((compiled, choices))
+}
+
 fn rewrite_filter_tag_relation(
     filter: &mut ObjectFilter,
     tag: &str,
@@ -172,7 +188,8 @@ pub(super) fn try_compile_timing_and_control_effect(
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let compiled = match effect {
         EffectAst::DelayedUntilNextEndStep { player, effects } => {
-            let (delayed_effects, choices) = compile_effects_preserving_last_effect(effects, ctx)?;
+            let (delayed_effects, choices) =
+                compile_delayed_effects_preserving_outer_context(effects, ctx)?;
             let effect = Effect::new(crate::effects::ScheduleDelayedTriggerEffect::new(
                 ironsmith_core::DelayedTriggerSpec::BeginningOfEndStep(player.clone()),
                 delayed_effects,
@@ -187,7 +204,7 @@ pub(super) fn try_compile_timing_and_control_effect(
             let player_filter = subject.into_player_filter();
             let mut choices = subject.into_choices();
             let (delayed_effects, nested_choices) =
-                compile_effects_preserving_last_effect(effects, ctx)?;
+                compile_delayed_effects_preserving_outer_context(effects, ctx)?;
             choices.extend(nested_choices);
             let effect = Effect::new(
                 crate::effects::ScheduleDelayedTriggerEffect::new(
@@ -206,7 +223,7 @@ pub(super) fn try_compile_timing_and_control_effect(
             let player_filter = subject.into_player_filter();
             let mut choices = subject.into_choices();
             let (delayed_effects, nested_choices) =
-                compile_effects_preserving_last_effect(effects, ctx)?;
+                compile_delayed_effects_preserving_outer_context(effects, ctx)?;
             choices.extend(nested_choices);
             let effect = Effect::new(
                 crate::effects::ScheduleDelayedTriggerEffect::new(
@@ -225,7 +242,7 @@ pub(super) fn try_compile_timing_and_control_effect(
             let player_filter = subject.into_player_filter();
             let mut choices = subject.into_choices();
             let (delayed_effects, nested_choices) =
-                compile_effects_preserving_last_effect(effects, ctx)?;
+                compile_delayed_effects_preserving_outer_context(effects, ctx)?;
             choices.extend(nested_choices);
             let effect = Effect::new(
                 crate::effects::ScheduleDelayedTriggerEffect::new(
@@ -240,7 +257,8 @@ pub(super) fn try_compile_timing_and_control_effect(
             (vec![effect], choices)
         }
         EffectAst::DelayedUntilEndOfCombat { effects } => {
-            let (delayed_effects, choices) = compile_effects_preserving_last_effect(effects, ctx)?;
+            let (delayed_effects, choices) =
+                compile_delayed_effects_preserving_outer_context(effects, ctx)?;
             let effect = Effect::new(crate::effects::ScheduleDelayedTriggerEffect::new(
                 ironsmith_core::DelayedTriggerSpec::EndOfCombat,
                 delayed_effects,

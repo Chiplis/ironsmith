@@ -13966,6 +13966,71 @@ fn source_return_from_graveyard_subject_in_effect(effect: &Effect) -> Option<Str
     None
 }
 
+fn describe_delayed_coin_flip_result(
+    schedule: &crate::effects::ScheduleDelayedTriggerEffect,
+) -> Option<String> {
+    if !schedule.one_shot || schedule.start_next_turn || schedule.until_end_of_turn {
+        return None;
+    }
+    let trigger_text = schedule.trigger.display().to_ascii_lowercase();
+    if !trigger_text.contains("beginning of") || !trigger_text.contains("end step") {
+        return None;
+    }
+
+    let effects: &[Effect] = &schedule.effects;
+    let [flip_effect, branch_effect] = effects else {
+        return None;
+    };
+    let flip_with_id = flip_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let flip_coin = flip_with_id
+        .effect
+        .downcast_ref::<crate::effects::FlipCoinEffect>()?;
+    if flip_coin.player != PlayerFilter::You {
+        return None;
+    }
+
+    let if_effect = branch_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    if if_effect.condition != flip_with_id.id
+        || !matches!(if_effect.predicate, EffectPredicate::DidNotHappen)
+        || !if_effect.else_.is_empty()
+    {
+        return None;
+    }
+    let [choose_effect, sacrifice_effect] = if_effect.then.as_slice() else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let sacrifice = sacrifice_view(sacrifice_effect)?;
+    let sacrifice_text = describe_choose_then_sacrifice(choose, sacrifice)?;
+    if !sacrifice_text.starts_with("you sacrifice ") {
+        return None;
+    }
+    if !choose.filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag.as_str().starts_with("targeted_")
+    }) {
+        return None;
+    }
+
+    let object = if choose.filter.card_types.contains(&CardType::Creature) {
+        "creature"
+    } else if choose.filter.card_types.contains(&CardType::Artifact) {
+        "artifact"
+    } else if choose.filter.card_types.contains(&CardType::Enchantment) {
+        "enchantment"
+    } else if choose.filter.card_types.contains(&CardType::Planeswalker) {
+        "planeswalker"
+    } else if choose.filter.card_types.contains(&CardType::Land) {
+        "land"
+    } else {
+        "permanent"
+    };
+
+    Some(format!(
+        "Flip a coin at the beginning of the next end step. If you lose the flip, sacrifice that {object}"
+    ))
+}
+
 fn normalize_modal_named_source_etb_surface(
     line: String,
     triggered: &crate::ability::TriggeredAbility,
@@ -30955,6 +31020,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(schedule) = effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>() {
+        if let Some(text) = describe_delayed_coin_flip_result(schedule) {
+            return text;
+        }
         let trigger_display = schedule.trigger.display();
         let mut trigger_text = trigger_display.trim().trim_end_matches('.').to_string();
         if schedule.until_end_of_turn {
