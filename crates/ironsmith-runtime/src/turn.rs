@@ -295,9 +295,7 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
 
     let active_player = game.turn.active_player;
     let had_restriction_effects = !game.effect_store.restriction_effects.is_empty();
-    if had_restriction_effects {
-        game.update_cant_effects();
-    }
+    game.update_cant_effects();
 
     let phased_in: Vec<_> = game
         .phased_out
@@ -804,9 +802,13 @@ mod tests {
         );
         game.tap(doesnt_untap_artifact);
         game.tap(cant_untap_artifact);
-        game.effect_store
-            .cant_effects
-            .add_cant_untap(cant_untap_artifact);
+        game.add_restriction_effect(
+            Restriction::untap(ObjectFilter::specific(cant_untap_artifact)),
+            Until::Forever,
+            cant_untap_artifact,
+            alice,
+            None,
+        );
 
         let mut dm = AlwaysYesDecisionMaker;
         execute_untap_step_with(&mut game, &mut dm);

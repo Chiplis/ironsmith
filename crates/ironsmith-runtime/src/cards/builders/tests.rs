@@ -27309,6 +27309,24 @@ fn render_wild_research_style_search_reveal_hand_discard_shuffle_hides_search_ta
     );
 }
 
+#[test]
+fn dream_tides_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Dream Tides");
+    let def = parse_oracle_card_definition("Dream Tides");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains(
+            "At the beginning of each player's upkeep, that player may choose any number of tapped nongreen creatures they control and pay {2} for each creature chosen this way. If the player does, untap those creatures."
+        ),
+        "expected Dream Tides choose/pay/untap clause to render oracle-like text, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("tagged") && !rendered.contains("have you choose"),
+        "Dream Tides compiled text should not expose internal tags or mis-bound chooser text, got {rendered}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn render_source_surface_for_hard_triggered_and_static_clauses() {

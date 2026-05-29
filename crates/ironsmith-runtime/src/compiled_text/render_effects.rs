@@ -2738,6 +2738,93 @@ fn filter_references_tag(filter: &ObjectFilter, tag: &TagKey) -> bool {
     })
 }
 
+fn describe_may_choose_pay_for_each_then_untap_tagged(effects: &[&Effect]) -> Option<String> {
+    let [may_effect, if_effect] = effects else {
+        return None;
+    };
+    let with_id = may_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let may = with_id.effect.downcast_ref::<crate::effects::MayEffect>()?;
+    let decider = may.decider.as_ref()?;
+    let conditional = if_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    if conditional.condition != with_id.id
+        || conditional.predicate != crate::effect::EffectPredicate::Happened
+        || !conditional.else_.is_empty()
+    {
+        return None;
+    }
+
+    let [choose_effect, for_each_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let for_each = for_each_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let [pay_effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let pay = pay_effect.downcast_ref::<crate::effects::PayManaEffect>()?;
+    let [untap_effect] = conditional.then.as_slice() else {
+        return None;
+    };
+    let untap = untap_effect.downcast_ref::<crate::effects::UntapEffect>()?;
+
+    if choose.is_search
+        || choose.top_only
+        || choose.chooser != *decider
+        || for_each.tag != choose.tag
+        || !matches!(pay.player, ChooseSpec::Player(PlayerFilter::IteratedPlayer))
+    {
+        return None;
+    }
+    let ChooseSpec::Object(untap_filter) = &untap.target else {
+        return None;
+    };
+    if !filter_references_tag(untap_filter, &choose.tag) {
+        return None;
+    }
+
+    let mut selected_filter = choose.filter.clone();
+    if selected_filter.controller != Some(decider.clone()) {
+        return None;
+    }
+    selected_filter.controller = None;
+    let mut selected = selected_filter.description();
+    if let Some(rest) = selected.strip_prefix("a ") {
+        selected = rest.to_string();
+    }
+    if let Some(rest) = selected.strip_prefix("an ") {
+        selected = rest.to_string();
+    }
+    if let Some(rest) = selected.strip_suffix(" on the battlefield") {
+        selected = rest.to_string();
+    }
+    selected = selected.replace("nongreen tapped ", "tapped nongreen ");
+
+    let selection = if choose.count.min == 0 && choose.count.max.is_none() {
+        format!("any number of {}", pluralize_noun_phrase(&selected))
+    } else {
+        describe_choose_selection(choose)
+    };
+    let chooser = describe_player_filter(decider);
+    let controlled_by = if *decider == PlayerFilter::You {
+        "you control"
+    } else {
+        "they control"
+    };
+    let if_player = if chooser == "that player" {
+        "the player"
+    } else {
+        chooser.as_str()
+    };
+    let chosen_noun = describe_iterated_object_reference_noun(&choose.filter);
+    let chosen_plural = pluralize_noun_phrase(chosen_noun);
+
+    Some(format!(
+        "{chooser} may choose {selection} {controlled_by} and pay {} for each \
+         {chosen_noun} chosen this way. If {if_player} does, untap those {chosen_plural}",
+        pay.cost.to_oracle()
+    ))
+}
+
 fn describe_each_creature_and_player_damage_cant_regenerate_structural(
     effects: &[Effect],
 ) -> Option<String> {
@@ -3780,6 +3867,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
     if let Some(compact) = describe_exile_graveyard_reflexive_copy_artifact(&filtered) {
+        return compact;
+    }
+    if let Some(compact) = describe_may_choose_pay_for_each_then_untap_tagged(&filtered) {
         return compact;
     }
 
