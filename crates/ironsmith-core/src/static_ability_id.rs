@@ -159,6 +159,7 @@ pub enum StaticAbilityId {
     BoastTwiceEachTurn,
     FirstEquipCostAlternative,
     EquipAbilitiesAnyTime,
+    ExhaustAbilitiesAsThoughUnactivatedThisTurn,
     VoteAdditionalTimeWhileVoting,
     VoteAdditionalVoteWhileVoting,
     EnchantedLandIsChosenType,
@@ -409,6 +410,7 @@ impl StaticAbilityId {
             | BoastTwiceEachTurn
             | FirstEquipCostAlternative
             | EquipAbilitiesAnyTime
+            | ExhaustAbilitiesAsThoughUnactivatedThisTurn
             | VoteAdditionalTimeWhileVoting
             | VoteAdditionalVoteWhileVoting
             | EnchantedLandIsChosenType

@@ -21093,6 +21093,95 @@ fn test_once_per_turn_in_legal_actions() {
 }
 
 #[test]
+fn elvish_refueler_exhaust_permission_allows_one_used_exhaust_on_your_turn() {
+    use crate::ability::{ActivatedAbility, ActivationTiming};
+    use crate::cost::TotalCost;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let refueler_id = create_creature(&mut game, "Elvish Refueler", alice, 2, 3);
+    game.object_mut(refueler_id)
+        .expect("Elvish Refueler should exist")
+        .abilities
+        .push(Ability::static_ability(
+            StaticAbility::exhaust_abilities_as_though_unactivated_this_turn(),
+        ));
+    game.object_mut(refueler_id)
+        .expect("Elvish Refueler should exist")
+        .abilities
+        .push(Ability {
+            kind: AbilityKind::Activated(ActivatedAbility {
+                mana_cost: TotalCost::mana(ManaCost::from_pips(vec![
+                    vec![ManaSymbol::Generic(1)],
+                    vec![ManaSymbol::Green],
+                ])),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    Effect::put_counters_on_source(crate::object::CounterType::PlusOnePlusOne, 1),
+                ]),
+                choices: vec![],
+                timing: ActivationTiming::AnyTime,
+                additional_restrictions: vec![
+                    "Activate each exhaust ability only once.".to_string(),
+                ],
+                activation_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        });
+
+    let ability_index = 1;
+    let ability = match &game
+        .object(refueler_id)
+        .expect("Elvish Refueler should exist")
+        .abilities[ability_index]
+        .kind
+    {
+        AbilityKind::Activated(activated) => activated.clone(),
+        _ => panic!("expected Elvish Refueler exhaust activated ability"),
+    };
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    assert!(
+        can_activate_ability_with_restrictions(&game, refueler_id, ability_index, &ability),
+        "Elvish Refueler's unused exhaust ability should be activatable"
+    );
+    game.record_ability_activation(refueler_id, ability_index);
+    assert!(
+        !can_activate_ability_with_restrictions(&game, refueler_id, ability_index, &ability),
+        "Elvish Refueler should not let the same exhaust ability be activated twice in one turn"
+    );
+
+    game.next_turn();
+    game.turn.active_player = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+    assert!(
+        !can_activate_ability_with_restrictions(&game, refueler_id, ability_index, &ability),
+        "Elvish Refueler's static permission should not refresh exhaust abilities outside its controller's turn"
+    );
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    assert!(
+        can_activate_ability_with_restrictions(&game, refueler_id, ability_index, &ability),
+        "Elvish Refueler should refresh one previously activated exhaust ability during its controller's turn before any exhaust activation that turn"
+    );
+    game.record_ability_activation(refueler_id, ability_index);
+    assert!(
+        !can_activate_ability_with_restrictions(&game, refueler_id, ability_index, &ability),
+        "after activating an exhaust ability this turn, Elvish Refueler's condition should stop refreshing it"
+    );
+}
+
+#[test]
 fn test_nonactive_player_keeps_priority_after_activating_ability() {
     use crate::ability::{AbilityKind, ActivatedAbility, ActivationTiming};
     use crate::cost::TotalCost;
