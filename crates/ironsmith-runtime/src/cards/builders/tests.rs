@@ -36149,13 +36149,131 @@ fn when_we_were_young_strict_parser_and_text_regression() {
     let debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
     let compact_debug = debug.split_whitespace().collect::<String>();
     assert!(
-        compact_debug.contains("choicecount{min:0,max:some(2)")
+        compact_debug.contains("choicecount{min:0,max:some(2")
             && debug.contains("and(")
             && debug.contains("artifact")
             && debug.contains("enchantment")
             && debug.contains("lifelink"),
         "expected structural up-to-two targets plus artifact/enchantment lifelink condition, got {debug}"
     );
+}
+
+fn vanilla_creature_for_when_we_were_young(id: u32, name: &str) -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(id), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build()
+}
+
+fn resolve_when_we_were_young_with_condition(
+    controls_enchantment: bool,
+) -> (crate::game_state::GameState, ObjectId, ObjectId, ObjectId) {
+    struct NoopDecisionMaker;
+    impl crate::decision::DecisionMaker for NoopDecisionMaker {}
+
+    let def = parse_oracle_card_definition("When We Were Young");
+    let program = def
+        .spell_effect
+        .as_ref()
+        .expect("When We Were Young should compile to spell effects");
+    let target_spec = (*program.segments[0].default_effects[0]
+        .target_selection_profile()
+        .expect("When We Were Young should require targets")
+        .spec)
+        .clone();
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let first = game.create_object_from_definition(
+        &vanilla_creature_for_when_we_were_young(91_500, "First Target"),
+        alice,
+        Zone::Battlefield,
+    );
+    let second = game.create_object_from_definition(
+        &vanilla_creature_for_when_we_were_young(91_501, "Second Target"),
+        bob,
+        Zone::Battlefield,
+    );
+    let unselected = game.create_object_from_definition(
+        &vanilla_creature_for_when_we_were_young(91_502, "Unselected Creature"),
+        bob,
+        Zone::Battlefield,
+    );
+
+    game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_503), "Condition Artifact")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    if controls_enchantment {
+        game.create_object_from_definition(
+            &CardDefinitionBuilder::new(CardId::from_raw(91_504), "Condition Enchantment")
+                .card_types(vec![CardType::Enchantment])
+                .build(),
+            alice,
+            Zone::Battlefield,
+        );
+    }
+
+    let mut dm = NoopDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+    ctx.targets = vec![
+        crate::effects::ResolvedTarget::Object(first),
+        crate::effects::ResolvedTarget::Object(second),
+    ];
+    let assignments = vec![crate::game_state::TargetAssignment {
+        spec: target_spec,
+        range: 0..2,
+    }];
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        program,
+        None,
+        &assignments,
+    )
+    .expect("When We Were Young should resolve");
+
+    (game, first, second, unselected)
+}
+
+#[test]
+fn when_we_were_young_pumps_two_targets_and_conditionally_grants_lifelink() {
+    let (game, first, second, unselected) = resolve_when_we_were_young_with_condition(true);
+
+    assert_eq!(game.current_power(first), Some(3));
+    assert_eq!(game.current_toughness(first), Some(3));
+    assert_eq!(game.current_power(second), Some(3));
+    assert_eq!(game.current_toughness(second), Some(3));
+    assert!(game.current_has_static_ability_id(first, StaticAbilityId::Lifelink));
+    assert!(game.current_has_static_ability_id(second, StaticAbilityId::Lifelink));
+
+    assert_eq!(game.current_power(unselected), Some(1));
+    assert_eq!(game.current_toughness(unselected), Some(1));
+    assert!(!game.current_has_static_ability_id(unselected, StaticAbilityId::Lifelink));
+}
+
+#[test]
+fn when_we_were_young_without_artifact_enchantment_condition_only_pumps_targets() {
+    let (game, first, second, unselected) = resolve_when_we_were_young_with_condition(false);
+
+    assert_eq!(game.current_power(first), Some(3));
+    assert_eq!(game.current_toughness(first), Some(3));
+    assert_eq!(game.current_power(second), Some(3));
+    assert_eq!(game.current_toughness(second), Some(3));
+    assert!(!game.current_has_static_ability_id(first, StaticAbilityId::Lifelink));
+    assert!(!game.current_has_static_ability_id(second, StaticAbilityId::Lifelink));
+
+    assert_eq!(game.current_power(unselected), Some(1));
+    assert_eq!(game.current_toughness(unselected), Some(1));
+    assert!(!game.current_has_static_ability_id(unselected, StaticAbilityId::Lifelink));
 }
 
 #[test]
