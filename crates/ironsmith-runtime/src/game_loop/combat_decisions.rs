@@ -172,6 +172,7 @@ struct PreparedAttackerDeclaration {
     declaration: AttackerDeclaration,
     controller: PlayerId,
     abilities: Vec<crate::static_abilities::StaticAbility>,
+    had_to_attack_this_combat: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -286,6 +287,7 @@ fn prepare_attacker_declarations(
             declaration: decl.clone(),
             controller: game.controller_of(creature),
             abilities,
+            had_to_attack_this_combat: legal_option.must_attack,
         });
 
         if let AttackTarget::Player(defending_player) = &decl.target {
@@ -412,6 +414,7 @@ fn apply_prepared_attacker_declarations_with_dm(
 
     // Clear any existing attackers.
     combat.attackers.clear();
+    combat.had_to_attack_this_combat.clear();
     if !declarations.is_empty() {
         game.turn_store
             .turn_history
@@ -419,7 +422,8 @@ fn apply_prepared_attacker_declarations_with_dm(
             .insert(game.turn.active_player);
     }
 
-    for decl in &declarations {
+    for prepared_decl in &prepared.declarations {
+        let decl = &prepared_decl.declaration;
         let Some(creature) = game.object(decl.creature) else {
             return Err(
                 ResponseError::InvalidAttackers("Creature cannot attack".to_string()).into(),
@@ -430,6 +434,9 @@ fn apply_prepared_attacker_declarations_with_dm(
             creature: decl.creature,
             target: decl.target.clone(),
         });
+        if prepared_decl.had_to_attack_this_combat {
+            combat.had_to_attack_this_combat.insert(decl.creature);
+        }
 
         if !crate::rules::combat::has_vigilance_with_game(creature, game) {
             tap_permanent_with_trigger(game, trigger_queue, decl.creature);

@@ -61,12 +61,26 @@ impl AttacksTrigger {
     fn is_first_matching_attacker_this_combat(
         &self,
         attacker: ObjectId,
+        attack_target: &crate::combat_state::AttackTarget,
         ctx: &TriggerContext,
     ) -> bool {
         let Some(combat) = ctx.game.combat.as_ref() else {
             return true;
         };
+        let match_per_defending_player = self
+            .filter
+            .attacking_player_or_planeswalker_controlled_by
+            .is_some();
+        let current_defending_player = match_per_defending_player
+            .then(|| defending_player_for_attack_target(attack_target, ctx.game))
+            .flatten();
         for info in &combat.attackers {
+            if match_per_defending_player
+                && defending_player_for_attack_target(&info.target, ctx.game)
+                    != current_defending_player
+            {
+                continue;
+            }
             if self.matches_attacker_info(info, ctx) {
                 return info.creature == attacker;
             }
@@ -155,7 +169,7 @@ impl TriggerMatcher for AttacksTrigger {
             return false;
         }
         if self.one_or_more {
-            return self.is_first_matching_attacker_this_combat(e.attacker, ctx);
+            return self.is_first_matching_attacker_this_combat(e.attacker, &attack_target, ctx);
         }
         true
     }
@@ -210,6 +224,18 @@ impl TriggerMatcher for AttacksTrigger {
             return None;
         }
         self.matching_attacker_count_this_combat(ctx)
+    }
+}
+
+fn defending_player_for_attack_target(
+    target: &crate::combat_state::AttackTarget,
+    game: &crate::game_state::GameState,
+) -> Option<crate::ids::PlayerId> {
+    match target {
+        crate::combat_state::AttackTarget::Player(player) => Some(*player),
+        crate::combat_state::AttackTarget::Planeswalker(planeswalker) => game
+            .object(*planeswalker)
+            .map(|planeswalker| game.controller_of(planeswalker)),
     }
 }
 
@@ -335,6 +361,72 @@ mod tests {
             crate::provenance::ProvNodeId::default(),
         );
         assert!(!trigger.matches(&second_event, &ctx));
+    }
+
+    #[test]
+    fn one_or_more_attack_an_opponent_matches_first_attacker_for_each_opponent() {
+        let mut game = GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        let source_id = ObjectId::from_raw(100);
+        let bob_attacker_one = create_creature(&mut game, "A", alice);
+        let bob_attacker_two = create_creature(&mut game, "B", alice);
+        let charlie_attacker = create_creature(&mut game, "C", alice);
+
+        let mut combat = CombatState::default();
+        combat.attackers.push(AttackerInfo {
+            creature: bob_attacker_one,
+            target: AttackTarget::Player(bob),
+        });
+        combat.attackers.push(AttackerInfo {
+            creature: bob_attacker_two,
+            target: AttackTarget::Player(bob),
+        });
+        combat.attackers.push(AttackerInfo {
+            creature: charlie_attacker,
+            target: AttackTarget::Player(charlie),
+        });
+        game.combat = Some(combat);
+
+        let mut filter = ObjectFilter::creature().you_control();
+        filter.attacking_player_or_planeswalker_controlled_by = Some(PlayerFilter::Opponent);
+        filter.targets_only_player = Some(PlayerFilter::Any);
+        let trigger = AttacksTrigger::one_or_more(filter);
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+
+        let first_bob_event = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::with_total_attackers(
+                bob_attacker_one,
+                AttackEventTarget::Player(bob),
+                3,
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(trigger.matches(&first_bob_event, &ctx));
+
+        let second_bob_event = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::with_total_attackers(
+                bob_attacker_two,
+                AttackEventTarget::Player(bob),
+                3,
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(!trigger.matches(&second_bob_event, &ctx));
+
+        let charlie_event = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::with_total_attackers(
+                charlie_attacker,
+                AttackEventTarget::Player(charlie),
+                3,
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(trigger.matches(&charlie_event, &ctx));
     }
 
     #[test]

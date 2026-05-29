@@ -1184,6 +1184,7 @@ mod tests {
             blockers: Default::default(),
             damage_assignment_order: Default::default(),
             attacking_bands: Default::default(),
+            had_to_attack_this_combat: Default::default(),
         });
 
         let filter = ObjectFilter::creature()
@@ -1221,6 +1222,7 @@ mod tests {
             blockers: Default::default(),
             damage_assignment_order: Default::default(),
             attacking_bands: Default::default(),
+            had_to_attack_this_combat: Default::default(),
         });
 
         let filter = ObjectFilter::creature().controlled_by(PlayerFilter::Defending);
@@ -1252,6 +1254,7 @@ mod tests {
             blockers: Default::default(),
             damage_assignment_order: Default::default(),
             attacking_bands: Default::default(),
+            had_to_attack_this_combat: Default::default(),
         });
 
         let legal_targets = compute_legal_targets(

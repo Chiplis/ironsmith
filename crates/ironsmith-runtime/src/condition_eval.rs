@@ -698,6 +698,19 @@ fn condition_filter_context(
     ctx
 }
 
+fn triggering_object_had_to_attack_this_combat(
+    game: &GameState,
+    triggering_event: Option<&TriggerEvent>,
+) -> bool {
+    triggering_event
+        .and_then(|event| event.object_id())
+        .is_some_and(|object_id| {
+            game.combat
+                .as_ref()
+                .is_some_and(|combat| combat.creature_had_to_attack_this_combat(object_id))
+        })
+}
+
 fn evaluate_condition_shared_core(
     game: &GameState,
     condition: &Condition,
@@ -1354,11 +1367,9 @@ pub fn evaluate_condition_external(
             .triggering_event
             .and_then(|event| event.snapshot())
             .is_some_and(|snapshot| snapshot.was_enchanted),
-        Condition::TriggeringObjectHadToAttackThisCombat => ctx
-            .triggering_event
-            .and_then(|event| event.object_id())
-            .and_then(|object_id| game.object(object_id))
-            .is_some_and(|object| crate::rules::combat::must_attack_with_game(object, game)),
+        Condition::TriggeringObjectHadToAttackThisCombat => {
+            triggering_object_had_to_attack_this_combat(game, ctx.triggering_event)
+        }
         Condition::TriggeringObjectHadCounters {
             counter_type,
             min_count,
@@ -3411,12 +3422,9 @@ fn evaluate_condition(
             .as_ref()
             .and_then(|event| event.snapshot())
             .is_some_and(|snapshot| snapshot.was_enchanted)),
-        Condition::TriggeringObjectHadToAttackThisCombat => Ok(ctx
-            .triggering_event
-            .as_ref()
-            .and_then(|event| event.object_id())
-            .and_then(|object_id| game.object(object_id))
-            .is_some_and(|object| crate::rules::combat::must_attack_with_game(object, game))),
+        Condition::TriggeringObjectHadToAttackThisCombat => Ok(
+            triggering_object_had_to_attack_this_combat(game, ctx.triggering_event.as_ref()),
+        ),
         Condition::TriggeringObjectHadCounters {
             counter_type,
             min_count,
