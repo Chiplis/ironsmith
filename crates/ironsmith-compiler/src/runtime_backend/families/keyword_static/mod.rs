@@ -2949,18 +2949,29 @@ pub(crate) fn parse_double_damage_amount_replacement_line(
         return Ok(None);
     }
 
-    let Some(tail_idx) = find_window_by(&words[would_idx + 4..], 6, |window| {
-        window == ["it", "deals", "double", "that", "damage", "to"]
-    }) else {
+    let tail_search_words = &words[would_idx + 4..];
+    let (tail_idx, tail_word_count) = if let Some(tail_idx) = find_window_by(
+        tail_search_words,
+        6,
+        |window| window == ["it", "deals", "double", "that", "damage", "to"],
+    ) {
+        (tail_idx, 6)
+    } else if let Some(tail_idx) = find_window_by(tail_search_words, 5, |window| {
+        window == ["it", "deals", "double", "that", "damage"]
+    }) {
+        (tail_idx, 5)
+    } else {
         return Ok(None);
     };
     let replacement_start = would_idx + 4 + tail_idx;
     let damaged_words = &words[would_idx + 4..replacement_start];
-    let replacement_target_words = &words[replacement_start + 6..];
+    let replacement_tail_words = &words[replacement_start + tail_word_count..];
+    let replacement_target_repeats_damage_target = replacement_tail_words == ["instead"];
+    let replacement_target_is_that_target = replacement_tail_words.len() >= 2
+        && replacement_tail_words.first() == Some(&"that")
+        && replacement_tail_words.last() == Some(&"instead");
     if damaged_words.is_empty()
-        || replacement_target_words.len() < 2
-        || replacement_target_words.first() != Some(&"that")
-        || replacement_target_words.last() != Some(&"instead")
+        || (!replacement_target_repeats_damage_target && !replacement_target_is_that_target)
     {
         return Ok(None);
     }

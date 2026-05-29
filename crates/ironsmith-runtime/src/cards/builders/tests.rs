@@ -36219,6 +36219,149 @@ fn calamity_bearer_runtime_ignores_non_giant_and_opposing_giant_sources() {
 }
 
 #[test]
+fn twinflame_tyrant_strict_parser_and_text_regression() {
+    assert_oracle_card_parses_strict("Twinflame Tyrant");
+    let def = parse_oracle_card_definition("Twinflame Tyrant");
+    let rendered_lines = canonical_compiled_lines(&def);
+    let replacement_line = "If a source you control would deal damage to an opponent or a permanent an opponent controls, it deals double that damage instead.";
+
+    assert!(
+        def.abilities.iter().any(|ability| matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::ModifyDamageAmountReplacement
+        )),
+        "Twinflame Tyrant should compile to a double-damage replacement static ability"
+    );
+    assert!(
+        rendered_lines.iter().any(|line| line == "Flying"),
+        "Twinflame Tyrant should keep flying, got {rendered_lines:?}"
+    );
+    assert!(
+        rendered_lines.iter().any(|line| line == replacement_line),
+        "Twinflame Tyrant should render its implied-target double-damage replacement clause, got {rendered_lines:?}"
+    );
+}
+
+#[test]
+fn twinflame_tyrant_runtime_doubles_controlled_source_damage_to_opponents_and_their_permanents() {
+    let def = parse_oracle_card_definition("Twinflame Tyrant");
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let alice_source = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_310), "Alice Damage Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    let bob_permanent = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_311), "Bob Permanent")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+
+    let player_damage = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        alice_source,
+        crate::events::DamageTarget::Player(bob),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(player_damage.assignments.len(), 1);
+    assert_eq!(player_damage.assignments[0].amount, 6);
+
+    let permanent_damage = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        alice_source,
+        crate::events::DamageTarget::Object(bob_permanent),
+        2,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(permanent_damage.assignments.len(), 1);
+    assert_eq!(permanent_damage.assignments[0].amount, 4);
+}
+
+#[test]
+fn twinflame_tyrant_runtime_ignores_unmatched_sources_and_targets() {
+    let def = parse_oracle_card_definition("Twinflame Tyrant");
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let alice_source = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_312), "Alice Damage Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    let bob_source = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_313), "Bob Damage Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let alice_permanent = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_314), "Alice Permanent")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    let controller_damage = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        alice_source,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(controller_damage.assignments.len(), 1);
+    assert_eq!(controller_damage.assignments[0].amount, 3);
+
+    let controller_permanent_damage =
+        crate::events::processing::process_damage_assignments_with_event(
+            &mut game,
+            alice_source,
+            crate::events::DamageTarget::Object(alice_permanent),
+            2,
+            false,
+            crate::events::cause::EventCause::effect(),
+        );
+    assert_eq!(controller_permanent_damage.assignments.len(), 1);
+    assert_eq!(controller_permanent_damage.assignments[0].amount, 2);
+
+    let opposing_source_damage = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        bob_source,
+        crate::events::DamageTarget::Player(alice),
+        4,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(opposing_source_damage.assignments.len(), 1);
+    assert_eq!(opposing_source_damage.assignments[0].amount, 4);
+}
+
+#[test]
 fn rebbec_architect_of_ascension_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("Rebbec, Architect of Ascension");
 
