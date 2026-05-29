@@ -17361,8 +17361,10 @@ fn parse_the_mimeoplasm_linked_graveyard_copy_replacement() {
     );
     let debug = format!("{def:#?}");
     assert!(
-        debug.contains("linked_exile_pair") && debug.contains("PlusOnePlusOne"),
-        "expected The Mimeoplasm lowering to record linked exile pair with +1/+1 counters, got {debug}"
+        debug.contains("linked_exile_pair")
+            && debug.contains("PlusOnePlusOne")
+            && debug.contains("nontoken: true"),
+        "expected The Mimeoplasm lowering to record linked exile pair with +1/+1 counters for nontoken creature cards, got {debug}"
     );
     assert!(
         !debug.to_ascii_lowercase().contains("unsupported"),

@@ -14150,6 +14150,47 @@ fn the_mimeoplasm_needs_two_graveyard_creature_cards_to_apply_copy_replacement()
 }
 
 #[test]
+fn the_mimeoplasm_does_not_count_noncreature_or_token_graveyard_objects_for_its_pair() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let creature = CardDefinitionBuilder::new(CardId::new(), "Only Graveyard Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(5, 5))
+        .build();
+    let noncreature = CardDefinitionBuilder::new(CardId::new(), "Graveyard Spell")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let token_creature = CardDefinitionBuilder::new(CardId::new(), "Graveyard Token Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(9, 9))
+        .build();
+    let creature_id = game.create_object_from_definition(&creature, alice, Zone::Graveyard);
+    let noncreature_id = game.create_object_from_definition(&noncreature, alice, Zone::Graveyard);
+    let token_id = game.create_object_from_definition(&token_creature, alice, Zone::Graveyard);
+    game.object_mut(token_id)
+        .expect("test token object should exist")
+        .kind = ObjectKind::Token;
+
+    let mimeoplasm = the_mimeoplasm_test_definition();
+    let mimeoplasm_id = game.create_object_from_definition(&mimeoplasm, alice, Zone::Hand);
+    let mut dm = PanicOnMimeoplasmReplacementPrompt;
+    let result = game
+        .move_object_with_etb_processing_with_dm(mimeoplasm_id, Zone::Battlefield, &mut dm)
+        .expect("The Mimeoplasm should enter without counting noncreature or token graveyard objects");
+
+    let entered = game
+        .object(result.new_id)
+        .expect("The Mimeoplasm permanent should exist");
+    assert_eq!(entered.name, "The Mimeoplasm");
+    assert!(entered.counters.is_empty());
+    assert!(game.object(creature_id).is_some_and(|object| object.zone == Zone::Graveyard));
+    assert!(game.object(noncreature_id).is_some_and(|object| object.zone == Zone::Graveyard));
+    assert!(game.object(token_id).is_some_and(|object| object.zone == Zone::Graveyard));
+    assert!(game.get_exiled_with_source_links(result.new_id).is_empty());
+}
+
+#[test]
 fn resolving_ability_from_spell_on_stack_does_not_move_source_spell() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);

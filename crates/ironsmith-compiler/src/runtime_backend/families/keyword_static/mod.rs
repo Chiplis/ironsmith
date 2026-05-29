@@ -3181,13 +3181,14 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
         )
         .is_some()
         && slice_contains(&clause_words, &"additional")
+        && slice_contains(&clause_words, &"+1/+1")
         && slice_contains(&clause_words, &"counters")
         && slice_contains(&clause_words, &"power")
         && slice_contains(&clause_words, &"other")
     {
         return Ok(Some(StaticAbility::with_enter_as_copy_as_enters(
             crate::static_abilities::EnterAsCopyAsEntersSpec {
-                filter: ObjectFilter::creature().in_zone(Zone::Graveyard),
+                filter: ObjectFilter::creature().in_zone(Zone::Graveyard).nontoken(),
                 affected_filter: None,
                 may: true,
                 enters_tapped_if_chosen: false,
