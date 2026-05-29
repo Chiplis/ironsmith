@@ -3255,6 +3255,25 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         });
     }
 
+    if filtered.len() >= 8
+        && filtered[0] == "you"
+        && filtered[1] == "put"
+        && slice_ends_with(&filtered, &["into", "your", "hand", "this", "way"])
+    {
+        let filter_words = &filtered[2..filtered.len() - 5];
+        let filter_tokens = filter_words
+            .iter()
+            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+            .collect::<Vec<_>>();
+        let mut filter = parse_object_filter(&filter_tokens, false)?;
+        filter.zone = Some(Zone::Hand);
+        return Ok(PredicateAst::PlayerTaggedObjectMatches {
+            player: PlayerAst::You,
+            tag: TagKey::from(IT_TAG),
+            filter,
+        });
+    }
+
     if filtered.len() >= 7
         && filtered[1] == "is"
         && filtered[2] == "put"
@@ -3718,6 +3737,32 @@ mod tests {
                 tag: TagKey::from(IT_TAG),
                 filter: ObjectFilter::default().in_zone(Zone::Hand),
             }))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_supports_if_you_put_filtered_card_into_your_hand_this_way()
+    -> Result<(), CardTextError> {
+        let tokens = lex_line("If you put a Town card into your hand this way", 0)?;
+        let predicate_tokens = tokens
+            .iter()
+            .filter(|token| !token.is_word("if"))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+        let filter_tokens = lex_line("Town card", 0)?;
+        let mut filter = parse_object_filter(&filter_tokens, false)?;
+        filter.zone = Some(Zone::Hand);
+
+        assert_eq!(
+            parsed,
+            PredicateAst::PlayerTaggedObjectMatches {
+                player: PlayerAst::You,
+                tag: TagKey::from(IT_TAG),
+                filter,
+            }
         );
         Ok(())
     }

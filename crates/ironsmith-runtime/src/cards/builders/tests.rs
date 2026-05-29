@@ -35570,6 +35570,159 @@ fn unprocessed_compiled_lines_normalize_remaining_tag_scaffolding_regressions() 
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_town_greeter_strict_regression() {
+    assert_oracle_card_parses_strict("Town Greeter");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn town_greeter_compiled_text_keeps_town_hand_condition() {
+    let rendered = unprocessed_compiled_lines(&parse_oracle_card_definition("Town Greeter"))
+        .join(" ");
+
+    assert!(
+        rendered.contains(
+            "When this creature enters, mill four cards. You may put a land card from among them into your hand. If you put a Town card into your hand this way, you gain 2 life."
+        ),
+        "expected Town Greeter to render the Town hand condition, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("tagged object") && !rendered.contains("__sentence_helper_chosen"),
+        "expected Town Greeter text to avoid internal tags, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct SelectTownGreeterCard {
+    name: &'static str,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl crate::decision::DecisionMaker for SelectTownGreeterCard {
+    fn decide_objects(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        ctx.candidates
+            .iter()
+            .find(|candidate| candidate.legal && candidate.name == self.name)
+            .map(|candidate| vec![candidate.id])
+            .unwrap_or_default()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_town_greeter_with_decision(
+    mut decision_maker: impl crate::decision::DecisionMaker,
+) -> crate::game_state::GameState {
+    let def = parse_oracle_card_definition("Town Greeter");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) if triggered.trigger.display().contains("enters") => {
+                Some(triggered.clone())
+            }
+            _ => None,
+        })
+        .expect("Town Greeter should compile to an enters trigger");
+
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let town = CardDefinitionBuilder::new(CardId::from_raw(120_901), "Balamb Town")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Town])
+        .build();
+    let forest = CardDefinitionBuilder::new(CardId::from_raw(120_902), "Forest Glade")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Forest])
+        .build();
+    let filler = CardDefinitionBuilder::new(CardId::from_raw(120_903), "Filler Spell")
+        .card_types(vec![CardType::Instant])
+        .build();
+
+    game.create_object_from_definition(&filler, alice, Zone::Library);
+    game.create_object_from_definition(&forest, alice, Zone::Library);
+    game.create_object_from_definition(&filler, alice, Zone::Library);
+    game.create_object_from_definition(&town, alice, Zone::Library);
+
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut decision_maker);
+    for effect in triggered.effects.segments[0].default_effects.iter().skip(1) {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Town Greeter trigger effect should resolve");
+    }
+
+    game
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn alice_has_card_in_hand(game: &crate::game_state::GameState, name: &str) -> bool {
+    let alice = PlayerId::from_index(0);
+    game.player(alice)
+        .expect("Alice should exist")
+        .hand
+        .iter()
+        .any(|id| game.object(*id).is_some_and(|object| object.name == name))
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn town_greeter_gains_life_when_town_card_put_into_hand() {
+    let game = resolve_town_greeter_with_decision(SelectTownGreeterCard {
+        name: "Balamb Town",
+    });
+    let alice = PlayerId::from_index(0);
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        22,
+        "Town Greeter should gain 2 life after choosing a Town land"
+    );
+    assert!(
+        alice_has_card_in_hand(&game, "Balamb Town"),
+        "chosen Town land should move to hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn town_greeter_does_not_gain_life_for_non_town_land() {
+    let game = resolve_town_greeter_with_decision(SelectTownGreeterCard {
+        name: "Forest Glade",
+    });
+    let alice = PlayerId::from_index(0);
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        20,
+        "Town Greeter should not gain life after choosing a non-Town land"
+    );
+    assert!(
+        alice_has_card_in_hand(&game, "Forest Glade"),
+        "chosen non-Town land should still move to hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn town_greeter_declined_hand_choice_does_not_gain_life() {
+    let game = resolve_town_greeter_with_decision(crate::decision::AutoPassDecisionMaker);
+    let alice = PlayerId::from_index(0);
+    let player = game.player(alice).expect("Alice should exist");
+
+    assert_eq!(player.life, 20, "declining the choice should not gain life");
+    assert_eq!(player.hand.len(), 0, "declining the choice should leave hand empty");
+    assert_eq!(
+        player.graveyard.len(),
+        4,
+        "declining the choice should leave all milled cards in the graveyard"
+    );
+}
+
 #[test]
 fn parse_oracle_dawnbreak_reclaimer_keeps_linked_player_choice_and_plural_return() {
     let rendered = unprocessed_compiled_lines(&parse_oracle_card_definition("Dawnbreak Reclaimer"))

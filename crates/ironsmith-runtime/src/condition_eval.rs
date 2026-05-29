@@ -3376,6 +3376,14 @@ fn evaluate_condition(
             let mut filter_ctx = ctx.filter_context(game);
             filter_ctx.iterated_player = Some(player_id);
             for snapshot in tagged {
+                if filter.zone.is_some()
+                    && let Some(current_id) = game.find_object_by_stable_id(snapshot.stable_id)
+                    && let Some(object) = game.object(current_id)
+                    && game.controller_of(object) == player_id
+                    && filter.matches(object, &filter_ctx, game)
+                {
+                    return Ok(true);
+                }
                 if snapshot.controller != player_id {
                     continue;
                 }

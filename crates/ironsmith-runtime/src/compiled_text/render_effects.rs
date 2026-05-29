@@ -12356,6 +12356,28 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 2;
             continue;
         }
+        if idx + 3 < filtered.len()
+            && let Some(tagged_mill) = filtered[idx].downcast_ref::<crate::effects::TaggedEffect>()
+            && let Some(mill) = tagged_mill
+                .effect
+                .downcast_ref::<crate::effects::MillEffect>()
+            && let Some(choose) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some((_, move_to_hand)) = for_each_tagged_for_compaction(filtered[idx + 2])
+            && let Some(conditional) =
+                filtered[idx + 3].downcast_ref::<crate::effects::ConditionalEffect>()
+            && let Some(compact) = describe_tagged_mill_then_put_milled_card_into_hand_then_if_put_matching(
+                tagged_mill,
+                mill,
+                choose,
+                move_to_hand,
+                conditional,
+            )
+        {
+            parts.push(compact);
+            idx += 4;
+            continue;
+        }
         if idx + 2 < filtered.len()
             && let Some(tagged_mill) = filtered[idx].downcast_ref::<crate::effects::TaggedEffect>()
             && let Some(mill) = tagged_mill
@@ -22342,7 +22364,57 @@ pub(super) fn describe_tagged_mill_then_put_milled_card_into_hand(
     let hand = describe_possessive_player_filter(&choose.chooser);
     let may = if choose.count.min == 0 { " may" } else { "" };
     Some(format!(
-        "{mill_clause}. You{may} put {chosen} from among the cards milled this way into {hand} hand"
+        "{mill_clause}. You{may} put {chosen} from among them into {hand} hand"
+    ))
+}
+
+pub(super) fn describe_tagged_mill_then_put_milled_card_into_hand_then_if_put_matching(
+    tagged_mill: &crate::effects::TaggedEffect,
+    mill: &crate::effects::MillEffect,
+    choose: &crate::effects::ChooseObjectsEffect,
+    move_to_hand: &crate::effects::ForEachTaggedEffect,
+    conditional: &crate::effects::ConditionalEffect,
+) -> Option<String> {
+    if !conditional.if_false.is_empty() || conditional.if_true.is_empty() {
+        return None;
+    }
+    let crate::effect::Condition::PlayerTaggedObjectMatches {
+        player,
+        tag,
+        filter,
+    } = &conditional.condition
+    else {
+        return None;
+    };
+    if *player != choose.chooser
+        || tag.as_str() != choose.tag.as_str()
+        || filter.zone != Some(Zone::Hand)
+    {
+        return None;
+    }
+
+    let base = describe_tagged_mill_then_put_milled_card_into_hand(
+        tagged_mill,
+        mill,
+        choose,
+        move_to_hand,
+    )?;
+    let then_text = describe_effect_clause_list(&conditional.if_true)
+        .unwrap_or_else(|| describe_effect_list(&conditional.if_true));
+    if then_text.is_empty() {
+        return None;
+    }
+
+    let mut object_filter = filter.clone();
+    object_filter.zone = None;
+    let selection = describe_search_selection_with_cards(strip_leading_article(
+        &object_filter.description(),
+    ));
+    let subject = describe_player_filter(player);
+    let hand = describe_possessive_player_filter(player);
+    Some(format!(
+        "{base}. If {subject} {} {selection} into {hand} hand this way, {then_text}",
+        player_verb(&subject, "put", "puts")
     ))
 }
 
@@ -22379,7 +22451,7 @@ pub(super) fn describe_tagged_mill_then_may_put_milled_card_into_hand(
     let mill_clause = describe_tagged_mill_clause(mill);
     let hand = describe_possessive_player_filter(&choose.chooser);
     Some(format!(
-        "{mill_clause}. You may put {chosen} from among the cards milled this way into {hand} hand"
+        "{mill_clause}. You may put {chosen} from among them into {hand} hand"
     ))
 }
 
