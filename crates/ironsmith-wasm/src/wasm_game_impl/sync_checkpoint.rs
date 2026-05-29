@@ -45,6 +45,18 @@ struct SyncManaPool {
     red: u32,
     green: u32,
     colorless: u32,
+    #[serde(default)]
+    retained_until_end_of_combat_white: u32,
+    #[serde(default)]
+    retained_until_end_of_combat_blue: u32,
+    #[serde(default)]
+    retained_until_end_of_combat_black: u32,
+    #[serde(default)]
+    retained_until_end_of_combat_red: u32,
+    #[serde(default)]
+    retained_until_end_of_combat_green: u32,
+    #[serde(default)]
+    retained_until_end_of_combat_colorless: u32,
 }
 
 impl From<&ManaPool> for SyncManaPool {
@@ -56,6 +68,12 @@ impl From<&ManaPool> for SyncManaPool {
             red: value.red,
             green: value.green,
             colorless: value.colorless,
+            retained_until_end_of_combat_white: value.retained_until_end_of_combat_white,
+            retained_until_end_of_combat_blue: value.retained_until_end_of_combat_blue,
+            retained_until_end_of_combat_black: value.retained_until_end_of_combat_black,
+            retained_until_end_of_combat_red: value.retained_until_end_of_combat_red,
+            retained_until_end_of_combat_green: value.retained_until_end_of_combat_green,
+            retained_until_end_of_combat_colorless: value.retained_until_end_of_combat_colorless,
         }
     }
 }
@@ -69,6 +87,12 @@ impl From<SyncManaPool> for ManaPool {
             red: value.red,
             green: value.green,
             colorless: value.colorless,
+            retained_until_end_of_combat_white: value.retained_until_end_of_combat_white,
+            retained_until_end_of_combat_blue: value.retained_until_end_of_combat_blue,
+            retained_until_end_of_combat_black: value.retained_until_end_of_combat_black,
+            retained_until_end_of_combat_red: value.retained_until_end_of_combat_red,
+            retained_until_end_of_combat_green: value.retained_until_end_of_combat_green,
+            retained_until_end_of_combat_colorless: value.retained_until_end_of_combat_colorless,
         }
     }
 }

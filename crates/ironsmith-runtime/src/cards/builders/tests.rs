@@ -8,8 +8,8 @@ use crate::compiled_text::{
 use crate::effects::{
     AddManaEffect, ChooseModeEffect, ChooseObjectsEffect, ConsultTopOfLibraryEffect,
     CreateTokenEffect, DestroyEffect, DrawCardsEffect, EffectExecutor, GainLifeEffect,
-    MoveToZoneEffect, ReturnFromGraveyardToHandEffect, TagTriggeringObjectEffect, TaggedEffect,
-    TargetOnlyEffect, UntapEffect,
+    MoveToZoneEffect, RetainManaUntilEndOfCombatEffect, ReturnFromGraveyardToHandEffect,
+    TagTriggeringObjectEffect, TaggedEffect, TargetOnlyEffect, UntapEffect,
 };
 use crate::object::AuraAttachmentFilter;
 use crate::static_abilities::StaticAbilityId;
@@ -21975,6 +21975,64 @@ fn parse_first_main_phase_trigger_uses_precombat_main_and_active_player() {
         PlayerFilter::Active,
         "expected \"that player\" to resolve to active player"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn uncle_iroh_parses_firebending_and_lesson_cost_reduction() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(144_988), "Uncle Iroh")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Red, ManaSymbol::Green],
+            vec![ManaSymbol::Red, ManaSymbol::Green],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Noble, Subtype::Ally])
+        .power_toughness(PowerToughness::fixed(4, 2))
+        .parse_text(
+            "Firebending 1 (Whenever this creature attacks, add {R}. This mana lasts until end of combat.)\n\
+             Lesson spells you cast cost {1} less to cast.",
+        )
+        .expect("Uncle Iroh should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Firebending 1"),
+        "expected Firebending keyword in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Lesson spells you cast cost {1} less to cast"),
+        "expected Lesson cost reduction in compiled text, got {rendered}"
+    );
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("expected Firebending to compile to a triggered ability");
+    assert_eq!(
+        triggered.presentation_label.as_deref(),
+        Some("Firebending 1")
+    );
+    assert_eq!(triggered.trigger.display(), "Whenever this creature attacks");
+
+    assert_eq!(
+        triggered.effects.len(),
+        2,
+        "Firebending should add mana and apply its end-of-combat duration"
+    );
+    let add_mana = triggered.effects[0]
+        .downcast_ref::<AddManaEffect>()
+        .expect("Firebending trigger should add mana");
+    assert_eq!(add_mana.mana, vec![ManaSymbol::Red]);
+    assert_eq!(add_mana.player, PlayerFilter::You);
+    triggered.effects[1]
+        .downcast_ref::<RetainManaUntilEndOfCombatEffect>()
+        .expect("Firebending mana should last until end of combat");
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

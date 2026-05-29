@@ -500,6 +500,12 @@ fn compile_subject_verb_effect(
             )],
             Vec::new(),
         )),
+        SubjectVerbActionAst::ThisManaLastsUntilEndOfCombat => Ok((
+            vec![Effect::new(
+                crate::effects::RetainManaUntilEndOfCombatEffect::you(),
+            )],
+            Vec::new(),
+        )),
         SubjectVerbActionAst::OpenAttraction => Ok((vec![Effect::open_attraction()], Vec::new())),
         SubjectVerbActionAst::ManifestTopCardOfLibrary => {
             compile_player_role_effect(role, player, ctx, false, false, true, |subject| {

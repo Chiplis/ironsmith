@@ -35,6 +35,7 @@ impl EffectExecutor for AddManaEffect {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
 
         credit_mana_symbols_from_context(game, player_id, self.mana.iter().copied(), ctx);
+        ctx.mana.last_added_mana = Some((player_id, self.mana.clone()));
 
         Ok(mana_added_value_outcome(ctx, player_id, self.mana.clone()))
     }

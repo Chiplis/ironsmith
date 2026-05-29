@@ -224,6 +224,55 @@ pub(super) fn run_learn_line_family(
     )))
 }
 
+pub(super) fn run_firebending_line_family(
+    ctx: &LineDispatchContext<'_>,
+) -> Result<Option<LineDispatchResult>, CardTextError> {
+    let raw = ctx.line.info.raw_line.trim();
+    let lower = raw.to_ascii_lowercase();
+    let Some(rest) = lower.strip_prefix("firebending ") else {
+        return Ok(None);
+    };
+
+    let amount_digits = rest
+        .chars()
+        .take_while(|ch| ch.is_ascii_digit())
+        .collect::<String>();
+    if amount_digits.is_empty() {
+        return Ok(None);
+    }
+    let amount = amount_digits.parse::<usize>().map_err(|err| {
+        CardTextError::ParseError(format!(
+            "firebending keyword has invalid amount '{}': {err}",
+            ctx.line.info.raw_line
+        ))
+    })?;
+    if amount == 0 {
+        return Err(CardTextError::ParseError(format!(
+            "firebending keyword amount must be positive: '{}'",
+            ctx.line.info.raw_line
+        )));
+    }
+
+    let tail = rest[amount_digits.len()..].trim_start();
+    if !tail.is_empty() && !tail.starts_with('(') && !tail.starts_with('.') {
+        return Ok(None);
+    }
+
+    let mana = "{R}".repeat(amount);
+    let triggered_text = format!(
+        "Whenever this creature attacks, add {mana}. This mana lasts until end of combat."
+    );
+    let triggered_line = rewrite_line_normalized(ctx.line, triggered_text.as_str())?;
+    let mut triggered = parse_triggered_line_cst(&triggered_line)?;
+    triggered.full_text = raw.to_string();
+    triggered.presentation_label = Some(format!("Firebending {amount}"));
+
+    Ok(Some(LineDispatchResult::single(
+        RewriteLineCst::Triggered(triggered),
+        ctx.idx + 1,
+    )))
+}
+
 pub(super) fn run_split_top_and_face_down_look_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {

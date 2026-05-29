@@ -1445,6 +1445,21 @@ impl RetainManaUntilEndOfTurnEffect {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct RetainManaUntilEndOfCombatEffect {
+    pub player: PlayerFilter,
+}
+
+impl RetainManaUntilEndOfCombatEffect {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
+    }
+
+    pub fn you() -> Self {
+        Self::new(PlayerFilter::You)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MeldEffect {
     pub result_name: String,

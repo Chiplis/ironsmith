@@ -13,7 +13,7 @@ use crate::events::spells::SpellCastEvent;
 use crate::events::zones::EnterBattlefieldEvent;
 use crate::execute_cleanup_step;
 use crate::filter::ObjectFilterExt as _;
-use crate::game_state::Phase;
+use crate::game_state::{Phase, Step};
 use crate::ids::CardId;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::object::ObjectKind;
@@ -3293,6 +3293,116 @@ fn test_triggered_mana_ability_resolves_immediately_without_stack() {
         1,
         "triggered mana ability should add mana immediately"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn uncle_iroh_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(144_988), "Uncle Iroh")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Red, ManaSymbol::Green],
+            vec![ManaSymbol::Red, ManaSymbol::Green],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Noble, Subtype::Ally])
+        .power_toughness(PowerToughness::fixed(4, 2))
+        .parse_text(
+            "Firebending 1 (Whenever this creature attacks, add {R}. This mana lasts until end of combat.)\n\
+             Lesson spells you cast cost {1} less to cast.",
+        )
+        .expect("Uncle Iroh should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn uncle_iroh_firebending_triggers_from_its_attack_and_adds_red_mana() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = SelectFirstDecisionMaker;
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let iroh = uncle_iroh_definition();
+    let iroh_id = game.create_object_from_definition(&iroh, alice, Zone::Battlefield);
+    let attack_event = TriggerEvent::new_with_provenance(
+        crate::events::combat::CreatureAttackedEvent::new(
+            iroh_id,
+            crate::events::combat::AttackEventTarget::Player(bob),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    queue_triggers_from_event(&mut game, &mut trigger_queue, attack_event, false);
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Firebending attack trigger should go on the stack");
+
+    assert_eq!(
+        game.player(alice).expect("alice").mana_pool.red,
+        0,
+        "Firebending is not a triggered mana ability and should wait on the stack"
+    );
+    assert_eq!(game.stack.len(), 1, "Firebending trigger should stack");
+
+    resolve_stack_entry(&mut game).expect("Firebending trigger should resolve");
+    assert_eq!(
+        game.player(alice).expect("alice").mana_pool.red,
+        1,
+        "Firebending should add one red mana to its controller"
+    );
+
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(Step::DeclareAttackers);
+    game.player_mut(alice)
+        .expect("alice")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+    game.empty_mana_pools();
+    assert_eq!(
+        game.player(alice).expect("alice").mana_pool.red,
+        1,
+        "only Firebending mana should survive ordinary combat-step emptying"
+    );
+
+    game.turn.step = Some(Step::EndCombat);
+    game.empty_mana_pools();
+    assert_eq!(
+        game.player(alice).expect("alice").mana_pool.red,
+        0,
+        "Firebending mana should empty as the end of combat step ends"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn uncle_iroh_firebending_does_not_trigger_for_another_attacker() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = SelectFirstDecisionMaker;
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let iroh = uncle_iroh_definition();
+    game.create_object_from_definition(&iroh, alice, Zone::Battlefield);
+    let other_card = CardBuilder::new(CardId::from_raw(144_989), "Other Attacker")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let other_id = game.create_object_from_card(&other_card, alice, Zone::Battlefield);
+
+    let attack_event = TriggerEvent::new_with_provenance(
+        crate::events::combat::CreatureAttackedEvent::new(
+            other_id,
+            crate::events::combat::AttackEventTarget::Player(bob),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    queue_triggers_from_event(&mut game, &mut trigger_queue, attack_event, false);
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("nonmatching attack should be processed cleanly");
+
+    assert!(game.stack.is_empty(), "Uncle Iroh should not trigger");
+    assert_eq!(game.player(alice).expect("alice").mana_pool.red, 0);
 }
 
 #[test]

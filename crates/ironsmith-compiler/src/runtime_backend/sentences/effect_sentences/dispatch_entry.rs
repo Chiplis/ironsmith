@@ -2535,6 +2535,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
                 }
             }
             SubjectVerbActionAst::Learn
+            | SubjectVerbActionAst::ThisManaLastsUntilEndOfCombat
             | SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. } => {}
         },
         _ => {

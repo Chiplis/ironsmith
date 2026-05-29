@@ -12,6 +12,12 @@ pub struct ManaPool {
     pub red: u32,
     pub green: u32,
     pub colorless: u32,
+    pub retained_until_end_of_combat_white: u32,
+    pub retained_until_end_of_combat_blue: u32,
+    pub retained_until_end_of_combat_black: u32,
+    pub retained_until_end_of_combat_red: u32,
+    pub retained_until_end_of_combat_green: u32,
+    pub retained_until_end_of_combat_colorless: u32,
 }
 
 impl ManaPool {
@@ -34,22 +40,30 @@ impl ManaPool {
 
     /// Removes mana of the specified type. Returns true if successful.
     pub fn remove(&mut self, symbol: ManaSymbol, amount: u32) -> bool {
-        let pool = match symbol {
-            ManaSymbol::White => &mut self.white,
-            ManaSymbol::Blue => &mut self.blue,
-            ManaSymbol::Black => &mut self.black,
-            ManaSymbol::Red => &mut self.red,
-            ManaSymbol::Green => &mut self.green,
-            ManaSymbol::Colorless => &mut self.colorless,
+        let current = self.amount(symbol);
+        if current < amount {
+            return false;
+        }
+
+        let retained = *self.retained_until_end_of_combat_count_mut(symbol);
+        let nonretained = current.saturating_sub(retained);
+        let retained_spent = amount.saturating_sub(nonretained);
+
+        match symbol {
+            ManaSymbol::White => self.white -= amount,
+            ManaSymbol::Blue => self.blue -= amount,
+            ManaSymbol::Black => self.black -= amount,
+            ManaSymbol::Red => self.red -= amount,
+            ManaSymbol::Green => self.green -= amount,
+            ManaSymbol::Colorless => self.colorless -= amount,
             _ => return false,
         };
 
-        if *pool >= amount {
-            *pool -= amount;
-            true
-        } else {
-            false
+        if retained_spent > 0 {
+            *self.retained_until_end_of_combat_count_mut(symbol) = retained - retained_spent;
         }
+
+        true
     }
 
     /// Returns the total amount of mana in the pool.
@@ -65,6 +79,60 @@ impl ManaPool {
         self.red = 0;
         self.green = 0;
         self.colorless = 0;
+        self.clear_until_end_of_combat_retention();
+    }
+
+    /// Empties non-retained mana while preserving mana lasting until end of combat.
+    pub fn empty_preserving_until_end_of_combat(&mut self) {
+        self.cap_until_end_of_combat_retention_to_pool();
+        self.white = self.retained_until_end_of_combat_white;
+        self.blue = self.retained_until_end_of_combat_blue;
+        self.black = self.retained_until_end_of_combat_black;
+        self.red = self.retained_until_end_of_combat_red;
+        self.green = self.retained_until_end_of_combat_green;
+        self.colorless = self.retained_until_end_of_combat_colorless;
+    }
+
+    pub fn retain_existing_until_end_of_combat(&mut self, symbol: ManaSymbol, amount: u32) {
+        let available = self.amount(symbol);
+        let retained = self.retained_until_end_of_combat_count_mut(symbol);
+        *retained = (*retained + amount).min(available);
+    }
+
+    fn clear_until_end_of_combat_retention(&mut self) {
+        self.retained_until_end_of_combat_white = 0;
+        self.retained_until_end_of_combat_blue = 0;
+        self.retained_until_end_of_combat_black = 0;
+        self.retained_until_end_of_combat_red = 0;
+        self.retained_until_end_of_combat_green = 0;
+        self.retained_until_end_of_combat_colorless = 0;
+    }
+
+    fn cap_until_end_of_combat_retention_to_pool(&mut self) {
+        self.retained_until_end_of_combat_white =
+            self.retained_until_end_of_combat_white.min(self.white);
+        self.retained_until_end_of_combat_blue =
+            self.retained_until_end_of_combat_blue.min(self.blue);
+        self.retained_until_end_of_combat_black =
+            self.retained_until_end_of_combat_black.min(self.black);
+        self.retained_until_end_of_combat_red = self.retained_until_end_of_combat_red.min(self.red);
+        self.retained_until_end_of_combat_green =
+            self.retained_until_end_of_combat_green.min(self.green);
+        self.retained_until_end_of_combat_colorless = self
+            .retained_until_end_of_combat_colorless
+            .min(self.colorless);
+    }
+
+    fn retained_until_end_of_combat_count_mut(&mut self, symbol: ManaSymbol) -> &mut u32 {
+        match symbol {
+            ManaSymbol::White => &mut self.retained_until_end_of_combat_white,
+            ManaSymbol::Blue => &mut self.retained_until_end_of_combat_blue,
+            ManaSymbol::Black => &mut self.retained_until_end_of_combat_black,
+            ManaSymbol::Red => &mut self.retained_until_end_of_combat_red,
+            ManaSymbol::Green => &mut self.retained_until_end_of_combat_green,
+            ManaSymbol::Colorless => &mut self.retained_until_end_of_combat_colorless,
+            _ => &mut self.retained_until_end_of_combat_colorless,
+        }
     }
 
     /// Returns the amount of mana of a specific type.
@@ -175,7 +243,7 @@ impl ManaPool {
                     }
                     ManaSymbol::Colorless => {
                         if self.colorless > 0 {
-                            self.colorless -= 1;
+                            self.remove(ManaSymbol::Colorless, 1);
                             paid = true;
                             break;
                         }
@@ -400,7 +468,7 @@ impl ManaPool {
                     }
                     ManaSymbol::Colorless => {
                         if self.colorless > 0 {
-                            self.colorless -= 1;
+                            self.remove(ManaSymbol::Colorless, 1);
                             paid = true;
                             break;
                         }
@@ -452,19 +520,19 @@ impl ManaPool {
     fn pay_generic(&mut self, mut amount: u32) {
         // First use colorless
         let from_colorless = amount.min(self.colorless);
-        self.colorless -= from_colorless;
+        self.remove(ManaSymbol::Colorless, from_colorless);
         amount -= from_colorless;
 
         // Then use colored mana (arbitrary order)
-        for pool in [
-            &mut self.white,
-            &mut self.blue,
-            &mut self.black,
-            &mut self.red,
-            &mut self.green,
+        for symbol in [
+            ManaSymbol::White,
+            ManaSymbol::Blue,
+            ManaSymbol::Black,
+            ManaSymbol::Red,
+            ManaSymbol::Green,
         ] {
-            let from_this = amount.min(*pool);
-            *pool -= from_this;
+            let from_this = amount.min(self.amount(symbol));
+            self.remove(symbol, from_this);
             amount -= from_this;
             if amount == 0 {
                 break;

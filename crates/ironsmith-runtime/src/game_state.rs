@@ -7107,8 +7107,15 @@ impl GameState {
     /// Empties all players' mana pools.
     /// Called at the end of each step and phase per MTG rules.
     pub fn empty_mana_pools(&mut self) {
+        let preserve_until_end_of_combat =
+            matches!(self.turn.phase, Phase::Beginning | Phase::FirstMain)
+                || (self.turn.phase == Phase::Combat && self.turn.step != Some(Step::EndCombat));
         for player in &mut self.players {
-            player.mana_pool.empty();
+            if preserve_until_end_of_combat {
+                player.mana_pool.empty_preserving_until_end_of_combat();
+            } else {
+                player.mana_pool.empty();
+            }
             player.restricted_mana.clear();
         }
     }

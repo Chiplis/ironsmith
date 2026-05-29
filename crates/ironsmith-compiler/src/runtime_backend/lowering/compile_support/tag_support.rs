@@ -745,6 +745,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Enchant { .. }
         | SubjectVerbActionAst::ChooseSpellCastHistory { .. }
         | SubjectVerbActionAst::AdditionalPhases { .. }
+        | SubjectVerbActionAst::ThisManaLastsUntilEndOfCombat
         | SubjectVerbActionAst::Learn
         | SubjectVerbActionAst::ShuffleLibrary => None,
     }

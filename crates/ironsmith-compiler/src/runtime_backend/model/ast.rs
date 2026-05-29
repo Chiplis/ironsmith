@@ -812,6 +812,7 @@ pub(crate) enum SubjectVerbActionAst {
     },
     PutRestOnBottomOfLibrary,
     DontLoseThisManaAsStepsAndPhasesEndThisTurn,
+    ThisManaLastsUntilEndOfCombat,
     ExchangeValues {
         left: ExchangeValueAst,
         right: ExchangeValueAst,
@@ -1831,6 +1832,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::DontLoseThisManaAsStepsAndPhasesEndThisTurn => {
                 f.write_str("DontLoseThisManaAsStepsAndPhasesEndThisTurn")
             }
+            Self::ThisManaLastsUntilEndOfCombat => f.write_str("ThisManaLastsUntilEndOfCombat"),
             Self::ExchangeValues {
                 left,
                 right,
@@ -4876,6 +4878,14 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn,
+        )
+    }
+
+    pub(crate) fn subject_verb_this_mana_lasts_until_end_of_combat() -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::ThisManaLastsUntilEndOfCombat,
         )
     }
 

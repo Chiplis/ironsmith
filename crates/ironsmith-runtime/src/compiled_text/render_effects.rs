@@ -13512,7 +13512,46 @@ fn apply_triggered_presentation_label(
     if label.is_empty() || line.starts_with(label) {
         return line;
     }
+    if let Some(firebending) = render_firebending_keyword(label, triggered) {
+        return firebending;
+    }
     format!("{label} — {line}")
+}
+
+fn render_firebending_keyword(
+    label: &str,
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<String> {
+    let amount = label
+        .strip_prefix("Firebending ")?
+        .trim()
+        .parse::<usize>()
+        .ok()?;
+    if amount == 0 || triggered.trigger.display() != "Whenever this creature attacks" {
+        return None;
+    }
+
+    let [effect, retention] = triggered.effects.flattened_default_effects() else {
+        return None;
+    };
+    let add_mana = effect.downcast_ref::<crate::effects::AddManaEffect>()?;
+    let retain_mana = retention
+        .downcast_ref::<crate::effects::RetainManaUntilEndOfCombatEffect>()?;
+    if !matches!(add_mana.player, PlayerFilter::You)
+        || !matches!(retain_mana.player, PlayerFilter::You)
+        || add_mana.mana.len() != amount
+        || !add_mana
+            .mana
+            .iter()
+            .all(|symbol| matches!(symbol, ManaSymbol::Red))
+    {
+        return None;
+    }
+
+    let mana = "{R}".repeat(amount);
+    Some(format!(
+        "Firebending {amount} (Whenever this creature attacks, add {mana}. This mana lasts until end of combat.)"
+    ))
 }
 
 pub(super) fn granted_ability_self_subject_for_filter(filter: &ObjectFilter) -> &'static str {
@@ -28184,6 +28223,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(prompt) = effect.downcast_ref::<crate::effects::RepeatProcessPromptEffect>() {
         return prompt.description.clone();
     }
+    if effect
+        .downcast_ref::<crate::effects::RetainManaUntilEndOfCombatEffect>()
+        .is_some()
+    {
+        return "This mana lasts until end of combat".to_string();
+    }
     if let Some(retain) = effect.downcast_ref::<crate::effects::RetainManaUntilEndOfTurnEffect>() {
         return match retain.player {
             PlayerFilter::You => {
@@ -31746,6 +31791,14 @@ pub(super) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
         && let Some(battle_cry) = describe_structural_battle_cry_keyword(triggered)
     {
         return Some(battle_cry);
+    }
+    if let AbilityKind::Triggered(triggered) = &ability.kind
+        && let Some(firebending) = render_firebending_keyword(
+            triggered.presentation_label.as_deref().unwrap_or_default(),
+            triggered,
+        )
+    {
+        return Some(firebending);
     }
     if let AbilityKind::Triggered(triggered) = &ability.kind
         && let Some(bushido) = describe_structural_bushido_keyword(triggered)

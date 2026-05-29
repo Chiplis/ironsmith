@@ -363,6 +363,9 @@ pub(crate) fn run_clause_primitives(
             parser: parse_dont_lose_this_mana_as_steps_and_phases_end_clause,
         },
         ClausePrimitive {
+            parser: parse_this_mana_lasts_until_end_of_combat_clause,
+        },
+        ClausePrimitive {
             parser: parse_retarget_clause,
         },
         ClausePrimitive {
@@ -567,6 +570,22 @@ pub(crate) fn parse_dont_lose_this_mana_as_steps_and_phases_end_clause(
     ) {
         return Ok(Some(
             EffectAst::subject_verb_dont_lose_this_mana_as_steps_and_phases_end_this_turn(),
+        ));
+    }
+    Ok(None)
+}
+
+pub(crate) fn parse_this_mana_lasts_until_end_of_combat_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let clause_words = token_word_refs(tokens);
+    if matches!(
+        clause_words.as_slice(),
+        ["this", "mana", "lasts", "until", "end", "of", "combat"]
+            | ["this", "mana", "lasts", "until", "end", "of", "combat", "."]
+    ) {
+        return Ok(Some(
+            EffectAst::subject_verb_this_mana_lasts_until_end_of_combat(),
         ));
     }
     Ok(None)

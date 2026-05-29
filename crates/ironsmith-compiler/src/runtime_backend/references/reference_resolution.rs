@@ -1868,6 +1868,7 @@ fn resolve_effect_result_values_in_fields(
                 resolve_effect_result_value(count, state)?;
             }
             SubjectVerbActionAst::Learn
+            | SubjectVerbActionAst::ThisManaLastsUntilEndOfCombat
             | SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. } => {}
             SubjectVerbActionAst::AdditionalPhases { .. } => {}
         },

@@ -1515,6 +1515,7 @@ where
         crate::effects::PutCountersEffect,
         crate::effects::RemoveCountersEffect,
         crate::effects::ReorderLibraryTopEffect,
+        crate::effects::RetainManaUntilEndOfCombatEffect,
         crate::effects::RetainManaUntilEndOfTurnEffect,
         crate::effects::RetargetStackObjectEffect,
         crate::effects::ReturnAllToBattlefieldEffect,
