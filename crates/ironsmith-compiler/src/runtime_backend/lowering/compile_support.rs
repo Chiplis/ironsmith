@@ -558,6 +558,9 @@ pub(crate) fn compile_condition_from_predicate_ast(
             counter_type: *counter_type,
             count: *count,
         },
+        PredicateAst::SourceHasCountersAtLeast(count) => {
+            Condition::SourceHasCountersAtLeast(*count)
+        }
         PredicateAst::SourceHasAttachmentsMatching {
             filter,
             comparison,

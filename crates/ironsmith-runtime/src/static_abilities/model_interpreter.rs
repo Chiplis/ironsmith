@@ -1023,6 +1023,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::SetChosenColor { filter, display } => {
                 StaticAbility::set_chosen_color(filter.clone(), display.clone())
             }
+            ironsmith_core::StaticAbilityPayload::SetMaximumHandSize { player, amount } => {
+                StaticAbility::set_maximum_hand_size(player.clone(), *amount)
+            }
             ironsmith_core::StaticAbilityPayload::ReduceMaximumHandSize { player, by } => {
                 StaticAbility::reduce_maximum_hand_size(player.clone(), *by)
             }

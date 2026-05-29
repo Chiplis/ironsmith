@@ -202,6 +202,7 @@ pub enum StaticAbilityId {
     CanBeCommander,
     LevelAbilities,
     NoMaximumHandSize,
+    SetMaximumHandSize,
     ReduceMaximumHandSize,
     MaximumHandSizeSevenMinusYourGraveyardCardTypes,
     RevealFirstCardYouDrawEachTurn,
@@ -451,6 +452,7 @@ impl StaticAbilityId {
             | CanBeCommander
             | LevelAbilities
             | NoMaximumHandSize
+            | SetMaximumHandSize
             | ReduceMaximumHandSize
             | MaximumHandSizeSevenMinusYourGraveyardCardTypes
             | RevealFirstCardYouDrawEachTurn

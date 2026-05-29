@@ -14,7 +14,7 @@ use crate::events::zones::EnterBattlefieldEvent;
 use crate::execute_cleanup_step;
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::Phase;
-use crate::ids::CardId;
+use crate::ids::{CardId, ObjectId};
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::object::ObjectKind;
 use crate::static_abilities::StaticAbility;
@@ -36,6 +36,195 @@ fn setup_three_player_game() -> GameState {
         ],
         20,
     )
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn twenty_toed_toad_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_950), "Twenty-Toed Toad")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Frog, Subtype::Wizard])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "Your maximum hand size is twenty.\n\
+             Whenever you attack with two or more creatures, put a +1/+1 counter on this creature and draw a card.\n\
+             Whenever this creature attacks, you win the game if there are twenty or more counters on it or you have twenty or more cards in hand.",
+        )
+        .expect("Twenty-Toed Toad should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_test_cards_in_zone(game: &mut GameState, player: PlayerId, zone: Zone, count: u32) {
+    for index in 0..count {
+        let card = CardBuilder::new(
+            CardId::from_raw(73_000 + index),
+            &format!("Test Card {index}"),
+        )
+        .card_types(vec![CardType::Sorcery])
+        .build();
+        game.create_object_from_card(&card, player, zone);
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn attack_with_toad(
+    game: &mut GameState,
+    toad_id: ObjectId,
+    extra_attacker: Option<ObjectId>,
+) -> TriggerQueue {
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut declarations = vec![AttackerDeclaration {
+        creature: toad_id,
+        target: AttackTarget::Player(bob),
+    }];
+    if let Some(creature) = extra_attacker {
+        declarations.push(AttackerDeclaration {
+            creature,
+            target: AttackTarget::Player(bob),
+        });
+    }
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    apply_attacker_declarations(&mut *game, &mut combat, &mut trigger_queue, &declarations)
+        .expect("Twenty-Toed Toad attack declaration should be legal");
+    trigger_queue
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn twenty_toed_toad_static_ability_sets_maximum_hand_size_to_twenty() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let toad = twenty_toed_toad_definition();
+    game.create_object_from_definition(&toad, alice, Zone::Battlefield);
+
+    game.update_cant_effects();
+
+    assert_eq!(game.player(alice).unwrap().max_hand_size, 20);
+    assert_eq!(game.player(bob).unwrap().max_hand_size, 7);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn twenty_toed_toad_two_creature_attack_puts_counter_and_draws() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let toad = twenty_toed_toad_definition();
+    let toad_id = game.create_object_from_definition(&toad, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(toad_id);
+    put_test_cards_in_zone(&mut game, alice, Zone::Library, 1);
+
+    let helper = CardBuilder::new(CardId::from_raw(73_100), "Helper Attacker")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let helper_id = game.create_object_from_card(&helper, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(helper_id);
+
+    let mut trigger_queue = attack_with_toad(&mut game, toad_id, Some(helper_id));
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Twenty-Toed Toad attack triggers should go on stack");
+    assert_eq!(
+        game.stack.len(),
+        2,
+        "toad attacking with another creature below the win threshold should still create both attack triggers"
+    );
+
+    while !game.stack.is_empty() {
+        resolve_stack_entry(&mut game).expect("Twenty-Toed Toad trigger should resolve");
+    }
+
+    assert_eq!(
+        game.counter_count(toad_id, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "two-creature attack trigger should put a +1/+1 counter on Twenty-Toed Toad"
+    );
+    assert_eq!(
+        game.player(alice).unwrap().hand.len(),
+        1,
+        "two-creature attack trigger should draw one card"
+    );
+    assert!(
+        !game.player(bob).unwrap().has_lost,
+        "Twenty-Toed Toad should not win below both twenty-card and twenty-counter thresholds"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn twenty_toed_toad_win_trigger_checks_cards_in_hand_and_counters() {
+    let mut below_threshold = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let toad = twenty_toed_toad_definition();
+    let toad_id = below_threshold.create_object_from_definition(&toad, alice, Zone::Battlefield);
+    below_threshold.remove_summoning_sickness(toad_id);
+    put_test_cards_in_zone(&mut below_threshold, alice, Zone::Hand, 19);
+
+    let mut trigger_queue = attack_with_toad(&mut below_threshold, toad_id, None);
+    put_triggers_on_stack(&mut below_threshold, &mut trigger_queue)
+        .expect("Twenty-Toed Toad attack trigger should go on stack");
+    assert_eq!(
+        below_threshold.stack.len(),
+        1,
+        "Twenty-Toed Toad's win trigger should still go on stack below the resolution threshold"
+    );
+    while !below_threshold.stack.is_empty() {
+        resolve_stack_entry(&mut below_threshold).expect("below-threshold trigger should resolve");
+    }
+    assert!(
+        !below_threshold.player(bob).unwrap().has_lost,
+        "nineteen cards and fewer than twenty counters should not satisfy Twenty-Toed Toad"
+    );
+
+    let mut cards_threshold = setup_game();
+    let toad = twenty_toed_toad_definition();
+    let toad_id = cards_threshold.create_object_from_definition(&toad, alice, Zone::Battlefield);
+    cards_threshold.remove_summoning_sickness(toad_id);
+    put_test_cards_in_zone(&mut cards_threshold, alice, Zone::Hand, 20);
+
+    let mut trigger_queue = attack_with_toad(&mut cards_threshold, toad_id, None);
+    put_triggers_on_stack(&mut cards_threshold, &mut trigger_queue)
+        .expect("Twenty-Toed Toad card-threshold trigger should go on stack");
+    while !cards_threshold.stack.is_empty() {
+        resolve_stack_entry(&mut cards_threshold).expect("card-threshold trigger should resolve");
+    }
+    assert!(
+        cards_threshold.player(bob).unwrap().has_lost,
+        "twenty cards in hand should satisfy Twenty-Toed Toad's win trigger"
+    );
+
+    let mut counters_threshold = setup_game();
+    let toad = twenty_toed_toad_definition();
+    let toad_id =
+        counters_threshold.create_object_from_definition(&toad, alice, Zone::Battlefield);
+    counters_threshold.remove_summoning_sickness(toad_id);
+    counters_threshold
+        .add_counters(toad_id, crate::object::CounterType::PlusOnePlusOne, 20)
+        .expect("test should add counters to Twenty-Toed Toad");
+
+    let mut trigger_queue = attack_with_toad(&mut counters_threshold, toad_id, None);
+    put_triggers_on_stack(&mut counters_threshold, &mut trigger_queue)
+        .expect("Twenty-Toed Toad counter-threshold trigger should go on stack");
+    while !counters_threshold.stack.is_empty() {
+        resolve_stack_entry(&mut counters_threshold)
+            .expect("counter-threshold trigger should resolve");
+    }
+    assert!(
+        counters_threshold.player(bob).unwrap().has_lost,
+        "twenty counters should satisfy Twenty-Toed Toad's win trigger"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

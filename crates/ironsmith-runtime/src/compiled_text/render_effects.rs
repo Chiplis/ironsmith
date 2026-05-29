@@ -28821,6 +28821,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return describe_false_only_conditional(&conditional.condition, &false_branch);
         }
         if false_branch.is_empty() {
+            if true_branch.eq_ignore_ascii_case("you win the game") {
+                return format!(
+                    "You win the game if {}",
+                    describe_condition(&conditional.condition)
+                );
+            }
             return format!(
                 "If {}, {}",
                 describe_condition(&conditional.condition),

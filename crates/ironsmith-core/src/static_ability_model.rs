@@ -254,6 +254,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         filter: ObjectFilter,
         display: String,
     },
+    SetMaximumHandSize {
+        player: PlayerFilter,
+        amount: u32,
+    },
     ReduceMaximumHandSize {
         player: PlayerFilter,
         by: u32,
@@ -957,6 +961,9 @@ where
             }
             StaticAbilityPayload::SetChosenColor { filter, display } => {
                 StaticAbilityPayload::SetChosenColor { filter, display }
+            }
+            StaticAbilityPayload::SetMaximumHandSize { player, amount } => {
+                StaticAbilityPayload::SetMaximumHandSize { player, amount }
             }
             StaticAbilityPayload::ReduceMaximumHandSize { player, by } => {
                 StaticAbilityPayload::ReduceMaximumHandSize { player, by }
@@ -2516,6 +2523,13 @@ impl<
             id: Some(StaticAbilityId::ReduceMaximumHandSize),
             label: "reduce maximum hand size".into(),
             payload: StaticAbilityPayload::ReduceMaximumHandSize { player, by },
+        }
+    }
+    pub fn set_maximum_hand_size(player: PlayerFilter, amount: u32) -> Self {
+        Self {
+            id: Some(StaticAbilityId::SetMaximumHandSize),
+            label: "set maximum hand size".into(),
+            payload: StaticAbilityPayload::SetMaximumHandSize { player, amount },
         }
     }
     pub fn equipment_grant(abilities: Vec<StaticAbility<T, E, C, Cond>>) -> Self {

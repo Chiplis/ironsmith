@@ -10675,23 +10675,28 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         },
         Condition::LifeTotalOrLess(n) => format!("your life total is {n} or less"),
         Condition::LifeTotalOrGreater(n) => format!("your life total is {n} or greater"),
-        Condition::CardsInHandOrMore(n) => format!("you have {n} or more cards in hand"),
+        Condition::CardsInHandOrMore(n) => {
+            let count = number_word(*n).unwrap_or_else(|| n.to_string());
+            format!("you have {count} or more cards in hand")
+        }
         Condition::PlayerCardsInHandOrMore { player, count } => {
             let subject = describe_player_filter(player);
+            let count_text = number_word(*count).unwrap_or_else(|| count.to_string());
             format!(
                 "{} {} {} or more cards in hand",
                 subject,
                 player_verb(&subject, "have", "has"),
-                count
+                count_text
             )
         }
         Condition::PlayerCardsInHandOrFewer { player, count } => {
             let subject = describe_player_filter(player);
+            let count_text = number_word(*count).unwrap_or_else(|| count.to_string());
             format!(
                 "{} {} {} or fewer cards in hand",
                 subject,
                 player_verb(&subject, "have", "has"),
-                count
+                count_text
             )
         }
         Condition::PlayerHasMoreCardsInHandThanYou { player } => {
@@ -10915,6 +10920,10 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                     counter_type.description()
                 )
             }
+        }
+        Condition::SourceHasCountersAtLeast(count) => {
+            let count_text = small_number_word(*count).unwrap_or_else(|| count.to_string());
+            format!("there are {count_text} or more counters on it")
         }
         Condition::SourcePowerAtLeast(min_power) => {
             format!("this has power {min_power} or greater")

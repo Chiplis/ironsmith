@@ -847,6 +847,11 @@ fn evaluate_condition_shared_core(
                 .map(|obj| obj.counters.get(counter_type).copied().unwrap_or(0) >= *count)
                 .unwrap_or(false),
         ),
+        Condition::SourceHasCountersAtLeast(count) => Some(
+            game.object(ctx.source)
+                .map(|obj| obj.counters.values().copied().sum::<u32>() >= *count)
+                .unwrap_or(false),
+        ),
         Condition::SourcePowerAtLeast(min_power) => Some(
             game.calculated_power(ctx.source)
                 .or_else(|| game.object(ctx.source).and_then(|obj| obj.power()))
@@ -968,6 +973,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::SourceMatches(..) => {}
         Condition::SourceHasNoCounter(..) => {}
         Condition::SourceHasCounterAtLeast { .. } => {}
+        Condition::SourceHasCountersAtLeast(..) => {}
         Condition::SourcePowerAtLeast(..) => {}
         Condition::SourceDealtCombatDamageToPlayerThisTurn => {}
         Condition::SourceAttackedOrBlockedThisTurn => {}
@@ -1764,6 +1770,9 @@ pub fn evaluate_condition_external(
             .calculated_power(ctx.source)
             .or_else(|| game.object(ctx.source).and_then(|obj| obj.power()))
             .is_some_and(|power| power >= *min_power as i32),
+        Condition::SourceHasCountersAtLeast(count) => game
+            .object(ctx.source)
+            .is_some_and(|obj| obj.counters.values().copied().sum::<u32>() >= *count),
         Condition::SourceIsUntapped => !game.is_tapped(ctx.source),
         Condition::SourceIsAttacking => game
             .combat
@@ -2522,6 +2531,7 @@ fn evaluate_condition_simple(
         | Condition::SpellsWereCastLastTurnOrMore(_)
         | Condition::SourceHasNoCounter(_)
         | Condition::SourceHasCounterAtLeast { .. }
+        | Condition::SourceHasCountersAtLeast(_)
         | Condition::SourceIsInZone(_)
         | Condition::ManaSpentToCastThisSpellAtLeast { .. }
         | Condition::SameColorManaSpentToCastThisSpellAtLeast(_)
@@ -3268,6 +3278,9 @@ fn evaluate_condition(
             .calculated_power(ctx.source)
             .or_else(|| game.object(ctx.source).and_then(|obj| obj.power()))
             .is_some_and(|power| power >= *min_power as i32)),
+        Condition::SourceHasCountersAtLeast(count) => Ok(game
+            .object(ctx.source)
+            .is_some_and(|obj| obj.counters.values().copied().sum::<u32>() >= *count)),
         Condition::SourceAttackedOrBlockedThisTurn => Ok(game
             .creature_attacked_this_turn(ctx.source)
             || game.creature_blocked_this_turn(ctx.source)),

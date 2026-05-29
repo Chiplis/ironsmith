@@ -129,6 +129,16 @@ impl AttacksTrigger {
     }
 }
 
+fn pluralize_attack_subject(subject: &str) -> String {
+    if subject == "creature" {
+        return "creatures".to_string();
+    }
+    if let Some(rest) = subject.strip_prefix("creature ") {
+        return format!("creatures {rest}");
+    }
+    subject.to_string()
+}
+
 impl TriggerMatcher for AttacksTrigger {
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
         if event.kind() != EventKind::CreatureAttacked {
@@ -170,9 +180,16 @@ impl TriggerMatcher for AttacksTrigger {
 
         if self.one_or_more {
             if self.min_total_attackers > 1 {
+                let min_total = ironsmith_core::cardinal_word(self.min_total_attackers as u32)
+                    .unwrap_or_else(|| self.min_total_attackers.to_string());
+                if let Some(controlled_subject) = subject.strip_suffix(" you control") {
+                    return format!(
+                        "Whenever you attack with {min_total} or more {}",
+                        pluralize_attack_subject(controlled_subject)
+                    );
+                }
                 return format!(
-                    "Whenever {} or more {subject} attack",
-                    self.min_total_attackers
+                    "Whenever {min_total} or more {subject} attack",
                 );
             }
             return format!("Whenever one or more {subject} attack");

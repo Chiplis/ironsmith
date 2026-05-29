@@ -32192,6 +32192,61 @@ fn parse_each_opponents_maximum_hand_size_reduced_static_line() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn twenty_toed_toad_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Twenty-Toed Toad");
+
+    let has_set_max_hand_size = def.abilities.iter().any(|ability| {
+        matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::SetMaximumHandSize
+        )
+    });
+    assert!(
+        has_set_max_hand_size,
+        "Twenty-Toed Toad should compile its exact maximum hand size as a static ability"
+    );
+
+    let win_trigger = def.abilities.iter().find_map(|ability| match &ability.kind {
+        AbilityKind::Triggered(triggered) => {
+            format!("{:?}", triggered.trigger)
+                .contains("ThisAttacksTrigger")
+                .then_some(triggered)
+        }
+        _ => None,
+    });
+    let win_trigger = win_trigger.expect("Twenty-Toed Toad should have a this-attacks win trigger");
+    assert!(
+        win_trigger.intervening_if.is_none(),
+        "Twenty-Toed Toad's trailing win condition should be checked on resolution, not as an intervening-if trigger gate"
+    );
+    let win_effects_debug = format!("{:?}", win_trigger.effects);
+    assert!(
+        win_effects_debug.contains("ConditionalEffect")
+            && win_effects_debug.contains("WinTheGameEffect"),
+        "Twenty-Toed Toad's win trigger should compile to a conditional win effect, got {win_effects_debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Your maximum hand size is twenty."),
+        "expected Twenty-Toed Toad compiled text to include exact maximum hand size, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Whenever you attack with 2 or more creatures")
+            || rendered.contains("Whenever you attack with two or more creatures"),
+        "expected Twenty-Toed Toad compiled text to include the attack threshold trigger, got {rendered}"
+    );
+    assert!(
+        rendered.contains("twenty or more counters")
+            || rendered.contains("20 or more counters")
+            || rendered.contains("20 or more cards in hand"),
+        "expected Twenty-Toed Toad compiled text to include its alternate-win condition, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_exile_top_x_until_end_of_your_next_turn_may_play_those_cards() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Commune with Lava Variant")
         .card_types(vec![CardType::Instant])

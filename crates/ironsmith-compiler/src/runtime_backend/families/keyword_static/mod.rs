@@ -8445,16 +8445,7 @@ pub(crate) fn parse_reduced_maximum_hand_size_line(
             return Ok(None);
         }
 
-        if amount <= 7 {
-            return Ok(Some(StaticAbility::reduce_maximum_hand_size(
-                player,
-                7 - amount,
-            )));
-        }
-        return Err(CardTextError::ParseError(format!(
-            "unsupported maximum-hand-size increase clause (clause: '{}')",
-            line_words.join(" ")
-        )));
+        return Ok(Some(StaticAbility::set_maximum_hand_size(player, amount)));
     }
     Ok(None)
 }
