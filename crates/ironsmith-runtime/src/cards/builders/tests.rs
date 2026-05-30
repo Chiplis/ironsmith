@@ -46915,6 +46915,211 @@ fn parse_etali_attack_exiles_each_players_top_card_and_casts_any_number() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn villainous_wealth_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Villainous Wealth");
+
+    let spell_debug = format!("{:?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("ExileTopOfLibraryEffect")
+            && spell_debug.contains("ForEachObject")
+            && spell_debug.contains("CastTaggedEffect")
+            && spell_debug.contains("LessThanOrEqualExpr")
+            && spell_debug.contains("X"),
+        "expected Villainous Wealth to lower to exile-top plus mana-value-capped free casts, got {spell_debug}"
+    );
+
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("target opponent exiles the top x cards of their library")
+            && rendered.contains("you may cast any number of spells with mana value x or less from among them without paying their mana costs"),
+        "expected Villainous Wealth compiled text to preserve the capped any-number free-cast clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn villainous_wealth_runtime_casts_only_exiled_nonland_spells_with_mana_value_at_most_x() {
+    let def = parse_oracle_card_definition("Villainous Wealth");
+    let spell = def
+        .spell_effect
+        .as_ref()
+        .expect("Villainous Wealth should produce spell effects")
+        .clone();
+
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    game.object_mut(source)
+        .expect("Villainous Wealth source should exist")
+        .x_value = Some(3);
+
+    game.create_object_from_card(
+        &crate::card::CardBuilder::new(CardId::from_raw(80_001), "Bottom Filler")
+            .card_types(vec![CardType::Artifact])
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+            .build(),
+        bob,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &crate::card::CardBuilder::new(CardId::from_raw(80_002), "Cheap Sorcery")
+            .card_types(vec![CardType::Sorcery])
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+            .build(),
+        bob,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &crate::card::CardBuilder::new(CardId::from_raw(80_003), "Expensive Sorcery")
+            .card_types(vec![CardType::Sorcery])
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+            .build(),
+        bob,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &crate::card::CardBuilder::new(CardId::from_raw(80_004), "Forest")
+            .card_types(vec![CardType::Land])
+            .subtypes(vec![Subtype::Forest])
+            .build(),
+        bob,
+        Zone::Library,
+    );
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let target_assignment = crate::game_state::TargetAssignment {
+        spec: ChooseSpec::Player(PlayerFilter::Opponent),
+        range: 0..1,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_x(3)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)])
+        .with_target_assignments(vec![target_assignment.clone()]);
+
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &spell,
+        None,
+        &[target_assignment],
+    )
+    .expect("Villainous Wealth should resolve");
+
+    let stack_names: Vec<_> = game
+        .stack
+        .iter()
+        .filter_map(|entry| game.object(entry.object_id).map(|obj| obj.name.clone()))
+        .collect();
+    assert!(
+        stack_names.iter().any(|name| name == "Cheap Sorcery"),
+        "the exiled spell with mana value at most X should be cast without paying mana, got stack {stack_names:?}"
+    );
+    assert!(
+        !stack_names.iter().any(|name| name == "Expensive Sorcery")
+            && !stack_names.iter().any(|name| name == "Forest"),
+        "expensive spells and lands should not be cast by Villainous Wealth, got stack {stack_names:?}"
+    );
+
+    let exile_names: Vec<_> = game
+        .exile
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .collect();
+    assert!(
+        exile_names.iter().any(|name| name == "Expensive Sorcery")
+            && exile_names.iter().any(|name| name == "Forest"),
+        "nonmatching exiled cards should remain in exile, got {exile_names:?}"
+    );
+
+    let library_names: Vec<_> = game
+        .player(bob)
+        .expect("bob exists")
+        .library
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .collect();
+    assert_eq!(
+        library_names,
+        vec!["Bottom Filler".to_string()],
+        "only the top X cards should be exiled from the target opponent, got library {library_names:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn villainous_wealth_runtime_may_decline_casting_exiled_spells() {
+    let def = parse_oracle_card_definition("Villainous Wealth");
+    let spell = def
+        .spell_effect
+        .as_ref()
+        .expect("Villainous Wealth should produce spell effects")
+        .clone();
+
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+
+    game.create_object_from_card(
+        &crate::card::CardBuilder::new(CardId::from_raw(80_011), "Declined Sorcery")
+            .card_types(vec![CardType::Sorcery])
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+            .build(),
+        bob,
+        Zone::Library,
+    );
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let target_assignment = crate::game_state::TargetAssignment {
+        spec: ChooseSpec::Player(PlayerFilter::Opponent),
+        range: 0..1,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_x(1)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)])
+        .with_target_assignments(vec![target_assignment.clone()]);
+
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &spell,
+        None,
+        &[target_assignment],
+    )
+    .expect("Villainous Wealth should resolve when its may choice is declined");
+
+    let stack_names: Vec<_> = game
+        .stack
+        .iter()
+        .filter_map(|entry| game.object(entry.object_id).map(|obj| obj.name.clone()))
+        .collect();
+    assert!(
+        !stack_names.iter().any(|name| name == "Declined Sorcery"),
+        "declining Villainous Wealth's may choice should not cast the exiled spell, got stack {stack_names:?}"
+    );
+    assert!(
+        game.exile.iter().any(|&id| game
+            .object(id)
+            .is_some_and(|obj| obj.name == "Declined Sorcery")),
+        "declined spell should remain exiled"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_day_of_black_sun_destroy_those_creatures_reuses_ability_loss_filter() {
     let def = parse_oracle_card_definition("Day of Black Sun");
 

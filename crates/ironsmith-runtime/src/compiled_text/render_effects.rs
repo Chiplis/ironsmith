@@ -9508,6 +9508,72 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             )
         }
 
+        fn render_exile_top_then_cast_any_number_with_mana_value_cap(
+            effects: &[&Effect],
+        ) -> Option<String> {
+            let [exile_effect, may_effect] = effects else {
+                return None;
+            };
+            let exile_top = exile_effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
+            if !matches!(
+                exile_top.player,
+                PlayerFilter::Target(ref target) if **target == PlayerFilter::Opponent
+            ) || exile_top.moved_tags.len() != 1
+            {
+                return None;
+            }
+            let exiled_tag = &exile_top.moved_tags[0];
+
+            let outer_may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+            if outer_may.decider != Some(PlayerFilter::You) || outer_may.effects.len() != 1 {
+                return None;
+            }
+            let for_each = outer_may.effects[0].downcast_ref::<crate::effects::ForEachObject>()?;
+            if for_each.filter.zone != Some(Zone::Exile)
+                || !for_each
+                    .filter
+                    .excluded_card_types
+                    .contains(&crate::types::CardType::Land)
+                || !for_each.filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.tag == *exiled_tag
+                        && constraint.relation
+                            == crate::target::TaggedOpbjectRelation::IsTaggedObject
+                })
+            {
+                return None;
+            }
+            let mana_value = match &for_each.filter.mana_value {
+                Some(crate::filter::Comparison::LessThanOrEqual(value)) => value.to_string(),
+                Some(crate::filter::Comparison::LessThanOrEqualExpr(value)) => {
+                    describe_value(value)
+                }
+                _ => return None,
+            };
+
+            let [inner_may_effect] = for_each.effects.as_slice() else {
+                return None;
+            };
+            let inner_may = inner_may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+            let [cast_effect] = inner_may.effects.as_slice() else {
+                return None;
+            };
+            let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>()?;
+            if cast.tag.as_str() != "__it__"
+                || cast.player != PlayerFilter::You
+                || cast.allow_land
+                || cast.as_copy
+                || !cast.without_paying_mana_cost
+                || cast.cost_reduction.is_some()
+            {
+                return None;
+            }
+
+            let count_text = describe_value(&exile_top.count);
+            Some(format!(
+                "Target opponent exiles the top {count_text} cards of their library. You may cast any number of spells with mana value {mana_value} or less from among them without paying their mana costs"
+            ))
+        }
+
         fn render_sacrifice_then_consult_reveal_put_battlefield_rest_bottom(
             effects: &[&Effect],
         ) -> Option<String> {
@@ -11094,6 +11160,17 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         }
         if idx + 1 < filtered.len()
             && let Some(rendered) = describe_reveal_top_to_hand_bundle(&filtered[idx..idx + 2])
+        {
+            parts.push(rendered);
+            idx += 2;
+            continue;
+        }
+
+        if idx + 1 < filtered.len()
+            && let Some(rendered) = render_exile_top_then_cast_any_number_with_mana_value_cap(&[
+                filtered[idx],
+                filtered[idx + 1],
+            ])
         {
             parts.push(rendered);
             idx += 2;
