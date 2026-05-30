@@ -2591,6 +2591,23 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::YouAttackedThisTurn);
     }
 
+    if filtered.len() == 9
+        && filtered[0] == "you"
+        && filtered[1] == "attacked"
+        && filtered[2] == "with"
+        && filtered[4] == "or"
+        && filtered[5] == "more"
+        && matches!(filtered[6], "creature" | "creatures")
+        && filtered[7] == "this"
+        && filtered[8] == "turn"
+        && let Some(count) = parse_named_number(filtered[3])
+    {
+        return Ok(PredicateAst::PlayerAttackedWithCreaturesThisTurnOrMore {
+            player: PlayerAst::You,
+            count,
+        });
+    }
+
     if matches!(
         filtered.as_slice(),
         ["that", "creature", "had", "to", "attack", "this", "combat"]

@@ -12,6 +12,7 @@ use super::grammar::filters::{
     parse_spell_filter_with_grammar_entrypoint_lexed,
 };
 use super::grammar::primitives as grammar;
+use super::grammar::structure::split_trailing_if_clause_lexed;
 use super::grammar::values::parse_value_comparison_tokens;
 use super::lexer::{
     LexStream, LexedClause, OwnedLexToken, TokenKind, token_word_refs, trim_lexed_commas,
@@ -1513,6 +1514,16 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
 
     if let Some(effect) = parse_cast_with_tagged_mana_value_limit_clause(&trimmed)? {
         return Ok(Some(effect));
+    }
+
+    if let Some(trailing_if) = split_trailing_if_clause_lexed(&trimmed)
+        && let Some(base_effect) = parse_cast_or_play_tagged_clause(trailing_if.leading_tokens)?
+    {
+        return Ok(Some(EffectAst::Conditional {
+            predicate: trailing_if.predicate,
+            if_true: vec![base_effect],
+            if_false: Vec::new(),
+        }));
     }
 
     let conditional_tagged_permission = parse_permission_lead_tokens(&trimmed)

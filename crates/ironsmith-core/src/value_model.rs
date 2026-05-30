@@ -692,6 +692,10 @@ pub enum Condition {
         player: PlayerFilter,
         count: u32,
     },
+    PlayerAttackedWithCreaturesThisTurnOrMore {
+        player: PlayerFilter,
+        count: u32,
+    },
     AttackedThisTurn,
     OpponentLostLifeThisTurn,
     PermanentLeftBattlefieldThisTurn,

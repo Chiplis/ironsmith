@@ -1041,6 +1041,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::And(..) => {}
         Condition::Or(..) => {}
         Condition::PlayerCastSpellsThisTurnOrMore { .. } => {}
+        Condition::PlayerAttackedWithCreaturesThisTurnOrMore { .. } => {}
         Condition::PlayerTappedLandForManaThisTurn { .. } => {}
         Condition::PlayerGainedLifeThisTurnOrMore { .. } => {}
         Condition::PlayerHadLandEnterBattlefieldThisTurn { .. } => {}
@@ -1198,6 +1199,13 @@ pub fn evaluate_condition_external(
                 .map(|pid| game.turn_store.turn_history.spells_cast_by_player(*pid))
                 .sum();
             cast_count >= *count
+        }
+        Condition::PlayerAttackedWithCreaturesThisTurnOrMore { player, count } => {
+            matching_condition_players_external(game, ctx, player)
+                .into_iter()
+                .any(|player_id| {
+                    game.player_attacked_with_creatures_this_turn_or_more(player_id, *count)
+                })
         }
         Condition::PlayerTappedLandForManaThisTurn { player } => {
             let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
@@ -2436,6 +2444,13 @@ fn evaluate_condition_simple(
                 .sum();
             cast_count >= *count
         }
+        Condition::PlayerAttackedWithCreaturesThisTurnOrMore { player, count } => {
+            matching_condition_players_simple(game, controller, player)
+                .into_iter()
+                .any(|player_id| {
+                    game.player_attacked_with_creatures_this_turn_or_more(player_id, *count)
+                })
+        }
         Condition::PlayerTappedLandForManaThisTurn { player } => {
             let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
                 return false;
@@ -3091,6 +3106,13 @@ fn evaluate_condition(
                 .map(|pid| game.turn_store.turn_history.spells_cast_by_player(*pid))
                 .sum();
             Ok(cast_count >= *count)
+        }
+        Condition::PlayerAttackedWithCreaturesThisTurnOrMore { player, count } => {
+            Ok(matching_condition_players_exec(game, ctx, player)?
+                .into_iter()
+                .any(|player_id| {
+                    game.player_attacked_with_creatures_this_turn_or_more(player_id, *count)
+                }))
         }
         Condition::PlayerTappedLandForManaThisTurn { player } => {
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;

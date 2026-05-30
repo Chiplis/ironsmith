@@ -486,6 +486,13 @@ pub(crate) fn compile_condition_from_predicate_ast(
                 count: *count,
             }
         }
+        PredicateAst::PlayerAttackedWithCreaturesThisTurnOrMore { player, count } => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::PlayerAttackedWithCreaturesThisTurnOrMore {
+                player,
+                count: *count,
+            }
+        }
         PredicateAst::OpponentLostLifeThisTurn => Condition::OpponentLostLifeThisTurn,
         PredicateAst::YouHaveNoCardsInHand => {
             Condition::Not(Box::new(Condition::CardsInHandOrMore(1)))

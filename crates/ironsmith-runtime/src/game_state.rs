@@ -7256,6 +7256,55 @@ impl GameState {
             .unwrap_or(0)
     }
 
+    pub fn player_attacked_with_creatures_this_turn_or_more(
+        &self,
+        player: PlayerId,
+        count: u32,
+    ) -> bool {
+        let required = count as usize;
+        if required == 0 {
+            return true;
+        }
+
+        let max_recorded_attackers = self
+            .turn_store
+            .turn_history
+            .event_records
+            .iter()
+            .chain(self.turn_store.turn_history.staged_event_records.iter())
+            .filter_map(|record| {
+                let attacked = record
+                    .event
+                    .downcast::<crate::events::combat::CreatureAttackedEvent>()?;
+                let controller_matches = record
+                    .object_snapshot
+                    .as_ref()
+                    .is_some_and(|snapshot| snapshot.controller == player)
+                    || record.object_snapshot.is_none()
+                        && self
+                            .object(attacked.attacker)
+                            .is_some_and(|object| self.controller_of(object) == player);
+                controller_matches.then_some(attacked.total_attackers)
+            })
+            .max()
+            .unwrap_or(0);
+        if max_recorded_attackers >= required {
+            return true;
+        }
+
+        self.turn_store
+            .turn_history
+            .creatures_attacked_this_turn
+            .iter()
+            .filter(|creature| {
+                self.object(**creature)
+                    .is_some_and(|object| self.controller_of(object) == player)
+            })
+            .take(required)
+            .count()
+            >= required
+    }
+
     /// Record an explicit combat damage assignment for the next combat damage step.
     pub fn set_combat_damage_assignment(
         &mut self,

@@ -10847,6 +10847,12 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 count_text
             )
         }
+        Condition::PlayerAttackedWithCreaturesThisTurnOrMore { player, count } => {
+            let subject = describe_player_filter(player);
+            let count_text = small_number_word(*count)
+                .unwrap_or_else(|| count.to_string());
+            format!("{subject} attacked with {count_text} or more creatures this turn")
+        }
         Condition::AttackedThisTurn => "you attacked this turn".to_string(),
         Condition::OpponentLostLifeThisTurn => {
             "an opponent was dealt damage this turn".to_string()
