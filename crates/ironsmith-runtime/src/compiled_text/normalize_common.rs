@@ -11840,6 +11840,26 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 );
             }
             if let (
+                Value::MaxCardsDrawnThisTurn(player),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(count),
+            ) = (left, operator, right)
+                && *count >= 0
+            {
+                let count_text =
+                    small_number_word(*count as u32).unwrap_or_else(|| count.to_string());
+                let subject = match player {
+                    PlayerFilter::You => "you've".to_string(),
+                    PlayerFilter::Opponent | PlayerFilter::NotYou => "an opponent has".to_string(),
+                    PlayerFilter::Any => "a player has".to_string(),
+                    _ => {
+                        let described = describe_player_filter(player);
+                        format!("{} {}", described, player_verb(&described, "have", "has"))
+                    }
+                };
+                return format!("{subject} drawn {count_text} or more cards this turn");
+            }
+            if let (
                 Value::Count(filter),
                 crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                 Value::Fixed(count),

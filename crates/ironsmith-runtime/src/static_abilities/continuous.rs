@@ -1103,6 +1103,22 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             )
         }
         crate::ConditionExpr::ValueComparison {
+            left: Value::MaxCardsDrawnThisTurn(player),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(count),
+        } if *count >= 0 => {
+            let count_text = number_word_u32(*count as u32).unwrap_or_else(|| count.to_string());
+            let subject = match player {
+                crate::target::PlayerFilter::You => "you've".to_string(),
+                crate::target::PlayerFilter::Opponent | crate::target::PlayerFilter::NotYou => {
+                    "an opponent has".to_string()
+                }
+                crate::target::PlayerFilter::Any => "a player has".to_string(),
+                _ => format!("{} has", describe_static_player(player)),
+            };
+            format!("as long as {subject} drawn {count_text} or more cards this turn")
+        }
+        crate::ConditionExpr::ValueComparison {
             left,
             operator,
             right,
