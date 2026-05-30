@@ -1908,6 +1908,23 @@ fn test_parse_eelectrocute_roll_six_graveyard_cast_condition_and_exile_clause() 
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_squee_the_immortal_graveyard_or_exile_cast_permission() {
+    assert_oracle_card_parses_strict("Squee, the Immortal");
+    let def = parse_oracle_card_definition("Squee, the Immortal");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let debug = format!("{def:#?}");
+
+    assert!(
+        rendered.contains("You may cast this card from your graveyard or from exile")
+            && debug.contains("grantable: PlayFrom")
+            && debug.contains("zone: Graveyard")
+            && debug.contains("zone: Exile"),
+        "expected Squee to parse into source play-from-graveyard and play-from-exile grants, got rendered={rendered}; debug={debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_max_speed_draw_replacement_static_ability() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Vnwxt Parse Test")
         .card_types(vec![CardType::Creature])

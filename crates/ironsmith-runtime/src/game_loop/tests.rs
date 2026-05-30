@@ -24492,6 +24492,146 @@ fn test_marang_river_prowler_castable_from_graveyard_with_green_permanent() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn squee_the_immortal_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_616), "Squee, the Immortal")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .supertypes(vec![Supertype::Legendary])
+        .subtypes(vec![Subtype::Goblin])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .parse_text("You may cast this card from your graveyard or from exile.")
+        .expect("Squee, the Immortal should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_squee_the_immortal_castable_from_graveyard() {
+    use crate::alternative_cast::CastingMethod;
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 3);
+
+    let squee = squee_the_immortal_definition();
+    let squee_id = game.create_object_from_definition(&squee, alice, Zone::Graveyard);
+
+    assert!(
+        game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            squee_id,
+            Zone::Graveyard,
+            alice,
+        ),
+        "Squee should grant permission to cast itself from graveyard"
+    );
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Graveyard,
+                casting_method: CastingMethod::PlayFrom { use_alternative: None, .. },
+            } if *spell_id == squee_id
+        )),
+        "Squee should expose a normal-cost cast action from graveyard; got {actions:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_squee_the_immortal_castable_from_exile() {
+    use crate::alternative_cast::CastingMethod;
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 3);
+
+    let squee = squee_the_immortal_definition();
+    let squee_id = game.create_object_from_definition(&squee, alice, Zone::Exile);
+
+    assert!(
+        game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            squee_id,
+            Zone::Exile,
+            alice,
+        ),
+        "Squee should grant permission to cast itself from exile"
+    );
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Exile,
+                casting_method: CastingMethod::PlayFrom { use_alternative: None, .. },
+            } if *spell_id == squee_id
+        )),
+        "Squee should expose a normal-cost cast action from exile; got {actions:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_squee_the_immortal_not_castable_from_unlisted_zone() {
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 3);
+
+    let squee = squee_the_immortal_definition();
+    let squee_id = game.create_object_from_definition(&squee, alice, Zone::Library);
+
+    assert!(
+        !game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            squee_id,
+            Zone::Library,
+            alice,
+        ),
+        "Squee should not grant permission from library"
+    );
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        !actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell { spell_id, .. } if *spell_id == squee_id
+        )),
+        "Squee should not be castable from library; got {actions:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn eelectrocute_definition() -> crate::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(72_615), "Eelectrocute")
         .mana_cost(ManaCost::from_pips(vec![

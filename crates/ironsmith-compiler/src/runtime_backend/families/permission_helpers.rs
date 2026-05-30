@@ -913,6 +913,21 @@ pub(crate) fn parse_permission_clause_spec_lexed(
 
     if matches!(
         rest_words.as_slice(),
+        ["this", "card", "from", "exile"] | ["this", "spell", "from", "exile"]
+    ) {
+        return Ok(Some(PermissionClauseSpec::GrantBySpec {
+            player,
+            spec: crate::grant::GrantSpec::new(
+                crate::grant::Grantable::play_from(),
+                ObjectFilter::source(),
+                Zone::Exile,
+            ),
+            lifetime: PermissionLifetime::Static,
+        }));
+    }
+
+    if matches!(
+        rest_words.as_slice(),
         [
             "this",
             "card",
@@ -1047,6 +1062,8 @@ pub(crate) fn parse_permission_clause_spec_lexed(
                 Some(Zone::Library)
             } else if word_slice_eq(&zone_words, &["from", "your", "graveyard"]) {
                 Some(Zone::Graveyard)
+            } else if word_slice_eq(&zone_words, &["from", "exile"]) {
+                Some(Zone::Exile)
             } else {
                 None
             };

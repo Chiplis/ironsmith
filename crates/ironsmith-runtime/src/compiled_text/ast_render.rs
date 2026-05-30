@@ -1345,6 +1345,28 @@ fn describe_structural_rampage_pair(first: &Ability, second: &Ability) -> Option
     Some(format!("Rampage {amount}"))
 }
 
+fn describe_structural_graveyard_or_exile_cast_pair(
+    first: &Ability,
+    second: &Ability,
+) -> Option<String> {
+    fn play_from_source_zone(ability: &Ability) -> Option<Zone> {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return None;
+        };
+        let spec = static_ability.grant_spec()?;
+        (matches!(spec.grantable, crate::grant::Grantable::PlayFrom)
+            && spec.filter == crate::target::ObjectFilter::source())
+        .then_some(spec.zone)
+    }
+
+    match (play_from_source_zone(first), play_from_source_zone(second)) {
+        (Some(Zone::Graveyard), Some(Zone::Exile)) | (Some(Zone::Exile), Some(Zone::Graveyard)) => {
+            Some("You may cast this card from your graveyard or from exile".to_string())
+        }
+        _ => None,
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CounterKeywordAmount {
     Fixed(u32),
@@ -2169,6 +2191,16 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                     describe_structural_rampage_pair(ability, &def.abilities[ability_idx + 1])
             {
                 output.push(format!("Keyword ability {}: {keyword}", ability_idx + 1));
+                ability_idx += 2;
+                continue;
+            }
+            if ability_idx + 1 < def.abilities.len()
+                && let Some(permission) = describe_structural_graveyard_or_exile_cast_pair(
+                    ability,
+                    &def.abilities[ability_idx + 1],
+                )
+            {
+                output.push(format!("Static ability {}: {permission}", ability_idx + 1));
                 ability_idx += 2;
                 continue;
             }
