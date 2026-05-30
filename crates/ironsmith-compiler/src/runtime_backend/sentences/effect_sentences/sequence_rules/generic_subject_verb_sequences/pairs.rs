@@ -31,7 +31,7 @@ use crate::runtime_backend::token_primitives::{
 use crate::runtime_backend::util::trim_commas;
 use crate::runtime_backend::util::{
     helper_tag_for_tokens, is_article, non_article_token_word_refs, non_article_word_refs,
-    parse_subject, strip_leading_token_word_once_any, word_refs_except,
+    parse_number, parse_subject, strip_leading_token_word_once_any, word_refs_except,
 };
 use crate::target::{ChooseSpec, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::CardType;
@@ -332,6 +332,99 @@ pub(crate) fn parse_look_at_top_then_put_one_hand_other_graveyard(
                 if_false: vec![EffectAst::subject_verb_move_to_zone(
                     TargetAst::Tagged(TagKey::from(IT_TAG), None),
                     Zone::Graveyard,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                )],
+            }],
+        },
+    ]))
+}
+
+pub(crate) fn parse_target_opponent_chooses_top_graveyard_card_then_move_remainder(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_tokens = trim_commas(sentences[sentence_idx].lowered());
+    let first_words = TokenWordView::new(&first_tokens);
+    let words = first_words.word_refs();
+    if !word_slice_starts_with(
+        &words,
+        &["target", "opponent", "chooses", "one", "of"],
+    ) {
+        return Ok(None);
+    }
+    let Some(top_idx) = word_slice_find_word(&words, "top") else {
+        return Ok(None);
+    };
+    let Some(top_token_idx) = first_words.token_index_for_word_index(top_idx) else {
+        return Ok(None);
+    };
+    let Some((top_count, used_count_tokens)) = parse_number(&first_tokens[top_token_idx + 1..])
+    else {
+        return Ok(None);
+    };
+    if top_count != 2 {
+        return Ok(None);
+    }
+    let filter_tokens = trim_commas(&first_tokens[top_token_idx + 1 + used_count_tokens..]);
+    let mut top_filter = parse_object_filter_lexed(&filter_tokens, false)?;
+    if top_filter.zone != Some(Zone::Graveyard) || top_filter.owner != Some(PlayerFilter::You) {
+        return Ok(None);
+    }
+    top_filter.controller = None;
+
+    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
+    let second_words = non_article_token_word_refs(&second_tokens);
+    if !word_slice_starts_with(&second_words, &["exile", "that", "card"])
+        || !word_slice_contains_any_phrase(
+            &second_words,
+            &[
+                &["put", "other", "one", "into", "your", "hand"],
+                &["put", "other", "into", "your", "hand"],
+            ],
+        )
+    {
+        return Ok(None);
+    }
+
+    let top_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "top_graveyard");
+    let chosen_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "chosen");
+    let mut choose_filter = ObjectFilter::tagged(top_tag.clone());
+    choose_filter.zone = Some(Zone::Graveyard);
+    let mut chosen_match_filter = ObjectFilter::default();
+    chosen_match_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: TagKey::from(IT_TAG),
+            relation: TaggedOpbjectRelation::SameStableId,
+        });
+
+    Ok(Some(vec![
+        EffectAst::ChooseTopObjects {
+            filter: top_filter,
+            count: ChoiceCount::exactly(top_count as usize),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: top_tag.clone(),
+        },
+        EffectAst::ChooseObjects {
+            filter: choose_filter,
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player: PlayerAst::TargetOpponent,
+            tag: chosen_tag.clone(),
+        },
+        EffectAst::subject_verb_exile(TargetAst::Tagged(chosen_tag.clone(), None), false),
+        EffectAst::ForEachTagged {
+            tag: top_tag,
+            effects: vec![EffectAst::Conditional {
+                predicate: PredicateAst::TaggedMatches(chosen_tag, chosen_match_filter),
+                if_true: Vec::new(),
+                if_false: vec![EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    Zone::Hand,
                     false,
                     ReturnControllerAst::Preserve,
                     false,

@@ -464,6 +464,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::parse_damage_prevention_counter_sequence,
     },
     SequenceRuleDef {
+        name: "target-opponent-chooses-top-graveyard-card-then-move-remainder",
+        feature_tag: Some("top-graveyard-choice-remainder"),
+        priority: 240,
+        consumed_sentences: 2,
+        predicate: first_word_target,
+        parser: generic_subject_verb_sequences::pairs::parse_target_opponent_chooses_top_graveyard_card_then_move_remainder,
+    },
+    SequenceRuleDef {
         name: "next-damage-prevention-then-gain-prevented-life",
         feature_tag: Some("damage-prevention-followup"),
         priority: 240,

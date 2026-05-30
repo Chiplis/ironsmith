@@ -38550,6 +38550,195 @@ fn assert_oracle_card_fails_strict(name: &str) {
     );
 }
 
+fn named_card(name: &str) -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build()
+}
+
+fn zone_contains_named_card(game: &crate::game_state::GameState, zone: Zone, name: &str) -> bool {
+    game.objects_in_zone(zone).into_iter().any(|id| {
+        game.object(id)
+            .is_some_and(|object| object.zone == zone && object.name == name)
+    })
+}
+
+struct ChooseNamedObjectDecisionMaker {
+    name: &'static str,
+}
+
+impl crate::decision::DecisionMaker for ChooseNamedObjectDecisionMaker {
+    fn decide_objects(
+        &mut self,
+        game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        if ctx.min > 1 {
+            return ctx
+                .candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .take(ctx.min)
+                .collect();
+        }
+        ctx.candidates
+            .iter()
+            .find(|candidate| {
+                candidate.legal
+                    && game
+                        .object(candidate.id)
+                        .is_some_and(|object| object.name == self.name)
+            })
+            .map(|candidate| vec![candidate.id])
+            .unwrap_or_else(|| {
+                ctx.candidates
+                    .iter()
+                    .filter(|candidate| candidate.legal)
+                    .map(|candidate| candidate.id)
+                    .take(ctx.min)
+                    .collect()
+            })
+    }
+}
+
+#[test]
+fn phyrexian_grimoire_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Phyrexian Grimoire");
+    let lines = canonical_compiled_lines(&def);
+
+    assert_eq!(
+        lines,
+        vec!["{4}, {T}: Target opponent chooses one of the top two cards of your graveyard. Exile that card and put the other one into your hand."],
+        "Phyrexian Grimoire should render the top-graveyard choice and remainder clause exactly"
+    );
+
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Phyrexian Grimoire should have an activated ability");
+    let ability_debug = format!("{activated:#?}");
+    assert!(
+        ability_debug.contains("Generic(\n                                        4")
+            && ability_debug.contains("TapEffect"),
+        "expected Phyrexian Grimoire to keep its {{4}}, {{T}} activation cost, got {ability_debug}"
+    );
+    let effects = &activated.effects.segments[0].default_effects;
+    let top_choice = effects[0]
+        .downcast_ref::<ChooseObjectsEffect>()
+        .expect("first effect should tag the top graveyard cards");
+    assert!(top_choice.top_only);
+    assert_eq!(top_choice.zone, Some(Zone::Graveyard));
+    assert_eq!(top_choice.filter.owner, Some(PlayerFilter::You));
+    assert_eq!(top_choice.count.max, Some(2));
+
+    let target = effects[1]
+        .downcast_ref::<TargetOnlyEffect>()
+        .expect("second effect should require a target opponent");
+    assert!(matches!(
+        target.target.base(),
+        ChooseSpec::Player(PlayerFilter::Opponent)
+    ));
+
+    let opponent_choice = effects[2]
+        .downcast_ref::<ChooseObjectsEffect>()
+        .expect("third effect should let the target opponent choose from the top graveyard cards");
+    assert_eq!(opponent_choice.chooser, PlayerFilter::target_opponent());
+    assert!(opponent_choice.count.is_single());
+    assert!(opponent_choice.filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag == top_choice.tag
+            && matches!(
+                constraint.relation,
+                crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            )
+    }));
+}
+
+#[test]
+fn phyrexian_grimoire_exiles_opponents_choice_and_returns_other_top_graveyard_card() {
+    let def = parse_oracle_card_definition("Phyrexian Grimoire");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Phyrexian Grimoire should have an activated ability");
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.create_object_from_definition(&named_card("Bottom Card"), alice, Zone::Graveyard);
+    game.create_object_from_definition(&named_card("Second Card"), alice, Zone::Graveyard);
+    game.create_object_from_definition(&named_card("Top Card"), alice, Zone::Graveyard);
+
+    let mut dm = ChooseNamedObjectDecisionMaker {
+        name: "Second Card",
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)]);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &activated.effects,
+        None,
+        &[],
+    )
+    .expect("Phyrexian Grimoire ability should resolve");
+
+    assert!(zone_contains_named_card(&game, Zone::Exile, "Second Card"));
+    assert!(zone_contains_named_card(&game, Zone::Hand, "Top Card"));
+    assert!(zone_contains_named_card(&game, Zone::Graveyard, "Bottom Card"));
+}
+
+#[test]
+fn phyrexian_grimoire_with_one_graveyard_card_has_no_other_card_to_return() {
+    let def = parse_oracle_card_definition("Phyrexian Grimoire");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Phyrexian Grimoire should have an activated ability");
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.create_object_from_definition(&named_card("Only Card"), alice, Zone::Graveyard);
+
+    let mut dm = ChooseNamedObjectDecisionMaker { name: "Only Card" };
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)]);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &activated.effects,
+        None,
+        &[],
+    )
+    .expect("Phyrexian Grimoire ability should resolve with one graveyard card");
+
+    assert!(zone_contains_named_card(&game, Zone::Exile, "Only Card"));
+    assert!(
+        !zone_contains_named_card(&game, Zone::Hand, "Only Card"),
+        "the chosen card should be exiled, with no second top card to put into hand"
+    );
+}
+
 #[test]
 fn alena_kessig_trapper_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("Alena, Kessig Trapper");

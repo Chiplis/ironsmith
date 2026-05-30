@@ -3205,6 +3205,13 @@ pub(crate) enum EffectAst {
         player: PlayerAst,
         tag: TagKey,
     },
+    ChooseTopObjects {
+        filter: ObjectFilter,
+        count: ChoiceCount,
+        count_value: Option<Value>,
+        player: PlayerAst,
+        tag: TagKey,
+    },
     ChooseObjectsAcrossZones {
         filter: ObjectFilter,
         count: ChoiceCount,

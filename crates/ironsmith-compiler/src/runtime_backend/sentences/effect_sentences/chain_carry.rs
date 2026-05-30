@@ -2149,7 +2149,9 @@ pub(crate) fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryConte
             }
         }
         EffectAst::SubjectVerb(_) => subject_verb_player_action_player(effect)?,
-        EffectAst::ChooseObjects { player, .. } => *player,
+        EffectAst::ChooseObjects { player, .. } | EffectAst::ChooseTopObjects { player, .. } => {
+            *player
+        }
         _ => return None,
     };
 
@@ -2175,7 +2177,7 @@ pub(crate) fn effect_uses_implicit_player(effect: &EffectAst) -> bool {
                 Some(PlayerAst::Implicit)
             )
         }
-        EffectAst::ChooseObjects { player, .. } => {
+        EffectAst::ChooseObjects { player, .. } | EffectAst::ChooseTopObjects { player, .. } => {
             matches!(*player, PlayerAst::Implicit)
         }
         _ => false,
@@ -2359,7 +2361,8 @@ pub(crate) fn maybe_apply_carried_player(effect: &mut EffectAst, carried_context
                         *player = carried_player;
                     }
                 }
-                EffectAst::ChooseObjects { player, .. } => {
+                EffectAst::ChooseObjects { player, .. }
+                | EffectAst::ChooseTopObjects { player, .. } => {
                     if matches!(*player, PlayerAst::Implicit) {
                         *player = carried_player;
                     }

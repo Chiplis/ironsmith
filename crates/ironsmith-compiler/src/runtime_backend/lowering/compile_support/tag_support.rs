@@ -245,6 +245,7 @@ fn effect_tagged_filter(effect: &EffectAst) -> Option<&ObjectFilter> {
             _ => None,
         },
         EffectAst::ChooseObjects { filter, .. }
+        | EffectAst::ChooseTopObjects { filter, .. }
         | EffectAst::ChooseObjectsAcrossZones { filter, .. }
         | EffectAst::MayCastMatchingSpellWithoutPayingManaCost { filter, .. } => Some(filter),
         _ => None,
@@ -872,6 +873,7 @@ pub(crate) fn effect_references_its_controller(effect: &EffectAst) -> bool {
             )
         }
         EffectAst::ChooseObjects { player, .. }
+        | EffectAst::ChooseTopObjects { player, .. }
         | EffectAst::ChooseObjectsAcrossZones { player, .. }
         | EffectAst::MayCastMatchingSpellWithoutPayingManaCost { player, .. } => {
             matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)

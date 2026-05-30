@@ -139,6 +139,7 @@ fn bind_condition_antecedent_in_effect(
             _ => {}
         },
         EffectAst::ChooseObjects { filter, .. }
+        | EffectAst::ChooseTopObjects { filter, .. }
         | EffectAst::ChooseObjectsAcrossZones { filter, .. } => {
             bind_condition_filter_antecedent(filter, antecedent);
         }

@@ -233,6 +233,35 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             ctx.last_player_filter = Some(followup_player);
             (effects, choices)
         }
+        EffectAst::ChooseTopObjects {
+            filter,
+            count,
+            count_value,
+            player,
+            tag,
+        } => {
+            let subject = LoweredSubject::resolve_chooser(*player, ctx, true, true, false)?;
+            let chooser = subject.clone_player_filter();
+            let mut resolved_filter = subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?;
+            if !matches!(chooser, PlayerFilter::ChosenPlayer) {
+                preserve_chooser_relative_player_filters(filter, &mut resolved_filter, &chooser);
+            }
+            let followup_player = choose_followup_player_filter(&resolved_filter, &chooser)
+                .unwrap_or_else(|| chooser.clone());
+            let choice_zone = resolved_filter.ensure_zone(Zone::Battlefield);
+            let (effects, choices) = compile_choose_top_objects_with_subject(
+                subject,
+                resolved_filter,
+                *count,
+                count_value.clone(),
+                tag.clone(),
+                choice_zone,
+            );
+            ctx.last_it_choice_is_set = tag.as_str() == IT_TAG;
+            ctx.last_object_tag = Some(tag.as_str().to_string());
+            ctx.last_player_filter = Some(followup_player);
+            (effects, choices)
+        }
         EffectAst::ChooseObjectsAcrossZones {
             filter,
             count,

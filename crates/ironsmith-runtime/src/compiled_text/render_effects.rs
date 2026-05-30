@@ -2655,6 +2655,7 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         .or_else(|| describe_reveal_top_choice_to_hand_rest_graveyard_structural(effects))
         .or_else(|| describe_gain_control_untap_haste_structural(effects))
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
+        .or_else(|| describe_target_opponent_choose_top_graveyard_then_move_remainder(effects))
         .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
 }
 
@@ -3062,6 +3063,96 @@ fn describe_choose_top_exile_then_play_structural(effects: &[Effect]) -> Option<
     let verb = if grant.allow_land { "play" } else { "cast" };
     Some(format!(
         "Exile the top card of your library. You may {verb} that card this turn"
+    ))
+}
+
+fn describe_target_opponent_choose_top_graveyard_then_move_remainder(
+    effects: &[Effect],
+) -> Option<String> {
+    let (top_effect, target_effect, choose_effect, exile_effect, for_each_effect) = match effects {
+        [top, choose, exile, for_each] => (top, None, choose, exile, for_each),
+        [top, target, choose, exile, for_each] => (top, Some(target), choose, exile, for_each),
+        _ => return None,
+    };
+    let top = top_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if let Some(target_effect) = target_effect {
+        let target = target_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+        if !matches!(target.target.base(), ChooseSpec::Player(PlayerFilter::Opponent)) {
+            return None;
+        }
+    }
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let exile = exile_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let for_each = for_each_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let top_count = choose_exact_count(top)?;
+
+    if !top.top_only
+        || top.is_search
+        || top_count == 0
+        || top_count != 2
+        || choose_primary_zone(top) != Some(Zone::Graveyard)
+        || top.filter.owner != Some(PlayerFilter::You)
+        || choose.filter.zone != Some(Zone::Graveyard)
+        || !choose.count.is_single()
+        || choose.chooser != PlayerFilter::Target(Box::new(PlayerFilter::Opponent))
+        || choose.tag == top.tag
+        || for_each.tag != top.tag
+        || exile.zone != Zone::Exile
+        || !matches!(exile.target.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+    {
+        return None;
+    }
+    if !choose.filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag == top.tag
+            && matches!(
+                constraint.relation,
+                crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            )
+    }) {
+        return None;
+    }
+
+    let [conditional_effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let crate::effect::Condition::TaggedObjectMatches(condition_tag, condition_filter) =
+        &conditional.condition
+    else {
+        return None;
+    };
+    if condition_tag != &choose.tag
+        || !conditional.if_true.is_empty()
+        || conditional.if_false.len() != 1
+        || !condition_filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == "__it__"
+                && matches!(
+                    constraint.relation,
+                    crate::filter::TaggedOpbjectRelation::SameStableId
+                )
+        })
+    {
+        return None;
+    }
+    let move_remainder = conditional.if_false[0].downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let moves_iterated_remainder = match move_remainder.target.base() {
+        ChooseSpec::Iterated => true,
+        ChooseSpec::Tagged(tag) => tag.as_str() == "__it__",
+        _ => false,
+    };
+    if move_remainder.zone != Zone::Hand || move_remainder.to_top || !moves_iterated_remainder {
+        return None;
+    }
+
+    let count_text = number_word(top_count as i32).unwrap_or_else(|| top_count.to_string());
+    let owner = top
+        .filter
+        .owner
+        .as_ref()
+        .map(describe_possessive_player_filter)
+        .unwrap_or_else(|| "a".to_string());
+    Some(format!(
+        "Target opponent chooses one of the top {count_text} cards of {owner} graveyard. Exile that card and put the other one into your hand"
     ))
 }
 

@@ -16,6 +16,23 @@ pub(crate) fn compile_choose_objects_with_subject(
     (effects, subject.into_choices())
 }
 
+pub(crate) fn compile_choose_top_objects_with_subject(
+    subject: LoweredSubject,
+    filter: ObjectFilter,
+    count: ChoiceCount,
+    count_value: Option<Value>,
+    tag: TagKey,
+    zone: Zone,
+) -> (Vec<Effect>, Vec<ChooseSpec>) {
+    let chooser = subject.as_chooser();
+    let choose_effect = crate::effects::ChooseObjectsEffect::new(filter, count, chooser, tag)
+        .with_count_value_opt(count_value)
+        .in_zone(zone)
+        .top_only();
+    let effects = subject.prepend_target_prelude_if_needed(Effect::new(choose_effect));
+    (effects, subject.into_choices())
+}
+
 pub(crate) fn compile_choose_objects_across_zones_with_subject(
     subject: LoweredSubject,
     filter: ObjectFilter,

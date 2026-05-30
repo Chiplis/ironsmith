@@ -188,7 +188,9 @@ pub(super) fn rewrite_normalize_additional_cost_sacrifice_tags(
     };
 
     let choose_tag = match first {
-        EffectAst::ChooseObjects { tag, .. } | EffectAst::ChooseObjectsAcrossZones { tag, .. }
+        EffectAst::ChooseObjects { tag, .. }
+        | EffectAst::ChooseTopObjects { tag, .. }
+        | EffectAst::ChooseObjectsAcrossZones { tag, .. }
             if tag.as_str() == IT_TAG =>
         {
             tag

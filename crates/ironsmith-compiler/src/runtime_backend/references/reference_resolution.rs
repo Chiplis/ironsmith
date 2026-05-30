@@ -921,6 +921,12 @@ fn advance_reference_frame_for_effect(
             tag,
             player,
             ..
+        }
+        | EffectAst::ChooseTopObjects {
+            filter,
+            tag,
+            player,
+            ..
         } => {
             let references_revealed_hand = filter.zone == Some(crate::zone::Zone::Hand)
                 && filter.owner.is_none()
@@ -2118,6 +2124,7 @@ fn resolve_effect_result_values_in_fields(
             SubjectVerbActionAst::AdditionalPhases { .. } => {}
         },
         EffectAst::ChooseObjects { count_value, .. }
+        | EffectAst::ChooseTopObjects { count_value, .. }
         | EffectAst::ChooseObjectsAcrossZones { count_value, .. } => {
             if let Some(count_value) = count_value.as_mut() {
                 resolve_effect_result_value(count_value, state)?;

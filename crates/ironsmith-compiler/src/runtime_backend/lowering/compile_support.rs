@@ -128,7 +128,7 @@ mod trigger_support;
 
 pub(crate) use choose_effect_helpers::{
     compile_choose_objects_across_zones_with_subject, compile_choose_objects_with_subject,
-    compile_choose_player_with_subject,
+    compile_choose_player_with_subject, compile_choose_top_objects_with_subject,
 };
 pub(crate) use control_flow_handlers::{
     choose_spec_for_targeted_player_filter, collect_targeted_player_specs_from_filter,
