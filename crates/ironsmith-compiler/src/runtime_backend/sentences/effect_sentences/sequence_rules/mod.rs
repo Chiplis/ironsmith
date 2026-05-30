@@ -113,6 +113,10 @@ fn first_word_prevent(sentences: &[SentenceInput], sentence_idx: usize) -> bool 
     sentence_head_word_is(sentences, sentence_idx, "prevent")
 }
 
+fn first_word_the(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_is(sentences, sentence_idx, "the")
+}
+
 fn first_word_tap(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "tap")
 }
@@ -458,6 +462,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 2,
         predicate: first_word_prevent,
         parser: generic_subject_verb_sequences::parse_damage_prevention_counter_sequence,
+    },
+    SequenceRuleDef {
+        name: "next-damage-prevention-then-gain-prevented-life",
+        feature_tag: Some("damage-prevention-followup"),
+        priority: 240,
+        consumed_sentences: 2,
+        predicate: first_word_the,
+        parser: generic_subject_verb_sequences::parse_next_damage_prevention_gain_life_sequence,
     },
     SequenceRuleDef {
         name: "tap-all-then-they-dont-untap-while-source-tapped",

@@ -1456,6 +1456,7 @@ fn compile_subject_verb_effect(
             source,
             target,
             reflect_damage_to_source_controller,
+            follow_up_effects,
         } => {
             let source_spec = match source {
                 PreventNextTimeDamageSourceAst::Choice => {
@@ -1480,10 +1481,25 @@ fn compile_subject_verb_effect(
                 source_spec,
                 target_spec,
             );
+            let (follow_up_effects, follow_up_choices) = if follow_up_effects.is_empty() {
+                (Vec::new(), Vec::new())
+            } else {
+                let mut follow_up_ctx = EffectLoweringContext::from_parts(
+                    ctx.id_gen_context(),
+                    ctx.lowering_frame(),
+                );
+                follow_up_ctx.allow_life_event_value = true;
+                let compiled = compile_effects(follow_up_effects, &mut follow_up_ctx)?;
+                ctx.apply_id_gen_context(follow_up_ctx.id_gen_context());
+                compiled
+            };
+            if !follow_up_effects.is_empty() {
+                effect = effect.with_follow_up_effects(follow_up_effects);
+            }
             if *reflect_damage_to_source_controller {
                 effect = effect.reflecting_to_source_controller();
             }
-            Ok((vec![Effect::new(effect)], Vec::new()))
+            Ok((vec![Effect::new(effect)], follow_up_choices))
         }
         SubjectVerbActionAst::PreventDamage {
             amount,

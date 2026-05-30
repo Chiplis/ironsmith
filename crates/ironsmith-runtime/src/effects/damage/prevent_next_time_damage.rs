@@ -42,6 +42,7 @@ pub struct PreventNextTimeDamageEffect {
     pub source: PreventNextTimeDamageSource,
     pub target: PreventNextTimeDamageTarget,
     pub reflect_damage_to_source_controller: bool,
+    pub follow_up_effects: Vec<Effect>,
 }
 
 impl PreventNextTimeDamageEffect {
@@ -50,7 +51,13 @@ impl PreventNextTimeDamageEffect {
             source,
             target,
             reflect_damage_to_source_controller: false,
+            follow_up_effects: Vec::new(),
         }
+    }
+
+    pub fn with_follow_up_effects(mut self, effects: Vec<Effect>) -> Self {
+        self.follow_up_effects = effects;
+        self
     }
 
     pub fn reflecting_to_source_controller(mut self) -> Self {
@@ -130,10 +137,14 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
         let replacement_action = if self.reflect_damage_to_source_controller
             && let Some(source) = chosen_source
         {
-            ReplacementAction::Instead(vec![Effect::new(DealDamageEffect::new(
+            let mut effects = vec![Effect::new(DealDamageEffect::new(
                 Value::EventValue(EventValueSpec::Amount),
                 ChooseSpec::Player(PlayerFilter::ControllerOf(ObjectRef::Specific(source))),
-            ))])
+            ))];
+            effects.extend(self.follow_up_effects.clone());
+            ReplacementAction::Instead(effects)
+        } else if !self.follow_up_effects.is_empty() {
+            ReplacementAction::Instead(self.follow_up_effects.clone())
         } else {
             ReplacementAction::Prevent
         };

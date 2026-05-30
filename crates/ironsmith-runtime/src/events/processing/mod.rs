@@ -372,7 +372,12 @@ fn process_event_direct(
             ),
             TraitApplyResult::Prevented => TraitEventResult::Prevented,
             TraitApplyResult::Replaced(effects) => {
-                TraitEventResult::Replaced { effects, effect_id }
+                TraitEventResult::Replaced {
+                    effects,
+                    effect_id,
+                    source: chosen_effect.source,
+                    controller: chosen_effect.controller,
+                }
             }
             TraitApplyResult::Unchanged(event) => TraitEventResult::Proceed(event),
             TraitApplyResult::NeedsInteraction {
@@ -439,7 +444,12 @@ fn process_event_direct(
             event_source_snapshot,
         ),
         TraitApplyResult::Prevented => TraitEventResult::Prevented,
-        TraitApplyResult::Replaced(effects) => TraitEventResult::Replaced { effects, effect_id },
+        TraitApplyResult::Replaced(effects) => TraitEventResult::Replaced {
+            effects,
+            effect_id,
+            source: chosen_effect.source,
+            controller: chosen_effect.controller,
+        },
         TraitApplyResult::Unchanged(event) => TraitEventResult::Proceed(event),
         TraitApplyResult::NeedsInteraction {
             decision_ctx,
@@ -1210,6 +1220,8 @@ pub enum TraitEventResult {
         /// The ID of the replacement effect that was applied.
         /// Used to consume one-shot effects after application.
         effect_id: crate::replacement::ReplacementEffectId,
+        source: crate::ids::ObjectId,
+        controller: PlayerId,
     },
     /// Multiple replacement effects apply - player must choose.
     NeedsChoice {
@@ -1537,7 +1549,12 @@ fn process_destroy_inner(
             }
         }
 
-        TraitEventResult::Replaced { effects, effect_id } => {
+        TraitEventResult::Replaced {
+            effects,
+            effect_id,
+            source: replacement_source,
+            controller: replacement_controller,
+        } => {
             // Destruction was replaced with other effects.
             // Execute the replacement effects with a minimal context.
             // The effects typically use ChooseSpec::SpecificObject, so they're self-contained.
@@ -1547,8 +1564,8 @@ fn process_destroy_inner(
                 .replacement_effects
                 .mark_effect_used(effect_id);
 
-            let effect_source = source.unwrap_or(permanent);
-            let mut ctx = ExecutionContext::new(effect_source, controller, dm);
+            let effect_source = source.unwrap_or(replacement_source);
+            let mut ctx = ExecutionContext::new(effect_source, replacement_controller, dm);
 
             for effect in effects {
                 // Ignore errors from effect execution - the replacement still happened
@@ -1665,7 +1682,12 @@ fn process_zone_change_inner(
                 EventOutcome::Proceed(requested_to)
             }
         }
-        TraitEventResult::Replaced { effects, effect_id } => {
+        TraitEventResult::Replaced {
+            effects,
+            effect_id,
+            source: replacement_source,
+            controller: replacement_controller,
+        } => {
             let replacement_effect = game
                 .effect_store
                 .replacement_effects
@@ -1718,12 +1740,11 @@ fn process_zone_change_inner(
                 }
                 return EventOutcome::Replaced;
             }
-            let controller = game
-                .object(object)
-                .map(|obj| game.controller_of(obj))
-                .or_else(|| snapshot.as_ref().map(|snap| snap.controller))
-                .unwrap_or(PlayerId::from_index(0));
-            let mut ctx = crate::effects::ExecutionContext::new(object, controller, dm);
+            let mut ctx = crate::effects::ExecutionContext::new(
+                replacement_source,
+                replacement_controller,
+                dm,
+            );
             for effect in effects {
                 let _ = crate::effects::execute_effect(game, &effect, &mut ctx);
             }
@@ -1946,7 +1967,12 @@ fn process_with_dm_and_additional_effects_and_applied(
                     }
                     TraitApplyResult::Prevented => return TraitEventResult::Prevented,
                     TraitApplyResult::Replaced(effects) => {
-                        return TraitEventResult::Replaced { effects, effect_id };
+                        return TraitEventResult::Replaced {
+                            effects,
+                            effect_id,
+                            source: chosen_effect.source,
+                            controller: chosen_effect.controller,
+                        };
                     }
                     TraitApplyResult::Unchanged(unchanged_event) => {
                         current_event = unchanged_event;
@@ -2184,7 +2210,12 @@ pub fn process_damage_assignments_with_event_with_source_snapshot(
                 replacement_prevented: true,
             };
         }
-        TraitEventResult::Replaced { effects, effect_id } => {
+        TraitEventResult::Replaced {
+            effects,
+            source: replacement_source,
+            controller: replacement_controller,
+            ..
+        } => {
             let triggering_event = crate::events::RawEvent::new(
                 crate::events::DamageEvent::with_cause(
                     source,
@@ -2195,19 +2226,6 @@ pub fn process_damage_assignments_with_event_with_source_snapshot(
                 ),
                 event_provenance,
             );
-            let (replacement_source, replacement_controller) = game
-                .effect_store
-                .replacement_effects
-                .get_effect(effect_id)
-                .map(|effect| (effect.source, effect.controller))
-                .unwrap_or_else(|| {
-                    let controller = game
-                        .object(source)
-                        .map(|object| game.controller_of(object))
-                        .unwrap_or(game.turn.active_player);
-                    (source, controller)
-                });
-
             let mut dm = crate::decision::AutoPassDecisionMaker;
             let mut exec_ctx = crate::effects::ExecutionContext::new(
                 replacement_source,
@@ -2897,13 +2915,19 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                 }
                 return EtbEventResult::default();
             }
-            TraitEventResult::Replaced { effects, effect_id } => {
+            TraitEventResult::Replaced {
+                effects,
+                effect_id,
+                source: replacement_source,
+                controller: replacement_controller,
+            } => {
                 use crate::effects::{ExecutionContext, execute_effect};
-                if let Some(controller) = game.object(object).map(|o| game.controller_of(o)) {
+                if game.object(object).is_some() {
                     game.effect_store
                         .replacement_effects
                         .mark_effect_used(effect_id);
-                    let mut ctx = ExecutionContext::new(object, controller, dm);
+                    let mut ctx =
+                        ExecutionContext::new(replacement_source, replacement_controller, dm);
                     for effect in effects {
                         let _ = execute_effect(game, &effect, &mut ctx);
                     }
@@ -2970,12 +2994,15 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                     }
                     TraitApplyResult::Replaced(effects) => {
                         use crate::effects::{ExecutionContext, execute_effect};
-                        if let Some(controller) = game.object(object).map(|o| game.controller_of(o))
-                        {
+                        if game.object(object).is_some() {
                             game.effect_store
                                 .replacement_effects
                                 .mark_effect_used(chosen_id);
-                            let mut ctx = ExecutionContext::new(object, controller, dm);
+                            let mut ctx = ExecutionContext::new(
+                                chosen_effect.source,
+                                chosen_effect.controller,
+                                dm,
+                            );
                             for effect in effects {
                                 let _ = execute_effect(game, &effect, &mut ctx);
                             }
@@ -3390,6 +3417,8 @@ pub fn process_event_with_chosen_replacement_trait(
         TraitApplyResult::Replaced(effects) => TraitEventResult::Replaced {
             effects,
             effect_id: chosen_effect_id,
+            source: effect.source,
+            controller: effect.controller,
         },
         TraitApplyResult::Unchanged(unchanged) => {
             // Effect didn't change anything - continue with original event

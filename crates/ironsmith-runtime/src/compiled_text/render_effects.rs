@@ -174,6 +174,22 @@ fn prevention_put_counters_follow_up(
     Some(put)
 }
 
+fn prevention_gain_life_follow_up(
+    follow_up_effects: &[Effect],
+) -> Option<&crate::effects::GainLifeEffect> {
+    let [effect] = follow_up_effects else {
+        return None;
+    };
+    let gain = effect.downcast_ref::<crate::effects::GainLifeEffect>()?;
+    if !matches!(gain.player, ChooseSpec::Player(crate::target::PlayerFilter::You)) {
+        return None;
+    }
+    if !matches!(gain.amount.unhinted(), Value::EventValue(EventValueSpec::Amount)) {
+        return None;
+    }
+    Some(gain)
+}
+
 fn describe_assigns_no_combat_damage(source: &ChooseSpec, until: &Until) -> Option<String> {
     if !matches!(until, Until::EndOfTurn) {
         return None;
@@ -31120,6 +31136,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             rendered.push_str(
                 ". If damage is prevented this way, this spell deals that much damage to that source's controller",
             );
+        }
+        if prevention_gain_life_follow_up(&prevent_next_time.follow_up_effects).is_some() {
+            rendered.push_str(". You gain life equal to the damage prevented this way");
         }
         return rendered;
     }

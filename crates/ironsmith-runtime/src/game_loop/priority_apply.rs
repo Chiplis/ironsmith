@@ -1226,20 +1226,17 @@ pub(super) fn apply_replacement_choice_response(
             // (e.g., damage application, zone change, etc.)
             // The result is now stored and will be picked up by the caller
         }
-        TraitEventResult::Replaced { effects, effect_id } => {
+        TraitEventResult::Replaced {
+            effects,
+            effect_id,
+            source,
+            controller,
+        } => {
             // Event was replaced with different effects - execute them
             // Consume one-shot effects
             game.effect_store
                 .replacement_effects
                 .mark_effect_used(effect_id);
-
-            // Get the source/controller from the chosen replacement effect
-            let (source, controller) = game
-                .effect_store
-                .replacement_effects
-                .get_effect(chosen_id)
-                .map(|e| (e.source, e.controller))
-                .unwrap_or((ObjectId::from_raw(0), PlayerId::from_index(0)));
 
             let mut dm = crate::decision::SelectFirstDecisionMaker;
             let mut ctx = ExecutionContext::new(source, controller, &mut dm)

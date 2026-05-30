@@ -772,6 +772,17 @@ pub(crate) fn parse_life_equal_to_value(
     }
     if matches!(
         amount_words.as_slice(),
+        ["equal", "to", "the", "damage", "prevented", "this", "way"]
+            | ["equal", "to", "damage", "prevented", "this", "way"]
+            | [
+                "equal", "to", "the", "amount", "of", "damage", "prevented", "this", "way"
+            ]
+            | ["equal", "to", "amount", "of", "damage", "prevented", "this", "way"]
+    ) {
+        return Ok(Some(Value::EventValue(EventValueSpec::Amount)));
+    }
+    if matches!(
+        amount_words.as_slice(),
         [
             "equal", "to", "the", "total", "life", "lost", "by", "all", "players", "this",
             "turn"
