@@ -4371,15 +4371,32 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     }
 
     fn describe_search_two_split_hand_graveyard(effects: &[&Effect]) -> Option<String> {
-        let [
-            search_effect,
-            choose_effect,
-            hand_effect,
-            graveyard_effect,
-            shuffle_effect,
-        ] = effects
-        else {
-            return None;
+        let (search_effect, reveal_effect, choose_effect, hand_effect, graveyard_effect, shuffle_effect) =
+            match effects {
+                [search_effect, choose_effect, hand_effect, graveyard_effect, shuffle_effect] => {
+                    (*search_effect, None, *choose_effect, *hand_effect, *graveyard_effect, *shuffle_effect)
+                }
+                [
+                    search_effect,
+                    reveal_effect,
+                    choose_effect,
+                    hand_effect,
+                    graveyard_effect,
+                    shuffle_effect,
+                ] => (
+                    *search_effect,
+                    Some(*reveal_effect),
+                    *choose_effect,
+                    *hand_effect,
+                    *graveyard_effect,
+                    *shuffle_effect,
+                ),
+                _ => return None,
+            };
+        let reveal = if let Some(reveal_effect) = reveal_effect {
+            Some(reveal_effect.downcast_ref::<crate::effects::RevealTaggedEffect>()?)
+        } else {
+            None
         };
         let search = search_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
         let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
@@ -4399,10 +4416,10 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
 
         if !search.is_search
             || choose.is_search
-            || search.count.min != 2
+            || search.count.min > 2
             || search.count.max != Some(2)
             || search.count_value.is_some()
-            || choose.count.min != 1
+            || choose.count.min > 1
             || choose.count.max != Some(1)
             || choose.count_value.is_some()
             || search.chooser != choose.chooser
@@ -4419,12 +4436,18 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         {
             return None;
         }
+        if let Some(reveal) = reveal
+            && reveal.tag != search.tag
+        {
+            return None;
+        }
 
+        let selection = describe_choose_selection(search);
+        let reveal_text = if reveal.is_some() { " and reveal them" } else { "" };
         if search.chooser == PlayerFilter::You {
-            return Some(
-                "Search your library for two cards. Put one into your hand and the other into your graveyard. Then shuffle"
-                    .to_string(),
-            );
+            return Some(format!(
+                "Search your library for {selection}{reveal_text}. Put one into your hand and the other into your graveyard. Then shuffle"
+            ));
         }
 
         let player = describe_player_filter(&search.chooser);
@@ -4432,11 +4455,11 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         let possessive = describe_possessive_player_filter(&search.chooser);
         let shuffle_verb = player_verb(&player, "shuffle", "shuffles");
         Some(format!(
-            "{capitalized} searches {possessive} library for two cards. Put one into {possessive} hand and the other into {possessive} graveyard. Then {player} {shuffle_verb}"
+            "{capitalized} searches {possessive} library for {selection}{reveal_text}. Put one into {possessive} hand and the other into {possessive} graveyard. Then {player} {shuffle_verb}"
         ))
     }
 
-    if filtered.len() == 5
+    if (filtered.len() == 5 || filtered.len() == 6)
         && let Some(compact) = describe_search_two_split_hand_graveyard(&filtered)
     {
         return compact;
