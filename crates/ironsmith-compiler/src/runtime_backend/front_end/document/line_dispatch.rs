@@ -107,7 +107,7 @@ const LINE_FAMILY_RULES: [LineFamilyRuleDef; 30] = [
     LineFamilyRuleDef {
         id: "draft-rule-line",
         priority: 37,
-        heads: &["draft", "as", "during", "immediately", "each"],
+        heads: &["draft", "reveal", "as", "during", "immediately", "each"],
         run: run_draft_rule_line_family,
     },
     LineFamilyRuleDef {
