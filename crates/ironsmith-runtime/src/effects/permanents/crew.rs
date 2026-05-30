@@ -26,6 +26,9 @@ use crate::types::CardType;
 pub type CrewCostEffect = ironsmith_core::CrewCostEffect;
 
 const CREWED_VEHICLE_TAG: &str = "__it__";
+const CREW_ACTIVATION_TAG: &str = "__crew_activation";
+const CREWERS_TAG: &str = "crewed_it_this_turn";
+const FIRST_CREWED_THIS_TURN_TAG: &str = "__first_crewed_this_turn";
 
 fn crew_candidates(game: &GameState, controller: PlayerId) -> Vec<ObjectId> {
     game.battlefield
@@ -166,20 +169,46 @@ fn keyword_crew_event(
     crewer: ObjectId,
     vehicle: ObjectId,
     controller: PlayerId,
+    crew_count: usize,
+    all_crewers: &[ObjectId],
+    is_activation_event: bool,
+    is_first_crewed_this_turn: bool,
     provenance: crate::provenance::ProvNodeId,
 ) -> TriggerEvent {
     let crewer_snapshot = game
         .object(crewer)
         .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
     let mut object_tags = HashMap::new();
-    if let Some(vehicle_snapshot) = game
+    let vehicle_snapshot = game
         .object(vehicle)
-        .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game))
-    {
-        object_tags.insert(TagKey::from(CREWED_VEHICLE_TAG), vec![vehicle_snapshot]);
+        .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
+    if let Some(vehicle_snapshot) = vehicle_snapshot {
+        object_tags.insert(TagKey::from(CREWED_VEHICLE_TAG), vec![vehicle_snapshot.clone()]);
+        if is_activation_event {
+            object_tags.insert(TagKey::from(CREW_ACTIVATION_TAG), vec![vehicle_snapshot.clone()]);
+            if is_first_crewed_this_turn {
+                object_tags.insert(
+                    TagKey::from(FIRST_CREWED_THIS_TURN_TAG),
+                    vec![vehicle_snapshot],
+                );
+            }
+        }
+    }
+    if is_activation_event {
+        let crewer_snapshots = all_crewers
+            .iter()
+            .filter_map(|id| {
+                game.object(*id).map(|obj| {
+                    ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
+                })
+            })
+            .collect::<Vec<_>>();
+        if !crewer_snapshots.is_empty() {
+            object_tags.insert(TagKey::from(CREWERS_TAG), crewer_snapshots);
+        }
     }
     TriggerEvent::new_with_provenance(
-        KeywordActionEvent::new(KeywordActionKind::Crew, controller, crewer, 1)
+        KeywordActionEvent::new(KeywordActionKind::Crew, controller, crewer, crew_count as u32)
             .with_snapshot(crewer_snapshot)
             .with_object_tags(object_tags),
         provenance,
@@ -258,7 +287,14 @@ impl EffectExecutor for CrewCostEffect {
         }
 
         let mut events = Vec::new();
-        for id in &chosen {
+        let crew_count = chosen.len();
+        let is_first_crewed_this_turn = game
+            .turn_store
+            .turn_history
+            .crewed_this_turn
+            .get(&ctx.source)
+            .is_none_or(|crewers| crewers.is_empty());
+        for (idx, id) in chosen.iter().enumerate() {
             if game.object(*id).is_some() && !game.is_tapped(*id) {
                 game.tap(*id);
                 events.push(TriggerEvent::new_with_provenance(
@@ -270,6 +306,10 @@ impl EffectExecutor for CrewCostEffect {
                     *id,
                     ctx.source,
                     controller,
+                    crew_count,
+                    &chosen,
+                    idx == 0,
+                    is_first_crewed_this_turn,
                     ctx.provenance,
                 ));
             }

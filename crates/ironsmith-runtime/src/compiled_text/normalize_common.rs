@@ -11201,6 +11201,17 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::SourceIsTapped => "this source is tapped".to_string(),
         Condition::SourceIsSaddled => "this source is saddled".to_string(),
+        Condition::SourceCrewedByExactly { count, filter } => {
+            let count_text = small_number_word(*count).unwrap_or_else(|| count.to_string());
+            let filter_text = if *count == 1 {
+                filter.description()
+            } else {
+                pluralize_noun_phrase(&filter.description())
+            };
+            format!(
+                "this source was crewed by exactly {count_text} {filter_text}"
+            )
+        }
         Condition::SourceDevouredCreaturesOrMore(count) => {
             if *count == 1 {
                 "this source devoured a creature".to_string()
@@ -11675,6 +11686,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::FirstTimeThisTurn => "this is the first time this ability triggered this turn"
             .to_string(),
+        Condition::SourceFirstCrewedThisTurn => {
+            "this is the first time this source was crewed this turn".to_string()
+        }
         Condition::ThisAbilityResolvedThisTurnExactly(count) => format!(
             "this is the {} time this ability has resolved this turn",
             ordinal_number_word(*count)

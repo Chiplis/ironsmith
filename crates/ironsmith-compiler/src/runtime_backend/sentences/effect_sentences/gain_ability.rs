@@ -570,6 +570,47 @@ fn words_start_nested_triggered_ability(words_after_verb: &[&str]) -> bool {
     )
 }
 
+fn quoted_nested_ability_end_and_duration(
+    tokens: &[OwnedLexToken],
+    gain_token_idx: usize,
+) -> Option<(usize, Until)> {
+    let open_quote_idx = gain_token_idx + 1;
+    if !tokens
+        .get(open_quote_idx)
+        .is_some_and(|token| token.kind == TokenKind::Quote)
+    {
+        return None;
+    }
+
+    let close_quote_idx = tokens
+        .iter()
+        .enumerate()
+        .skip(open_quote_idx + 1)
+        .find_map(|(idx, token)| (token.kind == TokenKind::Quote).then_some(idx))?;
+    let tail_tokens = trim_commas(tokens.get(close_quote_idx + 1..).unwrap_or_default());
+    if tail_tokens.is_empty() {
+        return None;
+    }
+
+    let tail_word_view = GainAbilityWordView::new(&tail_tokens);
+    let tail_words = tail_word_view.to_word_refs();
+    let Some((start, len, duration)) = parse_simple_ability_duration(&tail_words) else {
+        return None;
+    };
+    if start != 0 {
+        return None;
+    }
+    let trailing_word_idx = start + len;
+    let trailing_token_idx = tail_word_view
+        .token_index_for_word_index(trailing_word_idx)
+        .unwrap_or(tail_tokens.len());
+    if !trim_edge_punctuation(&tail_tokens[trailing_token_idx..]).is_empty() {
+        return None;
+    }
+
+    Some((close_quote_idx, duration))
+}
+
 fn parse_leading_simple_ability_duration(tokens: &[OwnedLexToken]) -> Option<(usize, Until)> {
     let clause_word_view = GainAbilityWordView::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
@@ -1159,6 +1200,11 @@ pub(crate) fn parse_gain_ability_sentence(
         }
     }
 
+    let nested_quoted_ability = if words_start_nested_triggered_ability(after_gain) {
+        quoted_nested_ability_end_and_duration(tokens, gain_token_idx)
+    } else {
+        None
+    };
     let duration_phrase = if words_start_nested_triggered_ability(after_gain) {
         None
     } else {
@@ -1167,6 +1213,7 @@ pub(crate) fn parse_gain_ability_sentence(
     let duration = duration_phrase
         .as_ref()
         .map(|(_, _, duration)| duration.clone())
+        .or_else(|| nested_quoted_ability.as_ref().map(|(_, duration)| duration.clone()))
         .or_else(|| {
             leading_duration_phrase
                 .as_ref()
@@ -1174,7 +1221,9 @@ pub(crate) fn parse_gain_ability_sentence(
         })
         .unwrap_or(Until::Forever);
     let has_explicit_duration =
-        duration_phrase.is_some() || leading_duration_phrase.as_ref().is_some();
+        duration_phrase.is_some()
+            || nested_quoted_ability.is_some()
+            || leading_duration_phrase.as_ref().is_some();
 
     let shared_get_tail_word_idx = if !losing {
         word_slice_find_any_phrase_start(after_gain, &[&["and", "get"], &["and", "gets"]])
@@ -1252,7 +1301,9 @@ pub(crate) fn parse_gain_ability_sentence(
         .or(shared_has_tail_word_idx)
         .map(|idx| gain_idx + 1 + idx)
         .or(ability_end_word_idx);
-    let ability_end_token_idx = if let Some(end_word_idx) = ability_end_word_idx {
+    let ability_end_token_idx = if let Some((end_token_idx, _)) = nested_quoted_ability {
+        end_token_idx
+    } else if let Some(end_word_idx) = ability_end_word_idx {
         token_index_for_word_index(tokens, end_word_idx).unwrap_or(tokens.len())
     } else {
         tokens.len()
@@ -2186,6 +2237,30 @@ mod tests {
         assert!(
             string_contains(&debug, "duration: EndOfTurn"),
             "explicit source ability grant duration should be preserved, got {debug}"
+        );
+    }
+
+    #[test]
+    fn quoted_nested_trigger_grant_keeps_outer_until_end_of_turn_duration() {
+        let tokens = tokenize_line(
+            "It gains \"Whenever this creature deals combat damage to a player, draw two cards\" until end of turn.",
+            0,
+        );
+        let effect = parse_gain_ability_sentence(&tokens)
+            .expect("quoted nested trigger grant should parse")
+            .expect("quoted nested trigger grant should produce effects")
+            .into_iter()
+            .next()
+            .expect("quoted nested trigger grant should produce one effect");
+
+        let debug = format!("{effect:?}");
+        assert!(
+            string_contains(&debug, "GrantAbilities")
+                && string_contains(&debug, "ParsedObjectAbility")
+                && string_contains(&debug, "duration: EndOfTurn")
+                && string_contains(&debug, "Draw")
+                && string_contains(&debug, "Fixed(2)"),
+            "expected quoted combat-damage draw trigger to be granted until end of turn, got {debug}"
         );
     }
 

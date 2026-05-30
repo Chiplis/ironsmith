@@ -40375,6 +40375,7 @@ strict_parse_card_expected_fail_test!(
 );
 strict_parse_card_expected_fail_test!(strict_parse_lake_of_the_dead, "Lake of the Dead");
 strict_parse_card_test!(strict_parse_maskwood_nexus, "Maskwood Nexus");
+strict_parse_card_test!(strict_parse_mighty_servant_of_leuk_o, "Mighty Servant of Leuk-o");
 strict_parse_card_test!(strict_parse_mox_amber, "Mox Amber");
 strict_parse_card_test!(strict_parse_nesting_grounds, "Nesting Grounds");
 strict_parse_card_test!(strict_parse_nine_lives_familiar, "Nine-Lives Familiar");
@@ -40440,6 +40441,32 @@ fn skeleton_crew_compiled_text_keeps_graveyard_leave_trigger() {
             && rendered.contains("Whenever one or more creature cards leave your graveyard, create a 2/2 black Skeleton Pirate creature token")
             && rendered.contains("{5}{B}: Return this card from your graveyard to the battlefield tapped"),
         "expected Skeleton Crew compiled text to preserve anthem, graveyard-leave trigger, and graveyard activation, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn mighty_servant_of_leuk_o_compiled_text_keeps_crew_count_granted_trigger() {
+    let def = parse_oracle_card_definition("Mighty Servant of Leuk-o");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    let abilities_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains("Whenever this Vehicle becomes crewed for the first time each turn")
+            && rendered.contains("crewed by exactly two creatures")
+            && rendered.contains("Whenever this creature deals combat damage to a player")
+            && rendered.contains("Draw two cards")
+            && rendered.contains("until end of turn")
+            && rendered.contains("Crew 4"),
+        "expected Mighty Servant of Leuk-o compiled text to preserve crew-count trigger and temporary combat-damage draw grant, got {rendered}"
+    );
+    assert!(
+        abilities_debug.contains("SourceFirstCrewedThisTurn")
+            && abilities_debug.contains("SourceCrewedByExactly")
+            && abilities_debug.contains("AddAbilityGeneric")
+            && abilities_debug.contains("ThisDealsCombatDamageToPlayerTrigger")
+            && abilities_debug.contains("CrewCostEffect"),
+        "expected Mighty Servant of Leuk-o structure to include first-crew, exact crew count, granted damage trigger, and Crew 4, got {abilities_debug}"
     );
 }
 

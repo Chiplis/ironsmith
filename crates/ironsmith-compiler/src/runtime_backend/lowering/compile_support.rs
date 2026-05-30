@@ -538,6 +538,12 @@ pub(crate) fn compile_condition_from_predicate_ast(
         }
         PredicateAst::SourceIsTapped => Condition::SourceIsTapped,
         PredicateAst::SourceIsSaddled => Condition::SourceIsSaddled,
+        PredicateAst::SourceCrewedByExactly { count, filter } => {
+            Condition::SourceCrewedByExactly {
+                count: *count,
+                filter: filter.clone(),
+            }
+        }
         PredicateAst::SourceMatches(filter) => Condition::SourceMatches(filter.clone()),
         PredicateAst::TriggeringObjectHadToAttackThisCombat => {
             Condition::TriggeringObjectHadToAttackThisCombat

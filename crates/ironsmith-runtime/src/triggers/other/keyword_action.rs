@@ -10,6 +10,8 @@ use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 use crate::types::CardType;
 
+const CREW_ACTIVATION_TAG: &str = "__crew_activation";
+
 fn is_plain_other_card_filter(filter: &ObjectFilter) -> bool {
     filter.other
         && !filter.source
@@ -167,6 +169,12 @@ impl TriggerMatcher for KeywordActionTrigger {
             if !matches {
                 return false;
             }
+            if self.action == KeywordActionKind::Crew
+                && object_filter.source
+                && !e.object_tags.contains_key(&TagKey::from(CREW_ACTIVATION_TAG))
+            {
+                return false;
+            }
         }
 
         match &self.player {
@@ -254,6 +262,18 @@ impl TriggerMatcher for KeywordActionTrigger {
         if self.action == KeywordActionKind::Crew
             && let Some(source_filter) = &self.source_filter
         {
+            if self
+                .tagged_object_filter
+                .as_ref()
+                .is_some_and(|(_, object_filter)| object_filter.source)
+            {
+                let object = self
+                    .tagged_object_filter
+                    .as_ref()
+                    .map(|(_, object_filter)| object_filter.description())
+                    .unwrap_or_else(|| "this Vehicle".to_string());
+                return format!("Whenever {object} becomes crewed");
+            }
             let object = self
                 .tagged_object_filter
                 .as_ref()

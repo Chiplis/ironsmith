@@ -28,9 +28,9 @@ use super::super::util::{
     non_article_word_refs, parse_alternative_cast_words, parse_card_type, parse_color,
     parse_counter_type_from_tokens, parse_counter_type_word, parse_filter_counter_constraint_words,
     parse_filter_keyword_constraint_words, parse_mana_symbol_word_flexible, parse_non_color,
-    parse_non_subtype, parse_non_supertype, parse_non_type, parse_number, parse_subtype_flexible,
-    parse_subtype_word, parse_supertype_word, parse_unsigned_pt_word, parse_zone_word,
-    push_outlaw_subtypes, trim_commas, word_refs_except,
+    parse_non_subtype, parse_non_supertype, parse_non_type, parse_number, parse_number_word_u32,
+    parse_subtype_flexible, parse_subtype_word, parse_supertype_word, parse_unsigned_pt_word,
+    parse_zone_word, push_outlaw_subtypes, trim_commas, word_refs_except,
 };
 use super::super::value_helpers::parse_filter_comparison_tokens;
 use super::primitives::{self, TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_or};

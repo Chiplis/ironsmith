@@ -1318,6 +1318,42 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::SourceIsSaddled);
     }
 
+    if let Some(was_idx) = find_index(&filtered, |word| *word == "was") {
+        let subject_words = &filtered[..was_idx];
+        let is_source_subject = is_source_reference_words(subject_words)
+            || word_slice_eq_any(subject_words, &[&["it"], &["its"]]);
+        let tail = &filtered[was_idx + 1..];
+        if is_source_subject
+            && tail.len() >= 5
+            && word_slice_starts_with(tail, &["crewed", "by", "exactly"])
+        {
+            let Some(count) = tail.get(3).and_then(|word| parse_number_word_u32(word)) else {
+                return Err(CardTextError::ParseError(format!(
+                    "missing crew-count predicate quantity (predicate: '{}')",
+                    filtered.join(" ")
+                )));
+            };
+            let filter_words = &tail[4..];
+            if filter_words.is_empty() {
+                return Err(CardTextError::ParseError(format!(
+                    "missing crew-count predicate filter (predicate: '{}')",
+                    filtered.join(" ")
+                )));
+            }
+            let filter_tokens = filter_words
+                .iter()
+                .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+                .collect::<Vec<_>>();
+            let filter = parse_object_filter(&filter_tokens, false).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported crew-count predicate filter (predicate: '{}')",
+                    filtered.join(" ")
+                ))
+            })?;
+            return Ok(PredicateAst::SourceCrewedByExactly { count, filter });
+        }
+    }
+
     if let Some(is_idx) = find_index(&filtered, |word| matches!(*word, "is" | "are")) {
         let subject_words = &filtered[..is_idx];
         let is_source_subject = is_source_reference_words(subject_words)

@@ -744,6 +744,10 @@ pub enum Condition {
     ItIsNight,
     SourceIsTapped,
     SourceIsSaddled,
+    SourceCrewedByExactly {
+        count: u32,
+        filter: ObjectFilter,
+    },
     SourceDevouredCreaturesOrMore(u32),
     SourceIsMonstrous,
     SourceIsFaceDown,
@@ -785,6 +789,7 @@ pub enum Condition {
     },
     ThisAbilityResolvedThisTurnExactly(u32),
     FirstTimeThisTurn,
+    SourceFirstCrewedThisTurn,
     MaxTimesEachTurn(u32),
     DoThisMaxTimesEachTurn(u32),
     TriggeringObjectWasEnchanted,
