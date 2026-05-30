@@ -2994,6 +2994,7 @@ pub struct MayCastMatchingSpellWithoutPayingManaCostEffect {
     pub player: PlayerFilter,
     pub filter: ObjectFilter,
     pub zone: crate::Zone,
+    pub any_number: bool,
 }
 
 impl MayCastMatchingSpellWithoutPayingManaCostEffect {
@@ -3002,6 +3003,16 @@ impl MayCastMatchingSpellWithoutPayingManaCostEffect {
             player,
             filter,
             zone,
+            any_number: false,
+        }
+    }
+
+    pub fn any_number(player: PlayerFilter, filter: ObjectFilter, zone: crate::Zone) -> Self {
+        Self {
+            player,
+            filter,
+            zone,
+            any_number: true,
         }
     }
 }

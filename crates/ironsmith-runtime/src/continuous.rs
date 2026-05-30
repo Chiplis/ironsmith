@@ -3885,6 +3885,7 @@ fn continuous_filter_context(
         your_commanders: Vec::new(),
         iterated_player: None,
         x_value: None,
+        event_value_amount: None,
         chosen_player: None,
         target_players: Vec::new(),
         target_objects: Vec::new(),

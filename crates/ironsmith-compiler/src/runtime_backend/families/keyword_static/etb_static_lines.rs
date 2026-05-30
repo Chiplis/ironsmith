@@ -854,6 +854,12 @@ pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Val
         ])
         | Some([
             "amount", "of", "damage", "it", "dealt", "to", "that", "player",
+        ])
+        | Some([
+            "the", "amount", "of", "damage", "dealt",
+        ])
+        | Some([
+            "amount", "of", "damage", "dealt",
         ]) => return Some(Value::EventValue(EventValueSpec::Amount)),
         Some(["the", "number", "of", "opponents", "you", "have"])
         | Some(["number", "of", "opponents", "you", "have"])

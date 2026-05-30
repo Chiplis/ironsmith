@@ -120,7 +120,7 @@ impl EffectExecutor for CascadeEffect {
                 let options = effect_driven_cast_options_for_card(
                     game,
                     ctx.controller,
-                    ctx.source,
+                    ctx,
                     candidate_id,
                     candidate_obj.zone,
                     &filter,

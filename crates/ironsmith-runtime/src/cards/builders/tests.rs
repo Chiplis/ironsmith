@@ -35673,6 +35673,27 @@ fn parse_desmond_miles_strict_and_renders_compound_count_and_surveil_x() {
 }
 
 #[test]
+fn parse_oracle_kotis_the_fangkeeper_strict_and_renders_damage_bound_cast_clause() {
+    let def = parse_oracle_card_definition("Kotis, the Fangkeeper");
+    let debug = format!("{def:#?}");
+    let compact_debug = debug.split_whitespace().collect::<String>();
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        debug.contains("Indestructible")
+            && compact_debug.contains("EventValue(Amount")
+            && compact_debug.contains("any_number:true"),
+        "expected Kotis to parse indestructible, event-derived X, and any-number free-cast structurally, got {debug}"
+    );
+    assert!(
+        rendered.contains(
+            "exile the top X cards of their library, where X is the amount of damage dealt. You may cast any number of spells with mana value X or less from among them without paying their mana costs."
+        ),
+        "expected Kotis compiled text to preserve damage-bound exile/cast clause, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_oracle_nadaar_enters_or_attacks_surface_regression() {
     let def = parse_oracle_card_definition("Nadaar, Selfless Paladin");
     let rendered = unprocessed_compiled_lines(&def).join(" ");

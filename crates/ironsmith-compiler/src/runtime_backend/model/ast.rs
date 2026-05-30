@@ -3212,6 +3212,7 @@ pub(crate) enum EffectAst {
         player: PlayerAst,
         filter: ObjectFilter,
         zone: Zone,
+        any_number: bool,
     },
     RepeatThisProcess,
     RepeatThisProcessMay,
@@ -3664,6 +3665,20 @@ impl EffectAst {
             player,
             filter,
             zone,
+            any_number: false,
+        }
+    }
+
+    pub(crate) fn may_cast_any_number_matching_spells_without_paying_mana_cost(
+        player: PlayerAst,
+        filter: ObjectFilter,
+        zone: Zone,
+    ) -> Self {
+        Self::MayCastMatchingSpellWithoutPayingManaCost {
+            player,
+            filter,
+            zone,
+            any_number: true,
         }
     }
 

@@ -4518,6 +4518,7 @@ fn rewrite_lexed_permission_helpers_route_singular_hand_free_casts_to_one_shot_e
                 player,
                 filter,
                 zone,
+                ..
             },
         ] => (player, filter, zone),
         [
@@ -4531,6 +4532,7 @@ fn rewrite_lexed_permission_helpers_route_singular_hand_free_casts_to_one_shot_e
                     player,
                     filter,
                     zone,
+                    ..
                 },
             ] => (player, filter, zone),
             _ => panic!("expected nested singular hand free-cast effect, got {effects:#?}"),
@@ -4605,6 +4607,7 @@ fn rewrite_lexed_parse_counterpoint_followup_clause_with_tagged_mana_value_gate(
                 player,
                 filter,
                 zone,
+                ..
             },
         ] => (player, filter, zone),
         [
@@ -4618,6 +4621,7 @@ fn rewrite_lexed_parse_counterpoint_followup_clause_with_tagged_mana_value_gate(
                     player,
                     filter,
                     zone,
+                    ..
                 },
             ] => (player, filter, zone),
             _ => panic!("expected nested free-cast effect, got {effects:#?}"),
@@ -4670,6 +4674,7 @@ fn rewrite_lexed_parse_glamdring_trigger_clause_with_damage_value_gate() {
                 player,
                 filter,
                 zone,
+                ..
             },
         ] => (player, filter, zone),
         _ => panic!("expected one-shot hand free-cast effect, got {effects:#?}"),
@@ -4687,6 +4692,61 @@ fn rewrite_lexed_parse_glamdring_trigger_clause_with_damage_value_gate() {
         Some(crate::filter::Comparison::LessThanOrEqualExpr(Box::new(
             crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount)
         )))
+    );
+}
+
+#[test]
+fn rewrite_lexed_parse_kotis_any_number_exiled_spells_with_damage_value_gate() {
+    let tokens = lex_line(
+        "You may cast any number of spells with mana value X or less from among them without paying their mana costs",
+        0,
+    )
+    .expect("rewrite lexer should classify Kotis free-cast clause");
+
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("Kotis any-number free-cast clause should parse as a supported effect");
+
+    let inner = match effects.as_slice() {
+        [crate::cards::builders::EffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. }] => {
+            &effects[0]
+        }
+        [crate::cards::builders::EffectAst::MayByPlayer { effects, .. }] => {
+            effects.first().expect("MayByPlayer should wrap one Kotis free-cast effect")
+        }
+        _ => panic!("expected any-number free-cast effect, got {effects:#?}"),
+    };
+    let crate::cards::builders::EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+        player,
+        filter,
+        zone,
+        any_number,
+    } = inner
+    else {
+        panic!("expected any-number free-cast effect, got {effects:#?}");
+    };
+
+    assert!(matches!(
+        player,
+        crate::cards::builders::PlayerAst::Implicit | crate::cards::builders::PlayerAst::You
+    ));
+    assert_eq!(*zone, crate::zone::Zone::Exile);
+    assert!(*any_number, "Kotis clause should preserve any-number casting");
+    assert!(filter.excluded_card_types.contains(&crate::types::CardType::Land));
+    assert!(filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+    }));
+    assert!(
+        matches!(
+            &filter.mana_value,
+            Some(crate::filter::Comparison::LessThanOrEqualExpr(value))
+                if matches!(
+                    value.as_ref(),
+                    crate::effect::Value::X
+                        | crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount)
+                )
+        ),
+        "expected Kotis mana-value gate to preserve X/event amount, got {:?}",
+        filter.mana_value
     );
 }
 

@@ -2749,6 +2749,19 @@ impl Effect {
         ))
     }
 
+    /// Create an effect that lets a player cast any number of matching spells
+    /// from a zone without paying their mana costs.
+    pub fn may_cast_any_number_matching_spells_without_paying_mana_cost(
+        player: crate::target::PlayerFilter,
+        filter: crate::target::ObjectFilter,
+        zone: Zone,
+    ) -> Self {
+        use crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect;
+        Self::new(MayCastMatchingSpellWithoutPayingManaCostEffect::any_number(
+            player, filter, zone,
+        ))
+    }
+
     /// Create an effect that grants the next matching spell this turn a static ability.
     pub fn grant_next_spell_ability_this_turn(
         player: crate::target::PlayerFilter,

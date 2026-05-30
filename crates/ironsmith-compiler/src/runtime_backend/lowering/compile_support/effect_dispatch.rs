@@ -140,18 +140,26 @@ fn compile_effect_inner(
         player,
         filter,
         zone,
+        any_number,
     } = effect
     {
         let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
         let player = resolve_non_target_player_filter(player.clone(), &current_reference_env(ctx))?;
+        let effect = if *any_number {
+            crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect::any_number(
+                player,
+                resolved_filter,
+                *zone,
+            )
+        } else {
+            crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect::new(
+                player,
+                resolved_filter,
+                *zone,
+            )
+        };
         return Ok((
-            vec![Effect::new(
-                crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect::new(
-                    player,
-                    resolved_filter,
-                    *zone,
-                ),
-            )],
+            vec![Effect::new(effect)],
             Vec::new(),
         ));
     }

@@ -20926,6 +20926,16 @@ pub(super) fn describe_exile_top_of_library(
     if value_text == "X" {
         return format!("Exile the top X cards of {owner} library{face_down_suffix}");
     }
+    if count.has_surface_hint(ValueSurfaceHint::WhereXIs)
+        && matches!(
+            count.unhinted(),
+            Value::EventValue(crate::effect::EventValueSpec::Amount)
+        )
+    {
+        return format!(
+            "Exile the top X cards of {owner} library{face_down_suffix}, where X is the amount of damage dealt"
+        );
+    }
 
     format!(
         "Exile a number of cards from the top of {owner} library equal to {value_text}{face_down_suffix}"
@@ -32063,6 +32073,63 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
 
         let player = describe_player_filter(&may_cast_matching.player);
+        let from_tagged_exile = may_cast_matching.zone == Zone::Exile
+            && may_cast_matching.filter.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            });
+        if may_cast_matching.any_number {
+            let spell_text = if may_cast_matching.filter.card_types.is_empty() {
+                "spells".to_string()
+            } else {
+                let card_type_words = may_cast_matching
+                    .filter
+                    .card_types
+                    .iter()
+                    .map(|card_type| {
+                        format!("{} spells", card_type.to_string().to_ascii_lowercase())
+                    })
+                    .collect::<Vec<_>>();
+                join_with_or(&card_type_words)
+            };
+            let zone_text = if from_tagged_exile {
+                "from among them".to_string()
+            } else {
+                match may_cast_matching.zone {
+                    Zone::Hand => format!(
+                        "from {} hand",
+                        describe_possessive_player_filter(&may_cast_matching.player)
+                    ),
+                    Zone::Graveyard => "from a graveyard".to_string(),
+                    Zone::Library => "from a library".to_string(),
+                    Zone::Exile => "from exile".to_string(),
+                    Zone::Battlefield => "from the battlefield".to_string(),
+                    Zone::Stack => "from the stack".to_string(),
+                    Zone::Command => "from the command zone".to_string(),
+                    Zone::OutsideGame => "from outside the game".to_string(),
+                }
+            };
+            let mana_value_limit_text = match &may_cast_matching.filter.mana_value {
+                Some(crate::filter::Comparison::LessThanOrEqualExpr(value))
+                    if matches!(
+                        value.as_ref(),
+                        crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount)
+                            | crate::effect::Value::X
+                    ) =>
+                {
+                    " with mana value X or less".to_string()
+                }
+                Some(crate::filter::Comparison::LessThanOrEqualExpr(value)) => {
+                    format!(" with mana value {} or less", describe_value(value))
+                }
+                Some(crate::filter::Comparison::LessThanExpr(value)) => {
+                    format!(" with mana value less than {}", describe_value(value))
+                }
+                _ => String::new(),
+            };
+            return format!(
+                "{player} may cast any number of {spell_text}{mana_value_limit_text} {zone_text} without paying their mana costs"
+            );
+        }
         let has_tagged_mana_value_cap =
             may_cast_matching
                 .filter

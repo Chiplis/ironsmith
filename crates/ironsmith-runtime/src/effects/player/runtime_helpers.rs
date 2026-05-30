@@ -88,20 +88,18 @@ pub(super) struct EffectDrivenCastResult {
 fn cast_filter_matches(
     game: &GameState,
     caster: PlayerId,
-    source: ObjectId,
+    ctx: &ExecutionContext,
     view: &crate::object::Object,
     filter: &crate::target::ObjectFilter,
 ) -> bool {
-    let filter_ctx = game
-        .filter_context_for(caster, Some(source))
-        .with_caster(Some(caster));
+    let filter_ctx = ctx.filter_context(game).with_caster(Some(caster));
     filter.matches(view, &filter_ctx, game)
 }
 
 pub(super) fn effect_driven_cast_options_for_card(
     game: &GameState,
     caster: PlayerId,
-    source: ObjectId,
+    ctx: &ExecutionContext,
     object_id: ObjectId,
     from_zone: Zone,
     filter: &crate::target::ObjectFilter,
@@ -114,12 +112,12 @@ pub(super) fn effect_driven_cast_options_for_card(
     }
 
     let mut options = Vec::new();
-    if cast_filter_matches(game, caster, source, object, filter) {
+    if cast_filter_matches(game, caster, ctx, object, filter) {
         let casting_method = if from_zone == Zone::Hand {
             CastingMethod::Normal
         } else {
             CastingMethod::PlayFrom {
-                source,
+                source: ctx.source,
                 zone: from_zone,
                 use_alternative: None,
             }
@@ -133,7 +131,7 @@ pub(super) fn effect_driven_cast_options_for_card(
     }
 
     if let Some(other_half) = crate::decision::spell_view_for_split_other_half_cast(game, object)
-        && cast_filter_matches(game, caster, source, &other_half, filter)
+        && cast_filter_matches(game, caster, ctx, &other_half, filter)
     {
         options.push(EffectDrivenCastOption {
             object_id,

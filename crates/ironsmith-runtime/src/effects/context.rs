@@ -1064,6 +1064,7 @@ impl<'a> ExecutionContext<'a> {
             .filter_context_for(self.controller, Some(self.source))
             .with_iterated_player(self.iteration.iterated_player)
             .with_x_value(self.x_value)
+            .with_event_value_amount(self.event_value_amount)
             .with_chosen_player(
                 self.combat
                     .chosen_player

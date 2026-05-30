@@ -1479,6 +1479,88 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
     ))
 }
 
+fn parse_cast_any_number_from_among_with_mana_value_limit_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let Some((lead, rest_tokens)) = parse_permission_lead_tokens(tokens) else {
+        return Ok(None);
+    };
+    if lead.allow_land {
+        return Ok(None);
+    }
+
+    let rest_words = token_word_refs(rest_tokens);
+    if rest_words.len() < 14
+        || rest_words.get(..7)
+            != Some(
+                ["any", "number", "of", "spells", "with", "mana", "value"].as_slice(),
+            )
+    {
+        return Ok(None);
+    }
+    let Some(from_idx) = rest_words
+        .windows(3)
+        .position(|window| matches!(window, ["from", "among", "them"] | ["from", "among", "those"]))
+    else {
+        return Ok(None);
+    };
+    if from_idx <= 7 {
+        return Ok(None);
+    }
+    let tail_words = &rest_words[from_idx + 3..];
+    if tail_words != ["without", "paying", "their", "mana", "costs"]
+        && tail_words != ["without", "paying", "their", "mana", "cost"]
+    {
+        return Ok(None);
+    }
+
+    let Some(comparison_start) = token_index_for_word_index(rest_tokens, 7) else {
+        return Ok(None);
+    };
+    let Some(comparison_end) = token_index_for_word_index(rest_tokens, from_idx) else {
+        return Ok(None);
+    };
+    let comparison_tokens = &rest_tokens[comparison_start..comparison_end];
+    let Some((operator, rhs_tokens)) = parse_value_comparison_tokens(comparison_tokens) else {
+        return Ok(None);
+    };
+    let Some((rhs_value, used)) = parse_value_from_lexed(rhs_tokens) else {
+        return Ok(None);
+    };
+    if used != rhs_tokens.len() {
+        return Ok(None);
+    }
+
+    let mut filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
+    filter.excluded_card_types.push(CardType::Land);
+    filter.mana_value = Some(match operator {
+        ValueComparisonOperator::Equal => crate::filter::Comparison::EqualExpr(Box::new(rhs_value)),
+        ValueComparisonOperator::NotEqual => {
+            crate::filter::Comparison::NotEqualExpr(Box::new(rhs_value))
+        }
+        ValueComparisonOperator::LessThan => {
+            crate::filter::Comparison::LessThanExpr(Box::new(rhs_value))
+        }
+        ValueComparisonOperator::LessThanOrEqual => {
+            crate::filter::Comparison::LessThanOrEqualExpr(Box::new(rhs_value))
+        }
+        ValueComparisonOperator::GreaterThan => {
+            crate::filter::Comparison::GreaterThanExpr(Box::new(rhs_value))
+        }
+        ValueComparisonOperator::GreaterThanOrEqual => {
+            crate::filter::Comparison::GreaterThanOrEqualExpr(Box::new(rhs_value))
+        }
+    });
+
+    Ok(Some(
+        EffectAst::may_cast_any_number_matching_spells_without_paying_mana_cost(
+            lead.player,
+            filter,
+            Zone::Exile,
+        ),
+    ))
+}
+
 pub(crate) fn parse_cast_or_play_tagged_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -1512,6 +1594,10 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
     }
 
     if let Some(effect) = parse_cast_with_tagged_mana_value_limit_clause(&trimmed)? {
+        return Ok(Some(effect));
+    }
+
+    if let Some(effect) = parse_cast_any_number_from_among_with_mana_value_limit_clause(&trimmed)? {
         return Ok(Some(effect));
     }
 

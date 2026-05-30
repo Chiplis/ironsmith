@@ -28218,6 +28218,64 @@ impl DecisionMaker for ChooseFreeCastOptionByLabel {
     }
 }
 
+struct KotisAnyNumberDecisionMaker {
+    remaining_yes: usize,
+}
+
+impl DecisionMaker for KotisAnyNumberDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        if self.remaining_yes == 0 {
+            return false;
+        }
+        self.remaining_yes -= 1;
+        true
+    }
+
+    fn decide_options(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        ctx.options
+            .iter()
+            .find(|option| option.legal)
+            .map(|option| vec![option.index])
+            .unwrap_or_default()
+    }
+}
+
+fn kotis_test_spell(
+    name: &str,
+    id: u32,
+    generic_cost: u8,
+    card_type: CardType,
+) -> crate::card::Card {
+    CardBuilder::new(CardId::from_raw(id), name)
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
+            generic_cost,
+        )]]))
+        .card_types(vec![card_type])
+        .build()
+}
+
+fn kotis_any_number_free_cast_effect(tag: &'static str) -> Effect {
+    let mut filter = crate::target::ObjectFilter::tagged(tag).with_mana_value(
+        crate::filter::Comparison::LessThanOrEqualExpr(Box::new(Value::EventValue(
+            EventValueSpec::Amount,
+        ))),
+    );
+    filter.excluded_card_types.push(CardType::Land);
+    Effect::may_cast_any_number_matching_spells_without_paying_mana_cost(
+        PlayerFilter::You,
+        filter,
+        Zone::Exile,
+    )
+}
+
 #[test]
 fn test_effect_driven_free_cast_can_choose_adventure_half_from_hand() {
     let mut game = setup_game();
@@ -28286,6 +28344,96 @@ fn test_effect_driven_free_cast_can_choose_adventure_half_from_exile() {
         game.object(card_id)
             .is_none_or(|object| object.zone != Zone::Exile),
         "physical Adventure card should leave exile while its Adventure half is on the stack"
+    );
+}
+
+#[test]
+fn kotis_any_number_free_cast_casts_each_matching_exiled_spell_and_respects_damage_cap() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let tag = "kotis_exiled";
+
+    let kotis = CardBuilder::new(CardId::from_raw(362_001), "Kotis, the Fangkeeper")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let source_id = game.create_object_from_card(&kotis, alice, Zone::Battlefield);
+    let cheap_one = kotis_test_spell("Kotis Cheap Spell One", 362_002, 1, CardType::Sorcery);
+    let cheap_two = kotis_test_spell("Kotis Cheap Spell Two", 362_003, 2, CardType::Instant);
+    let expensive = kotis_test_spell("Kotis Expensive Spell", 362_004, 4, CardType::Sorcery);
+    let land = kotis_test_spell("Kotis Exiled Land", 362_005, 0, CardType::Land);
+    let cheap_one_id = game.create_object_from_card(&cheap_one, alice, Zone::Exile);
+    let cheap_two_id = game.create_object_from_card(&cheap_two, alice, Zone::Exile);
+    let expensive_id = game.create_object_from_card(&expensive, alice, Zone::Exile);
+    let land_id = game.create_object_from_card(&land, alice, Zone::Exile);
+    let tagged = [cheap_one_id, cheap_two_id, expensive_id, land_id]
+        .into_iter()
+        .map(|id| crate::snapshot::ObjectSnapshot::from_object(game.object(id).unwrap(), &game))
+        .collect::<Vec<_>>();
+
+    let effect = kotis_any_number_free_cast_effect(tag);
+    let mut dm = KotisAnyNumberDecisionMaker { remaining_yes: 4 };
+    let mut ctx = ExecutionContext::new(source_id, alice, &mut dm).with_event_value_amount(2);
+    ctx.set_tagged_objects(tag, tagged);
+    execute_effect(&mut game, &effect, &mut ctx)
+        .expect("Kotis any-number free-cast effect should resolve");
+
+    let stack_names = game
+        .stack
+        .iter()
+        .filter_map(|entry| game.object(entry.object_id))
+        .map(|object| object.name.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        stack_names.len(),
+        2,
+        "Kotis should cast both matching exiled spells and no nonmatching cards, got {stack_names:?}"
+    );
+    assert!(stack_names.contains(&"Kotis Cheap Spell One"), "{stack_names:?}");
+    assert!(stack_names.contains(&"Kotis Cheap Spell Two"), "{stack_names:?}");
+    assert_eq!(
+        game.object(expensive_id).map(|object| object.zone),
+        Some(Zone::Exile),
+        "spell above the damage-bound mana value should remain exiled"
+    );
+    assert_eq!(
+        game.object(land_id).map(|object| object.zone),
+        Some(Zone::Exile),
+        "Kotis should not cast lands through the spell-only permission"
+    );
+}
+
+#[test]
+fn kotis_any_number_free_cast_decline_branch_leaves_matching_card_exiled() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let tag = "kotis_declined_exiled";
+
+    let kotis = CardBuilder::new(CardId::from_raw(362_011), "Kotis, the Fangkeeper")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let source_id = game.create_object_from_card(&kotis, alice, Zone::Battlefield);
+    let spell = kotis_test_spell("Kotis Declined Spell", 362_012, 1, CardType::Sorcery);
+    let spell_id = game.create_object_from_card(&spell, alice, Zone::Exile);
+    let tagged = vec![crate::snapshot::ObjectSnapshot::from_object(
+        game.object(spell_id).unwrap(),
+        &game,
+    )];
+
+    let effect = kotis_any_number_free_cast_effect(tag);
+    let mut dm = KotisAnyNumberDecisionMaker { remaining_yes: 0 };
+    let mut ctx = ExecutionContext::new(source_id, alice, &mut dm).with_event_value_amount(2);
+    ctx.set_tagged_objects(tag, tagged);
+    execute_effect(&mut game, &effect, &mut ctx)
+        .expect("declining Kotis free-cast permission should resolve");
+
+    assert!(
+        game.stack.is_empty(),
+        "declined Kotis cast should not put a spell on the stack"
+    );
+    assert_eq!(
+        game.object(spell_id).map(|object| object.zone),
+        Some(Zone::Exile),
+        "declined Kotis spell should remain exiled"
     );
 }
 
