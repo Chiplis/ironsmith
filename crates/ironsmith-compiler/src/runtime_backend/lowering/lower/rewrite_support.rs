@@ -13,6 +13,11 @@ pub(super) fn infer_static_ability_functional_zones(normalized_line: &str) -> Op
     {
         return Some(vec![Zone::Graveyard]);
     }
+    if str_contains(normalized.as_str(), "cast this card from exile")
+        || str_contains(normalized.as_str(), "play this card from exile")
+    {
+        return Some(vec![Zone::Exile]);
+    }
 
     let mut zones = Vec::new();
     for (needles, zone) in [
