@@ -4081,6 +4081,25 @@ fn rewrite_parser_root_nonlexed_object_filter_entrypoint_matches_grammar_lexed_o
 }
 
 #[test]
+fn object_filter_parses_base_power_or_toughness_disjunction() {
+    let tokens = lex_line("creature you control with base power or toughness 1", 0)
+        .expect("rewrite lexer should classify base power-or-toughness filter");
+
+    let filter = super::parse_object_filter(&tokens, false)
+        .expect("object filter should parse base power-or-toughness disjunction");
+    let debug = format!("{filter:?}");
+
+    assert!(
+        debug.contains("any_of")
+            && debug.contains("power: Some(Equal(1))")
+            && debug.contains("power_reference: Base")
+            && debug.contains("toughness: Some(Equal(1))")
+            && debug.contains("toughness_reference: Base"),
+        "expected base power/toughness disjunction branches, got {debug}"
+    );
+}
+
+#[test]
 fn rewrite_grammar_spell_filter_entrypoint_matches_parser_root_output() {
     let text = "creature spells with power or toughness 2 or less";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify comparison spell filter");

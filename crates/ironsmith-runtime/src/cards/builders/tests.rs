@@ -13896,6 +13896,48 @@ fn aquamorph_entity_strict_parser_and_compiled_text_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn sword_of_the_squeak_strict_parser_and_compiled_text_regression() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Sword of the Squeak")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .parse_text(
+            "Equipped creature gets +1/+1 for each creature you control with base power or toughness 1.\n\
+             Whenever a Hamster, Mouse, Rat, or Squirrel you control enters, you may attach this Equipment to that creature.\n\
+             Equip {2}",
+        )
+        .expect("Sword of the Squeak should parse strictly");
+
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("power_reference: base") && debug.contains("toughness_reference: base"),
+        "expected base power/toughness count branches, got {debug}"
+    );
+    assert!(
+        debug.contains("attachobjectseffect") && debug.contains("manapaymentcost"),
+        "expected optional attach trigger and equip cost, got {debug}"
+    );
+
+    let compiled = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        compiled.contains(
+            "Equipped creature gets +1/+1 for each creature you control with base power or toughness 1"
+        ),
+        "expected base power-or-toughness scaling text, got {compiled}"
+    );
+    assert!(
+        compiled.contains(
+            "Whenever a Hamster, Mouse, Rat, or Squirrel you control enters, you may attach this Equipment to that creature"
+        ),
+        "expected optional attach trigger text, got {compiled}"
+    );
+    assert!(
+        compiled.contains("Equip {2}"),
+        "expected equip cost text, got {compiled}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_trigger_this_creature_enters_from_your_graveyard() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Phyrexian Dragon Engine")
         .card_types(vec![CardType::Creature])

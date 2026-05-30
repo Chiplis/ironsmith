@@ -28909,6 +28909,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(attach) = effect.downcast_ref::<crate::effects::AttachObjectsEffect>() {
         let triggering_tag = TagKey::from("triggering");
+        if matches!(attach.objects, ChooseSpec::Source)
+            && matches!(&attach.target, ChooseSpec::Tagged(tag) if tag == &triggering_tag)
+        {
+            return "Attach this source to that creature".to_string();
+        }
         if choose_spec_references_exact_tag(&attach.objects, &triggering_tag)
             && matches!(&attach.target, ChooseSpec::Tagged(tag) if tag.as_str().starts_with("created_"))
         {

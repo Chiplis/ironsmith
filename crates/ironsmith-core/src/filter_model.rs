@@ -1708,7 +1708,7 @@ impl ObjectFilter {
                 remaining.retain(|subtype| !outlaw_pack.contains(subtype));
             }
             parts.extend(remaining.iter().map(std::string::ToString::to_string));
-            Some(parts.join(" or "))
+            Some(join_or_list(&parts))
         } else {
             None
         };
@@ -2192,6 +2192,18 @@ fn describe_simple_any_of_keyword_clause(any_of: &[ObjectFilter]) -> Option<Stri
     }
 
     Some(labels.join(" or "))
+}
+
+fn join_or_list(parts: &[String]) -> String {
+    match parts.len() {
+        0 => String::new(),
+        1 => parts[0].clone(),
+        2 => format!("{} or {}", parts[0], parts[1]),
+        _ => {
+            let head = parts[..parts.len() - 1].join(", ");
+            format!("{head}, or {}", parts[parts.len() - 1])
+        }
+    }
 }
 
 fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {

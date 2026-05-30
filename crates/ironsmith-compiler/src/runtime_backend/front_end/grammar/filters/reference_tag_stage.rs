@@ -487,16 +487,6 @@ pub(super) fn parse_object_filter_inner(
         &all_words,
         &[&["power", "or", "toughness"], &["toughness", "or", "power"]],
     );
-    if has_power_or_toughness_clause
-        && !all_words
-            .iter()
-            .any(|word| matches!(*word, "spell" | "spells"))
-    {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported power-or-toughness object filter (clause: '{}')",
-            all_words.join(" ")
-        )));
-    }
     let reference_stage =
         apply_reference_and_tag_stage(&mut filter, &mut all_words, &mut segment_tokens);
     if reference_stage.early_return {
@@ -1447,10 +1437,15 @@ pub(super) fn parse_object_filter_inner(
         filter = disjunction;
     }
 
-    if has_power_or_toughness_clause && saw_spell {
+    if has_power_or_toughness_clause {
         let mut power_or_toughness_cmp = None;
+        let mut power_or_toughness_reference = crate::filter::PtReference::Effective;
         for idx in 0..all_words.len() {
-            let (_, value_tokens) = match all_words.get(idx..) {
+            let (reference, value_tokens) = match all_words.get(idx..) {
+                Some(["base", "power", "or", "toughness", rest @ ..])
+                | Some(["base", "toughness", "or", "power", rest @ ..]) => {
+                    (crate::filter::PtReference::Base, rest)
+                }
                 Some(["power", "or", "toughness", rest @ ..])
                 | Some(["toughness", "or", "power", rest @ ..]) => {
                     (crate::filter::PtReference::Effective, rest)
@@ -1463,6 +1458,7 @@ pub(super) fn parse_object_filter_inner(
                 continue;
             };
             power_or_toughness_cmp = Some(cmp);
+            power_or_toughness_reference = reference;
             break;
         }
         if let Some(cmp) = power_or_toughness_cmp {
@@ -1473,9 +1469,11 @@ pub(super) fn parse_object_filter_inner(
 
             let mut power_branch = base.clone();
             power_branch.power = Some(cmp.clone());
+            power_branch.power_reference = power_or_toughness_reference;
 
             let mut toughness_branch = base;
             toughness_branch.toughness = Some(cmp);
+            toughness_branch.toughness_reference = power_or_toughness_reference;
 
             let mut disjunction = ObjectFilter::default();
             disjunction.any_of = vec![power_branch, toughness_branch];

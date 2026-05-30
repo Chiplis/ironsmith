@@ -601,9 +601,78 @@ fn strip_article(text: String) -> String {
     text
 }
 
+fn describe_power_or_toughness_any_of_filter(filter: &ObjectFilter) -> Option<String> {
+    let [left, right] = filter.any_of.as_slice() else {
+        return None;
+    };
+
+    let (power_branch, toughness_branch) = match (
+        left.power.as_ref(),
+        left.toughness.as_ref(),
+        right.power.as_ref(),
+        right.toughness.as_ref(),
+    ) {
+        (Some(_), None, None, Some(_)) => (left, right),
+        (None, Some(_), Some(_), None) => (right, left),
+        _ => return None,
+    };
+
+    let power_cmp = power_branch.power.as_ref()?;
+    let toughness_cmp = toughness_branch.toughness.as_ref()?;
+    if power_cmp != toughness_cmp
+        || power_branch.power_reference != toughness_branch.toughness_reference
+    {
+        return None;
+    }
+
+    let mut power_base = power_branch.clone();
+    power_base.power = None;
+    power_base.power_reference = crate::filter::PtReference::Effective;
+    let mut toughness_base = toughness_branch.clone();
+    toughness_base.toughness = None;
+    toughness_base.toughness_reference = crate::filter::PtReference::Effective;
+    if power_base != toughness_base {
+        return None;
+    }
+
+    let axis = match power_branch.power_reference {
+        crate::filter::PtReference::Effective => "power or toughness",
+        crate::filter::PtReference::Base => "base power or toughness",
+    };
+    Some(format!(
+        "{} with {axis} {}",
+        strip_article(power_base.description()),
+        filter_comparison_display(power_cmp)
+    ))
+}
+
+fn filter_comparison_display(cmp: &crate::filter::Comparison) -> String {
+    match cmp {
+        crate::filter::Comparison::Equal(n) => n.to_string(),
+        crate::filter::Comparison::LessThan(n) => format!("less than {n}"),
+        crate::filter::Comparison::LessThanOrEqual(n) => format!("{n} or less"),
+        crate::filter::Comparison::GreaterThan(n) => format!("greater than {n}"),
+        crate::filter::Comparison::GreaterThanOrEqual(n) => format!("{n} or greater"),
+        crate::filter::Comparison::NotEqual(n) => format!("not {n}"),
+        crate::filter::Comparison::OneOf(values) => values
+            .iter()
+            .map(i32::to_string)
+            .collect::<Vec<_>>()
+            .join(" or "),
+        other => crate::target::ObjectFilter::default()
+            .with_power(other.clone())
+            .description()
+            .trim_start_matches("a permanent with power ")
+            .to_string(),
+    }
+}
+
 fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
     match expr {
         AnthemCountExpression::MatchingFilter(filter) => {
+            if let Some(subject) = describe_power_or_toughness_any_of_filter(filter) {
+                return subject;
+            }
             let mut subject = pluralized_subject_text(filter);
             if filter.owner.is_none()
                 && !filter.single_graveyard
@@ -683,6 +752,12 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
 }
 
 fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Option<String> {
+    if let AnthemCountExpression::MatchingFilter(filter) = expr
+        && let Some(subject) = describe_power_or_toughness_any_of_filter(filter)
+    {
+        return Some(subject);
+    }
+
     if let AnthemCountExpression::MatchingFilter(filter) = expr
         && !filter.any_of.is_empty()
         && filter

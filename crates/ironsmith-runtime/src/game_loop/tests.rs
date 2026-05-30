@@ -2109,6 +2109,236 @@ fn glamdring_equipped_creature_gets_first_strike_and_graveyard_scaled_power() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn sword_of_the_squeak_counts_base_power_or_toughness_and_attaches_to_entering_rodents() {
+    use crate::effects::{ExecutionContext, execute_effect};
+    use crate::events::zones::ZoneChangeEvent;
+    use crate::object::{AttachmentTarget, CounterType};
+
+    struct MayAttachDecisionMaker {
+        accept: bool,
+    }
+
+    impl DecisionMaker for MayAttachDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            self.accept
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let sword = CardDefinitionBuilder::new(CardId::from_raw(72_301), "Sword of the Squeak")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .parse_text(
+            "Equipped creature gets +1/+1 for each creature you control with base power or toughness 1.\n\
+             Whenever a Hamster, Mouse, Rat, or Squirrel you control enters, you may attach this Equipment to that creature.\n\
+             Equip {2}",
+        )
+        .expect("Sword of the Squeak should parse for runtime tests");
+    let sword_id = game.create_object_from_definition(&sword, alice, Zone::Battlefield);
+
+    let bearer_id = create_creature(&mut game, "Sword Bearer", alice, 2, 2);
+    if let Some(equipment) = game.object_mut(sword_id) {
+        equipment.attached_to = Some(AttachmentTarget::Object(bearer_id));
+    }
+    if let Some(bearer) = game.object_mut(bearer_id) {
+        bearer.attachments.push(sword_id);
+    }
+
+    create_creature(&mut game, "Base Power One", alice, 1, 3);
+    create_creature(&mut game, "Base Toughness One", alice, 3, 1);
+    create_creature(&mut game, "Base One One", alice, 1, 1);
+    create_creature(&mut game, "Opponent One One", bob, 1, 1);
+    let effectively_one_one = create_creature(&mut game, "Counter-Modified Zero", alice, 0, 0);
+    game.add_counters(effectively_one_one, CounterType::PlusOnePlusOne, 1)
+        .expect("add +1/+1 counter to nonmatching base 0/0");
+
+    assert_eq!(
+        (game.calculated_power(bearer_id), game.calculated_toughness(bearer_id)),
+        (Some(5), Some(5)),
+        "Sword should count each controlled creature with base power or base toughness 1 once"
+    );
+
+    if let Some(equipment) = game.object_mut(sword_id) {
+        equipment.attached_to = None;
+    }
+    if let Some(bearer) = game.object_mut(bearer_id) {
+        bearer.attachments.clear();
+    }
+    assert_eq!(
+        (game.calculated_power(bearer_id), game.calculated_toughness(bearer_id)),
+        (Some(2), Some(2)),
+        "Sword should not buff creatures while unattached"
+    );
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+    let equip_actions = compute_legal_actions(&game, alice);
+    assert!(
+        equip_actions.iter().any(|action| matches!(
+            action,
+            LegalAction::ActivateAbility { source, .. } if *source == sword_id
+        )),
+        "Equip {{2}} should be legal with two mana and a creature you control"
+    );
+
+    let hamster = CardBuilder::new(CardId::from_raw(72_302), "Helpful Hamster")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Hamster])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let hamster_id = game.create_object_from_card(&hamster, alice, Zone::Battlefield);
+    let hamster_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(hamster_id).expect("hamster exists"),
+        &game,
+    );
+    let hamster_event = TriggerEvent::new_with_provenance(
+        ZoneChangeEvent::with_cause(
+            hamster_id,
+            Zone::Hand,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            Some(hamster_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert_eq!(
+        check_triggers(&game, &hamster_event).len(),
+        1,
+        "Sword should trigger for a Hamster you control entering"
+    );
+
+    let bear_id = create_creature(&mut game, "Plain Bear", alice, 2, 2);
+    let bear_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(bear_id).expect("bear exists"),
+        &game,
+    );
+    let bear_event = TriggerEvent::new_with_provenance(
+        ZoneChangeEvent::with_cause(
+            bear_id,
+            Zone::Hand,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            Some(bear_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert_eq!(
+        check_triggers(&game, &bear_event).len(),
+        0,
+        "Sword should not trigger for unrelated creature types"
+    );
+
+    let squirrel = CardBuilder::new(CardId::from_raw(72_303), "Opponent Squirrel")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Squirrel])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let opponent_squirrel_id = game.create_object_from_card(&squirrel, bob, Zone::Battlefield);
+    let opponent_squirrel_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(opponent_squirrel_id)
+            .expect("opponent squirrel exists"),
+        &game,
+    );
+    let opponent_squirrel_event = TriggerEvent::new_with_provenance(
+        ZoneChangeEvent::with_cause(
+            opponent_squirrel_id,
+            Zone::Hand,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            Some(opponent_squirrel_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert_eq!(
+        check_triggers(&game, &opponent_squirrel_event).len(),
+        0,
+        "Sword should not trigger for an opponent's qualifying creature"
+    );
+
+    let triggered = sword
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Sword should have an optional attach trigger");
+
+    let mut accept_dm = MayAttachDecisionMaker { accept: true };
+    let mut accept_ctx = ExecutionContext::new_default(sword_id, alice)
+        .with_decision_maker(&mut accept_dm)
+        .with_triggering_event(hamster_event);
+    for effect in &triggered.effects {
+        execute_effect(&mut game, effect, &mut accept_ctx)
+            .expect("accepted Sword trigger should attach to the entering Hamster");
+    }
+    assert_eq!(
+        game.object(sword_id).and_then(|object| object.attached_to),
+        Some(AttachmentTarget::Object(hamster_id)),
+        "accepting the trigger should attach Sword to the entering Hamster"
+    );
+
+    if let Some(equipment) = game.object_mut(sword_id) {
+        equipment.attached_to = None;
+    }
+    if let Some(hamster) = game.object_mut(hamster_id) {
+        hamster.attachments.clear();
+    }
+    let mouse = CardBuilder::new(CardId::from_raw(72_304), "Declined Mouse")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Mouse])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let mouse_id = game.create_object_from_card(&mouse, alice, Zone::Battlefield);
+    let mouse_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(mouse_id).expect("mouse exists"),
+        &game,
+    );
+    let mouse_event = TriggerEvent::new_with_provenance(
+        ZoneChangeEvent::with_cause(
+            mouse_id,
+            Zone::Hand,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            Some(mouse_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert_eq!(
+        check_triggers(&game, &mouse_event).len(),
+        1,
+        "Sword should trigger for a Mouse you control entering"
+    );
+    let mut decline_dm = MayAttachDecisionMaker { accept: false };
+    let mut decline_ctx = ExecutionContext::new_default(sword_id, alice)
+        .with_decision_maker(&mut decline_dm)
+        .with_triggering_event(mouse_event);
+    for effect in &triggered.effects {
+        execute_effect(&mut game, effect, &mut decline_ctx)
+            .expect("declined Sword trigger should resolve cleanly");
+    }
+    assert_eq!(
+        game.object(sword_id).and_then(|object| object.attached_to),
+        None,
+        "declining the trigger should leave Sword unattached"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn frontier_warmonger_grants_menace_only_to_qualifying_attackers_until_cleanup() {
     let mut game = setup_three_player_game();
     let alice = PlayerId::from_index(0);
