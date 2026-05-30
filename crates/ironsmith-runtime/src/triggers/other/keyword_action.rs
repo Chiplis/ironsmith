@@ -231,6 +231,9 @@ impl TriggerMatcher for KeywordActionTrigger {
                 _ => "Whenever the Ring tempts a player".to_string(),
             };
         }
+        if self.action == KeywordActionKind::ChaosEnsues && self.player == PlayerFilter::Any {
+            return "Whenever chaos ensues".to_string();
+        }
         if self.action == KeywordActionKind::Exert
             && let Some(source_filter) = &self.source_filter
         {

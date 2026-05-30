@@ -846,6 +846,18 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
+    if let Some(gets_idx) = find_index(&filtered, |word| *word == "gets")
+        && gets_idx > 0
+        && word_slice_eq(
+            &filtered[gets_idx + 1..],
+            &["more", "votes", "or", "vote", "is", "tied"],
+        )
+    {
+        return Ok(PredicateAst::VoteOptionGetsMoreVotesOrTied {
+            option: filtered[..gets_idx].join(" "),
+        });
+    }
+
     if let Some(predicate) = parse_or_predicate(&filtered)? {
         return Ok(predicate);
     }
@@ -1125,18 +1137,6 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         && word_slice_eq(&filtered[gets_idx + 1..], &["more", "votes"])
     {
         return Ok(PredicateAst::VoteOptionGetsMoreVotes {
-            option: filtered[..gets_idx].join(" "),
-        });
-    }
-
-    if let Some(gets_idx) = find_index(&filtered, |word| *word == "gets")
-        && gets_idx > 0
-        && word_slice_eq(
-            &filtered[gets_idx + 1..],
-            &["more", "votes", "or", "vote", "is", "tied"],
-        )
-    {
-        return Ok(PredicateAst::VoteOptionGetsMoreVotesOrTied {
             option: filtered[..gets_idx].join(" "),
         });
     }

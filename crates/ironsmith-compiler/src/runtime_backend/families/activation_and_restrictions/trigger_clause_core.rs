@@ -2271,6 +2271,14 @@ pub(crate) fn parse_trigger_clause_lexed(
         });
     }
 
+    if words.as_slice() == ["chaos", "ensues"] {
+        return Ok(TriggerSpec::KeywordAction {
+            action: crate::events::KeywordActionKind::ChaosEnsues,
+            player: PlayerFilter::Any,
+            source_filter: None,
+        });
+    }
+
     if let Some(cycle_word_idx) = find_index(&words, |word| {
         matches!(
             crate::events::KeywordActionKind::from_trigger_word(word),

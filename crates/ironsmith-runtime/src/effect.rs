@@ -96,6 +96,7 @@ impl OutcomeValue {
     pub fn as_count(&self) -> Option<i32> {
         match self {
             Self::Count(n) => Some(*n),
+            Self::ManaAdded(mana) => Some(mana.len() as i32),
             _ => None,
         }
     }

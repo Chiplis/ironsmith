@@ -9062,6 +9062,8 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
         .expect("rewrite lexer should classify second-main trigger probe");
     let gift_tokens = lex_line("an opponent gives a gift", 0)
         .expect("rewrite lexer should classify gift-given trigger probe");
+    let chaos_tokens = lex_line("chaos ensues", 0)
+        .expect("rewrite lexer should classify chaos-ensues trigger probe");
     let enchanted_upkeep_tokens = lex_line("the beginning of enchanted player's upkeep", 0)
         .expect("rewrite lexer should classify enchanted player's upkeep trigger probe");
     let exile_tokens = lex_line(
@@ -9109,6 +9111,16 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
         Ok(crate::cards::builders::TriggerSpec::BeginningOfUpkeep(
             crate::target::PlayerFilter::TaggedPlayer(tag)
         )) if tag.as_str() == "enchanted"
+    ));
+    assert!(matches!(
+        super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+            &chaos_tokens,
+        ),
+        Ok(crate::cards::builders::TriggerSpec::KeywordAction {
+            action: crate::events::KeywordActionKind::ChaosEnsues,
+            player: crate::target::PlayerFilter::Any,
+            source_filter: None,
+        })
     ));
     assert!(matches!(
         super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
