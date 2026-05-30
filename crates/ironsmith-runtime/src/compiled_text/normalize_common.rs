@@ -2257,19 +2257,6 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return "Target player reveals a card at random from their hand. Deal damage to that player equal to that card's mana value.".to_string();
     }
-    if lower_compact.contains("chooses at random a card, reveal it")
-        && lower_compact.contains(
-            "deals damage equal to its mana value to its controller, then deal damage equal to its mana value to target creature",
-        )
-    {
-        let source = normalized
-            .split_once(", reveal it, ")
-            .and_then(|(_, rest)| rest.split_once(" deals damage equal to its mana value"))
-            .map(|(source, _)| source.trim())
-            .filter(|source| !source.is_empty())
-            .unwrap_or("This spell");
-        return format!("Target creature's controller reveals a card at random from their hand. {source} deals damage to that creature and that player equal to the revealed card's mana value.");
-    }
     if lower_compact
         == "exile two target creatures. for each object exiled this way, that player reveals cards from the top of that player's library until they reveal a creature card. put it onto the battlefield. shuffle that player's library."
     {

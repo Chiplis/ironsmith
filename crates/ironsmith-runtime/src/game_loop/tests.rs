@@ -3768,6 +3768,54 @@ fn friendly_fire_reveals_random_card_from_target_creature_controller_and_damages
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn friendly_fire_requires_a_creature_target_not_a_noncreature() {
+    let friendly_fire = CardDefinitionBuilder::new(CardId::from_raw(70_007), "Friendly Fire")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Target creature's controller reveals a card at random from their hand. Friendly Fire deals damage to that creature and that player equal to the revealed card's mana value.",
+        )
+        .expect("Friendly Fire should parse");
+    let effects = friendly_fire
+        .spell_effect
+        .as_ref()
+        .expect("Friendly Fire should have spell effects");
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let creature = CardBuilder::new(CardId::from_raw(70_008), "Target Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let artifact = CardBuilder::new(CardId::from_raw(70_009), "Untargetable Relic")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let creature_id = game.create_object_from_card(&creature, bob, Zone::Battlefield);
+    let artifact_id = game.create_object_from_card(&artifact, bob, Zone::Battlefield);
+
+    let requirements = extract_target_requirements(&game, effects, alice, None);
+    assert_eq!(
+        requirements.len(),
+        1,
+        "Friendly Fire should have exactly one target creature requirement, got {requirements:?}"
+    );
+    let legal_targets = &requirements[0].legal_targets;
+    assert!(
+        legal_targets.contains(&Target::Object(creature_id)),
+        "creatures should be legal Friendly Fire targets, got {legal_targets:?}"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Object(artifact_id)),
+        "noncreatures should not be legal Friendly Fire targets, got {legal_targets:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn singe_mind_ogre_reveals_a_random_card_from_target_players_hand_and_makes_them_lose_life() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);

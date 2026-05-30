@@ -3239,7 +3239,98 @@ fn describe_each_creature_and_player_damage_cant_regenerate_structural(
     ))
 }
 
+fn effect_without_surface_wrappers(effect: &Effect) -> &Effect {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return effect_without_surface_wrappers(&tagged.effect);
+    }
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return effect_without_surface_wrappers(&with_id.effect);
+    }
+    effect
+}
+
+fn mana_value_of_tag(value: &Value, tag: &TagKey) -> bool {
+    match value {
+        Value::SurfaceHinted { value, .. } => mana_value_of_tag(value, tag),
+        Value::ManaValueOf(spec) => {
+            matches!(spec.as_ref(), ChooseSpec::Tagged(candidate) if candidate == tag)
+        }
+        _ => false,
+    }
+}
+
+fn describe_target_controller_random_reveal_then_shared_damage(
+    effects: &[Effect],
+) -> Option<String> {
+    let refs = effects.iter().collect::<Vec<_>>();
+    describe_target_controller_random_reveal_then_shared_damage_refs(&refs)
+}
+
+fn describe_target_controller_random_reveal_then_shared_damage_refs(
+    effects: &[&Effect],
+) -> Option<String> {
+    let [choose_effect, reveal_effect, first_damage_effect, second_damage_effect] = effects else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if choose.chooser != PlayerFilter::ControllerOf(crate::target::ObjectRef::Target)
+        || choose.zone != Some(Zone::Hand)
+        || !choose.count.random
+        || choose.count.min != 1
+        || choose.count.max != Some(1)
+        || choose.filter.zone != Some(Zone::Hand)
+        || choose.filter.owner
+            != Some(PlayerFilter::ControllerOf(
+                crate::target::ObjectRef::Target,
+            ))
+    {
+        return None;
+    }
+
+    let reveal = reveal_effect.downcast_ref::<crate::effects::RevealTaggedEffect>()?;
+    if reveal.tag != choose.tag {
+        return None;
+    }
+
+    let Some(first_damage) = effect_without_surface_wrappers(first_damage_effect)
+        .downcast_ref::<crate::effects::DealDamageEffect>()
+    else {
+        return None;
+    };
+    let Some(second_damage) = effect_without_surface_wrappers(second_damage_effect)
+        .downcast_ref::<crate::effects::DealDamageEffect>()
+    else {
+        return None;
+    };
+    if !mana_value_of_tag(&first_damage.amount, &choose.tag)
+        || !mana_value_of_tag(&second_damage.amount, &choose.tag)
+    {
+        return None;
+    }
+
+    let damages_controller_then_creature = matches!(
+        first_damage.target,
+        ChooseSpec::Player(PlayerFilter::ControllerOf(crate::target::ObjectRef::Target))
+    ) && is_target_creature_spec(&second_damage.target);
+    let damages_creature_then_controller = is_target_creature_spec(&first_damage.target)
+        && matches!(
+            second_damage.target,
+            ChooseSpec::Player(PlayerFilter::ControllerOf(crate::target::ObjectRef::Target))
+        );
+    if !damages_controller_then_creature && !damages_creature_then_controller {
+        return None;
+    }
+
+    Some(
+        "Target creature's controller reveals a card at random from their hand. Deal damage to that creature and that player equal to the revealed card's mana value"
+            .to_string(),
+    )
+}
+
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
+    if let Some(compact) = describe_target_controller_random_reveal_then_shared_damage(effects) {
+        return compact;
+    }
     if let Some(compact) = describe_structural_multisentence_effect_list(effects) {
         return compact;
     }
@@ -4424,6 +4515,11 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         .collect::<Vec<_>>();
 
     if let Some(compact) = describe_reveal_hand_choose_move(&filtered) {
+        return compact;
+    }
+    if let Some(compact) =
+        describe_target_controller_random_reveal_then_shared_damage_refs(&filtered)
+    {
         return compact;
     }
     if let Some(compact) = describe_exile_graveyard_reflexive_copy_artifact(&filtered) {
@@ -13271,6 +13367,10 @@ fn normalize_haunting_echoes_text(text: &str) -> Option<String> {
 pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> {
     if effects.len() < 2 {
         return None;
+    }
+
+    if let Some(compact) = describe_target_controller_random_reveal_then_shared_damage(effects) {
+        return Some(compact);
     }
 
     if effects.len() >= 3
