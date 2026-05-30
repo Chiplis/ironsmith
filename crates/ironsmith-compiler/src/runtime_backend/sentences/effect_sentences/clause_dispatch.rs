@@ -415,6 +415,70 @@ fn parse_for_each_prevent_damage_clause(
     Ok(Some(EffectAst::ForEachObject { filter, effects }))
 }
 
+fn parse_cast_any_number_from_among_tagged_clause(
+    tokens: &[OwnedLexToken],
+) -> Option<EffectAst> {
+    let clause_word_view = ClauseDispatchCompatWords::new(tokens);
+    let clause_words = clause_word_view.to_word_refs();
+    let (words, word_offset) = if word_slice_starts_with(&clause_words, &["you", "may"]) {
+        (&clause_words[2..], 2)
+    } else {
+        (clause_words.as_slice(), 0)
+    };
+
+    if !word_slice_starts_with(words, &["cast", "any", "number", "of", "spells"])
+        || !word_slice_ends_with(words, &["without", "paying", "their", "mana", "costs"])
+    {
+        return None;
+    }
+
+    let from_idx = word_slice_find_phrase_start(words, &["from", "among", "them"])
+        .or_else(|| word_slice_find_phrase_start(words, &["from", "among", "those", "cards"]))?;
+
+    let mut filter = ObjectFilter::nonland()
+        .in_zone(Zone::Exile)
+        .match_tagged(
+            TagKey::from(IT_TAG),
+            crate::target::TaggedOpbjectRelation::IsTaggedObject,
+        );
+
+    if let Some(mana_idx) = word_slice_find_phrase_start(words, &["with", "mana", "value"]) {
+        if mana_idx + 5 > from_idx
+            || words.get(mana_idx + 4) != Some(&"or")
+            || words.get(mana_idx + 5) != Some(&"less")
+        {
+            return None;
+        }
+        let value_word_idx = mana_idx + 3;
+        filter.mana_value = Some(if words.get(value_word_idx) == Some(&"x") {
+            crate::filter::Comparison::LessThanOrEqualExpr(Box::new(Value::X))
+        } else {
+            let value_token_idx = token_index_for_word_index(tokens, word_offset + value_word_idx)?;
+            let (value, used) = parse_number(&tokens[value_token_idx..])?;
+            if used == 0 {
+                return None;
+            }
+            crate::filter::Comparison::LessThanOrEqual(value as i32)
+        });
+    } else if from_idx != 5 {
+        return None;
+    }
+
+    Some(EffectAst::ForEachObject {
+        filter,
+        effects: vec![EffectAst::May {
+            effects: vec![EffectAst::subject_verb_cast_tagged(
+                TagKey::from(IT_TAG),
+                PlayerAst::You,
+                false,
+                false,
+                true,
+                None,
+            )],
+        }],
+    })
+}
+
 pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if tokens.is_empty() {
         return Err(CardTextError::ParseError("empty effect clause".to_string()));
@@ -429,6 +493,10 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         }
 
         if let Some(effect) = parse_cast_or_play_tagged_clause(tokens)? {
+            return Ok(effect);
+        }
+
+        if let Some(effect) = parse_cast_any_number_from_among_tagged_clause(tokens) {
             return Ok(effect);
         }
     }
