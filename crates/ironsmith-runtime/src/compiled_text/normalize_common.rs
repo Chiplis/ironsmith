@@ -8003,6 +8003,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::MagicGamesLostToOpponentsSinceLastWin => {
             "the number of Magic games you've lost to one of your opponents since you last won a game against them".to_string()
         }
+        Value::DraftNotedHighestNumber { card_name } => format!(
+            "the highest number you noted for cards named {}",
+            title_case_card_name_fragment(card_name)
+        ),
         Value::EffectValue(_) => "X".to_string(),
         Value::EffectValueOffset(_, offset) => {
             if *offset == 0 {
@@ -8080,6 +8084,32 @@ pub(crate) fn describe_value(value: &Value) -> String {
         }
         Value::TaggedCount => "the tagged object count".to_string(),
     }
+}
+
+fn title_case_card_name_fragment(name: &str) -> String {
+    let small_words = [
+        "a", "an", "and", "as", "at", "but", "by", "for", "from", "in", "of", "or", "the",
+        "to", "with",
+    ];
+    name.split_whitespace()
+        .enumerate()
+        .map(|(idx, word)| {
+            if idx > 0 && small_words.contains(&word) {
+                word.to_string()
+            } else {
+                let mut chars = word.chars();
+                match chars.next() {
+                    Some(first) => {
+                        let mut out = first.to_ascii_uppercase().to_string();
+                        out.push_str(chars.as_str());
+                        out
+                    }
+                    None => String::new(),
+                }
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 pub(super) fn party_size_multiplier(value: &Value) -> Option<(PlayerFilter, i32)> {

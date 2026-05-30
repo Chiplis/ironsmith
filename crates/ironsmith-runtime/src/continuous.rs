@@ -4389,6 +4389,11 @@ fn resolve_value_with_context(
         | Value::TaggedCount
         | Value::EventValue(_)
         | Value::EventValueOffset(_, _) => 0,
+        Value::DraftNotedHighestNumber { card_name } => ctx
+            .game
+            .draft_noted_highest_number(controller, card_name)
+            .try_into()
+            .unwrap_or(i32::MAX),
     }
 }
 

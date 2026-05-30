@@ -1382,6 +1382,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::WasPaidLabel(_)
         | Value::TimesPaid(_)
         | Value::MagicGamesLostToOpponentsSinceLastWin
+        | Value::DraftNotedHighestNumber { .. }
         | Value::TaggedCount
         | Value::EventValue(_)
         | Value::EventValueOffset(_, _) => false,

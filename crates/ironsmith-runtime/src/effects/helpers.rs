@@ -1406,6 +1406,11 @@ pub fn resolve_value(
         // The core engine does not currently track cross-game match history.
         Value::MagicGamesLostToOpponentsSinceLastWin => Ok(0),
 
+        Value::DraftNotedHighestNumber { card_name } => Ok(game
+            .draft_noted_highest_number(ctx.controller, card_name)
+            .try_into()
+            .unwrap_or(i32::MAX)),
+
         Value::EffectValue(effect_id) => {
             let outcome = ctx
                 .get_outcome(*effect_id)

@@ -154,6 +154,7 @@ pub enum Value {
     TimesPaidLabel(String),
     KickCount,
     MagicGamesLostToOpponentsSinceLastWin,
+    DraftNotedHighestNumber { card_name: String },
     CountersOnSource(CounterType),
     CountersOn(Box<ChooseSpec>, Option<CounterType>),
     TaggedCount,

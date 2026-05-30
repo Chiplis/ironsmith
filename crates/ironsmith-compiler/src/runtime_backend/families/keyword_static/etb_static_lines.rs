@@ -798,6 +798,10 @@ pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Val
         return Some(value);
     }
 
+    if let Some(value) = parse_where_x_draft_noted_highest_number_value(&words) {
+        return Some(value);
+    }
+
     match words.get(3..) {
         Some(
             [
@@ -1128,6 +1132,43 @@ pub(crate) fn parse_value_binding_clause_lexed(
     tokens: &[crate::runtime_backend::lexer::OwnedLexToken],
 ) -> Option<Value> {
     parse_value_binding_clause(tokens)
+}
+
+fn parse_where_x_draft_noted_highest_number_value(words: &[&str]) -> Option<Value> {
+    let tail = words.get(3..)?;
+    let name_words = match tail {
+        [
+            "the",
+            "highest",
+            "number",
+            "you",
+            "noted",
+            "for",
+            "cards",
+            "named",
+            name @ ..,
+        ]
+        | [
+            "highest",
+            "number",
+            "you",
+            "noted",
+            "for",
+            "cards",
+            "named",
+            name @ ..,
+        ] => name,
+        _ => return None,
+    };
+    if name_words.is_empty() {
+        return None;
+    }
+    Some(
+        Value::DraftNotedHighestNumber {
+            card_name: name_words.join(" "),
+        }
+        .with_surface_hint(ValueSurfaceHint::WhereXIs),
+    )
 }
 
 pub(crate) fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Option<Value> {

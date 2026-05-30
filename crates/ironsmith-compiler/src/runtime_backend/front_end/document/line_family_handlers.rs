@@ -235,6 +235,7 @@ fn is_draft_rule_line(raw_line: &str) -> bool {
     }
 
     lower.trim_end_matches('.') == "draft this card face up"
+        || lower.starts_with("reveal this card as you draft it")
         || lower.starts_with("as you draft ")
         || lower.starts_with("during the draft, ")
         || lower.starts_with("immediately after the draft, ")

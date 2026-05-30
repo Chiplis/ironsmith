@@ -667,6 +667,118 @@ fn cogwork_librarian_draft_rules_do_not_create_runtime_effects() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn pyretic_hunter_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Pyretic Hunter");
+
+    assert_eq!(
+        canonical_compiled_lines(&def),
+        vec![
+            "Reveal this card as you draft it and note how many cards you've drafted this draft round, including this card."
+                .to_string(),
+            "Menace".to_string(),
+            "This creature enters with X +1/+1 counters on it, where X is the highest number you noted for cards named Pyretic Hunter."
+                .to_string(),
+        ],
+        "Pyretic Hunter should preserve its draft note and noted-number counter clause"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn pyretic_hunter_draft_note_and_counter_value_are_structural() {
+    let def = parse_oracle_card_definition("Pyretic Hunter");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        def.abilities.iter().any(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => {
+                static_ability.id() == StaticAbilityId::DraftRuleText
+            }
+            _ => false,
+        }),
+        "Pyretic Hunter should compile the reveal-as-you-draft line as draft-only rule text, got {debug}"
+    );
+    assert!(
+        debug.contains("DraftNotedHighestNumber") && debug.contains("pyretic hunter"),
+        "Pyretic Hunter should model the highest noted number as a structured counter value, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn pyretic_hunter_without_tracked_draft_notes_enters_with_zero_counters() {
+    let oracle = oracle_text_by_name()
+        .get("Pyretic Hunter")
+        .expect("Pyretic Hunter oracle text should be available")
+        .clone();
+    let def = CardDefinitionBuilder::new(CardId::new(), "Pyretic Hunter")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elemental, Subtype::Cat])
+        .power_toughness(PowerToughness::fixed(0, 0))
+        .parse_text(oracle)
+        .expect("Pyretic Hunter should parse strictly");
+
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let hunter_in_hand = game.create_object_from_definition(&def, alice, Zone::Hand);
+    let hunter = game
+        .move_object_with_etb_processing(hunter_in_hand, Zone::Battlefield)
+        .expect("Pyretic Hunter should enter")
+        .new_id;
+    let hunter_obj = game.object(hunter).expect("Pyretic Hunter should exist");
+
+    assert_eq!(
+        hunter_obj
+            .counters
+            .get(&crate::object::CounterType::PlusOnePlusOne)
+            .copied()
+            .unwrap_or(0),
+        0,
+        "without tracked draft-note state, Pyretic Hunter should enter with zero +1/+1 counters"
+    );
+    assert_eq!(game.current_power(hunter), Some(0));
+    assert_eq!(game.current_toughness(hunter), Some(0));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn pyretic_hunter_uses_tracked_highest_draft_note_for_entering_counters() {
+    let oracle = oracle_text_by_name()
+        .get("Pyretic Hunter")
+        .expect("Pyretic Hunter oracle text should be available")
+        .clone();
+    let def = CardDefinitionBuilder::new(CardId::new(), "Pyretic Hunter")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elemental, Subtype::Cat])
+        .power_toughness(PowerToughness::fixed(0, 0))
+        .parse_text(oracle)
+        .expect("Pyretic Hunter should parse strictly");
+
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    game.set_draft_noted_highest_number(alice, "Pyretic Hunter", 4);
+    let hunter_in_hand = game.create_object_from_definition(&def, alice, Zone::Hand);
+    let hunter = game
+        .move_object_with_etb_processing(hunter_in_hand, Zone::Battlefield)
+        .expect("Pyretic Hunter should enter")
+        .new_id;
+    let hunter_obj = game.object(hunter).expect("Pyretic Hunter should exist");
+
+    assert_eq!(
+        hunter_obj
+            .counters
+            .get(&crate::object::CounterType::PlusOnePlusOne)
+            .copied()
+            .unwrap_or(0),
+        4,
+        "Pyretic Hunter should enter with the highest noted number of +1/+1 counters"
+    );
+    assert_eq!(game.current_power(hunter), Some(4));
+    assert_eq!(game.current_toughness(hunter), Some(4));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn firkraag_cunning_instigator_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("Firkraag, Cunning Instigator");
     let rendered = canonical_compiled_lines(&def).join("\n");

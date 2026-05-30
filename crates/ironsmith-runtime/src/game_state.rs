@@ -1995,6 +1995,9 @@ pub struct GameState {
     /// Players whose inherent speed trigger has already fired this turn.
     pub speed_increase_triggered_this_turn: HashSet<PlayerId>,
 
+    /// Highest pregame draft-note number recorded by a player for a named card.
+    pub draft_noted_highest_numbers: HashMap<(PlayerId, String), u32>,
+
     // =========================================================================
     // Battlefield State Extension Maps
     // =========================================================================
@@ -2126,6 +2129,13 @@ impl DerefMut for GameState {
     }
 }
 
+fn normalize_draft_note_card_name(name: &str) -> String {
+    name.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_ascii_lowercase()
+}
+
 impl GameState {
     /// Creates a new game state with the given players.
     pub fn new(player_names: Vec<String>, starting_life: i32) -> Self {
@@ -2176,6 +2186,7 @@ impl GameState {
             ninjutsu_attack_targets: HashMap::new(),
             combat_damage_player_batch_hits: Vec::new(),
             speed_increase_triggered_this_turn: HashSet::new(),
+            draft_noted_highest_numbers: HashMap::new(),
             // Battlefield state extension maps
             tapped_permanents: HashSet::new(),
             summoning_sick: HashSet::new(),
@@ -2221,6 +2232,27 @@ impl GameState {
 
     pub fn set_auto_choose_single_object_decisions(&mut self, enabled: bool) {
         self.auto_choose_single_object_decisions = enabled;
+    }
+
+    pub fn set_draft_noted_highest_number(
+        &mut self,
+        player: PlayerId,
+        card_name: impl AsRef<str>,
+        count: u32,
+    ) {
+        self.draft_noted_highest_numbers
+            .insert((player, normalize_draft_note_card_name(card_name.as_ref())), count);
+    }
+
+    pub fn draft_noted_highest_number(
+        &self,
+        player: PlayerId,
+        card_name: impl AsRef<str>,
+    ) -> u32 {
+        self.draft_noted_highest_numbers
+            .get(&(player, normalize_draft_note_card_name(card_name.as_ref())))
+            .copied()
+            .unwrap_or(0)
     }
 
     /// Creates a new game state after explicitly resetting runtime player/object IDs.
