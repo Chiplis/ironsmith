@@ -393,6 +393,16 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Player this creature is required to attack if that player is a legal attack target.
+    fn required_attack_player(
+        &self,
+        _game: &GameState,
+        _source: ObjectId,
+        _controller: PlayerId,
+    ) -> Option<PlayerId> {
+        None
+    }
+
     /// Attacking-group legality hook for "can't attack unless ... also attacks" style clauses.
     ///
     /// Return:
@@ -1197,6 +1207,15 @@ impl StaticAbility {
             .can_attack_specific_defender(game, source, controller, defending_player)
     }
 
+    pub fn required_attack_player(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<PlayerId> {
+        self.0.required_attack_player(game, source, controller)
+    }
+
     pub fn can_attack_with_attacking_group(
         &self,
         game: &GameState,
@@ -1728,6 +1747,14 @@ impl StaticAbility {
 
     pub fn must_attack() -> Self {
         Self::new(MustAttack)
+    }
+
+    pub fn must_attack_attached_controller(attachment_source: ObjectId) -> Self {
+        Self::new(MustAttackAttachedController::new(attachment_source))
+    }
+
+    pub fn all_creatures_attack_attached_controller_each_combat_if_able() -> Self {
+        Self::new(AllCreaturesAttackAttachedControllerEachCombatIfAble)
     }
 
     pub fn exert_attack(
