@@ -337,6 +337,12 @@ pub(crate) fn parse_destroy_or_exile_all_split_sentence(
     {
         return Ok(None);
     }
+    if matches!(verb, Verb::Exile)
+        && words.iter().any(|word| *word == "until")
+        && words.ends_with(&["leaves", "the", "battlefield"])
+    {
+        return Ok(None);
+    }
     if grammar::words_match_any_prefix(tokens, EXILE_ALL_CARDS_FROM_PREFIXES).is_some()
         && (grammar::contains_word(tokens, "hand") || grammar::contains_word(tokens, "hands"))
         && (grammar::contains_word(tokens, "graveyard")
