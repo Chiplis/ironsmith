@@ -576,6 +576,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_passthrough_rule!(
             parse_prevent_damage_to_source_put_counters_line
         ),
+        single_static_ability_ast_rule!(parse_prevent_damage_to_you_from_source_filter_line),
         single_static_ability_ast_rule!(parse_replace_damage_with_counters_instead_line),
         single_static_ability_ast_rule!(parse_choose_color_as_enters_line),
         single_static_ability_ast_rule!(parse_damage_redirect_to_source_controller_line),
@@ -7004,6 +7005,79 @@ pub(crate) fn parse_prevent_damage_to_other_creature_you_control_put_counters_li
             display_text_for_tokens(tokens, true),
         ),
     ))
+}
+
+fn parse_damage_source_filter_words(words: &[&str]) -> Option<ObjectFilter> {
+    let mut words = strip_leading_article_word_refs(words).to_vec();
+    if word_slice_last_is_any(&words, &["source", "sources"]) {
+        words.pop();
+    }
+    if words.is_empty() {
+        return Some(ObjectFilter::default());
+    }
+
+    let mut filter = ObjectFilter::default();
+    let mut colors: Option<ColorSet> = None;
+    for word in words {
+        if matches!(word, "and" | "or") {
+            continue;
+        }
+        if let Some(color) = parse_color(word) {
+            colors = Some(colors.unwrap_or_else(ColorSet::new).union(color));
+            continue;
+        }
+        if let Some(card_type) = parse_card_type(word) {
+            filter.card_types.push(card_type);
+            continue;
+        }
+        return None;
+    }
+    if let Some(colors) = colors {
+        filter.colors = Some(colors);
+    }
+    Some(filter)
+}
+
+pub(crate) fn parse_prevent_damage_to_you_from_source_filter_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if !word_slice_first_is(&words, "if") {
+        return Ok(None);
+    }
+    let Some(would_idx) = word_slice_find_phrase_start(
+        &words,
+        &["would", "deal", "damage", "to", "you"],
+    ) else {
+        return Ok(None);
+    };
+    if would_idx <= 1 {
+        return Ok(None);
+    }
+    let tail = &words[would_idx + 5..];
+    if tail.len() != 5
+        || !word_slice_first_is(tail, "prevent")
+        || !word_slice_eq(&tail[2..], &["of", "that", "damage"])
+    {
+        return Ok(None);
+    }
+    let Some(amount) = parse_number_word_i32(tail[1]).filter(|amount| *amount > 0) else {
+        return Ok(None);
+    };
+    let Some(source_filter) = parse_damage_source_filter_words(&words[1..would_idx]) else {
+        return Ok(None);
+    };
+    let display = format!(
+        "If {}, prevent {} of that damage.",
+        words[1..would_idx + 5].join(" "),
+        tail[1]
+    );
+
+    Ok(Some(StaticAbility::prevent_damage_to_you_from_source_filter(
+        amount as u32,
+        source_filter,
+        display,
+    )))
 }
 
 pub(crate) fn parse_replace_damage_with_counters_instead_line(

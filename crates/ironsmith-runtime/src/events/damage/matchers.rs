@@ -249,6 +249,71 @@ impl ReplacementMatcher for DamageFromSourceMatcher {
     }
 }
 
+/// Matches preventable damage from a source filter to a player filter.
+#[derive(Debug, Clone)]
+pub struct DamageFromSourceToPlayerMatcher {
+    pub source_filter: ObjectFilter,
+    pub player_filter: PlayerFilter,
+}
+
+impl DamageFromSourceToPlayerMatcher {
+    pub fn new(source_filter: ObjectFilter, player_filter: PlayerFilter) -> Self {
+        Self {
+            source_filter,
+            player_filter,
+        }
+    }
+
+    pub fn to_you(source_filter: ObjectFilter) -> Self {
+        Self::new(source_filter, PlayerFilter::You)
+    }
+}
+
+impl ReplacementMatcher for DamageFromSourceToPlayerMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        if event.event_kind() != EventKind::Damage {
+            return false;
+        }
+
+        let Some(damage) = downcast_event::<DamageEvent>(event) else {
+            return false;
+        };
+
+        if damage.is_unpreventable {
+            return false;
+        }
+
+        let DamageTarget::Player(player_id) = damage.target else {
+            return false;
+        };
+        if !self
+            .player_filter
+            .matches_player(player_id, &ctx.filter_ctx)
+        {
+            return false;
+        }
+
+        ctx.game.object(damage.source).is_some_and(|source_obj| {
+            self.source_filter
+                .matches(source_obj, &ctx.filter_ctx, ctx.game)
+        }) || ctx
+            .event_source_snapshot
+            .filter(|snapshot| snapshot.object_id == damage.source)
+            .is_some_and(|snapshot| {
+                self.source_filter
+                    .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
+            })
+    }
+
+    fn priority(&self) -> ReplacementPriority {
+        ReplacementPriority::Other
+    }
+
+    fn display(&self) -> String {
+        "When damage would be dealt to a player by a matching source".to_string()
+    }
+}
+
 /// Matches damage from a source filter to an object target filter.
 #[derive(Debug, Clone)]
 pub struct DamageFromSourceToObjectMatcher {
@@ -1080,6 +1145,55 @@ mod tests {
     }
 
     #[test]
+    fn test_damage_from_source_to_player_matcher() {
+        let mut game = setup_game();
+        let alice = crate::ids::PlayerId::from_index(0);
+        let bob = crate::ids::PlayerId::from_index(1);
+
+        let replacement_source_card = CardBuilder::new(CardId::new(), "Prevention Source")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        let replacement_source =
+            game.create_object_from_card(&replacement_source_card, alice, Zone::Battlefield);
+
+        let creature_source_card = CardBuilder::new(CardId::new(), "Creature Source")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let creature_source =
+            game.create_object_from_card(&creature_source_card, bob, Zone::Battlefield);
+
+        let artifact_source_card = CardBuilder::new(CardId::new(), "Artifact Source")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let artifact_source =
+            game.create_object_from_card(&artifact_source_card, bob, Zone::Battlefield);
+
+        let matcher = DamageFromSourceToPlayerMatcher::to_you(ObjectFilter::creature());
+        let ctx = EventContext::for_replacement_effect(alice, replacement_source, &game);
+
+        let matching_damage = damage(creature_source, DamageTarget::Player(alice), 3, false);
+        assert!(matcher.matches_event(&matching_damage, &ctx));
+
+        let nonmatching_source = damage(artifact_source, DamageTarget::Player(alice), 3, false);
+        assert!(!matcher.matches_event(&nonmatching_source, &ctx));
+
+        let wrong_player = damage(creature_source, DamageTarget::Player(bob), 3, false);
+        assert!(!matcher.matches_event(&wrong_player, &ctx));
+
+        let object_target = damage(
+            creature_source,
+            DamageTarget::Object(replacement_source),
+            3,
+            false,
+        );
+        assert!(!matcher.matches_event(&object_target, &ctx));
+
+        let unpreventable =
+            unpreventable_damage(creature_source, DamageTarget::Player(alice), 3, false);
+        assert!(!matcher.matches_event(&unpreventable, &ctx));
+    }
+
+    #[test]
     fn test_damage_source_filter_matchers_use_lki_for_departed_source() {
         let mut game = setup_game();
         let alice = crate::ids::PlayerId::from_index(0);
@@ -1111,6 +1225,10 @@ mod tests {
             .with_event_source_snapshot(Some(&source_snapshot));
 
         assert!(DamageFromSourceMatcher::from_creature().matches_event(&from_creature, &ctx));
+        assert!(DamageFromSourceToPlayerMatcher::to_you(ObjectFilter::creature()).matches_event(
+            &damage(source, DamageTarget::Player(alice), 3, false),
+            &ctx
+        ));
         assert!(
             PreventableDamageConstraintMatcher::from_filter(
                 ObjectFilter::creature(),

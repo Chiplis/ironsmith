@@ -25,8 +25,9 @@ use crate::events::context::EventContext;
 use crate::events::damage::DamageEvent;
 use crate::events::damage::matchers::{
     DamageFromSelfCombatMatcher, DamageFromSelfMatcher, DamageFromSourceToObjectMatcher,
-    DamageToObjectMatcher, DamageToOtherCreatureYouControlMatcher, DamageToPlayerOrObjectMatcher,
-    DamageToSelfCombatMatcher, DamageToSelfConstraintMatcher, DamageToSelfFromSourceFilterMatcher,
+    DamageFromSourceToPlayerMatcher, DamageToObjectMatcher, DamageToOtherCreatureYouControlMatcher,
+    DamageToPlayerOrObjectMatcher, DamageToSelfCombatMatcher, DamageToSelfConstraintMatcher,
+    DamageToSelfFromSourceFilterMatcher,
 };
 use crate::events::permanents::matchers::AttachedPermanentWouldBeDestroyedMatcher;
 use crate::events::traits::{
@@ -1876,6 +1877,47 @@ impl StaticAbilityKind for PreventAllDamageToSelfByCreatures {
             controller,
             DamageToSelfFromSourceFilterMatcher::from_creature(),
             ReplacementAction::Prevent,
+        ))
+    }
+}
+
+/// "If a matching source would deal damage to you, prevent N of that damage."
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreventDamageToYouFromSourceFilter {
+    pub amount: u32,
+    pub source_filter: ObjectFilter,
+    pub display: String,
+}
+
+impl PreventDamageToYouFromSourceFilter {
+    pub fn new(amount: u32, source_filter: ObjectFilter, display: impl Into<String>) -> Self {
+        Self {
+            amount,
+            source_filter,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for PreventDamageToYouFromSourceFilter {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PreventDamageToYouFromSourceFilter
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            DamageFromSourceToPlayerMatcher::to_you(self.source_filter.clone()),
+            ReplacementAction::Modify(EventModification::Subtract(self.amount)),
         ))
     }
 }

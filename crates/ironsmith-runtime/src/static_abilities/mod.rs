@@ -2339,6 +2339,18 @@ impl StaticAbility {
         Self::new(PreventAllDamageToSelfByCreatures)
     }
 
+    pub fn prevent_damage_to_you_from_source_filter(
+        amount: u32,
+        source_filter: crate::target::ObjectFilter,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(PreventDamageToYouFromSourceFilter::new(
+            amount,
+            source_filter,
+            display,
+        ))
+    }
+
     pub fn prevent_damage_to_self_remove_counter(
         counter_type: crate::object::CounterType,
         amount: u32,

@@ -475,6 +475,11 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         source_filter: Option<ObjectFilter>,
         combat_only: Option<bool>,
     },
+    PreventDamageToYouFromSourceFilter {
+        amount: u32,
+        source_filter: ObjectFilter,
+        display: String,
+    },
     ReplaceDamageWithCountersInstead {
         counter_type: CounterType,
         display: String,
@@ -1389,6 +1394,15 @@ where
                 display,
                 source_filter,
                 combat_only,
+            },
+            StaticAbilityPayload::PreventDamageToYouFromSourceFilter {
+                amount,
+                source_filter,
+                display,
+            } => StaticAbilityPayload::PreventDamageToYouFromSourceFilter {
+                amount,
+                source_filter,
+                display,
             },
             StaticAbilityPayload::ReplaceDamageWithCountersInstead {
                 counter_type,
@@ -2504,6 +2518,22 @@ impl<
                 display,
                 source_filter,
                 combat_only,
+            },
+        }
+    }
+    pub fn prevent_damage_to_you_from_source_filter(
+        amount: u32,
+        source_filter: ObjectFilter,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::PreventDamageToYouFromSourceFilter),
+            label: display.clone(),
+            payload: StaticAbilityPayload::PreventDamageToYouFromSourceFilter {
+                amount,
+                source_filter,
+                display,
             },
         }
     }
