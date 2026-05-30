@@ -74,6 +74,7 @@ pub enum AlternativeCastKind {
     Escape,
     Madness,
     Miracle,
+    Suspend,
 }
 
 /// Counter-state qualifier for object filters.
@@ -2397,6 +2398,7 @@ fn describe_alternative_cast_kind(kind: AlternativeCastKind) -> &'static str {
         AlternativeCastKind::Escape => "escape",
         AlternativeCastKind::Madness => "madness",
         AlternativeCastKind::Miracle => "miracle",
+        AlternativeCastKind::Suspend => "suspend",
     }
 }
 

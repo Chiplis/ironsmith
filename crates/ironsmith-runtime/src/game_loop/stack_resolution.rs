@@ -977,10 +977,6 @@ pub(super) fn resolve_stack_entry_full(
                     _ => false,
                 };
                 let cast_with_suspend = match &entry.casting_method {
-                    CastingMethod::Alternative(idx) => matches!(
-                        obj.alternative_casts.get(*idx),
-                        Some(crate::alternative_cast::AlternativeCastingMethod::Suspend { .. })
-                    ),
                     CastingMethod::PlayFrom {
                         use_alternative: Some(idx),
                         zone,
@@ -990,7 +986,7 @@ pub(super) fn resolve_stack_entry_full(
                         use_alternative: idx,
                         zone,
                         ..
-                    } => matches!(
+                    } if *zone == Zone::Exile => matches!(
                         crate::decision::resolve_play_from_alternative_method(
                             game,
                             entry.controller,

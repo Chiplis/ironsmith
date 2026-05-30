@@ -4004,6 +4004,260 @@ fn test_suspend_declined_cast_does_not_keep_triggering_without_time_counters() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn the_face_of_boe_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(73_100), "The Face of Boe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::White],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Alien, Subtype::Advisor])
+        .power_toughness(PowerToughness::fixed(0, 4))
+        .parse_text(
+            "{T}: You may cast a spell with suspend from your hand. If you do, pay its suspend cost rather than its mana cost. Activate only as a sorcery.",
+        )
+        .expect("The Face of Boe should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn the_face_of_boe_effects(def: &crate::cards::CardDefinition) -> Vec<crate::effect::Effect> {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => {
+                Some(activated.effects.flattened_default_effects().to_vec())
+            }
+            _ => None,
+        })
+        .expect("The Face of Boe should have an activated ability")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn the_face_of_boe_activation_is_sorcery_speed() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let face_def = the_face_of_boe_definition();
+    let face_id = game.create_object_from_definition(&face_def, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(face_id);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    assert!(
+        crate::decision::compute_legal_actions(&game, alice)
+            .into_iter()
+            .any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, .. }
+                    if source == face_id
+            )),
+        "The Face of Boe should be activatable during its controller's main phase"
+    );
+
+    game.turn.phase = Phase::Combat;
+    assert!(
+        !crate::decision::compute_legal_actions(&game, alice)
+            .into_iter()
+            .any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, .. }
+                    if source == face_id
+            )),
+        "The Face of Boe should not be activatable outside sorcery timing"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn the_face_of_boe_casts_suspend_spell_from_hand_for_suspend_cost() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let face_def = the_face_of_boe_definition();
+    let face_id = game.create_object_from_definition(&face_def, alice, Zone::Battlefield);
+    let effects = the_face_of_boe_effects(&face_def);
+
+    let suspend_spell = CardDefinitionBuilder::new(CardId::from_raw(73_101), "Suspend Cost Probe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(6)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Suspend 3—{U}\nDraw a card.")
+        .expect("suspend spell should parse");
+    let _spell_id = game.create_object_from_definition(&suspend_spell, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Blue, 1);
+
+    let mut dm = SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(face_id, alice, &mut dm);
+    for effect in &effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("The Face of Boe effect should resolve");
+    }
+
+    assert_eq!(game.stack.len(), 1, "expected the suspend spell on the stack");
+    let stack_entry = game.stack.last().expect("stack entry should exist");
+    assert!(
+        game.object(stack_entry.object_id)
+            .is_some_and(|object| object.name == "Suspend Cost Probe"),
+        "expected the suspend spell object on the stack"
+    );
+    assert!(matches!(
+        stack_entry.casting_method,
+        crate::alternative_cast::CastingMethod::Alternative(_)
+    ));
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").mana_pool.blue,
+        0,
+        "The Face of Boe should spend the suspend cost, not cast for free"
+    );
+    assert!(
+        game.object(stack_entry.object_id)
+            .is_some_and(|object| object.zone == Zone::Stack),
+        "The Face of Boe should cast the suspend spell from hand, not exile it with time counters"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn the_face_of_boe_casting_suspend_creature_does_not_grant_suspend_haste() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let face_def = the_face_of_boe_definition();
+    let face_id = game.create_object_from_definition(&face_def, alice, Zone::Battlefield);
+    let effects = the_face_of_boe_effects(&face_def);
+
+    let suspend_creature =
+        CardDefinitionBuilder::new(CardId::from_raw(73_104), "Suspend Creature Probe")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(6)],
+                vec![ManaSymbol::Green],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Beast])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .parse_text("Suspend 3—{G}")
+            .expect("suspend creature should parse");
+    game.create_object_from_definition(&suspend_creature, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Green, 1);
+
+    let mut dm = SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(face_id, alice, &mut dm);
+    for effect in &effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("The Face of Boe effect should cast the suspend creature");
+    }
+
+    resolve_stack_entry(&mut game).expect("suspend creature should resolve");
+    let permanent_id = game
+        .battlefield
+        .iter()
+        .copied()
+        .find(|id| {
+            game.object(*id).is_some_and(|object| {
+                object.owner == alice && object.name == "Suspend Creature Probe"
+            })
+        })
+        .expect("suspend creature should enter the battlefield");
+    assert!(
+        !game.current_has_static_ability_id(
+            permanent_id,
+            crate::static_abilities::StaticAbilityId::Haste,
+        ),
+        "The Face of Boe pays the suspend cost but does not cast via the suspend delayed trigger"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn the_face_of_boe_does_not_cast_non_suspend_spell() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let face_def = the_face_of_boe_definition();
+    let face_id = game.create_object_from_definition(&face_def, alice, Zone::Battlefield);
+    let effects = the_face_of_boe_effects(&face_def);
+
+    let ordinary_spell = CardDefinitionBuilder::new(CardId::from_raw(73_102), "Ordinary Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Draw a card.")
+        .expect("ordinary spell should parse");
+    let spell_id = game.create_object_from_definition(&ordinary_spell, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Blue, 1);
+
+    let mut dm = SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(face_id, alice, &mut dm);
+    for effect in &effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("The Face of Boe effect should resolve without a suspend spell");
+    }
+
+    assert!(game.stack.is_empty(), "non-suspend spells should not be cast");
+    assert!(
+        game.object(spell_id)
+            .is_some_and(|object| object.zone == Zone::Hand),
+        "ordinary spell should remain in hand"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").mana_pool.blue,
+        1,
+        "no suspend-cost payment should be made when no suspend spell is cast"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn the_face_of_boe_does_not_cast_suspend_spell_without_suspend_cost_mana() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let face_def = the_face_of_boe_definition();
+    let face_id = game.create_object_from_definition(&face_def, alice, Zone::Battlefield);
+    let effects = the_face_of_boe_effects(&face_def);
+
+    let suspend_spell = CardDefinitionBuilder::new(CardId::from_raw(73_103), "Unpaid Suspend Probe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(6)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Suspend 3—{U}\nDraw a card.")
+        .expect("suspend spell should parse");
+    game.create_object_from_definition(&suspend_spell, alice, Zone::Hand);
+
+    let mut dm = SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(face_id, alice, &mut dm);
+    for effect in &effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("The Face of Boe effect should resolve without payable suspend mana");
+    }
+
+    assert!(
+        game.stack.is_empty(),
+        "unpaid suspend-cost casts should not reach the stack"
+    );
+    assert!(
+        game.player(alice).expect("Alice should exist").hand.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Unpaid Suspend Probe")
+        }),
+        "unpaid suspend spell should remain in hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn all_hallows_eve_exiles_with_counters_and_returns_graveyard_creatures_after_countdown() {
     let mut game = setup_game();

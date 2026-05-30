@@ -443,6 +443,7 @@ pub(crate) fn alternative_cast_method_matches_kind(
         (AlternativeCastKind::Escape, AlternativeCastingMethod::Escape { .. }) => true,
         (AlternativeCastKind::Madness, AlternativeCastingMethod::Madness { .. }) => true,
         (AlternativeCastKind::Miracle, AlternativeCastingMethod::Miracle { .. }) => true,
+        (AlternativeCastKind::Suspend, AlternativeCastingMethod::Suspend { .. }) => true,
         _ => false,
     }
 }

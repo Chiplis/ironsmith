@@ -32379,7 +32379,19 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 .any(|constraint| {
                     constraint.relation == crate::filter::TaggedOpbjectRelation::ManaValueLteTagged
                 });
-        let mut spell_text = if !may_cast_matching.filter.card_types.is_empty() {
+        let mut spell_text = if let Some(kind) = may_cast_matching.filter.alternative_cast {
+            let kind_text = match kind {
+                crate::filter::AlternativeCastKind::Blitz => "blitz",
+                crate::filter::AlternativeCastKind::Dash => "dash",
+                crate::filter::AlternativeCastKind::Flashback => "flashback",
+                crate::filter::AlternativeCastKind::JumpStart => "jump-start",
+                crate::filter::AlternativeCastKind::Escape => "escape",
+                crate::filter::AlternativeCastKind::Madness => "madness",
+                crate::filter::AlternativeCastKind::Miracle => "miracle",
+                crate::filter::AlternativeCastKind::Suspend => "suspend",
+            };
+            format!("a spell with {kind_text}")
+        } else if !may_cast_matching.filter.card_types.is_empty() {
             let card_type_words: Vec<String> = may_cast_matching
                 .filter
                 .card_types
@@ -32442,9 +32454,28 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         } else {
             ""
         };
-        return format!(
-            "{player} may cast {spell_text} {zone_text}{mana_value_limit_text} without paying its mana cost"
-        );
+        match may_cast_matching.payment {
+            ironsmith_core::MayCastMatchingSpellPayment::WithoutPayingManaCost => {
+                return format!(
+                    "{player} may cast {spell_text} {zone_text}{mana_value_limit_text} without paying its mana cost"
+                );
+            }
+            ironsmith_core::MayCastMatchingSpellPayment::AlternativeCost(kind) => {
+                let cost_name = match kind {
+                    crate::filter::AlternativeCastKind::Blitz => "blitz",
+                    crate::filter::AlternativeCastKind::Dash => "dash",
+                    crate::filter::AlternativeCastKind::Flashback => "flashback",
+                    crate::filter::AlternativeCastKind::JumpStart => "jump-start",
+                    crate::filter::AlternativeCastKind::Escape => "escape",
+                    crate::filter::AlternativeCastKind::Madness => "madness",
+                    crate::filter::AlternativeCastKind::Miracle => "miracle",
+                    crate::filter::AlternativeCastKind::Suspend => "suspend",
+                };
+                return format!(
+                    "{player} may cast {spell_text} {zone_text}{mana_value_limit_text}. If you do, pay its {cost_name} cost rather than its mana cost"
+                );
+            }
+        }
     }
     if let Some(grant_next_spell_cost_reduction) =
         effect.downcast_ref::<crate::effects::GrantNextSpellCostReductionEffect>()

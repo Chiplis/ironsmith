@@ -4347,6 +4347,7 @@ fn alternative_cast_matches_kind(
         (AlternativeCastKind::Escape, AlternativeCastingMethod::Escape { .. }) => true,
         (AlternativeCastKind::Madness, AlternativeCastingMethod::Madness { .. }) => true,
         (AlternativeCastKind::Miracle, AlternativeCastingMethod::Miracle { .. }) => true,
+        (AlternativeCastKind::Suspend, AlternativeCastingMethod::Suspend { .. }) => true,
         _ => false,
     }
 }
@@ -4654,6 +4655,7 @@ fn describe_alternative_cast_kind(kind: AlternativeCastKind) -> &'static str {
         AlternativeCastKind::Escape => "escape",
         AlternativeCastKind::Madness => "madness",
         AlternativeCastKind::Miracle => "miracle",
+        AlternativeCastKind::Suspend => "suspend",
     }
 }
 

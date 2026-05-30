@@ -4581,6 +4581,7 @@ fn rewrite_lexed_permission_helpers_route_singular_hand_free_casts_to_one_shot_e
                 player,
                 filter,
                 zone,
+                ..
             },
         ] => (player, filter, zone),
         [
@@ -4594,6 +4595,7 @@ fn rewrite_lexed_permission_helpers_route_singular_hand_free_casts_to_one_shot_e
                     player,
                     filter,
                     zone,
+                    ..
                 },
             ] => (player, filter, zone),
             _ => panic!("expected nested singular hand free-cast effect, got {effects:#?}"),
@@ -4668,6 +4670,7 @@ fn rewrite_lexed_parse_counterpoint_followup_clause_with_tagged_mana_value_gate(
                 player,
                 filter,
                 zone,
+                ..
             },
         ] => (player, filter, zone),
         [
@@ -4681,6 +4684,7 @@ fn rewrite_lexed_parse_counterpoint_followup_clause_with_tagged_mana_value_gate(
                     player,
                     filter,
                     zone,
+                    ..
                 },
             ] => (player, filter, zone),
             _ => panic!("expected nested free-cast effect, got {effects:#?}"),
@@ -4733,6 +4737,7 @@ fn rewrite_lexed_parse_glamdring_trigger_clause_with_damage_value_gate() {
                 player,
                 filter,
                 zone,
+                ..
             },
         ] => (player, filter, zone),
         _ => panic!("expected one-shot hand free-cast effect, got {effects:#?}"),
