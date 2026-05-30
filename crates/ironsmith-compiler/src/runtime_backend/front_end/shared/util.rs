@@ -1348,6 +1348,7 @@ pub(crate) fn parse_alternative_cast_words(words: &[&str]) -> Option<(Alternativ
         ["escape", ..] => Some((AlternativeCastKind::Escape, 1)),
         ["madness", ..] => Some((AlternativeCastKind::Madness, 1)),
         ["miracle", ..] => Some((AlternativeCastKind::Miracle, 1)),
+        ["suspend", ..] => Some((AlternativeCastKind::Suspend, 1)),
         _ => None,
     }
 }

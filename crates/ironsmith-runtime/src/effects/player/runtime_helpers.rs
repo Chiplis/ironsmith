@@ -1,9 +1,11 @@
 use crate::alternative_cast::CastingMethod;
 use crate::cost::OptionalCostsPaid;
 use crate::effect::EffectOutcome;
+use crate::effects::ExecutionError;
 use crate::effects::ExecutionContext;
 use crate::events::other::LandPlayedEvent;
 use crate::events::spells::SpellCastEvent;
+use crate::filter::AlternativeCastKind;
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::{GameState, StackEntry, Target, TargetAssignment};
 use crate::ids::{ObjectId, PlayerId};
@@ -80,6 +82,12 @@ pub(super) struct EffectDrivenCastOption {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub(super) enum EffectDrivenCastPayment {
+    WithoutPayingManaCost,
+    AlternativeCost(AlternativeCastKind),
+}
+
+#[derive(Debug, Clone, Copy)]
 pub(super) struct EffectDrivenCastResult {
     pub new_id: ObjectId,
     pub from_zone: Zone,
@@ -106,6 +114,26 @@ pub(super) fn effect_driven_cast_options_for_card(
     from_zone: Zone,
     filter: &crate::target::ObjectFilter,
 ) -> Vec<EffectDrivenCastOption> {
+    effect_driven_cast_options_for_card_with_payment(
+        game,
+        caster,
+        source,
+        object_id,
+        from_zone,
+        filter,
+        EffectDrivenCastPayment::WithoutPayingManaCost,
+    )
+}
+
+pub(super) fn effect_driven_cast_options_for_card_with_payment(
+    game: &GameState,
+    caster: PlayerId,
+    source: ObjectId,
+    object_id: ObjectId,
+    from_zone: Zone,
+    filter: &crate::target::ObjectFilter,
+    payment: EffectDrivenCastPayment,
+) -> Vec<EffectDrivenCastOption> {
     let Some(object) = game.object(object_id) else {
         return Vec::new();
     };
@@ -114,6 +142,23 @@ pub(super) fn effect_driven_cast_options_for_card(
     }
 
     let mut options = Vec::new();
+    if let EffectDrivenCastPayment::AlternativeCost(kind) = payment {
+        if !cast_filter_matches(game, caster, source, object, filter) {
+            return Vec::new();
+        }
+        for (idx, method) in object.alternative_casts.iter().enumerate() {
+            if alternative_cast_matches_kind(method, kind) {
+                options.push(EffectDrivenCastOption {
+                    object_id,
+                    from_zone,
+                    casting_method: CastingMethod::Alternative(idx),
+                    label: format!("Cast {} for its {} cost", object.name, method.name()),
+                });
+            }
+        }
+        return options;
+    }
+
     if cast_filter_matches(game, caster, source, object, filter) {
         let casting_method = if from_zone == Zone::Hand {
             CastingMethod::Normal
@@ -144,6 +189,24 @@ pub(super) fn effect_driven_cast_options_for_card(
     }
 
     options
+}
+
+fn alternative_cast_matches_kind(
+    method: &crate::alternative_cast::AlternativeCastingMethod,
+    kind: AlternativeCastKind,
+) -> bool {
+    use crate::alternative_cast::AlternativeCastingMethod;
+    matches!(
+        (kind, method),
+        (AlternativeCastKind::Blitz, AlternativeCastingMethod::Blitz { .. })
+            | (AlternativeCastKind::Dash, AlternativeCastingMethod::Dash { .. })
+            | (AlternativeCastKind::Flashback, AlternativeCastingMethod::Flashback { .. })
+            | (AlternativeCastKind::JumpStart, AlternativeCastingMethod::JumpStart)
+            | (AlternativeCastKind::Escape, AlternativeCastingMethod::Escape { .. })
+            | (AlternativeCastKind::Madness, AlternativeCastingMethod::Madness { .. })
+            | (AlternativeCastKind::Miracle, AlternativeCastingMethod::Miracle { .. })
+            | (AlternativeCastKind::Suspend, AlternativeCastingMethod::Suspend { .. })
+    )
 }
 
 fn target_assignments_for_requirements(
@@ -230,6 +293,22 @@ pub(super) fn cast_effect_driven_spell_without_paying(
     caster: PlayerId,
     option: &EffectDrivenCastOption,
 ) -> Result<Option<EffectDrivenCastResult>, crate::effects::ExecutionError> {
+    cast_effect_driven_spell_with_payment(
+        game,
+        ctx,
+        caster,
+        option,
+        EffectDrivenCastPayment::WithoutPayingManaCost,
+    )
+}
+
+pub(super) fn cast_effect_driven_spell_with_payment(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    caster: PlayerId,
+    option: &EffectDrivenCastOption,
+    payment: EffectDrivenCastPayment,
+) -> Result<Option<EffectDrivenCastResult>, ExecutionError> {
     let stack_id = crate::game_loop::propose_spell_cast(
         game,
         option.object_id,
@@ -258,6 +337,43 @@ pub(super) fn cast_effect_driven_spell_without_paying(
     else {
         return Ok(None);
     };
+
+    if matches!(payment, EffectDrivenCastPayment::AlternativeCost(_)) {
+        let effective_cost = {
+            let Some(spell) = game.object(stack_id) else {
+                return Ok(None);
+            };
+            crate::decision::spell_mana_cost_for_cast(
+                game,
+                caster,
+                spell,
+                &option.casting_method,
+                option.from_zone,
+            )
+            .map(|base_cost| {
+                crate::decision::calculate_effective_mana_cost_with_chosen_targets_for_casting_method(
+                    game,
+                    caster,
+                    spell,
+                    &base_cost,
+                    &targets,
+                    &option.casting_method,
+                )
+            })
+        };
+        if let Some(cost) = effective_cost
+            && !game.try_pay_mana_cost_with_reason(
+                caster,
+                Some(stack_id),
+                &cost,
+                x_value.unwrap_or(0),
+                crate::costs::PaymentReason::CastSpell,
+            )
+        {
+            game.move_object_by_effect(stack_id, option.from_zone);
+            return Ok(None);
+        }
+    }
 
     let stack_entry = StackEntry {
         object_id: stack_id,

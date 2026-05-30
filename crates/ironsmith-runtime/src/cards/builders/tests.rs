@@ -7939,6 +7939,56 @@ fn test_parse_suspend_keyword_line_with_reminder_text_keeps_suspend_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_the_face_of_boe_suspend_cost_activation() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(73_100), "The Face of Boe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::White],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Alien, Subtype::Advisor])
+        .power_toughness(PowerToughness::fixed(0, 4))
+        .parse_text(
+            "{T}: You may cast a spell with suspend from your hand. If you do, pay its suspend cost rather than its mana cost. Activate only as a sorcery.",
+        )
+        .expect("The Face of Boe should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("You may cast a spell with suspend from your hand. If you do, pay its suspend cost rather than its mana cost"),
+        "expected compiled text to preserve the suspend-cost cast clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Activate only as a sorcery"),
+        "expected compiled text to preserve sorcery-speed activation, got {rendered}"
+    );
+
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("The Face of Boe should have an activated ability");
+    assert!(matches!(
+        activated.timing,
+        crate::ability::ActivationTiming::SorcerySpeed
+    ));
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("MayCastMatchingSpellWithoutPayingManaCostEffect")
+            && debug.contains("AlternativeCost")
+            && debug.contains("Suspend"),
+        "expected The Face of Boe to lower to a suspend-cost one-shot cast effect, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_compile_lotus_bloom_raw_definition_keeps_suspend_and_no_mana_cost() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Lotus Bloom")
         .parse_text(
@@ -30505,6 +30555,41 @@ fn parse_comma_then_that_player_discards_clause() {
         rendered.contains("that player discards a card")
             || rendered.contains("target player discards a card"),
         "expected discard to remain bound to the returned permanent's player, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_dinrova_horror_strict_oracle_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Dinrova Horror")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Horror])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "When this creature enters, return target permanent to its owner's hand, then that player discards a card.",
+        )
+        .expect("Dinrova Horror should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("OwnerOf(Tagged"),
+        "expected Dinrova Horror's discard to bind to the returned permanent's owner, got {abilities_debug}"
+    );
+    assert!(
+        !abilities_debug.contains("IteratedPlayer"),
+        "Dinrova Horror should not leave an unbound that-player reference, got {abilities_debug}"
+    );
+    assert!(
+        rendered.contains(
+            "When this creature enters, return target permanent to its owner's hand, then that player discards a card."
+        ),
+        "expected Dinrova Horror's return-then-discard clause to render compactly, got {rendered}"
     );
 }
 

@@ -3,7 +3,7 @@
 //! These types describe effect identity and selection cardinality without
 //! pulling in the runtime execution engine.
 
-use crate::filter_model::{ObjectFilter, ObjectRef, PlayerFilter};
+use crate::filter_model::{AlternativeCastKind, ObjectFilter, ObjectRef, PlayerFilter};
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::tag::TagKey;
 use crate::target_model::ChooseSpec;
@@ -2990,10 +2990,17 @@ impl GrantTaggedSpellLifeCostByManaValueEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum MayCastMatchingSpellPayment {
+    WithoutPayingManaCost,
+    AlternativeCost(AlternativeCastKind),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct MayCastMatchingSpellWithoutPayingManaCostEffect {
     pub player: PlayerFilter,
     pub filter: ObjectFilter,
     pub zone: crate::Zone,
+    pub payment: MayCastMatchingSpellPayment,
 }
 
 impl MayCastMatchingSpellWithoutPayingManaCostEffect {
@@ -3002,7 +3009,13 @@ impl MayCastMatchingSpellWithoutPayingManaCostEffect {
             player,
             filter,
             zone,
+            payment: MayCastMatchingSpellPayment::WithoutPayingManaCost,
         }
+    }
+
+    pub fn with_alternative_cost(mut self, kind: AlternativeCastKind) -> Self {
+        self.payment = MayCastMatchingSpellPayment::AlternativeCost(kind);
+        self
     }
 }
 

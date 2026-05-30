@@ -140,18 +140,22 @@ fn compile_effect_inner(
         player,
         filter,
         zone,
+        payment,
     } = effect
     {
         let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
         let player = resolve_non_target_player_filter(player.clone(), &current_reference_env(ctx))?;
         return Ok((
-            vec![Effect::new(
-                crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect::new(
-                    player,
-                    resolved_filter,
-                    *zone,
-                ),
-            )],
+            vec![Effect::new({
+                let mut effect =
+                    crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect::new(
+                        player,
+                        resolved_filter,
+                        *zone,
+                    );
+                effect.payment = payment.clone();
+                effect
+            })],
             Vec::new(),
         ));
     }

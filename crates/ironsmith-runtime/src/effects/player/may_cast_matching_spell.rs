@@ -9,9 +9,22 @@ use crate::zone::Zone;
 pub use ironsmith_core::MayCastMatchingSpellWithoutPayingManaCostEffect;
 
 use super::runtime_helpers::{
-    EffectDrivenCastOption, cast_effect_driven_spell_without_paying,
-    effect_driven_cast_options_for_card, with_spell_cast_event,
+    EffectDrivenCastOption, EffectDrivenCastPayment, cast_effect_driven_spell_with_payment,
+    effect_driven_cast_options_for_card_with_payment, with_spell_cast_event,
 };
+
+fn runtime_payment(
+    payment: &ironsmith_core::MayCastMatchingSpellPayment,
+) -> EffectDrivenCastPayment {
+    match payment {
+        ironsmith_core::MayCastMatchingSpellPayment::WithoutPayingManaCost => {
+            EffectDrivenCastPayment::WithoutPayingManaCost
+        }
+        ironsmith_core::MayCastMatchingSpellPayment::AlternativeCost(kind) => {
+            EffectDrivenCastPayment::AlternativeCost(*kind)
+        }
+    }
+}
 
 fn object_ids_in_zone(game: &GameState, player: PlayerId, zone: Zone) -> Vec<ObjectId> {
     match zone {
@@ -43,14 +56,16 @@ impl EffectExecutor for MayCastMatchingSpellWithoutPayingManaCostEffect {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let object_ids = object_ids_in_zone(game, player_id, self.zone);
         let mut options = Vec::<EffectDrivenCastOption>::new();
+        let payment = runtime_payment(&self.payment);
         for object_id in object_ids {
-            options.extend(effect_driven_cast_options_for_card(
+            options.extend(effect_driven_cast_options_for_card_with_payment(
                 game,
                 player_id,
                 ctx.source,
                 object_id,
                 self.zone,
                 &self.filter,
+                payment,
             ));
         }
         if options.is_empty() {
@@ -92,7 +107,8 @@ impl EffectExecutor for MayCastMatchingSpellWithoutPayingManaCostEffect {
             choice
         };
 
-        let Some(result) = cast_effect_driven_spell_without_paying(game, ctx, player_id, &option)?
+        let Some(result) =
+            cast_effect_driven_spell_with_payment(game, ctx, player_id, &option, payment)?
         else {
             return Ok(EffectOutcome::impossible());
         };

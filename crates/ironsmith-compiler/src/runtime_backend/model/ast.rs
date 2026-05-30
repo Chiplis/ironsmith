@@ -3217,6 +3217,7 @@ pub(crate) enum EffectAst {
         player: PlayerAst,
         filter: ObjectFilter,
         zone: Zone,
+        payment: ironsmith_core::MayCastMatchingSpellPayment,
     },
     RepeatThisProcess,
     RepeatThisProcessMay,
@@ -3669,6 +3670,21 @@ impl EffectAst {
             player,
             filter,
             zone,
+            payment: ironsmith_core::MayCastMatchingSpellPayment::WithoutPayingManaCost,
+        }
+    }
+
+    pub(crate) fn may_cast_matching_spell_with_alternative_cost(
+        player: PlayerAst,
+        filter: ObjectFilter,
+        zone: Zone,
+        kind: crate::filter::AlternativeCastKind,
+    ) -> Self {
+        Self::MayCastMatchingSpellWithoutPayingManaCost {
+            player,
+            filter,
+            zone,
+            payment: ironsmith_core::MayCastMatchingSpellPayment::AlternativeCost(kind),
         }
     }
 

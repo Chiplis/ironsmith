@@ -2646,12 +2646,60 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         }
     }
 
+    if let Some(compact) = describe_return_to_hand_then_owner_discards(effects) {
+        return Some(compact);
+    }
+
     describe_roll_choose_destroy_create_structural(effects)
         .or_else(|| describe_draw_discard_then_create_structural(effects))
         .or_else(|| describe_reveal_top_choice_to_hand_rest_graveyard_structural(effects))
         .or_else(|| describe_gain_control_untap_haste_structural(effects))
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
         .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
+}
+
+fn describe_return_to_hand_then_owner_discards(effects: &[Effect]) -> Option<String> {
+    let [return_effect, discard_effect] = effects else {
+        return None;
+    };
+    let returned_tag = structural_effect_tag(return_effect)?;
+    unwrap_structural_effect_tag(return_effect)
+        .downcast_ref::<crate::effects::ReturnToHandEffect>()?;
+    let discard = discard_effect.downcast_ref::<crate::effects::DiscardEffect>()?;
+    if discard.count != Value::Fixed(1)
+        || discard.random
+        || discard.any_number
+        || discard.card_filter.is_some()
+        || discard.player
+            != PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(returned_tag.clone()))
+    {
+        return None;
+    }
+
+    let return_text = describe_effect(return_effect)
+        .trim_end_matches('.')
+        .to_string();
+    Some(format!("{return_text}, then that player discards a card."))
+}
+
+fn structural_effect_tag(effect: &Effect) -> Option<&crate::TagKey> {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return Some(&tagged.tag);
+    }
+    if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+        return Some(&tag_all.tag);
+    }
+    None
+}
+
+fn unwrap_structural_effect_tag(effect: &Effect) -> &Effect {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return unwrap_structural_effect_tag(&tagged.effect);
+    }
+    if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+        return unwrap_structural_effect_tag(&tag_all.effect);
+    }
+    effect
 }
 
 fn describe_roll_choose_destroy_create_structural(effects: &[Effect]) -> Option<String> {
@@ -32379,7 +32427,22 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 .any(|constraint| {
                     constraint.relation == crate::filter::TaggedOpbjectRelation::ManaValueLteTagged
                 });
-        let mut spell_text = if !may_cast_matching.filter.card_types.is_empty() {
+        fn alternative_cast_kind_text(kind: crate::filter::AlternativeCastKind) -> &'static str {
+            match kind {
+                crate::filter::AlternativeCastKind::Blitz => "blitz",
+                crate::filter::AlternativeCastKind::Dash => "dash",
+                crate::filter::AlternativeCastKind::Flashback => "flashback",
+                crate::filter::AlternativeCastKind::JumpStart => "jump-start",
+                crate::filter::AlternativeCastKind::Escape => "escape",
+                crate::filter::AlternativeCastKind::Madness => "madness",
+                crate::filter::AlternativeCastKind::Miracle => "miracle",
+                crate::filter::AlternativeCastKind::Suspend => "suspend",
+            }
+        }
+
+        let mut spell_text = if let Some(kind) = may_cast_matching.filter.alternative_cast {
+            format!("a spell with {}", alternative_cast_kind_text(kind))
+        } else if !may_cast_matching.filter.card_types.is_empty() {
             let card_type_words: Vec<String> = may_cast_matching
                 .filter
                 .card_types
@@ -32442,9 +32505,19 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         } else {
             ""
         };
-        return format!(
-            "{player} may cast {spell_text} {zone_text}{mana_value_limit_text} without paying its mana cost"
-        );
+        match may_cast_matching.payment {
+            ironsmith_core::MayCastMatchingSpellPayment::WithoutPayingManaCost => {
+                return format!(
+                    "{player} may cast {spell_text} {zone_text}{mana_value_limit_text} without paying its mana cost"
+                );
+            }
+            ironsmith_core::MayCastMatchingSpellPayment::AlternativeCost(kind) => {
+                return format!(
+                    "{player} may cast {spell_text} {zone_text}{mana_value_limit_text}. If you do, pay its {} cost rather than its mana cost",
+                    alternative_cast_kind_text(kind)
+                );
+            }
+        }
     }
     if let Some(grant_next_spell_cost_reduction) =
         effect.downcast_ref::<crate::effects::GrantNextSpellCostReductionEffect>()

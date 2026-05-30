@@ -17,7 +17,9 @@ use super::super::permission_helpers::{
     parse_until_your_next_turn_may_play_tagged_clause,
 };
 use super::super::token_primitives::find_index;
-use super::super::util::{parse_subject, span_from_tokens, trim_commas, words};
+use super::super::util::{
+    parse_alternative_cast_words, parse_subject, span_from_tokens, trim_commas, words,
+};
 use super::dispatch_entry::parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard;
 use super::zone_handlers::parse_exile_top_library_clause;
 use crate::cards::builders::{
@@ -152,6 +154,47 @@ fn parse_exile_top_library_then_play_bundle(
     };
 
     Ok(Some(vec![exile_effect, permission_effect]))
+}
+
+fn parse_may_cast_spell_for_alternative_cost_bundle(
+    first_sentence: &[OwnedLexToken],
+    second_sentence: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let first_words = crate::runtime_backend::token_word_refs(first_sentence);
+    let second_words = crate::runtime_backend::token_word_refs(second_sentence);
+
+    if !word_slice_starts_with(
+        &first_words,
+        &["you", "may", "cast", "a", "spell", "with"],
+    ) {
+        return None;
+    }
+    let (kind, consumed) = parse_alternative_cast_words(&first_words[6..])?;
+    if first_words.get(6 + consumed..)? != ["from", "your", "hand"] {
+        return None;
+    }
+
+    if !word_slice_starts_with(&second_words, &["if", "you", "do", "pay", "its"]) {
+        return None;
+    }
+    let (second_kind, second_consumed) = parse_alternative_cast_words(&second_words[5..])?;
+    if second_kind != kind
+        || second_words.get(5 + second_consumed..)?
+            != ["cost", "rather", "than", "its", "mana", "cost"]
+    {
+        return None;
+    }
+
+    let mut filter = ObjectFilter::nonland()
+        .in_zone(Zone::Hand)
+        .with_alternative_cast(kind);
+    filter.owner = Some(PlayerFilter::You);
+    Some(vec![EffectAst::may_cast_matching_spell_with_alternative_cost(
+        PlayerAst::You,
+        filter,
+        Zone::Hand,
+        kind,
+    )])
 }
 
 fn parse_choose_type_then_phase_out_bundle(
@@ -1805,6 +1848,12 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
     if sentences.len() == 2
         && let Ok(Some(effects)) =
             parse_exile_top_library_then_play_bundle(sentences[0], sentences[1])
+    {
+        return Some(effects);
+    }
+    if sentences.len() == 2
+        && let Some(effects) =
+            parse_may_cast_spell_for_alternative_cost_bundle(sentences[0], sentences[1])
     {
         return Some(effects);
     }

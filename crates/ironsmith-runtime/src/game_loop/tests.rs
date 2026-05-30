@@ -3808,6 +3808,126 @@ fn singe_mind_ogre_reveals_a_random_card_from_target_players_hand_and_makes_them
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn dinrova_horror_returns_target_and_its_owner_discards() {
+    struct ChooseDiscardCardDecisionMaker {
+        card_to_discard: ObjectId,
+    }
+
+    impl DecisionMaker for ChooseDiscardCardDecisionMaker {
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            if ctx
+                .candidates
+                .iter()
+                .any(|candidate| candidate.id == self.card_to_discard && candidate.legal)
+            {
+                vec![self.card_to_discard]
+            } else {
+                ctx.candidates
+                    .iter()
+                    .filter(|candidate| candidate.legal)
+                    .map(|candidate| candidate.id)
+                    .take(ctx.min)
+                    .collect()
+            }
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let dinrova = CardDefinitionBuilder::new(CardId::from_raw(78_010), "Dinrova Horror")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Horror])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "When this creature enters, return target permanent to its owner's hand, then that player discards a card.",
+        )
+        .expect("Dinrova Horror should parse for runtime test");
+    let dinrova_id = game.create_object_from_definition(&dinrova, alice, Zone::Battlefield);
+
+    let borrowed_permanent = CardBuilder::new(CardId::from_raw(78_011), "Borrowed Relic")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let target_id = game.create_object_from_card(&borrowed_permanent, alice, Zone::Battlefield);
+    game.set_current_controller(target_id, bob);
+
+    let alice_discard = CardBuilder::new(CardId::from_raw(78_012), "Alice Discard")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let bob_hand_card = CardBuilder::new(CardId::from_raw(78_013), "Bob Keeps")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let alice_discard_id = game.create_object_from_card(&alice_discard, alice, Zone::Hand);
+    let _bob_hand_id = game.create_object_from_card(&bob_hand_card, bob, Zone::Hand);
+
+    let etb_trigger = dinrova
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered.clone()),
+            _ => None,
+        })
+        .expect("Dinrova Horror should have an enters trigger");
+    let target_spec = etb_trigger
+        .choices
+        .first()
+        .cloned()
+        .expect("Dinrova Horror should target a permanent");
+    let event = TriggerEvent::new_with_provenance(
+        EnterBattlefieldEvent::new(dinrova_id, Zone::Stack),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut dm = ChooseDiscardCardDecisionMaker {
+        card_to_discard: alice_discard_id,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(dinrova_id, alice, &mut dm)
+        .with_triggering_event(event)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target_id)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: target_spec,
+            range: 0..1,
+        }]);
+
+    for effect in &etb_trigger.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Dinrova Horror ETB effect should resolve");
+    }
+
+    assert!(
+        game.player(alice).is_some_and(|player| player
+            .hand
+            .iter()
+            .any(|&id| game.object(id).is_some_and(|obj| obj.name == "Borrowed Relic"))),
+        "the targeted permanent should return to its owner's hand"
+    );
+    assert!(
+        game.player(alice).is_some_and(|player| player
+            .graveyard
+            .iter()
+            .any(|&id| game.object(id).is_some_and(|obj| obj.name == "Alice Discard"))),
+        "the target's owner should discard a card"
+    );
+    assert!(
+        game.player(bob).is_some_and(|player| player
+            .hand
+            .iter()
+            .any(|&id| game.object(id).is_some_and(|obj| obj.name == "Bob Keeps"))),
+        "the target's controller should not discard when they do not own the returned permanent"
+    );
+}
+
 #[test]
 fn test_monarch_changes_when_creature_deals_combat_damage_to_monarch() {
     let mut game = setup_game();
@@ -4000,6 +4120,260 @@ fn test_suspend_declined_cast_does_not_keep_triggering_without_time_counters() {
     assert!(
         trigger_queue.entries.is_empty(),
         "card without time counters is no longer suspended and should not trigger again"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn the_face_of_boe_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(73_100), "The Face of Boe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::White],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Alien, Subtype::Advisor])
+        .power_toughness(PowerToughness::fixed(0, 4))
+        .parse_text(
+            "{T}: You may cast a spell with suspend from your hand. If you do, pay its suspend cost rather than its mana cost. Activate only as a sorcery.",
+        )
+        .expect("The Face of Boe should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn the_face_of_boe_effects(def: &crate::cards::CardDefinition) -> Vec<crate::effect::Effect> {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => {
+                Some(activated.effects.flattened_default_effects().to_vec())
+            }
+            _ => None,
+        })
+        .expect("The Face of Boe should have an activated ability")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn the_face_of_boe_activation_is_sorcery_speed() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let face_def = the_face_of_boe_definition();
+    let face_id = game.create_object_from_definition(&face_def, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(face_id);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    assert!(
+        crate::decision::compute_legal_actions(&game, alice)
+            .into_iter()
+            .any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, .. }
+                    if source == face_id
+            )),
+        "The Face of Boe should be activatable during its controller's main phase"
+    );
+
+    game.turn.phase = Phase::Combat;
+    assert!(
+        !crate::decision::compute_legal_actions(&game, alice)
+            .into_iter()
+            .any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, .. }
+                    if source == face_id
+            )),
+        "The Face of Boe should not be activatable outside sorcery timing"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn the_face_of_boe_casts_suspend_spell_from_hand_for_suspend_cost() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let face_def = the_face_of_boe_definition();
+    let face_id = game.create_object_from_definition(&face_def, alice, Zone::Battlefield);
+    let effects = the_face_of_boe_effects(&face_def);
+
+    let suspend_spell = CardDefinitionBuilder::new(CardId::from_raw(73_101), "Suspend Cost Probe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(6)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Suspend 3—{U}\nDraw a card.")
+        .expect("suspend spell should parse");
+    let _spell_id = game.create_object_from_definition(&suspend_spell, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Blue, 1);
+
+    let mut dm = SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(face_id, alice, &mut dm);
+    for effect in &effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("The Face of Boe effect should resolve");
+    }
+
+    assert_eq!(game.stack.len(), 1, "expected the suspend spell on the stack");
+    let stack_entry = game.stack.last().expect("stack entry should exist");
+    assert!(
+        game.object(stack_entry.object_id)
+            .is_some_and(|object| object.name == "Suspend Cost Probe"),
+        "expected the suspend spell object on the stack"
+    );
+    assert!(matches!(
+        stack_entry.casting_method,
+        crate::alternative_cast::CastingMethod::Alternative(_)
+    ));
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").mana_pool.blue,
+        0,
+        "The Face of Boe should spend the suspend cost, not cast for free"
+    );
+    assert!(
+        game.object(stack_entry.object_id)
+            .is_some_and(|object| object.zone == Zone::Stack),
+        "The Face of Boe should cast the suspend spell from hand, not exile it with time counters"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn the_face_of_boe_casting_suspend_creature_does_not_grant_suspend_haste() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let face_def = the_face_of_boe_definition();
+    let face_id = game.create_object_from_definition(&face_def, alice, Zone::Battlefield);
+    let effects = the_face_of_boe_effects(&face_def);
+
+    let suspend_creature =
+        CardDefinitionBuilder::new(CardId::from_raw(73_104), "Suspend Creature Probe")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(6)],
+                vec![ManaSymbol::Green],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Beast])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .parse_text("Suspend 3—{G}")
+            .expect("suspend creature should parse");
+    game.create_object_from_definition(&suspend_creature, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Green, 1);
+
+    let mut dm = SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(face_id, alice, &mut dm);
+    for effect in &effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("The Face of Boe effect should cast the suspend creature");
+    }
+
+    resolve_stack_entry(&mut game).expect("suspend creature should resolve");
+    let permanent_id = game
+        .battlefield
+        .iter()
+        .copied()
+        .find(|id| {
+            game.object(*id).is_some_and(|object| {
+                object.owner == alice && object.name == "Suspend Creature Probe"
+            })
+        })
+        .expect("suspend creature should enter the battlefield");
+    assert!(
+        !game.current_has_static_ability_id(
+            permanent_id,
+            crate::static_abilities::StaticAbilityId::Haste,
+        ),
+        "The Face of Boe pays the suspend cost but does not cast via the suspend delayed trigger"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn the_face_of_boe_does_not_cast_non_suspend_spell() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let face_def = the_face_of_boe_definition();
+    let face_id = game.create_object_from_definition(&face_def, alice, Zone::Battlefield);
+    let effects = the_face_of_boe_effects(&face_def);
+
+    let ordinary_spell = CardDefinitionBuilder::new(CardId::from_raw(73_102), "Ordinary Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Draw a card.")
+        .expect("ordinary spell should parse");
+    let spell_id = game.create_object_from_definition(&ordinary_spell, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Blue, 1);
+
+    let mut dm = SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(face_id, alice, &mut dm);
+    for effect in &effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("The Face of Boe effect should resolve without a suspend spell");
+    }
+
+    assert!(game.stack.is_empty(), "non-suspend spells should not be cast");
+    assert!(
+        game.object(spell_id)
+            .is_some_and(|object| object.zone == Zone::Hand),
+        "ordinary spell should remain in hand"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").mana_pool.blue,
+        1,
+        "no suspend-cost payment should be made when no suspend spell is cast"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn the_face_of_boe_does_not_cast_suspend_spell_without_suspend_cost_mana() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let face_def = the_face_of_boe_definition();
+    let face_id = game.create_object_from_definition(&face_def, alice, Zone::Battlefield);
+    let effects = the_face_of_boe_effects(&face_def);
+
+    let suspend_spell = CardDefinitionBuilder::new(CardId::from_raw(73_103), "Unpaid Suspend Probe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(6)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Suspend 3—{U}\nDraw a card.")
+        .expect("suspend spell should parse");
+    game.create_object_from_definition(&suspend_spell, alice, Zone::Hand);
+
+    let mut dm = SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(face_id, alice, &mut dm);
+    for effect in &effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("The Face of Boe effect should resolve without payable suspend mana");
+    }
+
+    assert!(
+        game.stack.is_empty(),
+        "unpaid suspend-cost casts should not reach the stack"
+    );
+    assert!(
+        game.player(alice).expect("Alice should exist").hand.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Unpaid Suspend Probe")
+        }),
+        "unpaid suspend spell should remain in hand"
     );
 }
 
