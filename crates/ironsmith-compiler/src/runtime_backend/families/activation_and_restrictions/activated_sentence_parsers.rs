@@ -21,7 +21,10 @@ enum ActivatedSentenceModifier {
         parsed: Option<crate::ability::ManaUsageRestriction>,
         fallback_text: String,
     },
-    AdditionalRestriction(String),
+    AdditionalRestriction {
+        restriction: String,
+        timing: Option<ActivationTiming>,
+    },
     TriggerOnly,
     InlineEffect(EffectAst),
 }
@@ -132,9 +135,10 @@ fn parse_activated_sentence_modifier_lexed(
     }
 
     if is_any_player_may_activate_sentence_lexed(tokens) {
-        return Some(ActivatedSentenceModifier::AdditionalRestriction(
-            joined_activation_clause_text(tokens),
-        ));
+        return Some(ActivatedSentenceModifier::AdditionalRestriction {
+            restriction: joined_activation_clause_text(tokens),
+            timing: parse_activate_only_timing_lexed(tokens),
+        });
     }
 
     if is_trigger_only_restriction_sentence_lexed(tokens) {
@@ -146,9 +150,10 @@ fn parse_activated_sentence_modifier_lexed(
     }
 
     if is_inline_activated_text_modifier_sentence(tokens) {
-        return Some(ActivatedSentenceModifier::AdditionalRestriction(
-            joined_activation_clause_text(tokens),
-        ));
+        return Some(ActivatedSentenceModifier::AdditionalRestriction {
+            restriction: joined_activation_clause_text(tokens),
+            timing: None,
+        });
     }
 
     None
@@ -192,7 +197,13 @@ pub(super) fn collect_activated_sentence_modifiers<'a>(
                     additional_activation_restrictions.push(fallback_text);
                 }
             }
-            ActivatedSentenceModifier::AdditionalRestriction(restriction) => {
+            ActivatedSentenceModifier::AdditionalRestriction {
+                restriction,
+                timing: parsed_timing,
+            } => {
+                if let Some(parsed_timing) = parsed_timing {
+                    timing = parsed_timing;
+                }
                 additional_activation_restrictions.push(restriction);
             }
             ActivatedSentenceModifier::TriggerOnly => {}

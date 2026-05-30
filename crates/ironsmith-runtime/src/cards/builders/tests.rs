@@ -5737,6 +5737,51 @@ fn test_parse_source_deals_damage_to_target_equal_to_number_of_filter() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_armageddon_clock_strict_oracle_and_compiled_damage_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(295), "Armageddon Clock")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(6)]]))
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "At the beginning of your upkeep, put a doom counter on this artifact.\n\
+             At the beginning of your draw step, this artifact deals damage equal to the number of doom counters on it to each player.\n\
+             {4}: Remove a doom counter from this artifact. Any player may activate this ability but only during any upkeep step.",
+        )
+        .expect("Armageddon Clock oracle text should parse strictly");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("BeginningOfUpkeepTrigger")
+            && debug.contains("PutCountersEffect")
+            && debug.contains("Named(\"doom\")"),
+        "expected Armageddon Clock upkeep trigger to put a doom counter, got {debug}"
+    );
+    assert!(
+        debug.contains("BeginningOfDrawStepTrigger")
+            && debug.contains("CountersOnSource(Named(\"doom\"))")
+            && debug.contains("ForPlayersEffect"),
+        "expected Armageddon Clock draw trigger to damage each player using doom counters, got {debug}"
+    );
+    assert!(
+        debug.contains("DuringUpkeepStep")
+            && debug.contains("any player may activate this ability but only during any upkeep step"),
+        "expected Armageddon Clock activation timing and any-player restriction, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("At the beginning of your draw step")
+            && rendered.contains("doom counters")
+            && rendered.contains("for each player"),
+        "expected compiled text to retain doom-counter damage to each player, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Any player may activate this ability but only during any upkeep step"),
+        "expected compiled text to retain the any-player upkeep timing clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_put_counter_then_it_deals_damage_equal_to_its_power() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Knockout Maneuver Variant")
         .card_types(vec![CardType::Instant])

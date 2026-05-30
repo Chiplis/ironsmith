@@ -1637,6 +1637,9 @@ pub fn evaluate_condition_external(
                 crate::ability::ActivationTiming::DuringCombat => {
                     matches!(game.turn.phase, crate::game_state::Phase::Combat)
                 }
+                crate::ability::ActivationTiming::DuringUpkeepStep => {
+                    matches!(game.turn.step, Some(crate::game_state::Step::Upkeep))
+                }
                 crate::ability::ActivationTiming::SorcerySpeed => {
                     game.turn.active_player == ctx.controller
                         && matches!(

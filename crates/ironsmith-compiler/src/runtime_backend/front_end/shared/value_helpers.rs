@@ -3,7 +3,7 @@
 use crate::cards::builders::{CardTextError, IT_TAG, TagKey};
 use crate::effect::{Value, ValueComparisonOperator};
 use crate::target::{ChooseSpec, PlayerFilter};
-use crate::{ObjectFilter, Zone};
+use crate::{CounterType, ObjectFilter, Zone};
 use ironsmith_core::ValueSurfaceHint;
 use ironsmith_core::{EffectMetric, EffectMetricSource};
 
@@ -19,7 +19,7 @@ use super::lexer::{
 };
 use super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::util::{
-    is_article, parse_counter_type_word, parse_number, parse_number_word_i32, parse_value,
+    is_article, parse_counter_type_from_tokens, parse_number, parse_number_word_i32, parse_value,
     parse_value_expr_words, token_index_for_word_index, trim_commas,
 };
 
@@ -327,6 +327,31 @@ fn lower_words_end_with(words: &ValueHelperCompatWords, suffix: &[&str]) -> bool
     word_slice_ends_with(&words.to_word_refs(), suffix)
 }
 
+fn parse_counter_descriptor_before_reference(
+    tokens: &[OwnedLexToken],
+    start_word_idx: usize,
+) -> Option<(Option<CounterType>, usize)> {
+    let clause_words = ValueHelperCompatWords::new(tokens);
+    let clause_refs = clause_words.to_word_refs();
+    let counter_word_idx = clause_refs[start_word_idx..]
+        .iter()
+        .position(|word| matches!(*word, "counter" | "counters"))?
+        + start_word_idx;
+
+    if counter_word_idx == start_word_idx {
+        return Some((None, counter_word_idx));
+    }
+
+    let descriptor_start_token_idx = token_index_for_word_index(tokens, start_word_idx)?;
+    let descriptor_end_token_idx = token_index_for_word_index(tokens, counter_word_idx + 1)
+        .unwrap_or(tokens.len());
+    let descriptor_tokens = trim_lexed_edge_punctuation(
+        &tokens[descriptor_start_token_idx..descriptor_end_token_idx],
+    );
+    let counter_type = parse_counter_type_from_tokens(descriptor_tokens)?;
+    Some((Some(counter_type), counter_word_idx))
+}
+
 pub(crate) fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let word_view = ValueHelperCompatWords::new(tokens);
     let words_all = word_view.to_word_refs();
@@ -508,13 +533,8 @@ pub(crate) fn parse_equal_to_number_of_counters_on_reference_value(
         idx += 1;
     }
 
-    let mut counter_type = None;
-    if let Some(word) = clause_words.get(idx)
-        && let Some(parsed) = parse_counter_type_word(word)
-    {
-        counter_type = Some(parsed);
-        idx += 1;
-    }
+    let (counter_type, counter_word_idx) = parse_counter_descriptor_before_reference(tokens, idx)?;
+    idx = counter_word_idx;
 
     if !matches!(clause_words.get(idx), Some("counter" | "counters")) {
         return None;
@@ -894,13 +914,8 @@ pub(crate) fn parse_equal_to_number_of_counters_on_reference_value_lexed(
         idx += 1;
     }
 
-    let mut counter_type = None;
-    if let Some(word) = clause_words.get(idx)
-        && let Some(parsed) = parse_counter_type_word(word)
-    {
-        counter_type = Some(parsed);
-        idx += 1;
-    }
+    let (counter_type, counter_word_idx) = parse_counter_descriptor_before_reference(tokens, idx)?;
+    idx = counter_word_idx;
 
     if !matches!(clause_words.get(idx), Some("counter" | "counters")) {
         return None;

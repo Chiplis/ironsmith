@@ -11528,6 +11528,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 crate::ability::ActivationTiming::AnyTime => "any time",
                 crate::ability::ActivationTiming::SorcerySpeed => "sorcery speed",
                 crate::ability::ActivationTiming::DuringCombat => "during combat",
+                crate::ability::ActivationTiming::DuringUpkeepStep => "during upkeep",
                 crate::ability::ActivationTiming::OncePerTurn => "once per turn",
                 crate::ability::ActivationTiming::DuringYourTurn => "during your turn",
                 crate::ability::ActivationTiming::DuringOpponentsTurn => "during opponents' turns",

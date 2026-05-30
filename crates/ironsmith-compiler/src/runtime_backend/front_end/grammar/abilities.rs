@@ -556,6 +556,10 @@ const ACTIVATE_ONLY_ONCE_EACH_TURN_PREFIXES: &[&[&str]] =
     &[&["activate", "only", "once", "each", "turn"]];
 const ACTIVATE_ONLY_DURING_COMBAT_PREFIXES: &[&[&str]] =
     &[&["activate", "only", "during", "combat"]];
+const ACTIVATE_ONLY_DURING_UPKEEP_PREFIXES: &[&[&str]] = &[
+    &["activate", "only", "during", "any", "upkeep", "step"],
+    &["activate", "only", "during", "an", "upkeep", "step"],
+];
 const ACTIVATE_ONLY_DURING_YOUR_TURN_PREFIXES: &[&[&str]] =
     &[&["activate", "only", "during", "your", "turn"]];
 const THIS_ABILITY_TRIGGERS_ONLY_PREFIXES: &[&[&str]] = &[
@@ -578,6 +582,14 @@ pub(crate) fn parse_activate_only_timing_lexed(
         || primitives::words_find_phrase(tokens, &["during", "combat"]).is_some()
     {
         return Some(ActivationTiming::DuringCombat);
+    }
+    if primitives::words_match_any_prefix(tokens, ACTIVATE_ONLY_DURING_UPKEEP_PREFIXES).is_some()
+        || primitives::words_find_phrase(tokens, &["only", "during", "any", "upkeep", "step"])
+            .is_some()
+        || primitives::words_find_phrase(tokens, &["only", "during", "an", "upkeep", "step"])
+            .is_some()
+    {
+        return Some(ActivationTiming::DuringUpkeepStep);
     }
     if primitives::words_match_any_prefix(tokens, ACTIVATE_ONLY_DURING_YOUR_TURN_PREFIXES).is_some()
         || primitives::words_find_phrase(tokens, &["during", "your", "turn"]).is_some()

@@ -32501,6 +32501,7 @@ pub(super) fn describe_activation_timing_clause(timing: &ActivationTiming) -> Op
         ActivationTiming::AnyTime => None,
         ActivationTiming::SorcerySpeed => Some("Activate only as a sorcery"),
         ActivationTiming::DuringCombat => Some("Activate only during combat"),
+        ActivationTiming::DuringUpkeepStep => Some("Activate only during any upkeep step"),
         ActivationTiming::OncePerTurn => Some("Activate only once each turn"),
         ActivationTiming::DuringYourTurn => Some("Activate only during your turn"),
         ActivationTiming::DuringOpponentsTurn => Some("Activate only during an opponent's turn"),
@@ -32883,8 +32884,21 @@ pub(super) fn collect_activation_restriction_clauses(
     let mut clauses = Vec::new();
 
     if let Some(timing_clause) = describe_activation_timing_clause(timing) {
-        let normalized = normalize_activation_restriction_clause(timing_clause);
-        push_activation_restriction_clause(&mut clauses, normalized);
+        let timing_lower = timing_clause.to_ascii_lowercase();
+        let timing_is_already_embedded = matches!(timing, ActivationTiming::DuringUpkeepStep)
+            && additional_restrictions.iter().any(|restriction| {
+                let restriction_lower = restriction.to_ascii_lowercase();
+                restriction_lower.contains("only during any upkeep step")
+                    || restriction_lower.contains("only during an upkeep step")
+                    || restriction_lower.contains(&timing_lower)
+            });
+        if timing_is_already_embedded {
+            // Keep combined clauses such as "Any player may activate ... but only during..."
+            // intact instead of rendering a separate duplicate timing sentence.
+        } else {
+            let normalized = normalize_activation_restriction_clause(timing_clause);
+            push_activation_restriction_clause(&mut clauses, normalized);
+        }
     }
 
     for raw in additional_restrictions {
@@ -36319,6 +36333,7 @@ pub(super) fn describe_mana_activation_condition(condition: &crate::ConditionExp
             ActivationTiming::AnyTime => "Activate only as an instant".to_string(),
             ActivationTiming::SorcerySpeed => "Activate only as a sorcery".to_string(),
             ActivationTiming::DuringCombat => "Activate only during combat".to_string(),
+            ActivationTiming::DuringUpkeepStep => "Activate only during any upkeep step".to_string(),
             ActivationTiming::OncePerTurn => "Activate only once each turn".to_string(),
             ActivationTiming::DuringYourTurn => "Activate only during your turn".to_string(),
             ActivationTiming::DuringOpponentsTurn => {

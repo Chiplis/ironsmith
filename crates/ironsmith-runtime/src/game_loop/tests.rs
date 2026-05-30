@@ -56,6 +56,36 @@ fn rampaging_aetherhood_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn armageddon_clock_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(74_210), "Armageddon Clock")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(6)]]))
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "At the beginning of your upkeep, put a doom counter on this artifact.\n\
+             At the beginning of your draw step, this artifact deals damage equal to the number of doom counters on it to each player.\n\
+             {4}: Remove a doom counter from this artifact. Any player may activate this ability but only during any upkeep step.",
+        )
+        .expect("Armageddon Clock should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn armageddon_clock_remove_counter_ability_index(game: &GameState, clock_id: ObjectId) -> usize {
+    game.object(clock_id)
+        .expect("Armageddon Clock should exist")
+        .abilities
+        .iter()
+        .position(|ability| {
+            if let AbilityKind::Activated(activated) = &ability.kind {
+                let debug = format!("{:?}", activated).to_ascii_lowercase();
+                debug.contains("removecounterseffect") && debug.contains("doom")
+            } else {
+                false
+            }
+        })
+        .expect("Armageddon Clock should have a doom-counter removal ability")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 struct RampagingAetherhoodDecisionMaker {
     accept_payment: bool,
     energy_to_pay: u32,
@@ -158,6 +188,131 @@ fn rampaging_aetherhood_payment_choice_cannot_pay_zero() {
         game.counter_count(aetherhood_id, crate::object::CounterType::PlusOnePlusOne),
         1,
         "the if-you-do branch should use the minimum paid amount"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn armageddon_clock_upkeep_trigger_adds_a_doom_counter() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let clock = armageddon_clock_definition();
+    let clock_id = game.create_object_from_definition(&clock, alice, Zone::Battlefield);
+
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Armageddon Clock should trigger at the beginning of your upkeep"
+    );
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Armageddon Clock upkeep trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Armageddon Clock upkeep trigger should resolve");
+
+    assert_eq!(
+        game.counter_count(clock_id, crate::object::CounterType::Named("doom")),
+        1,
+        "Armageddon Clock should get one doom counter during your upkeep"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn armageddon_clock_draw_trigger_deals_damage_equal_to_doom_counters_to_each_player() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let clock = armageddon_clock_definition();
+    let clock_id = game.create_object_from_definition(&clock, alice, Zone::Battlefield);
+    game.add_counters(clock_id, crate::object::CounterType::Named("doom"), 3)
+        .expect("doom counters should be addable to Armageddon Clock");
+
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Draw);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Armageddon Clock should trigger at the beginning of your draw step"
+    );
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Armageddon Clock draw trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Armageddon Clock draw trigger should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        17,
+        "Armageddon Clock should damage its controller equal to doom counters"
+    );
+    assert_eq!(
+        game.player(bob).expect("Bob should exist").life,
+        17,
+        "Armageddon Clock should damage each other player equal to doom counters"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn armageddon_clock_any_player_activation_is_limited_to_upkeep_and_removes_doom_counter() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let clock = armageddon_clock_definition();
+    let clock_id = game.create_object_from_definition(&clock, alice, Zone::Battlefield);
+    game.add_counters(clock_id, crate::object::CounterType::Named("doom"), 2)
+        .expect("doom counters should be addable to Armageddon Clock");
+    let ability_index = armageddon_clock_remove_counter_ability_index(&game, clock_id);
+    game.player_mut(bob)
+        .expect("Bob should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 4);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(bob);
+    assert!(
+        !crate::decision::compute_legal_actions(&game, bob)
+            .into_iter()
+            .any(|action| matches!(action, crate::decision::LegalAction::ActivateAbility { source, ability_index: idx } if source == clock_id && idx == ability_index)),
+        "Armageddon Clock's any-player activation should not be legal outside upkeep"
+    );
+
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.priority_player = Some(bob);
+    let activate_action = crate::decision::compute_legal_actions(&game, bob)
+        .into_iter()
+        .find(|action| matches!(action, crate::decision::LegalAction::ActivateAbility { source, ability_index: idx } if *source == clock_id && *idx == ability_index))
+        .expect("Bob should be able to activate Armageddon Clock during an upkeep step");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Bob should be able to activate Armageddon Clock");
+    resolve_stack_entry(&mut game).expect("Armageddon Clock removal ability should resolve");
+
+    assert_eq!(
+        game.counter_count(clock_id, crate::object::CounterType::Named("doom")),
+        1,
+        "Armageddon Clock activation should remove one doom counter"
     );
 }
 

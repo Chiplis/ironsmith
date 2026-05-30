@@ -840,6 +840,51 @@ fn add_battlefield_actions(
             }
         }
     }
+
+    if game.can_activate_non_mana_abilities(player) {
+        for &perm_id in &game.battlefield {
+            let Some(perm) = game.object(perm_id) else {
+                continue;
+            };
+            if game.controller_of(perm) == player {
+                continue;
+            }
+            let Some(ability_summary) = view.ability_index_summary(perm_id) else {
+                continue;
+            };
+            if ability_summary.activated_ability_indices().is_empty() {
+                continue;
+            }
+            let source_facts = ActivationSourceFacts::for_source(game, perm_id, view);
+            let cached_abilities = view.abilities_rc(perm_id);
+            let abilities = cached_abilities.as_deref().unwrap_or(&perm.abilities);
+            for &ability_index in ability_summary.activated_ability_indices() {
+                let Some(ability) = abilities.get(ability_index) else {
+                    continue;
+                };
+                let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {
+                    continue;
+                };
+                if !activated_allows_any_player(activated) {
+                    continue;
+                }
+                if can_activate_ability_with_restrictions_with_view(
+                    game,
+                    perm_id,
+                    ability_index,
+                    activated,
+                    view,
+                    Some(battlefield_ability_ctx),
+                    Some(&source_facts),
+                ) {
+                    actions.push(LegalAction::ActivateAbility {
+                        source: perm_id,
+                        ability_index,
+                    });
+                }
+            }
+        }
+    }
 }
 
 fn collect_non_battlefield_source_ids(
@@ -1111,6 +1156,9 @@ fn activation_timing_allows(
     match timing {
         crate::ability::ActivationTiming::AnyTime => true,
         crate::ability::ActivationTiming::DuringCombat => matches!(game.turn.phase, Phase::Combat),
+        crate::ability::ActivationTiming::DuringUpkeepStep => {
+            matches!(game.turn.step, Some(crate::game_state::Step::Upkeep))
+        }
         crate::ability::ActivationTiming::SorcerySpeed => {
             if is_equip_ability(game, source, activated)
                 && player_may_activate_equip_abilities_any_time(game, controller, view)
