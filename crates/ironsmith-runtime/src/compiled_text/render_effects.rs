@@ -15,6 +15,16 @@ fn value_prefers_equal_to(value: &Value) -> bool {
     value_has_surface_hint(value, ValueSurfaceHint::EqualTo)
 }
 
+fn describe_pay_any_energy_amount(
+    pay_any_energy: &crate::effects::PayAnyEnergyEffect,
+) -> Option<&'static str> {
+    match pay_any_energy.min_amount {
+        0 => Some("any amount of {E}"),
+        1 => Some("one or more {E}"),
+        _ => None,
+    }
+}
+
 fn library_position_from_top_text(position: &Value, one_as_on_top: bool) -> String {
     if let Value::Fixed(value) = position
         && let Ok(value) = u32::try_from(*value)
@@ -3557,6 +3567,58 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     }
 
     if let Some(compact) = describe_energy_then_pay_any_then_destroy(&raw_effects) {
+        return compact;
+    }
+
+    fn describe_energy_then_pay_any_then_put_paid_counters(
+        effects: &[&Effect],
+    ) -> Option<String> {
+        let [energy_effect, may_effect, if_effect] = effects else {
+            return None;
+        };
+        let energy = unwrap_wrapped_effect(energy_effect)
+            .downcast_ref::<crate::effects::EnergyCountersEffect>()?;
+        if energy.player != PlayerFilter::You {
+            return None;
+        }
+        let may_with_id = may_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+        let may = may_with_id
+            .effect
+            .downcast_ref::<crate::effects::MayEffect>()?;
+        if !matches!(may.decider, None | Some(PlayerFilter::You)) || may.effects.len() != 1 {
+            return None;
+        }
+        let pay_any = unwrap_wrapped_effect(&may.effects[0])
+            .downcast_ref::<crate::effects::PayAnyEnergyEffect>()?;
+        if !matches!(pay_any.player, ChooseSpec::Player(PlayerFilter::You)) {
+            return None;
+        }
+        let if_effect = if_effect.downcast_ref::<crate::effects::IfEffect>()?;
+        if if_effect.condition != may_with_id.id
+            || if_effect.predicate != crate::effect::EffectPredicate::Happened
+            || !if_effect.else_.is_empty()
+            || if_effect.then.len() != 1
+        {
+            return None;
+        }
+        let put = if_effect.then[0].downcast_ref::<crate::effects::PutCountersEffect>()?;
+        if put.distributed
+            || put.target_count.is_some()
+            || !is_effect_count_reference(&put.amount, Some(may_with_id.id))
+        {
+            return None;
+        }
+
+        let target = describe_choose_spec(&put.target);
+        let counter = describe_counter_type(put.counter_type);
+        let payment = describe_pay_any_energy_amount(pay_any)?;
+        Some(format!(
+            "{}. Then you may pay {payment}. If you do, put that many {counter} counters on {target}",
+            describe_effect(energy_effect)
+        ))
+    }
+
+    if let Some(compact) = describe_energy_then_pay_any_then_put_paid_counters(&raw_effects) {
         return compact;
     }
 
@@ -15603,6 +15665,7 @@ mod tests {
                 Effect::new(crate::effects::MayEffect::new_for_player(
                     vec![Effect::new(crate::effects::PayAnyEnergyEffect::new(
                         ChooseSpec::Player(PlayerFilter::You),
+                        0,
                     ))],
                     PlayerFilter::You,
                 )),
@@ -30503,11 +30566,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(pay_any_energy) = effect.downcast_ref::<crate::effects::PayAnyEnergyEffect>() {
         let payer = describe_choose_spec(&pay_any_energy.player);
+        let payment = describe_pay_any_energy_amount(pay_any_energy)
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("{} or more {{E}}", pay_any_energy.min_amount));
         if payer == "you" {
-            return "Pay any amount of {E}".to_string();
+            return format!("Pay {payment}");
         }
         return format!(
-            "{payer} {} any amount of {{E}}",
+            "{payer} {} {payment}",
             player_verb(&payer, "pay", "pays")
         );
     }

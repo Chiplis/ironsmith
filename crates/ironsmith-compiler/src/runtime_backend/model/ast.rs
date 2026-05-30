@@ -1589,7 +1589,9 @@ pub(crate) enum SubjectVerbActionAst {
     PayEnergy {
         amount: Value,
     },
-    PayAnyEnergy,
+    PayAnyEnergy {
+        min_amount: u32,
+    },
     PayMana {
         cost: ManaCost,
     },
@@ -3053,7 +3055,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::EnergyCounters { count } => f.debug_tuple("EnergyCounters").field(count).finish(),
             Self::TicketCounters { count } => f.debug_tuple("TicketCounters").field(count).finish(),
             Self::PayEnergy { amount } => f.debug_tuple("PayEnergy").field(amount).finish(),
-            Self::PayAnyEnergy => f.write_str("PayAnyEnergy"),
+            Self::PayAnyEnergy { min_amount } => f
+                .debug_struct("PayAnyEnergy")
+                .field("min_amount", min_amount)
+                .finish(),
             Self::PayMana { cost } => f.debug_tuple("PayMana").field(cost).finish(),
             Self::DoubleManaPool => f.write_str("DoubleManaPool"),
             Self::EmptyManaPool => f.write_str("EmptyManaPool"),
@@ -6033,11 +6038,11 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_pay_any_energy(player: PlayerAst) -> Self {
+    pub(crate) fn subject_verb_pay_any_energy(player: PlayerAst, min_amount: u32) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
-            SubjectVerbActionAst::PayAnyEnergy,
+            SubjectVerbActionAst::PayAnyEnergy { min_amount },
         )
     }
 

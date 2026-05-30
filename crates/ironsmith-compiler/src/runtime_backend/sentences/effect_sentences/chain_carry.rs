@@ -2214,7 +2214,7 @@ fn subject_verb_player_action_player_mut(effect: &mut EffectAst) -> Option<&mut 
                 | SubjectVerbActionAst::EnergyCounters { .. }
                 | SubjectVerbActionAst::TicketCounters { .. }
                 | SubjectVerbActionAst::PayEnergy { .. }
-                | SubjectVerbActionAst::PayAnyEnergy
+                | SubjectVerbActionAst::PayAnyEnergy { .. }
                 | SubjectVerbActionAst::PayMana { .. }
                 | SubjectVerbActionAst::DoubleManaPool
                 | SubjectVerbActionAst::EmptyManaPool
@@ -2286,7 +2286,7 @@ fn subject_verb_player_action_player(effect: &EffectAst) -> Option<PlayerAst> {
                 | SubjectVerbActionAst::EnergyCounters { .. }
                 | SubjectVerbActionAst::TicketCounters { .. }
                 | SubjectVerbActionAst::PayEnergy { .. }
-                | SubjectVerbActionAst::PayAnyEnergy
+                | SubjectVerbActionAst::PayAnyEnergy { .. }
                 | SubjectVerbActionAst::PayMana { .. }
                 | SubjectVerbActionAst::DoubleManaPool
                 | SubjectVerbActionAst::EmptyManaPool

@@ -4986,20 +4986,22 @@ fn compile_subject_verb_effect(
                 },
             )
         }
-        SubjectVerbActionAst::PayAnyEnergy => {
+        SubjectVerbActionAst::PayAnyEnergy { min_amount } => {
             let subject = resolve_subject_verb_subject(role, player, ctx, false, false, true)?;
             compile_player_effect_from_resolved_filter(
                 subject.into_player_filter(),
                 subject.into_choices(),
                 || {
-                    Effect::new(crate::effects::PayAnyEnergyEffect::new(ChooseSpec::Player(
-                        PlayerFilter::You,
-                    )))
+                    Effect::new(crate::effects::PayAnyEnergyEffect::new(
+                        ChooseSpec::Player(PlayerFilter::You),
+                        *min_amount,
+                    ))
                 },
                 |filter| {
-                    Effect::new(crate::effects::PayAnyEnergyEffect::new(ChooseSpec::Player(
-                        filter,
-                    )))
+                    Effect::new(crate::effects::PayAnyEnergyEffect::new(
+                        ChooseSpec::Player(filter),
+                        *min_amount,
+                    ))
                 },
             )
         }
