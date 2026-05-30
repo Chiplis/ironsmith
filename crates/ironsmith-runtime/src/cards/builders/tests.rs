@@ -38459,6 +38459,136 @@ fn calamity_bearer_runtime_ignores_non_giant_and_opposing_giant_sources() {
 }
 
 #[test]
+fn goldnight_castigator_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition("Goldnight Castigator");
+    let rendered_lines = canonical_compiled_lines(&def);
+    let controller_replacement =
+        "If a source would deal damage to you, it deals double that damage to you instead.";
+    let self_replacement = concat!(
+        "If a source would deal damage to this creature, ",
+        "it deals double that damage to this creature instead."
+    );
+
+    let replacement_count = def
+        .abilities
+        .iter()
+        .filter(|ability| {
+            matches!(
+                &ability.kind,
+                AbilityKind::Static(static_ability)
+                    if static_ability.id() == StaticAbilityId::ModifyDamageAmountReplacement
+            )
+        })
+        .count();
+    assert_eq!(
+        replacement_count, 2,
+        "Goldnight Castigator should compile both damage-doubling replacement abilities"
+    );
+    assert_eq!(
+        rendered_lines,
+        vec![
+            "Flying, haste".to_string(),
+            controller_replacement.to_string(),
+            self_replacement.to_string(),
+        ],
+        concat!(
+            "Goldnight Castigator should render its full oracle text without dropping keywords ",
+            "or replacement clauses"
+        )
+    );
+}
+
+#[test]
+fn goldnight_castigator_runtime_doubles_damage_to_controller_and_itself_only() {
+    let def = parse_oracle_card_definition("Goldnight Castigator");
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let castigator = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let damage_source = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_310), "Bob Sparkmage")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let controller_source = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_312), "Alice Sparkmage")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    let other_alice_creature = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_311), "Alice Soldier")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    let controller_damage = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        damage_source,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(controller_damage.assignments.len(), 1);
+    assert_eq!(controller_damage.assignments[0].amount, 6);
+
+    let controller_source_damage =
+        crate::events::processing::process_damage_assignments_with_event(
+            &mut game,
+            controller_source,
+            crate::events::DamageTarget::Player(alice),
+            2,
+            false,
+            crate::events::cause::EventCause::effect(),
+        );
+    assert_eq!(controller_source_damage.assignments.len(), 1);
+    assert_eq!(controller_source_damage.assignments[0].amount, 4);
+
+    let opponent_damage = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        damage_source,
+        crate::events::DamageTarget::Player(bob),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(opponent_damage.assignments.len(), 1);
+    assert_eq!(opponent_damage.assignments[0].amount, 3);
+
+    let self_damage = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        damage_source,
+        crate::events::DamageTarget::Object(castigator),
+        2,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(self_damage.assignments.len(), 1);
+    assert_eq!(self_damage.assignments[0].amount, 4);
+
+    let other_creature_damage = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        damage_source,
+        crate::events::DamageTarget::Object(other_alice_creature),
+        2,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(other_creature_damage.assignments.len(), 1);
+    assert_eq!(other_creature_damage.assignments[0].amount, 2);
+}
+
+#[test]
 fn rebbec_architect_of_ascension_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("Rebbec, Architect of Ascension");
 

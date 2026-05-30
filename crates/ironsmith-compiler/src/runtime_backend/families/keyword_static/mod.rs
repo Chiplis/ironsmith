@@ -2949,8 +2949,13 @@ pub(crate) fn parse_double_damage_amount_replacement_line(
     let replacement_target_words = &words[replacement_start + 6..];
     if damaged_words.is_empty()
         || replacement_target_words.len() < 2
-        || !word_slice_first_is(replacement_target_words, "that")
         || !word_slice_last_is(replacement_target_words, "instead")
+    {
+        return Ok(None);
+    }
+    let replacement_target_words = &replacement_target_words[..replacement_target_words.len() - 1];
+    if !word_slice_first_is(replacement_target_words, "that")
+        && !word_slice_eq(replacement_target_words, damaged_words)
     {
         return Ok(None);
     }
@@ -3003,6 +3008,9 @@ fn parse_damage_amount_replacement_target_filters(
     let words = strip_leading_word_refs_any(words, &["a", "an"]);
     match words {
         ["you"] => Ok((Some(PlayerFilter::You), None)),
+        ["this"] | ["this", "creature"] | ["this", "permanent"] => {
+            Ok((None, Some(ObjectFilter::source())))
+        }
         ["opponent"] => Ok((Some(PlayerFilter::Opponent), None)),
         ["player"] => Ok((Some(PlayerFilter::Any), None)),
         ["enchanted", "player"] => Ok((
