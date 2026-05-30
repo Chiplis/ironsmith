@@ -969,6 +969,20 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         ));
     }
 
+    if crate::runtime_backend::lexer::word_slice_eq(&clause_words, &["planeswalk"]) {
+        return Ok(EffectAst::subject_verb_emit_keyword_action(
+            crate::events::KeywordActionKind::Planeswalk,
+            1,
+        ));
+    }
+
+    if crate::runtime_backend::lexer::word_slice_eq(&clause_words, &["chaos", "ensues"]) {
+        return Ok(EffectAst::subject_verb_emit_keyword_action(
+            crate::events::KeywordActionKind::ChaosEnsues,
+            1,
+        ));
+    }
+
     let (verb, verb_idx) = find_verb(tokens).ok_or_else(|| {
         let clause = render_lower_words(tokens);
         let known_verbs = [

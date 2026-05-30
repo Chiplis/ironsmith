@@ -15,6 +15,152 @@ fn value_prefers_equal_to(value: &Value) -> bool {
     value_has_surface_hint(value, ValueSurfaceHint::EqualTo)
 }
 
+fn single_mana_symbol_oracle(symbol: crate::mana::ManaSymbol) -> Option<&'static str> {
+    match symbol {
+        crate::mana::ManaSymbol::White => Some("{W}"),
+        crate::mana::ManaSymbol::Blue => Some("{U}"),
+        crate::mana::ManaSymbol::Black => Some("{B}"),
+        crate::mana::ManaSymbol::Red => Some("{R}"),
+        crate::mana::ManaSymbol::Green => Some("{G}"),
+        crate::mana::ManaSymbol::Colorless => Some("{C}"),
+        crate::mana::ManaSymbol::Snow => Some("{S}"),
+        crate::mana::ManaSymbol::X => Some("{X}"),
+        crate::mana::ManaSymbol::Generic(_) | crate::mana::ManaSymbol::Life(_) => None,
+    }
+}
+
+fn describe_discard_hand_add_mana_draw_sequence(effects: &[&Effect]) -> Option<String> {
+    let [discard_effect, mana_effect, draw_effect] = effects else {
+        return None;
+    };
+    let discard_with_id = discard_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let discard = discard_with_id
+        .effect
+        .downcast_ref::<crate::effects::DiscardEffect>()?;
+    let mana_with_id = mana_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let mana = mana_with_id
+        .effect
+        .downcast_ref::<crate::effects::AddScaledManaEffect>()?;
+    let draw = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+
+    let Value::Count(count_filter) = &discard.count else {
+        return None;
+    };
+    let hand_filter = |filter: &ObjectFilter| {
+        filter.zone == Some(Zone::Hand)
+            && filter.owner == Some(PlayerFilter::You)
+            && filter.controller.is_none()
+            && filter.card_types.is_empty()
+            && filter.subtypes.is_empty()
+    };
+    if discard.player != PlayerFilter::You
+        || discard.random
+        || discard.any_number
+        || !hand_filter(count_filter)
+        || !discard.card_filter.as_ref().is_some_and(hand_filter)
+        || mana.player != PlayerFilter::You
+        || draw.player != PlayerFilter::You
+    {
+        return None;
+    }
+
+    if !matches!(
+        &mana.amount,
+        Value::EffectMetric {
+            effect_id,
+            source: crate::effect::EffectMetricSource::Outcome,
+            metric: crate::effect::EffectMetric::Count,
+        } if *effect_id == discard_with_id.id
+    ) {
+        return None;
+    }
+    let Value::EffectValueOffset(draw_effect_id, draw_offset) = &draw.count else {
+        return None;
+    };
+    if *draw_effect_id != mana_with_id.id || *draw_offset < 0 {
+        return None;
+    }
+
+    let mana_text = mana
+        .mana
+        .iter()
+        .copied()
+        .map(single_mana_symbol_oracle)
+        .collect::<Option<Vec<_>>>()?
+        .join("");
+    if mana_text.is_empty() {
+        return None;
+    }
+
+    let draw_text = match *draw_offset {
+        0 => "that many cards".to_string(),
+        1 => "that many cards plus one".to_string(),
+        offset => format!("that many cards plus {offset}"),
+    };
+
+    Some(format!(
+        "Discard all the cards in your hand. Add {mana_text} for each card discarded this way, then draw {draw_text}"
+    ))
+}
+
+fn describe_planeswalk_chaos_vote_sequence(effects: &[&Effect]) -> Option<String> {
+    let [vote_effect, planeswalk_effect, chaos_effect] = effects else {
+        return None;
+    };
+    let vote = vote_effect.downcast_ref::<crate::effects::VoteEffect>()?;
+    let ironsmith_core::VoteChoice::NamedOptions(options) = &vote.choice else {
+        return None;
+    };
+    if vote.secret
+        || vote.controller_extra_votes != 0
+        || vote.controller_optional_extra_votes != 0
+        || options.len() != 2
+        || options[0].name != "planeswalk"
+        || options[1].name != "chaos"
+        || !options.iter().all(|option| option.effects_per_vote.is_empty())
+    {
+        return None;
+    }
+
+    let planeswalk = planeswalk_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let chaos = chaos_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if !planeswalk.if_false.is_empty()
+        || !chaos.if_false.is_empty()
+        || !matches!(
+            &planeswalk.condition,
+            Condition::VoteOptionGetsMoreVotes(option) if option == "planeswalk"
+        )
+        || !matches!(
+            &chaos.condition,
+            Condition::VoteOptionGetsMoreVotesOrTied(option) if option == "chaos"
+        )
+    {
+        return None;
+    }
+
+    let [planeswalk_action] = planeswalk.if_true.as_slice() else {
+        return None;
+    };
+    let [chaos_action] = chaos.if_true.as_slice() else {
+        return None;
+    };
+    let planeswalk_emit = planeswalk_action
+        .downcast_ref::<crate::effects::EmitKeywordActionEffect>()?;
+    let chaos_emit = chaos_action.downcast_ref::<crate::effects::EmitKeywordActionEffect>()?;
+    if planeswalk_emit.action != crate::events::KeywordActionKind::Planeswalk
+        || planeswalk_emit.amount != 1
+        || chaos_emit.action != crate::events::KeywordActionKind::ChaosEnsues
+        || chaos_emit.amount != 1
+    {
+        return None;
+    }
+
+    Some(
+        "Will of the Planeswalkers — Starting with you, each player votes for planeswalk or chaos. If planeswalk gets more votes, planeswalk. If chaos gets more votes or the vote is tied, chaos ensues"
+            .to_string(),
+    )
+}
+
 fn library_position_from_top_text(position: &Value, one_as_on_top: bool) -> String {
     if let Value::Fixed(value) = position
         && let Ok(value) = u32::try_from(*value)
@@ -2474,6 +2620,16 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
             .is_some()
     {
         return describe_structural_multisentence_effect_list(rest);
+    }
+
+    if effects.len() == 3 {
+        let refs = effects.iter().collect::<Vec<_>>();
+        if let Some(compact) = describe_discard_hand_add_mana_draw_sequence(&refs) {
+            return Some(compact);
+        }
+        if let Some(compact) = describe_planeswalk_chaos_vote_sequence(&refs) {
+            return Some(compact);
+        }
     }
 
     describe_roll_choose_destroy_create_structural(effects)
@@ -12629,6 +12785,14 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         {
             parts.push(compact);
             idx += 2;
+            continue;
+        }
+        if idx + 2 < filtered.len()
+            && let Some(compact) =
+                describe_discard_hand_add_mana_draw_sequence(&filtered[idx..idx + 3])
+        {
+            parts.push(compact);
+            idx += 3;
             continue;
         }
         if idx + 1 < filtered.len()
@@ -32415,6 +32579,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(keyword) = effect.downcast_ref::<crate::effects::EmitKeywordActionEffect>() {
         if keyword.action == crate::events::KeywordActionKind::Forage && keyword.amount == 1 {
             return "forage".to_string();
+        }
+        if keyword.action == crate::events::KeywordActionKind::Planeswalk && keyword.amount == 1 {
+            return "planeswalk".to_string();
+        }
+        if keyword.action == crate::events::KeywordActionKind::ChaosEnsues && keyword.amount == 1 {
+            return "chaos ensues".to_string();
         }
         // Runtime keyword-action events are instrumentation; they should not leak
         // into oracle-like rendered rules text.

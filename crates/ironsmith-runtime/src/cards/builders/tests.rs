@@ -37709,6 +37709,178 @@ fn when_we_were_young_strict_parser_and_text_regression() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn path_of_the_pyromancer_strict_parser_text_and_structure_regression() {
+    let def = parse_oracle_card_definition("Path of the Pyromancer");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+
+    assert!(
+        rendered.contains(
+            "Discard all the cards in your hand. Add {R} for each card discarded this way, then draw that many cards plus one"
+        ),
+        "expected discarded-this-way mana and draw clause to render, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Will of the Planeswalkers — Starting with you, each player votes for planeswalk or chaos"
+        ),
+        "expected planeswalker vote clause to render, got {rendered}"
+    );
+    assert!(
+        rendered.contains("If chaos gets more votes or the vote is tied, chaos ensues"),
+        "expected tied chaos branch to render, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("DiscardEffect")
+            && debug.contains("AddScaledManaEffect")
+            && debug.contains("EffectMetric")
+            && debug.contains("VoteEffect")
+            && debug.contains("Planeswalk")
+            && debug.contains("ChaosEnsues"),
+        "expected discard-count mana, vote, and planar keyword actions structurally, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct PathVoteDecisionMaker {
+    votes: Vec<usize>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl crate::decision::DecisionMaker for PathVoteDecisionMaker {
+    fn decide_options(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        if !self.votes.is_empty() {
+            vec![self.votes.remove(0)]
+        } else {
+            ctx.options
+                .iter()
+                .filter(|option| option.legal)
+                .map(|option| option.index)
+                .take(ctx.min)
+                .collect()
+        }
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn vanilla_sorcery_for_path_test(id: u32, name: &str) -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(id), name)
+        .card_types(vec![CardType::Sorcery])
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_path_of_the_pyromancer_with_votes(
+    votes: Vec<usize>,
+) -> (crate::game_state::GameState, Vec<crate::triggers::TriggerEvent>) {
+    let def = parse_oracle_card_definition("Path of the Pyromancer");
+    let program = def
+        .spell_effect
+        .as_ref()
+        .expect("Path of the Pyromancer should compile to spell effects");
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let filler = vanilla_sorcery_for_path_test(91_101, "Path Filler");
+    for _ in 0..3 {
+        game.create_object_from_definition(&filler, alice, Zone::Hand);
+    }
+    for _ in 0..4 {
+        game.create_object_from_definition(&filler, alice, Zone::Library);
+    }
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut dm = PathVoteDecisionMaker { votes };
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+    let events = crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        program,
+        None,
+        &[],
+    )
+    .expect("Path of the Pyromancer should resolve");
+    (game, events)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn keyword_action_count(
+    events: &[crate::triggers::TriggerEvent],
+    action: crate::events::KeywordActionKind,
+) -> usize {
+    events
+        .iter()
+        .filter_map(|event| event.downcast::<crate::events::KeywordActionEvent>())
+        .filter(|event| event.action == action)
+        .count()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn path_of_the_pyromancer_runtime_discards_adds_mana_draws_and_planeswalks() {
+    let (game, events) = resolve_path_of_the_pyromancer_with_votes(vec![0, 0]);
+    let alice = PlayerId::from_index(0);
+    let player = game.player(alice).expect("Alice should exist");
+
+    assert_eq!(player.hand.len(), 4, "discard 3, then draw 4 cards");
+    assert_eq!(player.library.len(), 0, "four cards should be drawn");
+    assert_eq!(player.mana_pool.red, 3, "three discarded cards should add {{R}}{{R}}{{R}}");
+    assert_eq!(
+        keyword_action_count(&events, crate::events::KeywordActionKind::Planeswalk),
+        1,
+        "planeswalk should happen when planeswalk gets more votes"
+    );
+    assert_eq!(
+        keyword_action_count(&events, crate::events::KeywordActionKind::ChaosEnsues),
+        0,
+        "chaos should not happen when planeswalk gets more votes"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn path_of_the_pyromancer_runtime_tied_vote_chaos_branch() {
+    let (_game, events) = resolve_path_of_the_pyromancer_with_votes(vec![0, 1]);
+
+    assert_eq!(
+        keyword_action_count(&events, crate::events::KeywordActionKind::Planeswalk),
+        0,
+        "planeswalk should not happen when its vote is tied"
+    );
+    assert_eq!(
+        keyword_action_count(&events, crate::events::KeywordActionKind::ChaosEnsues),
+        1,
+        "chaos should happen when the vote is tied"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn path_of_the_pyromancer_runtime_chaos_more_votes_branch() {
+    let (_game, events) = resolve_path_of_the_pyromancer_with_votes(vec![1, 1]);
+
+    assert_eq!(
+        keyword_action_count(&events, crate::events::KeywordActionKind::Planeswalk),
+        0,
+        "planeswalk should not happen when chaos gets more votes"
+    );
+    assert_eq!(
+        keyword_action_count(&events, crate::events::KeywordActionKind::ChaosEnsues),
+        1,
+        "chaos should happen when chaos gets more votes"
+    );
+}
+
 fn vanilla_creature_for_when_we_were_young(id: u32, name: &str) -> CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(id), name)
         .card_types(vec![CardType::Creature])

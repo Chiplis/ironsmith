@@ -6141,6 +6141,14 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
             metric: EffectMetric::Count,
         }));
     }
+    if word_slice_contains_word(&filter_words, "discarded")
+        && word_slice_contains_phrase(&filter_words, &["this", "way"])
+    {
+        return Ok(Some(Value::PendingEffectMetric {
+            source: EffectMetricSource::Outcome,
+            metric: EffectMetric::Count,
+        }));
+    }
     if word_slice_contains_word(&filter_words, "revealed")
         && word_slice_contains_phrase(&filter_words, &["this", "way"])
         && let Some((value, used_words)) = parse_for_each_count_value_words(&words_all)
