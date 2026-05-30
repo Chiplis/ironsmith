@@ -37548,6 +37548,95 @@ fn parse_oracle_banefire_threshold_restrictions_regression() {
     );
 }
 
+#[test]
+fn gnarled_sage_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Gnarled Sage");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        def.abilities.iter().any(|ability| matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability) if static_ability.id() == StaticAbilityId::Reach
+        )),
+        "Gnarled Sage should parse reach strictly, got {ability_debug}"
+    );
+    assert!(
+        ability_debug.contains("MaxCardsDrawnThisTurn")
+            && ability_debug.contains("GreaterThanOrEqual")
+            && ability_debug.contains("Vigilance"),
+        "expected drawn-two-cards condition to guard vigilance structurally, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains(
+            "This creature gets +0/+2 and has vigilance as long as you've drawn two or more cards this turn"
+        ),
+        "expected Gnarled Sage conditional buff text, got {rendered}"
+    );
+}
+
+#[test]
+fn gnarled_sage_drawn_two_cards_condition_controls_buff_and_vigilance() {
+    fn stage_cards_drawn(
+        game: &mut crate::game_state::GameState,
+        player: PlayerId,
+        count: u32,
+    ) {
+        let cards = (0..count).map(|_| game.new_object_id()).collect();
+        let event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::other::CardsDrawnEvent::new(player, cards, count > 0),
+            crate::provenance::ProvNodeId::default(),
+        );
+        game.stage_turn_history_event(&event);
+    }
+
+    let oracle = oracle_text_by_name()
+        .get("Gnarled Sage")
+        .expect("Gnarled Sage oracle text")
+        .clone();
+    let def = CardDefinitionBuilder::new(CardId::new(), "Gnarled Sage")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Treefolk, Subtype::Druid])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(oracle)
+        .expect("Gnarled Sage should parse strictly");
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let sage_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    assert_eq!(game.calculated_power(sage_id), Some(4));
+    assert_eq!(game.calculated_toughness(sage_id), Some(4));
+    assert!(!game.object_has_static_ability_id(sage_id, StaticAbilityId::Vigilance));
+
+    stage_cards_drawn(&mut game, bob, 2);
+    assert_eq!(game.calculated_toughness(sage_id), Some(4));
+    assert!(
+        !game.object_has_static_ability_id(sage_id, StaticAbilityId::Vigilance),
+        "opponent drawing two cards should not satisfy Gnarled Sage's 'you've drawn' condition"
+    );
+
+    game.turn_store.turn_history.clear_for_new_turn();
+    stage_cards_drawn(&mut game, alice, 1);
+    assert_eq!(game.calculated_toughness(sage_id), Some(4));
+    assert!(
+        !game.object_has_static_ability_id(sage_id, StaticAbilityId::Vigilance),
+        "drawing only one card should not satisfy Gnarled Sage's condition"
+    );
+
+    game.turn_store.turn_history.clear_for_new_turn();
+    stage_cards_drawn(&mut game, alice, 2);
+    assert_eq!(game.calculated_power(sage_id), Some(4));
+    assert_eq!(game.calculated_toughness(sage_id), Some(6));
+    assert!(game.object_has_static_ability_id(sage_id, StaticAbilityId::Vigilance));
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_oracle_drakuseth_maw_of_flames_multi_target_regression() {

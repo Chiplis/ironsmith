@@ -2533,6 +2533,9 @@ pub(crate) fn parse_static_condition_clause(
             dungeon_name: Some(clause_words[name_start..].join(" ")),
         });
     }
+    if let Some(condition) = parse_cards_drawn_this_turn_static_condition(&tokens) {
+        return Ok(condition);
+    }
     if clause_words
         == [
             "your", "life", "total", "is", "less", "than", "or", "equal", "to", "half", "your",
@@ -3041,6 +3044,48 @@ fn parse_conjoined_static_condition_clause(
         }
     }
     None
+}
+
+fn parse_cards_drawn_this_turn_static_condition(
+    tokens: &[OwnedLexToken],
+) -> Option<crate::ConditionExpr> {
+    let clause_word_view = AnthemNormalizedWords::new(tokens);
+    let clause_words = clause_word_view.word_refs();
+    let (player, count_start_word_idx) = match clause_words.as_slice() {
+        ["youve", "drawn", ..] => (PlayerFilter::You, 2usize),
+        ["you", "have", "drawn", ..] | ["you", "ve", "drawn", ..] => {
+            (PlayerFilter::You, 3usize)
+        }
+        ["an", "opponent", "has", "drawn", ..] => (PlayerFilter::Opponent, 4usize),
+        ["opponent", "has", "drawn", ..] => (PlayerFilter::Opponent, 3usize),
+        ["opponents", "have", "drawn", ..] => (PlayerFilter::Opponent, 3usize),
+        ["a", "player", "has", "drawn", ..] => (PlayerFilter::Any, 4usize),
+        ["player", "has", "drawn", ..] => (PlayerFilter::Any, 3usize),
+        ["players", "have", "drawn", ..] => (PlayerFilter::Any, 3usize),
+        _ => return None,
+    };
+
+    let count_start_idx = clause_word_view.token_index_for_word_index(count_start_word_idx)?;
+    let count_tokens = tokens.get(count_start_idx..)?;
+    let (count, used) = parse_number(count_tokens)?;
+    let tail_tokens = count_tokens.get(used..)?;
+    let tail_word_view = AnthemNormalizedWords::new(tail_tokens);
+    let tail_words = tail_word_view.word_refs();
+    if !word_slice_eq_any(
+        &tail_words,
+        &[
+            &["or", "more", "cards", "this", "turn"],
+            &["or", "more", "card", "this", "turn"],
+        ],
+    ) {
+        return None;
+    }
+
+    Some(crate::ConditionExpr::ValueComparison {
+        left: crate::effect::Value::MaxCardsDrawnThisTurn(player),
+        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+        right: crate::effect::Value::Fixed(count as i32),
+    })
 }
 
 fn parse_cards_in_hand_static_condition(tokens: &[OwnedLexToken]) -> Option<crate::ConditionExpr> {
