@@ -2170,52 +2170,15 @@ pub(super) fn apply_mana_payment_response_activation(
         // Pay the mana and finalize
         let mut pending = pending;
         if let Some(ref cost) = pending.mana_cost_to_pay {
-            let allow_any_color =
-                game.can_spend_mana_as_any_color(pending.activator, Some(pending.source));
-            let allow_black_life = game.player_can_pay_black_with_life_for_reason(
+            if !game.try_pay_mana_cost_with_reason(
                 pending.activator,
                 Some(pending.source),
+                cost,
+                x_value,
                 crate::costs::PaymentReason::ActivateAbility,
-            );
-            let life_to_pay_preview = {
-                let Some(player) = game.player(pending.activator) else {
-                    return Err(GameLoopError::InvalidState(
-                        "Cannot pay mana cost - payer not found".to_string(),
-                    ));
-                };
-                let mut preview_pool = player.mana_pool.clone();
-                let (_, life_to_pay) = preview_pool
-                    .try_pay_tracking_life_with_any_color_and_black_life(
-                        cost,
-                        x_value,
-                        allow_any_color,
-                        allow_black_life,
-                    );
-                life_to_pay
-            };
-            if life_to_pay_preview > 0 && !game.can_pay_life(pending.activator, life_to_pay_preview)
-            {
+            ) {
                 return Err(GameLoopError::InvalidState(
-                    "Cannot pay mana cost - insufficient life for life payment".to_string(),
-                ));
-            }
-            let mut life_to_pay = 0u32;
-            if let Some(player) = game.player_mut(pending.activator) {
-                // Pay mana and track life for Phyrexian/K'rrik-style costs.
-                let (_, paid_life) = player
-                    .mana_pool
-                    .try_pay_tracking_life_with_any_color_and_black_life(
-                        cost,
-                        x_value,
-                        allow_any_color,
-                        allow_black_life,
-                    );
-                life_to_pay = paid_life;
-            }
-            // Deduct life for mana pips paid with life.
-            if life_to_pay > 0 && !game.pay_life(pending.activator, life_to_pay) {
-                return Err(GameLoopError::InvalidState(
-                    "Cannot pay mana cost - insufficient life for life payment".to_string(),
+                    "Cannot pay mana cost - insufficient mana".to_string(),
                 ));
             }
         }

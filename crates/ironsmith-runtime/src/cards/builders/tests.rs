@@ -40359,6 +40359,232 @@ fn james_wandering_dad_follow_him_models_activate_only_mana_usage_restriction() 
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn throne_of_eldraine_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Throne of Eldraine");
+    let def = parse_oracle_card_definition("Throne of Eldraine");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains("spend this mana only to cast monocolored spells of that color"),
+        "expected Throne of Eldraine mana spend restriction to render, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("spend only mana of the chosen color to activate this ability"),
+        "expected Throne of Eldraine activation mana-source restriction to render, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn throne_of_eldraine_models_mana_and_activation_restrictions() {
+    let def = parse_oracle_card_definition("Throne of Eldraine");
+    let ids: Vec<StaticAbilityId> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&StaticAbilityId::ChooseColorAsEnters),
+        "Throne of Eldraine should choose a color as it enters, got {ids:?}"
+    );
+
+    let mana_activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) if activated.is_mana_ability() => Some(activated),
+            _ => None,
+        })
+        .expect("Throne of Eldraine should have a mana ability");
+    let has_monocolored_chosen_restriction = mana_activated
+        .mana_usage_restrictions
+        .iter()
+        .any(|restriction| {
+            matches!(
+                restriction,
+                crate::ability::ManaUsageRestriction::CastSpellMatching {
+                    filter,
+                    restrict_to_matching_spell: true,
+                    ..
+                } if filter.monocolored && filter.chosen_color
+            )
+        });
+    assert!(
+        has_monocolored_chosen_restriction,
+        "Throne of Eldraine mana should be restricted to monocolored spells of the chosen color"
+    );
+
+    let draw_activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated)
+                if activated
+                    .effects
+                    .iter()
+                    .any(|effect| effect.downcast_ref::<DrawCardsEffect>().is_some()) =>
+            {
+                Some(activated)
+            }
+            _ => None,
+        })
+        .expect("Throne of Eldraine should have a draw activated ability");
+    assert!(
+        draw_activated.additional_restrictions.iter().any(|restriction| {
+            restriction.eq_ignore_ascii_case(
+                "spend only mana of the chosen color to activate this ability",
+            )
+        }),
+        "draw ability should preserve chosen-color activation mana restriction"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn throne_of_eldraine_runtime_adds_chosen_color_mana_and_draws_two_cards() {
+    let def = parse_oracle_card_definition("Throne of Eldraine");
+    let mana_activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) if activated.is_mana_ability() => {
+                Some(activated.clone())
+            }
+            _ => None,
+        })
+        .expect("Throne of Eldraine should have a mana ability");
+    let draw_activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated)
+                if activated
+                    .effects
+                    .iter()
+                    .any(|effect| effect.downcast_ref::<DrawCardsEffect>().is_some()) =>
+            {
+                Some(activated.clone())
+            }
+            _ => None,
+        })
+        .expect("Throne of Eldraine should have a draw activated ability");
+
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let throne_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    game.set_chosen_color(throne_id, Color::White);
+
+    let mut mana_ctx = crate::effects::ExecutionContext::new(throne_id, alice, &mut dm)
+        .with_mana_usage_restrictions(mana_activated.mana_usage_restrictions.clone());
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut mana_ctx,
+        alice,
+        throne_id,
+        &mana_activated.effects,
+        None,
+        &[],
+    )
+    .expect("Throne of Eldraine mana ability should resolve");
+    let player = game.player(alice).expect("alice exists");
+    assert_eq!(player.mana_pool.white, 4);
+    assert_eq!(player.restricted_mana.len(), 4);
+
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .empty();
+    game.player_mut(alice)
+        .expect("alice exists")
+        .restricted_mana
+        .clear();
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::White, 2);
+    let insufficient = crate::special_actions::pay_total_cost_with_choice(
+        &mut game,
+        alice,
+        throne_id,
+        &draw_activated.mana_cost,
+        crate::costs::PaymentReason::ActivateAbility,
+        &mut dm,
+    );
+    assert!(
+        insufficient.is_err(),
+        "draw ability should not be payable with only two mana"
+    );
+
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .empty();
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Blue, 3);
+    let wrong_color = crate::special_actions::pay_total_cost_with_choice(
+        &mut game,
+        alice,
+        throne_id,
+        &draw_activated.mana_cost,
+        crate::costs::PaymentReason::ActivateAbility,
+        &mut dm,
+    );
+    assert!(
+        wrong_color.is_err(),
+        "draw ability should require mana of Throne's chosen color"
+    );
+
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .empty();
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::White, 3);
+    crate::special_actions::pay_total_cost_with_choice(
+        &mut game,
+        alice,
+        throne_id,
+        &draw_activated.mana_cost,
+        crate::costs::PaymentReason::ActivateAbility,
+        &mut dm,
+    )
+    .expect("draw ability should be payable with three mana and an untapped Throne");
+
+    let filler = CardDefinitionBuilder::new(CardId::new(), "Library Filler")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    game.create_object_from_definition(&filler, alice, Zone::Library);
+    game.create_object_from_definition(&filler, alice, Zone::Library);
+    let hand_before = game.player(alice).expect("alice exists").hand.len();
+    let mut draw_ctx = crate::effects::ExecutionContext::new(throne_id, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut draw_ctx,
+        alice,
+        throne_id,
+        &draw_activated.effects,
+        None,
+        &[],
+    )
+    .expect("Throne of Eldraine draw ability should resolve");
+    assert_eq!(
+        game.player(alice).expect("alice exists").hand.len(),
+        hand_before + 2,
+        "draw ability should draw exactly two cards"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn jetfire_ingenious_scientist_card_parses_strictly() {
     let def = parse_oracle_card_definition("Jetfire, Ingenious Scientist // Jetfire, Air Guardian");
     assert!(

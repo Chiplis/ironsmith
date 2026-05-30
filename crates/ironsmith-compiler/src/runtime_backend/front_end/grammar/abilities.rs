@@ -527,6 +527,7 @@ pub(crate) fn is_opening_hand_begin_game_static_line_lexed(tokens: &[OwnedLexTok
 const ACTIVATE_ONLY_RESTRICTION_PREFIXES: &[&[&str]] =
     &[&["activate", "only"], &["activate", "no", "more", "than"]];
 const SPEND_MANA_RESTRICTION_PREFIXES: &[&[&str]] = &[
+    &["spend", "only", "mana"],
     &["spend", "this", "mana", "only"],
     &["spend", "that", "mana", "only"],
     &["this", "mana", "cant", "be", "spent", "to", "cast"],
@@ -836,6 +837,21 @@ fn parse_special_mana_usage_spell_filter_words(words: &[&str]) -> Option<ObjectF
     let words = strip_leading_article_word_refs(words);
     if words.is_empty() {
         return None;
+    }
+
+    if matches!(
+        words,
+        ["monocolored", "spell" | "spells", "of", "that", "color"]
+            | [
+                "monocolored",
+                "spell" | "spells",
+                "of",
+                "the",
+                "chosen",
+                "color"
+            ]
+    ) {
+        return Some(ObjectFilter::default().monocolored().of_chosen_color());
     }
 
     if matches!(
