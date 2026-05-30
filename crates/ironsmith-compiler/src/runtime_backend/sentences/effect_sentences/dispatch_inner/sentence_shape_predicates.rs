@@ -729,6 +729,10 @@ fn parse_effect_sentence_lexed_inner(
         return Ok(effects);
     }
 
+    if let Some(effect) = parse_vote_subject_verb(tokens)? {
+        return Ok(vec![effect]);
+    }
+
     if let Some((route, mut effects)) = parse_top_level_subject_verb_recognition(tokens)? {
         crate::parse_trace::event(format!("effect-route: {route}"));
         normalize_search_followup_shuffles(&mut effects);

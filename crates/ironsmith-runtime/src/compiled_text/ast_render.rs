@@ -709,8 +709,30 @@ fn rewrite_spell_resolution_damage_source(def: &CardDefinition, rendered: &str) 
     if !(def.card.is_instant() || def.card.is_sorcery()) || def.card.name.contains(" // ") {
         return rendered.to_string();
     }
-    rewrite_damage_phrases_for_permanent_abilities(rendered, &def.card.name, false)
-        .replace("Exile this source", &format!("Exile {}", def.card.name))
+    let rendered = rewrite_damage_phrases_for_permanent_abilities(rendered, &def.card.name, false)
+        .replace("Exile this source", &format!("Exile {}", def.card.name));
+    rewrite_standalone_spell_self_exile(&rendered, &def.card.name)
+}
+
+fn rewrite_standalone_spell_self_exile(rendered: &str, card_name: &str) -> String {
+    let needle = "Exile this";
+    let replacement = format!("Exile {card_name}");
+    let mut out = String::with_capacity(rendered.len() + card_name.len());
+    let mut rest = rendered;
+
+    while let Some(idx) = rest.find(needle) {
+        out.push_str(&rest[..idx]);
+        let after = &rest[idx + needle.len()..];
+        if matches!(after.chars().next(), None | Some('.') | Some(',') | Some(';')) {
+            out.push_str(&replacement);
+        } else {
+            out.push_str(needle);
+        }
+        rest = after;
+    }
+
+    out.push_str(rest);
+    out
 }
 
 fn ability_has_begin_on_battlefield_pregame(ability: &Ability) -> bool {

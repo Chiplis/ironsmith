@@ -97,6 +97,135 @@ fn describe_discard_hand_add_mana_draw_sequence(effects: &[&Effect]) -> Option<S
     ))
 }
 
+fn title_case_vote_option(option: &str) -> String {
+    option
+        .split_whitespace()
+        .enumerate()
+        .map(|(idx, word)| {
+            if idx > 0 && matches!(word, "a" | "an" | "and" | "of" | "or" | "the") {
+                return word.to_string();
+            }
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn describe_search_basic_land_battlefield_tapped_shuffle(effects: &[Effect]) -> Option<String> {
+    let [search_effect, shuffle_effect] = effects else {
+        return None;
+    };
+    let search_with_id = search_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let sequence = search_with_id
+        .effect
+        .downcast_ref::<crate::effects::SequenceEffect>()?;
+    let [choose_effect, put_effect] = sequence.effects.as_slice() else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let put_each = put_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let [put_effect] = put_each.effects.as_slice() else {
+        return None;
+    };
+    let put = put_effect.downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()?;
+    let shuffle = shuffle_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    let [shuffle_then] = shuffle.then.as_slice() else {
+        return None;
+    };
+    let shuffle_library = shuffle_then.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+
+    if !choose.is_search
+        || choose.chooser != PlayerFilter::You
+        || choose.zone != Some(Zone::Library)
+        || choose.filter.zone != Some(Zone::Library)
+        || choose.filter.owner != Some(PlayerFilter::You)
+        || choose.filter.card_types.as_slice() != [CardType::Land]
+        || !choose.filter.supertypes.contains(&Supertype::Basic)
+        || !choose.count.is_single()
+        || put_each.tag != choose.tag
+        || !matches!(put.target, ChooseSpec::Iterated)
+        || !put.tapped
+        || put.controller != PlayerFilter::You
+        || shuffle.condition != search_with_id.id
+        || shuffle.predicate != EffectPredicate::Happened
+        || !shuffle.else_.is_empty()
+        || shuffle_library.player != PlayerFilter::You
+    {
+        return None;
+    }
+
+    Some(
+        "search your library for a basic land card and put it onto the battlefield tapped. If you search your library this way, shuffle"
+            .to_string(),
+    )
+}
+
+fn describe_council_dilemma_named_vote_sequence(effects: &[Effect]) -> Option<String> {
+    let [vote_effect, repeat_effects @ ..] = effects else {
+        return None;
+    };
+    let vote = vote_effect.downcast_ref::<crate::effects::VoteEffect>()?;
+    let crate::effects::VoteChoice::NamedOptions(options) = &vote.choice else {
+        return None;
+    };
+    if vote.secret
+        || vote.controller_extra_votes != 0
+        || vote.controller_optional_extra_votes != 0
+        || options.len() < 2
+        || repeat_effects.len() != options.len()
+        || options.iter().any(|option| !option.effects_per_vote.is_empty())
+    {
+        return None;
+    }
+
+    let mut clauses = Vec::new();
+    for (option, repeat_effect) in options.iter().zip(repeat_effects.iter()) {
+        let repeat = repeat_effect.downcast_ref::<crate::effects::RepeatEffectsEffect>()?;
+        let Value::VoteCount(repeat_option) = &repeat.count else {
+            return None;
+        };
+        if !repeat_option.eq_ignore_ascii_case(&option.name) {
+            return None;
+        }
+
+        let body = describe_search_basic_land_battlefield_tapped_shuffle(&repeat.effects)
+            .unwrap_or_else(|| {
+                let mut body = describe_effect_list(&repeat.effects)
+                    .trim()
+                    .trim_end_matches('.')
+                    .to_string();
+                body = body.replace(
+                    ", put it onto the battlefield tapped",
+                    " and put it onto the battlefield tapped",
+                );
+                body
+            });
+        clauses.push(format!(
+            "For each {} vote, {}",
+            title_case_vote_option(&option.name),
+            lowercase_first(&body)
+        ));
+    }
+
+    let option_names = options
+        .iter()
+        .map(|option| title_case_vote_option(&option.name))
+        .collect::<Vec<_>>();
+    let mut text = format!(
+        "Council's dilemma — Starting with you, each player votes for {}",
+        join_with_or(&option_names)
+    );
+    if !clauses.is_empty() {
+        text.push_str(". ");
+        text.push_str(&clauses.join(". "));
+    }
+    Some(text)
+}
+
 fn describe_planeswalk_chaos_vote_sequence(effects: &[&Effect]) -> Option<String> {
     let [vote_effect, planeswalk_effect, chaos_effect] = effects else {
         return None;
@@ -2634,6 +2763,10 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
             .is_some()
     {
         return describe_structural_multisentence_effect_list(rest);
+    }
+
+    if let Some(compact) = describe_council_dilemma_named_vote_sequence(effects) {
+        return Some(compact);
     }
 
     if effects.len() == 3 {
