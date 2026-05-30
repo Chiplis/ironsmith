@@ -1401,6 +1401,15 @@ impl StaticAbilityModelInterpreter {
                 source_filter.clone(),
                 *combat_only,
             ),
+            ironsmith_core::StaticAbilityPayload::PreventDamageToYouFromSourceFilter {
+                amount,
+                source_filter,
+                display,
+            } => StaticAbility::prevent_damage_to_you_from_source_filter(
+                *amount,
+                source_filter.clone(),
+                display.clone(),
+            ),
             ironsmith_core::StaticAbilityPayload::ReplaceDamageWithCountersInstead {
                 counter_type,
                 display,

@@ -15726,6 +15726,135 @@ fn parse_oracle_healing_grace_strict_and_keeps_source_choice_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn sphere_of_truth_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Sphere of Truth");
+    let def = parse_oracle_card_definition("Sphere of Truth");
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains("If a white source would deal damage to you, prevent 2 of that damage"),
+        "expected Sphere of Truth partial prevention wording, got {rendered}"
+    );
+    assert!(
+        debug.contains("PreventDamageToYouFromSourceFilter") && debug.contains("amount: 2"),
+        "expected Sphere of Truth to compile to a white-source partial prevention static ability, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sphere_of_truth_reduces_each_white_source_damage_event_to_you_by_two() {
+    let sphere = parse_oracle_card_definition("Sphere of Truth");
+    let white_source = CardDefinitionBuilder::new(CardId::from_raw(91_200), "White Damage Source")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let red_source = CardDefinitionBuilder::new(CardId::from_raw(91_201), "Red Damage Source")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let sphere_id = game.create_object_from_definition(&sphere, alice, Zone::Battlefield);
+    let white_source_id = game.create_object_from_definition(&white_source, bob, Zone::Battlefield);
+    let red_source_id = game.create_object_from_definition(&red_source, bob, Zone::Battlefield);
+
+    game.update_replacement_effects();
+    assert!(
+        game.effect_store
+            .replacement_effects
+            .effects()
+            .iter()
+            .any(|replacement| {
+                replacement.source == sphere_id
+                    && matches!(
+                        replacement.replacement,
+                        crate::replacement::ReplacementAction::Modify(
+                            crate::replacement::EventModification::Subtract(2)
+                        )
+                    )
+            }),
+        "Sphere of Truth should register a static partial-prevention replacement"
+    );
+
+    let (white_damage, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        white_source_id,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(white_damage, 1, "3 white damage to you should be reduced by 2");
+
+    let (small_white_damage, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        white_source_id,
+        crate::events::DamageTarget::Player(alice),
+        1,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        small_white_damage, 0,
+        "1 white damage to you should be fully prevented"
+    );
+
+    let (red_damage, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        red_source_id,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(red_damage, 3, "nonwhite source damage should not be reduced");
+
+    let (damage_to_other_player, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        white_source_id,
+        crate::events::DamageTarget::Player(bob),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        damage_to_other_player, 3,
+        "white source damage to a player other than you should not be reduced"
+    );
+
+    let no_prevention = CardDefinitionBuilder::new(CardId::from_raw(91_202), "No Prevention")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::damage_cant_be_prevented(),
+        ))
+        .build();
+    game.create_object_from_definition(&no_prevention, bob, Zone::Battlefield);
+
+    let (unpreventable_white_damage, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        white_source_id,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        unpreventable_white_damage, 3,
+        "Sphere of Truth should not reduce damage while damage can't be prevented"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn healing_grace_runtime_prevents_up_to_three_damage_and_gains_life() {
     struct ChooseNamedSourceDecisionMaker {
         source_name: &'static str,
