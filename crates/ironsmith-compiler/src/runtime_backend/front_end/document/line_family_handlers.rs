@@ -210,6 +210,118 @@ pub(super) fn run_start_your_engines_line_family(
     )))
 }
 
+pub(super) fn run_case_line_family(
+    ctx: &LineDispatchContext<'_>,
+) -> Result<Option<LineDispatchResult>, CardTextError> {
+    let raw = ctx.line.info.raw_line.trim();
+    let lower = raw.to_ascii_lowercase();
+
+    if str_starts_with(lower.as_str(), "to solve") {
+        return parse_case_to_solve_line(ctx, raw);
+    }
+    if str_starts_with(lower.as_str(), "solved") {
+        return parse_case_solved_line(ctx, raw);
+    }
+
+    Ok(None)
+}
+
+fn parse_case_to_solve_line(
+    ctx: &LineDispatchContext<'_>,
+    raw: &str,
+) -> Result<Option<LineDispatchResult>, CardTextError> {
+    let Some((label, body)) = str_split_once_char(raw, '\u{2014}') else {
+        return Ok(None);
+    };
+    if label.trim().to_ascii_lowercase() != "to solve" {
+        return Ok(None);
+    }
+
+    let condition = body
+        .split("(If unsolved")
+        .next()
+        .unwrap_or(body)
+        .trim()
+        .trim_end_matches('.')
+        .trim();
+    if condition.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "case solve line missing condition: '{}'",
+            ctx.line.info.raw_line
+        )));
+    }
+
+    let triggered_text = format!("At the beginning of your end step, if {condition}, solve.");
+    let triggered_line = rewrite_line_normalized(ctx.line, triggered_text.as_str())?;
+    let mut triggered = parse_triggered_line_cst(&triggered_line)?;
+    let unsolved_condition = PredicateAst::Not(Box::new(PredicateAst::SourceChosenOption(
+        "solved".to_string(),
+    )));
+    triggered.intervening_if = Some(match triggered.intervening_if.take() {
+        Some(condition) => PredicateAst::And(Box::new(condition), Box::new(unsolved_condition)),
+        None => unsolved_condition,
+    });
+    Ok(Some(LineDispatchResult::single(
+        RewriteLineCst::Triggered(triggered),
+        ctx.idx + 1,
+    )))
+}
+
+fn parse_case_solved_line(
+    ctx: &LineDispatchContext<'_>,
+    raw: &str,
+) -> Result<Option<LineDispatchResult>, CardTextError> {
+    let Some((label, body)) = str_split_once_char(raw, '\u{2014}') else {
+        return Ok(None);
+    };
+    if label.trim().to_ascii_lowercase() != "solved" {
+        return Ok(None);
+    }
+
+    let body = body.trim();
+    if body.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "case solved line missing ability body: '{}'",
+            ctx.line.info.raw_line
+        )));
+    }
+
+    let mut lines = Vec::new();
+    for ability_text in split_case_solved_static_body(body) {
+        let ability_line = rewrite_line_normalized(ctx.line, ability_text.as_str())?;
+        let Some(mut static_line) = parse_static_line_cst(&ability_line)? else {
+            return Err(CardTextError::ParseError(format!(
+                "parser could not lower case solved line: '{}'",
+                ctx.line.info.raw_line
+            )));
+        };
+        static_line.chosen_option_label = Some("solved".to_string());
+        lines.push(RewriteLineCst::Static(static_line));
+    }
+
+    Ok(Some(LineDispatchResult {
+        lines,
+        next_idx: ctx.idx + 1,
+    }))
+}
+
+fn split_case_solved_static_body(body: &str) -> Vec<String> {
+    let trimmed = body.trim().trim_end_matches('.').trim();
+    let lower = trimmed.to_ascii_lowercase();
+    let prefix = "you may look at the top card of your library any time, and you may ";
+    if let Some(rest) = lower.strip_prefix(prefix)
+        && !rest.is_empty()
+        && let Some(original_rest) = trimmed.get(prefix.len()..)
+    {
+        return vec![
+            "You may look at the top card of your library any time.".to_string(),
+            format!("You may {}.", original_rest.trim()),
+        ];
+    }
+
+    vec![format!("{}.", trimmed)]
+}
+
 pub(super) fn run_draft_rule_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {

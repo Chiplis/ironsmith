@@ -143,6 +143,172 @@ fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn case_of_the_locked_hothouse_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Case of the Locked Hothouse");
+    let lines = canonical_compiled_lines(&def);
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        def.abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, AbilityKind::Triggered(_))),
+        "Case of the Locked Hothouse should parse its solve trigger strictly"
+    );
+    assert!(
+        ability_debug.contains("ChooseNamedOption")
+            && ability_debug.contains("solved")
+            && ability_debug.contains("SourceChosenOption")
+            && ability_debug.contains("LookAtTopCardOfLibrary"),
+        "expected solve effect and solved-gated static permissions, got {ability_debug}"
+    );
+    assert!(
+        lines.iter().any(|line| line == "To solve — You control seven or more lands."),
+        "expected Case solve clause in compiled text, got {lines:?}"
+    );
+    assert!(
+        lines.iter().any(|line| line == "Solved — You may look at the top card of your library any time, and you may play lands and cast creature and enchantment spells from the top of your library."),
+        "expected solved permission clause in compiled text, got {lines:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn case_of_the_locked_hothouse_solves_only_with_seven_lands() {
+    struct NoopDecisionMaker;
+    impl crate::decision::DecisionMaker for NoopDecisionMaker {}
+
+    let def = parse_oracle_card_definition("Case of the Locked Hothouse");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Case should have a beginning-of-end-step solve trigger");
+    let condition = triggered
+        .intervening_if
+        .as_ref()
+        .expect("solve trigger should be gated by the land-count condition");
+
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let forest = CardDefinitionBuilder::new(CardId::from_raw(91_101), "Forest")
+        .card_types(vec![CardType::Land])
+        .build();
+
+    for _ in 0..6 {
+        game.create_object_from_definition(&forest, alice, Zone::Battlefield);
+    }
+    let mut eval_ctx = crate::condition_eval::ExternalEvaluationContext {
+        controller: alice,
+        source,
+        filter_source: Some(source),
+        ..Default::default()
+    };
+    assert!(
+        !crate::condition_eval::evaluate_condition_external(&game, condition, &eval_ctx),
+        "Case should remain unsolved while its controller has fewer than seven lands"
+    );
+
+    game.create_object_from_definition(&forest, alice, Zone::Battlefield);
+    eval_ctx.source = source;
+    assert!(
+        crate::condition_eval::evaluate_condition_external(&game, condition, &eval_ctx),
+        "Case should be solvable once its controller has seven lands"
+    );
+
+    let mut dm = NoopDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &triggered.effects,
+        None,
+        &[],
+    )
+    .expect("solve trigger should resolve");
+    assert_eq!(game.chosen_named_option(source), Some("solved"));
+    assert!(
+        !crate::condition_eval::evaluate_condition_external(&game, condition, &eval_ctx),
+        "Case solve trigger condition should stop matching after the Case is solved"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn case_of_the_locked_hothouse_runtime_permissions_are_solved_gated() {
+    let def = parse_oracle_card_definition("Case of the Locked Hothouse");
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    game.refresh_continuous_state();
+    assert_eq!(
+        game.player(alice)
+            .expect("alice should exist")
+            .land_plays_per_turn,
+        2,
+        "the unsolved Case should still grant one additional land play"
+    );
+
+    let can_play_top_card = |card: crate::cards::CardDefinition, solved: bool| {
+        let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+        let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+        let card_id = game.create_object_from_definition(&card, alice, Zone::Library);
+        if solved {
+            game.set_chosen_named_option(source, "solved".to_string());
+        }
+        game.refresh_continuous_state();
+        game.effect_store
+            .grant_registry
+            .card_can_play_from_zone(&game, card_id, Zone::Library, alice)
+    };
+
+    let library_land = CardDefinitionBuilder::new(CardId::from_raw(91_201), "Library Forest")
+        .card_types(vec![CardType::Land])
+        .build();
+    assert!(
+        !can_play_top_card(library_land.clone(), false),
+        "top-library play permission should be inactive before the Case is solved"
+    );
+    assert!(
+        can_play_top_card(library_land, true),
+        "solved Case should let its controller play lands from the top of their library"
+    );
+
+    let library_creature = CardDefinitionBuilder::new(CardId::from_raw(91_202), "Library Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    assert!(
+        can_play_top_card(library_creature, true),
+        "solved Case should let its controller cast creature spells from the top of their library"
+    );
+
+    let library_enchantment =
+        CardDefinitionBuilder::new(CardId::from_raw(91_203), "Library Charm")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+    assert!(
+        can_play_top_card(library_enchantment, true),
+        "solved Case should let its controller cast enchantment spells from the top of their library"
+    );
+
+    let library_artifact = CardDefinitionBuilder::new(CardId::from_raw(91_204), "Library Relic")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    assert!(
+        !can_play_top_card(library_artifact, true),
+        "solved Case should not grant top-library play permission to unrelated card types"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_day_of_the_moon_goads_creatures_with_chosen_name() {
     let def = parse_oracle_card_definition("Day of the Moon");
     let triggered = def

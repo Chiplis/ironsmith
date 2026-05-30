@@ -11746,6 +11746,8 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 "no permanents left the battlefield this turn".to_string()
             } else if let Condition::CardsInHandOrMore(1) = inner.as_ref() {
                 "you have no cards in hand".to_string()
+            } else if let Condition::SourceChosenOption(option) = inner.as_ref() {
+                format!("the chosen option isn't {option}")
             } else if let Condition::PlayerControls { player, filter } = inner.as_ref() {
                 let subject = describe_player_filter(player);
                 let mut described_filter = filter.clone();

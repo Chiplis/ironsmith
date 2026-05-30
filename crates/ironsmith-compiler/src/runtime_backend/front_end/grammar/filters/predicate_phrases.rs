@@ -639,6 +639,28 @@ fn parse_card_types_among_predicate(words: &[&str]) -> Option<PredicateAst> {
     None
 }
 
+fn parse_you_control_count_predicate(words: &[&str]) -> Option<PredicateAst> {
+    if words.len() < 6 || words[0] != "you" || words[1] != "control" {
+        return None;
+    }
+    let count = parse_named_number(words[2])?;
+    if words[3] != "or" || words[4] != "more" {
+        return None;
+    }
+
+    let filter = match &words[5..] {
+        ["land" | "lands"] => ObjectFilter::land().you_control(),
+        ["permanent" | "permanents"] => ObjectFilter::permanent().you_control(),
+        _ => return None,
+    };
+
+    Some(PredicateAst::ValueComparison {
+        left: Value::Count(filter),
+        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::Fixed(count as i32),
+    })
+}
+
 fn parse_life_total_at_least_starting_predicate(words: &[&str]) -> Option<PredicateAst> {
     if matches!(
         words,
@@ -956,6 +978,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some(predicate) = parse_card_types_among_predicate(&filtered) {
+        return Ok(predicate);
+    }
+
+    if let Some(predicate) = parse_you_control_count_predicate(&filtered) {
         return Ok(predicate);
     }
 

@@ -680,6 +680,13 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         ));
     }
 
+    if matches!(choice_words, ["solve"]) {
+        return Ok(EffectAst::subject_verb_choose_named_option(
+            crate::cards::builders::PlayerAst::Implicit,
+            vec!["solved".to_string()],
+        ));
+    }
+
     if let Some((consumed, excluded_subtypes)) =
         parse_choose_creature_type_phrase_words(choice_words)?
         && consumed == choice_words.len()

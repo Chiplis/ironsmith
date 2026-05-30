@@ -982,7 +982,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
                 player,
                 spec: crate::grant::GrantSpec::new(
                     crate::grant::Grantable::play_from(),
-                    ObjectFilter::land(),
+                    ObjectFilter::default().with_type(CardType::Land),
                     Zone::Library,
                 ),
                 lifetime: PermissionLifetime::Static,
@@ -1009,7 +1009,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
                     return Ok(None);
                 };
                 ObjectFilter {
-                    any_of: vec![ObjectFilter::land(), spell_filter],
+                    any_of: vec![ObjectFilter::default().with_type(CardType::Land), spell_filter],
                     ..ObjectFilter::default()
                 }
             };

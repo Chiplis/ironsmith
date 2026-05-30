@@ -76,6 +76,9 @@ fn normalize_ast_surface_lines(lines: Vec<String>) -> Vec<String> {
 fn finalize_ast_surface_line(line: String) -> String {
     let mut line = line;
     let lower = line.to_ascii_lowercase();
+    if let Some(case_line) = normalize_case_to_solve_line(&line) {
+        return case_line;
+    }
     if lower.contains(
         "tap target creature or planeswalker. choose it. activated abilities of that permanent can't be activated this turn",
     ) {
@@ -111,6 +114,9 @@ fn finalize_ast_surface_line(line: String) -> String {
             "When this token dies: It deals 1 damage to any target",
             "When this token dies, it deals 1 damage to any target",
         );
+    if let Some(body) = solved_case_body(&line) {
+        return format!("Solved — {body}");
+    }
     line = line
         .replace(
             "Choose target creature you control. Choose target creature an opponent controls. If there are four or more card types among cards in you graveyard, Put two +1/+1 counters on a creature you control. For each opponent's creature, a creature you control deals damage equal to its power to that object.",
@@ -310,6 +316,47 @@ fn finalize_ast_surface_line(line: String) -> String {
     }
 }
 
+fn normalize_case_to_solve_line(line: &str) -> Option<String> {
+    let trimmed = line.trim().trim_end_matches('.');
+    let lower = trimmed.to_ascii_lowercase();
+    let condition = lower
+        .strip_prefix("at the beginning of your end step, if ")?
+        .strip_suffix(", solve")?;
+    let condition = normalize_case_solve_condition(condition);
+    Some(format!("To solve — {}.", capitalize_first(&condition)))
+}
+
+fn normalize_case_solve_condition(condition: &str) -> String {
+    let condition = condition
+        .strip_suffix(" and the chosen option isn't solved")
+        .unwrap_or(condition);
+    if let Some(rest) = condition.strip_prefix("there are ") {
+        if let Some(count) = rest.strip_suffix(" lands you control on the battlefield") {
+            return format!("you control {count} lands");
+        }
+        if let Some(count) = rest.strip_suffix(" permanents you control on the battlefield") {
+            return format!("you control {count} permanents");
+        }
+    }
+    condition.to_string()
+}
+
+fn solved_case_body(line: &str) -> Option<String> {
+    let trimmed = line.trim().trim_end_matches('.');
+    let solved = trimmed
+        .strip_suffix(". As long as the chosen option is solved")
+        .or_else(|| trimmed.strip_suffix(" as long as the chosen option is solved"))?;
+    let body = solved
+        .strip_prefix("This enchantment creature has ")
+        .or_else(|| solved.strip_prefix("This enchantment has "))
+        .or_else(|| solved.strip_prefix("This creature has "))
+        .unwrap_or(solved)
+        .trim();
+    let body = body
+        .replace("creature spells or enchantment spells", "creature and enchantment spells");
+    Some(body)
+}
+
 fn normalize_conditional_additional_x_counters(line: &str) -> String {
     let Some(rest) = line.strip_prefix(
         "This creature enters with X +1/+1 counters on it. This creature enters with X +1/+1 counters on it if ",
@@ -479,6 +526,16 @@ fn merge_specific_adjacent_surface_lines(lines: Vec<String>) -> Vec<String> {
             let right = lines[idx + 1].trim().trim_end_matches('.');
             let left_lower = left.to_ascii_lowercase();
             let right_lower = right.to_ascii_lowercase();
+            if let (Some(left_solved), Some(right_solved)) =
+                (solved_case_body(left), solved_case_body(right))
+            {
+                merged.push(format!(
+                    "Solved — {left_solved}, and {}.",
+                    lowercase_first(&right_solved)
+                ));
+                idx += 2;
+                continue;
+            }
             if left_lower.ends_with("at the beginning of the next end step, you lose 1 life")
                 && right_lower == "return this card to its owner's hand"
             {

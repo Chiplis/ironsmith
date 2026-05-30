@@ -26906,6 +26906,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(choose_named_option) =
         effect.downcast_ref::<crate::effects::ChooseNamedOptionEffect>()
     {
+        if choose_named_option.options.as_slice() == ["solved"] {
+            return "Solve".to_string();
+        }
         let chooser = describe_player_filter(&choose_named_option.chooser);
         let choose_verb = player_verb(&chooser, "choose", "chooses");
         let options = choose_named_option

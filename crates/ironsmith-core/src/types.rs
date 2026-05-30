@@ -381,6 +381,7 @@ pub enum Subtype {
     // Enchantment subtypes
     Aura,
     Background,
+    Case,
     Cartouche,
     Class,
     Curse,
@@ -662,6 +663,7 @@ impl Subtype {
         &[
             Subtype::Aura,
             Subtype::Background,
+            Subtype::Case,
             Subtype::Cartouche,
             Subtype::Class,
             Subtype::Curse,
@@ -981,6 +983,7 @@ impl Subtype {
             self,
             Subtype::Aura
                 | Subtype::Background
+                | Subtype::Case
                 | Subtype::Cartouche
                 | Subtype::Class
                 | Subtype::Curse
