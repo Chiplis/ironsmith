@@ -927,6 +927,7 @@ fn runtime_requirements(
         .map(|req| crate::decisions::context::TargetRequirementContext {
             description: req.description.clone(),
             legal_targets: req.legal_targets.clone(),
+            distinct_from_previous_targets: false,
             min_targets: req.min_targets,
             max_targets: req.max_targets,
         })

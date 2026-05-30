@@ -742,6 +742,10 @@ fn trigger_target_requirement_contexts(
             |requirement| crate::decisions::context::TargetRequirementContext {
                 description: requirement.description.clone(),
                 legal_targets: requirement.legal_targets.clone(),
+                distinct_from_previous_targets: matches!(
+                    requirement.spec.base(),
+                    ChooseSpec::AnyOtherTarget
+                ),
                 min_targets: requirement.min_targets,
                 max_targets: requirement.max_targets,
             },

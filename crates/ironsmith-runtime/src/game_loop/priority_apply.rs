@@ -17,6 +17,7 @@ pub(super) fn stage_after_activation_announcements(pending: &PendingActivation) 
 
 fn build_target_assignments(
     requirements: &[TargetRequirement],
+    previous_targets: &[Target],
     targets: &[Target],
     offset: usize,
 ) -> Result<Vec<crate::game_state::TargetAssignment>, GameLoopError> {
@@ -26,14 +27,21 @@ fn build_target_assignments(
             |requirement| crate::decisions::context::TargetRequirementContext {
                 description: requirement.description.clone(),
                 legal_targets: requirement.legal_targets.clone(),
+                distinct_from_previous_targets: matches!(
+                    requirement.spec.base(),
+                    ChooseSpec::AnyOtherTarget
+                ),
                 min_targets: requirement.min_targets,
                 max_targets: requirement.max_targets,
             },
         )
         .collect::<Vec<_>>();
 
-    let Some(ranges) = crate::targeting::assigned_target_ranges(&requirement_contexts, targets)
-    else {
+    let Some(ranges) = crate::targeting::assigned_target_ranges_after(
+        &requirement_contexts,
+        previous_targets,
+        targets,
+    ) else {
         return Err(GameLoopError::InvalidState(
             "targets do not satisfy the stored targeting requirements".to_string(),
         ));
@@ -1321,6 +1329,7 @@ pub(super) fn apply_targets_response(
     if let Some(mut pending) = state.pending_activation.take() {
         let assignments = build_target_assignments(
             &pending.remaining_requirements,
+            &pending.chosen_targets,
             targets,
             pending.chosen_targets.len(),
         )?;
@@ -1366,6 +1375,7 @@ pub(super) fn apply_targets_response(
 
     let assignments = build_target_assignments(
         &pending.remaining_requirements,
+        &pending.chosen_targets,
         targets,
         pending.chosen_targets.len(),
     )?;

@@ -1289,6 +1289,7 @@ pub(super) fn continue_to_targets_or_mana_payment(
                 .map(|r| crate::decisions::context::TargetRequirementContext {
                     description: r.description,
                     legal_targets: r.legal_targets,
+                    distinct_from_previous_targets: matches!(r.spec.base(), ChooseSpec::AnyOtherTarget),
                     min_targets: r.min_targets,
                     max_targets: r.max_targets,
                 })
@@ -3237,6 +3238,10 @@ pub(super) fn continue_activation(
                         .map(|r| crate::decisions::context::TargetRequirementContext {
                             description: r.description,
                             legal_targets: r.legal_targets,
+                            distinct_from_previous_targets: matches!(
+                                r.spec.base(),
+                                ChooseSpec::AnyOtherTarget
+                            ),
                             min_targets: r.min_targets,
                             max_targets: r.max_targets,
                         })

@@ -10718,34 +10718,97 @@ fn cone_of_flame_exposes_three_target_requirements_and_ignores_missing_target_sl
 
     assert_eq!(game.player(bob).expect("Bob should exist").life, 19);
     assert_eq!(game.damage_on(creature_id), 2);
+}
 
-    let duplicate_cone_id = game.create_object_from_definition(&cone, alice, Zone::Stack);
-    let duplicate_entry = StackEntry::new(duplicate_cone_id, alice)
-        .with_targets(vec![Target::Player(bob), Target::Player(bob), Target::Player(bob)])
-        .with_target_assignments(vec![
-            crate::game_state::TargetAssignment {
-                spec: crate::target::ChooseSpec::AnyTarget,
-                range: 0..1,
-            },
-            crate::game_state::TargetAssignment {
-                spec: crate::target::ChooseSpec::AnyOtherTarget,
-                range: 1..2,
-            },
-            crate::game_state::TargetAssignment {
-                spec: crate::target::ChooseSpec::AnyOtherTarget,
-                range: 2..3,
-            },
-        ]);
-    game.push_to_stack(duplicate_entry);
+#[test]
+fn cone_of_flame_rejects_duplicate_targets_during_announcement() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
 
-    resolve_stack_entry(&mut game)
-        .expect("Cone of Flame should ignore repeated choices for later 'other' targets");
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
 
+    let cone = CardDefinitionBuilder::new(CardId::new(), "Cone of Flame")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Cone of Flame deals 1 damage to any target, 2 damage to another target, and 3 damage to a third target.",
+        )
+        .expect("Cone of Flame should parse");
+    let first_creature = CardBuilder::new(CardId::from_raw(995_030), "First Target Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let second_creature = CardBuilder::new(CardId::from_raw(995_031), "Second Target Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    let first_creature_id = game.create_object_from_card(&first_creature, bob, Zone::Battlefield);
+    let second_creature_id = game.create_object_from_card(&second_creature, bob, Zone::Battlefield);
+    let cone_id = game.create_object_from_definition(&cone, alice, Zone::Hand);
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id: cone_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("Cone of Flame cast should ask for targets");
+
+    let ctx = match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(ctx)) => {
+            ctx
+        }
+        other => panic!("expected Cone of Flame target selection, got {other:?}"),
+    };
+    assert_eq!(ctx.requirements.len(), 3);
     assert_eq!(
-        game.player(bob).expect("Bob should exist").life,
-        18,
-        "duplicate later targets should not receive the 2- and 3-damage clauses"
+        ctx.requirements
+            .iter()
+            .map(|requirement| requirement.distinct_from_previous_targets)
+            .collect::<Vec<_>>(),
+        vec![false, true, true],
+        "later Cone of Flame target clauses must be distinct from earlier target slots"
     );
+
+    let duplicate_result = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![
+            Target::Player(bob),
+            Target::Player(bob),
+            Target::Object(first_creature_id),
+        ]),
+    );
+    assert!(
+        duplicate_result.is_err(),
+        "Cone of Flame should reject a repeated 'another target' choice"
+    );
+    assert!(
+        game.stack.is_empty(),
+        "invalid duplicate targets should not create a stack entry"
+    );
+
+    let normalized = crate::targeting::normalize_targets_for_requirements(&ctx.requirements, vec![])
+        .expect("default target selection should find distinct Cone of Flame targets");
+    assert_eq!(normalized.len(), 3);
+    assert_ne!(normalized[0], normalized[1]);
+    assert_ne!(normalized[0], normalized[2]);
+    assert_ne!(normalized[1], normalized[2]);
+    assert!(normalized.iter().all(|target| match target {
+        Target::Player(_) => true,
+        Target::Object(object_id) => [first_creature_id, second_creature_id].contains(object_id),
+    }));
 }
 
 #[test]

@@ -1032,6 +1032,10 @@ fn resolve_madness_discard(
                         |requirement| crate::decisions::context::TargetRequirementContext {
                             description: requirement.description.clone(),
                             legal_targets: requirement.legal_targets.clone(),
+                            distinct_from_previous_targets: matches!(
+                                requirement.spec.base(),
+                                crate::target::ChooseSpec::AnyOtherTarget
+                            ),
                             min_targets: requirement.min_targets,
                             max_targets: requirement.max_targets,
                         },

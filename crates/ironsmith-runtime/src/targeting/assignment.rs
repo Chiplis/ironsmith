@@ -6,11 +6,13 @@ use crate::game_state::Target;
 
 fn assign_target_counts(
     requirements: &[TargetRequirementContext],
+    previous_targets: &[Target],
     targets: &[Target],
     allow_autofill: bool,
 ) -> Option<Vec<usize>> {
     fn recurse(
         requirements: &[TargetRequirementContext],
+        previous_targets: &[Target],
         targets: &[Target],
         req_idx: usize,
         cursor: usize,
@@ -30,10 +32,14 @@ fn assign_target_counts(
         } else {
             let req = &requirements[req_idx];
             let remaining = targets.len().saturating_sub(cursor);
-            let future_min: usize = requirements[req_idx + 1..]
-                .iter()
-                .map(|next| next.min_targets)
-                .sum();
+            let future_min: usize = if allow_autofill {
+                0
+            } else {
+                requirements[req_idx + 1..]
+                    .iter()
+                    .map(|next| next.min_targets)
+                    .sum()
+            };
             let min_for_req = if allow_autofill { 0 } else { req.min_targets };
             let max_for_req = req.max_targets.unwrap_or(remaining).min(remaining);
             let mut found = None;
@@ -51,9 +57,19 @@ fn assign_target_counts(
                     {
                         continue;
                     }
+                    if req.distinct_from_previous_targets
+                        && slice.iter().enumerate().any(|(idx, target)| {
+                            previous_targets.contains(target)
+                                || targets[..cursor].contains(target)
+                                || slice[..idx].contains(target)
+                        })
+                    {
+                        continue;
+                    }
 
                     if let Some(mut rest) = recurse(
                         requirements,
+                        previous_targets,
                         targets,
                         req_idx + 1,
                         cursor + count,
@@ -77,20 +93,31 @@ fn assign_target_counts(
     }
 
     let mut memo = HashMap::new();
-    recurse(requirements, targets, 0, 0, allow_autofill, &mut memo)
+    recurse(
+        requirements,
+        previous_targets,
+        targets,
+        0,
+        0,
+        allow_autofill,
+        &mut memo,
+    )
 }
 
 pub fn normalize_targets_for_requirements(
     requirements: &[TargetRequirementContext],
     proposed: Vec<Target>,
 ) -> Option<Vec<Target>> {
-    let counts = assign_target_counts(requirements, &proposed, true)?;
+    let counts = assign_target_counts(requirements, &[], &proposed, true)?;
     let mut out = Vec::new();
     let mut cursor = 0usize;
 
     for (req, count) in requirements.iter().zip(counts.into_iter()) {
         let mut selected = Vec::new();
         for target in &proposed[cursor..cursor + count] {
+            if req.distinct_from_previous_targets && out.contains(target) {
+                continue;
+            }
             if !selected.contains(target) {
                 selected.push(*target);
             }
@@ -101,6 +128,9 @@ pub fn normalize_targets_for_requirements(
             for legal in &req.legal_targets {
                 if selected.len() >= req.min_targets {
                     break;
+                }
+                if req.distinct_from_previous_targets && out.contains(legal) {
+                    continue;
                 }
                 if !selected.contains(legal) {
                     selected.push(*legal);
@@ -127,7 +157,15 @@ pub fn assigned_target_ranges(
     requirements: &[TargetRequirementContext],
     assigned: &[Target],
 ) -> Option<Vec<Range<usize>>> {
-    let counts = assign_target_counts(requirements, assigned, false)?;
+    assigned_target_ranges_after(requirements, &[], assigned)
+}
+
+pub fn assigned_target_ranges_after(
+    requirements: &[TargetRequirementContext],
+    previous_targets: &[Target],
+    assigned: &[Target],
+) -> Option<Vec<Range<usize>>> {
+    let counts = assign_target_counts(requirements, previous_targets, assigned, false)?;
     let mut cursor = 0usize;
     let mut ranges = Vec::with_capacity(counts.len());
 
@@ -144,7 +182,7 @@ pub fn validate_flat_target_assignment(
     requirements: &[TargetRequirementContext],
     targets: &[Target],
 ) -> bool {
-    assign_target_counts(requirements, targets, false).is_some()
+    assign_target_counts(requirements, &[], targets, false).is_some()
 }
 
 #[cfg(test)]
@@ -166,12 +204,14 @@ mod tests {
             TargetRequirementContext {
                 description: "any number".to_string(),
                 legal_targets: vec![a, b, c],
+                distinct_from_previous_targets: false,
                 min_targets: 0,
                 max_targets: None,
             },
             TargetRequirementContext {
                 description: "final target".to_string(),
                 legal_targets: vec![d],
+                distinct_from_previous_targets: false,
                 min_targets: 1,
                 max_targets: Some(1),
             },
@@ -193,6 +233,7 @@ mod tests {
         let requirements = vec![TargetRequirementContext {
             description: "required".to_string(),
             legal_targets: vec![a],
+            distinct_from_previous_targets: false,
             min_targets: 1,
             max_targets: Some(1),
         }];
@@ -211,17 +252,57 @@ mod tests {
             TargetRequirementContext {
                 description: "first".to_string(),
                 legal_targets: vec![a],
+                distinct_from_previous_targets: false,
                 min_targets: 1,
                 max_targets: Some(1),
             },
             TargetRequirementContext {
                 description: "second".to_string(),
                 legal_targets: vec![b],
+                distinct_from_previous_targets: false,
                 min_targets: 1,
                 max_targets: Some(1),
             },
         ];
 
         assert!(!validate_flat_target_assignment(&requirements, &[b, a]));
+    }
+
+    #[test]
+    fn any_other_target_requirements_reject_prior_target_reuse() {
+        let a = Target::Object(ObjectId::from_raw(1));
+        let b = Target::Object(ObjectId::from_raw(2));
+        let c = Target::Object(ObjectId::from_raw(3));
+        let requirements = vec![
+            TargetRequirementContext {
+                description: "first target".to_string(),
+                legal_targets: vec![a, b, c],
+                distinct_from_previous_targets: false,
+                min_targets: 1,
+                max_targets: Some(1),
+            },
+            TargetRequirementContext {
+                description: "another target".to_string(),
+                legal_targets: vec![a, b, c],
+                distinct_from_previous_targets: true,
+                min_targets: 1,
+                max_targets: Some(1),
+            },
+            TargetRequirementContext {
+                description: "a third target".to_string(),
+                legal_targets: vec![a, b, c],
+                distinct_from_previous_targets: true,
+                min_targets: 1,
+                max_targets: Some(1),
+            },
+        ];
+
+        assert!(assigned_target_ranges(&requirements, &[a, b, c]).is_some());
+        assert!(assigned_target_ranges(&requirements, &[a, a, c]).is_none());
+        assert!(assigned_target_ranges(&requirements, &[a, b, a]).is_none());
+        assert_eq!(
+            normalize_targets_for_requirements(&requirements, Vec::new()).expect("autofill"),
+            vec![a, b, c]
+        );
     }
 }

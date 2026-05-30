@@ -1224,6 +1224,8 @@ pub struct TargetRequirementContext {
     pub description: String,
     /// Legal targets for this requirement.
     pub legal_targets: Vec<crate::game_state::Target>,
+    /// Whether targets for this requirement must be distinct from earlier target slots.
+    pub distinct_from_previous_targets: bool,
     /// Minimum number of targets to choose.
     pub min_targets: usize,
     /// Maximum number of targets to choose (None = unlimited).
@@ -1239,6 +1241,7 @@ impl TargetRequirementContext {
         Self {
             description: description.into(),
             legal_targets,
+            distinct_from_previous_targets: false,
             min_targets: 1,
             max_targets: Some(1),
         }

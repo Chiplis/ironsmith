@@ -82,6 +82,10 @@ fn choose_reflexive_targets(
             vec![TargetRequirementContext {
                 description: describe_choice(spec),
                 legal_targets: legal_targets.clone(),
+                distinct_from_previous_targets: matches!(
+                    spec.base(),
+                    crate::target::ChooseSpec::AnyOtherTarget
+                ),
                 min_targets: count.min,
                 max_targets: count.max,
             }],

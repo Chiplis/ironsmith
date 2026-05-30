@@ -75,6 +75,7 @@ fn extract_requirements(
         requirements.push(TargetRequirementContext {
             description: effect.0.target_description().to_string(),
             legal_targets,
+            distinct_from_previous_targets: matches!(spec.base(), crate::target::ChooseSpec::AnyOtherTarget),
             min_targets: count.min,
             max_targets: count.max,
         });
