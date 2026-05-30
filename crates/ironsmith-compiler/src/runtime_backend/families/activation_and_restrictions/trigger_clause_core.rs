@@ -3330,6 +3330,44 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
     }
 
+    if let Some(blocks_idx) = find_index(tokens, |token| token.is_word("blocks"))
+        && tokens
+            .get(blocks_idx + 1)
+            .is_some_and(|token| token.is_word("or"))
+        && tokens
+            .get(blocks_idx + 2)
+            .is_some_and(|token| token.is_word("becomes"))
+        && tokens
+            .get(blocks_idx + 3)
+            .is_some_and(|token| token.is_word("blocked"))
+        && tokens
+            .get(blocks_idx + 4)
+            .is_some_and(|token| token.is_word("by"))
+    {
+        let subject_tokens = trim_commas(&tokens[..blocks_idx]);
+        let by_tokens = trim_commas(&tokens[blocks_idx + 5..]);
+        let by_words = ActivationRestrictionCompatWords::new(&by_tokens).to_word_refs();
+        if !subject_tokens.is_empty()
+            && word_slice_eq_any(
+                &by_words,
+                &[
+                    &["this"],
+                    &["this", "creature"],
+                    &["this", "permanent"],
+                    &["this", "source"],
+                ],
+            )
+        {
+            let filter = parse_object_filter_lexed(&subject_tokens, false).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported blocking-or-blocked-by-this filter in trigger clause (clause: '{}')",
+                    words.join(" ")
+                ))
+            })?;
+            return Ok(TriggerSpec::BlocksOrBecomesBlockedByThis(filter));
+        }
+    }
+
     if word_slice_starts_with_any(
         &words,
         &[&["this", "creature", "blocks"], &["this", "blocks"]],

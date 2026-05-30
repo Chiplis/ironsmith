@@ -61,6 +61,9 @@ pub enum TriggerKind {
     Blocks {
         filter: ObjectFilter,
     },
+    BlocksOrBecomesBlockedByThis {
+        filter: ObjectFilter,
+    },
     ThisBecomesBlocked,
     ThisBecomesBlockedByObject {
         filter: ObjectFilter,
@@ -434,6 +437,12 @@ impl Trigger {
     }
     pub fn blocks(filter: ObjectFilter) -> Self {
         Self::typed("blocks", TriggerKind::Blocks { filter })
+    }
+    pub fn blocks_or_becomes_blocked_by_this(filter: ObjectFilter) -> Self {
+        Self::typed(
+            "blocks_or_becomes_blocked_by_this",
+            TriggerKind::BlocksOrBecomesBlockedByThis { filter },
+        )
     }
     pub fn this_becomes_blocked() -> Self {
         Self::typed("this_becomes_blocked", TriggerKind::ThisBecomesBlocked)

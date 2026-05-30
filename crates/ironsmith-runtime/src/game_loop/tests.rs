@@ -19358,6 +19358,195 @@ fn test_quintessential_katana_granted_combat_damage_trigger_stacks_and_resolves(
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn mirror_shield_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(39_010), "Mirror Shield")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .parse_text(
+            "Equipped creature gets +0/+2 and has hexproof and \"Whenever a creature with deathtouch blocks or becomes blocked by this creature, destroy that creature.\"\nEquip {2} ({2}: Attach to target creature you control. Equip only as a sorcery.)",
+        )
+        .expect("Mirror Shield should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn attach_mirror_shield_to_creature(
+    game: &mut GameState,
+    controller: PlayerId,
+    creature_id: ObjectId,
+) -> ObjectId {
+    let shield_id = game.create_object_from_definition(
+        &mirror_shield_definition(),
+        controller,
+        Zone::Battlefield,
+    );
+    if let Some(equipment) = game.object_mut(shield_id) {
+        equipment.attached_to = Some(crate::object::AttachmentTarget::Object(creature_id));
+    }
+    if let Some(creature) = game.object_mut(creature_id) {
+        creature.attachments.push(shield_id);
+    }
+    shield_id
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_deathtouch_creature(
+    game: &mut GameState,
+    name: &str,
+    controller: PlayerId,
+) -> ObjectId {
+    let creature_id = create_creature(game, name, controller, 1, 1);
+    if let Some(creature) = game.object_mut(creature_id) {
+        creature.abilities.push(Ability::static_ability(
+            StaticAbility::deathtouch(),
+        ));
+    }
+    creature_id
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn mirror_shield_grants_toughness_hexproof_and_destroys_deathtouch_blocker() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let bearer_id = create_creature(&mut game, "Shield Bearer", alice, 2, 2);
+    attach_mirror_shield_to_creature(&mut game, alice, bearer_id);
+    let deathtouch_blocker_id = create_deathtouch_creature(&mut game, "Venomous Blocker", bob);
+    let deathtouch_blocker_stable = game
+        .object(deathtouch_blocker_id)
+        .expect("deathtouch blocker should exist")
+        .stable_id;
+
+    assert_eq!(game.calculated_toughness(bearer_id), Some(4));
+    assert!(
+        game.object_has_static_ability_id(
+            bearer_id,
+            crate::static_abilities::StaticAbilityId::Hexproof,
+        ),
+        "Mirror Shield should grant hexproof to the equipped creature"
+    );
+
+    let block_event = TriggerEvent::new_with_provenance(
+        crate::events::combat::CreatureBlockedEvent::new(deathtouch_blocker_id, bearer_id),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in check_triggers(&game, &block_event) {
+        trigger_queue.add(trigger);
+    }
+
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Mirror Shield should trigger when a deathtouch creature blocks the equipped creature"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Mirror Shield trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Mirror Shield trigger should resolve");
+
+    let moved_blocker_id = game
+        .find_object_by_stable_id(deathtouch_blocker_stable)
+        .expect("destroyed deathtouch blocker should still be tracked");
+    assert!(
+        game.player(bob)
+            .expect("Bob should exist")
+            .graveyard
+            .contains(&moved_blocker_id),
+        "Mirror Shield should destroy the deathtouch blocker"
+    );
+    assert_eq!(
+        game.object(bearer_id).map(|object| object.zone),
+        Some(Zone::Battlefield),
+        "Mirror Shield should not destroy the equipped creature"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn mirror_shield_destroys_deathtouch_creature_blocked_by_equipped_creature() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let bearer_id = create_creature(&mut game, "Shield Bearer", alice, 2, 2);
+    attach_mirror_shield_to_creature(&mut game, alice, bearer_id);
+    let deathtouch_attacker_id = create_deathtouch_creature(&mut game, "Venomous Attacker", bob);
+    let deathtouch_attacker_stable = game
+        .object(deathtouch_attacker_id)
+        .expect("deathtouch attacker should exist")
+        .stable_id;
+
+    let blocked_event = TriggerEvent::new_with_provenance(
+        crate::events::combat::CreatureBecameBlockedEvent::with_target_and_blockers(
+            deathtouch_attacker_id,
+            vec![bearer_id],
+            None,
+            None,
+            Vec::new(),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in check_triggers(&game, &blocked_event) {
+        trigger_queue.add(trigger);
+    }
+
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Mirror Shield should trigger when the equipped creature blocks a deathtouch creature"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Mirror Shield trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Mirror Shield trigger should resolve");
+
+    let moved_attacker_id = game
+        .find_object_by_stable_id(deathtouch_attacker_stable)
+        .expect("destroyed deathtouch attacker should still be tracked");
+    assert!(
+        game.player(bob)
+            .expect("Bob should exist")
+            .graveyard
+            .contains(&moved_attacker_id),
+        "Mirror Shield should destroy the blocked deathtouch creature"
+    );
+    assert_eq!(
+        game.object(bearer_id).map(|object| object.zone),
+        Some(Zone::Battlefield),
+        "Mirror Shield should not destroy the equipped creature"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn mirror_shield_does_not_trigger_for_non_deathtouch_creature() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let bearer_id = create_creature(&mut game, "Shield Bearer", alice, 2, 2);
+    attach_mirror_shield_to_creature(&mut game, alice, bearer_id);
+    let ordinary_blocker_id = create_creature(&mut game, "Ordinary Blocker", bob, 1, 1);
+
+    let block_event = TriggerEvent::new_with_provenance(
+        crate::events::combat::CreatureBlockedEvent::new(ordinary_blocker_id, bearer_id),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in check_triggers(&game, &block_event) {
+        trigger_queue.add(trigger);
+    }
+
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Mirror Shield should not trigger for a blocker without deathtouch"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn raphael_tag_team_tough_trigger_only_happens_first_time_each_turn_and_adds_combat_phase() {
     let mut game = setup_game();

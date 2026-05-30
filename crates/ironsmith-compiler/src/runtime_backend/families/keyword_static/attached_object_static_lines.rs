@@ -128,6 +128,17 @@ pub(crate) fn display_text_for_tokens(
     text
 }
 
+fn quoted_triggered_grant_display(tokens: &[OwnedLexToken]) -> String {
+    let mut text = display_text_for_tokens(tokens, false);
+    if let Some(first) = text.get_mut(0..1) {
+        first.make_ascii_uppercase();
+    }
+    if !text.ends_with('.') {
+        text.push('.');
+    }
+    format!("\"{text}\"")
+}
+
 fn parse_attached_granted_activated_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
@@ -1669,6 +1680,40 @@ pub(crate) fn parse_attached_gets_and_has_ability_line(
             continue;
         }
 
+        if token_slice_first_is_any(&granted_tokens, &["when", "whenever", "at"])
+            && let LineAst::Triggered {
+                trigger,
+                effects,
+                max_triggers_per_turn,
+            } = crate::runtime_backend::clause_support::parse_triggered_line_lexed(&granted_tokens)?
+        {
+            let parsed = parsed_triggered_ability(
+                trigger,
+                effects,
+                vec![Zone::Battlefield],
+                Some(crate::runtime_backend::lexer::token_word_refs(&granted_tokens).join(" ")),
+                crate::runtime_backend::trigger_frequency_condition(
+                    Some(&crate::runtime_backend::lexer::token_word_refs(&granted_tokens).join(" ")),
+                    max_triggers_per_turn,
+                ),
+                None,
+                ReferenceImports::default(),
+            );
+            if parsed_triggered_ability_is_empty(&parsed) {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported empty attached triggered grant clause (clause: '{}')",
+                    line_words.join(" ")
+                )));
+            }
+            let mut out = vec![anthem.clone().into()];
+            for action in keyword_actions {
+                out.push(grant_keyword_action_for_anthem_subject(&clause, action));
+            }
+            let text = quoted_triggered_grant_display(&granted_tokens);
+            out.push(grant_object_ability_for_anthem_subject(&clause, parsed, text));
+            return Ok(Some(out));
+        }
+
         if let Some(parsed) = parse_attached_granted_activated_line(granted_tokens_raw)? {
             let mut out = vec![anthem.clone().into()];
             for action in keyword_actions {
@@ -1720,7 +1765,7 @@ pub(crate) fn parse_attached_gets_and_has_ability_line(
                 line_words.join(" ")
             )));
         }
-        let text = crate::runtime_backend::lexer::token_word_refs(&ability_tokens).join(" ");
+        let text = quoted_triggered_grant_display(&ability_tokens);
         let grant = grant_object_ability_for_anthem_subject(&clause, parsed, text);
         return Ok(Some(vec![anthem.into(), grant]));
     }

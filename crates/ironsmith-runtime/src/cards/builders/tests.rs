@@ -25173,6 +25173,26 @@ fn render_equip_line_with_parenthetical_colon_preserves_prefix_text() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn mirror_shield_parses_and_renders_granted_deathtouch_block_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(39_001), "Mirror Shield")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .parse_text(
+            "Equipped creature gets +0/+2 and has hexproof and \"Whenever a creature with deathtouch blocks or becomes blocked by this creature, destroy that creature.\"\nEquip {2} ({2}: Attach to target creature you control. Equip only as a sorcery.)",
+        )
+        .expect("Mirror Shield should parse strictly");
+
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec![
+            "Equipped creature gets +0/+2 and has hexproof and \"Whenever a creature with deathtouch blocks or becomes blocked by this creature, destroy that creature.\"".to_string(),
+            "Equip {2}".to_string(),
+        ]
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_put_counters_sequence_on_distinct_targets() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Incremental Growth Variant")
         .card_types(vec![CardType::Sorcery])

@@ -138,6 +138,9 @@ pub(crate) fn interpret_trigger_model(
             crate::triggers::Trigger::this_blocks_object(filter)
         }
         TriggerKind::Blocks { filter } => crate::triggers::Trigger::blocks(filter),
+        TriggerKind::BlocksOrBecomesBlockedByThis { filter } => {
+            crate::triggers::Trigger::blocks_or_becomes_blocked_by_this(filter)
+        }
         TriggerKind::ThisBecomesBlocked => crate::triggers::Trigger::this_becomes_blocked(),
         TriggerKind::ThisBecomesBlockedByObject { filter } => {
             crate::triggers::Trigger::this_becomes_blocked_by_object(filter)

@@ -812,6 +812,17 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
             }
             let left_rest = normalize_keyword_predicate_case(left_raw);
             let right_rest = normalize_keyword_predicate_case(right_raw);
+            if matches!(left_verb, "gets" | "get")
+                && matches!(right_verb, "has" | "have")
+                && left_raw.contains(" and has ")
+                && right_raw.starts_with('"')
+            {
+                merged.push(format!(
+                    "{left_subject} {left_verb} {left_rest} and {right_rest}"
+                ));
+                idx += 2;
+                continue;
+            }
             if is_trait(left_verb)
                 && is_trait(right_verb)
                 && left_verb.eq_ignore_ascii_case(right_verb)

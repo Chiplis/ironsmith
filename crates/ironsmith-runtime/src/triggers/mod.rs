@@ -516,6 +516,11 @@ impl Trigger {
         Self::new(BlocksOrBecomesBlockedTrigger::new(filter))
     }
 
+    /// Create a "when [filter] blocks or becomes blocked by this creature" trigger.
+    pub fn blocks_or_becomes_blocked_by_this(filter: ObjectFilter) -> Self {
+        Self::new(BlocksOrBecomesBlockedByThisTrigger::new(filter))
+    }
+
     /// Create a "when this creature blocks or becomes blocked" trigger.
     pub fn this_blocks_or_becomes_blocked() -> Self {
         Self::either(Self::this_blocks(), Self::this_becomes_blocked())
