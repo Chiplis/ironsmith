@@ -3,9 +3,6 @@ use super::*;
 const EACH_PLAYER_PREFIXES: &[&[&str]] = &[&["each", "player"]];
 const EACH_PLAYER_EXILES_ALL_PREFIXES: &[&[&str]] = &[&["each", "player", "exiles", "all"]];
 const EXILE_PREFIXES: &[&[&str]] = &[&["exile"]];
-const RETURN_EACH_CREATURE_ISNT_PREFIXES: &[&[&str]] =
-    &[&["return", "each", "creature", "that", "isnt"]];
-
 pub(crate) fn is_enters_as_copy_clause_lexed(tokens: &[OwnedLexToken]) -> bool {
     let as_copy_idx = primitives::words_find_phrase(tokens, &["as", "a", "copy"])
         .or_else(|| primitives::words_find_phrase(tokens, &["as", "an", "copy"]))
@@ -290,13 +287,6 @@ pub(crate) fn has_face_down_clause_sentence_lexed(
         && !primitives::contains_word(tokens, "manifest")
         && !primitives::contains_word(tokens, "pile");
     !simple_exile_face_down
-}
-
-pub(crate) fn has_return_each_creature_that_isnt_list_clause_sentence_lexed(
-    tokens: &[OwnedLexToken],
-) -> bool {
-    primitives::words_match_any_prefix(tokens, RETURN_EACH_CREATURE_ISNT_PREFIXES).is_some()
-        && primitives::contains_word(tokens, "or")
 }
 
 pub(crate) fn has_unsupported_negated_untap_clause_sentence_lexed(

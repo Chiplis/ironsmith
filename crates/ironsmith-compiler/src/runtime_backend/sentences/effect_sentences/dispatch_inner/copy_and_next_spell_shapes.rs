@@ -118,10 +118,39 @@ pub(crate) fn parse_delayed_until_next_end_step_sentence(
     }
 }
 
+fn split_delayed_trigger_clause_on_effect_comma(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+    for (split_idx, token) in tokens.iter().enumerate() {
+        if token.kind != TokenKind::Comma {
+            continue;
+        }
+        let mut trigger_tokens = trim_commas(&tokens[..split_idx]);
+        if trigger_tokens
+            .first()
+            .is_some_and(|token| token.is_word("when") || token.is_word("whenever"))
+        {
+            trigger_tokens = trigger_tokens[1..].to_vec();
+        }
+        if trigger_tokens.is_empty() || parse_trigger_clause_lexed(&trigger_tokens).is_err() {
+            continue;
+        }
+        let effect_tokens = trim_commas(&tokens[split_idx + 1..]);
+        if !effect_tokens.is_empty() {
+            return Some((&tokens[..split_idx], &tokens[split_idx + 1..]));
+        }
+    }
+    None
+}
+
 pub(crate) fn parse_sentence_delayed_trigger_this_turn(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if grammar::words_match_prefix(tokens, &["this", "turn"]).is_some() {
+    if grammar::words_match_prefix(tokens, &["this", "turn"])
+        .or_else(|| grammar::words_match_prefix(tokens, &["until", "end", "of", "turn"]))
+        .or_else(|| grammar::words_match_prefix(tokens, &["until", "the", "end", "of", "turn"]))
+        .is_some()
+    {
         let Some((_duration, delayed_clause)) =
             super::super::grammar::primitives::split_lexed_once_on_delimiter(
                 tokens,
@@ -138,10 +167,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
             return Ok(None);
         }
         let Some((trigger_part, effect_part)) =
-            super::super::grammar::primitives::split_lexed_once_on_delimiter(
-                &delayed_clause,
-                super::super::lexer::TokenKind::Comma,
-            )
+            split_delayed_trigger_clause_on_effect_comma(&delayed_clause)
         else {
             return Ok(None);
         };

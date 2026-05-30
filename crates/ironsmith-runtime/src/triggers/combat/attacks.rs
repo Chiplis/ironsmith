@@ -186,6 +186,32 @@ impl AttacksTrigger {
     }
 }
 
+fn simple_creature_subtype_attack_subject(filter: &ObjectFilter) -> Option<String> {
+    if filter.subtypes.len() < 2 {
+        return None;
+    }
+
+    let mut base_filter = filter.clone();
+    base_filter.subtypes.clear();
+    if base_filter != ObjectFilter::creature() {
+        return None;
+    }
+
+    let names = filter
+        .subtypes
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect::<Vec<_>>();
+    match names.as_slice() {
+        [] | [_] => None,
+        [first, second] => Some(format!("{first} or {second}")),
+        _ => {
+            let (last, rest) = names.split_last()?;
+            Some(format!("{}, or {last}", rest.join(", ")))
+        }
+    }
+}
+
 fn pluralize_attack_subject(subject: &str) -> String {
     if subject == "creature" {
         return "creatures".to_string();
@@ -273,6 +299,11 @@ impl TriggerMatcher for AttacksTrigger {
                 "Whenever {} or more {subject} attack{target_tail}",
                 self.min_total_attackers,
             );
+        }
+        if target_tail.is_empty()
+            && let Some(subject) = simple_creature_subtype_attack_subject(&display_filter)
+        {
+            return format!("Whenever a {subject} attacks");
         }
         format!(
             "Whenever {} attacks{target_tail}",

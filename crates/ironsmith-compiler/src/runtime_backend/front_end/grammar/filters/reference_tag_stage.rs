@@ -921,6 +921,67 @@ pub(super) fn parse_object_filter_inner(
             }
         }
 
+        let mut list_idx = target_idx;
+        let mut saw_list_connector = false;
+        let mut pending_card_types = Vec::new();
+        let mut pending_supertypes = Vec::new();
+        let mut pending_subtypes = Vec::new();
+        let mut pending_colors = ColorSet::new();
+        let mut pending_indices = Vec::new();
+        while list_idx < all_words.len() {
+            let negated_word = all_words[list_idx];
+            if is_article(negated_word) {
+                list_idx += 1;
+                continue;
+            }
+            if matches!(negated_word, "and" | "or") {
+                saw_list_connector = true;
+                list_idx += 1;
+                continue;
+            }
+            let mut consumed = false;
+            if is_outlaw_word(negated_word) {
+                push_outlaw_subtypes(&mut pending_subtypes);
+                consumed = true;
+            }
+            if let Some(card_type) = parse_card_type(negated_word) {
+                push_unique(&mut pending_card_types, card_type);
+                consumed = true;
+            }
+            if let Some(supertype) = parse_supertype_word(negated_word) {
+                push_unique(&mut pending_supertypes, supertype);
+                consumed = true;
+            }
+            if let Some(color) = parse_color(negated_word) {
+                pending_colors = pending_colors.union(color);
+                consumed = true;
+            }
+            if let Some(subtype) = parse_subtype_flexible(negated_word) {
+                push_unique(&mut pending_subtypes, subtype);
+                consumed = true;
+            }
+            if !consumed {
+                break;
+            }
+            pending_indices.push(list_idx);
+            list_idx += 1;
+        }
+        if saw_list_connector {
+            for card_type in pending_card_types {
+                push_unique(&mut filter.excluded_card_types, card_type);
+            }
+            for supertype in pending_supertypes {
+                push_unique(&mut filter.excluded_supertypes, supertype);
+            }
+            filter.excluded_colors = filter.excluded_colors.union(pending_colors);
+            for subtype in pending_subtypes {
+                push_unique(&mut filter.excluded_subtypes, subtype);
+            }
+            for index in pending_indices {
+                negated_word_indices.insert(index);
+            }
+        }
+
         let negated_word = all_words[target_idx];
         if negated_word == "attacking" {
             filter.nonattacking = true;

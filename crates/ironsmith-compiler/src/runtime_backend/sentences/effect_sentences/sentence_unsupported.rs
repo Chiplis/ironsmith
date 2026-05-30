@@ -3,7 +3,7 @@ use super::super::rule_engine::{LexClauseView, LexUnsupportedDiagnoser, LexUnsup
 use super::dispatch_inner as inner;
 use crate::cards::builders::CardTextError;
 
-const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
+const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 27] = [
     LexUnsupportedRuleDef {
         id: "enters-as-copy",
         priority: 20,
@@ -211,14 +211,6 @@ const SENTENCE_UNSUPPORTED_RULES_LEXED: [LexUnsupportedRuleDef; 28] = [
         shape_mask: 0,
         message: "unsupported face-down clause",
         predicate: inner::sentence_has_face_down_clause_rule_lexed,
-    },
-    LexUnsupportedRuleDef {
-        id: "return-each-creature-that-isnt-list",
-        priority: 370,
-        heads: &["return"],
-        shape_mask: 0,
-        message: "unsupported return-each-creature-that-isnt-list clause",
-        predicate: inner::sentence_has_return_each_creature_that_isnt_list_clause_rule_lexed,
     },
     LexUnsupportedRuleDef {
         id: "negated-untap",

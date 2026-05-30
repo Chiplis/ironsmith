@@ -34,7 +34,9 @@ use super::super::util::{
     remove_through_first_word as remove_through_first_word_tokens, strip_leading_word_refs_any,
 };
 use super::super::value_helpers::{parse_number_from_lexed, parse_value_from_lexed};
-use super::dispatch_inner::parse_subject_verb_extension_sentence;
+use super::dispatch_inner::{
+    parse_sentence_delayed_trigger_this_turn, parse_subject_verb_extension_sentence,
+};
 use super::lex_chain_helpers::{
     find_verb_lexed, has_effect_head_without_verb_lexed, segment_has_effect_head_lexed,
     split_effect_chain_on_and_lexed, split_segments_on_comma_effect_head_lexed,
@@ -857,6 +859,9 @@ pub(crate) fn parse_effect_chain_with_subject_verb_primitives_lexed(
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if starts_with_until_end_of_turn_trigger_clause(&clause_words) {
+        if let Some(effects) = parse_sentence_delayed_trigger_this_turn(tokens)? {
+            return Ok(effects);
+        }
         return Err(CardTextError::ParseError(format!(
             "unsupported until-end-of-turn permission clause (clause: '{}')",
             clause_words.join(" ")

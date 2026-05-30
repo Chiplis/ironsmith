@@ -20669,6 +20669,17 @@ fn describe_return_to_hand_excluded_subtypes(
 
     let mut base_filter = filter.clone();
     base_filter.excluded_subtypes.clear();
+    if base_filter == ObjectFilter::creature() {
+        let excluded = filter
+            .excluded_subtypes
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect::<Vec<_>>();
+        return Some(format!(
+            "each creature that isn't {} to its owner's hand",
+            with_indefinite_article(&join_with_or(&excluded))
+        ));
+    }
     let target_text = describe_choose_spec(&ChooseSpec::All(base_filter));
     let excluded = filter
         .excluded_subtypes
@@ -31763,9 +31774,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         let trigger_display = schedule.trigger.display();
         let mut trigger_text = trigger_display.trim().trim_end_matches('.').to_string();
+        let trigger_event_clause = {
+            let trigger_lower = trigger_text.to_ascii_lowercase();
+            trigger_lower.starts_with("when ")
+                || trigger_lower.starts_with("whenever ")
+                || trigger_lower.starts_with("if ")
+        };
         if schedule.until_end_of_turn {
             let trigger_lower = trigger_text.to_ascii_lowercase();
-            if !trigger_lower.contains(" this turn") {
+            if !trigger_event_clause && !trigger_lower.contains(" this turn") {
                 trigger_text.push_str(" this turn");
             }
         }
@@ -31877,6 +31894,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             || trigger_lower.starts_with("whenever ")
             || trigger_lower.starts_with("if ")
         {
+            if schedule.until_end_of_turn {
+                return format!(
+                    "Until end of turn, {}, {delayed_text}",
+                    lowercase_first(&trigger_text)
+                );
+            }
             return format!("{trigger_text}, {delayed_text}");
         }
         if trigger_lower.starts_with("at ") {

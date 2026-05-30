@@ -38151,6 +38151,290 @@ fn assert_oracle_card_fails_strict(name: &str) {
 }
 
 #[test]
+fn summon_leviathan_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Summon: Leviathan");
+    let rendered = canonical_compiled_lines(&def).join("\n");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains(
+            "return each creature that isn't a kraken, leviathan, merfolk, octopus, or serpent to its owner's hand"
+        ),
+        "expected Summon: Leviathan to render the chapter I excluded-type return clause, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains(
+            "until end of turn, whenever a kraken, leviathan, merfolk, octopus, or serpent attacks, draw a card"
+        ),
+        "expected Summon: Leviathan to render the chapter II/III delayed attack trigger, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Ward {2}"),
+        "expected Summon: Leviathan to keep ward, got {rendered}"
+    );
+}
+
+#[test]
+fn summon_leviathan_chapter_i_returns_only_non_sea_creatures() {
+    struct NoChoices;
+    impl crate::decision::DecisionMaker for NoChoices {}
+
+    let def = summon_leviathan_definition_for_regression();
+    let chapter = summon_leviathan_chapter(&def, &[1]);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let human = game.create_object_from_definition(
+        &summon_leviathan_test_creature("Human Probe", vec![Subtype::Human]),
+        alice,
+        Zone::Battlefield,
+    );
+    let bob_human = game.create_object_from_definition(
+        &summon_leviathan_test_creature("Bob Human Probe", vec![Subtype::Human]),
+        bob,
+        Zone::Battlefield,
+    );
+    let kraken = game.create_object_from_definition(
+        &summon_leviathan_test_creature("Kraken Probe", vec![Subtype::Kraken]),
+        alice,
+        Zone::Battlefield,
+    );
+    let leviathan = game.create_object_from_definition(
+        &summon_leviathan_test_creature("Leviathan Probe", vec![Subtype::Leviathan]),
+        bob,
+        Zone::Battlefield,
+    );
+    let merfolk = game.create_object_from_definition(
+        &summon_leviathan_test_creature("Merfolk Probe", vec![Subtype::Merfolk]),
+        bob,
+        Zone::Battlefield,
+    );
+    let octopus = game.create_object_from_definition(
+        &summon_leviathan_test_creature("Octopus Probe", vec![Subtype::Octopus]),
+        alice,
+        Zone::Battlefield,
+    );
+    let serpent = game.create_object_from_definition(
+        &summon_leviathan_test_creature("Serpent Probe", vec![Subtype::Serpent]),
+        bob,
+        Zone::Battlefield,
+    );
+    let human_stable = game.object(human).expect("human exists").stable_id;
+    let bob_human_stable = game.object(bob_human).expect("bob human exists").stable_id;
+    let kraken_stable = game.object(kraken).expect("kraken exists").stable_id;
+    let leviathan_stable = game.object(leviathan).expect("leviathan exists").stable_id;
+    let merfolk_stable = game.object(merfolk).expect("merfolk exists").stable_id;
+    let octopus_stable = game.object(octopus).expect("octopus exists").stable_id;
+    let serpent_stable = game.object(serpent).expect("serpent exists").stable_id;
+    let source_stable = game.object(source).expect("source exists").stable_id;
+
+    let mut dm = NoChoices;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &chapter.effects,
+        None,
+        &[],
+    )
+    .expect("Summon: Leviathan chapter I should resolve");
+
+    let human = game
+        .find_object_by_stable_id(human_stable)
+        .expect("human should still be tracked");
+    let kraken = game
+        .find_object_by_stable_id(kraken_stable)
+        .expect("kraken should still be tracked");
+    let bob_human = game
+        .find_object_by_stable_id(bob_human_stable)
+        .expect("bob human should still be tracked");
+    let leviathan = game
+        .find_object_by_stable_id(leviathan_stable)
+        .expect("leviathan should still be tracked");
+    let merfolk = game
+        .find_object_by_stable_id(merfolk_stable)
+        .expect("merfolk should still be tracked");
+    let octopus = game
+        .find_object_by_stable_id(octopus_stable)
+        .expect("octopus should still be tracked");
+    let serpent = game
+        .find_object_by_stable_id(serpent_stable)
+        .expect("serpent should still be tracked");
+    let source = game
+        .find_object_by_stable_id(source_stable)
+        .expect("source should still be tracked");
+
+    assert_eq!(game.object(human).expect("human exists").zone, Zone::Hand);
+    assert_eq!(game.object(bob_human).expect("bob human exists").zone, Zone::Hand);
+    assert_eq!(
+        game.object(kraken).expect("kraken exists").zone,
+        Zone::Battlefield
+    );
+    assert_eq!(
+        game.object(leviathan).expect("leviathan exists").zone,
+        Zone::Battlefield
+    );
+    assert_eq!(
+        game.object(merfolk).expect("merfolk exists").zone,
+        Zone::Battlefield
+    );
+    assert_eq!(
+        game.object(octopus).expect("octopus exists").zone,
+        Zone::Battlefield
+    );
+    assert_eq!(
+        game.object(serpent).expect("serpent exists").zone,
+        Zone::Battlefield
+    );
+    assert_eq!(game.object(source).expect("source exists").zone, Zone::Battlefield);
+}
+
+#[test]
+fn summon_leviathan_chapter_ii_iii_delayed_attack_trigger_draws_for_matching_types_only() {
+    struct NoChoices;
+    impl crate::decision::DecisionMaker for NoChoices {}
+
+    let def = summon_leviathan_definition_for_regression();
+    let chapter = summon_leviathan_chapter(&def, &[2, 3]);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let sea_attackers = [
+        game.create_object_from_definition(
+            &summon_leviathan_test_creature("Kraken Attacker", vec![Subtype::Kraken]),
+            alice,
+            Zone::Battlefield,
+        ),
+        game.create_object_from_definition(
+            &summon_leviathan_test_creature("Leviathan Attacker", vec![Subtype::Leviathan]),
+            alice,
+            Zone::Battlefield,
+        ),
+        game.create_object_from_definition(
+            &summon_leviathan_test_creature("Merfolk Attacker", vec![Subtype::Merfolk]),
+            alice,
+            Zone::Battlefield,
+        ),
+        game.create_object_from_definition(
+            &summon_leviathan_test_creature("Octopus Attacker", vec![Subtype::Octopus]),
+            alice,
+            Zone::Battlefield,
+        ),
+        game.create_object_from_definition(
+            &summon_leviathan_test_creature("Serpent Attacker", vec![Subtype::Serpent]),
+            alice,
+            Zone::Battlefield,
+        ),
+    ];
+    let human = game.create_object_from_definition(
+        &summon_leviathan_test_creature("Human Attacker", vec![Subtype::Human]),
+        alice,
+        Zone::Battlefield,
+    );
+    for idx in 0..sea_attackers.len() {
+        game.create_object_from_definition(
+            &summon_leviathan_test_creature(&format!("Draw Filler {idx}"), vec![Subtype::Human]),
+            alice,
+            Zone::Library,
+        );
+    }
+
+    let mut dm = NoChoices;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &chapter.effects,
+        None,
+        &[],
+    )
+    .expect("Summon: Leviathan chapter II/III should schedule delayed trigger");
+    assert_eq!(game.effect_store.delayed_triggers.len(), 1);
+
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    let human_attack = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::combat::CreatureAttackedEvent::new(
+            human,
+            crate::triggers::AttackEventTarget::Player(bob),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    for trigger in crate::triggers::check_delayed_triggers(&mut game, &human_attack) {
+        trigger_queue.add(trigger);
+    }
+    assert!(
+        trigger_queue.is_empty(),
+        "nonmatching Human attacker should not trigger Summon: Leviathan"
+    );
+
+    for (idx, attacker) in sea_attackers.into_iter().enumerate() {
+        let attack = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::combat::CreatureAttackedEvent::new(
+                attacker,
+                crate::triggers::AttackEventTarget::Player(bob),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        for trigger in crate::triggers::check_delayed_triggers(&mut game, &attack) {
+            trigger_queue.add(trigger);
+        }
+        crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+            .expect("matching sea-creature attack should put delayed trigger on stack");
+        crate::game_loop::resolve_stack_entry(&mut game)
+            .expect("Summon: Leviathan delayed draw trigger should resolve");
+
+        assert_eq!(
+            game.player(alice).expect("Alice exists").hand.len(),
+            idx + 1,
+            "each matching sea-creature attack should draw one card"
+        );
+    }
+}
+
+fn summon_leviathan_definition_for_regression() -> CardDefinition {
+    let oracle = oracle_text_by_name()
+        .get("Summon: Leviathan")
+        .expect("missing Summon: Leviathan oracle text")
+        .clone();
+    CardDefinitionBuilder::new(CardId::new(), "Summon: Leviathan")
+        .card_types(vec![CardType::Enchantment, CardType::Creature])
+        .subtypes(vec![Subtype::Saga, Subtype::Leviathan])
+        .power_toughness(PowerToughness::fixed(6, 6))
+        .parse_text(oracle)
+        .expect("Summon: Leviathan should parse strictly")
+}
+
+fn summon_leviathan_chapter<'a>(
+    def: &'a CardDefinition,
+    chapters: &[u32],
+) -> &'a crate::ability::TriggeredAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered)
+                if triggered.trigger.saga_chapters() == Some(chapters) => Some(triggered),
+            _ => None,
+        })
+        .expect("Summon: Leviathan chapter ability should compile")
+}
+
+fn summon_leviathan_test_creature(name: &str, subtypes: Vec<Subtype>) -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .subtypes(subtypes)
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build()
+}
+
+#[test]
 fn alena_kessig_trapper_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("Alena, Kessig Trapper");
     let rendered = canonical_compiled_lines(&def).join(" ");
