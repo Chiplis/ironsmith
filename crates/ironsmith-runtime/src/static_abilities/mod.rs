@@ -403,6 +403,16 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Player currently goading this creature through a static ability.
+    fn goaded_by_player(
+        &self,
+        _game: &GameState,
+        _source: ObjectId,
+        _controller: PlayerId,
+    ) -> Option<PlayerId> {
+        None
+    }
+
     /// Attacking-group legality hook for "can't attack unless ... also attacks" style clauses.
     ///
     /// Return:
@@ -1216,6 +1226,15 @@ impl StaticAbility {
         self.0.required_attack_player(game, source, controller)
     }
 
+    pub fn goaded_by_player(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<PlayerId> {
+        self.0.goaded_by_player(game, source, controller)
+    }
+
     pub fn can_attack_with_attacking_group(
         &self,
         game: &GameState,
@@ -1749,8 +1768,16 @@ impl StaticAbility {
         Self::new(MustAttack)
     }
 
+    pub fn goaded_by_source_controller(source: ObjectId) -> Self {
+        Self::new(GoadedBySourceController::new(source))
+    }
+
     pub fn must_attack_attached_controller(attachment_source: ObjectId) -> Self {
         Self::new(MustAttackAttachedController::new(attachment_source))
+    }
+
+    pub fn attached_goaded_by_source_controller(display: impl Into<String>) -> Self {
+        Self::new(AttachedGoadedBySourceController::new(display))
     }
 
     pub fn all_creatures_attack_attached_controller_each_combat_if_able() -> Self {

@@ -440,6 +440,246 @@ fn public_enemy_does_not_force_attack_when_enchanted_creatures_controller_cant_b
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_shiny_impetus_oracle_and_compiled_text() {
+    let def = parse_oracle_card_definition("Shiny Impetus");
+    let rendered_lines = canonical_compiled_lines(&def);
+    let rendered = rendered_lines.join("\n");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert_eq!(
+        rendered_lines,
+        vec![
+            "Enchant creature".to_string(),
+            "Enchanted creature gets +2/+2 and is goaded.".to_string(),
+            "Whenever enchanted creature attacks, create a Treasure token.".to_string(),
+        ],
+        "Shiny Impetus should keep its exact compiled oracle shape, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("Anthem")
+            && ability_debug.contains("AttachedGoadedBySourceController")
+            && ability_debug.contains("CreateTokenEffect"),
+        "Shiny Impetus should structurally model anthem, goad, and Treasure trigger, got {ability_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn shiny_impetus_buffs_and_goads_enchanted_creature_away_from_aura_controller() {
+    let shiny_impetus = parse_oracle_card_definition("Shiny Impetus");
+    let creature = CardDefinitionBuilder::new(CardId::from_raw(91_120), "Grizzly Bears")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let mut game = crate::game_state::GameState::new(
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
+        20,
+    );
+
+    let enchanted_creature = game.create_object_from_definition(&creature, bob, Zone::Battlefield);
+    let aura = game.create_object_from_definition(&shiny_impetus, alice, Zone::Battlefield);
+    assert!(game.attach_object_to_target(
+        aura,
+        crate::object::AttachmentTarget::Object(enchanted_creature),
+    ));
+    game.remove_summoning_sickness(enchanted_creature);
+    game.turn.active_player = bob;
+
+    assert_eq!(game.current_power(enchanted_creature), Some(4));
+    assert_eq!(game.current_toughness(enchanted_creature), Some(4));
+    assert!(
+        game.is_goaded(enchanted_creature),
+        "Shiny Impetus should make the enchanted creature goaded"
+    );
+
+    let combat = crate::combat_state::CombatState::default();
+    let options = crate::decision::compute_legal_attackers(&game, &combat);
+    let attacker_option = options
+        .iter()
+        .find(|option| option.creature == enchanted_creature)
+        .expect("enchanted creature should be attack-capable");
+    assert!(
+        attacker_option.must_attack,
+        "goaded enchanted creature should be required to attack"
+    );
+    assert!(
+        !attacker_option
+            .valid_targets
+            .contains(&crate::combat_state::AttackTarget::Player(alice)),
+        "goaded creature should not attack the Aura controller while another player is attackable"
+    );
+    assert!(
+        attacker_option
+            .valid_targets
+            .contains(&crate::combat_state::AttackTarget::Player(charlie)),
+        "goaded creature should attack a non-goading player when able"
+    );
+
+    let mut combat = crate::combat_state::CombatState::default();
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    let wrong_target = [crate::AttackerDeclaration {
+        creature: enchanted_creature,
+        target: crate::combat_state::AttackTarget::Player(alice),
+    }];
+    assert!(
+        crate::game_loop::apply_attacker_declarations(
+            &mut game,
+            &mut combat,
+            &mut trigger_queue,
+            &wrong_target,
+        )
+        .is_err(),
+        "attacking the Aura controller should be illegal while a non-goading player is attackable"
+    );
+
+    let correct_target = [crate::AttackerDeclaration {
+        creature: enchanted_creature,
+        target: crate::combat_state::AttackTarget::Player(charlie),
+    }];
+    let mut combat = crate::combat_state::CombatState::default();
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    crate::game_loop::apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &correct_target,
+    )
+    .expect("attacking a non-goading player should be legal");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn shiny_impetus_creates_treasure_when_enchanted_creature_attacks() {
+    let shiny_impetus = parse_oracle_card_definition("Shiny Impetus");
+    let creature = CardDefinitionBuilder::new(CardId::from_raw(91_122), "Grizzly Bears")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let mut game = crate::game_state::GameState::new(
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
+        20,
+    );
+
+    let enchanted_creature = game.create_object_from_definition(&creature, bob, Zone::Battlefield);
+    let aura = game.create_object_from_definition(&shiny_impetus, alice, Zone::Battlefield);
+    assert!(game.attach_object_to_target(
+        aura,
+        crate::object::AttachmentTarget::Object(enchanted_creature),
+    ));
+    game.remove_summoning_sickness(enchanted_creature);
+    game.turn.active_player = bob;
+
+    let mut combat = crate::combat_state::CombatState::default();
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    let attack = [crate::AttackerDeclaration {
+        creature: enchanted_creature,
+        target: crate::combat_state::AttackTarget::Player(charlie),
+    }];
+    crate::game_loop::apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &attack,
+    )
+    .expect("enchanted creature should be able to attack a non-goading player");
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Shiny Impetus should queue exactly one attack trigger"
+    );
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Shiny Impetus attack trigger should go on the stack");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "Shiny Impetus should create exactly one attack trigger"
+    );
+
+    crate::game_loop::resolve_stack_entry(&mut game)
+        .expect("Shiny Impetus attack trigger should resolve");
+    let treasure_count = game
+        .battlefield
+        .iter()
+        .filter(|&&id| {
+            game.object(id).is_some_and(|object| {
+                object.name == "Treasure" && game.controller_of(object) == alice
+            })
+        })
+        .count();
+    assert_eq!(
+        treasure_count, 1,
+        "Shiny Impetus should create one Treasure controlled by the Aura controller"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn shiny_impetus_allows_attacking_aura_controller_when_no_other_player_is_attackable() {
+    let shiny_impetus = parse_oracle_card_definition("Shiny Impetus");
+    let creature = CardDefinitionBuilder::new(CardId::from_raw(91_121), "Grizzly Bears")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let mut game = crate::game_state::GameState::new(
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
+        20,
+    );
+
+    let enchanted_creature = game.create_object_from_definition(&creature, bob, Zone::Battlefield);
+    let aura = game.create_object_from_definition(&shiny_impetus, alice, Zone::Battlefield);
+    assert!(game.attach_object_to_target(
+        aura,
+        crate::object::AttachmentTarget::Object(enchanted_creature),
+    ));
+    game.remove_summoning_sickness(enchanted_creature);
+    game.effect_store
+        .cant_effects
+        .add_cant_attack_defenders(enchanted_creature, [charlie]);
+    game.turn.active_player = bob;
+
+    let combat = crate::combat_state::CombatState::default();
+    let options = crate::decision::compute_legal_attackers(&game, &combat);
+    let attacker_option = options
+        .iter()
+        .find(|option| option.creature == enchanted_creature)
+        .expect("enchanted creature should still be able to attack the Aura controller");
+    assert!(
+        attacker_option.must_attack,
+        "goad should still require attacking if only the goading player can be attacked"
+    );
+    assert_eq!(
+        attacker_option.valid_targets,
+        vec![crate::combat_state::AttackTarget::Player(alice)],
+        "when no non-goading player is attackable, goad should allow attacking the Aura controller"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_lantern_of_insight_public_top_library_static() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Lantern of Insight Variant")
         .card_types(vec![CardType::Artifact])

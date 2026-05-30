@@ -18,6 +18,7 @@ use crate::continuous::{
 };
 use crate::cost::OptionalCostsPaid;
 use crate::decision::KeywordPaymentContribution;
+use crate::derived_view::DerivedGameView;
 use crate::dungeon::ActiveDungeonProgress;
 use crate::effect::Until;
 use crate::events::{Event, EventKind, KeywordActionKind};
@@ -2921,12 +2922,42 @@ impl GameState {
 
     pub fn active_goaders_for(&self, creature: ObjectId) -> HashSet<PlayerId> {
         let current_turn = self.turn.turn_number;
-        self.effect_store
+        let mut goaders: HashSet<PlayerId> = self
+            .effect_store
             .goad_effects
             .iter()
             .filter(|effect| effect.creature == creature && effect.is_active(self, current_turn))
             .map(|effect| effect.goaded_by)
-            .collect()
+            .collect();
+
+        let view = DerivedGameView::new(self);
+        let static_abilities = view
+            .calculated_characteristics(creature)
+            .map(|chars| chars.static_abilities)
+            .or_else(|| {
+                self.object(creature).map(|object| {
+                    object
+                        .abilities
+                        .iter()
+                        .filter_map(|ability| match &ability.kind {
+                            AbilityKind::Static(static_ability) => Some(static_ability.clone()),
+                            _ => None,
+                        })
+                        .collect()
+                })
+            })
+            .unwrap_or_default();
+
+        if let Some(object) = self.object(creature) {
+            let controller = self.controller_of(object);
+            for ability in static_abilities {
+                if let Some(player) = ability.goaded_by_player(self, creature, controller) {
+                    goaders.insert(player);
+                }
+            }
+        }
+
+        goaders
     }
 
     pub fn is_goaded(&self, creature: ObjectId) -> bool {
@@ -7787,22 +7818,25 @@ impl GameState {
             && let Some(source_obj) = self.object(source_id)
         {
             tagged_objects.extend(source_obj.cast_tagged_objects.clone());
+            let source_is_aura = source_obj.subtypes.contains(&crate::types::Subtype::Aura)
+                || (source_obj.card_types.contains(&crate::types::CardType::Enchantment)
+                    && source_obj.aura_attach_filter.is_some());
+            let source_is_equipment = source_obj
+                .subtypes
+                .contains(&crate::types::Subtype::Equipment);
             if let Some(attached_target) = source_obj.attached_to {
                 match attached_target {
                     AttachmentTarget::Object(attached_id) => {
                         if let Some(attached_obj) = self.object(attached_id) {
                             let attached_snapshot =
                                 crate::snapshot::ObjectSnapshot::from_object(attached_obj, self);
-                            if source_obj.subtypes.contains(&crate::types::Subtype::Aura) {
+                            if source_is_aura {
                                 tagged_objects.insert(
                                     crate::tag::TagKey::from("enchanted"),
                                     vec![attached_snapshot.clone()],
                                 );
                             }
-                            if source_obj
-                                .subtypes
-                                .contains(&crate::types::Subtype::Equipment)
-                            {
+                            if source_is_equipment {
                                 tagged_objects.insert(
                                     crate::tag::TagKey::from("equipped"),
                                     vec![attached_snapshot],
@@ -7811,7 +7845,7 @@ impl GameState {
                         }
                     }
                     AttachmentTarget::Player(attached_player) => {
-                        if source_obj.subtypes.contains(&crate::types::Subtype::Aura) {
+                        if source_is_aura {
                             tagged_players.insert(
                                 crate::tag::TagKey::from("enchanted"),
                                 vec![attached_player],

@@ -75,8 +75,10 @@ pub enum StaticAbilityId {
     CantBeBlockedExceptByNOrMore,
     CanAttackAsThoughNoDefender,
     MustAttack,
+    GoadedBySourceController,
     MustAttackAttachedController,
     AllCreaturesAttackAttachedControllerEachCombatIfAble,
+    AttachedGoadedBySourceController,
     ExertAttack,
     MustBlock,
     CantAttack,
@@ -328,8 +330,10 @@ impl StaticAbilityId {
             | CantBeBlockedExceptByNOrMore
             | CanAttackAsThoughNoDefender
             | MustAttack
+            | GoadedBySourceController
             | MustAttackAttachedController
             | AllCreaturesAttackAttachedControllerEachCombatIfAble
+            | AttachedGoadedBySourceController
             | ExertAttack
             | MustBlock
             | CantAttack

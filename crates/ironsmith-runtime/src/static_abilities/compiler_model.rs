@@ -100,6 +100,9 @@ impl StaticAbility {
             Some(StaticAbilityId::MayAssignDamageAsUnblocked) => {
                 Self::may_assign_damage_as_unblocked()
             }
+            Some(StaticAbilityId::AttachedGoadedBySourceController) => {
+                Self::attached_goaded_by_source_controller(label)
+            }
             Some(StaticAbilityId::DoesntUntap) => Self::doesnt_untap(),
             Some(StaticAbilityId::BoastTwiceEachTurn) => Self::boast_twice_each_turn(),
             Some(StaticAbilityId::EquipAbilitiesAnyTime) => Self::equip_abilities_any_time(),

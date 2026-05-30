@@ -4480,6 +4480,74 @@ pub(crate) fn parse_anthem_and_keyword_line(
     Ok(Some(result))
 }
 
+pub(crate) fn parse_anthem_and_goaded_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    let Some(get_idx) = anthem_token_offset(tokens, |token| {
+        token.is_word("get") || token.is_word("gets")
+    }) else {
+        return Ok(None);
+    };
+
+    let Some(and_idx) = anthem_token_offset_from(tokens, get_idx + 1, |token| token.is_word("and"))
+    else {
+        return Ok(None);
+    };
+
+    let tail_tokens = trim_edge_punctuation(&tokens[and_idx + 1..]);
+    let tail_words = crate::runtime_backend::token_word_refs(&tail_tokens);
+    if !matches!(tail_words.as_slice(), ["is", "goaded"] | ["are", "goaded"]) {
+        return Ok(None);
+    }
+
+    let clause = parse_anthem_clause(tokens, get_idx, and_idx)?;
+    let display_subject = attached_goaded_display_subject(&clause.subject).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "unsupported goaded anthem subject (clause: '{}')",
+            clause_words.join(" ")
+        ))
+    })?;
+
+    Ok(Some(vec![
+        build_anthem_static_ability(&clause).into(),
+        crate::static_abilities::StaticAbility::attached_goaded_by_source_controller(format!(
+            "{} is goaded",
+            capitalize_display_subject(display_subject)
+        ))
+        .into(),
+    ]))
+}
+
+fn attached_goaded_display_subject(subject: &AnthemSubjectAst) -> Option<&'static str> {
+    let AnthemSubjectAst::Filter(filter) = subject else {
+        return None;
+    };
+    let has_attached_tag = filter.tagged_constraints.iter().any(|constraint| {
+        matches!(
+            constraint.relation,
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        ) && matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+    });
+    if !has_attached_tag {
+        return None;
+    }
+
+    if filter.card_types.contains(&CardType::Creature) {
+        Some("enchanted creature")
+    } else {
+        Some("enchanted permanent")
+    }
+}
+
+fn capitalize_display_subject(subject: &str) -> String {
+    let mut chars = subject.chars();
+    match chars.next() {
+        Some(first) => first.to_ascii_uppercase().to_string() + chars.as_str(),
+        None => String::new(),
+    }
+}
+
 fn push_type_color_additions_for_anthem_subject(
     result: &mut Vec<StaticAbilityAst>,
     clause: &ParsedAnthemClause,

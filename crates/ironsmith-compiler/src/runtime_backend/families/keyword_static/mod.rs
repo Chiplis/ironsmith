@@ -685,6 +685,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             id: stringify!(parse_anthem_and_keyword_line),
             rule: StaticAbilityLineRuleAst::Multi(parse_anthem_and_keyword_line),
         },
+        multi_static_ability_ast_rule!(parse_anthem_and_goaded_line),
         multi_static_ability_ast_passthrough_rule!(parse_anthem_and_granted_ability_line),
         multi_static_ability_ast_passthrough_rule!(
             parse_subject_has_keywords_and_cant_be_blocked_line
