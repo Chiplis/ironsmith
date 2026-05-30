@@ -972,6 +972,7 @@ pub(crate) enum SubjectVerbActionAst {
         source: PreventNextTimeDamageSourceAst,
         target: PreventNextTimeDamageTargetAst,
         reflect_damage_to_source_controller: bool,
+        follow_up_effects: Vec<EffectAst>,
     },
     PreventDamage {
         amount: Value,
@@ -2094,6 +2095,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 source,
                 target,
                 reflect_damage_to_source_controller,
+                follow_up_effects,
             } => f
                 .debug_struct("PreventNextTimeDamage")
                 .field("source", source)
@@ -2102,6 +2104,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                     "reflect_damage_to_source_controller",
                     reflect_damage_to_source_controller,
                 )
+                .field("follow_up_effects", follow_up_effects)
                 .finish(),
             Self::PreventDamage {
                 amount,
@@ -3475,6 +3478,7 @@ impl EffectAst {
                 source,
                 target,
                 reflect_damage_to_source_controller,
+                follow_up_effects: Vec::new(),
             },
         )
     }

@@ -15429,6 +15429,167 @@ fn healing_grace_runtime_only_protects_chosen_target() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_cho_arrim_alchemist_strict_text_and_activation_shape() {
+    assert_oracle_card_parses_strict("Cho-Arrim Alchemist");
+    let def = parse_oracle_card_definition("Cho-Arrim Alchemist");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Cho-Arrim Alchemist should have an activated ability");
+    let debug = format!("{activated:#?}");
+    assert!(
+        debug.contains("PreventNextTimeDamageEffect")
+            && debug.contains("GainLifeEffect")
+            && debug.contains("EventValue")
+            && debug.contains("Amount"),
+        "expected activated ability to prevent next damage and gain prevented amount as life, got {debug}"
+    );
+    assert!(
+        debug.contains("Tap") && debug.contains("Discard") && debug.contains("White"),
+        "expected activation costs to include white mana, tap, and discard, got {debug}"
+    );
+
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("The next time a source of your choice would deal damage to you this turn, prevent that damage")
+            && rendered.contains("You gain life equal to the damage prevented this way"),
+        "expected Cho-Arrim Alchemist prevention/life text to compile, got {rendered}"
+    );
+    assert!(
+        !rendered.to_ascii_lowercase().contains("unsupported"),
+        "Cho-Arrim Alchemist should parse strictly without unsupported markers, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cho_arrim_alchemist_runtime_prevents_chosen_source_to_you_and_gains_that_life() {
+    struct ChooseNamedSourceDecisionMaker {
+        source_name: &'static str,
+    }
+
+    impl crate::decision::DecisionMaker for ChooseNamedSourceDecisionMaker {
+        fn decide_objects(
+            &mut self,
+            game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            if let Some(chosen) = ctx.candidates.iter().find_map(|candidate| {
+                if !candidate.legal {
+                    return None;
+                }
+                game.object(candidate.id)
+                    .is_some_and(|object| object.name == self.source_name)
+                    .then_some(candidate.id)
+            }) {
+                vec![chosen]
+            } else {
+                crate::decision::AutoPassDecisionMaker.decide_objects(game, ctx)
+            }
+        }
+    }
+
+    let def = parse_oracle_card_definition("Cho-Arrim Alchemist");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Cho-Arrim Alchemist should have an activated ability");
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let alchemist_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let chosen_source = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_103), "Chosen Damage Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(4, 4))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let other_source = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_104), "Other Damage Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(4, 4))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+
+    let mut dm = ChooseNamedSourceDecisionMaker {
+        source_name: "Chosen Damage Source",
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(alchemist_id, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        alchemist_id,
+        &activated.effects,
+        None,
+        &[],
+    )
+    .expect("Cho-Arrim Alchemist ability should resolve");
+
+    let (wrong_player_damage, wrong_player_prevented) =
+        crate::events::processing::process_damage_with_event(
+            &mut game,
+            chosen_source,
+            crate::events::DamageTarget::Player(bob),
+            3,
+            false,
+            crate::events::cause::EventCause::effect(),
+        );
+    assert_eq!(wrong_player_damage, 3, "damage to Bob should not be prevented");
+    assert!(!wrong_player_prevented, "the shield only protects Alice");
+    assert_eq!(game.life_total(alice), 20, "nonmatching damage should not gain life");
+
+    let (other_source_damage, other_source_prevented) =
+        crate::events::processing::process_damage_with_event(
+            &mut game,
+            other_source,
+            crate::events::DamageTarget::Player(alice),
+            3,
+            false,
+            crate::events::cause::EventCause::effect(),
+        );
+    assert_eq!(
+        other_source_damage, 3,
+        "damage from an unchosen source should not be prevented"
+    );
+    assert!(!other_source_prevented, "unchosen source should not consume the shield");
+    assert_eq!(game.life_total(alice), 20, "unchosen source should not gain life");
+
+    let (prevented_damage, prevented) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        chosen_source,
+        crate::events::DamageTarget::Player(alice),
+        4,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        prevented_damage, 0,
+        "chosen source damage to Alice should be prevented"
+    );
+    assert!(prevented, "the matching damage event should be replaced");
+    assert_eq!(
+        game.life_total(alice),
+        24,
+        "Alice should gain life equal to the damage prevented this way"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_target_opponent_chooses_creature_then_other_cant_block() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Eunuchs Variant")
             .parse_text(

@@ -939,7 +939,9 @@ where
             ),
         ));
     }
-    if let Some(payload) = M::downcast_ref::<ironsmith_core::PreventNextTimeDamageEffect>(&effect) {
+    if let Some(payload) =
+        M::downcast_ref::<ironsmith_core::PreventNextTimeDamageEffect<M::Effect>>(&effect)
+    {
         let source = match &payload.source {
             ironsmith_core::PreventNextTimeDamageSource::Choice => {
                 crate::effects::PreventNextTimeDamageSource::Choice
@@ -957,6 +959,10 @@ where
             }
         };
         let mut effect = crate::effects::PreventNextTimeDamageEffect::new(source, target);
+        effect = effect.with_follow_up_effects(convert_effects(
+            payload.follow_up_effects.iter().cloned(),
+            hooks,
+        )?);
         if payload.reflect_damage_to_source_controller {
             effect = effect.reflecting_to_source_controller();
         }

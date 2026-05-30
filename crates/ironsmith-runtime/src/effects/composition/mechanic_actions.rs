@@ -385,7 +385,7 @@ impl EffectExecutor for ExploreEffect {
                     &applied_effects,
                     &applied_effect_keys,
                 ) {
-                    TraitEventResult::Replaced { effects, effect_id } => {
+                    TraitEventResult::Replaced { effects, effect_id, .. } => {
                         let replacement_outcome = execute_keyword_action_replacement_effects(
                             game,
                             ctx,

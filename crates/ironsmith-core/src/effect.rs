@@ -3379,19 +3379,26 @@ impl<E> PreventAllDamageToTargetEffect<E> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct PreventNextTimeDamageEffect {
+pub struct PreventNextTimeDamageEffect<E = ()> {
     pub source: PreventNextTimeDamageSource,
     pub target: PreventNextTimeDamageTarget,
     pub reflect_damage_to_source_controller: bool,
+    pub follow_up_effects: Vec<E>,
 }
 
-impl PreventNextTimeDamageEffect {
+impl<E> PreventNextTimeDamageEffect<E> {
     pub fn new(source: PreventNextTimeDamageSource, target: PreventNextTimeDamageTarget) -> Self {
         Self {
             source,
             target,
             reflect_damage_to_source_controller: false,
+            follow_up_effects: Vec::new(),
         }
+    }
+
+    pub fn with_follow_up_effects(mut self, effects: Vec<E>) -> Self {
+        self.follow_up_effects = effects;
+        self
     }
 
     pub fn reflecting_to_source_controller(mut self) -> Self {

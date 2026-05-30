@@ -622,6 +622,195 @@ fn create_vanilla_creature(
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn cho_arrim_alchemist_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(19647), "Cho-Arrim Alchemist")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "{1}{W}{W}, {T}, Discard a card: The next time a source of your choice would deal damage to you this turn, prevent that damage. You gain life equal to the damage prevented this way.",
+        )
+        .expect("Cho-Arrim Alchemist should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct ChooseNamedSourceDecisionMaker {
+    source_name: &'static str,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for ChooseNamedSourceDecisionMaker {
+    fn decide_objects(
+        &mut self,
+        game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        if let Some(chosen) = ctx.candidates.iter().find_map(|candidate| {
+            if !candidate.legal {
+                return None;
+            }
+            game.object(candidate.id)
+                .is_some_and(|object| object.name == self.source_name)
+                .then_some(candidate.id)
+        }) {
+            vec![chosen]
+        } else {
+            AutoPassDecisionMaker.decide_objects(game, ctx)
+        }
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cho_arrim_alchemist_activation_pays_costs_and_registers_prevention_life_followup() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let alchemist = cho_arrim_alchemist_definition();
+    let alchemist_id = game.create_object_from_definition(&alchemist, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(alchemist_id);
+    let discard_fuel = CardBuilder::new(CardId::new(), "Discard Fuel")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let discard_id = game.create_object_from_card(&discard_fuel, alice, Zone::Hand);
+    let discard_stable = game.object(discard_id).expect("discard card exists").stable_id;
+    let chosen_source = create_vanilla_creature(&mut game, "Chosen Damage Source", bob, 2, 2);
+
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::White, 3);
+
+    let ability_index = game
+        .object(alchemist_id)
+        .expect("Cho-Arrim Alchemist should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Cho-Arrim Alchemist should have an activated ability");
+    let activate_action = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| matches!(
+            action,
+            crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                if *source == alchemist_id && *idx == ability_index
+        ))
+        .expect("Cho-Arrim Alchemist activation should be legal with mana and discard fuel");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = ChooseNamedSourceDecisionMaker {
+        source_name: "Chosen Damage Source",
+    };
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Cho-Arrim Alchemist activation should pay costs and go on the stack");
+
+    let mut progress = progress;
+    let mut paid_discard = false;
+    let mut cost_steps = 0;
+    while cost_steps < 6 {
+        cost_steps += 1;
+        let next_progress = match progress {
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectObjects(_),
+            ) => {
+                paid_discard = true;
+                apply_priority_response_with_dm(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::CardCostChoice(discard_id),
+                    &mut dm,
+                )
+                .expect("discarding a card should continue paying Cho-Arrim Alchemist's cost")
+            }
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectOptions(cost_ctx),
+            ) if cost_ctx.description.to_ascii_lowercase().contains("choose the next cost") => {
+                let option = cost_ctx
+                    .options
+                    .iter()
+                    .find(|option| {
+                        option.legal
+                            && !paid_discard
+                            && option.description.to_ascii_lowercase().contains("discard")
+                    })
+                    .or_else(|| cost_ctx.options.iter().find(|option| option.legal))
+                    .expect("Cho-Arrim Alchemist should have a payable remaining cost");
+                apply_priority_response_with_dm(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::NextCostChoice(option.index),
+                    &mut dm,
+                )
+                .expect("choosing next Cho-Arrim Alchemist cost should continue activation")
+            }
+            other => {
+                progress = other;
+                break;
+            }
+        };
+        progress = next_progress;
+    }
+
+    assert!(
+        matches!(
+            progress,
+            crate::decision::GameProgress::Continue
+                | crate::decision::GameProgress::NeedsDecisionCtx(
+                    crate::decisions::context::DecisionContext::Priority(_)
+                )
+        ),
+        "expected Cho-Arrim Alchemist activation to finish after discard cost, got {progress:?}"
+    );
+
+    assert!(game.is_tapped(alchemist_id), "activation should tap Cho-Arrim Alchemist");
+    let discarded_id = game
+        .find_object_by_stable_id(discard_stable)
+        .expect("discarded card should remain tracked");
+    assert!(
+        !game
+            .player(alice)
+            .expect("Alice exists")
+            .hand
+            .contains(&discarded_id),
+        "activation should remove a discarded card from hand as an activation cost"
+    );
+
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Cho-Arrim Alchemist ability should resolve");
+    let (damage, prevented) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        chosen_source,
+        crate::events::DamageTarget::Player(alice),
+        2,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(damage, 0, "chosen source damage to Alice should be prevented");
+    assert!(prevented, "the next matching damage event should be replaced");
+    assert_eq!(
+        game.life_total(alice),
+        22,
+        "Cho-Arrim Alchemist should gain life equal to the prevented damage"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn activate_goblin_kites_targeting(
     game: &mut GameState,
     controller: PlayerId,

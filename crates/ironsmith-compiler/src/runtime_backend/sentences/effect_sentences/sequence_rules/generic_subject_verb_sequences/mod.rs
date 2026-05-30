@@ -8,7 +8,7 @@ use crate::cards::builders::{
     PredicateAst, ReturnControllerAst, SubjectVerbActionAst, SubjectVerbEffectAst,
     SubjectVerbRoleAst, SubjectVerbSubjectAst, TagKey, TargetAst,
 };
-use crate::effect::Value;
+use crate::effect::{EventValueSpec, Value};
 use crate::mana::ManaSymbol;
 use crate::object::CounterType;
 use crate::runtime_backend::effect_sentences;
@@ -455,6 +455,60 @@ pub(crate) fn parse_damage_prevention_counter_sequence(
             CounterType::PlusOnePlusOne,
         ),
     ]))
+}
+
+pub(crate) fn parse_next_damage_prevention_gain_life_sequence(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Ok(mut first_effects) =
+        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+    let [first_effect] = first_effects.as_mut_slice() else {
+        return Ok(None);
+    };
+
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::PreventNextTimeDamage {
+                follow_up_effects,
+                ..
+            },
+        ..
+    }) = first_effect
+    else {
+        return Ok(None);
+    };
+    if !follow_up_effects.is_empty() {
+        return Ok(None);
+    }
+
+    let Ok(second_effects) =
+        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx + 1].lowered())
+    else {
+        return Ok(None);
+    };
+    let [second_effect] = second_effects.as_slice() else {
+        return Ok(None);
+    };
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        subject: SubjectVerbSubjectAst {
+            player: PlayerAst::You,
+            ..
+        },
+        action: SubjectVerbActionAst::GainLife { amount },
+    }) = second_effect
+    else {
+        return Ok(None);
+    };
+    if !matches!(amount, Value::EventValue(EventValueSpec::Amount)) {
+        return Ok(None);
+    }
+
+    follow_up_effects.push(second_effect.clone());
+    Ok(Some(first_effects))
 }
 
 const THEY_DONT_UNTAP_DURING_PREFIXES: &[&[&str]] = &[
