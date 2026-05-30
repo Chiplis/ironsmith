@@ -16,10 +16,12 @@ use crate::runtime_backend::front_end::lexer::{
     LexedClause, word_slice_contains_all_words, word_slice_eq, word_slice_eq_any,
     word_slice_starts_with,
 };
+use crate::runtime_backend::keyword_static::parse_value_binding_clause_lexed;
 use crate::runtime_backend::object_filters::parse_object_filter_lexed;
 use crate::runtime_backend::util::{is_article, mana_pips_from_token, trim_commas};
 use crate::target::PlayerFilter;
 use crate::zone::Zone;
+use ironsmith_core::ValueSurfaceHint;
 
 fn non_article_words(clause: LexedClause<'_>) -> Vec<&str> {
     clause.word_refs_where(|word| !is_article(word))
@@ -554,6 +556,45 @@ pub(crate) fn parse_tap_lock_sequence(
             Some(crate::ConditionExpr::SourceIsTapped),
         ),
     ]))
+}
+
+pub(crate) fn parse_where_x_exile_top_then_cast_from_among_sequence(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first = LexedClause::new(sentences[sentence_idx].lowered()).trimmed();
+    let second = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
+    let first_words = first.word_refs();
+    let second_words = second.word_refs();
+    let Some(where_idx) = first.find_phrase_start(&["where", "x", "is"]) else {
+        return Ok(None);
+    };
+    if !word_slice_starts_with(&first_words, &["exile", "the", "top"])
+        || !word_slice_starts_with(&second_words, &["you", "may", "cast", "any", "number"])
+        || !word_slice_contains_all_words(&second_words, &["from", "among", "them"])
+        || !second_words.iter().any(|word| *word == "x")
+    {
+        return Ok(None);
+    }
+
+    let Some(where_token_idx) = first.token_index_for_word_index(where_idx) else {
+        return Ok(None);
+    };
+    let Some(where_value) = parse_value_binding_clause_lexed(&first.tokens()[where_token_idx..])
+    else {
+        return Ok(None);
+    };
+    let where_value = where_value.with_surface_hint(ValueSurfaceHint::WhereXIs);
+
+    let mut first_effects = effect_sentences::parse_effect_sentence_lexed(first.tokens())?;
+    let mut second_effects = effect_sentences::parse_effect_sentence_lexed(second.tokens())?;
+    effect_sentences::replace_unbound_x_in_effects_anywhere(
+        &mut second_effects,
+        &where_value,
+        &first_words.join(" "),
+    )?;
+    first_effects.append(&mut second_effects);
+    Ok(Some(first_effects))
 }
 
 pub(crate) fn parse_search_delayed_upkeep_unless_pays_sequence(

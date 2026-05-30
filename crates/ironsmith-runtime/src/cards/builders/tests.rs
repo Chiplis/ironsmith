@@ -35682,8 +35682,10 @@ fn parse_oracle_kotis_the_fangkeeper_strict_and_renders_damage_bound_cast_clause
     assert!(
         debug.contains("Indestructible")
             && compact_debug.contains("EventValue(Amount")
+            && debug.contains("player: DamagedPlayer")
+            && !compact_debug.contains("LessThanOrEqualExpr(X)")
             && compact_debug.contains("any_number:true"),
-        "expected Kotis to parse indestructible, event-derived X, and any-number free-cast structurally, got {debug}"
+        "expected Kotis to parse indestructible, event-derived X, and damage-bound any-number free-cast structurally, got {debug}"
     );
     assert!(
         rendered.contains(

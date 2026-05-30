@@ -2552,6 +2552,9 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             SubjectVerbActionAst::Learn
             | SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. } => {}
         },
+        EffectAst::MayCastMatchingSpellWithoutPayingManaCost { filter, .. } => {
+            replace_in_filter(filter, replacement, clause)?;
+        }
         _ => {
             try_for_each_nested_effects_mut(effect, true, |nested| {
                 replace_unbound_x_in_effects_anywhere(nested, replacement, clause)

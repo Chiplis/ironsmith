@@ -441,6 +441,19 @@ fn desmond_miles_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn kotis_the_fangkeeper_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(362_000), "Kotis, the Fangkeeper")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Zombie, Subtype::Warrior])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .parse_text(
+            "Indestructible\nWhenever Kotis deals combat damage to a player, exile the top X cards of their library, where X is the amount of damage dealt. You may cast any number of spells with mana value X or less from among them without paying their mana costs.",
+        )
+        .expect("Kotis, the Fangkeeper should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn tom_bombadil_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(72_920), "Tom Bombadil")
         .mana_cost(ManaCost::from_pips(vec![
@@ -28399,6 +28412,87 @@ fn kotis_any_number_free_cast_casts_each_matching_exiled_spell_and_respects_dama
         game.object(land_id).map(|object| object.zone),
         Some(Zone::Exile),
         "Kotis should not cast lands through the spell-only permission"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn kotis_parsed_combat_damage_trigger_exiles_damage_count_and_casts_damage_bound_spells() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let kotis = kotis_the_fangkeeper_definition();
+    eprintln!("Kotis abilities: {:#?}", kotis.abilities);
+    let kotis_id = game.create_object_from_definition(&kotis, alice, Zone::Battlefield);
+    let cheap_one = kotis_test_spell("Parsed Kotis Cheap Spell One", 362_102, 1, CardType::Sorcery);
+    let cheap_two = kotis_test_spell("Parsed Kotis Cheap Spell Two", 362_103, 3, CardType::Instant);
+    let expensive = kotis_test_spell("Parsed Kotis Expensive Spell", 362_104, 5, CardType::Sorcery);
+    let land = kotis_test_spell("Parsed Kotis Exiled Land", 362_105, 0, CardType::Land);
+    game.create_object_from_card(&cheap_one, bob, Zone::Library);
+    game.create_object_from_card(&cheap_two, bob, Zone::Library);
+    let expensive_id = game.create_object_from_card(&expensive, bob, Zone::Library);
+    let land_id = game.create_object_from_card(&land, bob, Zone::Library);
+
+    let damage_event = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            kotis_id,
+            crate::events::DamageTarget::Player(bob),
+            4,
+            true,
+            crate::events::cause::EventCause::combat_damage(kotis_id),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &damage_event) {
+        trigger_queue.add(trigger);
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Kotis should trigger once from its combat damage"
+    );
+
+    let library_before = game.player(bob).expect("bob exists").library.len();
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Kotis combat-damage trigger should go on the stack");
+    let mut dm = KotisAnyNumberDecisionMaker { remaining_yes: 4 };
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Kotis trigger should resolve");
+
+    assert_eq!(
+        game.player(bob).expect("bob exists").library.len(),
+        library_before - 4,
+        "Kotis should exile cards equal to the combat damage dealt"
+    );
+    let stack_names = game
+        .stack
+        .iter()
+        .filter_map(|entry| game.object(entry.object_id))
+        .map(|object| object.name.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        stack_names.len(),
+        2,
+        "Kotis should cast each exiled nonland spell within the damage-bound mana value, got {stack_names:?}"
+    );
+    assert!(
+        stack_names.contains(&"Parsed Kotis Cheap Spell One"),
+        "{stack_names:?}"
+    );
+    assert!(
+        stack_names.contains(&"Parsed Kotis Cheap Spell Two"),
+        "{stack_names:?}"
+    );
+    assert_eq!(
+        game.object(expensive_id).map(|object| object.zone),
+        Some(Zone::Exile),
+        "spell above the combat-damage mana value should remain exiled"
+    );
+    assert_eq!(
+        game.object(land_id).map(|object| object.zone),
+        Some(Zone::Exile),
+        "exiled lands should not be cast by Kotis's spell-only permission"
     );
 }
 

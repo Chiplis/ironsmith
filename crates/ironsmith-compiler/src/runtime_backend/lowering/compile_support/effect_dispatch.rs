@@ -1146,7 +1146,22 @@ fn compile_subject_verb_effect(
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let resolved_count =
                 subject.resolve_object_refs_and_bind_player_refs_in_value(count, ctx)?;
-            let player_filter = subject.clone_player_filter();
+            let mut player_filter = subject.clone_player_filter();
+            if matches!(
+                (&player_filter, ctx.last_player_filter.as_ref()),
+                (
+                    PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(_)),
+                    Some(PlayerFilter::DamagedPlayer),
+                )
+            ) || matches!(
+                (&player_filter, resolved_count.unhinted()),
+                (
+                    PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(tag)),
+                    Value::EventValue(EventValueSpec::Amount),
+                ) if tag.as_str() == "triggering"
+            ) {
+                player_filter = PlayerFilter::DamagedPlayer;
+            }
             let mut effect =
                 crate::effects::ExileTopOfLibraryEffect::new(resolved_count, player_filter.clone());
             for tag in tags {

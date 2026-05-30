@@ -117,6 +117,11 @@ fn first_word_the(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "the")
 }
 
+fn first_word_exile_then_you(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_is(sentences, sentence_idx, "exile")
+        && sentence_head_word_is(sentences, sentence_idx + 1, "you")
+}
+
 fn first_word_tap(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "tap")
 }
@@ -470,6 +475,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 2,
         predicate: first_word_the,
         parser: generic_subject_verb_sequences::parse_next_damage_prevention_gain_life_sequence,
+    },
+    SequenceRuleDef {
+        name: "where-x-exile-top-then-cast-from-among",
+        feature_tag: Some("where-x-followup-cast"),
+        priority: 240,
+        consumed_sentences: 2,
+        predicate: first_word_exile_then_you,
+        parser: generic_subject_verb_sequences::parse_where_x_exile_top_then_cast_from_among_sequence,
     },
     SequenceRuleDef {
         name: "tap-all-then-they-dont-untap-while-source-tapped",
