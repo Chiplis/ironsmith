@@ -364,7 +364,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::CreateEmblem { .. }
             | SubjectVerbActionAst::LoseGame
             | SubjectVerbActionAst::WinGame
-            | SubjectVerbActionAst::PayAnyEnergy
+            | SubjectVerbActionAst::PayAnyEnergy { .. }
             | SubjectVerbActionAst::PayMana { .. }
             | SubjectVerbActionAst::DiscardHand
             | SubjectVerbActionAst::Detain { .. }

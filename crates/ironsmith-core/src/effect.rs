@@ -3101,11 +3101,12 @@ impl PayEnergyEffect {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PayAnyEnergyEffect {
     pub player: ChooseSpec,
+    pub min_amount: u32,
 }
 
 impl PayAnyEnergyEffect {
-    pub fn new(player: ChooseSpec) -> Self {
-        Self { player }
+    pub fn new(player: ChooseSpec, min_amount: u32) -> Self {
+        Self { player, min_amount }
     }
 }
 

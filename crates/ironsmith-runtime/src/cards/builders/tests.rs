@@ -113,6 +113,34 @@ fn parse_clash_repeat_process_spell_effect() {
     );
 }
 
+#[test]
+fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Rampaging Aetherhood");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert!(
+        def.abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, AbilityKind::Triggered(_))),
+        "Rampaging Aetherhood should parse its upkeep trigger strictly"
+    );
+    assert!(
+        ability_debug.contains("EnergyCountersEffect")
+            && ability_debug.contains("PayAnyEnergyEffect")
+            && ability_debug.contains("min_amount: 1")
+            && ability_debug.contains("IfEffect")
+            && ability_debug.contains("PutCountersEffect"),
+        "expected energy payment and paid-amount counter effects, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains(
+            "Then you may pay one or more {E}. If you do, put that many +1/+1 counters on this creature"
+        ),
+        "expected one-or-more energy payment text to be preserved, got {rendered}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_day_of_the_moon_goads_creatures_with_chosen_name() {

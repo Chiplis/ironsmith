@@ -39,6 +39,159 @@ fn setup_three_player_game() -> GameState {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn rampaging_aetherhood_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(74_200), "Rampaging Aetherhood")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Snake, Subtype::Hydra])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Trample, ward {2}\n\
+             At the beginning of your upkeep, you get an amount of {E} (energy counters) equal to this creature's power. Then you may pay one or more {E}. If you do, put that many +1/+1 counters on this creature.",
+        )
+        .expect("Rampaging Aetherhood should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct RampagingAetherhoodDecisionMaker {
+    accept_payment: bool,
+    energy_to_pay: u32,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for RampagingAetherhoodDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        self.accept_payment
+    }
+
+    fn decide_number(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::NumberContext,
+    ) -> u32 {
+        self.energy_to_pay.clamp(ctx.min, ctx.max)
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_rampaging_aetherhood_upkeep_trigger_on_stack(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+) {
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    generate_and_queue_step_triggers(game, trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Rampaging Aetherhood should trigger at the beginning of your upkeep"
+    );
+    put_triggers_on_stack(game, trigger_queue)
+        .expect("Rampaging Aetherhood upkeep trigger should go on the stack");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn rampaging_aetherhood_upkeep_pays_energy_and_adds_that_many_counters() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let aetherhood = rampaging_aetherhood_definition();
+    let aetherhood_id = game.create_object_from_definition(&aetherhood, alice, Zone::Battlefield);
+
+    put_rampaging_aetherhood_upkeep_trigger_on_stack(&mut game, &mut trigger_queue);
+
+    let mut dm = RampagingAetherhoodDecisionMaker {
+        accept_payment: true,
+        energy_to_pay: 3,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Rampaging Aetherhood upkeep trigger should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").energy_counters,
+        1,
+        "the trigger should get four energy from power 4, then spend the chosen three"
+    );
+    assert_eq!(
+        game.counter_count(aetherhood_id, crate::object::CounterType::PlusOnePlusOne),
+        3,
+        "Rampaging Aetherhood should get counters equal to the amount of energy paid"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn rampaging_aetherhood_payment_choice_cannot_pay_zero() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let aetherhood = rampaging_aetherhood_definition();
+    let aetherhood_id = game.create_object_from_definition(&aetherhood, alice, Zone::Battlefield);
+
+    put_rampaging_aetherhood_upkeep_trigger_on_stack(&mut game, &mut trigger_queue);
+
+    let mut dm = RampagingAetherhoodDecisionMaker {
+        accept_payment: true,
+        energy_to_pay: 0,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Rampaging Aetherhood upkeep trigger should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").energy_counters,
+        3,
+        "one-or-more energy payment should force at least one energy to be paid"
+    );
+    assert_eq!(
+        game.counter_count(aetherhood_id, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "the if-you-do branch should use the minimum paid amount"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn rampaging_aetherhood_declining_payment_gets_energy_without_counters() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let aetherhood = rampaging_aetherhood_definition();
+    let aetherhood_id = game.create_object_from_definition(&aetherhood, alice, Zone::Battlefield);
+
+    put_rampaging_aetherhood_upkeep_trigger_on_stack(&mut game, &mut trigger_queue);
+
+    let mut dm = RampagingAetherhoodDecisionMaker {
+        accept_payment: false,
+        energy_to_pay: 4,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Rampaging Aetherhood upkeep trigger should resolve when payment is declined");
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").energy_counters,
+        4,
+        "declining payment should leave the energy gained from the trigger"
+    );
+    assert_eq!(
+        game.counter_count(aetherhood_id, crate::object::CounterType::PlusOnePlusOne),
+        0,
+        "declining the optional energy payment should not add +1/+1 counters"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn twenty_toed_toad_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(72_950), "Twenty-Toed Toad")
         .mana_cost(ManaCost::from_pips(vec![

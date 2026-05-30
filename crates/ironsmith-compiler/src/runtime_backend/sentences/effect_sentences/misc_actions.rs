@@ -826,12 +826,12 @@ pub(crate) fn parse_pay(
     if grammar::words_match_any_prefix(tokens, ANY_AMOUNT_OF_PREFIXES).is_some()
         && (grammar::contains_word(tokens, "e") || energy_symbol_count > 0)
     {
-        return Ok(EffectAst::subject_verb_pay_any_energy(player));
+        return Ok(EffectAst::subject_verb_pay_any_energy(player, 0));
     }
     if grammar::words_match_any_prefix(tokens, &[&["one", "or", "more"]]).is_some()
         && (grammar::contains_word(tokens, "e") || energy_symbol_count > 0)
     {
-        return Ok(EffectAst::subject_verb_pay_any_energy(player));
+        return Ok(EffectAst::subject_verb_pay_any_energy(player, 1));
     }
     let has_for_each = word_slice_contains_phrase(&clause_words, &["for", "each"]);
     let references_tagged_choice = clause_words

@@ -108,22 +108,33 @@ impl EffectExecutor for PayAnyEnergyEffect {
             .map(|player| player.energy_counters)
             .unwrap_or(0);
 
-        if available == 0 {
+        if available < self.min_amount {
             return Ok(EffectOutcome::count(0));
         }
+
+        let number_spec = if self.min_amount == 0 {
+            NumberSpec::up_to(ctx.source, available, "Choose how much {E} to pay")
+        } else {
+            NumberSpec::range(
+                ctx.source,
+                self.min_amount,
+                available,
+                "Choose how much {E} to pay",
+            )
+        };
 
         let chosen = make_decision_with_fallback(
             game,
             &mut ctx.decision_maker,
             player_id,
             Some(ctx.source),
-            NumberSpec::up_to(ctx.source, available, "Choose how much {E} to pay"),
+            number_spec,
             FallbackStrategy::Maximum,
         );
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
         }
-        let chosen = chosen.min(available);
+        let chosen = chosen.clamp(self.min_amount, available);
 
         if chosen == 0 {
             return Ok(EffectOutcome::count(0).with_execution_fact(ExecutionFact::ChosenNumber(0)));
