@@ -465,6 +465,30 @@ fn parse_shiny_impetus_oracle_and_compiled_text() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_equipment_attached_goaded_anthem_preserves_equipped_subject() {
+    let def = parse_oracle_card_definition("Bloodthirsty Blade");
+    let rendered_lines = canonical_compiled_lines(&def);
+    let rendered = rendered_lines.join("\n");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered_lines
+            .iter()
+            .any(|line| line == "Equipped creature gets +2/+0 and is goaded."),
+        "Bloodthirsty Blade should keep the Equipment subject in compiled text, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("Enchanted creature is goaded"),
+        "Equipment goad text should not render as enchanted, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("Anthem") && ability_debug.contains("AttachedGoadedBySourceController"),
+        "Bloodthirsty Blade should structurally model equipment anthem and goad, got {ability_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn shiny_impetus_buffs_and_goads_enchanted_creature_away_from_aura_controller() {
     let shiny_impetus = parse_oracle_card_definition("Shiny Impetus");
     let creature = CardDefinitionBuilder::new(CardId::from_raw(91_120), "Grizzly Bears")

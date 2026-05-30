@@ -4513,31 +4513,36 @@ pub(crate) fn parse_anthem_and_goaded_line(
         build_anthem_static_ability(&clause).into(),
         crate::static_abilities::StaticAbility::attached_goaded_by_source_controller(format!(
             "{} is goaded",
-            capitalize_display_subject(display_subject)
+            capitalize_display_subject(&display_subject)
         ))
         .into(),
     ]))
 }
 
-fn attached_goaded_display_subject(subject: &AnthemSubjectAst) -> Option<&'static str> {
+fn attached_goaded_display_subject(subject: &AnthemSubjectAst) -> Option<String> {
     let AnthemSubjectAst::Filter(filter) = subject else {
         return None;
     };
-    let has_attached_tag = filter.tagged_constraints.iter().any(|constraint| {
-        matches!(
+    let attachment = filter.tagged_constraints.iter().find_map(|constraint| {
+        if !matches!(
             constraint.relation,
             crate::filter::TaggedOpbjectRelation::IsTaggedObject
-        ) && matches!(constraint.tag.as_str(), "enchanted" | "equipped")
-    });
-    if !has_attached_tag {
-        return None;
-    }
+        ) {
+            return None;
+        }
+        match constraint.tag.as_str() {
+            "enchanted" => Some("enchanted"),
+            "equipped" => Some("equipped"),
+            _ => None,
+        }
+    })?;
 
-    if filter.card_types.contains(&CardType::Creature) {
-        Some("enchanted creature")
+    let noun = if filter.card_types.contains(&CardType::Creature) {
+        "creature"
     } else {
-        Some("enchanted permanent")
-    }
+        "permanent"
+    };
+    Some(format!("{attachment} {noun}"))
 }
 
 fn capitalize_display_subject(subject: &str) -> String {
