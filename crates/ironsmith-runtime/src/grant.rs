@@ -42,6 +42,7 @@ use crate::types::CardType;
 use crate::zone::Zone;
 
 pub type DerivedAlternativeCast = ironsmith_core::DerivedAlternativeCast<Cost>;
+pub type DerivedOptionalCost = ironsmith_core::DerivedOptionalCost;
 pub type Grantable = ironsmith_core::Grantable<
     StaticAbility,
     crate::effect::Effect,
@@ -72,6 +73,10 @@ impl ironsmith_core::GrantStaticAbility for StaticAbility {
 
 pub trait DerivedAlternativeCastRuntimeExt {
     fn materialize_for(&self, card: &Object) -> Option<AlternativeCastingMethod>;
+}
+
+pub trait DerivedOptionalCostRuntimeExt {
+    fn materialize_for(&self, card: &Object) -> Option<crate::cost::OptionalCost>;
 }
 
 impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
@@ -200,6 +205,17 @@ impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
                     }),
                     *exiles_after_resolution,
                 ))
+            }
+        }
+    }
+}
+
+impl DerivedOptionalCostRuntimeExt for DerivedOptionalCost {
+    fn materialize_for(&self, card: &Object) -> Option<crate::cost::OptionalCost> {
+        match self {
+            Self::ReplicateFromCardManaCost => {
+                let mana_cost = card.mana_cost.clone()?;
+                Some(crate::cost::OptionalCost::replicate(TotalCost::mana(mana_cost)))
             }
         }
     }

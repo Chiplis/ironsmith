@@ -3,9 +3,9 @@ use std::any::Any;
 use crate::{
     Ability, AbilityKind, ActivatedAbility, AlternativeCastingMethod, AnthemValue, CardType, Color,
     ColorSet, Condition, CostComponent, CounterType, DamagedBySource, DerivedAlternativeCast,
-    GrantSpec, Grantable, KeywordActionKind, ManaCost, ManaSpendPermission, ObjectFilter,
-    PlayerFilter, ProtectionFrom, Restriction, StaticAbilityId, Subtype, SubtypeFamily, Supertype,
-    TotalCost, TriggeredAbility, Value, Zone,
+    DerivedOptionalCost, GrantSpec, Grantable, KeywordActionKind, ManaCost, ManaSpendPermission,
+    ObjectFilter, PlayerFilter, ProtectionFrom, Restriction, StaticAbilityId, Subtype,
+    SubtypeFamily, Supertype, TotalCost, TriggeredAbility, Value, Zone,
 };
 
 type AbilityModel<T, E, C, Cond> = Ability<StaticAbility<T, E, C, Cond>, T, E, C>;
@@ -720,6 +720,9 @@ where
                 }
                 Grantable::DerivedAlternativeCast(spec) => {
                     Grantable::DerivedAlternativeCast(map_derived_alternative_cast(spec, map_cost)?)
+                }
+                Grantable::DerivedOptionalCost(DerivedOptionalCost::ReplicateFromCardManaCost) => {
+                    Grantable::DerivedOptionalCost(DerivedOptionalCost::ReplicateFromCardManaCost)
                 }
                 Grantable::PlayFrom => Grantable::PlayFrom,
             })

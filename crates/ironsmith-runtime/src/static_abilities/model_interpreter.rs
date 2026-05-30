@@ -398,6 +398,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::Grantable::DerivedAlternativeCast(spec) => {
                 crate::grant::Grantable::DerivedAlternativeCast(spec.clone())
             }
+            ironsmith_core::Grantable::DerivedOptionalCost(spec) => {
+                crate::grant::Grantable::DerivedOptionalCost(spec.clone())
+            }
             ironsmith_core::Grantable::PlayFrom => crate::grant::Grantable::PlayFrom,
         };
         crate::grant::GrantSpec {

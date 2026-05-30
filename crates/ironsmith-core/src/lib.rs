@@ -147,8 +147,8 @@ pub use filter_model::{
     TaggedObjectConstraint, TaggedOpbjectRelation, TargetabilityConstraint,
 };
 pub use grant_model::{
-    DerivedAlternativeCast, GrantDuration, GrantSpec, GrantStaticAbility, GrantUsageLimit,
-    Grantable,
+    DerivedAlternativeCast, DerivedOptionalCost, GrantDuration, GrantSpec, GrantStaticAbility,
+    GrantUsageLimit, Grantable,
 };
 pub use ids::{
     CardId, IdCountersSnapshot, ObjectId, PlayerId, StableId, reset_runtime_id_counters,

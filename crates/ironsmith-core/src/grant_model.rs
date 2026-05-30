@@ -39,6 +39,21 @@ pub enum DerivedAlternativeCast<C> {
     },
 }
 
+/// A granted optional cost whose exact cost is derived from the granted card.
+#[derive(Debug, Clone, PartialEq)]
+pub enum DerivedOptionalCost {
+    /// Replicate using the spell's mana cost.
+    ReplicateFromCardManaCost,
+}
+
+impl DerivedOptionalCost {
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::ReplicateFromCardManaCost => "Replicate",
+        }
+    }
+}
+
 impl<C> DerivedAlternativeCast<C> {
     pub fn display_name(&self) -> &'static str {
         match self {
@@ -141,6 +156,8 @@ pub enum Grantable<SA, E, C, Cond> {
     AlternativeCast(AlternativeCastingMethod<E, C, Cond>),
     /// Grant an alternative casting method whose exact cost is derived from the card.
     DerivedAlternativeCast(DerivedAlternativeCast<C>),
+    /// Grant an optional cost whose exact cost is derived from the card.
+    DerivedOptionalCost(DerivedOptionalCost),
     /// Grant the ability to play a card from a non-hand zone as if it were in hand.
     PlayFrom,
 }
@@ -228,6 +245,11 @@ where
             ),
         )
     }
+
+    /// Create a grantable for replicate whose optional cost is the granted card's mana cost.
+    pub fn replicate_from_cards_mana_cost() -> Self {
+        Self::DerivedOptionalCost(DerivedOptionalCost::ReplicateFromCardManaCost)
+    }
 }
 
 impl<SA, E, C, Cond> Grantable<SA, E, C, Cond>
@@ -243,6 +265,7 @@ where
             Self::Ability(a) => a.grant_display(),
             Self::AlternativeCast(m) => m.name().to_string(),
             Self::DerivedAlternativeCast(spec) => spec.display_name().to_string(),
+            Self::DerivedOptionalCost(spec) => spec.display_name().to_string(),
             Self::PlayFrom => "play from zone".to_string(),
         }
     }
@@ -667,6 +690,18 @@ where
             return format!(
                 "{may_prefix} pay {{X}} rather than pay the mana cost for {} you cast, where X is that spell's mana value",
                 castable_filter_description(&self.filter)
+            );
+        }
+        if let Grantable::DerivedOptionalCost(DerivedOptionalCost::ReplicateFromCardManaCost) =
+            &self.grantable
+        {
+            let cast_desc = castable_filter_description(&self.filter);
+            let filter_desc = cast_desc
+                .strip_suffix(" spells")
+                .map(|base| format!("{base} spell you cast"))
+                .unwrap_or(cast_desc);
+            return format!(
+                "Each {filter_desc} has replicate. The replicate cost is equal to its mana cost"
             );
         }
         if let Grantable::DerivedAlternativeCast(

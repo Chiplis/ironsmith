@@ -752,7 +752,9 @@ impl<'a> DerivedGameView<'a> {
                         }
                     })
                 }
-                Grantable::Ability(_) | Grantable::PlayFrom => None,
+                Grantable::Ability(_) | Grantable::DerivedOptionalCost(_) | Grantable::PlayFrom => {
+                    None
+                }
             })
             .collect();
         self.granted_alternative_casts
@@ -788,7 +790,8 @@ impl<'a> DerivedGameView<'a> {
                 }),
                 Grantable::Ability(_)
                 | Grantable::AlternativeCast(_)
-                | Grantable::DerivedAlternativeCast(_) => None,
+                | Grantable::DerivedAlternativeCast(_)
+                | Grantable::DerivedOptionalCost(_) => None,
             })
             .collect();
         self.granted_play_from
@@ -828,7 +831,9 @@ impl<'a> DerivedGameView<'a> {
                         }
                     })
                 }
-                Grantable::Ability(_) | Grantable::PlayFrom => None,
+                Grantable::Ability(_) | Grantable::DerivedOptionalCost(_) | Grantable::PlayFrom => {
+                    None
+                }
             })
             .collect()
     }
