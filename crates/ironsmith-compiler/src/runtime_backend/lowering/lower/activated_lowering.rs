@@ -237,7 +237,9 @@ fn finalize_rewrite_activated_effect_sentences(
     for tokens in sentence_tokens {
         let sentence = render_token_slice(&tokens).trim().to_string();
         let sentence_words = token_word_refs(&tokens);
-        if parse_mana_usage_restriction_sentence_lexed(&tokens).is_some()
+        if is_activation_mana_source_restriction_sentence(sentence_words.as_slice()) {
+            restrictions.activation.push(sentence);
+        } else if parse_mana_usage_restriction_sentence_lexed(&tokens).is_some()
             || parse_mana_spend_bonus_sentence_lexed(&tokens).is_some()
             || word_slice_starts_with(
                 sentence_words.as_slice(),
@@ -353,7 +355,9 @@ fn split_rewrite_activated_effect_text_fallback(
             continue;
         };
         let sentence_words = token_word_refs(&tokens);
-        if parse_mana_usage_restriction_sentence_lexed(&tokens).is_some()
+        if is_activation_mana_source_restriction_sentence(sentence_words.as_slice()) {
+            restrictions.activation.push(sentence);
+        } else if parse_mana_usage_restriction_sentence_lexed(&tokens).is_some()
             || parse_mana_spend_bonus_sentence_lexed(&tokens).is_some()
             || word_slice_starts_with(
                 sentence_words.as_slice(),
@@ -378,6 +382,11 @@ fn split_rewrite_activated_effect_text_fallback(
         restrictions,
         mana_restrictions,
     }
+}
+
+fn is_activation_mana_source_restriction_sentence(words: &[&str]) -> bool {
+    word_slice_starts_with(words, &["spend", "only", "mana"])
+        && word_slice_ends_with(words, &["to", "activate", "this", "ability"])
 }
 
 fn parse_activated_effects_lexed(

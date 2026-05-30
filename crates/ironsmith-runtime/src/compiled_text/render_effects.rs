@@ -33042,6 +33042,13 @@ fn activated_mana_output_amount(activated: &crate::ability::ActivatedAbility) ->
             total += *amount;
             found = true;
         }
+        if let Some(add_chosen) = effect.downcast_ref::<crate::effects::AddManaOfChosenColorEffect>()
+            && let Value::Fixed(amount) = &add_chosen.amount
+            && *amount > 0
+        {
+            total += *amount;
+            found = true;
+        }
     }
 
     found.then_some(total)
@@ -33126,6 +33133,13 @@ fn describe_special_mana_usage_spell_filter_target(
 
     if filter == &ObjectFilter::default().owned_by(PlayerFilter::NotYou) {
         return Some("spells you don't own".to_string());
+    }
+
+    if filter == &ObjectFilter::default().monocolored().of_chosen_color() {
+        if pluralize_origin_spell {
+            return Some("monocolored spells of that color".to_string());
+        }
+        return Some("a monocolored spell of that color".to_string());
     }
 
     None
