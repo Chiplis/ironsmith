@@ -24,7 +24,9 @@ pub(crate) use super::util::{
     parse_mana_symbol, parse_next_end_step_token_delay_flags, parse_subtype_flexible, parse_value,
     split_cost_segments, token_index_for_word_index, trim_commas, value_contains_unbound_x,
 };
-pub(crate) use super::value_helpers::parse_filter_comparison_tokens;
+pub(crate) use super::value_helpers::{
+    parse_equal_to_aggregate_filter_value, parse_filter_comparison_tokens,
+};
 
 fn push_unique_color(colors: &mut Vec<crate::color::Color>, color: crate::color::Color) {
     crate::slice_primitives::push_unique(colors, color);
@@ -373,7 +375,9 @@ pub(crate) fn parse_add_mana(
                 player, mana, amount,
             ));
         }
-        if let Some(amount) = parse_add_mana_equal_amount_value(tokens) {
+        if let Some(amount) = parse_equal_to_aggregate_filter_value(tokens)
+            .or_else(|| parse_add_mana_equal_amount_value(tokens))
+        {
             return Ok(EffectAst::subject_verb_add_mana_scaled(
                 player, mana, amount,
             ));

@@ -3774,6 +3774,37 @@ fn rewrite_activation_helpers_parse_add_mana_preserves_chosen_color_tail() {
 }
 
 #[test]
+fn rewrite_activation_helpers_parse_add_mana_scales_by_greatest_power_entered_this_turn() {
+    let tokens = lex_line(
+        "{R} equal to the greatest power among creatures you control that entered this turn",
+        0,
+    )
+    .expect("rewrite lexer should classify aggregate red mana clause");
+
+    match super::activation_helpers::parse_add_mana(&tokens, None)
+        .expect("aggregate red mana clause should parse")
+    {
+        crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action:
+                    crate::cards::builders::SubjectVerbActionAst::AddManaScaled { mana, amount },
+                ..
+            },
+        ) => {
+            assert_eq!(mana, vec![crate::mana::ManaSymbol::Red]);
+            assert!(matches!(
+                amount,
+                crate::effect::Value::GreatestPower(filter)
+                    if filter.card_types == vec![CardType::Creature]
+                        && filter.controller == Some(crate::target::PlayerFilter::You)
+                        && filter.entered_battlefield_this_turn
+            ));
+        }
+        other => panic!("expected scaled red mana from greatest power, got {other:?}"),
+    }
+}
+
+#[test]
 fn rewrite_activation_helpers_parse_add_mana_wraps_instead_if_tail() {
     let tokens = lex_line(
         "{B}{B}{B}{B}{B} instead if there are seven or more cards in your graveyard",
@@ -3894,6 +3925,37 @@ fn rewrite_effect_sentence_parse_add_mana_wraps_instead_if_tail() {
             }
         }
         other => panic!("expected single conditional add-mana effect, got {other:?}"),
+    }
+}
+
+#[test]
+fn rewrite_effect_sentence_parse_add_mana_scales_by_greatest_power_entered_this_turn() {
+    let tokens = lex_line(
+        "Add {R} equal to the greatest power among creatures you control that entered this turn",
+        0,
+    )
+    .expect("rewrite lexer should classify aggregate red mana sentence");
+
+    let effects = parse_effect_sentence_lexed(&tokens).expect("mana sentence should parse");
+
+    match effects.as_slice() {
+        [crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action:
+                    crate::cards::builders::SubjectVerbActionAst::AddManaScaled { mana, amount },
+                ..
+            },
+        )] => {
+            assert_eq!(mana.as_slice(), &[crate::mana::ManaSymbol::Red]);
+            assert!(matches!(
+                amount,
+                crate::effect::Value::GreatestPower(filter)
+                    if filter.card_types == vec![CardType::Creature]
+                        && filter.controller == Some(crate::target::PlayerFilter::You)
+                        && filter.entered_battlefield_this_turn
+            ));
+        }
+        other => panic!("expected scaled red mana sentence, got {other:?}"),
     }
 }
 
