@@ -35119,6 +35119,40 @@ fn parse_oracle_quandrix_apprentice_uses_looked_land_choice_and_bottom_remainder
 }
 
 #[test]
+fn parse_oracle_hatchery_spider_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition("Hatchery Spider");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert_eq!(def.card.name, "Hatchery Spider");
+    assert!(
+        rendered_lower.contains(
+            "you may put a green permanent card with mana value x or less from among them onto the battlefield"
+        ),
+        "expected Hatchery Spider to render the revealed-card battlefield choice, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("put the rest on the bottom of your library in a random order"),
+        "expected Hatchery Spider to render the revealed-card remainder clause, got {rendered}"
+    );
+    assert!(
+        !rendered_lower.contains("tagged '") && !rendered_lower.contains("tagged object"),
+        "Hatchery Spider compiled text must not leak internal tag markers, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("YouCastThisSpellTrigger")
+            && debug.contains("LookAtTopCardsEffect")
+            && debug.contains("RevealTaggedEffect")
+            && debug.contains("ChooseObjectsEffect")
+            && debug.contains("LessThanOrEqualExpr(")
+            && debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+        "expected Hatchery Spider to lower through structured reveal/choice/remainder effects, got {debug}"
+    );
+}
+
+#[test]
 fn parse_oracle_expressive_iteration_splits_looked_cards_by_destination() {
     let def = parse_oracle_card_definition("Expressive Iteration");
     let rendered = unprocessed_compiled_lines(&def).join(" ");

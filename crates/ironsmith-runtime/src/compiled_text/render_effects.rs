@@ -21742,6 +21742,11 @@ fn normalize_looked_card_filter_description(filter: &ObjectFilter, card_desc: &s
     {
         card_desc = format!("{prefix} card");
     }
+    if !card_desc.contains(" card")
+        && let Some((head, tail)) = card_desc.split_once(" with ")
+    {
+        card_desc = format!("{head} card with {tail}");
+    }
     card_desc
 }
 
@@ -22104,7 +22109,16 @@ fn describe_look_at_top_then_put_any_matching_to_zone_rest_bottom(
         return None;
     }
     let (zone, tapped) = for_each_moves_tag_to_public_zone(move_chosen, choose.tag.as_str())?;
-    let matching = describe_any_number_filter_from_looked_cards(look_at_top, choose)?;
+    let matching = if choose.count.is_any_number() {
+        format!(
+            "any number of {}",
+            describe_any_number_filter_from_looked_cards(look_at_top, choose)?
+        )
+    } else if choose.count.max == Some(1) {
+        describe_choose_filter_from_looked_cards(look_at_top, choose)?
+    } else {
+        return None;
+    };
     let owner = describe_possessive_player_filter(&look_at_top.player);
     let (count_text, noun, count_where_clause) =
         describe_top_count_noun_and_where_clause(&look_at_top.count);
@@ -22146,7 +22160,7 @@ fn describe_look_at_top_then_put_any_matching_to_zone_rest_bottom(
     };
 
     Some(format!(
-        "{opener} the top {count_text} {noun} of {owner} library{count_where_clause}. {put_prefix} any number of {matching} from among them {destination}. Put the rest on the bottom of {owner} library{order_text}"
+        "{opener} the top {count_text} {noun} of {owner} library{count_where_clause}. {put_prefix} {matching} from among them {destination}. Put the rest on the bottom of {owner} library{order_text}"
     ))
 }
 

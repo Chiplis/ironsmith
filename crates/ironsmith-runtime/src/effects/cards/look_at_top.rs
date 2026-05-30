@@ -7,6 +7,7 @@ use crate::effects::helpers::{resolve_player_filter, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::snapshot::ObjectSnapshot;
+use ironsmith_core::ValueSurfaceHint;
 pub use ironsmith_core::LookAtTopCardsEffect;
 
 /// Effect that looks at the top N cards of a player's library and tags them.
@@ -21,6 +22,9 @@ impl EffectExecutor for LookAtTopCardsEffect {
             return Ok(EffectOutcome::count(0));
         };
         let count = resolve_value(game, &self.count, ctx)?.max(0) as usize;
+        if self.count.has_surface_hint(ValueSurfaceHint::WhereXIs) {
+            ctx.x_value = Some(count as u32);
+        }
         if count == 0 {
             return Ok(EffectOutcome::count(0));
         }

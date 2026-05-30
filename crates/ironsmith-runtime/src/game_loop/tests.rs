@@ -37005,6 +37005,221 @@ fn quandrix_apprentice_magecraft_can_decline_the_land_pick() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn hatchery_spider_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(91_200), "Hatchery Spider")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Spider])
+        .power_toughness(PowerToughness::fixed(5, 7))
+        .parse_text(
+            "Reach\nUndergrowth — When you cast this spell, reveal the top X cards of your library, where X is the number of creature cards in your graveyard. You may put a green permanent card with mana value X or less from among them onto the battlefield. Put the rest on the bottom of your library in a random order.",
+        )
+        .expect("Hatchery Spider should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct HatcherySpiderDecisionMaker {
+    choice_name: Option<&'static str>,
+    legal_names: Vec<String>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for HatcherySpiderDecisionMaker {
+    fn decide_objects(
+        &mut self,
+        game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        self.legal_names = ctx
+            .candidates
+            .iter()
+            .filter(|candidate| candidate.legal)
+            .map(|candidate| candidate.name.clone())
+            .collect();
+        let Some(choice_name) = self.choice_name else {
+            return Vec::new();
+        };
+        ctx.candidates
+            .iter()
+            .find(|candidate| {
+                candidate.legal
+                    && game
+                        .object(candidate.id)
+                        .is_some_and(|object| object.name == choice_name)
+            })
+            .map(|candidate| vec![candidate.id])
+            .unwrap_or_default()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn add_hatchery_spider_graveyard_creatures(game: &mut GameState, player: PlayerId, count: u32) {
+    for index in 0..count {
+        let card = CardBuilder::new(
+            CardId::from_raw(91_210 + index),
+            format!("Undergrowth Creature {index}"),
+        )
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+        game.create_object_from_card(&card, player, Zone::Graveyard);
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn add_hatchery_spider_library(game: &mut GameState, player: PlayerId) -> Vec<ObjectId> {
+    let bottom = CardBuilder::new(CardId::from_raw(91_220), "Unrevealed Green Permanent")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let nonpermanent = CardBuilder::new(CardId::from_raw(91_221), "Green Instant")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .card_types(vec![CardType::Instant])
+        .build();
+    let nongreen = CardBuilder::new(CardId::from_raw(91_222), "Colorless Rock")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let expensive = CardBuilder::new(CardId::from_raw(91_223), "Expensive Green Beast")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    let legal = CardBuilder::new(CardId::from_raw(91_224), "Legal Green Permanent")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    vec![
+        game.create_object_from_card(&bottom, player, Zone::Library),
+        game.create_object_from_card(&nonpermanent, player, Zone::Library),
+        game.create_object_from_card(&nongreen, player, Zone::Library),
+        game.create_object_from_card(&expensive, player, Zone::Library),
+        game.create_object_from_card(&legal, player, Zone::Library),
+    ]
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn hatchery_spider_cast_trigger_puts_one_eligible_revealed_permanent_onto_battlefield() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let def = hatchery_spider_definition();
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Hatchery Spider should have its cast trigger");
+    let source_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+
+    add_hatchery_spider_graveyard_creatures(&mut game, alice, 4);
+    let ids = add_hatchery_spider_library(&mut game, alice);
+    let expensive_id = ids[3];
+    let nongreen_id = ids[2];
+    let nonpermanent_id = ids[1];
+
+    let mut dm = HatcherySpiderDecisionMaker {
+        choice_name: Some("Legal Green Permanent"),
+        legal_names: Vec::new(),
+    };
+    resolve_triggered_ability_from_spell_cast(&mut game, triggered, source_id, alice, &mut dm);
+
+    assert!(
+        dm.legal_names
+            .iter()
+            .any(|name| name == "Legal Green Permanent"),
+        "Hatchery Spider should allow the green permanent with mana value X or less, got {:?}",
+        dm.legal_names
+    );
+    for illegal_name in [
+        "Expensive Green Beast",
+        "Colorless Rock",
+        "Green Instant",
+        "Unrevealed Green Permanent",
+    ] {
+        assert!(
+            !dm.legal_names.iter().any(|name| name == illegal_name),
+            "Hatchery Spider should not allow {illegal_name} as a battlefield choice, got {:?}",
+            dm.legal_names
+        );
+    }
+
+    let battlefield_names: Vec<_> = game
+        .battlefield
+        .iter()
+        .filter_map(|&id| game.object(id).map(|object| object.name.clone()))
+        .collect();
+    assert!(
+        battlefield_names.contains(&"Legal Green Permanent".to_string()),
+        "Hatchery Spider should put the chosen green permanent with mana value X or less onto the battlefield, got {battlefield_names:?}"
+    );
+    for id in [expensive_id, nongreen_id, nonpermanent_id] {
+        assert_eq!(
+            game.object(id).expect("revealed card exists").zone,
+            Zone::Library,
+            "ineligible revealed cards should be put on the bottom of the library, not moved elsewhere"
+        );
+    }
+    assert!(
+        game.player(alice).expect("alice exists").graveyard.len() >= 4,
+        "Hatchery Spider should not mill revealed cards into the graveyard"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn hatchery_spider_cast_trigger_can_decline_the_revealed_permanent_choice() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let def = hatchery_spider_definition();
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Hatchery Spider should have its cast trigger");
+    let source_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+
+    add_hatchery_spider_graveyard_creatures(&mut game, alice, 4);
+    let ids = add_hatchery_spider_library(&mut game, alice);
+
+    let mut dm = HatcherySpiderDecisionMaker {
+        choice_name: None,
+        legal_names: Vec::new(),
+    };
+    resolve_triggered_ability_from_spell_cast(&mut game, triggered, source_id, alice, &mut dm);
+
+    for id in ids {
+        assert_eq!(
+            game.object(id).expect("library card exists").zone,
+            Zone::Library,
+            "declining Hatchery Spider should leave every revealed card in the library"
+        );
+    }
+    assert!(
+        game.battlefield.is_empty(),
+        "declining Hatchery Spider should not put a revealed card onto the battlefield"
+    );
+}
+
 // ============================================================================
 // Saga Integration Tests
 // ============================================================================

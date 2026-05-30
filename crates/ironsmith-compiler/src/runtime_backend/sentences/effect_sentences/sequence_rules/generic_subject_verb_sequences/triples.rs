@@ -983,34 +983,53 @@ pub(crate) fn parse_top_cards_put_match_into_hand_rest_graveyard(
     Ok(Some(effects))
 }
 
-fn parse_any_number_from_looked_cards_action(
+fn parse_matching_from_looked_cards_action(
     tokens: &[OwnedLexToken],
-) -> Option<(ObjectFilter, Zone, bool)> {
+) -> Option<(ObjectFilter, ChoiceCount, Zone, bool)> {
     let action_tokens = trim_commas(tokens);
     let action_words = TokenWordView::new(&action_tokens);
     let action_word_refs = action_words.word_refs();
-    if !word_slice_starts_with(&action_word_refs, &["any", "number", "of"]) {
-        return None;
-    }
+
+    let (count, counted_tokens) = if word_slice_starts_with(
+        &action_word_refs,
+        &["any", "number", "of"],
+    ) {
+        let filter_start = action_words.token_index_for_word_index(3)?;
+        (
+            ChoiceCount::any_number(),
+            trim_commas(&action_tokens[filter_start..]),
+        )
+    } else {
+        let (mut count, rest) = looked_cards_choice_count(&action_tokens)?;
+        if !count.is_any_number() && count.max != Some(1) {
+            return None;
+        }
+        if count.is_single() {
+            count = ChoiceCount::up_to(1);
+        }
+        (count, rest)
+    };
+
+    let counted_words = TokenWordView::new(&counted_tokens);
+    let counted_word_refs = counted_words.word_refs();
 
     let Some((from_among_word_idx, from_among_len)) =
-        effect_sentences::find_from_among_looked_cards_phrase(&action_words)
+        effect_sentences::find_from_among_looked_cards_phrase(&counted_words)
     else {
         return None;
     };
-    if from_among_word_idx <= 3 {
+    if from_among_word_idx == 0 {
         return None;
     }
-    let filter_start = action_words.token_index_for_word_index(3)?;
-    let filter_end = action_words
+    let filter_end = counted_words
         .token_index_for_word_index(from_among_word_idx)
-        .unwrap_or(action_tokens.len());
-    let filter_tokens = trim_commas(&action_tokens[filter_start..filter_end]);
+        .unwrap_or(counted_tokens.len());
+    let filter_tokens = trim_commas(&counted_tokens[..filter_end]);
     let mut filter = effect_sentences::parse_looked_card_choice_filter(&filter_tokens)?;
     effect_sentences::normalize_search_library_filter(&mut filter);
     filter.zone = None;
 
-    let after_from_words = &action_word_refs[from_among_word_idx + from_among_len..];
+    let after_from_words = &counted_word_refs[from_among_word_idx + from_among_len..];
     let (zone, tapped) = if word_slice_starts_with_any(
         after_from_words,
         &[&["into", "your", "hand"], &["into", "hand"]],
@@ -1033,7 +1052,7 @@ fn parse_any_number_from_looked_cards_action(
         return None;
     };
 
-    Some((filter, zone, tapped))
+    Some((filter, count, zone, tapped))
 }
 
 pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
@@ -1051,8 +1070,8 @@ pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
         return Ok(None);
     };
     let chooser = effect_sentences::leading_may_actor_to_player(action_match.actor, player);
-    let Some((filter, zone, tapped)) =
-        parse_any_number_from_looked_cards_action(action_match.tail_tokens)
+    let Some((filter, choice_count, zone, tapped)) =
+        parse_matching_from_looked_cards_action(action_match.tail_tokens)
     else {
         return Ok(None);
     };
@@ -1096,12 +1115,14 @@ pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
     if reveal_top {
         effects.push(EffectAst::subject_verb_reveal_tagged(looked_tag.clone()));
     }
-    effects.push(EffectAst::ChooseObjects {
+    effects.push(EffectAst::ChooseObjectsAcrossZones {
         filter: choose_filter,
-        count: ChoiceCount::any_number(),
+        count: choice_count,
         count_value: None,
         player: chooser,
         tag: chosen_tag.clone(),
+        zones: vec![Zone::Library],
+        search_mode: None,
     });
     effects.push(EffectAst::ForEachTagged {
         tag: chosen_tag.clone(),
