@@ -1,6 +1,8 @@
 use super::super::effect_ast_traversal::for_each_nested_effects_mut;
 use super::super::ir::RewriteActivatedLine;
 use super::*;
+use crate::effect::Effect;
+use crate::object::CounterType;
 use ironsmith_core::TotalCostKind;
 
 fn activated_effect_may_be_mana_ability_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -533,6 +535,40 @@ fn lower_rewrite_activated_to_chunk_impl(
         return Err(CardTextError::ParseError(
             "unresolved X in mana ability".to_string(),
         ));
+    }
+
+    if let Some(level_text) = normalized_effect_text.strip_prefix("level ")
+        && let Ok(level) = level_text.parse::<u32>()
+    {
+        let parsed = ParsedAbility {
+            ability: Ability {
+                kind: AbilityKind::Activated(ActivatedAbility {
+                    mana_cost: normalized_cost,
+                    effects: ResolutionProgram::from_effects(vec![Effect::put_counters_on_source(
+                        CounterType::Level,
+                        1,
+                    )]),
+                    choices: vec![],
+                    timing: ActivationTiming::SorcerySpeed,
+                    is_loyalty_ability: line.is_loyalty_ability,
+                    additional_restrictions: vec![format!("__ironsmith_class_level:{level}")],
+                    activation_restrictions: vec![],
+                    mana_output: None,
+                    activation_condition: None,
+                    mana_usage_restrictions: vec![],
+                }),
+                functional_zones: vec![Zone::Battlefield],
+            }
+            .into(),
+            text: Some(line.info.raw_line.trim().to_string()),
+            effects_ast: None,
+            reference_imports: ReferenceImports::default(),
+            trigger_spec: None,
+        };
+        return Ok(LoweredRewriteActivatedLine {
+            chunk: LineAst::Ability(parsed),
+            restrictions,
+        });
     }
 
     if let Some(mana_output) = extract_fixed_mana_output_lexed(&effect_parse_tokens) {

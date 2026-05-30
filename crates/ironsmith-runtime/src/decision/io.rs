@@ -955,6 +955,23 @@ impl DecisionMaker for SelectFirstDecisionMaker {
         legal.into_iter().take(count).collect()
     }
 
+    fn decide_targets(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::TargetsContext,
+    ) -> Vec<Target> {
+        let mut proposed = Vec::new();
+        for requirement in &ctx.requirements {
+            let count = requirement
+                .max_targets
+                .unwrap_or(1)
+                .max(requirement.min_targets)
+                .min(requirement.legal_targets.len());
+            proposed.extend(requirement.legal_targets.iter().take(count).copied());
+        }
+        normalize_targets_for_requirements(&ctx.requirements, proposed).unwrap_or_default()
+    }
+
     fn decide_options(
         &mut self,
         _game: &GameState,
