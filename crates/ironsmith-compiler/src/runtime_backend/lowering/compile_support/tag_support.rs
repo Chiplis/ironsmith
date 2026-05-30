@@ -1123,7 +1123,9 @@ pub(crate) fn restriction_references_tag(
             .any(|constraint| constraint.tag.as_str() == tag);
         return blockers_reference || attacker_reference;
     }
-    if let Restriction::MustBlockSpecificAttacker { blockers, attacker } = restriction {
+    if let Restriction::MustBlockSpecificAttacker { blockers, attacker }
+    | Restriction::MustBeBlockedBy { blockers, attacker } = restriction
+    {
         let blockers_reference = blockers
             .tagged_constraints
             .iter()

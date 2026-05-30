@@ -463,6 +463,10 @@ pub(crate) fn resolve_restriction_it_tag(
                 resolve_it_tag(attacker, refs)?,
             )
         }
+        Restriction::MustBeBlockedBy { attacker, blockers } => Restriction::must_be_blocked_by(
+            resolve_it_tag(attacker, refs)?,
+            resolve_it_tag(blockers, refs)?,
+        ),
         Restriction::MustBeBlocked(filter) => {
             Restriction::must_be_blocked(resolve_it_tag(filter, refs)?)
         }

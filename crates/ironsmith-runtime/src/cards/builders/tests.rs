@@ -48436,6 +48436,67 @@ fn parse_must_be_blocked_each_combat_this_turn_if_able() {
 }
 
 #[test]
+fn parse_aces_baseball_bat_strictly_and_renders_blocked_by_dalek_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(98_775), "Ace's Baseball Bat")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .parse_text(
+            "Equipped creature gets +3/+0.\n\
+             As long as equipped creature is attacking, it has first strike and must be blocked by a Dalek if able.\n\
+             Equip legendary creature {1}\n\
+             Equip {3}",
+        )
+        .expect("Ace's Baseball Bat should parse strictly");
+
+    assert_eq!(def.name(), "Ace's Baseball Bat");
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
+    let lower = rendered.to_ascii_lowercase();
+    assert!(
+        lower.contains("equipped creature gets +3/+0"),
+        "expected equipped pump surface, got {rendered}"
+    );
+    assert!(
+        lower.contains("as long as equipped creature is attacking"),
+        "expected attacking condition surface, got {rendered}"
+    );
+    assert!(
+        lower.contains("first strike") && lower.contains("must be blocked by a dalek if able"),
+        "expected first-strike and Dalek blocking surface, got {rendered}"
+    );
+    assert!(
+        lower.contains("equip legendary creature {1}"),
+        "expected legendary-creature equip surface, got {rendered}"
+    );
+
+    let legendary_equip = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) if activated.mana_cost.display() == "{1}" => {
+                Some(activated)
+            }
+            _ => None,
+        })
+        .expect("expected a one-mana legendary-creature equip ability");
+    assert_eq!(
+        legendary_equip.timing,
+        crate::ability::ActivationTiming::SorcerySpeed
+    );
+    let target_filter = match legendary_equip.choices.as_slice() {
+        [ChooseSpec::Target(inner)] => match inner.as_ref() {
+            ChooseSpec::Object(filter) => filter,
+            other => panic!("expected object target for legendary equip, got {other:?}"),
+        },
+        other => panic!("expected one target choice for legendary equip, got {other:?}"),
+    };
+    assert_eq!(target_filter.controller, Some(PlayerFilter::You));
+    assert!(target_filter.card_types.contains(&CardType::Creature));
+    assert!(target_filter.supertypes.contains(&Supertype::Legendary));
+}
+
+#[test]
 fn parse_suspect_designation_clauses() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Suspect Variant")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White]]))

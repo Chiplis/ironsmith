@@ -590,6 +590,62 @@ pub(crate) fn parse_granted_keyword_static_line(
         Ok(Some(generic))
     }
 
+    fn parse_must_be_blocked_by_if_able_tail(
+        tokens: &[OwnedLexToken],
+    ) -> Result<Option<(usize, StaticAbility)>, CardTextError> {
+        let words = crate::runtime_backend::token_word_refs(tokens);
+        let Some(and_word_idx) = word_slice_find_phrase_start_or_zero(
+            &words,
+            &["and", "must", "be", "blocked", "by"],
+        ) else {
+            return Ok(None);
+        };
+        let filter_start_word_idx = and_word_idx + 5;
+        let Some(if_able_word_idx) = word_slice_find_phrase_start_or_zero(
+            &words[filter_start_word_idx..],
+            &["if", "able"],
+        )
+        .map(|idx| idx + filter_start_word_idx)
+        else {
+            return Ok(None);
+        };
+        if if_able_word_idx + 2 != words.len() || filter_start_word_idx >= if_able_word_idx {
+            return Ok(None);
+        }
+
+        let and_token_idx = token_index_for_word_index(tokens, and_word_idx).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unable to map must-be-blocked conjunction (clause: '{}')",
+                words.join(" ")
+            ))
+        })?;
+        let filter_start_token_idx = token_index_for_word_index(tokens, filter_start_word_idx)
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unable to map must-be-blocked blocker filter (clause: '{}')",
+                    words.join(" ")
+                ))
+            })?;
+        let filter_end_token_idx = token_index_for_word_index(tokens, if_able_word_idx)
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unable to map must-be-blocked if-able suffix (clause: '{}')",
+                    words.join(" ")
+                ))
+            })?;
+        let blocker_tokens = trim_edge_punctuation(&tokens[filter_start_token_idx..filter_end_token_idx]);
+        if blocker_tokens.is_empty() {
+            return Ok(None);
+        }
+        let blockers = parse_object_filter(&blocker_tokens, false)?;
+        let blocker_text = render_token_slice(&blocker_tokens);
+        let ability = StaticAbility::restriction(
+            crate::effect::Restriction::must_be_blocked_by(ObjectFilter::source(), blockers),
+            format!("This creature must be blocked by {blocker_text} if able"),
+        );
+        Ok(Some((and_token_idx, ability)))
+    }
+
     fn parse_granted_alternative_cast_static(
         subject_tokens: &[OwnedLexToken],
         keyword_tokens: &[OwnedLexToken],
@@ -786,6 +842,7 @@ pub(crate) fn parse_granted_keyword_static_line(
     }
 
     let mut grants_must_attack = false;
+    let mut grants_must_be_blocked_by = None;
     let keyword_words = crate::runtime_backend::token_word_refs(&keyword_tokens);
     if let Some(and_idx) = word_slice_find_phrase_start_or_zero(
         &keyword_words,
@@ -799,6 +856,11 @@ pub(crate) fn parse_granted_keyword_static_line(
     }) {
         keyword_tokens = trim_commas(&keyword_tokens[..and_idx]);
         grants_must_attack = true;
+    }
+    if let Some((and_token_idx, ability)) = parse_must_be_blocked_by_if_able_tail(&keyword_tokens)?
+    {
+        keyword_tokens = trim_commas(&keyword_tokens[..and_token_idx]);
+        grants_must_be_blocked_by = Some(ability);
     }
     if keyword_tokens.is_empty() {
         return Ok(None);
@@ -931,7 +993,7 @@ pub(crate) fn parse_granted_keyword_static_line(
         .into_iter()
         .filter(|action| action.lowers_to_static_ability())
         .collect::<Vec<_>>();
-    if mapped.is_empty() && !grants_must_attack {
+    if mapped.is_empty() && !grants_must_attack && grants_must_be_blocked_by.is_none() {
         return Ok(None);
     }
 
@@ -952,6 +1014,27 @@ pub(crate) fn parse_granted_keyword_static_line(
                 compiled.push(StaticAbilityAst::GrantStaticAbility {
                     filter: filter.clone(),
                     ability: Box::new(StaticAbilityAst::Static(StaticAbility::must_attack())),
+                    condition: condition.clone(),
+                })
+            }
+        }
+    }
+    if let Some(ability) = grants_must_be_blocked_by {
+        match &subject {
+            AnthemSubjectAst::Source => {
+                if let Some(condition) = &condition {
+                    compiled.push(StaticAbilityAst::ConditionalStaticAbility {
+                        ability: Box::new(StaticAbilityAst::Static(ability)),
+                        condition: condition.clone(),
+                    });
+                } else {
+                    compiled.push(StaticAbilityAst::Static(ability));
+                }
+            }
+            AnthemSubjectAst::Filter(filter) => {
+                compiled.push(StaticAbilityAst::GrantStaticAbility {
+                    filter: filter.clone(),
+                    ability: Box::new(StaticAbilityAst::Static(ability)),
                     condition: condition.clone(),
                 })
             }
@@ -1523,6 +1606,45 @@ pub(crate) struct ParsedGrantedTailAst {
     pub(crate) granted_object_abilities: Vec<(ParsedAbility, String)>,
 }
 
+fn parse_must_be_blocked_by_if_able_static(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if !word_slice_starts_with(&words, &["must", "be", "blocked", "by"]) {
+        return Ok(None);
+    }
+    let Some(if_able_word_idx) = word_slice_find_phrase_start_or_zero(&words, &["if", "able"])
+    else {
+        return Ok(None);
+    };
+    if if_able_word_idx + 2 != words.len() || if_able_word_idx <= 4 {
+        return Ok(None);
+    }
+
+    let filter_start_token_idx = token_index_for_word_index(tokens, 4).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "unable to map must-be-blocked blocker filter (clause: '{}')",
+            words.join(" ")
+        ))
+    })?;
+    let filter_end_token_idx = token_index_for_word_index(tokens, if_able_word_idx).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "unable to map must-be-blocked if-able suffix (clause: '{}')",
+            words.join(" ")
+        ))
+    })?;
+    let blocker_tokens = trim_edge_punctuation(&tokens[filter_start_token_idx..filter_end_token_idx]);
+    if blocker_tokens.is_empty() {
+        return Ok(None);
+    }
+    let blockers = parse_object_filter(&blocker_tokens, false)?;
+    let blocker_text = render_token_slice(&blocker_tokens);
+    Ok(Some(StaticAbility::restriction(
+        crate::effect::Restriction::must_be_blocked_by(ObjectFilter::source(), blockers),
+        format!("This creature must be blocked by {blocker_text} if able"),
+    )))
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct StaticAnimationBundleAst {
     pub(crate) subject: AnthemSubjectAst,
@@ -1955,6 +2077,13 @@ fn infer_attached_subject_filter_from_condition_expr(
     condition: Option<&crate::ConditionExpr>,
 ) -> Option<ObjectFilter> {
     match condition {
+        Some(crate::ConditionExpr::EquippedCreatureAttacking)
+        | Some(crate::ConditionExpr::EquippedCreatureTapped)
+        | Some(crate::ConditionExpr::EquippedCreatureUntapped) => {
+            let mut filter = ObjectFilter::tagged("equipped");
+            filter.card_types.push(CardType::Creature);
+            Some(filter)
+        }
         Some(crate::ConditionExpr::EnchantedPermanentIsCreature)
         | Some(crate::ConditionExpr::EnchantedPermanentIsLand)
         | Some(crate::ConditionExpr::EnchantedPermanentIsEquipment)
@@ -5071,6 +5200,11 @@ pub(crate) fn parse_heterogeneous_granted_tail(
             continue;
         }
 
+        if let Some(ability) = parse_must_be_blocked_by_if_able_static(&segment)? {
+            parsed.granted_static.push(ability.into());
+            continue;
+        }
+
         if let Some(actions) = parse_granted_keyword_fragment(&segment) {
             reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
             if let [KeywordAction::CumulativeUpkeep { total_cost, .. }] = actions.as_slice() {
@@ -6757,23 +6891,33 @@ pub(crate) fn parse_filter_has_granted_ability_line(
                 && if_idx > 0
                 && let Some(condition_start) = token_index_for_word_index(&ability_tokens, if_idx)
             {
-                let condition_tokens = trim_commas(&ability_tokens[condition_start + 1..]);
-                if !condition_tokens.is_empty() {
-                    let parsed_condition = match parse_static_condition_clause(&condition_tokens) {
-                        Ok(condition) => condition,
-                        Err(err) => {
-                            deferred_error.get_or_insert(err);
-                            continue;
-                        }
-                    };
-                    condition = Some(match condition {
-                        Some(existing) => crate::ConditionExpr::And(
-                            Box::new(existing),
-                            Box::new(parsed_condition),
-                        ),
-                        None => parsed_condition,
-                    });
-                    ability_tokens = trim_commas(&ability_tokens[..condition_start]);
+                let is_blocking_if_able = ability_words.get(if_idx..) == Some(&["if", "able"][..])
+                    && word_slice_contains_phrase(
+                        &ability_words[..if_idx],
+                        &["must", "be", "blocked", "by"],
+                    );
+                if is_blocking_if_able {
+                    // "if able" is part of the blocking requirement, not a static condition.
+                } else {
+                    let condition_tokens = trim_commas(&ability_tokens[condition_start + 1..]);
+                    if !condition_tokens.is_empty() {
+                        let parsed_condition = match parse_static_condition_clause(&condition_tokens)
+                        {
+                            Ok(condition) => condition,
+                            Err(err) => {
+                                deferred_error.get_or_insert(err);
+                                continue;
+                            }
+                        };
+                        condition = Some(match condition {
+                            Some(existing) => crate::ConditionExpr::And(
+                                Box::new(existing),
+                                Box::new(parsed_condition),
+                            ),
+                            None => parsed_condition,
+                        });
+                        ability_tokens = trim_commas(&ability_tokens[..condition_start]);
+                    }
                 }
             }
         }

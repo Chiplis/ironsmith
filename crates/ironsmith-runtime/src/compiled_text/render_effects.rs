@@ -35217,15 +35217,41 @@ fn equip_target_qualifier_text(spec: &ChooseSpec) -> Option<String> {
                 return None;
             }
             if filter.subtypes.len() == 1 {
-                return Some(filter.subtypes[0].to_string());
+                let mut parts = filter
+                    .supertypes
+                    .iter()
+                    .map(|supertype| supertype.to_string().to_ascii_lowercase())
+                    .collect::<Vec<_>>();
+                parts.push(filter.subtypes[0].to_string());
+                return Some(parts.join(" "));
             }
             if filter.subtypes.len() > 1 {
-                let names = filter
+                let mut names = filter
                     .subtypes
                     .iter()
                     .map(ToString::to_string)
                     .collect::<Vec<_>>();
+                if !filter.supertypes.is_empty() {
+                    let prefix = filter
+                        .supertypes
+                        .iter()
+                        .map(|supertype| supertype.to_string().to_ascii_lowercase())
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    for name in &mut names {
+                        *name = format!("{prefix} {name}");
+                    }
+                }
                 return Some(names.join(" or "));
+            }
+            if !filter.supertypes.is_empty() {
+                let mut parts = filter
+                    .supertypes
+                    .iter()
+                    .map(|supertype| supertype.to_string().to_ascii_lowercase())
+                    .collect::<Vec<_>>();
+                parts.push("creature".to_string());
+                return Some(parts.join(" "));
             }
             None
         }

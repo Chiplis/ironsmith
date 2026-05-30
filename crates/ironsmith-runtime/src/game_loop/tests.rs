@@ -2132,6 +2132,201 @@ fn sharpened_pitchfork_boosts_only_humans_but_always_grants_first_strike() {
     assert_eq!(game.calculated_toughness(non_human_id), Some(2));
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn aces_baseball_bat_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(98_775), "Ace's Baseball Bat")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .parse_text(
+            "Equipped creature gets +3/+0.\n\
+             As long as equipped creature is attacking, it has first strike and must be blocked by a Dalek if able.\n\
+             Equip legendary creature {1}\n\
+             Equip {3}",
+        )
+        .expect("Ace's Baseball Bat should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn attach_equipment_to(game: &mut GameState, equipment_id: ObjectId, creature_id: ObjectId) {
+    if let Some(equipment) = game.object_mut(equipment_id) {
+        equipment.attached_to = Some(crate::object::AttachmentTarget::Object(creature_id));
+    }
+    if let Some(creature) = game.object_mut(creature_id) {
+        creature.attachments.push(equipment_id);
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn aces_baseball_bat_forces_available_dalek_to_block_attacking_equipped_creature() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let bat_id = game.create_object_from_definition(
+        &aces_baseball_bat_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    let bearer = CardBuilder::new(CardId::from_raw(98_776), "Ace's Bearer")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let bearer_id = game.create_object_from_card(&bearer, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(bearer_id);
+    let dalek = CardBuilder::new(CardId::from_raw(98_777), "Test Dalek")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Dalek])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let dalek_id = game.create_object_from_card(&dalek, bob, Zone::Battlefield);
+    let second_dalek = CardBuilder::new(CardId::from_raw(98_781), "Second Test Dalek")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Dalek])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let second_dalek_id = game.create_object_from_card(&second_dalek, bob, Zone::Battlefield);
+    let soldier = CardBuilder::new(CardId::from_raw(98_778), "Non-Dalek Blocker")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Soldier])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let soldier_id = game.create_object_from_card(&soldier, bob, Zone::Battlefield);
+    attach_equipment_to(&mut game, bat_id, bearer_id);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+    let mut combat = CombatState::default();
+    crate::combat_state::declare_attackers(
+        &mut game,
+        &mut combat,
+        vec![(bearer_id, AttackTarget::Player(bob))],
+    )
+    .expect("equipped creature should attack");
+    game.combat = Some(combat.clone());
+    game.update_cant_effects();
+
+    assert!(
+        game.object_has_ability(bearer_id, &StaticAbility::first_strike()),
+        "Ace's Baseball Bat should grant first strike while the equipped creature attacks"
+    );
+
+    let missing_dalek = crate::combat_state::declare_blockers(&game, &mut combat.clone(), vec![]);
+    assert!(
+        matches!(
+            missing_dalek,
+            Err(crate::combat_state::CombatError::MustBlockRequirementNotMet { blocker, attacker })
+                if (blocker == dalek_id || blocker == second_dalek_id) && attacker == bearer_id
+        ),
+        "expected an able Dalek blocker to be required, got {missing_dalek:?}"
+    );
+
+    let non_dalek_only = crate::combat_state::declare_blockers(
+        &game,
+        &mut combat.clone(),
+        vec![(soldier_id, bearer_id)],
+    );
+    assert!(
+        matches!(
+            non_dalek_only,
+            Err(crate::combat_state::CombatError::MustBlockRequirementNotMet { blocker, attacker })
+                if (blocker == dalek_id || blocker == second_dalek_id) && attacker == bearer_id
+        ),
+        "expected a non-Dalek blocker not to satisfy Ace's Baseball Bat, got {non_dalek_only:?}"
+    );
+
+    crate::combat_state::declare_blockers(&game, &mut combat, vec![(second_dalek_id, bearer_id)])
+        .expect("one Dalek blocking the equipped creature should satisfy Ace's Baseball Bat");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn aces_baseball_bat_does_not_force_tapped_dalek_to_block() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let bat_id = game.create_object_from_definition(
+        &aces_baseball_bat_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    let bearer = CardBuilder::new(CardId::from_raw(98_782), "Tapping Ace's Bearer")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let bearer_id = game.create_object_from_card(&bearer, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(bearer_id);
+    let dalek = CardBuilder::new(CardId::from_raw(98_783), "Tapped Test Dalek")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Dalek])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let dalek_id = game.create_object_from_card(&dalek, bob, Zone::Battlefield);
+    game.tap(dalek_id);
+    attach_equipment_to(&mut game, bat_id, bearer_id);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+    let mut combat = CombatState::default();
+    crate::combat_state::declare_attackers(
+        &mut game,
+        &mut combat,
+        vec![(bearer_id, AttackTarget::Player(bob))],
+    )
+    .expect("equipped creature should attack");
+    game.combat = Some(combat.clone());
+    game.update_cant_effects();
+
+    crate::combat_state::declare_blockers(&game, &mut combat, vec![])
+        .expect("a tapped Dalek should not be forced to block");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn aces_baseball_bat_does_not_force_dalek_when_equipped_creature_is_not_attacking() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let bat_id = game.create_object_from_definition(
+        &aces_baseball_bat_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    let bearer = CardBuilder::new(CardId::from_raw(98_779), "Idle Ace's Bearer")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let bearer_id = game.create_object_from_card(&bearer, alice, Zone::Battlefield);
+    let dalek = CardBuilder::new(CardId::from_raw(98_780), "Idle Test Dalek")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Dalek])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let dalek_id = game.create_object_from_card(&dalek, bob, Zone::Battlefield);
+    attach_equipment_to(&mut game, bat_id, bearer_id);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareBlockers);
+    game.combat = Some(CombatState::default());
+    game.update_cant_effects();
+
+    assert!(
+        !game.object_has_ability(bearer_id, &StaticAbility::first_strike()),
+        "Ace's Baseball Bat should not grant first strike while the equipped creature is idle"
+    );
+    assert!(
+        !game.must_block_attacker(dalek_id, bearer_id),
+        "Ace's Baseball Bat should not force Daleks to block an idle equipped creature"
+    );
+}
+
 #[test]
 fn proposed_granted_emerge_cast_keeps_sacrifice_cost_on_stack_spell() {
     let mut game = setup_game();

@@ -134,6 +134,10 @@ fn normalize_restriction_for_resolution(
         Restriction::MustBeBlocked(filter) => Restriction::must_be_blocked(
             collapse_filter_to_current_matching_objects(filter, ctx, game),
         ),
+        Restriction::MustBeBlockedBy { attacker, blockers } => Restriction::must_be_blocked_by(
+            collapse_filter_to_current_matching_objects(attacker, ctx, game),
+            collapse_filter_to_current_matching_objects(blockers, ctx, game),
+        ),
         Restriction::Attack(filter) => Restriction::attack(
             collapse_filter_to_current_matching_objects(filter, ctx, game),
         ),

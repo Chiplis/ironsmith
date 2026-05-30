@@ -287,6 +287,10 @@ pub enum Restriction {
         blockers: ObjectFilter,
         attacker: ObjectFilter,
     },
+    MustBeBlockedBy {
+        attacker: ObjectFilter,
+        blockers: ObjectFilter,
+    },
     MustBeBlocked(ObjectFilter),
     BlockAlone(ObjectFilter),
     Untap(ObjectFilter),
@@ -515,6 +519,10 @@ impl Restriction {
 
     pub fn must_block_specific_attacker(blockers: ObjectFilter, attacker: ObjectFilter) -> Self {
         Self::MustBlockSpecificAttacker { blockers, attacker }
+    }
+
+    pub fn must_be_blocked_by(attacker: ObjectFilter, blockers: ObjectFilter) -> Self {
+        Self::MustBeBlockedBy { attacker, blockers }
     }
 
     pub fn must_be_blocked(filter: ObjectFilter) -> Self {

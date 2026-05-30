@@ -854,6 +854,73 @@ pub fn declare_blockers(
         }
     }
 
+    // Enforce "must be blocked by [quality] if able" requirements. Unlike
+    // per-blocker requirements, only one eligible blocker in the group needs to block.
+    for (&required_attacker, blocker_groups) in &game.effect_store.cant_effects.must_be_blocked_by {
+        if !is_attacking(combat, required_attacker) {
+            continue;
+        }
+        let Some(attacker) = game.object(required_attacker) else {
+            continue;
+        };
+        let Some(attacker_info) = combat
+            .attackers
+            .iter()
+            .find(|info| info.creature == required_attacker)
+        else {
+            continue;
+        };
+        let defending_player = match attacker_info.target {
+            AttackTarget::Player(player_id) => player_id,
+            AttackTarget::Planeswalker(planeswalker_id) => game
+                .object(planeswalker_id)
+                .map(|planeswalker| game.controller_of(planeswalker))
+                .unwrap_or(game.turn.active_player),
+        };
+
+        for blocker_group in blocker_groups {
+            let legal_blockers = blocker_group
+                .iter()
+                .copied()
+                .filter(|&blocker_id| {
+                    let Some(blocker) = game.object(blocker_id) else {
+                        return false;
+                    };
+                    blocker.zone == Zone::Battlefield
+                        && game.controller_of(blocker) == defending_player
+                        && game.object_has_card_type_with_effects(
+                            blocker_id,
+                            crate::types::CardType::Creature,
+                            &all_effects,
+                        )
+                        && !game.is_tapped(blocker_id)
+                        && can_block(attacker, blocker, game)
+                        && game.can_block_attacker(blocker_id, required_attacker)
+                        && game.can_block(blocker_id)
+                        && game.can_be_blocked(required_attacker)
+                        && !game.object_has_ability_with_effects(
+                            blocker_id,
+                            &StaticAbility::cant_block(),
+                            &all_effects,
+                        )
+                })
+                .collect::<Vec<_>>();
+            if legal_blockers.is_empty() {
+                continue;
+            }
+
+            let declared_required = attackers_by_blocker.iter().any(|(&blocker_id, attackers)| {
+                legal_blockers.contains(&blocker_id) && attackers.contains(&required_attacker)
+            });
+            if !declared_required {
+                return Err(CombatError::MustBlockRequirementNotMet {
+                    blocker: legal_blockers[0],
+                    attacker: required_attacker,
+                });
+            }
+        }
+    }
+
     // Third pass: apply declarations
     for (attacker_id, blocker_list) in blockers_by_attacker {
         combat.blockers.insert(attacker_id, blocker_list);

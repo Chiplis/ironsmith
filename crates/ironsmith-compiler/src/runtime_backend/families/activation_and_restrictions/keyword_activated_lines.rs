@@ -760,27 +760,41 @@ fn parse_equip_target_filter_qualifier(tokens: &[OwnedLexToken]) -> Option<Objec
     }
 
     let mut parsed_subtypes = Vec::new();
-    let mut saw_subtype = false;
+    let mut parsed_supertypes = Vec::new();
+    let mut saw_qualifier = false;
     for word in subtype_words {
         if matches!(*word, "or" | "and" | "and/or") {
-            if !saw_subtype {
+            if !saw_qualifier {
                 return None;
             }
             continue;
         }
 
-        let subtype = parse_subtype_flexible(word)?;
-        push_unique(&mut parsed_subtypes, subtype);
-        saw_subtype = true;
+        if let Some(supertype) = parse_supertype_word(word) {
+            push_unique(&mut parsed_supertypes, supertype);
+            saw_qualifier = true;
+            continue;
+        }
+
+        if let Some(subtype) = parse_subtype_flexible(word) {
+            push_unique(&mut parsed_subtypes, subtype);
+            saw_qualifier = true;
+            continue;
+        }
+
+        return None;
     }
 
-    if parsed_subtypes.is_empty() {
+    if parsed_subtypes.is_empty() && parsed_supertypes.is_empty() {
         return None;
     }
 
     let mut filter = ObjectFilter::creature().you_control();
     for subtype in parsed_subtypes {
         push_unique(&mut filter.subtypes, subtype);
+    }
+    for supertype in parsed_supertypes {
+        push_unique(&mut filter.supertypes, supertype);
     }
     Some(filter)
 }

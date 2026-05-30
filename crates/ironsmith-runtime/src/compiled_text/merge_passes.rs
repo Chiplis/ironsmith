@@ -256,6 +256,56 @@ fn parse_conditional_subject_predicate(line: &str) -> Option<ConditionalSubjectP
     })
 }
 
+fn parse_conditional_must_be_blocked_by(line: &str) -> Option<(String, String, String)> {
+    let trimmed = line.trim().trim_end_matches('.');
+    let (body, condition) = trimmed.rsplit_once(" as long as ")?;
+    let (subject, blocked_by) = body.split_once(" must be blocked by ")?;
+    if subject.trim().is_empty() || blocked_by.trim().is_empty() {
+        return None;
+    }
+    Some((
+        format!("As long as {}", condition.trim()),
+        subject.trim().to_string(),
+        format!("must be blocked by {}", blocked_by.trim()),
+    ))
+}
+
+fn merge_conditional_keyword_and_block_requirement(left: &str, right: &str) -> Option<String> {
+    let left_keyword = parse_conditional_subject_predicate(left);
+    let right_keyword = parse_conditional_subject_predicate(right);
+    let left_blocked = parse_conditional_must_be_blocked_by(left);
+    let right_blocked = parse_conditional_must_be_blocked_by(right);
+
+    let (keyword, blocked) = match (left_keyword, right_keyword, left_blocked, right_blocked) {
+        (Some(keyword), None, None, Some(blocked)) => (keyword, blocked),
+        (None, Some(keyword), Some(blocked), None) => (keyword, blocked),
+        _ => return None,
+    };
+    if !matches!(keyword.verb.as_str(), "has" | "have" | "gains" | "gain") {
+        return None;
+    }
+    if !conditioned_subjects_equivalent(&keyword.subject, &blocked.1)
+        || !keyword.condition.eq_ignore_ascii_case(&blocked.0)
+    {
+        return None;
+    }
+    let predicate = normalize_keyword_predicate_case(&keyword.predicate);
+    if !is_keyword_phrase(&predicate) {
+        return None;
+    }
+    let condition = keyword
+        .condition
+        .trim_start_matches("As long as ")
+        .trim_start_matches("as long as ")
+        .trim();
+    Some(format!(
+        "As long as {condition}, {} {} {predicate} and {}",
+        lowercase_first(&keyword.subject),
+        have_verb_for_subject(&keyword.subject),
+        blocked.2
+    ))
+}
+
 fn is_creature_addition_predicate(predicate: &str) -> bool {
     let lower = predicate.trim().to_ascii_lowercase();
     lower == "a creature in addition to its other types"
@@ -672,6 +722,11 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
         if idx + 1 < lines.len() {
             let left = lines[idx].trim().trim_end_matches('.');
             let right = lines[idx + 1].trim().trim_end_matches('.');
+            if let Some(line) = merge_conditional_keyword_and_block_requirement(left, right) {
+                merged.push(line);
+                idx += 2;
+                continue;
+            }
             if let Some(subject) = left
                 .strip_suffix(" enters tapped")
                 .or_else(|| left.strip_suffix(" enter tapped"))

@@ -9821,6 +9821,13 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 attacker.description()
             )
         }
+        crate::effect::Restriction::MustBeBlockedBy { attacker, blockers } => {
+            format!(
+                "{} must be blocked by {} if able",
+                attacker.description(),
+                blockers.description()
+            )
+        }
         crate::effect::Restriction::MustBeBlocked(filter) => {
             format!("{} must be blocked if able", filter.description())
         }

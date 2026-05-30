@@ -465,6 +465,7 @@ impl Subtype {
             Subtype::Construct,
             Subtype::Crab,
             Subtype::Crocodile,
+            Subtype::Dalek,
             Subtype::Detective,
             Subtype::Doctor,
             Subtype::Demon,

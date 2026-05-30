@@ -2060,6 +2060,15 @@ impl StaticAbilityKind for GrantAbility {
             StaticAbilityId::Unblockable => format!("{subject} can't be blocked"),
             StaticAbilityId::CantAttack => format!("{subject} can't attack"),
             StaticAbilityId::CantBlock => format!("{subject} can't block"),
+            StaticAbilityId::RuleRestriction => {
+                if let Some(rest) = ability_text.strip_prefix("This creature ") {
+                    format!("{subject} {rest}")
+                } else if let Some(rest) = ability_text.strip_prefix("this creature ") {
+                    format!("{subject} {rest}")
+                } else {
+                    format!("{subject} has {ability_text}")
+                }
+            }
             _ => {
                 let singular_subject = subject.starts_with("enchanted ")
                     || subject.starts_with("equipped ")
@@ -2108,6 +2117,12 @@ impl StaticAbilityKind for GrantAbility {
     }
 
     fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
+        if let Some(condition) = &self.condition
+            && !static_condition_is_active(condition, game, _source, controller)
+        {
+            return;
+        }
+
         if self.source_only {
             self.ability.apply_restrictions(game, _source, controller);
             return;

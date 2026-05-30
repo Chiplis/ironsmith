@@ -540,6 +540,10 @@ pub struct CantEffectTracker {
     /// Example: "Target creature blocks this creature this turn if able."
     pub must_block_specific_attackers: HashMap<ObjectId, HashSet<ObjectId>>,
 
+    /// Attacker -> groups of blockers that must include at least one blocker if able.
+    /// Example: "This creature must be blocked by a Dalek if able."
+    pub must_be_blocked_by: HashMap<ObjectId, Vec<HashSet<ObjectId>>>,
+
     /// Attackers that must be blocked this turn if able.
     /// Example: "Target creature must be blocked this turn if able."
     pub must_be_blocked: HashSet<ObjectId>,
@@ -839,6 +843,12 @@ impl CantEffectTracker {
                 .or_default()
                 .extend(attackers);
         }
+        for (attacker, blocker_groups) in other.must_be_blocked_by {
+            self.must_be_blocked_by
+                .entry(attacker)
+                .or_default()
+                .extend(blocker_groups);
+        }
         self.must_be_blocked.extend(other.must_be_blocked);
         self.cant_block_alone.extend(other.cant_block_alone);
         self.cant_untap.extend(other.cant_untap);
@@ -900,6 +910,7 @@ impl CantEffectTracker {
         self.cant_block.clear();
         self.cant_block_specific_attackers.clear();
         self.must_block_specific_attackers.clear();
+        self.must_be_blocked_by.clear();
         self.must_be_blocked.clear();
         self.cant_block_alone.clear();
         self.cant_untap.clear();

@@ -35,6 +35,7 @@ pub use ironsmith_core::effect::{ChoiceCount, EffectId, SearchSelectionMode};
 pub use ironsmith_core::{
     Comparison, EffectPredicate, EventValueSpec, Until, ValueComparisonOperator,
 };
+use std::collections::HashSet;
 use std::sync::Arc;
 
 // ============================================================================
@@ -1078,6 +1079,41 @@ impl RestrictionExt for Restriction {
                             .or_default();
                         required.extend(attacker_ids.iter().copied());
                     }
+                }
+            }
+            Restriction::MustBeBlockedBy { attacker, blockers } => {
+                let attacker_ids = game
+                    .battlefield
+                    .iter()
+                    .copied()
+                    .filter(|obj_id| {
+                        game.object(*obj_id)
+                            .is_some_and(|obj| attacker.matches(obj, &ctx, game))
+                    })
+                    .collect::<Vec<_>>();
+                if attacker_ids.is_empty() {
+                    return;
+                }
+
+                let blocker_ids = game
+                    .battlefield
+                    .iter()
+                    .copied()
+                    .filter(|obj_id| {
+                        game.object(*obj_id)
+                            .is_some_and(|obj| blockers.matches(obj, &ctx, game))
+                    })
+                    .collect::<HashSet<_>>();
+                if blocker_ids.is_empty() {
+                    return;
+                }
+
+                for attacker_id in attacker_ids {
+                    tracker
+                        .must_be_blocked_by
+                        .entry(attacker_id)
+                        .or_default()
+                        .push(blocker_ids.clone());
                 }
             }
             Restriction::MustBeBlocked(filter) => {
