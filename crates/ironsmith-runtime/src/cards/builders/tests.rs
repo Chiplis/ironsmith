@@ -50350,3 +50350,75 @@ fn voidstone_gargoyle_runtime_blocks_activated_abilities_only_from_sources_with_
         "Voidstone Gargoyle should not stop abilities of differently named sources"
     );
 }
+
+#[test]
+fn voidstone_gargoyle_runtime_blocks_non_battlefield_source_abilities_with_the_chosen_name() {
+    fn hand_gain_life_ability() -> crate::ability::Ability {
+        crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Activated(crate::ability::ActivatedAbility {
+                mana_cost: crate::cost::TotalCost::free(),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    crate::effect::Effect::gain_life(1),
+                ]),
+                choices: vec![],
+                timing: crate::ability::ActivationTiming::AnyTime,
+                additional_restrictions: vec![],
+                activation_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
+            }),
+            functional_zones: vec![Zone::Hand],
+        }
+    }
+
+    let def = parse_oracle_card_definition("Voidstone Gargoyle");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(bob);
+
+    let gargoyle = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.set_chosen_named_option(gargoyle, "Lightning Bolt".to_string());
+
+    let named_source = CardDefinitionBuilder::new(CardId::new(), "Lightning Bolt")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let other_source = CardDefinitionBuilder::new(CardId::new(), "Shock")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let named_id = game.create_object_from_definition(&named_source, bob, Zone::Hand);
+    let other_id = game.create_object_from_definition(&other_source, bob, Zone::Hand);
+    game.object_mut(named_id)
+        .expect("named hand source should exist")
+        .abilities
+        .push(hand_gain_life_ability());
+    game.object_mut(other_id)
+        .expect("other hand source should exist")
+        .abilities
+        .push(hand_gain_life_ability());
+
+    game.update_cant_effects();
+    let actions = crate::decision::compute_legal_actions(&game, bob);
+
+    assert!(
+        !game.can_activate_abilities_of(named_id)
+            && !actions.iter().any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, .. } if *source == named_id
+            )),
+        "Voidstone Gargoyle should stop hand-zone abilities of sources with the chosen name"
+    );
+    assert!(
+        game.can_activate_abilities_of(other_id)
+            && actions.iter().any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, .. } if *source == other_id
+            )),
+        "Voidstone Gargoyle should not stop hand-zone abilities of differently named sources"
+    );
+}

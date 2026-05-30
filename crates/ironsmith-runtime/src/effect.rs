@@ -841,6 +841,27 @@ fn resolve_chosen_name_spell_filters(
         .unwrap_or_default()
 }
 
+fn activation_restriction_candidate_ids(game: &GameState, filter: &ObjectFilter) -> Vec<ObjectId> {
+    if let Some(zone) = filter.zone {
+        return game.objects_in_zone(zone);
+    }
+
+    let mut ids = Vec::new();
+    for zone in [
+        Zone::Battlefield,
+        Zone::Hand,
+        Zone::Graveyard,
+        Zone::Exile,
+        Zone::Command,
+        Zone::Stack,
+    ] {
+        ids.extend(game.objects_in_zone(zone));
+    }
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
 impl RestrictionExt for Restriction {
     fn apply(
         &self,
@@ -920,7 +941,7 @@ impl RestrictionExt for Restriction {
                 }
             }
             Restriction::ActivateAbilitiesOf(filter) => {
-                for &obj_id in &game.battlefield {
+                for obj_id in activation_restriction_candidate_ids(game, filter) {
                     if let Some(obj) = game.object(obj_id)
                         && filter.matches(obj, &ctx, game)
                     {
@@ -929,7 +950,7 @@ impl RestrictionExt for Restriction {
                 }
             }
             Restriction::ActivateTapAbilitiesOf(filter) => {
-                for &obj_id in &game.battlefield {
+                for obj_id in activation_restriction_candidate_ids(game, filter) {
                     if let Some(obj) = game.object(obj_id)
                         && filter.matches(obj, &ctx, game)
                     {
@@ -938,7 +959,7 @@ impl RestrictionExt for Restriction {
                 }
             }
             Restriction::ActivateNonManaAbilitiesOf(filter) => {
-                for &obj_id in &game.battlefield {
+                for obj_id in activation_restriction_candidate_ids(game, filter) {
                     if let Some(obj) = game.object(obj_id)
                         && filter.matches(obj, &ctx, game)
                     {
