@@ -2551,6 +2551,80 @@ fn test_parse_uncounterable_from_text() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn vexing_shusher_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Vexing Shusher");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("This spell can't be countered."),
+        "expected static uncounterable line for Vexing Shusher, got {rendered}"
+    );
+    assert!(
+        rendered.contains("{R/G}: Target spell can't be countered."),
+        "expected targeted activated uncounterable line for Vexing Shusher, got {rendered}"
+    );
+
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Vexing Shusher should have an activated ability");
+    let default_effects = activated
+        .effects
+        .segments
+        .iter()
+        .flat_map(|segment| segment.default_effects.iter())
+        .collect::<Vec<_>>();
+    fn find_target_only(effect: &crate::effect::Effect) -> Option<&TargetOnlyEffect> {
+        effect.downcast_ref::<TargetOnlyEffect>().or_else(|| {
+            effect
+                .downcast_ref::<TaggedEffect>()
+                .and_then(|tagged| find_target_only(&tagged.effect))
+        })
+    }
+    fn find_cant_effect(effect: &crate::effect::Effect) -> Option<&crate::effects::CantEffect> {
+        effect.downcast_ref::<crate::effects::CantEffect>().or_else(|| {
+            effect
+                .downcast_ref::<TaggedEffect>()
+                .and_then(|tagged| find_cant_effect(&tagged.effect))
+        })
+    }
+
+    let target_only = default_effects
+        .iter()
+        .find_map(|effect| find_target_only(effect))
+        .expect("Vexing Shusher activation should expose a target-only spell choice");
+    assert_eq!(
+        target_only.target.inner(),
+        &ChooseSpec::spell(),
+        "Vexing Shusher activation should target a spell, got {:?}",
+        target_only.target
+    );
+
+    let cant_effect = default_effects
+        .iter()
+        .find_map(|effect| find_cant_effect(effect))
+        .expect("Vexing Shusher activation should apply a cant-be-countered effect");
+    match &cant_effect.restriction {
+        crate::effect::Restriction::BeCountered(filter) => {
+            assert_eq!(filter.zone, Some(Zone::Stack));
+            assert_eq!(filter.stack_kind, Some(crate::filter::StackObjectKind::Spell));
+            assert!(
+                filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                }),
+                "Vexing Shusher's restriction should be tied to the chosen spell target, got {filter:?}"
+            );
+        }
+        other => panic!("expected Vexing Shusher be-countered restriction, got {other:?}"),
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_spells_cant_be_countered_as_rule_restriction() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Global No Counter")
         .parse_text("Spells can't be countered.")

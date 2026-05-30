@@ -11103,6 +11103,151 @@ fn stack_spell_with_granted_static_ability_still_executes_spell_effect() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn vexing_shusher_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(489_898), "Vexing Shusher")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Red, ManaSymbol::Green],
+            vec![ManaSymbol::Red, ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Goblin, Subtype::Shaman])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text("This spell can't be countered.\n{R/G}: Target spell can't be countered.")
+        .expect("Vexing Shusher should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn vexing_shusher_activation_targets_spell_and_stops_countering_it() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let shusher = vexing_shusher_definition();
+    let shusher_id = game.create_object_from_definition(&shusher, alice, Zone::Battlefield);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    assert!(
+        !crate::decision::compute_legal_actions(&game, alice)
+            .into_iter()
+            .any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, .. }
+                    if source == shusher_id
+            )),
+        "Vexing Shusher activation should be illegal without a spell target"
+    );
+
+    let target_card = CardBuilder::new(CardId::new(), "Target Spell")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .build();
+    let target_spell = game.create_object_from_card(&target_card, bob, Zone::Stack);
+    game.push_to_stack(StackEntry::new(target_spell, bob));
+
+    let ability_index = game
+        .object(shusher_id)
+        .expect("Vexing Shusher should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Vexing Shusher should have an activated ability");
+    let activate_action = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == shusher_id && *idx == ability_index
+            )
+        })
+        .expect("Vexing Shusher activation should be legal with a spell target and mana");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Vexing Shusher activation should start");
+
+    let progress = match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::HybridChoice(_),
+        ) => apply_priority_response_with_dm(
+            &mut game,
+            &mut trigger_queue,
+            &mut state,
+            &PriorityResponse::HybridChoice(0),
+            &mut dm,
+        )
+        .expect("choosing the red side of {R/G} should continue activation"),
+        other => other,
+    };
+    match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::Targets(_),
+        ) => {}
+        other => panic!("expected target selection for Vexing Shusher, got {other:?}"),
+    }
+
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Object(target_spell)]),
+        &mut dm,
+    )
+    .expect("choosing the target spell should complete activation");
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").mana_pool.total(),
+        0,
+        "Vexing Shusher activation should spend the chosen hybrid mana"
+    );
+
+    resolve_stack_entry(&mut game).expect("Vexing Shusher ability should resolve");
+    assert!(
+        !game.can_be_countered(target_spell),
+        "targeted spell should not be counterable after Vexing Shusher resolves"
+    );
+
+    let counter_source = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Counter Source")
+            .card_types(vec![CardType::Instant])
+            .build(),
+        bob,
+        Zone::Stack,
+    );
+    let mut counter_dm = SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(counter_source, bob, &mut counter_dm);
+    let outcome = crate::effects::execute_effect(
+        &mut game,
+        &Effect::counter(crate::target::ChooseSpec::SpecificObject(target_spell)),
+        &mut ctx,
+    )
+    .expect("counter attempt should resolve as protected");
+
+    assert_eq!(outcome.status, crate::effect::OutcomeStatus::Protected);
+    assert!(
+        game.stack.iter().any(|entry| entry.object_id == target_spell),
+        "protected target spell should remain on the stack after a counter attempt"
+    );
+}
+
 #[test]
 fn magma_mine_activated_ability_sacrifices_source_and_deals_counter_scaled_damage_to_player() {
     let mut game = setup_game();
