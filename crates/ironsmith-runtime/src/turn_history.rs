@@ -28,6 +28,19 @@ pub struct TurnEventRecord {
     pub source_snapshot: Option<ObjectSnapshot>,
 }
 
+fn discarded_record_matches_stable_id(record: &TurnEventRecord, stable_id: StableId) -> bool {
+    record
+        .event
+        .downcast::<CardDiscardedEvent>()
+        .is_some_and(|event| {
+            event
+                .snapshot
+                .as_ref()
+                .or(record.object_snapshot.as_ref())
+                .is_some_and(|snapshot| snapshot.stable_id == stable_id)
+        })
+}
+
 /// Unified owner for turn-scoped bookkeeping and history.
 #[derive(Debug, Clone, Default)]
 pub struct TurnHistory {
@@ -174,6 +187,20 @@ impl TurnHistory {
             .filter_map(|record| record.event.downcast::<CardDiscardedEvent>())
             .filter(|event| event.player == player)
             .count() as u32
+    }
+
+    pub fn object_was_discarded_by_player_this_turn(
+        &self,
+        stable_id: StableId,
+        player: PlayerId,
+    ) -> bool {
+        self.projected_records().any(|record| {
+            record
+                .event
+                .downcast::<CardDiscardedEvent>()
+                .is_some_and(|event| event.player == player)
+                && discarded_record_matches_stable_id(record, stable_id)
+        })
     }
 
     pub fn total_cards_discarded_for_players(&self, players: &[PlayerId]) -> u32 {

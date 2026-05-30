@@ -8524,6 +8524,16 @@ pub(super) fn describe_apply_continuous_clauses(
                     gains
                 };
                 clauses.push(format!("{grant_verb} \"{ability_text}\""));
+            } else if let crate::ability::AbilityKind::Static(static_ability) = &ability.kind
+                && static_ability.id() == crate::static_abilities::StaticAbilityId::MustAttack
+            {
+                clauses.push(format!(
+                    "{gains} \"{}\"",
+                    capitalize_first(&describe_inline_ability_with_self_subject(
+                        ability,
+                        self_subject
+                    ))
+                ));
             } else {
                 clauses.push(format!(
                     "{gains} {}",
@@ -9020,12 +9030,32 @@ pub(super) fn describe_apply_continuous_effect(
         return None;
     }
 
-    let mut text = format!("{target} {}", join_with_and(&clauses));
+    let joined = combine_parallel_gain_clauses(&clauses).unwrap_or_else(|| join_with_and(&clauses));
+    let mut text = format!("{target} {joined}");
     if let Some(tail) = describe_apply_continuous_tail(effect) {
         text.push(' ');
         text.push_str(&tail);
     }
     Some(text)
+}
+
+fn combine_parallel_gain_clauses(clauses: &[String]) -> Option<String> {
+    let [first, rest @ ..] = clauses else {
+        return None;
+    };
+    let prefix = if first.starts_with("gains ") {
+        "gains "
+    } else if first.starts_with("gain ") {
+        "gain "
+    } else {
+        return None;
+    };
+    let mut parts = Vec::with_capacity(clauses.len());
+    for clause in std::iter::once(first).chain(rest.iter()) {
+        let tail = clause.strip_prefix(prefix)?;
+        parts.push(tail.to_string());
+    }
+    Some(format!("{prefix}{}", join_with_and(&parts)))
 }
 
 fn describe_dies_return_counter_grant(

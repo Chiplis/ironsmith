@@ -14109,8 +14109,8 @@ fn describe_triggered_inline_ability(
                 line.push_str(" — ");
                 line.push_str(only);
             } else {
-                line.push_str(": ");
-                line.push_str(only);
+                line.push_str(", ");
+                line.push_str(&lowercase_first(only));
             }
         } else {
             line.push_str(": ");

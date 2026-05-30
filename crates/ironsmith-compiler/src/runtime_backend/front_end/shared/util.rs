@@ -4789,6 +4789,51 @@ pub(crate) fn parse_jump_start_line_lexed(
     parse_jump_start_line(tokens)
 }
 
+pub(crate) fn parse_mayhem_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+    if !tokens.first().is_some_and(|token| token.is_word("mayhem")) {
+        return Ok(None);
+    }
+
+    let cost_tokens = tokens
+        .get(1..)
+        .unwrap_or_default()
+        .iter()
+        .take_while(|token| token.kind != TokenKind::LParen)
+        .cloned()
+        .collect::<Vec<_>>();
+    if cost_tokens.is_empty() {
+        return Err(CardTextError::ParseError(
+            "mayhem keyword missing mana cost".to_string(),
+        ));
+    }
+    let (mana_cost, consumed) =
+        leading_mana_cost_from_tokens(cost_tokens.as_slice()).ok_or_else(|| {
+            CardTextError::ParseError("mayhem keyword has an invalid mana cost".to_string())
+        })?;
+    if consumed != cost_tokens.len() {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported mayhem keyword tail '{}'",
+            render_token_slice(&cost_tokens[consumed..])
+        )));
+    }
+
+    Ok(Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
+        "Mayhem",
+        Zone::Graveyard,
+        TotalCost::from_cost(Cost::mana(mana_cost)),
+        Some(crate::static_abilities::ThisSpellCostCondition::ThisCardWasDiscardedThisTurn),
+        false,
+    )))
+}
+
+pub(crate) fn parse_mayhem_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+    parse_mayhem_line(tokens)
+}
+
 pub(crate) fn parse_harmonize_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {

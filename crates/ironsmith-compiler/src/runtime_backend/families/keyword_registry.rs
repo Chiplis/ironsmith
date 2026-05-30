@@ -37,6 +37,7 @@ use super::util::{
     parse_flash_with_additional_cost_line_lexed, parse_flashback_line_lexed,
     parse_harmonize_line_lexed, parse_if_conditional_alternative_cost_line_lexed,
     parse_jump_start_line_lexed, parse_kicker_line_lexed, parse_madness_line_lexed,
+    parse_mayhem_line_lexed,
     parse_morph_keyword_line_lexed, parse_multikicker_line_lexed, parse_offspring_line_lexed,
     parse_prowl_line_lexed, parse_reinforce_line_lexed, parse_replicate_line_lexed,
     parse_retrace_line_lexed, parse_self_free_cast_alternative_cost_line_lexed,
@@ -460,6 +461,15 @@ pub(super) fn lower_madness(
     ))
 }
 
+pub(super) fn lower_mayhem(
+    line: &RewriteKeywordLine,
+    tokens: &[OwnedLexToken],
+) -> Result<LineAst, CardTextError> {
+    Ok(LineAst::AlternativeCastingMethod(
+        require_keyword_parse(line, "mayhem", parse_mayhem_line_lexed(tokens)?)?.into(),
+    ))
+}
+
 pub(super) fn lower_morph(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
@@ -865,6 +875,13 @@ pub(super) fn matches_madness(
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     Ok(parse_madness_line_lexed(tokens)?.is_some())
+}
+
+pub(super) fn matches_mayhem(
+    _line: &PreprocessedLine,
+    tokens: &[OwnedLexToken],
+) -> Result<bool, CardTextError> {
+    Ok(parse_mayhem_line_lexed(tokens)?.is_some())
 }
 
 pub(super) fn matches_escape(

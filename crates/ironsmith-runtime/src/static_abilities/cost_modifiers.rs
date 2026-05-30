@@ -1242,6 +1242,9 @@ pub fn describe_this_spell_cost_condition(condition: &ThisSpellCostCondition) ->
         ThisSpellCostCondition::CreatureCardPutIntoYourGraveyardThisTurn => {
             Some("a creature card was put into your graveyard from anywhere this turn".to_string())
         }
+        ThisSpellCostCondition::ThisCardWasDiscardedThisTurn => {
+            Some("you discarded this card this turn".to_string())
+        }
         ThisSpellCostCondition::CreatureIsAttackingYou => {
             Some("a creature is attacking you".to_string())
         }
@@ -1632,9 +1635,13 @@ pub fn this_spell_cost_condition_is_active_for_cast_with_optional_costs_paid(
                             .turn_store
                             .turn_history
                             .object_was_put_into_graveyard_this_turn(object.stable_id)
-                })
+                    })
             })
         }
+        ThisSpellCostCondition::ThisCardWasDiscardedThisTurn => game
+            .turn_store
+            .turn_history
+            .object_was_discarded_by_player_this_turn(source_obj.stable_id, controller),
         ThisSpellCostCondition::CreatureIsAttackingYou => {
             game.combat.as_ref().is_some_and(|combat| {
                 combat.attackers.iter().any(|attacker| {

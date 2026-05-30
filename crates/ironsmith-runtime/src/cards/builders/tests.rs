@@ -11,6 +11,7 @@ use crate::effects::{
     MoveToZoneEffect, ReturnFromGraveyardToHandEffect, TagTriggeringObjectEffect, TaggedEffect,
     TargetOnlyEffect, UntapEffect,
 };
+use crate::filter::ObjectFilterExt;
 use crate::object::AuraAttachmentFilter;
 use crate::static_abilities::StaticAbilityId;
 use crate::target::{ChooseSpec, ObjectRef, PlayerFilter, SourceReferenceSurface};
@@ -512,6 +513,264 @@ fn cogwork_librarian_draft_rules_do_not_create_runtime_effects() {
         );
         assert!(ability.pregame_action_kind().is_none());
     }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn carnage_crimson_chaos_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition("Carnage, Crimson Chaos");
+    let rendered_lines = canonical_compiled_lines(&def);
+    let rendered = rendered_lines.join("\n");
+
+    assert_eq!(
+        rendered_lines,
+        vec![
+            "Trample".to_string(),
+            concat!(
+                "When this creature enters, return target creature card with mana value 3 or less ",
+                "from your graveyard to the battlefield. It gains ",
+                "\"This creature attacks each combat if able\" and ",
+                "\"Whenever this creature deals combat damage to a player, sacrifice it\""
+            )
+            .to_string(),
+            "Mayhem {B}{R}".to_string(),
+        ],
+        "Carnage should preserve its exact compiled text shape, got {rendered}"
+    );
+    assert!(
+        !format!("{def:#?}").contains("UnsupportedParserLine"),
+        "Carnage should parse strictly without unsupported placeholders"
+    );
+    let mayhem = def
+        .alternative_casts
+        .iter()
+        .find(|method| method.name() == "Mayhem")
+        .expect("Carnage should lower Mayhem as an alternative casting method");
+    assert_eq!(mayhem.cast_from_zone(), Zone::Graveyard);
+    assert_eq!(
+        mayhem.mana_cost().map(|cost| cost.to_oracle()),
+        Some("{B}{R}".to_string())
+    );
+    assert_eq!(
+        mayhem.cast_condition(),
+        Some(&crate::static_abilities::ThisSpellCostCondition::ThisCardWasDiscardedThisTurn),
+        "Mayhem should retain keyword identity and the this-card-discarded condition"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn carnage_crimson_chaos_mayhem_requires_this_card_discarded_this_turn() {
+    use crate::alternative_cast::CastingMethod;
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Black, 1);
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    let carnage = parse_oracle_card_definition("Carnage, Crimson Chaos");
+    let carnage_id = game.create_object_from_definition(&carnage, alice, Zone::Graveyard);
+
+    let without_discard = compute_legal_actions(&game, alice);
+    assert!(
+        without_discard.iter().all(|action| !matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Graveyard,
+                casting_method: CastingMethod::Alternative(_),
+            } if *spell_id == carnage_id
+        )),
+        "Carnage should not be castable with mayhem before this card was discarded this turn"
+    );
+
+    let unrelated = CardDefinitionBuilder::new(CardId::new(), "Unrelated Discard")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let unrelated_id = game.create_object_from_definition(&unrelated, alice, Zone::Graveyard);
+    let unrelated_discard_event = crate::events::RawEvent::new(
+        crate::events::CardDiscardedEvent::new(alice, unrelated_id),
+        crate::provenance::ProvNodeId::default(),
+    );
+    game.record_turn_history_event(&unrelated_discard_event);
+
+    let with_other_card_discarded = compute_legal_actions(&game, alice);
+    assert!(
+        with_other_card_discarded.iter().all(|action| !matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Graveyard,
+                casting_method: CastingMethod::Alternative(_),
+            } if *spell_id == carnage_id
+        )),
+        "Carnage mayhem should care that this card, not just any card, was discarded this turn"
+    );
+
+    let other_player_discard_event = crate::events::RawEvent::new(
+        crate::events::CardDiscardedEvent::new(bob, carnage_id),
+        crate::provenance::ProvNodeId::default(),
+    );
+    game.record_turn_history_event(&other_player_discard_event);
+
+    let with_other_player_discard = compute_legal_actions(&game, alice);
+    assert!(
+        with_other_player_discard.iter().all(|action| !matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Graveyard,
+                casting_method: CastingMethod::Alternative(_),
+            } if *spell_id == carnage_id
+        )),
+        "Carnage mayhem should require that you discarded this card this turn"
+    );
+
+    let discard_event = crate::events::RawEvent::new(
+        crate::events::CardDiscardedEvent::new(alice, carnage_id),
+        crate::provenance::ProvNodeId::default(),
+    );
+    game.record_turn_history_event(&discard_event);
+
+    let with_discard = compute_legal_actions(&game, alice);
+    assert!(
+        with_discard.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Graveyard,
+                casting_method: CastingMethod::Alternative(_),
+            } if *spell_id == carnage_id
+        )),
+        "Carnage should be castable from the graveyard for mayhem after this card was discarded this turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn carnage_crimson_chaos_etb_returns_only_small_creature_and_grants_abilities() {
+    let carnage = parse_oracle_card_definition("Carnage, Crimson Chaos");
+    let triggered = carnage
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Carnage should have an ETB trigger");
+    let ChooseSpec::Target(inner) = &triggered.choices[0] else {
+        panic!("Carnage ETB should target a creature card in your graveyard");
+    };
+    let ChooseSpec::Object(target_filter) = inner.as_ref() else {
+        panic!("Carnage ETB target should be an object filter");
+    };
+
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let carnage_id = game.create_object_from_definition(&carnage, alice, Zone::Battlefield);
+    let small = CardDefinitionBuilder::new(CardId::new(), "Small Graveyard Creature")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let large = CardDefinitionBuilder::new(CardId::new(), "Large Graveyard Creature")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    let small_id = game.create_object_from_definition(&small, alice, Zone::Graveyard);
+    let small_stable_id = game
+        .object(small_id)
+        .expect("small creature exists")
+        .stable_id;
+    let large_id = game.create_object_from_definition(&large, alice, Zone::Graveyard);
+    let filter_ctx = crate::filter::FilterContext::new(alice).with_source(carnage_id);
+
+    assert!(
+        target_filter.matches(
+            game.object(small_id).expect("small creature exists"),
+            &filter_ctx,
+            &game,
+        ),
+        "Carnage should be able to target a mana-value-3 creature card in your graveyard"
+    );
+    assert!(
+        !target_filter.matches(
+            game.object(large_id).expect("large creature exists"),
+            &filter_ctx,
+            &game,
+        ),
+        "Carnage should not be able to target a mana-value-4 creature card"
+    );
+
+    let carnage_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(carnage_id).expect("Carnage exists"),
+        &game,
+    );
+    let etb_event = crate::events::RawEvent::new(
+        crate::events::ZoneChangeEvent::with_cause(
+            carnage_id,
+            Zone::Stack,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            Some(carnage_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut ctx = crate::effects::ExecutionContext::new_default(carnage_id, alice)
+        .with_triggering_event(etb_event)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(small_id)]);
+    for segment in &triggered.effects.segments {
+        for effect in &segment.default_effects {
+            crate::effects::execute_effect(&mut game, effect, &mut ctx)
+                .expect("Carnage ETB effect should resolve");
+        }
+    }
+
+    let returned_small_id = game
+        .find_object_by_stable_id(small_stable_id)
+        .expect("small creature should still be tracked after moving zones");
+    assert_eq!(
+        game.object(returned_small_id)
+            .expect("small creature exists")
+            .zone,
+        Zone::Battlefield,
+        "Carnage should return the chosen small creature card to the battlefield"
+    );
+    assert!(
+        game.object_has_static_ability_id(returned_small_id, StaticAbilityId::MustAttack),
+        "Carnage should grant the returned creature attacks-each-combat-if-able"
+    );
+    let granted_combat_damage_trigger = game
+        .current_abilities(returned_small_id)
+        .expect("returned creature should have current abilities")
+        .iter()
+        .any(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => triggered
+                .trigger
+                .downcast_ref::<crate::triggers::ThisDealsCombatDamageToPlayerTrigger>()
+                .is_some(),
+            _ => false,
+        });
+    assert!(
+        granted_combat_damage_trigger,
+        "Carnage should grant the returned creature the combat-damage sacrifice trigger"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

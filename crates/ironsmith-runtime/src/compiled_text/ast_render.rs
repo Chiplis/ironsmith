@@ -752,7 +752,21 @@ pub(super) fn substitute_legendary_source_reference(
         return line.to_string();
     }
 
+    let source_name = card.name.split(',').next().unwrap_or(&card.name).trim();
+    if source_name.is_empty() {
+        return line.to_string();
+    }
+
     let lower = line.to_ascii_lowercase();
+    if card.supertypes.contains(&Supertype::Legendary) {
+        if let Some(rest) = line.strip_prefix("When this creature enters,") {
+            return format!("When {source_name} enters,{rest}");
+        }
+        if let Some(rest) = line.strip_prefix("When this creature enters the battlefield,") {
+            return format!("When {source_name} enters the battlefield,{rest}");
+        }
+    }
+
     let conditional_static_self_surface = (lower.starts_with("as long as ")
         || lower.contains(": as long as "))
         && (lower.contains(", this creature has ") || lower.contains(" this creature has "));
@@ -762,11 +776,6 @@ pub(super) fn substitute_legendary_source_reference(
         || lower.contains(": this creature gets ")
         || lower.contains(": whenever this creature deals combat damage to a player");
     if !card.supertypes.contains(&Supertype::Legendary) || !uses_named_source_surface {
-        return line.to_string();
-    }
-
-    let source_name = card.name.split(',').next().unwrap_or(&card.name).trim();
-    if source_name.is_empty() {
         return line.to_string();
     }
 
@@ -1972,6 +1981,14 @@ pub(super) fn describe_alternative_cast_line(
         }
         AlternativeCastingMethod::Retrace { .. } => "Retrace".to_string(),
         AlternativeCastingMethod::JumpStart => "Jump-start".to_string(),
+        AlternativeCastingMethod::FromZone { name, .. }
+            if name.eq_ignore_ascii_case("Mayhem") =>
+        {
+            method
+                .mana_cost()
+                .map(|cost| format!("Mayhem {}", cost.to_oracle()))
+                .unwrap_or_else(|| "Mayhem".to_string())
+        }
         AlternativeCastingMethod::Escape { cost, exile_count } => {
             let count_text =
                 small_number_word(*exile_count).unwrap_or_else(|| exile_count.to_string());
