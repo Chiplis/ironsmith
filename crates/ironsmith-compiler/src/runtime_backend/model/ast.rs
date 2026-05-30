@@ -728,6 +728,10 @@ pub(crate) enum SubjectVerbActionAst {
     Explore {
         target: TargetAst,
     },
+    Endure {
+        target: TargetAst,
+        amount: Value,
+    },
     Exploit,
     Connive {
         target: TargetAst,
@@ -1736,6 +1740,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::Fateseal { count } => f.debug_tuple("Fateseal").field(count).finish(),
             Self::Populate { count, .. } => f.debug_tuple("Populate").field(count).finish(),
             Self::Explore { target } => f.debug_tuple("Explore").field(target).finish(),
+            Self::Endure { target, amount } => f
+                .debug_struct("Endure")
+                .field("target", target)
+                .field("amount", amount)
+                .finish(),
             Self::Exploit => f.write_str("Exploit"),
             Self::Connive { target, count } => f
                 .debug_struct("Connive")
@@ -4975,6 +4984,14 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Explore { target },
+        )
+    }
+
+    pub(crate) fn subject_verb_endure(target: TargetAst, amount: Value) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Endure { target, amount },
         )
     }
 

@@ -1977,6 +1977,7 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
             | SubjectVerbActionAst::Transform { target }
             | SubjectVerbActionAst::Convert { target }
             | SubjectVerbActionAst::Explore { target }
+            | SubjectVerbActionAst::Endure { target, .. }
             | SubjectVerbActionAst::Connive { target, .. }
             | SubjectVerbActionAst::MoveToLibraryNthFromTop { target, .. }
             | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target }
@@ -2339,6 +2340,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Support { .. }
             | SubjectVerbActionAst::Adapt { .. }
             | SubjectVerbActionAst::Explore { .. }
+            | SubjectVerbActionAst::Endure { .. }
             | SubjectVerbActionAst::Exploit
             | SubjectVerbActionAst::ConniveIterated
             | SubjectVerbActionAst::OpenAttraction
@@ -2710,6 +2712,10 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
             }
             | SubjectVerbActionAst::Explore {
                 target: effect_target,
+            }
+            | SubjectVerbActionAst::Endure {
+                target: effect_target,
+                ..
             }
             | SubjectVerbActionAst::GainControl {
                 target: effect_target,

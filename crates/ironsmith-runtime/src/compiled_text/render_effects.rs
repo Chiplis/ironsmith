@@ -26104,6 +26104,46 @@ fn describe_unless_any_player_pays_search_prefix(
     ))
 }
 
+fn describe_endure_mode(choose_mode: &crate::effects::ChooseModeEffect) -> Option<String> {
+    if choose_mode.modes.len() != 2
+        || choose_mode.choose_count != Value::Fixed(1)
+        || choose_mode.min_choose_count != Value::Fixed(1)
+        || choose_mode.allow_repeated_modes
+    {
+        return None;
+    }
+
+    let mut counter_amount = None;
+    let mut token_size = None;
+    for mode in &choose_mode.modes {
+        let [effect] = mode.effects.as_slice() else {
+            return None;
+        };
+        if let Some(put) = effect.downcast_ref::<crate::effects::PutCountersEffect>() {
+            if put.counter_type != CounterType::PlusOnePlusOne
+                || !matches!(put.target, ChooseSpec::Source)
+                || put.target_count.is_some()
+                || put.distributed
+            {
+                return None;
+            }
+            counter_amount = Some(put.amount.clone());
+            continue;
+        }
+        if let Some(create) = effect.downcast_ref::<crate::effects::CreateTokenEffect>() {
+            token_size = Some(endure_spirit_token_size(create)?);
+            continue;
+        }
+        return None;
+    }
+
+    let amount = counter_amount?;
+    if token_size.as_ref() != Some(&amount) {
+        return None;
+    }
+    Some(format!("it endures {}", describe_value(&amount)))
+}
+
 pub(super) fn describe_tap_or_untap_mode(
     choose_mode: &crate::effects::ChooseModeEffect,
 ) -> Option<String> {
@@ -29980,6 +30020,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         return compact;
     }
     if let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() {
+        if let Some(compact) = describe_endure_mode(choose_mode) {
+            return compact;
+        }
         if let Some(compact) = describe_tap_or_untap_mode(choose_mode) {
             return compact;
         }
@@ -34539,6 +34582,41 @@ fn is_fabricate_servo_token(create: &crate::effects::CreateTokenEffect) -> bool 
             })
         )
         && token.abilities.is_empty()
+}
+
+fn endure_spirit_token_size(create: &crate::effects::CreateTokenEffect) -> Option<Value> {
+    if create.controller != PlayerFilter::You
+        || create.controller_target.is_some()
+        || create.suppress_aura_attachment_choice
+        || create.enters_tapped
+        || create.enters_attacking
+        || create.exile_at_end_of_combat
+        || create.sacrifice_at_end_of_combat
+        || create.sacrifice_at_next_end_step
+        || create.exile_at_next_end_step
+        || create.count != Value::Fixed(1)
+    {
+        return None;
+    }
+
+    let token = &create.token;
+    if !token.card.is_token
+        || token.card.name != "Spirit"
+        || token.card.color_indicator != Some(crate::color::ColorSet::WHITE)
+        || token.card.card_types != [CardType::Creature]
+        || token.card.subtypes != [Subtype::Spirit]
+        || !token.abilities.is_empty()
+    {
+        return None;
+    }
+
+    match token.card.power_toughness {
+        Some(crate::card::PowerToughness {
+            power: crate::card::PtValue::Fixed(power),
+            toughness: crate::card::PtValue::Fixed(toughness),
+        }) if power == toughness => Some(Value::Fixed(power)),
+        _ => None,
+    }
 }
 
 fn describe_structural_afflict_keyword(

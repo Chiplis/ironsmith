@@ -2291,6 +2291,44 @@ pub(crate) fn parse_keyword_mechanic_clause(
         return Ok(Some(explore));
     }
 
+    if let Some(endure_idx) = clause_words
+        .iter()
+        .position(|word| matches!(*word, "endure" | "endures"))
+    {
+        let amount_tokens = trim_commas(&clause_tokens[endure_idx + 1..]);
+        let (amount, used) = parse_value(&amount_tokens).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing endure count (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
+        if used != amount_tokens.len() {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported endure count tail (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+
+        let subject_tokens = &clause_tokens[..endure_idx];
+        let subject_word_view = ClausePatternCompatWords::new(subject_tokens);
+        let subject_words = subject_word_view.to_word_refs();
+        let target = if subject_words.is_empty()
+            || word_slice_eq_any(
+                &subject_words,
+                &[
+                    &["it"],
+                    &["this"],
+                    &["this", "creature"],
+                    &["this", "permanent"],
+                ],
+            ) {
+            TargetAst::Source(span_from_tokens(subject_tokens))
+        } else {
+            parse_target_phrase(subject_tokens)?
+        };
+        return Ok(Some(EffectAst::subject_verb_endure(target, amount)));
+    }
+
     Ok(None)
 }
 
