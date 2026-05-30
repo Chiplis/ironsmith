@@ -1036,12 +1036,26 @@ pub(super) fn apply_reference_and_tag_stage(
         all_words.drain(..2);
     }
 
+    let references_sacrifice_cost_object = word_slice_contains_any_phrase(
+        all_words,
+        &[
+            &["the", "sacrificed", "creature"],
+            &["the", "sacrificed", "artifact"],
+            &["the", "sacrificed", "permanent"],
+            &["a", "sacrificed", "creature"],
+            &["a", "sacrificed", "artifact"],
+            &["a", "sacrificed", "permanent"],
+            &["sacrificed", "creature"],
+            &["sacrificed", "artifact"],
+            &["sacrificed", "permanent"],
+        ],
+    );
     let has_share_card_type = (word_slice_contains_word(all_words, "share")
         || word_slice_contains_word(all_words, "shares"))
         && (word_slice_contains_word(all_words, "card")
             || word_slice_contains_word(all_words, "permanent"))
         && word_slice_contains_word(all_words, "type")
-        && word_slice_contains_word(all_words, "it");
+        && (word_slice_contains_word(all_words, "it") || references_sacrifice_cost_object);
     let has_share_color = word_slice_contains_word(all_words, "shares")
         && word_slice_contains_word(all_words, "color")
         && word_slice_contains_word(all_words, "it");
@@ -1086,20 +1100,6 @@ pub(super) fn apply_reference_and_tag_stage(
     let has_lt_mana_value_as_tagged =
         word_slice_contains_any_phrase(all_words, &[&["lesser", "mana", "value"]])
             && !has_equal_or_lesser_mana_value;
-    let references_sacrifice_cost_object = word_slice_contains_any_phrase(
-        all_words,
-        &[
-            &["the", "sacrificed", "creature"],
-            &["the", "sacrificed", "artifact"],
-            &["the", "sacrificed", "permanent"],
-            &["a", "sacrificed", "creature"],
-            &["a", "sacrificed", "artifact"],
-            &["a", "sacrificed", "permanent"],
-            &["sacrificed", "creature"],
-            &["sacrificed", "artifact"],
-            &["sacrificed", "permanent"],
-        ],
-    );
     let references_it_for_mana_value =
         crate::runtime_backend::lexer::word_slice_contains_any_word(all_words, &["it", "its"])
             || word_slice_contains_any_phrase(

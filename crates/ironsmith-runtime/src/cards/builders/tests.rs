@@ -27272,6 +27272,29 @@ fn parse_additional_cost_sacrificed_power_reference_clause() {
     );
 }
 
+#[test]
+fn parse_oracle_fatal_grudge_shared_card_type_cost_reference_regression() {
+    let def = parse_oracle_card_definition("Fatal Grudge");
+    let debug = format!("{def:#?}");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        debug.contains("SharesCardType") && debug.contains("sacrificed_0"),
+        "Fatal Grudge should structurally link the opponent sacrifice filter to the sacrificed permanent, got {debug}"
+    );
+    assert!(
+        rendered_lower.contains("as an additional cost to cast this spell, sacrifice a nonland permanent"),
+        "Fatal Grudge should preserve its nonland additional cost, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains(
+            "each opponent chooses a permanent they control that shares a card type with the sacrificed permanent and sacrifices it"
+        ),
+        "Fatal Grudge should render the shared-card-type opponent choice, got {rendered}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_additional_cost_discard_clause() {

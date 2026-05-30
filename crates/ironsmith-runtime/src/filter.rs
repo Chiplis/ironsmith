@@ -3273,25 +3273,33 @@ impl ObjectFilterExt for ObjectFilter {
                         .push("that shares a creature type with that object".to_string());
                 }
                 TaggedOpbjectRelation::SharesCardType => {
-                    let permanent_type_context = self.zone == Some(Zone::Battlefield)
-                        || (!self.card_types.is_empty()
-                            && self.card_types.iter().all(|card_type| {
-                                matches!(
-                                    card_type,
-                                    CardType::Artifact
-                                        | CardType::Creature
-                                        | CardType::Enchantment
-                                        | CardType::Land
-                                        | CardType::Planeswalker
-                                        | CardType::Battle
-                                )
-                            }));
-                    if permanent_type_context {
-                        post_noun_qualifiers
-                            .push("that shares a permanent type with that object".to_string());
+                    if constraint.tag.as_str().starts_with("sacrifice_cost_")
+                        || constraint.tag.as_str().starts_with("sacrificed_")
+                    {
+                        post_noun_qualifiers.push(
+                            "that shares a card type with the sacrificed permanent".to_string(),
+                        );
                     } else {
-                        post_noun_qualifiers
-                            .push("that shares a card type with that object".to_string());
+                        let permanent_type_context = self.zone == Some(Zone::Battlefield)
+                            || (!self.card_types.is_empty()
+                                && self.card_types.iter().all(|card_type| {
+                                    matches!(
+                                        card_type,
+                                        CardType::Artifact
+                                            | CardType::Creature
+                                            | CardType::Enchantment
+                                            | CardType::Land
+                                            | CardType::Planeswalker
+                                            | CardType::Battle
+                                    )
+                                }));
+                        if permanent_type_context {
+                            post_noun_qualifiers
+                                .push("that shares a permanent type with that object".to_string());
+                        } else {
+                            post_noun_qualifiers
+                                .push("that shares a card type with that object".to_string());
+                        }
                     }
                 }
                 TaggedOpbjectRelation::AttachedToTaggedObject => {

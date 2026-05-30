@@ -18489,6 +18489,59 @@ pub(super) fn describe_for_players_choose_then_sacrifice(
         return None;
     }
     let choose = for_players.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if let Some(sacrifice) = for_players.effects[1]
+        .downcast_ref::<crate::effects::SacrificeTargetEffect>()
+        && choose_primary_zone(choose) == Some(Zone::Battlefield)
+        && !choose.is_search
+        && choose.count.is_single()
+        && choose.chooser == PlayerFilter::IteratedPlayer
+        && matches!(&sacrifice.target, ChooseSpec::Tagged(tag) if tag == &choose.tag)
+    {
+        let (subject, choose_verb, sacrifice_verb, controls) = match for_players.filter {
+            PlayerFilter::Any => ("Each player", "chooses", "sacrifices", "they control"),
+            PlayerFilter::Opponent => ("Each opponent", "chooses", "sacrifices", "they control"),
+            PlayerFilter::You => ("You", "choose", "sacrifice", "you control"),
+            _ => return None,
+        };
+        let mut selected_filter = choose.filter.clone();
+        selected_filter.zone = None;
+        let mut selection = selected_filter.description();
+        if let Some(rest) = selection.strip_suffix(" that player controls") {
+            selection = rest.to_string();
+        }
+        if choose.filter.controller == Some(PlayerFilter::IteratedPlayer) {
+            for head in [
+                "a permanent",
+                "an artifact",
+                "a creature",
+                "an enchantment",
+                "a land",
+                "a planeswalker",
+                "a battle",
+                "a card",
+                "permanent",
+                "artifact",
+                "creature",
+                "enchantment",
+                "land",
+                "planeswalker",
+                "battle",
+                "card",
+            ] {
+                if selection == head {
+                    selection = format!("{head} {controls}");
+                    break;
+                }
+                if let Some(rest) = selection.strip_prefix(&format!("{head} ")) {
+                    selection = format!("{head} {controls} {rest}");
+                    break;
+                }
+            }
+        }
+        return Some(format!(
+            "{subject} {choose_verb} {selection} and {sacrifice_verb} it"
+        ));
+    }
     let sacrifice = sacrifice_view(&for_players.effects[1])?;
     if choose_primary_zone(choose) != Some(Zone::Battlefield)
         || choose.is_search

@@ -18572,6 +18572,332 @@ fn necrotic_fumes_cost_prompt_has_no_legal_creature_without_controller_creature(
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn fatal_grudge_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(100_790), "Fatal Grudge")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "As an additional cost to cast this spell, sacrifice a nonland permanent.\n\
+             Each opponent chooses a permanent they control that shares a card type with the sacrificed permanent and sacrifices it.\n\
+             Draw a card.",
+        )
+        .expect("Fatal Grudge should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct FatalGrudgeDecisionMaker;
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for FatalGrudgeDecisionMaker {
+    fn decide_priority(
+        &mut self,
+        game: &GameState,
+        ctx: &crate::decisions::context::PriorityContext,
+    ) -> crate::decision::LegalAction {
+        if let Some(action) = ctx.actions.iter().find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::CastSpell { spell_id, .. }
+                    if game
+                        .object(*spell_id)
+                        .is_some_and(|obj| obj.name == "Fatal Grudge")
+            )
+        }) {
+            return action.clone();
+        }
+
+        crate::decision::LegalAction::PassPriority
+    }
+
+    fn decide_options(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        ctx.options
+            .iter()
+            .find(|option| {
+                option.legal && option.description.to_ascii_lowercase().contains("sacrifice")
+            })
+            .or_else(|| ctx.options.iter().find(|option| option.legal))
+            .map(|option| vec![option.index])
+            .unwrap_or_default()
+    }
+
+    fn decide_objects(
+        &mut self,
+        game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        for name in ["Cost Servo", "Cost Relic", "Matching Bear"] {
+            if let Some(candidate) = ctx.candidates.iter().find(|candidate| {
+                candidate.legal
+                    && game
+                        .object(candidate.id)
+                        .is_some_and(|object| object.name == name)
+            }) {
+                return vec![candidate.id];
+            }
+        }
+
+        ctx.candidates
+            .iter()
+            .filter(|candidate| candidate.legal)
+            .map(|candidate| candidate.id)
+            .take(ctx.min)
+            .collect()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn fatal_grudge_sacrifices_matching_opponent_permanent_and_draws() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let fatal_grudge = fatal_grudge_definition();
+    let cost_permanent = CardBuilder::new(CardId::new(), "Cost Servo")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let matching_permanent = CardBuilder::new(CardId::new(), "Matching Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let nonmatching_permanent = CardBuilder::new(CardId::new(), "Nonmatching Shrine")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let drawn_card = CardBuilder::new(CardId::new(), "Drawn Card")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+
+    let source_id = game.create_object_from_definition(&fatal_grudge, alice, Zone::Stack);
+    let cost_id = game.create_object_from_card(&cost_permanent, alice, Zone::Battlefield);
+    let matching_id = game.create_object_from_card(&matching_permanent, bob, Zone::Battlefield);
+    let nonmatching_id =
+        game.create_object_from_card(&nonmatching_permanent, bob, Zone::Battlefield);
+    game.create_object_from_card(&drawn_card, alice, Zone::Library);
+
+    let cost_snapshot = game
+        .object(cost_id)
+        .map(|object| {
+            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                object, &game,
+            )
+        })
+        .expect("cost permanent should exist before sacrifice");
+    game.move_object_by_effect(cost_id, Zone::Graveyard);
+    let mut tags = std::collections::HashMap::new();
+    tags.insert(crate::tag::TagKey::from("sacrificed_0"), vec![cost_snapshot]);
+    let mut dm = FatalGrudgeDecisionMaker;
+    let mut ctx =
+        crate::effects::ExecutionContext::new(source_id, alice, &mut dm).with_tagged_objects(tags);
+    let program = fatal_grudge.spell_effect.as_ref().expect("spell effect");
+    super::stack_resolution::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source_id,
+        program,
+        None,
+        &[],
+    )
+    .expect("Fatal Grudge should resolve");
+    assert!(
+        !game.battlefield.contains(&cost_id),
+        "Fatal Grudge setup should remove the paid nonland permanent from the battlefield"
+    );
+    assert!(
+        !game.battlefield.contains(&matching_id),
+        "Bob should sacrifice the permanent sharing a card type with the sacrificed permanent"
+    );
+    assert!(
+        game.battlefield.contains(&nonmatching_id),
+        "Bob's nonmatching permanent should remain on the battlefield"
+    );
+    assert!(
+        game.player(alice).expect("alice exists").hand.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Drawn Card")
+        }),
+        "Fatal Grudge should draw a card after the sacrifice instruction"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn fatal_grudge_does_not_sacrifice_when_opponent_has_no_matching_card_type() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let fatal_grudge = fatal_grudge_definition();
+    let cost_permanent = CardBuilder::new(CardId::new(), "Cost Relic")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let nonmatching_permanent = CardBuilder::new(CardId::new(), "Bob Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let drawn_card = CardBuilder::new(CardId::new(), "Branch Drawn Card")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+
+    let source_id = game.create_object_from_definition(&fatal_grudge, alice, Zone::Stack);
+    let cost_id = game.create_object_from_card(&cost_permanent, alice, Zone::Battlefield);
+    let nonmatching_id =
+        game.create_object_from_card(&nonmatching_permanent, bob, Zone::Battlefield);
+    game.create_object_from_card(&drawn_card, alice, Zone::Library);
+
+    let cost_snapshot = game
+        .object(cost_id)
+        .map(|object| {
+            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                object, &game,
+            )
+        })
+        .expect("cost permanent should exist before sacrifice");
+    game.move_object_by_effect(cost_id, Zone::Graveyard);
+    let mut tags = std::collections::HashMap::new();
+    tags.insert(crate::tag::TagKey::from("sacrificed_0"), vec![cost_snapshot]);
+    let mut dm = FatalGrudgeDecisionMaker;
+    let mut ctx =
+        crate::effects::ExecutionContext::new(source_id, alice, &mut dm).with_tagged_objects(tags);
+    let program = fatal_grudge.spell_effect.as_ref().expect("spell effect");
+    super::stack_resolution::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source_id,
+        program,
+        None,
+        &[],
+    )
+    .expect("Fatal Grudge should resolve without a matching permanent");
+
+    assert!(
+        game.battlefield.contains(&nonmatching_id),
+        "Bob should not sacrifice a permanent that shares no card type with the sacrificed permanent"
+    );
+    assert!(
+        game.player(alice).expect("alice exists").hand.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Branch Drawn Card")
+        }),
+        "Fatal Grudge should still draw when no opponent permanent matches"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn fatal_grudge_additional_cost_rejects_land_only_payment() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let mut trigger_queue = TriggerQueue::new();
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let fatal_grudge = fatal_grudge_definition();
+    let land = CardBuilder::new(CardId::new(), "Only Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let spell_id = game.create_object_from_definition(&fatal_grudge, alice, Zone::Hand);
+    let land_id = game.create_object_from_card(&land, alice, Zone::Battlefield);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Black, 1);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(crate::decision::LegalAction::CastSpell {
+            spell_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    );
+
+    let progress = match progress {
+        Ok(crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectOptions(ctx),
+        )) => {
+            let sacrifice_option = ctx
+                .options
+                .iter()
+                .find(|opt| opt.description.to_ascii_lowercase().contains("sacrifice"))
+                .expect("Fatal Grudge should present an object-selection cost option")
+                .index;
+            apply_priority_response(
+                &mut game,
+                &mut trigger_queue,
+                &mut state,
+                &PriorityResponse::NextCostChoice(sacrifice_option),
+            )
+        }
+        other => other,
+    };
+
+    match progress {
+        Ok(crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectObjects(ctx),
+        )) => {
+            assert!(
+                ctx.candidates
+                    .iter()
+                    .all(|candidate| candidate.id != land_id || !candidate.legal),
+                "Fatal Grudge should not offer a land as a legal nonland additional-cost payment"
+            );
+            let err = apply_priority_response(
+                &mut game,
+                &mut trigger_queue,
+                &mut state,
+                &PriorityResponse::CardCostChoice(land_id),
+            )
+            .expect_err("Fatal Grudge should reject a land cost choice");
+            let detail = format!("{err:?}").to_ascii_lowercase();
+            assert!(
+                detail.contains("cost")
+                    || detail.contains("legal")
+                    || detail.contains("candidate"),
+                "expected a cost legality failure for land-only payment, got {detail}"
+            );
+        }
+        Err(err) => {
+            let detail = format!("{err:?}").to_ascii_lowercase();
+            assert!(
+                detail.contains("cost") || detail.contains("additional") || detail.contains("pay"),
+                "expected a cost-payment failure with only a land available, got {detail}"
+            );
+        }
+        other => panic!("Fatal Grudge should not be castable with only a land payment: {other:?}"),
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_corpse_cobble_flashback_from_graveyard_still_uses_sacrificed_power() {
     use crate::cards::definitions::{grizzly_bears, llanowar_elves};
