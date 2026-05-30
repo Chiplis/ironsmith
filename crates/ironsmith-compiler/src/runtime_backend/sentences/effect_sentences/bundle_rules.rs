@@ -671,7 +671,7 @@ fn parse_choose_objects_then_for_each_of_those_bundle(
     };
     let choose_tag = TagKey::from(IT_TAG);
 
-    let second_words = crate::runtime_backend::token_word_refs(second);
+    let second_words = crate::runtime_backend::lexer::parser_token_word_refs(second);
     if second_words.len() < 5
         || !word_slice_starts_with(&second_words, &["for", "each", "of", "those"])
     {

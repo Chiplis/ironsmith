@@ -405,7 +405,10 @@ fn parse_repeated_if_or_predicate(
 
     let left_tokens = predicate_tokens_from_words(&filtered[..or_idx]);
     let right_tokens = predicate_tokens_from_words(&filtered[or_idx + 2..]);
-    let left = parse_predicate(&left_tokens)?;
+    let left = match parse_predicate(&left_tokens) {
+        Ok(predicate) => predicate,
+        Err(_) => return Ok(None),
+    };
     let right = parse_predicate(&right_tokens)?;
     Ok(Some(PredicateAst::Or(Box::new(left), Box::new(right))))
 }
@@ -826,7 +829,6 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if let Some(predicate) = parse_repeated_if_or_predicate(&filtered)? {
         return Ok(predicate);
     }
-
     if let Some(gets_idx) = find_index(&filtered, |word| *word == "gets")
         && gets_idx > 0
         && word_slice_eq(
@@ -837,10 +839,6 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::VoteOptionGetsMoreVotesOrTied {
             option: filtered[..gets_idx].join(" "),
         });
-    }
-
-    if let Some(predicate) = parse_or_predicate(&filtered)? {
-        return Ok(predicate);
     }
 
     if let Some(predicate) = parse_passive_this_way_tagged_object_predicate(&filtered)? {
@@ -1261,6 +1259,16 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             .collect::<Vec<_>>();
         let left = parse_predicate(&left_tokens)?;
         let right = parse_predicate(&right_tokens)?;
+        if matches!(
+            left,
+            PredicateAst::ManaSpentToCastThisSpellAtLeast { .. }
+                | PredicateAst::SameColorManaSpentToCastThisSpellAtLeast(_)
+        ) {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported mana-spent predicate tail (predicate: '{}')",
+                filtered.join(" ")
+            )));
+        }
         return Ok(PredicateAst::And(Box::new(left), Box::new(right)));
     }
 
@@ -1587,12 +1595,23 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             }) && rest_words.len() >= 4
                 && word_slice_starts_with(&rest_words, &["or", "more"])
             {
-                if counter_idx == 2 {
+                let consumed_source_tail = matches!(
+                    &rest_words[counter_idx + 1..],
+                    ["on", "it"]
+                        | ["on", "this"]
+                        | ["on", "this", "artifact"]
+                        | ["on", "this", "creature"]
+                        | ["on", "this", "enchantment"]
+                        | ["on", "this", "land"]
+                        | ["on", "this", "permanent"]
+                );
+                if counter_idx == 2 && consumed_source_tail {
                     return Ok(PredicateAst::SourceHasCountersAtLeast(count));
                 }
                 if counter_idx > 2
                     && let Some(counter_type) =
                         parse_counter_type_from_tokens(&rest[2..=counter_idx])
+                    && consumed_source_tail
                 {
                     return Ok(PredicateAst::SourceHasCounterAtLeast {
                         counter_type,
@@ -3091,6 +3110,18 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
+    if demonstrative_reference_len.is_some()
+        && word_slice_contains_word(&filtered, "or")
+        && crate::runtime_backend::lexer::word_slice_find_phrase_start(
+            &filtered,
+            &["most", "common", "color", "among", "all", "permanents"],
+        )
+        .is_none()
+        && let Some(predicate) = parse_or_predicate(&filtered)?
+    {
+        return Ok(predicate);
+    }
+
     if let Some(reference_len) = demonstrative_reference_len {
         let mut descriptor_words = filtered[reference_len..].to_vec();
         if descriptor_words.len() >= 2 && matches!(descriptor_words[0], "power" | "toughness") {
@@ -3140,6 +3171,25 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         if matches!(
             descriptor_words.as_slice(),
             [
+                "shares",
+                "a",
+                "color",
+                "with",
+                "the",
+                "most",
+                "common",
+                "color",
+                "among",
+                "all",
+                "permanents",
+                "or",
+                "a",
+                "color",
+                "tied",
+                "for",
+                "most",
+                "common"
+            ] | [
                 "shares",
                 "color",
                 "with",
@@ -3821,6 +3871,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                 right: Value::Fixed(amount),
             });
         }
+    }
+
+    if let Some(predicate) = parse_or_predicate(&filtered)? {
+        return Ok(predicate);
     }
 
     Err(CardTextError::ParseError(format!(

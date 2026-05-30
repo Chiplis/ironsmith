@@ -535,6 +535,36 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
         } else {
             parse_effect_chain_inner(second_clause)?
         };
+    let has_counter_followup = second_effects.iter().any(|effect| {
+        matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::PutCounters { .. },
+                ..
+            })
+        )
+    });
+    if !has_counter_followup
+        && let Some(with_idx) = find_index(second_clause, |token| token.is_word("with"))
+        && let Some(on_rel_idx) = rfind_index(&second_clause[with_idx + 1..], |token| {
+            token.is_word("on")
+        })
+    {
+        let on_idx = with_idx + 1 + on_rel_idx;
+        let counter_tokens = trim_commas(&second_clause[with_idx + 1..on_idx]);
+        let on_tail_words = crate::runtime_backend::token_word_refs(&second_clause[on_idx + 1..]);
+        if word_slice_first_is_any(&on_tail_words, &["it", "them"]) && !counter_tokens.is_empty() {
+            let (count, counter_type) =
+                super::zone_counter_helpers::parse_counter_descriptor(&counter_tokens)?;
+            second_effects.push(EffectAst::subject_verb_put_counters(
+                counter_type,
+                Value::Fixed(count as i32),
+                TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                None,
+                false,
+            ));
+        }
+    }
     let mut rewrote_return = false;
     for effect in &mut second_effects {
         match effect {

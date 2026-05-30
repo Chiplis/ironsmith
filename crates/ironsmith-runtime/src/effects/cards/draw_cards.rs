@@ -319,7 +319,9 @@ impl EffectExecutor for DrawCardsEffect {
                 &applied_effect_keys,
             ) {
                 TraitEventResult::Prevented => continue,
-                TraitEventResult::Replaced { effects, effect_id, .. } => {
+                TraitEventResult::Replaced {
+                    effects, effect_id, ..
+                } => {
                     let replacement_outcome =
                         execute_draw_replacement_effects(game, ctx, effects, effect_id, player_id)?;
                     replacement_count += replacement_outcome.count_or_zero();

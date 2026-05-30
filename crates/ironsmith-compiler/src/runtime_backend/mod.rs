@@ -53,6 +53,8 @@ pub(crate) mod keyword_static;
 pub(crate) mod keyword_static_helpers;
 #[path = "front_end/leaf.rs"]
 pub(crate) mod leaf;
+#[path = "front_end/lex_patterns.rs"]
+pub(crate) mod lex_patterns;
 #[path = "front_end/lexer.rs"]
 pub(crate) mod lexer;
 #[path = "lowering/lower/mod.rs"]

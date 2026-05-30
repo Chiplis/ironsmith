@@ -227,6 +227,9 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 || extends_existing_it_choice_set;
             ctx.last_it_choice_is_set = tag.as_str() == IT_TAG && choice_can_select_multiple;
             ctx.last_object_tag = Some(tag.as_str().to_string());
+            if str_starts_with(tag.as_str(), "__sentence_helper_exiled") {
+                ctx.last_exiled_collection_tag = Some(tag.as_str().to_string());
+            }
             ctx.last_player_filter = Some(followup_player);
             (effects, choices)
         }

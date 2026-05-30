@@ -442,6 +442,53 @@ fn kicked_count_override_self_replacement_program(
     Some(program)
 }
 
+fn kicked_multi_zone_search_to_battlefield_program(
+    compiled: &[crate::effect::Effect],
+    normalized_line: &str,
+) -> Option<crate::resolution::ResolutionProgram> {
+    if !normalized_line.contains("search your library and/or graveyard for up to five doctor cards")
+        || !normalized_line.contains(
+            "if this spell was kicked, put those cards onto the battlefield instead of putting them into your hand",
+        )
+    {
+        return None;
+    }
+    let [choose, reveal, move_to_hand, shuffle, conditional] = compiled else {
+        return None;
+    };
+    let conditional = conditional.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if conditional.condition != crate::effect::Condition::ThisSpellWasKicked {
+        return None;
+    }
+
+    let searched_tag = crate::TagKey::from("searched_multi_zone");
+    let default_effects = vec![
+        choose.clone(),
+        reveal.clone(),
+        move_to_hand.clone(),
+        shuffle.clone(),
+    ];
+    let replacement_effects = vec![
+        choose.clone(),
+        reveal.clone(),
+        crate::effect::Effect::move_to_zone(
+            ChooseSpec::tagged(searched_tag),
+            Zone::Battlefield,
+            false,
+        ),
+        shuffle.clone(),
+    ];
+    let mut program = crate::resolution::ResolutionProgram::from_effects(default_effects);
+    let segment = program.last_segment_mut()?;
+    segment
+        .self_replacements
+        .push(crate::resolution::SelfReplacementBranch::new(
+            conditional.condition.clone(),
+            replacement_effects,
+        ));
+    Some(program)
+}
+
 fn clash_win_optional_top_replacement_program(
     compiled: &[crate::effect::Effect],
     normalized_line: &str,
@@ -939,6 +986,12 @@ fn lower_statement_chunk(
     }
     if let Some(program) =
         kicked_count_override_self_replacement_program(&compiled, &normalized_line)
+    {
+        builder.spell_effect = Some(program);
+        return Ok(builder);
+    }
+    if let Some(program) =
+        kicked_multi_zone_search_to_battlefield_program(&compiled, &normalized_line)
     {
         builder.spell_effect = Some(program);
         return Ok(builder);

@@ -1836,6 +1836,13 @@ fn compile_subject_verb_effect(
                         "unable to resolve 'it' without prior reference".to_string(),
                     )
                 })?)
+            } else if tag.as_str() == "__source_exiled__" {
+                TagKey::from(ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
+                    format!(
+                        "__sentence_helper_exiled_l0_s0_e{}",
+                        ctx.id_gen_context().next_tag_id.saturating_sub(1)
+                    )
+                }))
             } else {
                 tag.clone()
             };
@@ -1879,6 +1886,13 @@ fn compile_subject_verb_effect(
                         "unable to resolve 'it' without prior reference".to_string(),
                     )
                 })?)
+            } else if tag.as_str() == "__source_exiled__" {
+                TagKey::from(ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
+                    format!(
+                        "__sentence_helper_exiled_l0_s0_e{}",
+                        ctx.id_gen_context().next_tag_id.saturating_sub(1)
+                    )
+                }))
             } else {
                 tag.clone()
             };
@@ -1911,6 +1925,13 @@ fn compile_subject_verb_effect(
                         "unable to resolve 'it' without prior reference".to_string(),
                     )
                 })?)
+            } else if tag.as_str() == "__source_exiled__" {
+                TagKey::from(ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
+                    format!(
+                        "__sentence_helper_exiled_l0_s0_e{}",
+                        ctx.id_gen_context().next_tag_id.saturating_sub(1)
+                    )
+                }))
             } else {
                 tag.clone()
             };
@@ -1938,6 +1959,13 @@ fn compile_subject_verb_effect(
                         "unable to resolve 'it' without prior reference".to_string(),
                     )
                 })?)
+            } else if tag.as_str() == "__source_exiled__" {
+                TagKey::from(ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
+                    format!(
+                        "__sentence_helper_exiled_l0_s0_e{}",
+                        ctx.id_gen_context().next_tag_id.saturating_sub(1)
+                    )
+                }))
             } else {
                 tag.clone()
             };
@@ -1966,6 +1994,13 @@ fn compile_subject_verb_effect(
                         "unable to resolve 'it' without prior reference".to_string(),
                     )
                 })?)
+            } else if tag.as_str() == "__source_exiled__" {
+                TagKey::from(ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
+                    format!(
+                        "__sentence_helper_exiled_l0_s0_e{}",
+                        ctx.id_gen_context().next_tag_id.saturating_sub(1)
+                    )
+                }))
             } else {
                 tag.clone()
             };
@@ -1994,6 +2029,13 @@ fn compile_subject_verb_effect(
                         "unable to resolve 'it' without prior reference".to_string(),
                     )
                 })?)
+            } else if tag.as_str() == "__source_exiled__" {
+                TagKey::from(ctx.last_exiled_collection_tag.clone().unwrap_or_else(|| {
+                    format!(
+                        "__sentence_helper_exiled_l0_s0_e{}",
+                        ctx.id_gen_context().next_tag_id.saturating_sub(1)
+                    )
+                }))
             } else {
                 tag.clone()
             };
@@ -2255,6 +2297,41 @@ fn compile_subject_verb_effect(
                     effect = effect.tag(tag);
                 }
                 return Ok((vec![choose, effect], choices));
+            }
+            if resolved_attach_spec.is_none()
+                && *zone == Zone::Library
+                && !*to_top
+                && let ChooseSpec::Object(filter) = spec.base()
+                && filter.zone == Some(Zone::Exile)
+            {
+                let remainder_tag = ctx.last_exiled_collection_tag.clone().or_else(|| {
+                    (ctx.last_object_tag.as_deref() == Some("__source_exiled__")).then(|| {
+                        format!(
+                            "__sentence_helper_exiled_l0_s0_e{}",
+                            ctx.id_gen_context().next_tag_id.saturating_sub(1)
+                        )
+                    })
+                });
+                let Some(remainder_tag) = remainder_tag else {
+                    let move_effect =
+                        crate::effects::MoveToZoneEffect::new(spec.clone(), *zone, *to_top);
+                    let move_effect = match battlefield_controller {
+                        ReturnControllerAst::Preserve => move_effect,
+                        ReturnControllerAst::Owner => move_effect.under_owner_control(),
+                        ReturnControllerAst::You => move_effect.under_you_control(),
+                    };
+                    return Ok((vec![Effect::new(move_effect)], choices));
+                };
+                let library_owner = ctx.last_player_filter.clone().unwrap_or(PlayerFilter::You);
+                return Ok((
+                    vec![Effect::put_tagged_remainder_on_library_bottom(
+                        TagKey::from(remainder_tag.as_str()),
+                        Some(TagKey::from("__source_exiled__")),
+                        crate::effects::consult_helpers::LibraryBottomOrder::Random,
+                        library_owner,
+                    )],
+                    choices,
+                ));
             }
             let move_effect = crate::effects::MoveToZoneEffect::new(spec.clone(), *zone, *to_top);
             let move_effect = if *zone == Zone::Battlefield && *battlefield_tapped {

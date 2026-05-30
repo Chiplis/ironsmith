@@ -77,7 +77,7 @@ impl KeywordActionKind {
             "populate" | "populates" | "populated" | "populating" => Some(Self::Populate),
             "planeswalk" | "planeswalks" | "planeswalked" | "planeswalking" => {
                 Some(Self::Planeswalk)
-            },
+            }
             "plot" | "plots" | "plotted" | "plotting" => Some(Self::Plot),
             "renown" | "renowned" => Some(Self::Renown),
             "connive" | "connives" | "connived" => Some(Self::Connive),

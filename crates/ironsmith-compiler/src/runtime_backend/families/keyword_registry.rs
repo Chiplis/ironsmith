@@ -944,14 +944,19 @@ pub(super) fn matches_exploit(
 }
 
 fn is_exert_attack_keyword_line(tokens: &[OwnedLexToken]) -> bool {
-    token_slice_starts_with_any(
-        tokens,
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
+    crate::runtime_backend::lexer::word_slice_starts_with_any(
+        &words,
         &[
-            &["you", "may", "exert"],
+            &["you", "may", "exert"][..],
             &[
                 "if", "this", "creature", "hasnt", "been", "exerted", "this", "turn", "you", "may",
                 "exert",
-            ],
+            ][..],
+            &[
+                "if", "this", "creature", "hasn't", "been", "exerted", "this", "turn", "you",
+                "may", "exert",
+            ][..],
         ],
     )
 }

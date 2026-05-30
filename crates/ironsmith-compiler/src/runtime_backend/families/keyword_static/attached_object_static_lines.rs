@@ -293,7 +293,7 @@ pub(crate) fn parse_equipped_creature_has_line(
 pub(crate) fn parse_enchanted_creature_has_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    let line_words = crate::runtime_backend::lexer::token_word_refs(tokens);
+    let line_words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
     let clause_text = line_words.join(" ");
     if line_words.len() < 4 || !word_slice_first_is(&line_words, "enchanted") {
         return Ok(None);
@@ -1325,7 +1325,7 @@ pub(crate) fn parse_attached_prevent_all_combat_damage_dealt_by_attached_line(
 pub(crate) fn parse_attached_prevent_all_damage_dealt_to_attached_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
-    let line_words = crate::runtime_backend::lexer::token_word_refs(tokens);
+    let line_words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
     if line_words.len() < 6 {
         return Ok(None);
     }

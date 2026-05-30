@@ -47,6 +47,20 @@ pub(crate) fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextE
         let filter = parse_object_filter(filter_clause.tokens(), false)?;
         return Ok(EffectAst::subject_verb_tap_all(filter));
     }
+    if let Some(then_idx) = tokens
+        .windows(2)
+        .position(|window| window[0].is_word("then") && window[1].is_word("return"))
+    {
+        let tap_tokens = trim_commas(&tokens[..then_idx]);
+        let return_tokens = trim_commas(&tokens[then_idx + 1..]);
+        if !tap_tokens.is_empty() && !return_tokens.is_empty() {
+            let target = parse_target_phrase(&tap_tokens)?;
+            let return_effect = parse_return(&return_tokens)?;
+            return Ok(EffectAst::Sequence {
+                effects: vec![EffectAst::subject_verb_tap(target), return_effect],
+            });
+        }
+    }
     // Handle "tap or untap <target>" as a choice between tapping and untapping.
     if let Some(target_clause) = clause.strip_prefix_clause(&["or", "untap"]) {
         let target = parse_target_phrase(target_clause.tokens())?;

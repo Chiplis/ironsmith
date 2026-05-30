@@ -1950,9 +1950,9 @@ impl ObjectFilter {
             }
         }
 
-        let has_entered_battlefield_this_turn_clause =
-            (self.entered_battlefield_this_turn || self.entered_battlefield_controller.is_some())
-                && self.zone == Some(Zone::Battlefield);
+        let has_entered_battlefield_this_turn_clause = (self.entered_battlefield_this_turn
+            || self.entered_battlefield_controller.is_some())
+            && self.zone == Some(Zone::Battlefield);
         if has_entered_battlefield_this_turn_clause
             && self.entered_battlefield_controller.is_none()
             && owner_suffix.is_none()

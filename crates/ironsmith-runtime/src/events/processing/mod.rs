@@ -371,14 +371,12 @@ fn process_event_direct(
                 event_source_snapshot,
             ),
             TraitApplyResult::Prevented => TraitEventResult::Prevented,
-            TraitApplyResult::Replaced(effects) => {
-                TraitEventResult::Replaced {
-                    effects,
-                    effect_id,
-                    source: chosen_effect.source,
-                    controller: chosen_effect.controller,
-                }
-            }
+            TraitApplyResult::Replaced(effects) => TraitEventResult::Replaced {
+                effects,
+                effect_id,
+                source: chosen_effect.source,
+                controller: chosen_effect.controller,
+            },
             TraitApplyResult::Unchanged(event) => TraitEventResult::Proceed(event),
             TraitApplyResult::NeedsInteraction {
                 decision_ctx,

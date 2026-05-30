@@ -802,15 +802,17 @@ impl StaticAbilityKind for AllCreaturesAttackAttachedControllerEachCombatIfAble 
         controller: PlayerId,
         _game: &GameState,
     ) -> Vec<crate::continuous::ContinuousEffect> {
-        vec![crate::continuous::ContinuousEffect::new(
-            source,
-            controller,
-            crate::continuous::EffectTarget::AllCreatures,
-            crate::continuous::Modification::AddAbility(
-                crate::static_abilities::StaticAbility::must_attack_attached_controller(source),
-            ),
-        )
-        .with_source_type(crate::continuous::EffectSourceType::StaticAbility)]
+        vec![
+            crate::continuous::ContinuousEffect::new(
+                source,
+                controller,
+                crate::continuous::EffectTarget::AllCreatures,
+                crate::continuous::Modification::AddAbility(
+                    crate::static_abilities::StaticAbility::must_attack_attached_controller(source),
+                ),
+            )
+            .with_source_type(crate::continuous::EffectSourceType::StaticAbility),
+        ]
     }
 }
 

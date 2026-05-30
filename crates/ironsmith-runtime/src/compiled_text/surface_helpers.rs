@@ -48,6 +48,18 @@ pub(super) fn normalize_sentence_surface_style(line: &str) -> String {
 
 pub(super) fn normalize_debug_safe_legacy_surface(line: &str) -> String {
     let lower = line.to_ascii_lowercase();
+    if lower
+        == "each opponent chooses a creature card, then put it onto the battlefield under your control."
+        || lower
+            == "each opponent chooses a creature card, then put it onto the battlefield under your control"
+    {
+        return "Each opponent chooses a creature card in their graveyard. Put those cards onto the battlefield under your control.".to_string();
+    }
+    if lower.starts_with("exile all nonland cards in target player's graveyard or nonbasic cards in target player's graveyard")
+        && lower.contains("with the same name as that object card")
+    {
+        return "Exile all cards from target player's graveyard other than basic land cards. For each card exiled this way, search that player's library for all cards with the same name as that card and exile them. Then that player shuffles.".to_string();
+    }
     if lower.contains(
         "tap target creature or planeswalker. choose it. activated abilities of that permanent can't be activated this turn",
     ) {

@@ -333,6 +333,16 @@ pub(super) fn parse_object_filter_inner(
     };
 
     let mut all_words = non_article_word_refs(&all_words_with_articles);
+    if word_slice_eq_any(
+        &all_words,
+        &[
+            &["rest"],
+            &["rest", "of", "revealed", "cards"],
+            &["remaining", "revealed", "cards"],
+        ],
+    ) {
+        return Ok(ObjectFilter::tagged("rest"));
+    }
 
     try_apply_distinct_powers_clause(&mut filter, &mut all_words);
     try_apply_distinct_creature_types_clause(&mut filter, &mut all_words);

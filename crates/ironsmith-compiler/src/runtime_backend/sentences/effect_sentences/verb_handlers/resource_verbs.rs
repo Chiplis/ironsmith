@@ -445,7 +445,7 @@ pub(crate) fn parse_look(
             PlayerAst::You => TargetAst::Player(PlayerFilter::You, None),
             PlayerAst::Opponent => TargetAst::Player(PlayerFilter::Opponent, None),
             PlayerAst::Target => TargetAst::Player(
-                PlayerFilter::Any,
+                PlayerFilter::target_player(),
                 span_from_tokens(&hand_tokens),
             ),
             PlayerAst::TargetOpponent => TargetAst::Player(

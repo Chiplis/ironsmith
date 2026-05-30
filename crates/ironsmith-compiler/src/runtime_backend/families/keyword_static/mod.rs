@@ -5438,22 +5438,23 @@ fn parse_cycling_cost_alternative_line(
             clause_words.join(" ")
         ))
     })?;
-    if cost_end <= cost_start {
-        return Ok(None);
-    }
-    let replacement_cost_tokens = trim_commas(&tokens[cost_start..cost_end]);
-    let replacement_total_cost = parse_activation_cost(&replacement_cost_tokens)?;
-    if replacement_total_cost.has_non_mana_costs() {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported non-mana cycling alternative cost (clause: '{}')",
-            clause_words.join(" ")
-        )));
-    }
-    let Some(replacement_mana_cost) = replacement_total_cost.mana_cost().cloned() else {
-        return Err(CardTextError::ParseError(format!(
-            "missing cycling alternative mana cost (clause: '{}')",
-            clause_words.join(" ")
-        )));
+    let replacement_mana_cost = if cost_end <= cost_start {
+        ManaCost::new()
+    } else {
+        let replacement_cost_tokens = trim_commas(&tokens[cost_start..cost_end]);
+        let replacement_total_cost = parse_activation_cost(&replacement_cost_tokens)?;
+        if replacement_total_cost.has_non_mana_costs() {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported non-mana cycling alternative cost (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        replacement_total_cost.mana_cost().cloned().ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing cycling alternative mana cost (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?
     };
 
     let mut filter = ObjectFilter::default().with_ability_marker("cycling");
@@ -9348,7 +9349,7 @@ pub(crate) fn parse_copy_activated_abilities_line(
     let filter_tokens = trim_edge_punctuation(&tokens[(has_idx + 5)..]);
     let mut filter_tokens =
         strip_leading_token_words_any(&filter_tokens, &["all", "each"]).to_vec();
-    let after_of_words = crate::runtime_backend::token_word_refs(&filter_tokens);
+    let after_of_words = crate::runtime_backend::lexer::parser_token_word_refs(&filter_tokens);
     let once_each_turn_start = word_slice_find_phrase_start(
         &after_of_words,
         &[

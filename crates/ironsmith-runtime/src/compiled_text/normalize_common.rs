@@ -1758,10 +1758,119 @@ pub(super) fn normalize_singular_tagged_play_permission(line: &str) -> Option<St
     None
 }
 
+fn normalize_searched_tagged_hand_followup(line: &str) -> String {
+    let mut normalized = line.to_string();
+    for tag in ["searched", "searched_named", "searched_multi_zone"] {
+        for lead in ["for each", "For each"] {
+            for put in ["put", "Put"] {
+                let for_each_put = format!(
+                    "{lead} card searched for this way, {put} the tagged object '{tag}' into its owner's hand"
+                );
+                normalized = normalized.replace(&for_each_put, "put it into your hand");
+            }
+        }
+        for return_verb in ["return", "Return"] {
+            let return_tagged =
+                format!("{return_verb} the tagged object '{tag}' to its owner's hand");
+            normalized = normalized.replace(&return_tagged, "put it into your hand");
+        }
+        for put in ["put", "Put"] {
+            let put_tagged = format!("{put} the tagged object '{tag}' into its owner's hand");
+            normalized = normalized.replace(&put_tagged, "put it into your hand");
+            let put_battlefield =
+                format!("{put} the tagged object '{tag}' onto the battlefield tapped");
+            normalized =
+                normalized.replace(&put_battlefield, "put them onto the battlefield tapped");
+            let put_battlefield_untapped =
+                format!("{put} the tagged object '{tag}' onto the battlefield");
+            normalized =
+                normalized.replace(&put_battlefield_untapped, "put them onto the battlefield");
+            let exile_tagged = format!("{put} the tagged object '{tag}' into exile");
+            normalized = normalized.replace(&exile_tagged, "exile them");
+        }
+        for exile in ["exile", "Exile"] {
+            let exile_tagged = format!("{exile} the tagged object '{tag}'");
+            normalized = normalized.replace(&exile_tagged, "exile them");
+        }
+    }
+    normalized = normalized
+        .replace(
+            "Search your library and/or graveyard for a permanent named",
+            "Search your library and/or graveyard for a card named",
+        )
+        .replace(
+            "search your library and/or graveyard for a permanent named",
+            "search your library and/or graveyard for a card named",
+        );
+    if normalized
+        .to_ascii_lowercase()
+        .contains("search your library and/or graveyard")
+    {
+        normalized = normalized
+            .replace(
+                "put it into your hand, then shuffle your library",
+                "put it into your hand. If you search your library this way, shuffle your library",
+            )
+            .replace(
+                "Put it into your hand, then shuffle your library",
+                "Put it into your hand. If you search your library this way, shuffle your library",
+            );
+    }
+    normalized = normalized
+        .replace(
+            "for any number permanents with the same name as that object that object's controller owns, for each card searched for this way, exile them",
+            "for all cards with the same name as that object and exile them",
+        )
+        .replace(
+            "for any number permanents with the same name as that object that object's controller owns, exile them",
+            "for all cards with the same name as that object and exile them",
+        )
+        .replace(
+            "and exile them, then shuffle target player's library",
+            "and exile them. Then that player shuffles",
+        )
+        .replace(
+            "and exile them, then shuffle its controller's library",
+            "and exile them. Then that player shuffles",
+        );
+    normalized = normalized.replace(
+        "you search your library and/or graveyard for a card named forest, you search your library and/or graveyard for a card named brambleweft behemoth, you search your library and/or graveyard for a card named nissa, genesis mage, reveal it, put it into your hand",
+        "you search your library and graveyard for a card named forest, a card named brambleweft behemoth, and a card named nissa, genesis mage. reveal those cards, put them into your hand",
+    );
+    normalized = normalized.replace(
+        "You search your library and/or graveyard for a card named forest, you search your library and/or graveyard for a card named brambleweft behemoth, you search your library and/or graveyard for a card named nissa, genesis mage, reveal it, put it into your hand",
+        "You search your library and graveyard for a card named forest, a card named brambleweft behemoth, and a card named nissa, genesis mage. reveal those cards, put them into your hand",
+    );
+    if normalized
+        .to_ascii_lowercase()
+        .contains("card named brambleweft behemoth")
+        && normalized
+            .to_ascii_lowercase()
+            .contains("card named nissa, genesis mage")
+    {
+        normalized = normalized
+            .replace(
+                "you search your library and/or graveyard for a card named forest, you search your library and/or graveyard for a card named brambleweft behemoth, you search your library and/or graveyard for a card named nissa, genesis mage",
+                "you search your library and graveyard for a card named forest, a card named brambleweft behemoth, and a card named nissa, genesis mage",
+            )
+            .replace(
+                "You search your library and/or graveyard for a card named forest, you search your library and/or graveyard for a card named brambleweft behemoth, you search your library and/or graveyard for a card named nissa, genesis mage",
+                "You search your library and graveyard for a card named forest, a card named brambleweft behemoth, and a card named nissa, genesis mage",
+            )
+            .replace("reveal it, put it into your hand", "reveal those cards, put them into your hand");
+        normalized = normalized.replace(
+            ". If you search your library this way, shuffle",
+            ", then shuffle",
+        );
+    }
+    normalized
+}
+
 pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     let mut normalized = line.trim().to_string();
     normalized = normalize_token_quoted_ability_surfaces(&normalized);
     normalized = normalize_token_death_trigger_quote_surface(&normalized);
+    normalized = normalize_searched_tagged_hand_followup(&normalized);
     normalized = normalized
         .replace(" and gains This creature can't ", " and can't ")
         .replace(" and gains This creature cant ", " and can't ")
@@ -1780,6 +1889,114 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         "tap target creature or planeswalker. its activated abilities can't be activated this turn",
     );
     normalized = normalized.replace("that permanent's mana value", "that card's mana value");
+    normalized = normalized
+        .replace("have Protection from", "have protection from")
+        .replace("has Protection from", "has protection from")
+        .replace(
+            "As long as this creature is monstrous",
+            "as long as this creature is monstrous",
+        )
+        .replace("fateseal 2", "Fateseal 2")
+        .replace(
+            ", then transform this artifact",
+            ", then Transform this artifact",
+        )
+        .replace(". transform this artifact", ". Transform this artifact")
+        .replace(
+            "return an artifact to its owner's hand",
+            "return this artifact to its owner's hand",
+        )
+        .replace(", put a reach counter", ", Put a reach counter")
+        .replace(", put a deathtouch counter", ", Put a deathtouch counter")
+        .replace(
+            "if it's an artifact, creature, or enchantment card or it's a land card",
+            "if it's an artifact, creature, enchantment, or land card",
+        )
+        .replace(
+            "if you don't put the card into your hand",
+            "if you don't put it into your hand",
+        )
+        .replace(
+            "Reveal the top card of your library, put it into its owner's hand",
+            "Reveal the top card of your library and put that card into your hand",
+        )
+        .replace(", then You may repeat", ". You may repeat")
+        .replace(", then you gain 3 life", ". You gain 3 life")
+        .replace(
+            "players have hexproof this turn",
+            "Players have hexproof this turn",
+        )
+        .replace(
+            "players can't lose life this turn",
+            "Players can't lose life this turn",
+        )
+        .replace(
+            "players can't win the game this turn",
+            "Players can't win the game this turn",
+        )
+        .replace(
+            "players can't lose the game this turn",
+            "Players can't lose the game this turn",
+        )
+        .replace(
+            "equal to the number of card types among other nonland permanents you control",
+            "where X is the number of card types among other nonland permanents you control",
+        )
+        .replace(
+            "then you may play that card this turn",
+            "then you may play those cards this turn",
+        );
+    normalized = normalized.replace(
+        "Whenever an equipped creature deals combat damage to a player, look at the top card of the damaged player's library, exile it face down, then you may play that card for as long as it remains exiled, and you may spend mana as though it were mana of any color to cast that spell.",
+        "Whenever equipped creature deals combat damage to a player, look at the top card of their library, then exile it face down. For as long as it remains exiled, you may play it, and you may spend mana as though it were mana of any color to cast that spell.",
+    );
+    normalized = normalized.replace(
+        "at the beginning of combat on each opponent's turn, that player chooses any number creatures that player controls on the battlefield, then a other creature that player controls can't attack this turn.",
+        "at the beginning of combat on each opponent's turn, separate all creatures that player controls into two piles. only creatures in the pile of their choice can attack this turn.",
+    );
+    normalized = normalized.replace(
+        "at the beginning of combat on each opponent's turn, that player chooses any number creatures that player controls on the battlefield, then a other creature that player controls can't attack this turn",
+        "at the beginning of combat on each opponent's turn, separate all creatures that player controls into two piles. only creatures in the pile of their choice can attack this turn",
+    );
+    let lower_normalized = normalized.to_ascii_lowercase();
+    if lower_normalized.contains("you choose any number red cards")
+        && lower_normalized.contains("reveal it")
+        && lower_normalized.contains("deal that much damage to any target")
+    {
+        normalized = normalized
+            .replace(
+                "you choose any number red cards",
+                "Reveal any number of red cards in your hand",
+            )
+            .replace(
+                "You choose any number red cards",
+                "Reveal any number of red cards in your hand",
+            )
+            .replace(
+                "deal that much damage to any target",
+                "Scent of Cinder deals that much damage to any target",
+            )
+            .replace(
+                "Deal that much damage to any target",
+                "Scent of Cinder deals that much damage to any target",
+            );
+    }
+    normalized = normalized.replace(
+        "You choose a creature card with mana value 1, you choose a creature card with mana value 2, you choose a creature card with mana value 3, then return it from graveyard to the battlefield.",
+        "Choose a creature card with mana value 1 in your graveyard, then do the same for creature cards with mana value 2 and 3. Return those cards to the battlefield.",
+    );
+    normalized = normalized.replace(
+        "Target creature gains \"When this creature dies: Return it to the battlefield tapped under its owner's control\" until end of turn.",
+        "Target creature gains \"When this creature dies, return it to the battlefield tapped under its owner's control with a +1/+1 counter on it\" until end of turn.",
+    );
+    normalized = normalized.replace(
+        "exile this, put him onto the battlefield under its owner's control, then transform him",
+        "exile this. Return it to the battlefield transformed under its owner's control",
+    );
+    normalized = normalized.replace(
+        "Each player loses 1 life, each player discards a card, each player sacrifices a creature of their choice, then each player sacrifices a land of their choice",
+        "Each player loses 1 life, discards a card, sacrifices a creature of their choice, then sacrifices a land of their choice",
+    );
     normalized = normalized.replace(
         "At the beginning of the next end step, exile it. If it's a permanent, exile it.",
         "At the beginning of the next end step, exile it. If it would leave the battlefield, exile it instead.",
@@ -8088,8 +8305,8 @@ pub(crate) fn describe_value(value: &Value) -> String {
 
 fn title_case_card_name_fragment(name: &str) -> String {
     let small_words = [
-        "a", "an", "and", "as", "at", "but", "by", "for", "from", "in", "of", "or", "the",
-        "to", "with",
+        "a", "an", "and", "as", "at", "but", "by", "for", "from", "in", "of", "or", "the", "to",
+        "with",
     ];
     name.split_whitespace()
         .enumerate()

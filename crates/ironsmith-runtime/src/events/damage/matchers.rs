@@ -577,6 +577,53 @@ impl ReplacementMatcher for DamageToSelfMatcher {
     }
 }
 
+/// Matches damage that would be dealt to the object this replacement source is attached to.
+#[derive(Debug, Clone)]
+pub struct DamageToAttachedObjectMatcher;
+
+impl DamageToAttachedObjectMatcher {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for DamageToAttachedObjectMatcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ReplacementMatcher for DamageToAttachedObjectMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        if event.event_kind() != EventKind::Damage {
+            return false;
+        }
+
+        let Some(attached_to) = ctx
+            .source
+            .and_then(|source| ctx.game.object(source))
+            .and_then(|object| object.attached_to)
+            .and_then(|target| target.object_id())
+        else {
+            return false;
+        };
+
+        let Some(damage) = downcast_event::<DamageEvent>(event) else {
+            return false;
+        };
+
+        matches!(damage.target, DamageTarget::Object(object_id) if object_id == attached_to)
+    }
+
+    fn priority(&self) -> ReplacementPriority {
+        ReplacementPriority::Other
+    }
+
+    fn display(&self) -> String {
+        "damage that would be dealt to attached object".to_string()
+    }
+}
+
 /// Matches preventable damage to the source of the replacement effect with optional constraints.
 #[derive(Debug, Clone, Default)]
 pub struct DamageToSelfConstraintMatcher {

@@ -834,7 +834,10 @@ fn cho_arrim_alchemist_activation_pays_costs_and_registers_prevention_life_follo
         .power_toughness(PowerToughness::fixed(1, 1))
         .build();
     let discard_id = game.create_object_from_card(&discard_fuel, alice, Zone::Hand);
-    let discard_stable = game.object(discard_id).expect("discard card exists").stable_id;
+    let discard_stable = game
+        .object(discard_id)
+        .expect("discard card exists")
+        .stable_id;
     let chosen_source = create_vanilla_creature(&mut game, "Chosen Damage Source", bob, 2, 2);
 
     game.player_mut(alice)
@@ -851,11 +854,13 @@ fn cho_arrim_alchemist_activation_pays_costs_and_registers_prevention_life_follo
         .expect("Cho-Arrim Alchemist should have an activated ability");
     let activate_action = crate::decision::compute_legal_actions(&game, alice)
         .into_iter()
-        .find(|action| matches!(
-            action,
-            crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
-                if *source == alchemist_id && *idx == ability_index
-        ))
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == alchemist_id && *idx == ability_index
+            )
+        })
         .expect("Cho-Arrim Alchemist activation should be legal with mana and discard fuel");
 
     let mut trigger_queue = TriggerQueue::new();
@@ -893,7 +898,11 @@ fn cho_arrim_alchemist_activation_pays_costs_and_registers_prevention_life_follo
             }
             crate::decision::GameProgress::NeedsDecisionCtx(
                 crate::decisions::context::DecisionContext::SelectOptions(cost_ctx),
-            ) if cost_ctx.description.to_ascii_lowercase().contains("choose the next cost") => {
+            ) if cost_ctx
+                .description
+                .to_ascii_lowercase()
+                .contains("choose the next cost") =>
+            {
                 let option = cost_ctx
                     .options
                     .iter()
@@ -932,7 +941,10 @@ fn cho_arrim_alchemist_activation_pays_costs_and_registers_prevention_life_follo
         "expected Cho-Arrim Alchemist activation to finish after discard cost, got {progress:?}"
     );
 
-    assert!(game.is_tapped(alchemist_id), "activation should tap Cho-Arrim Alchemist");
+    assert!(
+        game.is_tapped(alchemist_id),
+        "activation should tap Cho-Arrim Alchemist"
+    );
     let discarded_id = game
         .find_object_by_stable_id(discard_stable)
         .expect("discarded card should remain tracked");
@@ -955,8 +967,14 @@ fn cho_arrim_alchemist_activation_pays_costs_and_registers_prevention_life_follo
         false,
         crate::events::cause::EventCause::effect(),
     );
-    assert_eq!(damage, 0, "chosen source damage to Alice should be prevented");
-    assert!(prevented, "the next matching damage event should be replaced");
+    assert_eq!(
+        damage, 0,
+        "chosen source damage to Alice should be prevented"
+    );
+    assert!(
+        prevented,
+        "the next matching damage event should be replaced"
+    );
     assert_eq!(
         game.life_total(alice),
         22,
@@ -7163,11 +7181,8 @@ fn skeleton_crew_anthem_buffs_other_skeletons_and_pirates_only() {
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
 
-    let crew_id = game.create_object_from_definition(
-        &skeleton_crew_definition(),
-        alice,
-        Zone::Battlefield,
-    );
+    let crew_id =
+        game.create_object_from_definition(&skeleton_crew_definition(), alice, Zone::Battlefield);
     let skeleton_id = create_skeleton_crew_test_card(
         &mut game,
         "Ally Skeleton",
@@ -7332,11 +7347,8 @@ fn skeleton_crew_does_not_trigger_for_noncreatures_opponents_graveyard_or_off_ba
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
 
-    let battlefield_crew_id = game.create_object_from_definition(
-        &skeleton_crew_definition(),
-        alice,
-        Zone::Battlefield,
-    );
+    let battlefield_crew_id =
+        game.create_object_from_definition(&skeleton_crew_definition(), alice, Zone::Battlefield);
     let noncreature_id = create_skeleton_crew_test_card(
         &mut game,
         "Graveyard Artifact",
@@ -7358,23 +7370,29 @@ fn skeleton_crew_does_not_trigger_for_noncreatures_opponents_graveyard_or_off_ba
         2,
     );
 
-    assert!(game.move_object_by_effect(noncreature_id, Zone::Battlefield).is_some());
-    assert!(game.move_object_by_effect(opponent_creature_id, Zone::Battlefield).is_some());
+    assert!(
+        game.move_object_by_effect(noncreature_id, Zone::Battlefield)
+            .is_some()
+    );
+    assert!(
+        game.move_object_by_effect(opponent_creature_id, Zone::Battlefield)
+            .is_some()
+    );
     drain_pending_trigger_events(&mut game, &mut trigger_queue);
     assert!(
         trigger_queue.entries.is_empty(),
         "Skeleton Crew should ignore noncreature cards and opponents' graveyards"
     );
 
-    assert!(game.move_object_by_effect(battlefield_crew_id, Zone::Exile).is_some());
+    assert!(
+        game.move_object_by_effect(battlefield_crew_id, Zone::Exile)
+            .is_some()
+    );
     drain_pending_trigger_events(&mut game, &mut trigger_queue);
     trigger_queue.entries.clear();
 
-    let graveyard_crew_id = game.create_object_from_definition(
-        &skeleton_crew_definition(),
-        alice,
-        Zone::Graveyard,
-    );
+    let graveyard_crew_id =
+        game.create_object_from_definition(&skeleton_crew_definition(), alice, Zone::Graveyard);
     let second_creature_id = create_skeleton_crew_test_card(
         &mut game,
         "Second Graveyard Creature",
@@ -7386,8 +7404,14 @@ fn skeleton_crew_does_not_trigger_for_noncreatures_opponents_graveyard_or_off_ba
         2,
     );
 
-    assert!(game.move_object_by_effect(graveyard_crew_id, Zone::Exile).is_some());
-    assert!(game.move_object_by_effect(second_creature_id, Zone::Battlefield).is_some());
+    assert!(
+        game.move_object_by_effect(graveyard_crew_id, Zone::Exile)
+            .is_some()
+    );
+    assert!(
+        game.move_object_by_effect(second_creature_id, Zone::Battlefield)
+            .is_some()
+    );
     drain_pending_trigger_events(&mut game, &mut trigger_queue);
     assert!(
         trigger_queue.entries.is_empty(),
@@ -7406,11 +7430,8 @@ fn skeleton_crew_graveyard_activation_returns_it_tapped() {
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
 
-    let crew_id = game.create_object_from_definition(
-        &skeleton_crew_definition(),
-        alice,
-        Zone::Graveyard,
-    );
+    let crew_id =
+        game.create_object_from_definition(&skeleton_crew_definition(), alice, Zone::Graveyard);
     let crew_stable_id = game
         .object(crew_id)
         .expect("Skeleton Crew should exist")
@@ -7430,11 +7451,13 @@ fn skeleton_crew_graveyard_activation_returns_it_tapped() {
         .expect("Skeleton Crew should have a graveyard activated ability");
     let activate_action = crate::decision::compute_legal_actions(&game, alice)
         .into_iter()
-        .find(|action| matches!(
-            action,
-            crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
-                if *source == crew_id && *idx == ability_index
-        ))
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == crew_id && *idx == ability_index
+            )
+        })
         .expect("Skeleton Crew graveyard activation should be legal with mana available");
 
     let mut trigger_queue = TriggerQueue::new();
@@ -7457,7 +7480,10 @@ fn skeleton_crew_graveyard_activation_returns_it_tapped() {
         game.battlefield.contains(&returned_id),
         "Skeleton Crew should return to the battlefield"
     );
-    assert!(game.is_tapped(returned_id), "Skeleton Crew should return tapped");
+    assert!(
+        game.is_tapped(returned_id),
+        "Skeleton Crew should return tapped"
+    );
 }
 
 #[test]
@@ -7948,12 +7974,13 @@ fn leyline_of_transformation_applies_chosen_type_across_its_three_scopes() {
     let noncreature_spell_id = game.create_object_from_card(&noncreature_spell, alice, Zone::Stack);
     game.push_to_stack(StackEntry::new(noncreature_spell_id, alice));
 
-    let opponent_creature_spell = CardBuilder::new(CardId::new(), "Leyline Opposing Stack Creature")
-        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
-        .card_types(vec![CardType::Creature])
-        .subtypes(vec![Subtype::Elf])
-        .power_toughness(PowerToughness::fixed(1, 1))
-        .build();
+    let opponent_creature_spell =
+        CardBuilder::new(CardId::new(), "Leyline Opposing Stack Creature")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Elf])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
     let opponent_creature_spell_id =
         game.create_object_from_card(&opponent_creature_spell, bob, Zone::Stack);
     game.push_to_stack(StackEntry::new(opponent_creature_spell_id, bob));

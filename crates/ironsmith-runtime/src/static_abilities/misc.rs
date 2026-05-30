@@ -46,7 +46,6 @@ use crate::replacement::{
     EventModification, RedirectTarget, RedirectWhich, ReplacementAction, ReplacementEffect,
     ZoneReplacementSpec,
 };
-use crate::tag::SOURCE_EXILED_TAG;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
@@ -4304,19 +4303,18 @@ impl StaticAbilityKind for ExileToCounteredExileInsteadOfGraveyard {
         source: ObjectId,
         controller: PlayerId,
     ) -> Option<ReplacementEffect> {
-        Some(
-            ZoneReplacementSpec::new(
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            WouldGoToGraveyardFromAnywhereMatcher::new(
                 ObjectFilter::default().owned_by(self.player.clone()),
-                Zone::Exile,
-            )
-            .to_zone(Zone::Graveyard)
-            .with_follow_up_effects(vec![Effect::new(crate::effects::PutCountersEffect::new(
-                self.counter_type,
-                Value::Fixed(1),
-                ChooseSpec::All(ObjectFilter::tagged(SOURCE_EXILED_TAG).in_zone(Zone::Exile)),
-            ))])
-            .build(source, controller),
-        )
+                false,
+            ),
+            ReplacementAction::ExileWithSourceLinkCountersThen {
+                counters: vec![(self.counter_type, 1)],
+                effects: Vec::new(),
+            },
+        ))
     }
 }
 
@@ -5583,27 +5581,13 @@ mod tests {
         let replacement = ability
             .generate_replacement_effect(ObjectId::from_raw(1), PlayerId::from_index(0))
             .expect("replacement should be generated");
-        let ReplacementAction::Instead(effects) = &replacement.replacement else {
-            panic!("expected opponent-graveyard replacement to use an Instead action");
+        let ReplacementAction::ExileWithSourceLinkCountersThen { counters, effects } =
+            &replacement.replacement
+        else {
+            panic!("expected opponent-graveyard replacement to exile with source-linked counters");
         };
-        assert_eq!(effects.len(), 2, "expected exile+counter effect sequence");
-
-        let exile = effects[0]
-            .downcast_ref::<crate::effects::ExileEffect>()
-            .expect("expected exile effect");
-        assert!(matches!(exile.spec, ChooseSpec::Source));
-
-        let counters = effects[1]
-            .downcast_ref::<crate::effects::PutCountersEffect>()
-            .expect("expected put-counters effect");
-        assert_eq!(counters.counter_type, CounterType::Void);
-        assert!(matches!(
-            counters.target,
-            ChooseSpec::All(ref filter) if filter.zone == Some(Zone::Exile)
-                && filter.tagged_constraints.iter().any(
-                    |constraint| constraint.tag.as_str() == SOURCE_EXILED_TAG
-                )
-        ));
+        assert_eq!(counters.as_slice(), &[(CounterType::Void, 1)]);
+        assert!(effects.is_empty());
     }
 
     #[test]

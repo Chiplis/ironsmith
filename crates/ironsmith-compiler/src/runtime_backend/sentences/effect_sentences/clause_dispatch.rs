@@ -416,9 +416,7 @@ fn parse_for_each_prevent_damage_clause(
     Ok(Some(EffectAst::ForEachObject { filter, effects }))
 }
 
-fn parse_cast_any_number_from_among_tagged_clause(
-    tokens: &[OwnedLexToken],
-) -> Option<EffectAst> {
+fn parse_cast_any_number_from_among_tagged_clause(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     let clause_word_view = ClauseDispatchCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
     let (words, word_offset) = if word_slice_starts_with(&clause_words, &["you", "may"]) {
@@ -436,12 +434,10 @@ fn parse_cast_any_number_from_among_tagged_clause(
     let from_idx = word_slice_find_phrase_start(words, &["from", "among", "them"])
         .or_else(|| word_slice_find_phrase_start(words, &["from", "among", "those", "cards"]))?;
 
-    let mut filter = ObjectFilter::nonland()
-        .in_zone(Zone::Exile)
-        .match_tagged(
-            TagKey::from(IT_TAG),
-            crate::target::TaggedOpbjectRelation::IsTaggedObject,
-        );
+    let mut filter = ObjectFilter::nonland().in_zone(Zone::Exile).match_tagged(
+        TagKey::from(IT_TAG),
+        crate::target::TaggedOpbjectRelation::IsTaggedObject,
+    );
 
     if let Some(mana_idx) = word_slice_find_phrase_start(words, &["with", "mana", "value"]) {
         if mana_idx + 5 > from_idx

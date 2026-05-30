@@ -1222,6 +1222,7 @@ pub(crate) fn parse_non_subtype(word: &str) -> Option<Subtype> {
 pub(crate) fn parse_subtype_flexible(word: &str) -> Option<Subtype> {
     parse_subtype_word(word)
         .or_else(|| str_strip_suffix(word, "s").and_then(parse_subtype_word))
+        .or_else(|| str_strip_suffix(word, "es").and_then(parse_subtype_word))
         .or_else(|| {
             str_strip_suffix(word, "ves").and_then(|stem| parse_subtype_word(&format!("{stem}f")))
         })
@@ -2774,6 +2775,27 @@ pub(crate) fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst,
     match parse_target_phrase_inner(tokens) {
         Ok(target) => Ok(target),
         Err(err) => {
+            if let Some(except_idx) = all_words.iter().position(|word| *word == "except")
+                && except_idx > 0
+                && let Some(token_end) = token_index_for_word_index(tokens, except_idx)
+            {
+                let candidate = trim_commas(&tokens[..token_end]);
+                if !candidate.is_empty()
+                    && let Ok(target) = parse_target_phrase_inner(&candidate)
+                {
+                    return Ok(target);
+                }
+                if all_words.first().is_some_and(|word| *word == "copy")
+                    && let Some(token_start) = token_index_for_word_index(tokens, 1)
+                {
+                    let candidate = trim_commas(&tokens[token_start..token_end]);
+                    if !candidate.is_empty()
+                        && let Ok(target) = parse_target_phrase_inner(&candidate)
+                    {
+                        return Ok(target);
+                    }
+                }
+            }
             if word_slice_first_is_any(&all_words, &["during", "if", "until"]) {
                 for word_start in (1..all_words.len()).rev() {
                     let Some(token_start) = token_index_for_word_index(tokens, word_start) else {
@@ -2938,6 +2960,20 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
     if word_slice_eq(&all_words, &["it"]) {
         return Ok(wrap_target_count(
             TargetAst::Tagged(TagKey::from(IT_TAG), span),
+            target_count,
+        ));
+    }
+    if word_slice_eq_any(
+        &all_words,
+        &[
+            &["rest"],
+            &["the", "rest"],
+            &["rest", "of", "revealed", "cards"],
+            &["the", "rest", "of", "revealed", "cards"],
+        ],
+    ) {
+        return Ok(wrap_target_count(
+            TargetAst::Tagged(TagKey::from("rest"), span),
             target_count,
         ));
     }

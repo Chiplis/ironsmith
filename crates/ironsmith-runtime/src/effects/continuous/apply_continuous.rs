@@ -3,11 +3,11 @@
 use crate::continuous::{ContinuousEffect, EffectSourceType, EffectTarget, Modification};
 use crate::decision::SelectFirstDecisionMaker;
 use crate::effect::{ChoiceCount, EffectOutcome, Until, Value};
-use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::helpers::{
     resolve_objects_for_effect, resolve_objects_from_spec, resolve_player_filter, resolve_value,
     validate_target,
 };
+use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
@@ -530,7 +530,8 @@ impl CostExecutableEffect for ApplyContinuousEffect {
 
         let mut simulated_game = game.clone();
         let mut simulated_decision_maker = SelectFirstDecisionMaker;
-        let mut simulated_ctx = ExecutionContext::new(source, controller, &mut simulated_decision_maker);
+        let mut simulated_ctx =
+            ExecutionContext::new(source, controller, &mut simulated_decision_maker);
         match self.execute(&mut simulated_game, &mut simulated_ctx) {
             Ok(outcome) if !outcome.status.is_failure() => Ok(()),
             Ok(outcome) => Err(CostValidationError::Other(format!(

@@ -575,6 +575,18 @@ pub(crate) fn parse_copy_spell_clause(
     let target_words = copy_target_clause.word_refs();
     let target = if word_slice_eq(&target_words, &["this", "spell"]) {
         TargetAst::Source(None)
+    } else if word_slice_eq(&target_words, &["that", "spell"]) {
+        TargetAst::Tagged(TagKey::from("triggering"), None)
+    } else if word_slice_eq_any(
+        &target_words,
+        &[
+            &["it"],
+            &["that"],
+            &["that", "card"],
+            &["the", "exiled", "card"],
+        ],
+    ) {
+        TargetAst::Tagged(TagKey::from(IT_TAG), None)
     } else {
         parse_counter_target_phrase(copy_target_clause.tokens())?
     };

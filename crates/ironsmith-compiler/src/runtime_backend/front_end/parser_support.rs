@@ -189,7 +189,7 @@ fn parse_when_one_or_more_followup_head_inner<'a>(
 fn looks_like_when_one_or_more_this_way_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
     let this_way_in_prefix = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
         .map(|(before, _after)| contains_token_word_sequence(before, &["this", "way"]))
-        .unwrap_or(false);
+        .unwrap_or_else(|| contains_token_word_sequence(tokens, &["this", "way"]));
     starts_with_lexed_parser(tokens, 0, parse_when_one_or_more_followup_head_inner)
         && this_way_in_prefix
 }

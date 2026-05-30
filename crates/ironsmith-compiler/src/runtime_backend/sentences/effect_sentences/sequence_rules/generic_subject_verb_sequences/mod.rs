@@ -446,8 +446,7 @@ pub(crate) fn parse_next_damage_prevention_gain_life_sequence(
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
             SubjectVerbActionAst::PreventNextTimeDamage {
-                follow_up_effects,
-                ..
+                follow_up_effects, ..
             },
         ..
     }) = first_effect
@@ -467,10 +466,11 @@ pub(crate) fn parse_next_damage_prevention_gain_life_sequence(
         return Ok(None);
     };
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        subject: SubjectVerbSubjectAst {
-            player: PlayerAst::You,
-            ..
-        },
+        subject:
+            SubjectVerbSubjectAst {
+                player: PlayerAst::You,
+                ..
+            },
         action: SubjectVerbActionAst::GainLife { amount },
     }) = second_effect
     else {

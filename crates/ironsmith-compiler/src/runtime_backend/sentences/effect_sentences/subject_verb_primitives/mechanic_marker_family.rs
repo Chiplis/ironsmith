@@ -1,20 +1,211 @@
 use super::*;
+use crate::runtime_backend::front_end::lex_patterns::{
+    LexCaptureKind, LexCaptureRole, LexPattern, LexPatternAtom,
+};
 
-macro_rules! primitive {
-    ($id:literal, $priority:expr, $stage:ident, $hints:expr, $parser:expr) => {
-        SubjectVerbPrimitive {
-            id: $id,
-            priority: $priority,
-            stage: SubjectVerbPrimitiveStage::$stage,
-            head_hints: $hints,
-            shape_mask: 0,
-            parser: $parser,
-        }
+macro_rules! primitive_with_pattern_parser {
+    ($id:literal, $priority:expr, $stage:ident, $hints:expr, $pattern_atoms:expr, $parser:expr, $pattern_parser:expr) => {
+        SubjectVerbPrimitive::with_pattern_parser(
+            $id,
+            $priority,
+            SubjectVerbPrimitiveStage::$stage,
+            $hints,
+            $pattern_atoms,
+            $parser,
+            $pattern_parser,
+        )
     };
 }
 
+macro_rules! primitive_with_pattern {
+    ($id:literal, $priority:expr, $stage:ident, $hints:expr, $pattern_atoms:expr, $parser:expr) => {
+        SubjectVerbPrimitive::with_pattern(
+            $id,
+            $priority,
+            SubjectVerbPrimitiveStage::$stage,
+            $hints,
+            $pattern_atoms,
+            $parser,
+        )
+    };
+}
+
+const ANY_CLAUSE_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[LexPattern::role_capture(
+    "clause",
+    LexCaptureRole::Tail,
+    LexCaptureKind::Rest,
+)];
+
+const EACH_OPPONENT_LOSES_X_AND_YOU_GAIN_X_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::any_phrase(EACH_OPPONENT_PREFIXES),
+    LexPattern::role_capture(
+        "drain",
+        LexCaptureRole::Action,
+        LexCaptureKind::UntilPhrase(&["where", "x", "is"]),
+    ),
+    LexPattern::phrase(&["where", "x", "is"]),
+    LexPattern::role_capture("where_value", LexCaptureRole::Amount, LexCaptureKind::Rest),
+];
+const SACRIFICE_AT_END_OF_COMBAT_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::word("sacrifice"),
+    LexPattern::role_capture(
+        "object",
+        LexCaptureRole::Object,
+        LexCaptureKind::UntilAnyPhrase(END_OF_COMBAT_TIMING_PHRASES),
+    ),
+    LexPattern::any_phrase(END_OF_COMBAT_TIMING_PHRASES),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const OPTIONAL_THE_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[LexPattern::word("the")];
+const SACRIFICE_NEXT_END_STEP_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::word("sacrifice"),
+    LexPattern::role_capture(
+        "object",
+        LexCaptureRole::Object,
+        LexCaptureKind::UntilPhrase(&["at", "the", "beginning", "of"]),
+    ),
+    LexPattern::phrase(&["at", "the", "beginning", "of"]),
+    LexPattern::optional(OPTIONAL_THE_PATTERN_ATOMS),
+    LexPattern::phrase(&["next", "end", "step"]),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const REMAIN_EXILED_ANY_OF_THOSE_CARDS_SEQUENCE: &[LexPatternAtom<'static>] = &[
+    LexPattern::phrase(&["if", "any", "of", "those", "cards"]),
+    LexPattern::phrase(&["remain", "exiled"]),
+];
+const REMAIN_EXILED_THOSE_CARDS_SEQUENCE: &[LexPatternAtom<'static>] = &[
+    LexPattern::phrase(&["if", "those", "cards"]),
+    LexPattern::phrase(&["remain", "exiled"]),
+];
+const REMAIN_EXILED_THAT_CARD_SEQUENCE: &[LexPatternAtom<'static>] = &[
+    LexPattern::phrase(&["if", "that", "card"]),
+    LexPattern::phrase(&["remains", "exiled"]),
+];
+const REMAIN_EXILED_IT_SEQUENCE: &[LexPatternAtom<'static>] = &[
+    LexPattern::phrase(&["if", "it"]),
+    LexPattern::phrase(&["remains", "exiled"]),
+];
+const REMAIN_EXILED_SEQUENCES: &[&[LexPatternAtom<'static>]] = &[
+    REMAIN_EXILED_ANY_OF_THOSE_CARDS_SEQUENCE,
+    REMAIN_EXILED_THOSE_CARDS_SEQUENCE,
+    REMAIN_EXILED_THAT_CARD_SEQUENCE,
+    REMAIN_EXILED_IT_SEQUENCE,
+];
+const REMAIN_EXILED_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::any_sequence(REMAIN_EXILED_SEQUENCES),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const OPTIONAL_LEADING_CONNECTOR_PATTERN_ATOMS: &[LexPatternAtom<'static>] =
+    &[LexPattern::any_word(&["and", "then"])];
+const SHARED_DRAW_OPTIONAL_EACH: &[LexPatternAtom<'static>] = &[LexPattern::word("each")];
+const SHARED_DRAW_ACTION_BOUNDARIES: &[&[&str]] = &[&["each"], &["draw"], &["draws"]];
+const SHARED_DRAW_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::optional(OPTIONAL_LEADING_CONNECTOR_PATTERN_ATOMS),
+    LexPattern::role_capture(
+        "subject",
+        LexCaptureRole::Subject,
+        LexCaptureKind::UntilPhrase(&["and"]),
+    ),
+    LexPattern::word("and"),
+    LexPattern::role_capture(
+        "object",
+        LexCaptureRole::Object,
+        LexCaptureKind::UntilAnyPhrase(SHARED_DRAW_ACTION_BOUNDARIES),
+    ),
+    LexPattern::optional(SHARED_DRAW_OPTIONAL_EACH),
+    LexPattern::any_word(&["draw", "draws"]),
+    LexPattern::role_capture(
+        "amount",
+        LexCaptureRole::Amount,
+        LexCaptureKind::OneOrMoreWords,
+    ),
+];
+const CHOOSE_PLAYER_TO_EFFECT_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::optional(OPTIONAL_LEADING_CONNECTOR_PATTERN_ATOMS),
+    LexPattern::role_capture(
+        "action",
+        LexCaptureRole::Action,
+        LexCaptureKind::UntilPhrase(&["to"]),
+    ),
+    LexPattern::word("to"),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::OneOrMoreWords),
+];
+const YOU_AND_ATTACKING_PLAYER_DRAW_LOSE_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::word("you"),
+    LexPattern::word("and"),
+    LexPattern::optional(OPTIONAL_THE_PATTERN_ATOMS),
+    LexPattern::phrase(&["attacking", "player"]),
+    LexPattern::optional(SHARED_DRAW_OPTIONAL_EACH),
+    LexPattern::any_word(&["draw", "draws"]),
+    LexPattern::role_capture(
+        "draw_amount",
+        LexCaptureRole::Amount,
+        LexCaptureKind::UntilPhrase(&["and"]),
+    ),
+    LexPattern::word("and"),
+    LexPattern::any_word(&["lose", "loses"]),
+    LexPattern::role_capture(
+        "lose_amount",
+        LexCaptureRole::Modifier,
+        LexCaptureKind::OneOrMoreWords,
+    ),
+];
+const OWNER_WORDS: &[&str] = &["owner's", "owners'", "owners", "owner"];
+const HAND_WORDS: &[&str] = &["hand", "hands"];
+const RETURN_HALF_CONTROLLED_TO_HAND_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::optional(OPTIONAL_LEADING_CONNECTOR_PATTERN_ATOMS),
+    LexPattern::phrase(&["return", "half", "the"]),
+    LexPattern::role_capture(
+        "object",
+        LexCaptureRole::Object,
+        LexCaptureKind::UntilPhrase(&["they", "control"]),
+    ),
+    LexPattern::phrase(&["they", "control", "to", "their"]),
+    LexPattern::any_word(OWNER_WORDS),
+    LexPattern::any_word(HAND_WORDS),
+    LexPattern::phrase(&["rounded", "up"]),
+];
+const DEAL_WORDS: &[&str] = &["deal", "deals"];
+const HALF_DAMAGE_FROM_THOSE_SPELLS_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::optional(OPTIONAL_LEADING_CONNECTOR_PATTERN_ATOMS),
+    LexPattern::role_capture(
+        "source",
+        LexCaptureRole::Subject,
+        LexCaptureKind::UntilAnyPhrase(&[&["deal"], &["deals"]]),
+    ),
+    LexPattern::any_word(DEAL_WORDS),
+    LexPattern::phrase(&[
+        "damage", "to", "that", "player", "equal", "to", "half", "the", "damage", "dealt", "by",
+        "one", "of", "those",
+    ]),
+    LexPattern::role_capture(
+        "card_type",
+        LexCaptureRole::Object,
+        LexCaptureKind::WordCount(1),
+    ),
+    LexPattern::phrase(&["spells", "this", "turn", "rounded", "down"]),
+];
+const DRAW_EXILED_HAND_ACTION_PHRASES: &[&[&str]] =
+    &[&["shuffles", "then", "draws"], &["draw"], &["draws"]];
+const HAND_OWNER_WORDS: &[&str] = &["your", "their"];
+const DRAW_FOR_EACH_EXILED_HAND_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::optional(OPTIONAL_LEADING_CONNECTOR_PATTERN_ATOMS),
+    LexPattern::role_capture(
+        "subject",
+        LexCaptureRole::Subject,
+        LexCaptureKind::UntilAnyPhrase(DRAW_EXILED_HAND_ACTION_PHRASES),
+    ),
+    LexPattern::any_phrase(DRAW_EXILED_HAND_ACTION_PHRASES),
+    LexPattern::phrase(&["a", "card", "for", "each", "card", "exiled", "from"]),
+    LexPattern::role_capture(
+        "hand_owner",
+        LexCaptureRole::Object,
+        LexCaptureKind::OneOf(HAND_OWNER_WORDS),
+    ),
+    LexPattern::phrase(&["hand", "this", "way"]),
+];
 pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive] = &[
-    primitive!(
+    primitive_with_pattern!(
         "implicit-become-clause",
         10,
         PreDiagnostic,
@@ -35,9 +226,10 @@ pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive
             LexRuleHeadHint::Pair("this", "land"),
             LexRuleHeadHint::Pair("each", "of"),
         ],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_implicit_become_clause
     ),
-    primitive!(
+    primitive_with_pattern!(
         "fallback-mechanic-marker",
         20,
         PreDiagnostic,
@@ -46,9 +238,10 @@ pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive
             LexRuleHeadHint::Single("stand"),
             LexRuleHeadHint::Single("it"),
         ],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_fallback_mechanic_marker
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "target-gains-or-loses-all-creature-types",
         25,
         PreDiagnostic,
@@ -57,9 +250,11 @@ pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive
             LexRuleHeadHint::Single("it"),
             LexRuleHeadHint::Single("that")
         ],
-        parse_sentence_gains_or_loses_all_creature_types
+        GAINS_OR_LOSES_ALL_CREATURE_TYPES_PATTERN_ATOMS,
+        parse_sentence_gains_or_loses_all_creature_types,
+        parse_sentence_gains_or_loses_all_creature_types_matched
     ),
-    primitive!(
+    primitive_with_pattern!(
         "pump-creature-type-of-choice-pre",
         26,
         PreDiagnostic,
@@ -67,126 +262,173 @@ pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive
             LexRuleHeadHint::Single("creatures"),
             LexRuleHeadHint::Single("target"),
         ],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_pump_creature_type_of_choice
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "lose-draw-clash-repeat-process",
         27,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("you")],
-        parse_sentence_lose_draw_clash_repeat_process
+        LOSE_DRAW_CLASH_REPEAT_PATTERN_ATOMS,
+        parse_sentence_lose_draw_clash_repeat_process,
+        parse_sentence_lose_draw_clash_repeat_process_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "if-sacrifice-then-put-onto-battlefield-with-additional-counters",
         30,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("if")],
-        parse_if_sacrifice_then_put_onto_battlefield_with_additional_counters_sentence
+        IF_SACRIFICE_THEN_PUT_ONTO_BATTLEFIELD_WITH_ADDITIONAL_COUNTERS_PATTERN_ATOMS,
+        parse_if_sacrifice_then_put_onto_battlefield_with_additional_counters_sentence,
+        parse_if_sacrifice_then_put_onto_battlefield_with_additional_counters_sentence_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "if-tagged-cards-remain-exiled",
         40,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("if")],
-        parse_sentence_if_tagged_cards_remain_exiled
+        REMAIN_EXILED_PATTERN_ATOMS,
+        parse_sentence_if_tagged_cards_remain_exiled,
+        parse_sentence_if_tagged_cards_remain_exiled_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "if-enters-with-additional-counter",
         50,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("if")],
-        parse_if_enters_with_additional_counter_sentence
+        IF_ENTERS_WITH_ADDITIONAL_COUNTER_PATTERN_ATOMS,
+        parse_if_enters_with_additional_counter_sentence,
+        parse_if_enters_with_additional_counter_sentence_matched
     ),
-    primitive!(
+    primitive_with_pattern!(
         "if-any-tagged-cards-share-card-type-with-triggering-spell",
         55,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("if")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_if_any_tagged_cards_share_card_type_with_triggering_spell
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "put-onto-battlefield-with-additional-counters",
         60,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("put")],
-        parse_put_onto_battlefield_with_additional_counters_sentence
+        PUT_ONTO_BATTLEFIELD_WITH_ADDITIONAL_COUNTERS_PATTERN_ATOMS,
+        parse_put_onto_battlefield_with_additional_counters_sentence,
+        parse_put_onto_battlefield_with_additional_counters_sentence_matched
     ),
-    primitive!(
+    primitive_with_pattern!(
         "put-multiple-counters-on-target",
         70,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("put")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_put_multiple_counters_on_target
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "put-sticker-on",
         80,
         PreDiagnostic,
-        &[LexRuleHeadHint::Single("put")],
-        parse_sentence_put_sticker_on
+        &[
+            LexRuleHeadHint::Single("put"),
+            LexRuleHeadHint::Single("puts"),
+        ],
+        PUT_STICKER_ON_PATTERN_ATOMS,
+        parse_sentence_put_sticker_on,
+        parse_sentence_put_sticker_on_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "you-and-target-player-each-draw",
         90,
         PreDiagnostic,
-        &[LexRuleHeadHint::Single("you")],
-        parse_sentence_you_and_target_player_each_draw
+        &[
+            LexRuleHeadHint::Single("you"),
+            LexRuleHeadHint::Single("and"),
+            LexRuleHeadHint::Single("then"),
+        ],
+        SHARED_DRAW_PATTERN_ATOMS,
+        parse_sentence_you_and_target_player_each_draw,
+        parse_you_and_target_player_each_draw_sentence_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "choose-player-to-effect",
         100,
         PreDiagnostic,
-        &[LexRuleHeadHint::Single("choose")],
-        parse_sentence_choose_player_to_effect
+        &[
+            LexRuleHeadHint::Single("choose"),
+            LexRuleHeadHint::Single("and"),
+            LexRuleHeadHint::Single("then"),
+        ],
+        CHOOSE_PLAYER_TO_EFFECT_PATTERN_ATOMS,
+        parse_sentence_choose_player_to_effect,
+        parse_sentence_choose_player_to_effect_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "you-and-attacking-player-each-draw-and-lose",
         110,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("you")],
-        parse_sentence_you_and_attacking_player_each_draw_and_lose
+        YOU_AND_ATTACKING_PLAYER_DRAW_LOSE_PATTERN_ATOMS,
+        parse_sentence_you_and_attacking_player_each_draw_and_lose,
+        parse_sentence_you_and_attacking_player_each_draw_and_lose_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "sacrifice-then-put-onto-battlefield-with-additional-counters",
         120,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("sacrifice")],
-        parse_sacrifice_then_put_onto_battlefield_with_additional_counters_sentence
+        SACRIFICE_THEN_PUT_ONTO_BATTLEFIELD_WITH_ADDITIONAL_COUNTERS_PATTERN_ATOMS,
+        parse_sacrifice_then_put_onto_battlefield_with_additional_counters_sentence,
+        parse_sacrifice_then_put_onto_battlefield_with_additional_counters_sentence_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "sacrifice-it-next-end-step",
         130,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("sacrifice")],
-        parse_sentence_sacrifice_it_next_end_step
+        SACRIFICE_NEXT_END_STEP_PATTERN_ATOMS,
+        parse_sentence_sacrifice_it_next_end_step,
+        parse_sentence_sacrifice_it_next_end_step_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "sacrifice-at-end-of-combat",
         140,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("sacrifice")],
-        parse_sentence_sacrifice_at_end_of_combat
+        SACRIFICE_AT_END_OF_COMBAT_PATTERN_ATOMS,
+        parse_sentence_sacrifice_at_end_of_combat,
+        parse_sentence_sacrifice_at_end_of_combat_matched
     ),
-    primitive!(
+    primitive_with_pattern!(
         "target-player-choose-then-put-on-top-library",
         160,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("target")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_target_player_chooses_then_puts_on_top_of_library
     ),
-    primitive!(
+    primitive_with_pattern!(
         "target-player-choose-then-you-put-it-onto-battlefield",
         170,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("target")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_target_player_chooses_then_you_put_it_onto_battlefield
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "target-player-reveals-random-card-from-hand",
         180,
         PreDiagnostic,
-        &[LexRuleHeadHint::Single("target")],
-        parse_sentence_target_player_reveals_random_card_from_hand
+        &[
+            LexRuleHeadHint::Single("target"),
+            LexRuleHeadHint::Single("you"),
+            LexRuleHeadHint::Single("opponent"),
+            LexRuleHeadHint::Single("that"),
+        ],
+        TARGET_PLAYER_REVEALS_RANDOM_CARD_FROM_HAND_PATTERN_ATOMS,
+        parse_sentence_target_player_reveals_random_card_from_hand,
+        parse_sentence_target_player_reveals_random_card_from_hand_matched
     ),
 ];
 
@@ -200,42 +442,53 @@ pub(crate) static PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX: LazyLock<LexRule
     });
 
 pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive] = &[
-    primitive!(
+    primitive_with_pattern!(
         "exile-target-creature-with-greatest-power",
         10,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("exile")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_exile_target_creature_with_greatest_power
     ),
-    primitive!(
+    primitive_with_pattern!(
         "counter-target-spell-thats-second-cast-this-turn",
         20,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("counter")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_counter_target_spell_thats_second_cast_this_turn
     ),
-    primitive!(
+    primitive_with_pattern!(
         "counter-target-spell-if-it-was-kicked",
         30,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("counter")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_counter_target_spell_if_it_was_kicked
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "return-half-the-creatures-they-control-to-their-owners-hand",
         40,
         PostDiagnostic,
-        &[LexRuleHeadHint::Single("return")],
-        parse_sentence_return_half_the_creatures_they_control_to_their_owners_hand
+        &[
+            LexRuleHeadHint::Single("return"),
+            LexRuleHeadHint::Single("and"),
+            LexRuleHeadHint::Single("then"),
+        ],
+        RETURN_HALF_CONTROLLED_TO_HAND_PATTERN_ATOMS,
+        parse_sentence_return_half_the_creatures_they_control_to_their_owners_hand,
+        parse_sentence_return_half_the_creatures_they_control_to_their_owners_hand_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "destroy-creature-type-of-choice",
         50,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("destroy")],
-        parse_sentence_destroy_creature_type_of_choice
+        DESTROY_CREATURE_TYPE_OF_CHOICE_PATTERN_ATOMS,
+        parse_sentence_destroy_creature_type_of_choice,
+        parse_sentence_destroy_creature_type_of_choice_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "pump-creature-type-of-choice",
         60,
         PostDiagnostic,
@@ -243,121 +496,147 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
             LexRuleHeadHint::Single("creatures"),
             LexRuleHeadHint::Single("target"),
         ],
-        parse_sentence_pump_creature_type_of_choice
+        PUMP_CREATURE_TYPE_OF_CHOICE_PATTERN_ATOMS,
+        parse_sentence_pump_creature_type_of_choice,
+        parse_sentence_pump_creature_type_of_choice_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "must-attack-creature-type-of-choice",
         65,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("creatures")],
-        parse_sentence_must_attack_creature_type_of_choice
+        MUST_ATTACK_CREATURE_TYPE_OF_CHOICE_PATTERN_ATOMS,
+        parse_sentence_must_attack_creature_type_of_choice,
+        parse_sentence_must_attack_creature_type_of_choice_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "return-multiple-targets",
         70,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("return")],
-        parse_sentence_return_multiple_targets
+        RETURN_MULTIPLE_TARGETS_PATTERN_ATOMS,
+        parse_sentence_return_multiple_targets,
+        parse_sentence_return_multiple_targets_matched
     ),
-    primitive!(
+    primitive_with_pattern!(
         "choose-all-battlefield-graveyard-to-hand",
         80,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("choose")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_choose_all_from_battlefield_and_graveyard_to_hand
     ),
-    primitive!(
+    primitive_with_pattern!(
         "for-each-of-target-objects",
         90,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("for")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_for_each_of_target_objects
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "return-creature-type-of-choice",
         100,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("return")],
-        parse_sentence_return_targets_of_creature_type_of_choice
+        RETURN_TARGETS_OF_CREATURE_TYPE_OF_CHOICE_PATTERN_ATOMS,
+        parse_sentence_return_targets_of_creature_type_of_choice,
+        parse_sentence_return_targets_of_creature_type_of_choice_matched
     ),
-    primitive!(
+    primitive_with_pattern!(
         "distribute-counters",
         110,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("distribute")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_distribute_counters
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "keyword-then-chain",
         120,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("target")],
-        parse_sentence_keyword_then_chain
+        THEN_CHAIN_PATTERN_ATOMS,
+        parse_sentence_keyword_then_chain,
+        parse_sentence_keyword_then_chain_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "chain-then-keyword",
         130,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("target")],
-        parse_sentence_chain_then_keyword
+        THEN_CHAIN_PATTERN_ATOMS,
+        parse_sentence_chain_then_keyword,
+        parse_sentence_chain_then_keyword_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "exile-then-may-put-from-exile",
         140,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("exile")],
-        parse_sentence_exile_then_may_put_from_exile
+        EXILE_THEN_MAY_PUT_FROM_EXILE_PATTERN_ATOMS,
+        parse_sentence_exile_then_may_put_from_exile,
+        parse_sentence_exile_then_may_put_from_exile_matched
     ),
-    primitive!(
+    primitive_with_pattern!(
         "exile-then-shuffle-graveyard-into-library",
         150,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("exile")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_exile_then_shuffle_graveyard_into_library_sentence
     ),
-    primitive!(
+    primitive_with_pattern!(
         "exile-source-with-counters",
         160,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("exile")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_exile_source_with_counters
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "destroy-all-attached-to-target",
         170,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("destroy")],
-        parse_sentence_destroy_all_attached_to_target
+        DESTROY_ALL_ATTACHED_TO_TARGET_PATTERN_ATOMS,
+        parse_sentence_destroy_all_attached_to_target,
+        parse_sentence_destroy_all_attached_to_target_matched
     ),
-    primitive!(
+    primitive_with_pattern!(
         "comma-then-chain-special",
         180,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("target")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_comma_then_chain_special
     ),
-    primitive!(
+    primitive_with_pattern!(
         "destroy-then-land-controller-graveyard-count-damage",
         190,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("destroy")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_destroy_then_land_controller_graveyard_count_damage
     ),
-    primitive!(
+    primitive_with_pattern!(
         "draw-then-connive",
         200,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("draw")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_draw_then_connive
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "choose-then-do-same-for-filter",
         210,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("choose")],
-        parse_sentence_choose_then_do_same_for_filter
+        CHOOSE_THEN_DO_SAME_FOR_FILTER_PATTERN_ATOMS,
+        parse_sentence_choose_then_do_same_for_filter,
+        parse_choose_then_do_same_for_filter_sentence_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "choose-then-choose-objects",
         215,
         PostDiagnostic,
@@ -365,72 +644,94 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
             LexRuleHeadHint::Single("choose"),
             LexRuleHeadHint::Pair("you", "choose"),
         ],
-        parse_sentence_choose_then_choose_objects
+        CHOOSE_THEN_CHOOSE_OBJECTS_PATTERN_ATOMS,
+        parse_sentence_choose_then_choose_objects,
+        parse_choose_then_choose_objects_sentence_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "return-then-do-same-for-subtypes",
         220,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("return")],
-        parse_sentence_return_then_do_same_for_subtypes
+        RETURN_THEN_DO_SAME_FOR_SUBTYPES_PATTERN_ATOMS,
+        parse_sentence_return_then_do_same_for_subtypes,
+        parse_return_then_do_same_for_subtypes_sentence_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "return-then-create",
         230,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("return")],
-        parse_sentence_return_then_create
+        RETURN_THEN_CREATE_PATTERN_ATOMS,
+        parse_sentence_return_then_create,
+        parse_sentence_return_then_create_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "put-counter-sequence",
         240,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("put")],
-        parse_sentence_put_counter_sequence
+        PUT_COUNTER_SEQUENCE_PATTERN_ATOMS,
+        parse_sentence_put_counter_sequence,
+        parse_sentence_put_counter_sequence_matched
     ),
-    primitive!(
+    primitive_with_pattern!(
         "gets-then-fights",
         250,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("gets")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_gets_then_fights
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "return-with-counters-on-it",
         260,
         PostDiagnostic,
-        &[LexRuleHeadHint::Single("return")],
-        parse_sentence_return_with_counters_on_it
+        &[
+            LexRuleHeadHint::Single("return"),
+            LexRuleHeadHint::Single("then"),
+        ],
+        RETURN_WITH_COUNTERS_ON_IT_PATTERN_ATOMS,
+        parse_sentence_return_with_counters_on_it,
+        parse_return_with_counters_on_it_sentence_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "each-player-return-with-additional-counter",
         270,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("each")],
-        parse_sentence_each_player_return_with_additional_counter
+        EACH_PLAYER_RETURN_WITH_ADDITIONAL_COUNTER_PATTERN_ATOMS,
+        parse_sentence_each_player_return_with_additional_counter,
+        parse_each_player_return_with_additional_counter_sentence_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "sacrifice-any-number",
         280,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("sacrifice")],
-        parse_sentence_sacrifice_any_number
+        SACRIFICE_ANY_NUMBER_PATTERN_ATOMS,
+        parse_sentence_sacrifice_any_number,
+        parse_sacrifice_any_number_sentence_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "sacrifice-one-or-more",
         290,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("sacrifice")],
-        parse_sentence_sacrifice_one_or_more
+        SACRIFICE_ONE_OR_MORE_PATTERN_ATOMS,
+        parse_sentence_sacrifice_one_or_more,
+        parse_sacrifice_one_or_more_sentence_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "for-each-counter-kind-put-or-remove",
         320,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("for")],
-        parse_sentence_for_each_counter_kind_put_or_remove
+        FOR_EACH_COUNTER_KIND_PUT_OR_REMOVE_PATTERN_ATOMS,
+        parse_sentence_for_each_counter_kind_put_or_remove,
+        parse_sentence_for_each_counter_kind_put_or_remove_matched
     ),
-    primitive!(
+    primitive_with_pattern!(
         "transform-with-followup",
         350,
         PostDiagnostic,
@@ -438,16 +739,18 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
             LexRuleHeadHint::Single("transform"),
             LexRuleHeadHint::Single("convert"),
         ],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_transform_with_followup
     ),
-    primitive!(
+    primitive_with_pattern!(
         "cant-effect",
         370,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("cant")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_cant_effect
     ),
-    primitive!(
+    primitive_with_pattern!(
         "compound-damage-fanout",
         380,
         PostDiagnostic,
@@ -457,9 +760,10 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
             LexRuleHeadHint::Single("this"),
             LexRuleHeadHint::Single("target"),
         ],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_compound_damage_fanout
     ),
-    primitive!(
+    primitive_with_pattern!(
         "shared-color-target-fanout",
         390,
         PostDiagnostic,
@@ -467,128 +771,157 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
             LexRuleHeadHint::Single("target"),
             LexRuleHeadHint::Pair("target", "radiance"),
         ],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_shared_color_target_fanout
     ),
-    primitive!(
+    primitive_with_pattern!(
         "gain-x-plus-life",
         440,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("gain")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_gain_x_plus_life
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "for-each-exiled-this-way",
         450,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("for")],
-        parse_sentence_for_each_exiled_this_way
+        FOR_EACH_THIS_WAY_PATTERN_ATOMS,
+        parse_sentence_for_each_exiled_this_way,
+        parse_sentence_for_each_exiled_this_way_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "for-each-put-into-graveyard-this-way",
         460,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("for")],
-        parse_sentence_for_each_put_into_graveyard_this_way
+        FOR_EACH_THIS_WAY_PATTERN_ATOMS,
+        parse_sentence_for_each_put_into_graveyard_this_way,
+        parse_sentence_for_each_put_into_graveyard_this_way_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "draw-for-each-card-exiled-from-hand-this-way",
         470,
         PostDiagnostic,
-        &[LexRuleHeadHint::Single("draw")],
-        parse_sentence_draw_for_each_card_exiled_from_hand_this_way
+        &[
+            LexRuleHeadHint::Single("draw"),
+            LexRuleHeadHint::Single("draws"),
+            LexRuleHeadHint::Single("that"),
+            LexRuleHeadHint::Single("you"),
+            LexRuleHeadHint::Single("and"),
+            LexRuleHeadHint::Single("then"),
+        ],
+        DRAW_FOR_EACH_EXILED_HAND_PATTERN_ATOMS,
+        parse_sentence_draw_for_each_card_exiled_from_hand_this_way,
+        parse_draw_for_each_card_exiled_from_hand_this_way_sentence_matched
     ),
-    primitive!(
+    primitive_with_pattern!(
         "each-player-reveals-top-count-put-permanents-rest-graveyard",
         480,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("each")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_each_player_reveals_top_count_put_permanents_onto_battlefield_rest_graveyard
     ),
-    primitive!(
+    primitive_with_pattern!(
         "each-player-put-permanent-cards-exiled-with-source",
         490,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("each")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_each_player_put_permanent_cards_exiled_with_source
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "for-each-destroyed-this-way",
         500,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("for")],
-        parse_sentence_for_each_destroyed_this_way
+        FOR_EACH_THIS_WAY_PATTERN_ATOMS,
+        parse_sentence_for_each_destroyed_this_way,
+        parse_sentence_for_each_destroyed_this_way_matched
     ),
-    primitive!(
+    primitive_with_pattern!(
         "delayed-next-step-unless-pays",
         510,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("at")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_delayed_next_step_unless_pays
     ),
-    primitive!(
+    primitive_with_pattern!(
         "search-delayed-next-upkeep-unless-pays-lose-game",
         520,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("search")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_delayed_next_upkeep_unless_pays_lose_game
     ),
-    primitive!(
+    primitive_with_pattern!(
         "search-library",
         540,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("search")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_search_library
     ),
-    primitive!(
+    primitive_with_pattern!(
         "shuffle-graveyard-into-library",
         550,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("shuffle")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_shuffle_graveyard_into_library
     ),
-    primitive!(
+    primitive_with_pattern!(
         "shuffle-object-into-library",
         560,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("shuffle")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_shuffle_object_into_library
     ),
-    primitive!(
+    primitive_with_pattern!(
         "exile-hand-and-graveyard-bundle",
         570,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("exile")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_exile_hand_and_graveyard_bundle
     ),
-    primitive!(
+    primitive_with_pattern!(
         "target-player-exiles-creature-and-graveyard",
         580,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("target")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_target_player_exiles_creature_and_graveyard
     ),
-    primitive!(
+    primitive_with_pattern!(
         "look-at-top-then-exile-one",
         600,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("look")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_look_at_top_then_exile_one
     ),
-    primitive!(
+    primitive_with_pattern!(
         "look-at-hand",
         610,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("look")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_look_at_hand
     ),
-    primitive!(
+    primitive_with_pattern!(
         "gain-life-equal-to-age",
         620,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("gain")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_gain_life_equal_to_age
     ),
-    primitive!(
+    primitive_with_pattern!(
         "for-each-player-doesnt",
         630,
         PostDiagnostic,
@@ -597,44 +930,51 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
             LexRuleHeadHint::Single("then"),
             LexRuleHeadHint::Single("each"),
         ],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_for_each_player_doesnt
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "each-opponent-loses-x-and-you-gain-x",
         650,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("each")],
-        parse_sentence_each_opponent_loses_x_and_you_gain_x
+        EACH_OPPONENT_LOSES_X_AND_YOU_GAIN_X_PATTERN_ATOMS,
+        parse_sentence_each_opponent_loses_x_and_you_gain_x,
+        parse_sentence_each_opponent_loses_x_and_you_gain_x_matched
     ),
-    primitive!(
+    primitive_with_pattern!(
         "same-name-target-fanout",
         700,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("target")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_same_name_target_fanout
     ),
-    primitive!(
+    primitive_with_pattern!(
         "same-name-gets-fanout",
         710,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("target")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_same_name_gets_fanout
     ),
-    primitive!(
+    primitive_with_pattern!(
         "delayed-next-end-step",
         720,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("at")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_delayed_until_next_end_step
     ),
-    primitive!(
+    primitive_with_pattern!(
         "delayed-when-that-dies-this-turn",
         730,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("when")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_delayed_when_that_dies_this_turn_sentence
     ),
-    primitive!(
+    primitive_with_pattern!(
         "delayed-trigger-this-turn",
         740,
         PostDiagnostic,
@@ -644,65 +984,91 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
             LexRuleHeadHint::Single("when"),
             LexRuleHeadHint::Single("whenever"),
         ],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_delayed_trigger_this_turn
     ),
-    primitive!(
+    primitive_with_pattern!(
         "destroy-or-exile-all-split",
         750,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("destroy")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_destroy_or_exile_all_split
     ),
-    primitive!(
+    primitive_with_pattern!(
         "exile-up-to-one-each-target-type",
         760,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("exile")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_exile_up_to_one_each_target_type
     ),
-    primitive!(
+    primitive_with_pattern!(
         "exile-multi-target",
         770,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("exile")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_exile_multi_target
     ),
-    primitive!(
+    primitive_with_pattern!(
         "destroy-multi-target",
         780,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("destroy")],
+        ANY_CLAUSE_PATTERN_ATOMS,
         parse_sentence_destroy_multi_target
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "reveal-selected-cards-in-your-hand",
         790,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("reveal")],
-        parse_sentence_reveal_selected_cards_in_your_hand
+        REVEAL_SELECTED_CARDS_IN_YOUR_HAND_PATTERN_ATOMS,
+        parse_sentence_reveal_selected_cards_in_your_hand,
+        parse_sentence_reveal_selected_cards_in_your_hand_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "damage-unless-controller-has-source-deal-damage",
         800,
         PostDiagnostic,
-        &[LexRuleHeadHint::Single("damage")],
-        parse_sentence_damage_unless_controller_has_source_deal_damage
+        &[
+            LexRuleHeadHint::Single("damage"),
+            LexRuleHeadHint::Single("this"),
+            LexRuleHeadHint::Single("it"),
+        ],
+        DAMAGE_UNLESS_CONTROLLER_HAS_SOURCE_DEAL_DAMAGE_PATTERN_ATOMS,
+        parse_sentence_damage_unless_controller_has_source_deal_damage,
+        parse_sentence_damage_unless_controller_has_source_deal_damage_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "damage-to-that-player-unless-enchanted-attacked",
         810,
         PostDiagnostic,
-        &[LexRuleHeadHint::Single("damage")],
-        parse_sentence_damage_to_that_player_unless_enchanted_attacked
+        &[
+            LexRuleHeadHint::Single("damage"),
+            LexRuleHeadHint::Single("this"),
+        ],
+        DAMAGE_TO_THAT_PLAYER_UNLESS_ENCHANTED_ATTACKED_PATTERN_ATOMS,
+        parse_sentence_damage_to_that_player_unless_enchanted_attacked,
+        parse_sentence_damage_to_that_player_unless_enchanted_attacked_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "damage-to-that-player-half-damage-of-those-spells",
         820,
         PostDiagnostic,
-        &[LexRuleHeadHint::Single("damage")],
-        parse_sentence_damage_to_that_player_half_damage_of_those_spells
+        &[
+            LexRuleHeadHint::Single("damage"),
+            LexRuleHeadHint::Single("it"),
+            LexRuleHeadHint::Single("this"),
+            LexRuleHeadHint::Single("and"),
+            LexRuleHeadHint::Single("then"),
+        ],
+        HALF_DAMAGE_FROM_THOSE_SPELLS_PATTERN_ATOMS,
+        parse_sentence_damage_to_that_player_half_damage_of_those_spells,
+        parse_sentence_damage_to_that_player_half_damage_of_those_spells_matched
     ),
-    primitive!(
+    primitive_with_pattern_parser!(
         "unless-pays",
         830,
         PostDiagnostic,
@@ -711,7 +1077,9 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
             LexRuleHeadHint::Single("for"),
             LexRuleHeadHint::Single("each")
         ],
-        parse_sentence_unless_pays
+        UNLESS_PAYS_PATTERN_ATOMS,
+        parse_sentence_unless_pays,
+        parse_sentence_unless_pays_matched
     ),
 ];
 

@@ -314,7 +314,11 @@ fn public_enemy_requires_legal_attackers_to_attack_enchanted_creatures_controlle
     let bob = PlayerId::from_index(1);
     let charlie = PlayerId::from_index(2);
     let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
         20,
     );
 
@@ -388,7 +392,11 @@ fn public_enemy_does_not_force_attack_when_enchanted_creatures_controller_cant_b
     let bob = PlayerId::from_index(1);
     let charlie = PlayerId::from_index(2);
     let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
         20,
     );
 
@@ -15873,9 +15881,16 @@ fn cho_arrim_alchemist_runtime_prevents_chosen_source_to_you_and_gains_that_life
             false,
             crate::events::cause::EventCause::effect(),
         );
-    assert_eq!(wrong_player_damage, 3, "damage to Bob should not be prevented");
+    assert_eq!(
+        wrong_player_damage, 3,
+        "damage to Bob should not be prevented"
+    );
     assert!(!wrong_player_prevented, "the shield only protects Alice");
-    assert_eq!(game.life_total(alice), 20, "nonmatching damage should not gain life");
+    assert_eq!(
+        game.life_total(alice),
+        20,
+        "nonmatching damage should not gain life"
+    );
 
     let (other_source_damage, other_source_prevented) =
         crate::events::processing::process_damage_with_event(
@@ -15890,8 +15905,15 @@ fn cho_arrim_alchemist_runtime_prevents_chosen_source_to_you_and_gains_that_life
         other_source_damage, 3,
         "damage from an unchosen source should not be prevented"
     );
-    assert!(!other_source_prevented, "unchosen source should not consume the shield");
-    assert_eq!(game.life_total(alice), 20, "unchosen source should not gain life");
+    assert!(
+        !other_source_prevented,
+        "unchosen source should not consume the shield"
+    );
+    assert_eq!(
+        game.life_total(alice),
+        20,
+        "unchosen source should not gain life"
+    );
 
     let (prevented_damage, prevented) = crate::events::processing::process_damage_with_event(
         &mut game,
@@ -32229,8 +32251,7 @@ fn herald_of_leshrac_repeated_cumulative_upkeep_fails_atomically_when_short_on_l
         crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let herald = game.create_object_from_definition(&def, alice, Zone::Battlefield);
     let first_land = game.create_object_from_definition(&land_def, bob, Zone::Battlefield);
-    let only_remaining_land =
-        game.create_object_from_definition(&land_def, bob, Zone::Battlefield);
+    let only_remaining_land = game.create_object_from_definition(&land_def, bob, Zone::Battlefield);
 
     execute_herald_upkeep(&mut game, herald, upkeep, alice);
     assert_eq!(game.current_controller(first_land), Some(alice));
@@ -35071,9 +35092,8 @@ fn parse_oracle_leyline_of_transformation_regression() {
         "expected Leyline choose-as-enters wording to keep the enchantment self-reference, got {rendered}"
     );
     assert!(
-        rendered.contains(
-            "creatures you control are the chosen type in addition to their other types"
-        ),
+        rendered
+            .contains("creatures you control are the chosen type in addition to their other types"),
         "expected Leyline battlefield chosen-type clause to render, got {rendered}"
     );
     assert!(
@@ -37928,17 +37948,18 @@ fn vanilla_sorcery_for_path_test(id: u32, name: &str) -> CardDefinition {
 #[cfg(ironsmith_runtime_parser_tests)]
 fn resolve_path_of_the_pyromancer_with_votes(
     votes: Vec<usize>,
-) -> (crate::game_state::GameState, Vec<crate::triggers::TriggerEvent>) {
+) -> (
+    crate::game_state::GameState,
+    Vec<crate::triggers::TriggerEvent>,
+) {
     let def = parse_oracle_card_definition("Path of the Pyromancer");
     let program = def
         .spell_effect
         .as_ref()
         .expect("Path of the Pyromancer should compile to spell effects");
     let alice = PlayerId::from_index(0);
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let filler = vanilla_sorcery_for_path_test(91_101, "Path Filler");
     for _ in 0..3 {
         game.create_object_from_definition(&filler, alice, Zone::Hand);
@@ -37983,7 +38004,10 @@ fn path_of_the_pyromancer_runtime_discards_adds_mana_draws_and_planeswalks() {
 
     assert_eq!(player.hand.len(), 4, "discard 3, then draw 4 cards");
     assert_eq!(player.library.len(), 0, "four cards should be drawn");
-    assert_eq!(player.mana_pool.red, 3, "three discarded cards should add {{R}}{{R}}{{R}}");
+    assert_eq!(
+        player.mana_pool.red, 3,
+        "three discarded cards should add {{R}}{{R}}{{R}}"
+    );
     assert_eq!(
         keyword_action_count(&events, crate::events::KeywordActionKind::Planeswalk),
         1,
@@ -40263,6 +40287,7 @@ const STRICT_PARSE_REGRESSION_SUCCESS_CARDS: &[&str] = &[
     "Cabal Ritual",
     "Caves of Chaos Adventurer",
     "Cavern of Souls",
+    "Clown Car",
     "Cultivator Colossus",
     "Dungeon Crawler",
     "Echoing Deeps",
@@ -40300,7 +40325,6 @@ const STRICT_PARSE_REGRESSION_SUCCESS_CARDS: &[&str] = &[
 ];
 
 const STRICT_PARSE_REGRESSION_EXPECTED_FAILURE_CARDS: &[&str] = &[
-    "Clown Car",
     "Gravecrawler",
     "Hancock, Ghoulish Mayor",
     "Lake of the Dead",
@@ -40331,7 +40355,7 @@ strict_parse_card_test!(strict_parse_blast_zone, "Blast Zone");
 strict_parse_card_test!(strict_parse_bridge_from_below, "Bridge from Below");
 strict_parse_card_test!(strict_parse_cabal_ritual, "Cabal Ritual");
 strict_parse_card_test!(strict_parse_cavern_of_souls, "Cavern of Souls");
-strict_parse_card_expected_fail_test!(strict_parse_clown_car, "Clown Car");
+strict_parse_card_test!(strict_parse_clown_car, "Clown Car");
 strict_parse_card_test!(strict_parse_encroaching_mycosynth, "Encroaching Mycosynth");
 strict_parse_card_test!(strict_parse_escaped_null, "Escaped Null");
 strict_parse_card_test!(strict_parse_exuberant_fuseling, "Exuberant Fuseling");
@@ -47269,10 +47293,8 @@ fn villainous_wealth_runtime_casts_only_exiled_nonland_spells_with_mana_value_at
         .expect("Villainous Wealth should produce spell effects")
         .clone();
 
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     let source = game.create_object_from_definition(&def, alice, Zone::Stack);
@@ -47384,10 +47406,8 @@ fn villainous_wealth_runtime_may_decline_casting_exiled_spells() {
         .expect("Villainous Wealth should produce spell effects")
         .clone();
 
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     let source = game.create_object_from_definition(&def, alice, Zone::Stack);

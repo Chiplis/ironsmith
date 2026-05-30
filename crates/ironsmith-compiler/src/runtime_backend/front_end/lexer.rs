@@ -6,6 +6,7 @@ use winnow::stream::{Location, TokenSlice};
 use crate::cards::builders::{CardTextError, TextSpan};
 
 use super::grammar::primitives as grammar;
+use super::lex_patterns::{LexPattern, LexPatternAtom};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) enum LexerError {
@@ -1203,15 +1204,13 @@ impl<'a> LexedClause<'a> {
     }
 
     pub(crate) fn first_is_word(self, expected: &str) -> bool {
-        self.tokens
-            .first()
-            .is_some_and(|token| token.is_word(expected))
+        let atoms = [LexPatternAtom::Word(expected)];
+        LexPattern::new(&atoms).matches_prefix(self)
     }
 
     pub(crate) fn first_is_any_word(self, expected: &[&str]) -> bool {
-        self.tokens
-            .first()
-            .is_some_and(|token| token.is_any_word(expected))
+        let atoms = [LexPatternAtom::AnyWord(expected)];
+        LexPattern::new(&atoms).matches_prefix(self)
     }
 
     pub(crate) fn first_word(self) -> Option<&'a str> {
@@ -1223,13 +1222,13 @@ impl<'a> LexedClause<'a> {
     }
 
     pub(crate) fn matches_words(self, expected: &[&str]) -> bool {
-        let words = self.word_refs();
-        word_slice_eq(words.as_slice(), expected)
+        let atoms = [LexPatternAtom::Phrase(expected)];
+        LexPattern::new(&atoms).matches_clause(self)
     }
 
     pub(crate) fn matches_any_words(self, phrases: &[&[&str]]) -> bool {
-        let words = self.word_refs();
-        word_slice_eq_any(words.as_slice(), phrases)
+        let atoms = [LexPatternAtom::AnyPhrase(phrases)];
+        LexPattern::new(&atoms).matches_clause(self)
     }
 
     pub(crate) fn matching_word_value<T: Clone>(self, phrases: &[(&[&str], T)]) -> Option<T> {
@@ -1243,11 +1242,13 @@ impl<'a> LexedClause<'a> {
     }
 
     pub(crate) fn starts_with(self, expected: &[&str]) -> bool {
-        self.words().starts_with(expected)
+        let atoms = [LexPatternAtom::Phrase(expected)];
+        LexPattern::new(&atoms).matches_prefix(self)
     }
 
     pub(crate) fn starts_with_any(self, phrases: &[&[&str]]) -> bool {
-        self.words().starts_with_any(phrases)
+        let atoms = [LexPatternAtom::AnyPhrase(phrases)];
+        LexPattern::new(&atoms).matches_prefix(self)
     }
 
     pub(crate) fn ends_with(self, expected: &[&str]) -> bool {
@@ -1261,11 +1262,11 @@ impl<'a> LexedClause<'a> {
     }
 
     pub(crate) fn strip_prefix_clause(self, expected: &[&str]) -> Option<Self> {
-        let words = self.words();
-        if !words.starts_with(expected) {
-            return None;
-        }
-        let token_idx = words.token_index_after_words(expected.len())?;
+        let atoms = [LexPatternAtom::Phrase(expected)];
+        let matched = LexPattern::new(&atoms).match_prefix(self)?;
+        let token_idx = self
+            .words()
+            .token_index_after_words(matched.word_range.end)?;
         Some(self.from(token_idx))
     }
 
@@ -1274,8 +1275,17 @@ impl<'a> LexedClause<'a> {
         phrases: &'p [&'p [&'p str]],
     ) -> Option<(&'p [&'p str], Self)> {
         let words = self.word_refs();
-        word_slice_strip_any_prefix(&words, phrases)
-            .and_then(|(phrase, _)| self.strip_prefix_clause(phrase).map(|tail| (phrase, tail)))
+        let atoms = [LexPatternAtom::AnyPhrase(phrases)];
+        let matched = LexPattern::new(&atoms).match_prefix(self)?;
+        let phrase = phrases.iter().copied().find(|phrase| {
+            words
+                .get(0..phrase.len())
+                .is_some_and(|head| head == *phrase)
+        })?;
+        let token_idx = self
+            .words()
+            .token_index_after_words(matched.word_range.end)?;
+        Some((phrase, self.from(token_idx)))
     }
 
     pub(crate) fn strip_prefix_value_clause<T: Clone>(
@@ -1394,11 +1404,17 @@ impl<'a> LexedClause<'a> {
     }
 
     pub(crate) fn find_word(self, expected: &str) -> Option<usize> {
-        self.words().find_word(expected)
+        let atoms = [LexPatternAtom::Word(expected)];
+        LexPattern::new(&atoms)
+            .find_in_clause(self)
+            .map(|matched| matched.word_range.start)
     }
 
     pub(crate) fn find_word_any(self, expected: &[&str]) -> Option<usize> {
-        self.words().find_any_word(expected)
+        let atoms = [LexPatternAtom::AnyWord(expected)];
+        LexPattern::new(&atoms)
+            .find_in_clause(self)
+            .map(|matched| matched.word_range.start)
     }
 
     pub(crate) fn rfind_word(self, expected: &str) -> Option<usize> {
@@ -1406,14 +1422,25 @@ impl<'a> LexedClause<'a> {
     }
 
     pub(crate) fn find_phrase_start(self, expected: &[&str]) -> Option<usize> {
-        self.words().find_phrase_start(expected)
+        let atoms = [LexPatternAtom::Phrase(expected)];
+        LexPattern::new(&atoms)
+            .find_in_clause(self)
+            .map(|matched| matched.word_range.start)
     }
 
     pub(crate) fn find_any_phrase_start<'p>(
         self,
         phrases: &'p [&'p [&'p str]],
     ) -> Option<(&'p [&'p str], usize)> {
-        self.words().find_any_phrase_start(phrases)
+        let words = self.word_refs();
+        let atoms = [LexPatternAtom::AnyPhrase(phrases)];
+        let matched = LexPattern::new(&atoms).find_in_clause(self)?;
+        let phrase = phrases.iter().copied().find(|phrase| {
+            words
+                .get(matched.word_range.start..matched.word_range.start + phrase.len())
+                .is_some_and(|window| window == *phrase)
+        })?;
+        Some((phrase, matched.word_range.start))
     }
 
     pub(crate) fn find_any_phrase_span<'p>(
@@ -1425,11 +1452,11 @@ impl<'a> LexedClause<'a> {
     }
 
     pub(crate) fn contains_word(self, expected: &str) -> bool {
-        self.words().contains_word(expected)
+        self.find_word(expected).is_some()
     }
 
     pub(crate) fn contains_any_word(self, expected: &[&str]) -> bool {
-        self.words().contains_any_word(expected)
+        self.find_word_any(expected).is_some()
     }
 
     pub(crate) fn contains_no_words(self, expected: &[&str]) -> bool {

@@ -1,8 +1,115 @@
 use super::*;
+use crate::runtime_backend::front_end::lex_patterns::{
+    LexCaptureKind, LexCaptureRole, LexPattern, LexPatternAtom, LexPatternMatch,
+};
 use crate::runtime_backend::lexer::{
     word_slice_at_is, word_slice_contains_word, word_slice_eq, word_slice_eq_any,
     word_slice_first_is, word_slice_last_is, word_slice_starts_with,
 };
+
+const ALL_OR_EACH_WORDS: &[&str] = &["all", "each"];
+pub(crate) const DESTROY_ALL_ATTACHED_TO_TARGET_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::word("destroy"),
+    LexPattern::any_word(ALL_OR_EACH_WORDS),
+    LexPattern::role_capture(
+        "filter",
+        LexCaptureRole::Object,
+        LexCaptureKind::UntilPhrase(&["attached", "to"]),
+    ),
+    LexPattern::phrase(&["attached", "to"]),
+    LexPattern::role_capture(
+        "target",
+        LexCaptureRole::Tail,
+        LexCaptureKind::OneOrMoreWords,
+    ),
+];
+const RETURN_THEN_CREATE_HEAD_SEQUENCE: &[LexPatternAtom<'static>] = &[
+    LexPattern::word("return"),
+    LexPattern::capture("return_tail", LexCaptureKind::UntilPhrase(&["then"])),
+];
+const EXILE_THEN_MAY_PUT_HEAD_SEQUENCE: &[LexPatternAtom<'static>] = &[
+    LexPattern::word("exile"),
+    LexPattern::capture("exile_tail", LexCaptureKind::UntilPhrase(&["then"])),
+];
+const YOU_EXILE_THEN_MAY_PUT_HEAD_SEQUENCE: &[LexPatternAtom<'static>] = &[
+    LexPattern::phrase(&["you", "exile"]),
+    LexPattern::capture("exile_tail", LexCaptureKind::UntilPhrase(&["then"])),
+];
+const EXILE_THEN_MAY_PUT_HEAD_SEQUENCES: &[&[LexPatternAtom<'static>]] = &[
+    EXILE_THEN_MAY_PUT_HEAD_SEQUENCE,
+    YOU_EXILE_THEN_MAY_PUT_HEAD_SEQUENCE,
+];
+pub(crate) const RETURN_THEN_CREATE_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::any_sequence(&[RETURN_THEN_CREATE_HEAD_SEQUENCE]),
+    LexPattern::word("then"),
+    LexPattern::word("create"),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+pub(crate) const EXILE_THEN_MAY_PUT_FROM_EXILE_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::any_sequence(EXILE_THEN_MAY_PUT_HEAD_SEQUENCES),
+    LexPattern::word("then"),
+    LexPattern::phrase(&["you", "may", "put", "any", "number", "of"]),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+pub(crate) const THEN_CHAIN_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::role_capture(
+        "head",
+        LexCaptureRole::Subject,
+        LexCaptureKind::UntilPhrase(&["then"]),
+    ),
+    LexPattern::word("then"),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::OneOrMoreWords),
+];
+const OPTIONAL_OF_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[LexPattern::word("of")];
+pub(crate) const SACRIFICE_ANY_NUMBER_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::word("sacrifice"),
+    LexPattern::phrase(&["any", "number"]),
+    LexPattern::optional(OPTIONAL_OF_PATTERN_ATOMS),
+    LexPattern::role_capture(
+        "object",
+        LexCaptureRole::Object,
+        LexCaptureKind::OneOrMoreWords,
+    ),
+];
+pub(crate) const SACRIFICE_ONE_OR_MORE_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::word("sacrifice"),
+    LexPattern::capture("minimum", LexCaptureKind::WordCount(1)),
+    LexPattern::phrase(&["or", "more"]),
+    LexPattern::optional(OPTIONAL_OF_PATTERN_ATOMS),
+    LexPattern::role_capture(
+        "object",
+        LexCaptureRole::Object,
+        LexCaptureKind::OneOrMoreWords,
+    ),
+];
+pub(crate) const CHOOSE_THEN_DO_SAME_FOR_FILTER_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::role_capture(
+        "head",
+        LexCaptureRole::Subject,
+        LexCaptureKind::UntilPhrase(&["then", "do", "the", "same", "for"]),
+    ),
+    LexPattern::phrase(&["then", "do", "the", "same", "for"]),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::OneOrMoreWords),
+];
+pub(crate) const CHOOSE_THEN_CHOOSE_OBJECTS_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::role_capture(
+        "head",
+        LexCaptureRole::Subject,
+        LexCaptureKind::UntilPhrase(&["then"]),
+    ),
+    LexPattern::word("then"),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::OneOrMoreWords),
+];
+pub(crate) const RETURN_THEN_DO_SAME_FOR_SUBTYPES_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::word("return"),
+    LexPattern::role_capture(
+        "head",
+        LexCaptureRole::Subject,
+        LexCaptureKind::UntilPhrase(&["do", "the", "same", "for"]),
+    ),
+    LexPattern::phrase(&["do", "the", "same", "for"]),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::OneOrMoreWords),
+];
 
 pub(crate) fn parse_sentence_each_player_return_with_additional_counter(
     clause: SubjectVerbPrimitiveClause<'_>,
@@ -96,6 +203,17 @@ pub(crate) fn parse_sentence_each_player_reveals_top_count_put_permanents_onto_b
 pub(crate) fn parse_return_then_do_same_for_subtypes_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let pattern = LexPattern::new(RETURN_THEN_DO_SAME_FOR_SUBTYPES_PATTERN_ATOMS);
+    let Some(matched) = clause.match_pattern(pattern) else {
+        return Ok(None);
+    };
+    parse_return_then_do_same_for_subtypes_sentence_matched(clause, &matched)
+}
+
+pub(crate) fn parse_return_then_do_same_for_subtypes_sentence_matched(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    _matched: &LexPatternMatch<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if !clause.first_is_word("return") {
         return Ok(None);
     }
@@ -164,6 +282,17 @@ fn split_choose_same_followup_filters(filter: &ObjectFilter) -> Vec<ObjectFilter
 
 pub(crate) fn parse_choose_then_do_same_for_filter_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let pattern = LexPattern::new(CHOOSE_THEN_DO_SAME_FOR_FILTER_PATTERN_ATOMS);
+    let Some(matched) = clause.match_pattern(pattern) else {
+        return Ok(None);
+    };
+    parse_choose_then_do_same_for_filter_sentence_matched(clause, &matched)
+}
+
+pub(crate) fn parse_choose_then_do_same_for_filter_sentence_matched(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    _matched: &LexPatternMatch<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if !clause.first_is_word("choose") {
         return Ok(None);
@@ -274,6 +403,17 @@ fn preserve_choose_clause_it_reference(
 pub(crate) fn parse_choose_then_choose_objects_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let pattern = LexPattern::new(CHOOSE_THEN_CHOOSE_OBJECTS_PATTERN_ATOMS);
+    let Some(matched) = clause.match_pattern(pattern) else {
+        return Ok(None);
+    };
+    parse_choose_then_choose_objects_sentence_matched(clause, &matched)
+}
+
+pub(crate) fn parse_choose_then_choose_objects_sentence_matched(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    _matched: &LexPatternMatch<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some((head_clause, tail_clause)) = clause.split_once_on_then_trimmed() else {
         return Ok(None);
     };
@@ -339,6 +479,17 @@ pub(crate) fn parse_sentence_choose_then_do_same_for_filter(
 
 pub(crate) fn parse_sacrifice_any_number_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let pattern = LexPattern::new(SACRIFICE_ANY_NUMBER_PATTERN_ATOMS);
+    let Some(matched) = clause.match_pattern(pattern) else {
+        return Ok(None);
+    };
+    parse_sacrifice_any_number_sentence_matched(clause, &matched)
+}
+
+pub(crate) fn parse_sacrifice_any_number_sentence_matched(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    _matched: &LexPatternMatch<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let (head_clause, tail_clause) = if let Some((head, tail)) = clause.split_once_on_then_trimmed()
     {
@@ -418,6 +569,17 @@ pub(crate) fn parse_sentence_sacrifice_any_number(
 pub(crate) fn parse_sacrifice_one_or_more_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let pattern = LexPattern::new(SACRIFICE_ONE_OR_MORE_PATTERN_ATOMS);
+    let Some(matched) = clause.match_pattern(pattern) else {
+        return Ok(None);
+    };
+    parse_sacrifice_one_or_more_sentence_matched(clause, &matched)
+}
+
+pub(crate) fn parse_sacrifice_one_or_more_sentence_matched(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    _matched: &LexPatternMatch<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if !clause.first_is_word("sacrifice") {
         return Ok(None);
     }
@@ -475,6 +637,17 @@ pub(crate) fn parse_sentence_sacrifice_one_or_more(
 pub(crate) fn parse_sentence_keyword_then_chain(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let pattern = LexPattern::new(THEN_CHAIN_PATTERN_ATOMS);
+    let Some(matched) = clause.match_pattern(pattern) else {
+        return Ok(None);
+    };
+    parse_sentence_keyword_then_chain_matched(clause, &matched)
+}
+
+pub(crate) fn parse_sentence_keyword_then_chain_matched(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    _matched: &LexPatternMatch<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some((head_clause, tail_clause)) = clause.split_once_on_then_trimmed() else {
         return Ok(None);
     };
@@ -501,6 +674,17 @@ pub(crate) fn parse_sentence_keyword_then_chain(
 pub(crate) fn parse_sentence_chain_then_keyword(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let pattern = LexPattern::new(THEN_CHAIN_PATTERN_ATOMS);
+    let Some(matched) = clause.match_pattern(pattern) else {
+        return Ok(None);
+    };
+    parse_sentence_chain_then_keyword_matched(clause, &matched)
+}
+
+pub(crate) fn parse_sentence_chain_then_keyword_matched(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    _matched: &LexPatternMatch<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some((head_clause, tail_clause)) = clause.split_once_on_then_trimmed() else {
         return Ok(None);
     };
@@ -521,6 +705,17 @@ pub(crate) fn parse_sentence_chain_then_keyword(
 
 pub(crate) fn parse_sentence_return_then_create(
     clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let pattern = LexPattern::new(RETURN_THEN_CREATE_PATTERN_ATOMS);
+    let Some(matched) = clause.match_pattern(pattern) else {
+        return Ok(None);
+    };
+    parse_sentence_return_then_create_matched(clause, &matched)
+}
+
+pub(crate) fn parse_sentence_return_then_create_matched(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    _matched: &LexPatternMatch<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let split = clause.split_once_on_then_trimmed();
     let Some((head_slice, tail_slice)) = split else {
@@ -551,6 +746,17 @@ pub(crate) fn parse_sentence_return_then_create(
 
 pub(crate) fn parse_sentence_exile_then_may_put_from_exile(
     clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let pattern = LexPattern::new(EXILE_THEN_MAY_PUT_FROM_EXILE_PATTERN_ATOMS);
+    let Some(matched) = clause.match_pattern(pattern) else {
+        return Ok(None);
+    };
+    parse_sentence_exile_then_may_put_from_exile_matched(clause, &matched)
+}
+
+pub(crate) fn parse_sentence_exile_then_may_put_from_exile_matched(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    _matched: &LexPatternMatch<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let split = clause.split_once_on_then_trimmed();
     let Some((head_slice, tail_slice)) = split else {
@@ -848,25 +1054,29 @@ pub(crate) fn parse_sentence_destroy_all_attached_to_target(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     // "destroy all/each <filter> attached to <target>"
-    if !clause.first_is_word("destroy") {
+    let pattern = LexPattern::new(DESTROY_ALL_ATTACHED_TO_TARGET_PATTERN_ATOMS);
+    let Some(matched) = clause.match_pattern(pattern) else {
         return Ok(None);
-    }
-    if !clause
-        .token(1)
-        .is_some_and(|token| token.is_word("all") || token.is_word("each"))
-    {
-        return Ok(None);
-    }
+    };
+    parse_sentence_destroy_all_attached_to_target_matched(clause, &matched)
+}
 
-    let Some((filter_clause, target_clause)) =
-        clause.from(2).split_once_on_phrase(&["attached", "to"])
+pub(crate) fn parse_sentence_destroy_all_attached_to_target_matched(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    matched: &LexPatternMatch<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(filter_clause) = clause
+        .pattern_capture_role(matched, LexCaptureRole::Object)
+        .map(|clause| clause.without_trailing_words_clause(&["that", "were", "was", "is", "are"]))
     else {
         return Ok(None);
     };
-
-    let filter_clause =
-        filter_clause.without_trailing_words_clause(&["that", "were", "was", "is", "are"]);
-    let target_clause = target_clause.trimmed();
+    let Some(target_clause) = clause
+        .pattern_capture_role(matched, LexCaptureRole::Tail)
+        .map(SubjectVerbPrimitiveClause::trimmed)
+    else {
+        return Ok(None);
+    };
     let has_timing_tail = target_clause.contains_any_word(&[
         "at",
         "beginning",

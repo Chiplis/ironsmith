@@ -425,6 +425,14 @@ pub(crate) fn parse_draw_trailing_clause(
         )));
     }
 
+    if word_slice_starts_with(&tail_words, &["then", "put"]) {
+        let put_tokens = trim_commas(&tokens[2..]);
+        let put_effect = parse_put_into_hand(&put_tokens, None)?;
+        return Ok(Some(EffectAst::Sequence {
+            effects: vec![draw_effect, put_effect],
+        }));
+    }
+
     if word_slice_first_is(&tail_words, "if") {
         let predicate = parse_trailing_if_predicate_lexed(tokens).ok_or_else(|| {
             CardTextError::ParseError("missing condition after trailing if clause".to_string())

@@ -2240,15 +2240,13 @@ impl GameState {
         card_name: impl AsRef<str>,
         count: u32,
     ) {
-        self.draft_noted_highest_numbers
-            .insert((player, normalize_draft_note_card_name(card_name.as_ref())), count);
+        self.draft_noted_highest_numbers.insert(
+            (player, normalize_draft_note_card_name(card_name.as_ref())),
+            count,
+        );
     }
 
-    pub fn draft_noted_highest_number(
-        &self,
-        player: PlayerId,
-        card_name: impl AsRef<str>,
-    ) -> u32 {
+    pub fn draft_noted_highest_number(&self, player: PlayerId, card_name: impl AsRef<str>) -> u32 {
         self.draft_noted_highest_numbers
             .get(&(player, normalize_draft_note_card_name(card_name.as_ref())))
             .copied()

@@ -410,6 +410,14 @@ pub(crate) fn parse_effect_chain_lexed(
         return Ok(vec![EffectAst::May { effects }]);
     }
 
+    if word_slice_first_is(&clause_words, "tap")
+        && word_slice_at_is_any(&clause_words, 1, &["all", "each"])
+        && (word_slice_contains_phrase(&clause_words, &["or", "untap", "all"])
+            || word_slice_contains_phrase(&clause_words, &["or", "untap", "each"]))
+    {
+        return parse_effect_chain_with_subject_verb_primitives_lexed(tokens);
+    }
+
     if let Some(unless_action) = parse_or_action_clause_lexed(tokens)? {
         return Ok(vec![unless_action]);
     }

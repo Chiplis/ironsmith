@@ -1,4 +1,41 @@
 use super::*;
+use crate::runtime_backend::front_end::lex_patterns::{
+    LexCaptureKind, LexCaptureRole, LexPattern, LexPatternAtom, LexPatternMatch,
+};
+
+const ALL_CREATURE_TYPES_SEQUENCE: &[LexPatternAtom<'static>] = &[LexPattern::phrase(&[
+    "all", "creature", "types", "until", "end", "of", "turn",
+])];
+const EVERY_CREATURE_TYPE_SEQUENCE: &[LexPatternAtom<'static>] = &[LexPattern::phrase(&[
+    "every", "creature", "type", "until", "end", "of", "turn",
+])];
+const CREATURE_TYPE_TAIL_SEQUENCES: &[&[LexPatternAtom<'static>]] =
+    &[ALL_CREATURE_TYPES_SEQUENCE, EVERY_CREATURE_TYPE_SEQUENCE];
+pub(crate) const GAINS_OR_LOSES_ALL_CREATURE_TYPES_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::role_capture(
+        "subject",
+        LexCaptureRole::Subject,
+        LexCaptureKind::UntilAnyPhrase(&[&["gain"], &["gains"], &["lose"], &["loses"]]),
+    ),
+    LexPattern::role_capture(
+        "verb",
+        LexCaptureRole::Action,
+        LexCaptureKind::OneOf(&["gain", "gains", "lose", "loses"]),
+    ),
+    LexPattern::any_sequence(CREATURE_TYPE_TAIL_SEQUENCES),
+];
+const REPEAT_IF_WIN_SEQUENCE: &[LexPatternAtom<'static>] = &[LexPattern::phrase(&[
+    "if", "you", "win", "repeat", "this", "process",
+])];
+pub(crate) const LOSE_DRAW_CLASH_REPEAT_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::phrase(&["you", "lose"]),
+    LexPattern::role_capture("life", LexCaptureRole::Amount, LexCaptureKind::WordCount(1)),
+    LexPattern::phrase(&["life", "and", "draw"]),
+    LexPattern::capture("draw", LexCaptureKind::WordCount(1)),
+    LexPattern::any_word(&["card", "cards"]),
+    LexPattern::phrase(&["then", "clash", "with", "an", "opponent"]),
+    LexPattern::optional(REPEAT_IF_WIN_SEQUENCE),
+];
 
 pub(super) fn wrap_delayed_next_step_unless_pays(
     step: DelayedNextStepKind,
@@ -609,6 +646,12 @@ pub(crate) fn parse_sentence_fallback_mechanic_marker(
     let clause_words = clause.word_refs();
     if crate::runtime_backend::lexer::word_slice_eq(
         &clause_words,
+        &["you", "choose", "one", "of", "them"],
+    ) {
+        return Ok(None);
+    }
+    if crate::runtime_backend::lexer::word_slice_eq(
+        &clause_words,
         &["venture", "into", "the", "dungeon"],
     ) {
         return Ok(Some(vec![EffectAst::subject_verb_venture_into_dungeon(
@@ -944,6 +987,17 @@ pub(crate) fn parse_sentence_implicit_become_clause(
 pub(crate) fn parse_sentence_gains_or_loses_all_creature_types(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let pattern = LexPattern::new(GAINS_OR_LOSES_ALL_CREATURE_TYPES_PATTERN_ATOMS);
+    let Some(matched) = clause.match_pattern(pattern) else {
+        return Ok(None);
+    };
+    parse_sentence_gains_or_loses_all_creature_types_matched(clause, &matched)
+}
+
+pub(crate) fn parse_sentence_gains_or_loses_all_creature_types_matched(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    _matched: &LexPatternMatch<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words = clause.word_refs();
     let Some(verb_idx) = words
         .iter()
@@ -1030,6 +1084,17 @@ fn fixed_count_word(word: &str) -> Option<i32> {
 
 pub(crate) fn parse_sentence_lose_draw_clash_repeat_process(
     clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let pattern = LexPattern::new(LOSE_DRAW_CLASH_REPEAT_PATTERN_ATOMS);
+    let Some(matched) = clause.match_pattern(pattern) else {
+        return Ok(None);
+    };
+    parse_sentence_lose_draw_clash_repeat_process_matched(clause, &matched)
+}
+
+pub(crate) fn parse_sentence_lose_draw_clash_repeat_process_matched(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    _matched: &LexPatternMatch<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words = clause.word_refs();
     let if_idx = word_slice_find_phrase_start(&words, &["if", "you", "win"]);

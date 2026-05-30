@@ -1,21 +1,151 @@
 use super::*;
+use crate::runtime_backend::front_end::lex_patterns::{
+    LexCaptureKind, LexCaptureRole, LexPattern, LexPatternAtom, LexPatternMatch,
+};
+
+const REVEAL_HAND_SUFFIXES: &[&[&str]] = &[
+    &["in", "your", "hand"],
+    &["in", "your", "hands"],
+    &["from", "your", "hand"],
+    &["from", "your", "hands"],
+];
+pub(crate) const REVEAL_SELECTED_CARDS_IN_YOUR_HAND_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::word("reveal"),
+    LexPattern::role_capture(
+        "descriptor",
+        LexCaptureRole::Object,
+        LexCaptureKind::UntilAnyPhrase(REVEAL_HAND_SUFFIXES),
+    ),
+    LexPattern::any_phrase(REVEAL_HAND_SUFFIXES),
+];
+const REVEAL_VERB_PHRASES: &[&[&str]] = &[&["reveal"], &["reveals"]];
+const REVEAL_ARTICLE_WORDS: &[&str] = &["a", "an", "one"];
+pub(crate) const TARGET_PLAYER_REVEALS_RANDOM_CARD_FROM_HAND_PATTERN_ATOMS: &[LexPatternAtom<
+    'static,
+>] = &[
+    LexPattern::role_capture(
+        "subject",
+        LexCaptureRole::Subject,
+        LexCaptureKind::UntilAnyPhrase(REVEAL_VERB_PHRASES),
+    ),
+    LexPattern::any_phrase(REVEAL_VERB_PHRASES),
+    LexPattern::any_word(REVEAL_ARTICLE_WORDS),
+    LexPattern::role_capture(
+        "descriptor",
+        LexCaptureRole::Object,
+        LexCaptureKind::UntilPhrase(&["from"]),
+    ),
+    LexPattern::word("from"),
+    LexPattern::role_capture("hand", LexCaptureRole::Tail, LexCaptureKind::OneOrMoreWords),
+];
+pub(crate) const DAMAGE_UNLESS_CONTROLLER_HAS_SOURCE_DEAL_DAMAGE_PATTERN_ATOMS:
+    &[LexPatternAtom<'static>] = &[
+    LexPattern::role_capture(
+        "damage",
+        LexCaptureRole::Action,
+        LexCaptureKind::UntilPhrase(&["unless"]),
+    ),
+    LexPattern::word("unless"),
+    LexPattern::role_capture(
+        "unless",
+        LexCaptureRole::Condition,
+        LexCaptureKind::OneOrMoreWords,
+    ),
+];
+const ENCHANTED_ATTACKED_UNLESS_SEQUENCES: &[&[LexPatternAtom<'static>]] = &[
+    &[LexPattern::phrase(&[
+        "that", "creature", "attacked", "this", "turn",
+    ])],
+    &[LexPattern::phrase(&[
+        "enchanted",
+        "creature",
+        "attacked",
+        "this",
+        "turn",
+    ])],
+];
+pub(crate) const DAMAGE_TO_THAT_PLAYER_UNLESS_ENCHANTED_ATTACKED_PATTERN_ATOMS:
+    &[LexPatternAtom<'static>] = &[
+    LexPattern::role_capture(
+        "damage",
+        LexCaptureRole::Action,
+        LexCaptureKind::UntilPhrase(&["unless"]),
+    ),
+    LexPattern::word("unless"),
+    LexPattern::any_sequence(ENCHANTED_ATTACKED_UNLESS_SEQUENCES),
+];
+const LEADING_UNLESS_SEQUENCE: &[LexPatternAtom<'static>] = &[
+    LexPattern::word("unless"),
+    LexPattern::role_capture(
+        "unless",
+        LexCaptureRole::Condition,
+        LexCaptureKind::OneOrMoreWords,
+    ),
+];
+const TRAILING_UNLESS_SEQUENCE: &[LexPatternAtom<'static>] = &[
+    LexPattern::role_capture(
+        "effect",
+        LexCaptureRole::Action,
+        LexCaptureKind::UntilPhrase(&["unless"]),
+    ),
+    LexPattern::word("unless"),
+    LexPattern::role_capture(
+        "unless",
+        LexCaptureRole::Condition,
+        LexCaptureKind::OneOrMoreWords,
+    ),
+];
+const UNLESS_PAYS_SEQUENCES: &[&[LexPatternAtom<'static>]] =
+    &[LEADING_UNLESS_SEQUENCE, TRAILING_UNLESS_SEQUENCE];
+pub(crate) const UNLESS_PAYS_PATTERN_ATOMS: &[LexPatternAtom<'static>] =
+    &[LexPattern::any_sequence(UNLESS_PAYS_SEQUENCES)];
 
 pub(crate) fn parse_sentence_each_opponent_loses_x_and_you_gain_x(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if clause.strip_any_prefix(EACH_OPPONENT_PREFIXES).is_none() {
-        return Ok(None);
-    }
-
-    let has_lose_x = clause.contains_any_phrase(&[&["lose", "x", "life"], &["loses", "x", "life"]]);
-    let has_gain_x = clause.contains_phrase(&["you", "gain", "x", "life"]);
-    let Some((_, where_clause)) = clause.split_once_before_phrase(&["where", "x", "is"]) else {
+    let atoms = [
+        LexPattern::any_phrase(EACH_OPPONENT_PREFIXES),
+        LexPattern::role_capture(
+            "drain",
+            LexCaptureRole::Action,
+            LexCaptureKind::UntilPhrase(&["where", "x", "is"]),
+        ),
+        LexPattern::phrase(&["where", "x", "is"]),
+        LexPattern::role_capture("where_value", LexCaptureRole::Amount, LexCaptureKind::Rest),
+    ];
+    let pattern = LexPattern::new(&atoms);
+    let Some(matched) = clause.match_pattern(pattern) else {
         return Ok(None);
     };
+    parse_sentence_each_opponent_loses_x_and_you_gain_x_matched(clause, &matched)
+}
+
+pub(crate) fn parse_sentence_each_opponent_loses_x_and_you_gain_x_matched(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    matched: &LexPatternMatch<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(drain_clause) = matched
+        .capture_by_role(LexCaptureRole::Action)
+        .and_then(|_| clause.pattern_capture_role(&matched, LexCaptureRole::Action))
+    else {
+        return Ok(None);
+    };
+    let has_lose_x =
+        drain_clause.contains_any_phrase(&[&["lose", "x", "life"], &["loses", "x", "life"]]);
+    let has_gain_x = drain_clause.contains_phrase(&["you", "gain", "x", "life"]);
     if !has_lose_x || !has_gain_x {
         return Ok(None);
     }
 
+    let Some(where_value_start) = matched
+        .capture_by_role(LexCaptureRole::Amount)
+        .map(|capture| capture.word_range.start)
+    else {
+        return Ok(None);
+    };
+    let Some(where_clause) = clause.from_word(where_value_start.saturating_sub(3)) else {
+        return Ok(None);
+    };
     let where_value = parse_value_binding_clause(where_clause.tokens()).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "unsupported where-x value in opponent life-drain clause (clause: '{}')",
@@ -305,6 +435,17 @@ pub(crate) fn parse_sentence_destroy_multi_target(
 pub(crate) fn parse_sentence_reveal_selected_cards_in_your_hand(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let pattern = LexPattern::new(REVEAL_SELECTED_CARDS_IN_YOUR_HAND_PATTERN_ATOMS);
+    let Some(matched) = clause.match_pattern(pattern) else {
+        return Ok(None);
+    };
+    parse_sentence_reveal_selected_cards_in_your_hand_matched(clause, &matched)
+}
+
+pub(crate) fn parse_sentence_reveal_selected_cards_in_your_hand_matched(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    _matched: &LexPatternMatch<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_text = clause.text();
     let clause_words = clause.word_refs();
     if clause_words.first() != Some(&"reveal") {
@@ -414,6 +555,17 @@ pub(crate) fn parse_sentence_reveal_selected_cards_in_your_hand(
 
 pub(crate) fn parse_sentence_target_player_reveals_random_card_from_hand(
     clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let pattern = LexPattern::new(TARGET_PLAYER_REVEALS_RANDOM_CARD_FROM_HAND_PATTERN_ATOMS);
+    let Some(matched) = clause.match_pattern(pattern) else {
+        return Ok(None);
+    };
+    parse_sentence_target_player_reveals_random_card_from_hand_matched(clause, &matched)
+}
+
+pub(crate) fn parse_sentence_target_player_reveals_random_card_from_hand_matched(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    _matched: &LexPatternMatch<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some((subject_clause, reveal_clause)) =
         clause.split_once_on_word_any(&["reveal", "reveals"])
@@ -596,6 +748,17 @@ pub(crate) fn is_likely_named_or_source_reference_words(words: &[&str]) -> bool 
 pub(crate) fn parse_sentence_damage_unless_controller_has_source_deal_damage(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let pattern = LexPattern::new(DAMAGE_UNLESS_CONTROLLER_HAS_SOURCE_DEAL_DAMAGE_PATTERN_ATOMS);
+    let Some(matched) = clause.match_pattern(pattern) else {
+        return Ok(None);
+    };
+    parse_sentence_damage_unless_controller_has_source_deal_damage_matched(clause, &matched)
+}
+
+pub(crate) fn parse_sentence_damage_unless_controller_has_source_deal_damage_matched(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    _matched: &LexPatternMatch<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some((before_clause, after_unless_clause)) = clause.split_once_on_word("unless") else {
         return Ok(None);
     };
@@ -691,6 +854,17 @@ pub(crate) fn parse_sentence_damage_unless_controller_has_source_deal_damage(
 pub(crate) fn parse_sentence_damage_to_that_player_unless_enchanted_attacked(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let pattern = LexPattern::new(DAMAGE_TO_THAT_PLAYER_UNLESS_ENCHANTED_ATTACKED_PATTERN_ATOMS);
+    let Some(matched) = clause.match_pattern(pattern) else {
+        return Ok(None);
+    };
+    parse_sentence_damage_to_that_player_unless_enchanted_attacked_matched(clause, &matched)
+}
+
+pub(crate) fn parse_sentence_damage_to_that_player_unless_enchanted_attacked_matched(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    _matched: &LexPatternMatch<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some((before_clause, after_clause)) = clause.split_once_on_word("unless") else {
         return Ok(None);
     };
@@ -755,6 +929,17 @@ pub(crate) fn parse_sentence_damage_to_that_player_unless_enchanted_attacked(
 
 pub(crate) fn parse_sentence_unless_pays(
     clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let pattern = LexPattern::new(UNLESS_PAYS_PATTERN_ATOMS);
+    let Some(matched) = clause.match_pattern(pattern) else {
+        return Ok(None);
+    };
+    parse_sentence_unless_pays_matched(clause, &matched)
+}
+
+pub(crate) fn parse_sentence_unless_pays_matched(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    _matched: &LexPatternMatch<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let unless_idx = match find_unquoted_token_word(clause, "unless") {
         Some(idx) => idx,

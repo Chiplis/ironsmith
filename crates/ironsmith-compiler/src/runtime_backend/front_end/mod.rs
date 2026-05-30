@@ -7,6 +7,7 @@ pub(crate) mod document {
 }
 pub(crate) use super::grammar;
 pub(crate) use super::leaf;
+pub(crate) use super::lex_patterns;
 pub(crate) use super::lexer;
 pub(crate) use super::parser_support;
 pub(crate) use super::preprocess;

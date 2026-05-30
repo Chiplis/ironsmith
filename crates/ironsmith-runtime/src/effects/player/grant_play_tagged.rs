@@ -141,7 +141,16 @@ impl EffectExecutor for GrantPlayTaggedEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        let Some(snapshots) = ctx.get_tagged_all(self.tag.as_str()).cloned() else {
+        let snapshots = ctx.get_tagged_all(self.tag.as_str()).cloned().or_else(|| {
+            (self.tag.as_str() == "__source_exiled__").then(|| {
+                ctx.tagged_objects
+                    .iter()
+                    .filter(|(tag, _)| tag.as_str().starts_with("__sentence_helper_exiled"))
+                    .flat_map(|(_, snapshots)| snapshots.iter().cloned())
+                    .collect::<Vec<_>>()
+            })
+        });
+        let Some(snapshots) = snapshots.filter(|snapshots| !snapshots.is_empty()) else {
             return Ok(EffectOutcome::count(0));
         };
 

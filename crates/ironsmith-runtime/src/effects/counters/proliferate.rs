@@ -131,7 +131,9 @@ impl EffectExecutor for ProliferateEffect {
                 &applied_effects,
                 &applied_effect_keys,
             ) {
-                TraitEventResult::Replaced { effects, effect_id, .. } => {
+                TraitEventResult::Replaced {
+                    effects, effect_id, ..
+                } => {
                     let snapshot = game
                         .object(ctx.source)
                         .map(|object| ObjectSnapshot::from_object(object, game));

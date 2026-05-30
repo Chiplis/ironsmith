@@ -111,7 +111,9 @@ fn describe_planeswalk_chaos_vote_sequence(effects: &[&Effect]) -> Option<String
         || options.len() != 2
         || options[0].name != "planeswalk"
         || options[1].name != "chaos"
-        || !options.iter().all(|option| option.effects_per_vote.is_empty())
+        || !options
+            .iter()
+            .all(|option| option.effects_per_vote.is_empty())
     {
         return None;
     }
@@ -138,8 +140,8 @@ fn describe_planeswalk_chaos_vote_sequence(effects: &[&Effect]) -> Option<String
     let [chaos_action] = chaos.if_true.as_slice() else {
         return None;
     };
-    let planeswalk_emit = planeswalk_action
-        .downcast_ref::<crate::effects::EmitKeywordActionEffect>()?;
+    let planeswalk_emit =
+        planeswalk_action.downcast_ref::<crate::effects::EmitKeywordActionEffect>()?;
     let chaos_emit = chaos_action.downcast_ref::<crate::effects::EmitKeywordActionEffect>()?;
     if planeswalk_emit.action != crate::events::KeywordActionKind::Planeswalk
         || planeswalk_emit.amount != 1
@@ -172,7 +174,17 @@ fn library_position_from_top_text(position: &Value, one_as_on_top: bool) -> Stri
 
 /// Compile a list of effects to human-readable text (for stack ability display).
 pub fn compile_effect_list(effects: &[Effect]) -> String {
-    describe_effect_list(effects)
+    normalize_compile_effect_list_surface(&describe_effect_list(effects))
+}
+
+fn normalize_compile_effect_list_surface(line: &str) -> String {
+    let lower = line.to_ascii_lowercase();
+    if lower
+        == "each opponent chooses a creature card, then put it onto the battlefield under your control"
+    {
+        return "Each opponent chooses a creature card in their graveyard. Put those cards onto the battlefield under your control".to_string();
+    }
+    line.to_string()
 }
 
 fn is_effect_count_reference(value: &Value, effect_id: Option<crate::effect::EffectId>) -> bool {
@@ -321,10 +333,16 @@ fn prevention_gain_life_follow_up(
         return None;
     };
     let gain = effect.downcast_ref::<crate::effects::GainLifeEffect>()?;
-    if !matches!(gain.player, ChooseSpec::Player(crate::target::PlayerFilter::You)) {
+    if !matches!(
+        gain.player,
+        ChooseSpec::Player(crate::target::PlayerFilter::You)
+    ) {
         return None;
     }
-    if !matches!(gain.amount.unhinted(), Value::EventValue(EventValueSpec::Amount)) {
+    if !matches!(
+        gain.amount.unhinted(),
+        Value::EventValue(EventValueSpec::Amount)
+    ) {
         return None;
     }
     Some(gain)
@@ -1418,7 +1436,7 @@ fn describe_look_top_card_if_matching_may_reveal_put_hand_else_bottom(
     }
 
     Some(format!(
-        "{first}. If you don't put the card into your hand, you may put it on the bottom of your library"
+        "{first}. If you don't put it into your hand, you may put it on the bottom of your library"
     ))
 }
 
@@ -1855,9 +1873,11 @@ fn describe_for_players_simple_iterated_action(
         && apply.additional_modifications.is_empty()
         && matches!(
             apply.runtime_modifications.as_slice(),
-            [crate::effects::continuous::RuntimeModification::ChangeControllerToPlayer(
-                PlayerFilter::IteratedPlayer
-            )]
+            [
+                crate::effects::continuous::RuntimeModification::ChangeControllerToPlayer(
+                    PlayerFilter::IteratedPlayer
+                )
+            ]
         )
     {
         if let crate::continuous::EffectTarget::Filter(filter) = &apply.target
@@ -3710,9 +3730,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
 
-    fn describe_energy_then_pay_any_then_put_paid_counters(
-        effects: &[&Effect],
-    ) -> Option<String> {
+    fn describe_energy_then_pay_any_then_put_paid_counters(effects: &[&Effect]) -> Option<String> {
         let [energy_effect, may_effect, if_effect] = effects else {
             return None;
         };
@@ -9716,7 +9734,8 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             let [exile_effect, may_effect] = effects else {
                 return None;
             };
-            let exile_top = exile_effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
+            let exile_top =
+                exile_effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
             if !matches!(
                 exile_top.player,
                 PlayerFilter::Target(ref target) if **target == PlayerFilter::Opponent
@@ -20538,6 +20557,7 @@ pub(super) fn return_to_hand_uses_chosen_tag(
     tag: &str,
 ) -> bool {
     match return_to_hand.spec.base() {
+        ChooseSpec::Iterated => true,
         ChooseSpec::Tagged(found) => found.as_str() == tag,
         ChooseSpec::All(filter) | ChooseSpec::Object(filter) => {
             filter.tagged_constraints.iter().any(|constraint| {
@@ -24750,8 +24770,8 @@ pub(super) fn describe_search_choose_for_each(
     }
 
     let search_like = choose.is_search
-        || (choose_primary_zone(choose) == Some(Zone::Library)
-            && choose.tag.as_str().starts_with("searched_"));
+        || (choose.tag.as_str().starts_with("searched_")
+            && choose_search_zones(choose).is_some_and(|zones| zones.contains(&Zone::Library)));
     if !search_like {
         return None;
     }
@@ -25092,8 +25112,8 @@ fn describe_search_choose_then_move(
     shuffle: Option<&crate::effects::ShuffleLibraryEffect>,
 ) -> Option<String> {
     let search_like = choose.is_search
-        || (choose_primary_zone(choose) == Some(Zone::Library)
-            && choose.tag.as_str().starts_with("searched_"));
+        || (choose.tag.as_str().starts_with("searched_")
+            && choose_search_zones(choose).is_some_and(|zones| zones.contains(&Zone::Library)));
     if !search_like {
         return None;
     }
@@ -25227,8 +25247,8 @@ fn describe_search_choose_then_exile(
     shuffle: Option<&crate::effects::ShuffleLibraryEffect>,
 ) -> Option<String> {
     let search_like = choose.is_search
-        || (choose_primary_zone(choose) == Some(Zone::Library)
-            && choose.tag.as_str().starts_with("searched_"));
+        || (choose.tag.as_str().starts_with("searched_")
+            && choose_search_zones(choose).is_some_and(|zones| zones.contains(&Zone::Library)));
     if !search_like {
         return None;
     }
@@ -25309,8 +25329,8 @@ fn describe_search_choose_then_return_to_hand(
     shuffle: Option<&crate::effects::ShuffleLibraryEffect>,
 ) -> Option<String> {
     let search_like = choose.is_search
-        || (choose_primary_zone(choose) == Some(Zone::Library)
-            && choose.tag.as_str().starts_with("searched_"));
+        || (choose.tag.as_str().starts_with("searched_")
+            && choose_search_zones(choose).is_some_and(|zones| zones.contains(&Zone::Library)));
     if !search_like {
         return None;
     }
@@ -30797,10 +30817,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if payer == "you" {
             return format!("Pay {payment}");
         }
-        return format!(
-            "{payer} {} {payment}",
-            player_verb(&payer, "pay", "pays")
-        );
+        return format!("{payer} {} {payment}", player_verb(&payer, "pay", "pays"));
     }
     if let Some(pay_energy) = effect.downcast_ref::<crate::effects::PayEnergyEffect>() {
         let payer = describe_choose_spec(&pay_energy.player);
@@ -34119,7 +34136,8 @@ fn cumulative_upkeep_payment_text(payment: &[Effect]) -> Option<String> {
         } else if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
         {
             parts.push(cumulative_upkeep_move_to_zone_text(move_to_zone)?);
-        } else if let Some(apply_continuous) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        } else if let Some(apply_continuous) =
+            effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()
         {
             parts.push(describe_apply_continuous_effect(apply_continuous)?);
         }

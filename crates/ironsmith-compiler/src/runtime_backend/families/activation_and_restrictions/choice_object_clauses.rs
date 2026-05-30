@@ -161,7 +161,7 @@ pub(crate) fn parse_target_player_choose_objects_clause(
 pub(crate) fn parse_you_choose_objects_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(PlayerAst, ObjectFilter, ChoiceCount)>, CardTextError> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    let clause_words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
     if clause_words.is_empty() {
         return Ok(None);
     }
@@ -227,7 +227,8 @@ pub(crate) fn parse_you_choose_objects_clause(
         }
         break;
     }
-    let mut choose_words = crate::runtime_backend::token_word_refs(&choose_object_tokens);
+    let mut choose_words =
+        crate::runtime_backend::lexer::parser_token_word_refs(&choose_object_tokens);
     loop {
         if matches!(
             choose_words.as_slice(),
@@ -333,7 +334,11 @@ pub(crate) fn parse_you_choose_objects_clause(
         .iter()
         .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
         .collect::<Vec<_>>();
-    if find_verb(&choose_filter_tokens).is_some() {
+    let controller_tail = word_slice_ends_with(&choose_words, &["you", "control"])
+        || word_slice_ends_with(&choose_words, &["you", "controls"])
+        || word_slice_ends_with(&choose_words, &["target", "player", "controls"])
+        || word_slice_ends_with(&choose_words, &["that", "player", "controls"]);
+    if find_verb(&choose_filter_tokens).is_some() && !controller_tail {
         return Ok(None);
     }
 

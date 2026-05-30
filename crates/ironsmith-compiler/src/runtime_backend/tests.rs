@@ -2582,7 +2582,7 @@ fn rewrite_counter_removal_cost_binds_that_much_for_mana_addition() {
 
     let debug = format!("{def:#?}");
     assert!(
-        debug.contains("AddManaScaled") || debug.contains("AddManaAnyColor"),
+        debug.contains("AddScaledManaEffect") || debug.contains("AddManaAnyColor"),
         "expected parsed mana ability to retain scaled mana amount, got {debug}"
     );
     assert!(
@@ -3786,8 +3786,7 @@ fn rewrite_activation_helpers_parse_add_mana_scales_by_greatest_power_entered_th
     {
         crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
-                action:
-                    crate::cards::builders::SubjectVerbActionAst::AddManaScaled { mana, amount },
+                action: crate::cards::builders::SubjectVerbActionAst::AddManaScaled { mana, amount },
                 ..
             },
         ) => {
@@ -3939,13 +3938,15 @@ fn rewrite_effect_sentence_parse_add_mana_scales_by_greatest_power_entered_this_
     let effects = parse_effect_sentence_lexed(&tokens).expect("mana sentence should parse");
 
     match effects.as_slice() {
-        [crate::cards::builders::EffectAst::SubjectVerb(
-            crate::cards::builders::SubjectVerbEffectAst {
-                action:
-                    crate::cards::builders::SubjectVerbActionAst::AddManaScaled { mana, amount },
-                ..
-            },
-        )] => {
+        [
+            crate::cards::builders::EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    action:
+                        crate::cards::builders::SubjectVerbActionAst::AddManaScaled { mana, amount },
+                    ..
+                },
+            ),
+        ] => {
             assert_eq!(mana.as_slice(), &[crate::mana::ManaSymbol::Red]);
             assert!(matches!(
                 amount,
@@ -9253,9 +9254,12 @@ fn rewrite_lexed_triggered_line_parses_player_contraction_dealt_damage_trigger()
 
     assert!(debug.contains("DealsDamageToPlayer"), "{debug}");
     assert!(debug.contains("You"), "{debug}");
-    assert!(debug.contains("PutCounter"), "{debug}");
-    assert!(debug.contains("Vitality"), "{debug}");
-    assert!(debug.contains("EventAmount"), "{debug}");
+    assert!(debug.contains("PutCounters"), "{debug}");
+    assert!(debug.contains("vitality"), "{debug}");
+    assert!(
+        debug.contains("EventValue") && debug.contains("Amount"),
+        "{debug}"
+    );
 }
 
 #[test]
@@ -11176,11 +11180,14 @@ fn rewrite_lexed_effect_sequence_parses_consult_dynamic_mana_value_gate() {
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("Conditional"), "{debug}");
-    assert!(debug.contains("ManaValueOf(Tagged("), "{debug}");
+    assert!(
+        debug.contains("mana_value: Some(LessThanOrEqualExpr(SourcePower))"),
+        "{debug}"
+    );
     assert!(debug.contains("SourcePower"), "{debug}");
     assert!(debug.contains("CastTagged"), "{debug}");
     assert!(
-        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        debug.contains("MoveToZone") && debug.contains("zone: Library"),
         "{debug}"
     );
 }
@@ -12871,7 +12878,7 @@ fn rewrite_when_one_or_more_this_way_prefix_skips_tail_only_this_way_references(
         super::effect_sentences::rewrite_when_one_or_more_this_way_clause_prefix(&tokens);
 
     let words = token_word_refs(&rewritten);
-    assert_eq!(words[0], "whenever");
+    assert!(words[0].eq_ignore_ascii_case("whenever"));
     assert_ne!(words[..3], ["if", "you", "do"]);
 }
 
@@ -12886,11 +12893,11 @@ fn hordewing_skaab_parses_and_keeps_if_you_do_discard_followup() -> Result<(), C
 
     let debug = format!("{definition:?}");
     assert!(
-        debug.contains("IfThen"),
+        debug.contains("IfEffect"),
         "expected lowered if-you-do followup in Hordewing Skaab trigger: {debug}"
     );
     assert!(
-        debug.contains("DiscardCards"),
+        debug.contains("DiscardEffect"),
         "expected lowered discard clause for Hordewing Skaab: {debug}"
     );
 

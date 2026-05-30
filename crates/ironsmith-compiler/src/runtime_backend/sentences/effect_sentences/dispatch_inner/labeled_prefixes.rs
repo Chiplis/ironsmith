@@ -359,6 +359,15 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
+    if word_slice_first_is(&sentence_words, "tap")
+        && word_slice_at_is_any(&sentence_words, 1, &["all", "each"])
+        && (word_slice_contains_phrase(&sentence_words, &["or", "untap", "all"])
+            || word_slice_contains_phrase(&sentence_words, &["or", "untap", "each"]))
+    {
+        let mut effects = super::parse_effect_chain_with_subject_verb_primitives_lexed(tokens)?;
+        apply_where_x_to_damage_amounts(tokens, &mut effects)?;
+        return Ok(effects);
+    }
 
     let (_, effects) = super::sentence_registry::run_sentence_parse_rules_lexed(tokens)?;
     Ok(effects)

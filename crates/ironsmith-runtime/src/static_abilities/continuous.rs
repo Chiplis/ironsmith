@@ -1236,6 +1236,10 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             crate::target::PlayerFilter::You => "as long as you have the initiative".to_string(),
             _ => "as long as that player has the initiative".to_string(),
         },
+        crate::ConditionExpr::OwnsCardExiledWithCounter(counter) => {
+            let counter_name = format!("{counter:?}").to_ascii_lowercase();
+            format!("as long as you own a card exiled with a {counter_name} counter")
+        }
         crate::ConditionExpr::PlayerCommittedCrimeThisTurn { player } => match player {
             crate::target::PlayerFilter::You => {
                 "as long as you've committed a crime this turn".to_string()
@@ -2046,10 +2050,8 @@ impl StaticAbilityKind for GrantAbility {
         } else {
             grant_subject_text(&self.filter)
         };
-        let mut ability_text = self.ability.display();
-        if self.ability.is_keyword() {
-            ability_text = lowercase_first_ascii(&ability_text);
-        }
+        let raw_ability_text = self.ability.display();
+        let mut ability_text = raw_ability_text.clone();
         if matches!(
             ability_text.split_whitespace().next(),
             Some("If" | "When" | "Whenever" | "At")
@@ -2070,6 +2072,15 @@ impl StaticAbilityKind for GrantAbility {
             }
         };
         if let Some(condition) = &self.condition {
+            if self.source_only
+                && self.ability.is_keyword()
+                && leading_source_keyword_condition(condition)
+            {
+                let condition_text = describe_static_condition(condition);
+                if let Some(rest) = condition_text.strip_prefix("as long as ") {
+                    return format!("as long as {rest}, {subject} has {raw_ability_text}");
+                }
+            }
             text.push(' ');
             text.push_str(&describe_static_condition(condition));
         }
@@ -2140,6 +2151,19 @@ impl StaticAbilityKind for GrantAbility {
             return false;
         };
         static_condition_is_active(condition, game, source, game.controller_of(source_obj))
+    }
+}
+
+fn leading_source_keyword_condition(condition: &crate::ConditionExpr) -> bool {
+    match condition {
+        crate::ConditionExpr::SourceIsEquipped
+        | crate::ConditionExpr::SourceIsUntapped
+        | crate::ConditionExpr::OwnsCardExiledWithCounter(_) => true,
+        crate::ConditionExpr::CountComparison {
+            display: Some(display),
+            ..
+        } => display.starts_with("you own a card exiled with "),
+        _ => false,
     }
 }
 
@@ -3796,6 +3820,26 @@ impl StaticAbilityKind for AttachedAbilityGrant {
             .with_source_type(EffectSourceType::StaticAbility),
             &self.condition,
         )]
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<crate::replacement::ReplacementEffect> {
+        let AbilityKind::Static(static_ability) = &self.ability.kind else {
+            return None;
+        };
+        if static_ability.id() != StaticAbilityId::PreventAllDamageToSelf {
+            return None;
+        }
+
+        Some(crate::replacement::ReplacementEffect::with_matcher(
+            source,
+            controller,
+            crate::events::DamageToAttachedObjectMatcher::new(),
+            crate::replacement::ReplacementAction::Prevent,
+        ))
     }
 }
 

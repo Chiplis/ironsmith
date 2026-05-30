@@ -50,6 +50,7 @@ impl ReferenceFrame {
             last_object_tag: self.last_object_tag.clone(),
             last_it_choice_is_set: self.last_it_choice_is_set,
             last_revealed_tag: None,
+            last_exiled_collection_tag: None,
             last_player_filter: self.last_player_filter.clone(),
             source_object_antecedent: self.source_object_antecedent,
             recent_player_choice_tags: self.recent_player_choice_tags.clone(),
