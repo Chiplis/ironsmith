@@ -164,6 +164,12 @@ fn parse_tagged_cast_or_play_target_inner<'a>(
                     tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
                     as_copy: false,
                 }),
+                grammar::phrase(&["cards", "you", "own", "exiled", "with", "this"]).value(
+                    TaggedPermissionTarget {
+                        tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+                        as_copy: false,
+                    },
+                ),
                 grammar::phrase(&["that", "revealed", "card"]).value(TaggedPermissionTarget {
                     tag: TagKey::from("__last_revealed__"),
                     as_copy: false,
@@ -740,6 +746,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
     };
     let player = lead.player;
     let allow_land = lead.allow_land;
+    let rest_words = token_word_refs(rest_tokens);
 
     if let Some((target_ref, tagged_tail_tokens)) =
         parse_tagged_cast_or_play_target_tokens(rest_tokens)
@@ -843,7 +850,6 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         }));
     }
 
-    let rest_words = token_word_refs(rest_tokens);
     if prefixed_lifetime.is_none()
         && player == PlayerAst::You
         && !allow_land

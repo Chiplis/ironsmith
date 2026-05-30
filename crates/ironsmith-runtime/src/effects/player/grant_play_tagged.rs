@@ -141,13 +141,32 @@ impl EffectExecutor for GrantPlayTaggedEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        let snapshots = ctx.get_tagged_all(self.tag.as_str()).cloned().or_else(|| {
-            (self.tag.as_str() == "__source_exiled__").then(|| {
-                ctx.tagged_objects
+        let tag = self.tag.as_str();
+        let snapshots = ctx.get_tagged_all(tag).cloned().or_else(|| {
+            (tag == crate::tag::SOURCE_EXILED_TAG
+                || crate::cards::is_sentence_helper_tag(tag, "exiled"))
+            .then(|| {
+                let source_exiled = game
+                    .get_exiled_with_source_links(ctx.source)
                     .iter()
-                    .filter(|(tag, _)| tag.as_str().starts_with("__sentence_helper_exiled"))
-                    .flat_map(|(_, snapshots)| snapshots.iter().cloned())
-                    .collect::<Vec<_>>()
+                    .filter_map(|id| {
+                        game.object(*id).map(|object| {
+                            crate::snapshot::ObjectSnapshot::from_object(object, game)
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                if !source_exiled.is_empty() {
+                    return source_exiled;
+                }
+                if tag == crate::tag::SOURCE_EXILED_TAG {
+                    return ctx
+                        .tagged_objects
+                        .iter()
+                        .filter(|(tag, _)| tag.as_str().starts_with("__sentence_helper_exiled"))
+                        .flat_map(|(_, snapshots)| snapshots.iter().cloned())
+                        .collect::<Vec<_>>();
+                }
+                Vec::new()
             })
         });
         let Some(snapshots) = snapshots.filter(|snapshots| !snapshots.is_empty()) else {

@@ -747,6 +747,257 @@ fn keeper_of_the_flame_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn kaylas_music_box_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_951), "Kayla's Music Box")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "{W}, {T}: Look at the top card of your library, then exile it face down. (You may look at it any time.)\n\
+             {T}: Until end of turn, you may play cards you own exiled with Kayla's Music Box.",
+        )
+        .expect("Kayla's Music Box should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn activate_ability_to_stack(
+    game: &mut GameState,
+    player: PlayerId,
+    source: ObjectId,
+    ability_index: usize,
+) {
+    let stack_before = game.stack.len();
+    let activate_action = crate::decision::compute_legal_actions(game, player)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source: action_source, ability_index: idx }
+                    if *action_source == source && *idx == ability_index
+            )
+        })
+        .expect("requested activated ability should be legal");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    let mut progress = apply_priority_response_with_dm(
+        game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("activation should start");
+
+    for _ in 0..8 {
+        if game.stack.len() > stack_before {
+            return;
+        }
+        progress = match progress {
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectOptions(ctx),
+            ) => {
+                let option = ctx
+                    .options
+                    .iter()
+                    .find(|option| option.legal)
+                    .expect("activation should have a payable cost option");
+                apply_priority_response_with_dm(
+                    game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::NextCostChoice(option.index),
+                    &mut dm,
+                )
+                .expect("cost choice should continue activation")
+            }
+            crate::decision::GameProgress::Continue
+            | crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Priority(_),
+            ) => break,
+            other => panic!("unexpected activation progress for Kayla's Music Box: {other:?}"),
+        };
+    }
+
+    assert!(
+        game.stack.len() > stack_before,
+        "activated ability should be on the stack after costs are paid"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn kaylas_music_box_exiles_face_down_and_grants_temporary_play_permission() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let kayla = kaylas_music_box_definition();
+    let kayla_id = game.create_object_from_definition(&kayla, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(kayla_id);
+
+    let first_ability_index = game
+        .object(kayla_id)
+        .expect("Kayla's Music Box should exist")
+        .abilities
+        .iter()
+        .position(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => {
+                format!("{:?}", activated.effects).contains("LookAtTopCardsEffect")
+            }
+            _ => false,
+        })
+        .expect("Kayla's Music Box should have the look/exile activated ability");
+    let second_ability_index = game
+        .object(kayla_id)
+        .expect("Kayla's Music Box should exist")
+        .abilities
+        .iter()
+        .position(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => {
+                format!("{:?}", activated.effects).contains("GrantPlayTaggedEffect")
+            }
+            _ => false,
+        })
+        .expect("Kayla's Music Box should have the source-exiled play ability");
+
+    let first_ability_debug = format!(
+        "{:?}",
+        game.object(kayla_id)
+            .expect("Kayla's Music Box should exist")
+            .abilities[first_ability_index]
+    );
+    assert!(
+        first_ability_debug.contains("ManaPaymentCost")
+            && first_ability_debug.contains("White"),
+        "the look/exile ability should structurally require white mana: {first_ability_debug}"
+    );
+
+    let land = CardBuilder::new(CardId::new(), "Kayla Test Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let spell = CardBuilder::new(CardId::new(), "Kayla Test Spell")
+        .card_types(vec![CardType::Sorcery])
+        .mana_cost(ManaCost::new())
+        .build();
+    let land_library_id = game.create_object_from_card(&land, alice, Zone::Library);
+    let spell_library_id = game.create_object_from_card(&spell, alice, Zone::Library);
+    let land_stable = game
+        .object(land_library_id)
+        .expect("land should be in library")
+        .stable_id;
+    let spell_stable = game
+        .object(spell_library_id)
+        .expect("spell should be in library")
+        .stable_id;
+
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::White, 2);
+    activate_ability_to_stack(&mut game, alice, kayla_id, first_ability_index);
+    assert!(game.is_tapped(kayla_id), "activation should tap Kayla's Music Box");
+    resolve_stack_entry(&mut game).expect("first Kayla activation should resolve");
+    game.untap(kayla_id);
+    activate_ability_to_stack(&mut game, alice, kayla_id, first_ability_index);
+    resolve_stack_entry(&mut game).expect("second Kayla activation should resolve");
+
+    let exiled_land_id = game
+        .find_object_by_stable_id(land_stable)
+        .expect("the land should still be tracked after exile");
+    let exiled_spell_id = game
+        .find_object_by_stable_id(spell_stable)
+        .expect("the spell should still be tracked after exile");
+    let other_source = CardBuilder::new(CardId::new(), "Other Exile Source")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let other_source_id = game.create_object_from_card(&other_source, alice, Zone::Battlefield);
+    let other_spell = CardBuilder::new(CardId::new(), "Other Exiled Spell")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::new())
+        .build();
+    let other_exiled_id = game.create_object_from_card(&other_spell, alice, Zone::Exile);
+    game.add_exiled_with_source_link(other_source_id, other_exiled_id);
+
+    for exiled_id in [exiled_land_id, exiled_spell_id] {
+        assert!(game.exile.contains(&exiled_id), "card should be in exile");
+        assert!(game.is_face_down(exiled_id), "Kayla should exile the card face down");
+        assert!(
+            game.can_player_look_at_face_down_exiled_card(exiled_id, alice),
+            "Kayla's controller should be allowed to look at the face-down exiled card"
+        );
+        assert!(
+            !game.effect_store.grant_registry.card_can_play_from_zone(
+                &game,
+                exiled_id,
+                Zone::Exile,
+                alice,
+            ),
+            "the second ability should be required before the exiled card can be played"
+        );
+    }
+
+    game.untap(kayla_id);
+    activate_ability_to_stack(&mut game, alice, kayla_id, second_ability_index);
+    resolve_stack_entry(&mut game).expect("Kayla play-permission activation should resolve");
+
+    for exiled_id in [exiled_land_id, exiled_spell_id] {
+        assert!(
+            game.effect_store.grant_registry.card_can_play_from_zone(
+                &game,
+                exiled_id,
+                Zone::Exile,
+                alice,
+            ),
+            "Kayla should grant play permission for cards exiled with it"
+        );
+    }
+    assert!(
+        !game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            other_exiled_id,
+            Zone::Exile,
+            alice,
+        ),
+        "Kayla should not grant play permission for cards exiled with another source"
+    );
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            LegalAction::PlayLand { land_id } if *land_id == exiled_land_id
+        )),
+        "Kayla should expose a land play action for a land exiled with it"
+    );
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell { spell_id, from_zone: Zone::Exile, .. }
+                if *spell_id == exiled_spell_id
+        )),
+        "Kayla should expose a cast action for a spell exiled with it"
+    );
+
+    game.turn.turn_number += 1;
+    for exiled_id in [exiled_land_id, exiled_spell_id] {
+        assert!(
+            !game.effect_store.grant_registry.card_can_play_from_zone(
+                &game,
+                exiled_id,
+                Zone::Exile,
+                alice,
+            ),
+            "Kayla's play permission should expire at end of turn"
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn goblin_kites_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(72_955), "Goblin Kites")
         .mana_cost(ManaCost::from_pips(vec![

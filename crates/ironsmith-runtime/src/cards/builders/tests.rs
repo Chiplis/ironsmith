@@ -1057,6 +1057,36 @@ fn dream_thiefs_bandana_keeps_look_exile_and_while_exiled_permission() {
     );
 }
 
+#[test]
+fn kaylas_music_box_strict_parser_and_compiled_text_regression() {
+    let oracle = oracle_text_by_name()
+        .get("Kayla's Music Box")
+        .expect("Kayla's Music Box should exist in cards.json");
+    let def = CardDefinitionBuilder::new(CardId::new(), "Kayla's Music Box")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Artifact])
+        .parse_text(oracle.clone())
+        .expect("Kayla's Music Box oracle text should parse strictly");
+    let debug = format!("{:#?}", def.abilities);
+    let rendered = canonical_compiled_lines(&def);
+
+    assert_eq!(
+        rendered,
+        vec![
+            "{W}, {T}: Look at the top card of your library, then exile it face down."
+                .to_string(),
+            "{T}: Until end of turn, you may play cards you own exiled with Kayla's Music Box."
+                .to_string(),
+        ],
+        "Kayla's Music Box should preserve its look/exile and source-exiled play clauses"
+    );
+    assert!(debug.contains("LookAtTopCardsEffect"), "{debug}");
+    assert!(debug.contains("ExileEffect"), "{debug}");
+    assert!(debug.contains("face_down: true"), "{debug}");
+    assert!(debug.contains("GrantPlayTaggedEffect"), "{debug}");
+    assert!(debug.contains("UntilEndOfTurn"), "{debug}");
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn cogwork_librarian_strict_parser_and_compiled_text_regression() {

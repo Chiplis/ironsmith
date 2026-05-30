@@ -32358,6 +32358,16 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         } else {
             "cast"
         };
+        if (grant_play_tagged.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+            || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "exiled"))
+            && grant_play_tagged.duration == crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
+            && !grant_play_tagged.allow_any_color_for_cast
+            && matches!(grant_play_tagged.player, PlayerFilter::You)
+        {
+            return format!(
+                "Until end of turn, you may {verb} cards you own exiled with this"
+            );
+        }
         let helper_tag = grant_play_tagged.tag.as_str().starts_with("targeted_")
             || grant_play_tagged.tag.as_str().starts_with("__source_")
             || grant_play_tagged.tag.as_str() == "__it__"

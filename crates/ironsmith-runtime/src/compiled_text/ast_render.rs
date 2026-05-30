@@ -759,6 +759,7 @@ pub(super) fn substitute_legendary_source_reference(
     let uses_named_source_surface = lower.starts_with("this creature gets ")
         || conditional_static_self_surface
         || lower.contains("if this land has ")
+        || lower.contains("exiled with this")
         || lower.starts_with("whenever this creature deals combat damage to a player")
         || lower.contains(": this creature gets ")
         || lower.contains(": whenever this creature deals combat damage to a player");
@@ -775,7 +776,11 @@ pub(super) fn substitute_legendary_source_reference(
         .replace("This creature", source_name)
         .replace("this creature", source_name)
         .replace("This land", source_name)
-        .replace("this land", source_name);
+        .replace("this land", source_name)
+        .replace(
+            "exiled with this",
+            &format!("exiled with {source_name}"),
+        );
     let lower_source_name = source_name.to_ascii_lowercase();
     if lower_source_name != source_name {
         substituted.replace(&lower_source_name, source_name)
