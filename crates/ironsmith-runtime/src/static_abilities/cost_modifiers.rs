@@ -723,6 +723,7 @@ pub struct CostReduction {
     pub filter: ObjectFilter,
     pub reduction: Value,
     pub condition: Option<crate::ConditionExpr>,
+    pub display: Option<String>,
 }
 
 impl CostReduction {
@@ -731,11 +732,17 @@ impl CostReduction {
             filter,
             reduction,
             condition: None,
+            display: None,
         }
     }
 
     pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
         self.condition = Some(condition);
+        self
+    }
+
+    pub fn with_display(mut self, display: impl Into<String>) -> Self {
+        self.display = Some(display.into());
         self
     }
 }
@@ -746,6 +753,10 @@ impl StaticAbilityKind for CostReduction {
     }
 
     fn display(&self) -> String {
+        if let Some(display) = &self.display {
+            return describe_cost_modifier_with_condition(display.clone(), &self.condition);
+        }
+
         let (amount_text, tail) = describe_cost_modifier_amount(&self.reduction);
         if let Some(subject) = describe_alternative_cost_subject(&self.filter) {
             let mut line = format!("{subject} cost {amount_text} less");

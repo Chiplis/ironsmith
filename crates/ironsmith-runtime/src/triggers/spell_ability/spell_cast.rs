@@ -358,6 +358,15 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
     {
         return "a noncreature spell".to_string();
     }
+    if !filter.subtypes.is_empty() {
+        let subtypes = filter
+            .subtypes
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(" ");
+        return format!("{} {subtypes} spell", indefinite_article_for(&subtypes));
+    }
 
     let fallback = filter.description();
     if filter.zone == Some(Zone::Stack) {

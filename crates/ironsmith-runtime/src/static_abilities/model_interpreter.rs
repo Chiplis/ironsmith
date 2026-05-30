@@ -518,9 +518,14 @@ impl StaticAbilityModelInterpreter {
 
     fn cached_cost_reduction(model: &CompiledStaticAbility) -> Option<super::CostReduction> {
         match &model.payload {
-            ironsmith_core::StaticAbilityPayload::CostReduction(reduction) => Some(
-                super::CostReduction::new(reduction.filter.clone(), reduction.amount.clone()),
-            ),
+            ironsmith_core::StaticAbilityPayload::CostReduction(reduction) => {
+                let mut converted =
+                    super::CostReduction::new(reduction.filter.clone(), reduction.amount.clone());
+                if let Some(display) = &reduction.display {
+                    converted = converted.with_display(display.clone());
+                }
+                Some(converted)
+            }
             ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
                 Self::cached_cost_reduction(ability)
                     .map(|reduction| reduction.with_condition(condition.clone()))

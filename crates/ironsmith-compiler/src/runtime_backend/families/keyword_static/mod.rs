@@ -640,6 +640,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_equip_cost_modifier_line),
         single_static_ability_ast_rule!(parse_flashback_cost_modifier_line),
         multi_static_ability_ast_rule!(parse_spell_and_player_activated_ability_cost_modifier_line),
+        single_static_ability_ast_rule!(parse_spells_have_affinity_for_line),
         single_static_ability_ast_rule!(parse_spells_cost_modifier_line),
         single_static_ability_ast_passthrough_rule!(parse_trigger_duplication_line_ast),
         single_static_ability_ast_rule!(
@@ -5007,6 +5008,136 @@ pub(crate) fn parse_cost_modifier_prefix_condition(
     }
 
     Ok((None, 0))
+}
+
+fn uppercase_first_ascii(text: &str) -> String {
+    let mut chars = text.chars();
+    let Some(first) = chars.next() else {
+        return String::new();
+    };
+    let mut out = first.to_ascii_uppercase().to_string();
+    out.push_str(chars.as_str());
+    out
+}
+
+fn affinity_spell_subject_display(filter: &ObjectFilter) -> String {
+    let mut subject_filter = filter.clone();
+    let cast_by = subject_filter.cast_by.take();
+    subject_filter.zone = None;
+    subject_filter.stack_kind = None;
+    let description = subject_filter.description();
+    let mut subject = if description == "object" {
+        "spells".to_string()
+    } else {
+        format!("{description} spells")
+    };
+    match cast_by {
+        Some(PlayerFilter::You) => subject.push_str(" you cast"),
+        Some(PlayerFilter::Opponent) => subject.push_str(" your opponents cast"),
+        _ => {}
+    }
+    uppercase_first_ascii(&subject)
+}
+
+fn affinity_object_display(filter: &ObjectFilter) -> String {
+    let description = filter.description();
+    let mut subject = description
+        .strip_suffix(" you control")
+        .or_else(|| description.strip_suffix(" controlled by you"))
+        .unwrap_or(description.as_str())
+        .to_string();
+    subject = subject
+        .strip_prefix("a ")
+        .or_else(|| subject.strip_prefix("an "))
+        .unwrap_or(subject.as_str())
+        .to_string();
+    if !subject.ends_with('s') {
+        subject.push('s');
+    }
+    uppercase_first_ascii(&subject)
+}
+
+pub(crate) fn parse_spells_have_affinity_for_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    if clause_words.len() < 7 {
+        return Ok(None);
+    }
+
+    let Some(spells_token_idx) = find_index(tokens, |token| {
+        token.is_word("spell") || token.is_word("spells")
+    }) else {
+        return Ok(None);
+    };
+    let Some(have_token_idx) = find_index(&tokens[spells_token_idx + 1..], |token| {
+        token.is_word("have") || token.is_word("has")
+    })
+    .map(|idx| idx + spells_token_idx + 1) else {
+        return Ok(None);
+    };
+
+    if !tokens
+        .get(have_token_idx + 1)
+        .is_some_and(|token| token.is_word("affinity"))
+        || !tokens
+            .get(have_token_idx + 2)
+            .is_some_and(|token| token.is_word("for"))
+    {
+        return Ok(None);
+    }
+
+    let subject_tokens = trim_commas(&tokens[..spells_token_idx]);
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+    let mut spell_filter = parse_spell_filter_with_grammar_entrypoint(&subject_tokens);
+
+    let between_tokens = &tokens[spells_token_idx + 1..have_token_idx];
+    let between_words = crate::runtime_backend::token_word_refs(between_tokens);
+    if word_slice_contains_phrase(&between_words, &["you", "cast"]) {
+        spell_filter.cast_by = Some(PlayerFilter::You);
+    }
+    if between_words
+        .iter()
+        .any(|word| *word == "opponent" || *word == "opponents")
+        && between_words
+            .iter()
+            .any(|word| *word == "cast" || *word == "casts")
+    {
+        spell_filter.cast_by = Some(PlayerFilter::Opponent);
+    }
+
+    let affinity_start = have_token_idx + 3;
+    let affinity_end = tokens[affinity_start..]
+        .iter()
+        .position(|token| {
+            token.is_period() || token.kind == TokenKind::LParen || token.kind == TokenKind::RParen
+        })
+        .map(|idx| affinity_start + idx)
+        .unwrap_or(tokens.len());
+    let affinity_tokens = trim_commas(&tokens[affinity_start..affinity_end]);
+    if affinity_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing affinity object in spells-have-affinity clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    let affinity_filter =
+        parse_object_filter(&affinity_tokens, false)?.controlled_by(PlayerFilter::You);
+    let subject = affinity_spell_subject_display(&spell_filter);
+    let display = format!(
+        "{subject} have affinity for {}",
+        affinity_object_display(&affinity_filter)
+    );
+    let ability = crate::static_abilities::CostReduction::new(
+        spell_filter,
+        Value::Count(affinity_filter),
+    )
+    .with_display(display);
+
+    Ok(Some(StaticAbility::new(ability)))
 }
 
 pub(crate) fn parse_spells_cost_modifier_line(

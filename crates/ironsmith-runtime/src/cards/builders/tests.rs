@@ -31810,6 +31810,215 @@ fn execute_herald_upkeep(
 }
 
 #[test]
+fn pearl_ear_imperial_advisor_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Pearl-Ear, Imperial Advisor");
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        !crate::cards::generated_definition_has_unimplemented_content(&def),
+        "Pearl-Ear should not contain unsupported markers: {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("CostReduction")
+            && abilities_debug.contains("Count")
+            && abilities_debug.contains("Aura"),
+        "expected Pearl-Ear to compile affinity for Auras as a dynamic cost reduction, got {abilities_debug}"
+    );
+
+    let rendered_lines = unprocessed_compiled_lines(&def);
+    let rendered = rendered_lines.join("\n");
+    assert!(
+        rendered.contains("Enchantment spells you cast have affinity for Auras"),
+        "expected affinity wording in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Whenever you cast an Aura spell that targets a modified permanent you control, draw a card."),
+        "expected modified-permanent Aura trigger text, got {rendered}"
+    );
+
+    let oracle = oracle_text_by_name()
+        .get("Pearl-Ear, Imperial Advisor")
+        .expect("missing Pearl-Ear oracle text");
+    let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+        crate::semantic_compare::compare_card_semantics_scored(
+            "Pearl-Ear, Imperial Advisor",
+            oracle,
+            &rendered_lines,
+            crate::semantic_compare::report_embedding_config(),
+        );
+    assert!(
+        similarity >= 0.99 && !mismatch,
+        "expected Pearl-Ear compiled text to match oracle, got similarity={similarity}, mismatch={mismatch}, text={rendered}"
+    );
+}
+
+#[test]
+fn pearl_ear_affinity_reduces_only_enchantment_spells_for_auras_you_control() {
+    let pearl_ear = parse_oracle_card_definition("Pearl-Ear, Imperial Advisor");
+    let aura = CardDefinitionBuilder::new(CardId::from_raw(91_100), "Test Aura")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .build();
+    let enchantment_spell = CardDefinitionBuilder::new(CardId::from_raw(91_101), "Test Shrine")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let instant_spell = CardDefinitionBuilder::new(CardId::from_raw(91_102), "Test Instant")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Instant])
+        .build();
+    let non_aura_enchantment = CardDefinitionBuilder::new(CardId::from_raw(91_103), "Test Seal")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    game.create_object_from_definition(&pearl_ear, alice, Zone::Battlefield);
+    game.create_object_from_definition(&aura, alice, Zone::Battlefield);
+    game.create_object_from_definition(&aura, alice, Zone::Battlefield);
+    game.create_object_from_definition(&aura, bob, Zone::Battlefield);
+    game.create_object_from_definition(&non_aura_enchantment, alice, Zone::Battlefield);
+
+    let enchantment_spell_id =
+        game.create_object_from_definition(&enchantment_spell, alice, Zone::Hand);
+    let enchantment_spell_obj = game
+        .object(enchantment_spell_id)
+        .expect("enchantment spell in hand");
+    let enchantment_base_cost = enchantment_spell_obj
+        .mana_cost
+        .as_ref()
+        .expect("enchantment spell has mana cost");
+    let enchantment_cost = crate::decision::calculate_effective_mana_cost(
+        &game,
+        alice,
+        enchantment_spell_obj,
+        enchantment_base_cost,
+    );
+    assert_eq!(
+        enchantment_cost.mana_value(),
+        2,
+        "Pearl-Ear should reduce enchantment spells by only Alice's two Auras"
+    );
+
+    let instant_spell_id = game.create_object_from_definition(&instant_spell, alice, Zone::Hand);
+    let instant_spell_obj = game.object(instant_spell_id).expect("instant spell in hand");
+    let instant_base_cost = instant_spell_obj
+        .mana_cost
+        .as_ref()
+        .expect("instant spell has mana cost");
+    let instant_cost = crate::decision::calculate_effective_mana_cost(
+        &game,
+        alice,
+        instant_spell_obj,
+        instant_base_cost,
+    );
+    assert_eq!(
+        instant_cost.mana_value(),
+        4,
+        "Pearl-Ear affinity should not reduce non-enchantment spells"
+    );
+
+    let opponents_enchantment_spell_id =
+        game.create_object_from_definition(&enchantment_spell, bob, Zone::Hand);
+    let opponents_enchantment_spell_obj = game
+        .object(opponents_enchantment_spell_id)
+        .expect("opponent enchantment spell in hand");
+    let opponents_enchantment_base_cost = opponents_enchantment_spell_obj
+        .mana_cost
+        .as_ref()
+        .expect("opponent enchantment spell has mana cost");
+    let opponents_enchantment_cost = crate::decision::calculate_effective_mana_cost(
+        &game,
+        bob,
+        opponents_enchantment_spell_obj,
+        opponents_enchantment_base_cost,
+    );
+    assert_eq!(
+        opponents_enchantment_cost.mana_value(),
+        4,
+        "Pearl-Ear affinity should reduce only enchantment spells its controller casts"
+    );
+}
+
+#[test]
+fn pearl_ear_draw_trigger_requires_aura_targeting_modified_permanent_you_control() {
+    let pearl_ear = parse_oracle_card_definition("Pearl-Ear, Imperial Advisor");
+    let aura_spell = CardDefinitionBuilder::new(CardId::from_raw(91_110), "Test Aura Spell")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .build();
+    let creature = CardDefinitionBuilder::new(CardId::from_raw(91_111), "Test Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let draw_card = CardDefinitionBuilder::new(CardId::from_raw(91_112), "Drawn Card").build();
+
+    let alice = PlayerId::from_index(0);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    game.create_object_from_definition(&pearl_ear, alice, Zone::Battlefield);
+    let modified_creature =
+        game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+    let unmodified_creature =
+        game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+    game.add_counters(
+        modified_creature,
+        crate::object::CounterType::PlusOnePlusOne,
+        1,
+    );
+    game.create_object_from_definition(&draw_card, alice, Zone::Library);
+
+    let unmodified_aura = game.create_object_from_definition(&aura_spell, alice, Zone::Stack);
+    game.push_to_stack(
+        crate::game_state::StackEntry::new(unmodified_aura, alice)
+            .with_targets(vec![crate::game_state::Target::Object(
+                unmodified_creature,
+            )]),
+    );
+    let unmodified_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::spells::SpellCastEvent::new(unmodified_aura, alice, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert!(
+        crate::triggers::check_triggers(&game, &unmodified_event).is_empty(),
+        "Pearl-Ear should not trigger for an Aura targeting an unmodified permanent"
+    );
+
+    let aura = game.create_object_from_definition(&aura_spell, alice, Zone::Stack);
+    game.push_to_stack(
+        crate::game_state::StackEntry::new(aura, alice)
+            .with_targets(vec![crate::game_state::Target::Object(modified_creature)]),
+    );
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::spells::SpellCastEvent::new(aura, alice, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &event) {
+        trigger_queue.add(trigger);
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Pearl-Ear should trigger for an Aura targeting a modified permanent you control"
+    );
+
+    let hand_before = game.player(alice).expect("Alice exists").hand.len();
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Pearl-Ear trigger should go on the stack");
+    crate::game_loop::resolve_stack_entry(&mut game)
+        .expect("Pearl-Ear draw trigger should resolve");
+    let hand_after = game.player(alice).expect("Alice exists").hand.len();
+    assert_eq!(
+        hand_after,
+        hand_before + 1,
+        "resolving Pearl-Ear's trigger should draw a card"
+    );
+}
+
+#[test]
 fn herald_of_leshrac_strict_parser_and_compiled_text_regression() {
     let def = herald_of_leshrac_definition();
     let abilities_debug = format!("{:?}", def.abilities);

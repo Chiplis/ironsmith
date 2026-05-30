@@ -4049,13 +4049,22 @@ impl CopyTriggeredAbilities {
 pub struct CostReduction {
     pub filter: ObjectFilter,
     pub amount: Value,
+    pub display: Option<String>,
 }
 
 impl CostReduction {
     pub fn new(filter: ObjectFilter, amount: Value) -> Self {
-        Self { filter, amount }
+        Self {
+            filter,
+            amount,
+            display: None,
+        }
     }
     pub fn with_condition(self, _condition: Condition) -> Self {
+        self
+    }
+    pub fn with_display(mut self, display: impl Into<String>) -> Self {
+        self.display = Some(display.into());
         self
     }
 }
