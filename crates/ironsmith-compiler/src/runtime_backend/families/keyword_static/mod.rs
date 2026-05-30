@@ -659,6 +659,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_rule!(parse_all_are_color_and_type_addition_line),
         single_static_ability_ast_rule!(parse_all_cards_spells_permanents_add_chosen_color_line),
         single_static_ability_ast_rule!(parse_all_creatures_are_color_line),
+        single_static_ability_ast_rule!(parse_subjects_are_basic_line),
         single_static_ability_ast_rule!(parse_protection_from_colored_spells_line),
         single_static_ability_ast_rule!(parse_nonbasic_lands_are_basic_land_type_line),
         single_static_ability_ast_rule!(parse_land_type_addition_line),
@@ -6541,6 +6542,45 @@ pub(crate) fn parse_all_creatures_are_color_line(
     let filter = parse_object_filter(subject_tokens, false)?;
 
     Ok(Some(StaticAbility::set_colors(filter, color)))
+}
+
+pub(crate) fn parse_subjects_are_basic_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let Some(be_idx) = find_index(&words, |word| matches!(*word, "is" | "are")) else {
+        return Ok(None);
+    };
+    if be_idx == 0 || !word_slice_eq(&words[be_idx + 1..], &["basic"]) {
+        return Ok(None);
+    }
+
+    let subject_tokens = trim_lexed_commas(&tokens[..be_idx]);
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let subject_segments = split_lexed_slices_on_and(subject_tokens);
+    let filter = if subject_segments.len() > 1 {
+        let mut branches = Vec::with_capacity(subject_segments.len());
+        for segment in subject_segments {
+            let segment = trim_lexed_commas(segment);
+            if segment.is_empty() {
+                return Ok(None);
+            }
+            branches.push(parse_object_filter_lexed(segment, false)?);
+        }
+        let mut filter = ObjectFilter::default();
+        filter.any_of = branches;
+        filter
+    } else {
+        parse_object_filter_lexed(subject_tokens, false)?
+    };
+
+    Ok(Some(StaticAbility::add_supertypes(
+        filter,
+        vec![Supertype::Basic],
+    )))
 }
 
 pub(crate) fn parse_nonbasic_lands_are_basic_land_type_line(
