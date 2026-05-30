@@ -1950,9 +1950,18 @@ impl ObjectFilter {
             }
         }
 
-        if (self.entered_battlefield_this_turn || self.entered_battlefield_controller.is_some())
-            && self.zone == Some(Zone::Battlefield)
+        let has_entered_battlefield_this_turn_clause =
+            (self.entered_battlefield_this_turn || self.entered_battlefield_controller.is_some())
+                && self.zone == Some(Zone::Battlefield);
+        if has_entered_battlefield_this_turn_clause
+            && self.entered_battlefield_controller.is_none()
+            && owner_suffix.is_none()
+            && let Some(controller) = controller_suffix.take()
         {
+            parts.push(controller);
+        }
+
+        if has_entered_battlefield_this_turn_clause {
             let clause = if let Some(controller) = &self.entered_battlefield_controller {
                 match controller {
                     PlayerFilter::You => {

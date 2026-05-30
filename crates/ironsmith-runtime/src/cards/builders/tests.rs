@@ -37710,6 +37710,127 @@ fn assert_oracle_card_fails_strict(name: &str) {
 }
 
 #[test]
+fn alena_kessig_trapper_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition("Alena, Kessig Trapper");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains("first strike") && rendered_lower.contains("partner"),
+        "expected Alena's keywords to render, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Add an amount of {R} equal to the greatest power among creatures you control that entered this turn"
+        ),
+        "expected Alena's aggregate red mana clause to render, got {rendered}"
+    );
+
+    let ability_debug = format!("{:#?}", def.abilities);
+    assert!(
+        ability_debug.contains("AddScaledManaEffect")
+            && ability_debug.contains("GreatestPower")
+            && ability_debug.contains("entered_battlefield_this_turn: true"),
+        "expected Alena to lower to scaled red mana from entered-this-turn greatest power, got {ability_debug}"
+    );
+}
+
+#[test]
+fn alena_kessig_trapper_mana_runtime_uses_only_your_creatures_that_entered_this_turn() {
+    fn record_entered_this_turn(game: &mut crate::game_state::GameState, id: ObjectId) {
+        let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+            game.object(id)
+                .expect("entered object should exist on the battlefield"),
+            game,
+        );
+        let entry_event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::zones::ZoneChangeEvent::with_cause(
+                id,
+                Zone::Hand,
+                Zone::Battlefield,
+                crate::events::cause::EventCause::effect(),
+                Some(snapshot),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        game.record_turn_history_event(&entry_event);
+    }
+
+    fn create_creature(
+        game: &mut crate::game_state::GameState,
+        controller: PlayerId,
+        name: &str,
+        power: i32,
+        entered_this_turn: bool,
+    ) -> ObjectId {
+        let def = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(power, 1))
+            .build();
+        let id = game.create_object_from_definition(&def, controller, Zone::Battlefield);
+        if entered_this_turn {
+            record_entered_this_turn(game, id);
+        }
+        id
+    }
+
+    let def = parse_oracle_card_definition("Alena, Kessig Trapper");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Alena should have an activated mana ability");
+    let add_scaled = activated
+        .effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::AddScaledManaEffect>())
+        .expect("Alena should produce scaled red mana");
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let alena_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    create_creature(&mut game, alice, "Old Behemoth", 7, false);
+    create_creature(&mut game, bob, "Bob's New Behemoth", 6, true);
+    create_creature(&mut game, alice, "Alice's New Scout", 3, true);
+    create_creature(&mut game, alice, "Alice's New Giant", 5, true);
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(alena_id, alice, &mut dm);
+    let result = add_scaled
+        .execute(&mut game, &mut ctx)
+        .expect("Alena's mana ability should resolve");
+
+    assert_eq!(
+        result.value,
+        crate::effect::OutcomeValue::ManaAdded(vec![
+            ManaSymbol::Red,
+            ManaSymbol::Red,
+            ManaSymbol::Red,
+            ManaSymbol::Red,
+            ManaSymbol::Red,
+        ])
+    );
+    assert_eq!(game.player(alice).expect("alice").mana_pool.red, 5);
+
+    game.player_mut(alice).expect("alice").mana_pool.red = 0;
+    game.turn_store.turn_history.clear_for_new_turn();
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(alena_id, alice, &mut dm);
+    let result = add_scaled
+        .execute(&mut game, &mut ctx)
+        .expect("Alena's mana ability should resolve with no entered creatures");
+
+    assert_eq!(result.value, crate::effect::OutcomeValue::ManaAdded(vec![]));
+    assert_eq!(game.player(alice).expect("alice").mana_pool.red, 0);
+}
+
+#[test]
 fn when_we_were_young_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("When We Were Young");
     let rendered = canonical_compiled_lines(&def).join(" ");

@@ -345,7 +345,9 @@ pub(crate) fn parse_add_mana(
                 player, mana, amount,
             ));
         }
-        if let Some(amount) = parse_add_mana_equal_amount_value(tokens) {
+        if let Some(amount) = parse_equal_to_aggregate_filter_value(tokens)
+            .or_else(|| parse_add_mana_equal_amount_value(tokens))
+        {
             parser_trace_stack("parse_add_mana:scaled-equal", tokens);
             return Ok(EffectAst::subject_verb_add_mana_scaled(
                 player, mana, amount,
