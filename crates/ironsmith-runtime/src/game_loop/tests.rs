@@ -30337,6 +30337,159 @@ fn test_cipher_copy_cast_prompts_for_targets_before_resolving() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn prototype_portal_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(90_401), "Prototype Portal")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Imprint — When this artifact enters, you may exile an artifact card from your hand.\n\
+             {X}, {T}: Create a token that's a copy of the exiled card. X is the mana value of that card.",
+        )
+        .expect("Prototype Portal should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_prototype_portal_imprint(
+    game: &mut GameState,
+    portal_id: ObjectId,
+    controller: PlayerId,
+) {
+    let triggered_effects = game
+        .object(portal_id)
+        .expect("Prototype Portal should exist")
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered.effects.clone()),
+            _ => None,
+        })
+        .expect("Prototype Portal should have an imprint trigger");
+    game.stack.push(
+        StackEntry::ability(portal_id, controller, triggered_effects).with_triggering_event(
+            TriggerEvent::new_with_provenance(
+                EnterBattlefieldEvent::new(portal_id, Zone::Hand),
+                crate::provenance::ProvNodeId::default(),
+            ),
+        ),
+    );
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_stack_entry_with(game, &mut dm)
+        .expect("Prototype Portal imprint trigger should resolve");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn prototype_portal_imprints_artifact_and_copies_it_for_exact_dynamic_x_cost() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let portal = prototype_portal_definition();
+    let fuel_card = CardBuilder::new(CardId::from_raw(90_402), "Portal Fuel")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let fuel_id = game.create_object_from_card(&fuel_card, alice, Zone::Hand);
+    let portal_id = game.create_object_from_definition(&portal, alice, Zone::Battlefield);
+
+    assert!(
+        !crate::decision::compute_legal_actions(&game, alice)
+            .into_iter()
+            .any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, .. }
+                    if source == portal_id
+            )),
+        "Prototype Portal should not be activatable before a card is imprinted"
+    );
+
+    resolve_prototype_portal_imprint(&mut game, portal_id, alice);
+
+    assert!(
+        game.object(fuel_id).is_none(),
+        "the imprinted card should receive a fresh object id after moving to exile"
+    );
+    let imprinted = game.get_imprinted_cards(portal_id);
+    assert_eq!(
+        imprinted.len(),
+        1,
+        "Prototype Portal should source-link the exiled artifact card"
+    );
+    let imprinted_id = imprinted[0];
+    let imprinted_object = game
+        .object(imprinted_id)
+        .expect("imprinted card should exist in exile");
+    assert_eq!(imprinted_object.zone, Zone::Exile);
+    assert_eq!(imprinted_object.name, "Portal Fuel");
+
+    let activated = game
+        .object(portal_id)
+        .expect("Prototype Portal should exist")
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated.clone()),
+            _ => None,
+        })
+        .expect("Prototype Portal should have an activated ability");
+
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 2);
+    let mut dm = SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(portal_id, alice, &mut dm);
+    assert!(
+        crate::special_actions::pay_total_cost_with_choice_in_context(
+            &mut game,
+            alice,
+            portal_id,
+            &activated.mana_cost,
+            crate::costs::PaymentReason::ActivateAbility,
+            &mut ctx,
+        )
+        .is_err(),
+        "Prototype Portal activation should not accept less mana than the imprinted card's mana value"
+    );
+    assert!(
+        !game.is_tapped(portal_id),
+        "failed dynamic mana payment should not pay the tap cost"
+    );
+
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+    crate::special_actions::pay_total_cost_with_choice_in_context(
+        &mut game,
+        alice,
+        portal_id,
+        &activated.mana_cost,
+        crate::costs::PaymentReason::ActivateAbility,
+        &mut ctx,
+    )
+    .expect("Prototype Portal activation should accept mana equal to imprinted card's mana value");
+    assert!(game.is_tapped(portal_id), "Prototype Portal should tap as a cost");
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").mana_pool.total(),
+        0,
+        "Prototype Portal should spend exactly three mana for the imprinted mana value"
+    );
+
+    execute_resolution_program(&mut game, &mut ctx, alice, portal_id, &activated.effects, None, &[])
+        .expect("Prototype Portal activation should resolve");
+
+    let copied_tokens = game
+        .battlefield
+        .iter()
+        .filter_map(|id| game.object(*id))
+        .filter(|object| object.name == "Portal Fuel" && object.kind == ObjectKind::Token)
+        .count();
+    assert_eq!(
+        copied_tokens, 1,
+        "Prototype Portal should create one token copy of the imprinted artifact card"
+    );
+}
+
 #[test]
 fn test_rebound_exiles_on_resolution_and_schedules_next_upkeep_cast() {
     use crate::ability::Ability;

@@ -1241,6 +1241,10 @@ fn activation_cost_component_precheck_with_view(
         return available >= count as usize;
     }
 
+    if let Some(dynamic_mana) = cost.dynamic_mana_cost_ref() {
+        return dynamic_activation_mana_cost_resolves(game, controller, source, dynamic_mana);
+    }
+
     if game
         .validate_cost_for_payment_reason(controller, source, cost, reason)
         .is_err()
@@ -1257,6 +1261,17 @@ fn activation_cost_component_precheck_with_view(
 
     let check_ctx = crate::costs::CostCheckContext::new(source, controller).with_reason(reason);
     crate::costs::can_pay_with_check_context(&*cost.0, game, &check_ctx).is_ok()
+}
+
+fn dynamic_activation_mana_cost_resolves(
+    game: &GameState,
+    controller: PlayerId,
+    source: ObjectId,
+    dynamic_mana: &ironsmith_core::DynamicManaCost,
+) -> bool {
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, controller, &mut dm);
+    crate::special_actions::resolve_dynamic_mana_cost(game, dynamic_mana, &mut ctx).is_ok()
 }
 
 fn activation_printed_costs_precheck_with_view(
@@ -1579,6 +1594,9 @@ fn activation_cost_is_payable_with_view(
         // cost modifiers reprice the mana portion. The payment flow will enforce
         // the actual mana payment later.
         return true;
+    }
+    if let Some(dynamic_mana) = cost.dynamic_mana_cost_ref() {
+        return dynamic_activation_mana_cost_resolves(game, controller, source, dynamic_mana);
     }
     if cost.is_remove_counters() {
         return true;

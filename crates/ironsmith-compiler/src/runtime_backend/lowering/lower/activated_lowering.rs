@@ -226,6 +226,72 @@ struct SplitRewriteActivatedEffectText {
     mana_restrictions: Vec<String>,
 }
 
+fn parse_standalone_x_definition_value(tokens: &[OwnedLexToken]) -> Option<crate::effect::Value> {
+    let words = token_word_refs(tokens);
+    let value_tokens = if word_slice_starts_with(&words, &["where", "x", "is"]) {
+        tokens.to_vec()
+    } else if word_slice_starts_with(&words, &["x", "is"]) {
+        let tail_start = token_index_for_word_index(tokens, 2)?;
+        let mut synthetic = vec![
+            OwnedLexToken::word("where".to_string(), TextSpan::synthetic()),
+            OwnedLexToken::word("x".to_string(), TextSpan::synthetic()),
+            OwnedLexToken::word("is".to_string(), TextSpan::synthetic()),
+        ];
+        synthetic.extend_from_slice(&tokens[tail_start..]);
+        synthetic
+    } else {
+        return None;
+    };
+
+    parse_value_binding_clause(&value_tokens).or_else(|| {
+        let value_words = token_word_refs(&value_tokens);
+        matches!(
+            value_words.get(3..),
+            Some(["the", "mana", "value", "of", "that", "card"])
+                | Some(["that", "card", "mana", "value"])
+                | Some(["that", "cards", "mana", "value"])
+        )
+        .then(|| {
+            crate::effect::Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(
+                crate::tag::SOURCE_EXILED_TAG,
+            ))))
+        })
+    })
+}
+
+fn is_standalone_x_definition_sentence(tokens: &[OwnedLexToken]) -> bool {
+    parse_standalone_x_definition_value(tokens).is_some()
+}
+
+fn activated_x_definition_value(tokens: &[OwnedLexToken]) -> Option<crate::effect::Value> {
+    split_lexed_sentences(tokens)
+        .into_iter()
+        .find_map(parse_standalone_x_definition_value)
+}
+
+fn bind_activated_x_definition_to_mana_cost(
+    cost: TotalCost,
+    x_value: Option<crate::effect::Value>,
+) -> TotalCost {
+    let Some(x_value) = x_value else {
+        return cost;
+    };
+
+    cost.try_map(|component| {
+        if let Some(mana_cost) = component.mana_cost_ref()
+            && mana_cost.has_x()
+        {
+            Ok(Cost::dynamic_mana(ironsmith_core::DynamicManaCost::from_x(
+                mana_cost.clone(),
+                x_value.clone(),
+            )))
+        } else {
+            Ok(component)
+        }
+    })
+    .unwrap_or_else(|_: std::convert::Infallible| unreachable!())
+}
+
 fn finalize_rewrite_activated_effect_sentences(
     mut restrictions: ParsedRestrictions,
     sentence_tokens: Vec<Vec<OwnedLexToken>>,
@@ -249,6 +315,8 @@ fn finalize_rewrite_activated_effect_sentences(
             )
         {
             mana_restrictions.push(sentence);
+        } else if is_standalone_x_definition_sentence(&tokens) {
+            continue;
         } else if is_any_player_may_activate_sentence_lexed(&tokens) {
             restrictions.activation.push(sentence);
         } else {
@@ -365,6 +433,8 @@ fn split_rewrite_activated_effect_text_fallback(
             )
         {
             mana_restrictions.push(sentence);
+        } else if is_standalone_x_definition_sentence(&tokens) {
+            continue;
         } else if is_any_player_may_activate_sentence_lexed(&tokens) {
             restrictions.activation.push(sentence);
         } else {
@@ -502,6 +572,7 @@ fn lower_rewrite_activated_to_chunk_impl(
     cost_parse_tokens: &[OwnedLexToken],
     effect_parse_tokens: &[OwnedLexToken],
 ) -> Result<LoweredRewriteActivatedLine, CardTextError> {
+    let x_definition_value = activated_x_definition_value(effect_parse_tokens);
     let SplitRewriteActivatedEffectText {
         effect_text,
         effect_parse_tokens,
@@ -515,7 +586,10 @@ fn lower_rewrite_activated_to_chunk_impl(
         )));
     }
 
-    let normalized_cost = line.cost.clone();
+    let normalized_cost = bind_activated_x_definition_to_mana_cost(
+        line.cost.clone(),
+        x_definition_value,
+    );
     let ability_text = rewrite_activated_display_text(line);
     let additional_activation_restrictions = if ability_text
         .as_deref()
