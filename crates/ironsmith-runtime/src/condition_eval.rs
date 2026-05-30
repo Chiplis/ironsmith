@@ -1056,6 +1056,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::PlayerHasMoreCardsInHandThanYou { .. } => {}
         Condition::PlayerHasMoreCardsInHandThanEachOtherPlayer { .. } => {}
         Condition::PlayerHasPoisonCountersOrMore { .. } => {}
+        Condition::PlayerIsYou { .. } => {}
         Condition::PlayerIsMonarch { .. } => {}
         Condition::PlayerHasInitiative { .. } => {}
         Condition::PlayerHasCitysBlessing { .. } => {}
@@ -1313,6 +1314,12 @@ pub fn evaluate_condition_external(
             matching_condition_players_external(game, ctx, player)
                 .into_iter()
                 .any(|player_id| player_poison_counters_or_more(game, player_id, *count))
+        }
+        Condition::PlayerIsYou { player } => {
+            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
+                return false;
+            };
+            player_id == ctx.controller
         }
         Condition::PlayerIsMonarch { player } => {
             let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
@@ -2332,6 +2339,12 @@ fn evaluate_condition_simple(
                 .into_iter()
                 .any(|player_id| player_has_more_life_than_each_other_player(game, player_id))
         }
+        Condition::PlayerIsYou { player } => {
+            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
+                return false;
+            };
+            player_id == controller
+        }
         Condition::PlayerIsMonarch { player } => {
             let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
                 return false;
@@ -2998,6 +3011,10 @@ fn evaluate_condition(
             Ok(matching_condition_players_exec(game, ctx, player)?
                 .into_iter()
                 .any(|player_id| player_has_more_life_than_each_other_player(game, player_id)))
+        }
+        Condition::PlayerIsYou { player } => {
+            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            Ok(player_id == ctx.controller)
         }
         Condition::PlayerIsMonarch { player } => {
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;

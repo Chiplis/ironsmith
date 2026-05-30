@@ -4165,6 +4165,25 @@ impl PoisonCountersEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct RadCountersEffect {
+    pub count: Value,
+    pub player: PlayerFilter,
+}
+
+impl RadCountersEffect {
+    pub fn new(count: impl Into<Value>, player: PlayerFilter) -> Self {
+        Self {
+            count: count.into(),
+            player,
+        }
+    }
+
+    pub fn you(count: impl Into<Value>) -> Self {
+        Self::new(count, PlayerFilter::You)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ControlCombatChoicesThisTurnEffect {
     pub attackers: bool,
     pub blockers: bool,

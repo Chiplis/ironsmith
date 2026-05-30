@@ -105,6 +105,34 @@ impl OrTrigger {
             "Whenever {subject} enters or transforms into {destination}"
         ))
     }
+
+    fn self_dies_or_another_dies_display(&self) -> Option<String> {
+        let [first, second] = self.triggers.as_slice() else {
+            return None;
+        };
+        let first = first.downcast_ref::<ZoneChangeTrigger>()?;
+        let second = second.downcast_ref::<ZoneChangeTrigger>()?;
+        if !first.this_object
+            || first.from != ZonePattern::Specific(Zone::Battlefield)
+            || first.to != ZonePattern::Specific(Zone::Graveyard)
+            || second.this_object
+            || second.from != ZonePattern::Specific(Zone::Battlefield)
+            || second.to != ZonePattern::Specific(Zone::Graveyard)
+        {
+            return None;
+        }
+
+        let subject = second
+            .object_filter
+            .description()
+            .strip_prefix("a ")
+            .map(str::to_string)
+            .unwrap_or_else(|| second.object_filter.description());
+        let source = first.this_subject_text("this creature");
+        Some(format!(
+            "Whenever {source} or another {subject} dies"
+        ))
+    }
 }
 
 impl TriggerMatcher for OrTrigger {
@@ -144,6 +172,9 @@ impl TriggerMatcher for OrTrigger {
             return display;
         }
         if let Some(display) = self.self_enters_or_transforms_display() {
+            return display;
+        }
+        if let Some(display) = self.self_dies_or_another_dies_display() {
             return display;
         }
         // Combine displays with "or", stripping leading "When"/"Whenever" from

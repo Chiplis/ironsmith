@@ -50,7 +50,7 @@ pub use ironsmith_core::{
     PreventDamageEffect as CorePreventDamageEffect, PreventNextTimeDamageEffect,
     PreventNextTimeDamageSource, PreventNextTimeDamageTarget, ProliferateEffect, PutCountersEffect,
     PutOntoBattlefieldEffect, PutStickerEffect, PutTaggedRemainderOnLibraryBottomEffect,
-    RearrangeLookedCardsInLibraryEffect, ReconfigureEffect,
+    RadCountersEffect, RearrangeLookedCardsInLibraryEffect, ReconfigureEffect,
     RedirectAllDamageThisTurnToTargetEffect, RedirectNextDamageToTargetEffect,
     RedirectNextTimeDamageSource, RedirectNextTimeDamageToSourceEffect,
     ReflexiveTriggerEffect as CoreReflexiveTriggerEffect, RegenerateEffect,

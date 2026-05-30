@@ -2846,6 +2846,18 @@ impl Effect {
         Self::new(PoisonCountersEffect::new(count, player))
     }
 
+    /// Create a "rad counters" effect.
+    pub fn rad_counters(count: impl Into<Value>) -> Self {
+        use crate::effects::RadCountersEffect;
+        Self::new(RadCountersEffect::you(count))
+    }
+
+    /// Create a "rad counters" effect for a specific player.
+    pub fn rad_counters_player(count: impl Into<Value>, player: PlayerFilter) -> Self {
+        use crate::effects::RadCountersEffect;
+        Self::new(RadCountersEffect::new(count, player))
+    }
+
     /// Create an "energy counters" effect.
     pub fn energy_counters(count: impl Into<Value>) -> Self {
         use crate::effects::EnergyCountersEffect;

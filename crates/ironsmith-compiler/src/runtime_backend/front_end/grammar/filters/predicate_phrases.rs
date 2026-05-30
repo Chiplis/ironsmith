@@ -1895,6 +1895,11 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
     if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
+        && word_slice_eq_any(&filtered[subject_len..], &[&["is", "you"], &["are", "you"]])
+    {
+        return Ok(PredicateAst::PlayerIsYou { player });
+    }
+    if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
         && word_slice_at_is_any(&filtered, subject_len, &["has", "have"])
         && let Some(count_word) = filtered.get(subject_len + 1).copied()
         && let Some(count) = count_word

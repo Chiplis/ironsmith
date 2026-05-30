@@ -84,6 +84,8 @@ struct SyncPlayer {
     poison_counters: u32,
     energy_counters: u32,
     experience_counters: u32,
+    #[serde(default)]
+    rad_counters: u32,
     ring_temptations: u32,
     lands_played_this_turn: u32,
     land_plays_per_turn: u32,
@@ -184,6 +186,7 @@ struct PublicAuditPlayer {
     poison_counters: u32,
     energy_counters: u32,
     experience_counters: u32,
+    rad_counters: u32,
     ring_temptations: u32,
     lands_played_this_turn: u32,
     land_plays_per_turn: u32,
@@ -790,6 +793,7 @@ impl WasmGame {
                 poison_counters: player.poison_counters,
                 energy_counters: player.energy_counters,
                 experience_counters: player.experience_counters,
+                rad_counters: player.rad_counters,
                 ring_temptations: player.ring_temptations,
                 lands_played_this_turn: player.lands_played_this_turn,
                 land_plays_per_turn: player.land_plays_per_turn,
@@ -998,6 +1002,7 @@ impl WasmGame {
                 poison_counters: player.poison_counters,
                 energy_counters: player.energy_counters,
                 experience_counters: player.experience_counters,
+                rad_counters: player.rad_counters,
                 ring_temptations: player.ring_temptations,
                 lands_played_this_turn: player.lands_played_this_turn,
                 land_plays_per_turn: player.land_plays_per_turn,
@@ -1393,6 +1398,7 @@ impl WasmGame {
                 player.poison_counters = player_checkpoint.poison_counters;
                 player.energy_counters = player_checkpoint.energy_counters;
                 player.experience_counters = player_checkpoint.experience_counters;
+                player.rad_counters = player_checkpoint.rad_counters;
                 player.ring_temptations = player_checkpoint.ring_temptations;
                 player.lands_played_this_turn = player_checkpoint.lands_played_this_turn;
                 player.land_plays_per_turn = player_checkpoint.land_plays_per_turn;

@@ -444,6 +444,9 @@ pub(crate) enum PredicateAst {
     PlayerHasMoreLifeThanEachOtherPlayer {
         player: PlayerAst,
     },
+    PlayerIsYou {
+        player: PlayerAst,
+    },
     PlayerIsMonarch {
         player: PlayerAst,
     },
@@ -1578,6 +1581,9 @@ pub(crate) enum SubjectVerbActionAst {
     },
     DiscardHand,
     PoisonCounters {
+        count: Value,
+    },
+    RadCounters {
         count: Value,
     },
     EnergyCounters {
@@ -3052,6 +3058,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .finish(),
             Self::DiscardHand => f.write_str("DiscardHand"),
             Self::PoisonCounters { count } => f.debug_tuple("PoisonCounters").field(count).finish(),
+            Self::RadCounters { count } => f.debug_tuple("RadCounters").field(count).finish(),
             Self::EnergyCounters { count } => f.debug_tuple("EnergyCounters").field(count).finish(),
             Self::TicketCounters { count } => f.debug_tuple("TicketCounters").field(count).finish(),
             Self::PayEnergy { amount } => f.debug_tuple("PayEnergy").field(amount).finish(),
@@ -6027,6 +6034,14 @@ impl EffectAst {
             SubjectVerbRoleAst::AffectedPlayer,
             player,
             SubjectVerbActionAst::PoisonCounters { count },
+        )
+    }
+
+    pub(crate) fn subject_verb_rad_counters(player: PlayerAst, count: Value) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::RadCounters { count },
         )
     }
 

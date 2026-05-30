@@ -4356,6 +4356,33 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
 
+    if let [target_effect, rad_effect, conditional_effect] = raw_effects.as_slice()
+        && target_effect
+            .downcast_ref::<crate::effects::TargetOnlyEffect>()
+            .is_some_and(|target_only| {
+                matches!(target_only.target, ChooseSpec::Player(_))
+                    || matches!(&target_only.target, ChooseSpec::Target(inner) if matches!(inner.as_ref(), ChooseSpec::Player(_)))
+            })
+        && let Some(rad) = rad_effect.downcast_ref::<crate::effects::RadCountersEffect>()
+        && let Some(conditional) = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()
+        && let Condition::PlayerIsYou { player } = &conditional.condition
+        && player == &rad.player
+        && conditional.if_false.is_empty()
+    {
+        let amount = match rad.count {
+            Value::Fixed(1) => "a rad counter".to_string(),
+            Value::Fixed(amount) => format!(
+                "{} rad counters",
+                number_word(amount).unwrap_or_else(|| amount.to_string())
+            ),
+            _ => format!("{} rad counters", describe_value(&rad.count)),
+        };
+        let followup = lowercase_first(&describe_effect_list(&conditional.if_true));
+        if !followup.is_empty() {
+            return format!("Target player gets {amount}. If that player is you, {followup}");
+        }
+    }
+
     if let Some(compact) = describe_damaged_player_reveal_choose_graveyard(&raw_effects) {
         return compact;
     }
@@ -30856,6 +30883,18 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             _ => format!("{} poison counters", describe_value(&poison.count)),
         };
         return format!("{} gets {}", describe_player_filter(&poison.player), amount);
+    }
+    if let Some(rad) = effect.downcast_ref::<crate::effects::RadCountersEffect>() {
+        let player = describe_player_filter(&rad.player);
+        let amount = match rad.count {
+            Value::Fixed(1) => "a rad counter".to_string(),
+            Value::Fixed(amount) => format!(
+                "{} rad counters",
+                number_word(amount).unwrap_or_else(|| amount.to_string())
+            ),
+            _ => format!("{} rad counters", describe_value(&rad.count)),
+        };
+        return format!("{player} {} {amount}", player_verb(&player, "get", "gets"));
     }
     if let Some(pay_any_energy) = effect.downcast_ref::<crate::effects::PayAnyEnergyEffect>() {
         let payer = describe_choose_spec(&pay_any_energy.player);

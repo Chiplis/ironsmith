@@ -392,6 +392,10 @@ pub(crate) fn compile_condition_from_predicate_ast(
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHasMoreLifeThanEachOtherPlayer { player }
         }
+        PredicateAst::PlayerIsYou { player } => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::PlayerIsYou { player }
+        }
         PredicateAst::PlayerIsMonarch { player } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerIsMonarch { player }

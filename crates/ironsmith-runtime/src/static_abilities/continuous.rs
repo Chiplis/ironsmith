@@ -1166,6 +1166,10 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                 describe_static_condition_value(right)
             )
         }
+        crate::ConditionExpr::PlayerIsYou { player } => match player {
+            crate::target::PlayerFilter::You => "as long as you are you".to_string(),
+            _ => "as long as that player is you".to_string(),
+        },
         crate::ConditionExpr::PlayerIsMonarch { player } => match player {
             crate::target::PlayerFilter::You => "as long as you're the monarch".to_string(),
             crate::target::PlayerFilter::Opponent => {

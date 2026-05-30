@@ -2269,6 +2269,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::RemoveCountersAll { amount, .. }
             | SubjectVerbActionAst::Discard { count: amount, .. }
             | SubjectVerbActionAst::PoisonCounters { count: amount }
+            | SubjectVerbActionAst::RadCounters { count: amount }
             | SubjectVerbActionAst::EnergyCounters { count: amount }
             | SubjectVerbActionAst::TicketCounters { count: amount }
             | SubjectVerbActionAst::PayEnergy { amount }

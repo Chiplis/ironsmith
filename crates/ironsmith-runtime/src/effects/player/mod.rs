@@ -42,6 +42,7 @@ mod may_cast_matching_spell;
 mod may_cast_miracle;
 mod pay_energy;
 mod poison_counters;
+mod rad_counters;
 mod ring_tempts_you;
 mod roll_dice_choose_result;
 mod roll_die;
@@ -95,6 +96,7 @@ pub use may_cast_matching_spell::MayCastMatchingSpellWithoutPayingManaCostEffect
 pub use may_cast_miracle::MayCastForMiracleCostEffect;
 pub use pay_energy::{PayAnyEnergyEffect, PayEnergyEffect};
 pub use poison_counters::PoisonCountersEffect;
+pub use rad_counters::RadCountersEffect;
 pub use ring_tempts_you::RingTemptsYouEffect;
 pub use roll_dice_choose_result::RollDiceChooseResultEffect;
 pub use roll_die::RollDieEffect;

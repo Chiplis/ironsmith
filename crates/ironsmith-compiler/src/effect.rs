@@ -1910,6 +1910,17 @@ impl Effect {
         Self::new(crate::effects::PoisonCountersEffect::you(count))
     }
 
+    pub fn rad_counters_player(
+        count: impl Into<Value>,
+        player: crate::target::PlayerFilter,
+    ) -> Self {
+        Self::new(crate::effects::RadCountersEffect::new(count, player))
+    }
+
+    pub fn rad_counters(count: impl Into<Value>) -> Self {
+        Self::new(crate::effects::RadCountersEffect::you(count))
+    }
+
     pub fn energy_counters(count: impl Into<Value>) -> Self {
         Self::new(crate::effects::EnergyCountersEffect::you(
             count.into().into_unhinted(),

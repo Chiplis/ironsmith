@@ -240,6 +240,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::RemoveCountersAll { amount, .. }
             | SubjectVerbActionAst::Discard { count: amount, .. }
             | SubjectVerbActionAst::PoisonCounters { count: amount }
+            | SubjectVerbActionAst::RadCounters { count: amount }
             | SubjectVerbActionAst::EnergyCounters { count: amount }
             | SubjectVerbActionAst::TicketCounters { count: amount }
             | SubjectVerbActionAst::PayEnergy { amount }

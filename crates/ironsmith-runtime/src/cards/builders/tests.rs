@@ -141,6 +141,227 @@ fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
     );
 }
 
+#[test]
+fn the_ghoul_gunslinger_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("The Ghoul, Gunslinger");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert!(
+        def.abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, AbilityKind::Triggered(_))),
+        "The Ghoul, Gunslinger should parse its dies trigger strictly"
+    );
+    assert!(
+        ability_debug.contains("RadCountersEffect")
+            && ability_debug.contains("PlayerIsYou")
+            && ability_debug.contains("CreateTokenEffect"),
+        "expected rad counters plus self-target Treasure branch, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains("target player gets two rad counters")
+            && rendered.contains("If that player is you, create a Treasure token"),
+        "expected rad-counter and self-target Treasure text, got {rendered}"
+    );
+}
+
+#[test]
+fn the_ghoul_gunslinger_trigger_and_target_player_runtime_regression() {
+    let def = parse_oracle_card_definition("The Ghoul, Gunslinger");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("The Ghoul, Gunslinger should have a triggered ability");
+    let effects = &triggered.effects.segments[0].default_effects;
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let ghoul_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let zombie = CardDefinitionBuilder::new(CardId::new(), "Nontoken Zombie")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Zombie])
+        .build();
+    let allied_zombie_id = game.create_object_from_definition(&zombie, alice, Zone::Battlefield);
+    let allied_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(allied_zombie_id)
+            .expect("allied zombie should exist"),
+        &game,
+    );
+    let allied_dies_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::ZoneChangeEvent::with_cause(
+            allied_zombie_id,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::effect(),
+            Some(allied_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert_eq!(
+        crate::triggers::check_triggers(&game, &allied_dies_event)
+            .into_iter()
+            .filter(|entry| entry.source == ghoul_id)
+            .count(),
+        1,
+        "another controlled nontoken Zombie dying should trigger The Ghoul"
+    );
+
+    let token_zombie = CardDefinitionBuilder::new(CardId::new(), "Token Zombie")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Zombie])
+        .token()
+        .build();
+    let token_zombie_id =
+        game.create_object_from_definition(&token_zombie, alice, Zone::Battlefield);
+    game.object_mut(token_zombie_id)
+        .expect("token zombie should exist")
+        .kind = crate::object::ObjectKind::Token;
+    let token_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(token_zombie_id)
+            .expect("token zombie should exist"),
+        &game,
+    );
+    let token_dies_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::ZoneChangeEvent::with_cause(
+            token_zombie_id,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::effect(),
+            Some(token_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert_eq!(
+        crate::triggers::check_triggers(&game, &token_dies_event)
+            .into_iter()
+            .filter(|entry| entry.source == ghoul_id)
+            .count(),
+        0,
+        "token Zombies should not satisfy the nontoken death branch"
+    );
+
+    let opposing_zombie_id = game.create_object_from_definition(&zombie, bob, Zone::Battlefield);
+    let opposing_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(opposing_zombie_id)
+            .expect("opposing zombie should exist"),
+        &game,
+    );
+    let opposing_dies_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::ZoneChangeEvent::with_cause(
+            opposing_zombie_id,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::effect(),
+            Some(opposing_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert_eq!(
+        crate::triggers::check_triggers(&game, &opposing_dies_event)
+            .into_iter()
+            .filter(|entry| entry.source == ghoul_id)
+            .count(),
+        0,
+        "opponents' Zombies should not satisfy the controlled death branch"
+    );
+
+    let ghoul_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(ghoul_id).expect("Ghoul should exist"),
+        &game,
+    );
+    let ghoul_dies_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::ZoneChangeEvent::with_cause(
+            ghoul_id,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::effect(),
+            Some(ghoul_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert_eq!(
+        crate::triggers::check_triggers(&game, &ghoul_dies_event)
+            .into_iter()
+            .filter(|entry| entry.source == ghoul_id)
+            .count(),
+        1,
+        "The Ghoul should trigger from its own death"
+    );
+
+    fn resolve_ghoul_effects_targeting(
+        def: &CardDefinition,
+        effects: &[Effect],
+        target: PlayerId,
+    ) -> crate::game_state::GameState {
+        let alice = PlayerId::from_index(0);
+        let mut game = crate::game_state::GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string()],
+            20,
+        );
+        let source = game.create_object_from_definition(def, alice, Zone::Battlefield);
+        let mut dm = crate::decision::AutoPassDecisionMaker;
+        let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+            .with_targets(vec![crate::effects::ResolvedTarget::Player(target)]);
+        for effect in effects {
+            crate::effects::execute_effect(&mut game, effect, &mut ctx)
+                .expect("The Ghoul triggered effect should resolve");
+        }
+        game
+    }
+
+    let self_target_game = resolve_ghoul_effects_targeting(&def, effects, alice);
+    assert_eq!(
+        self_target_game
+            .player(alice)
+            .expect("alice exists")
+            .rad_counters,
+        2,
+        "targeting yourself should give you two rad counters"
+    );
+    let self_target_treasures = self_target_game
+        .battlefield
+        .iter()
+        .filter_map(|id| self_target_game.object(*id))
+        .filter(|object| {
+            object.name == "Treasure" && self_target_game.controller_of(object) == alice
+        })
+        .count();
+    assert_eq!(
+        self_target_treasures, 1,
+        "targeting yourself should create a Treasure token"
+    );
+
+    let opponent_target_game = resolve_ghoul_effects_targeting(&def, effects, bob);
+    assert_eq!(
+        opponent_target_game
+            .player(bob)
+            .expect("bob exists")
+            .rad_counters,
+        2,
+        "targeting an opponent should give that player two rad counters"
+    );
+    let opponent_target_treasures = opponent_target_game
+        .battlefield
+        .iter()
+        .filter_map(|id| opponent_target_game.object(*id))
+        .filter(|object| {
+            object.name == "Treasure" && opponent_target_game.controller_of(object) == alice
+        })
+        .count();
+    assert_eq!(
+        opponent_target_treasures, 0,
+        "targeting an opponent should not create a Treasure token"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_day_of_the_moon_goads_creatures_with_chosen_name() {

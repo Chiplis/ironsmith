@@ -642,6 +642,9 @@ pub enum Condition {
     PlayerHasMoreLifeThanEachOtherPlayer {
         player: PlayerFilter,
     },
+    PlayerIsYou {
+        player: PlayerFilter,
+    },
     PlayerIsMonarch {
         player: PlayerFilter,
     },

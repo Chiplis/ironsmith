@@ -5023,6 +5023,18 @@ fn compile_subject_verb_effect(
             Effect::poison_counters,
             Effect::poison_counters_player,
         ),
+        SubjectVerbActionAst::RadCounters { count } => compile_subject_verb_player_value_effect(
+            role,
+            player,
+            count,
+            ctx,
+            true,
+            true,
+            true,
+            false,
+            Effect::rad_counters,
+            Effect::rad_counters_player,
+        ),
         SubjectVerbActionAst::EnergyCounters { count } => compile_subject_verb_player_value_effect(
             role,
             player,

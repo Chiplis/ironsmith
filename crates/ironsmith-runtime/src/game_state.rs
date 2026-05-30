@@ -5208,6 +5208,9 @@ impl GameState {
             crate::object::CounterType::Experience => {
                 player.experience_counters = player.experience_counters.saturating_add(amount);
             }
+            crate::object::CounterType::Rad => {
+                player.rad_counters = player.rad_counters.saturating_add(amount);
+            }
             _ => return None,
         }
 
@@ -5256,6 +5259,11 @@ impl GameState {
             crate::object::CounterType::Experience => {
                 let removed = player.experience_counters.min(amount);
                 player.experience_counters = player.experience_counters.saturating_sub(removed);
+                removed
+            }
+            crate::object::CounterType::Rad => {
+                let removed = player.rad_counters.min(amount);
+                player.rad_counters = player.rad_counters.saturating_sub(removed);
                 removed
             }
             _ => return None,

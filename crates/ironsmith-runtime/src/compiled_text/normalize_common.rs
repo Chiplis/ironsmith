@@ -10961,6 +10961,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 describe_player_filter(player)
             )
         }
+        Condition::PlayerIsYou { player } => {
+            format!("{} is you", describe_player_filter(player))
+        }
         Condition::PlayerIsMonarch { player } => {
             format!("{} is the monarch", describe_player_filter(player))
         }

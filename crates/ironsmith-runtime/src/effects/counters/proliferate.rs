@@ -172,8 +172,10 @@ impl EffectExecutor for ProliferateEffect {
                 .players
                 .iter()
                 .filter_map(|p| {
-                    let has_counters =
-                        p.poison_counters > 0 || p.energy_counters > 0 || p.experience_counters > 0;
+                    let has_counters = p.poison_counters > 0
+                        || p.energy_counters > 0
+                        || p.experience_counters > 0
+                        || p.rad_counters > 0;
                     has_counters.then_some(p.id)
                 })
                 .collect();
@@ -240,6 +242,9 @@ impl EffectExecutor for ProliferateEffect {
                     }
                     if p.experience_counters > 0 {
                         counters.push(CounterType::Experience);
+                    }
+                    if p.rad_counters > 0 {
+                        counters.push(CounterType::Rad);
                     }
                     counters
                 }) else {
