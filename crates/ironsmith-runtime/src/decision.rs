@@ -3791,6 +3791,159 @@ mod tests {
     }
 
     #[test]
+    fn test_zirda_the_dawnwaker_reduces_only_your_non_mana_activated_abilities() {
+        use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming};
+        use crate::cost::TotalCost;
+        use crate::effect::Effect;
+        use crate::mana::{ManaCost, ManaSymbol};
+        use crate::resolution::ResolutionProgram;
+        use crate::static_abilities::StaticAbility;
+        use crate::target::PlayerFilter;
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+
+        let zirda = CardBuilder::new(CardId::from_raw(13), "Zirda, the Dawnwaker")
+            .supertypes(vec![crate::types::Supertype::Legendary])
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Elemental, Subtype::Fox])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .build();
+        let zirda_id = game.create_object_from_card(&zirda, alice, Zone::Battlefield);
+        game.object_mut(zirda_id)
+            .expect("Zirda exists")
+            .abilities
+            .push(Ability::static_ability(
+                StaticAbility::reduce_activated_ability_costs_for_activator(
+                    PlayerFilter::You,
+                    2,
+                    true,
+                    Some(1),
+                ),
+            ));
+
+        let non_mana_device = CardBuilder::new(CardId::from_raw(14), "Zirda Non-Mana Device")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let alice_device_id =
+            game.create_object_from_card(&non_mana_device, alice, Zone::Battlefield);
+        let bob_device_id = game.create_object_from_card(&non_mana_device, bob, Zone::Battlefield);
+
+        let cost_three = TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]));
+        let cost_one = TotalCost::mana(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]));
+        let non_mana_ability = Ability {
+            kind: AbilityKind::Activated(ActivatedAbility {
+                mana_cost: cost_three.clone(),
+                effects: ResolutionProgram::from_effects(vec![Effect::draw(1)]),
+                choices: vec![],
+                timing: ActivationTiming::AnyTime,
+                additional_restrictions: vec![],
+                activation_restrictions: vec![],
+                mana_output: None,
+                activation_condition: None,
+                mana_usage_restrictions: vec![],
+                is_loyalty_ability: false,
+            }),
+            functional_zones: vec![Zone::Battlefield],
+        };
+        game.object_mut(alice_device_id)
+            .expect("Alice device exists")
+            .abilities
+            .push(non_mana_ability.clone());
+        game.object_mut(bob_device_id)
+            .expect("Bob device exists")
+            .abilities
+            .push(non_mana_ability);
+
+        let alice_reduced = calculate_effective_activation_total_cost(
+            &game,
+            alice,
+            alice_device_id,
+            &cost_three,
+        );
+        assert_eq!(
+            alice_reduced
+                .mana_cost()
+                .expect("Alice reduced cost keeps mana component")
+                .generic_mana_total(),
+            1,
+            "Zirda should reduce a non-mana ability Alice activates from {{3}} to {{1}}"
+        );
+
+        let alice_floor = calculate_effective_activation_total_cost(
+            &game,
+            alice,
+            alice_device_id,
+            &cost_one,
+        );
+        assert_eq!(
+            alice_floor
+                .mana_cost()
+                .expect("minimum cost keeps mana component")
+                .generic_mana_total(),
+            1,
+            "Zirda's floor should not reduce a {{1}} activation below one mana"
+        );
+
+        let bob_unreduced = calculate_effective_activation_total_cost(
+            &game,
+            bob,
+            bob_device_id,
+            &cost_three,
+        );
+        assert_eq!(
+            bob_unreduced
+                .mana_cost()
+                .expect("Bob cost keeps mana component")
+                .generic_mana_total(),
+            3,
+            "Zirda should not reduce abilities activated by another player"
+        );
+
+        let mana_rock = CardBuilder::new(CardId::from_raw(15), "Zirda Mana Device")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let mana_rock_id = game.create_object_from_card(&mana_rock, alice, Zone::Battlefield);
+        game.object_mut(mana_rock_id)
+            .expect("mana rock exists")
+            .abilities
+            .push(Ability {
+                kind: AbilityKind::Activated(ActivatedAbility {
+                    mana_cost: cost_three.clone(),
+                    effects: ResolutionProgram::default(),
+                    choices: vec![],
+                    timing: ActivationTiming::AnyTime,
+                    additional_restrictions: vec![],
+                    activation_restrictions: vec![],
+                    mana_output: Some(vec![ManaSymbol::Colorless]),
+                    activation_condition: None,
+                    mana_usage_restrictions: vec![],
+                    is_loyalty_ability: false,
+                }),
+                functional_zones: vec![Zone::Battlefield],
+            });
+
+        let mana_ability_cost = calculate_effective_mana_ability_activation_total_cost(
+            &game,
+            alice,
+            mana_rock_id,
+            &cost_three,
+        );
+        assert_eq!(
+            mana_ability_cost
+                .mana_cost()
+                .expect("mana ability cost keeps mana component")
+                .generic_mana_total(),
+            3,
+            "Zirda should not reduce mana abilities"
+        );
+    }
+
+    #[test]
     fn test_self_hand_activated_ability_cost_reduction_counts_matching_battlefield_objects() {
         use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming};
         use crate::cost::TotalCost;

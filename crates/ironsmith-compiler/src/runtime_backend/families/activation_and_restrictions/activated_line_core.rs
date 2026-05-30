@@ -1066,6 +1066,63 @@ pub(crate) fn parse_cost_reduction_line(
         )));
     }
 
+    if word_slice_starts_with(&line_words, &["abilities"])
+        && let Some(activate_idx) = find_index(&line_words, |word| *word == "activate")
+        && let Some(cost_idx) = find_index(&line_words, |word| *word == "cost" || *word == "costs")
+        && activate_idx < cost_idx
+    {
+        let activator = match &line_words[1..activate_idx] {
+            ["you"] => PlayerFilter::You,
+            ["your", "opponents"] => PlayerFilter::Opponent,
+            _ => return Ok(None),
+        };
+        let mut non_mana_only = false;
+        match &line_words[activate_idx + 1..cost_idx] {
+            [] => {}
+            ["that", "aren't", "mana", "abilities"]
+            | ["that", "are", "not", "mana", "abilities"] => non_mana_only = true,
+            _ => return Ok(None),
+        }
+
+        let amount_tokens = trim_commas(&tokens[cost_idx + 1..]);
+        let Some((amount_value, used)) = parse_cost_modifier_amount(&amount_tokens) else {
+            return Ok(None);
+        };
+        let reduction = match amount_value {
+            Value::Fixed(value) if value > 0 => value as u32,
+            _ => {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported activated-ability cost reduction amount (clause: '{}')",
+                    line_words.join(" ")
+                )));
+            }
+        };
+        let tail_words = crate::runtime_backend::token_word_refs(&amount_tokens[used..]);
+        if !word_slice_starts_with(&tail_words, &["less", "to", "activate"]) {
+            return Ok(None);
+        }
+        let minimum_total_mana = if word_slice_contains_phrase_or_empty(
+            &tail_words,
+            &[
+                "this", "effect", "can't", "reduce", "the", "mana", "in", "that", "cost",
+                "to", "less", "than", "one", "mana",
+            ],
+        ) {
+            Some(1)
+        } else {
+            None
+        };
+
+        return Ok(Some(
+            StaticAbility::reduce_activated_ability_costs_for_activator(
+                activator,
+                reduction,
+                non_mana_only,
+                minimum_total_mana,
+            ),
+        ));
+    }
+
     if word_slice_starts_with(&line_words, &["this", "ability", "costs"]) {
         let amount_tokens = trim_commas(&tokens[3..]);
         let Some((amount_value, used)) = parse_cost_modifier_amount(&amount_tokens) else {

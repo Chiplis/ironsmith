@@ -795,6 +795,8 @@ pub struct ActivatedAbilityCostReduction {
     pub reduction: u32,
     pub replacement_mana_cost: Option<crate::mana::ManaCost>,
     pub display: Option<String>,
+    pub activator: Option<PlayerFilter>,
+    pub non_mana_only: bool,
     pub minimum_total_mana: Option<u32>,
     pub per_matching_objects: Option<ObjectFilter>,
     pub per_basic_land_types_among: Option<ObjectFilter>,
@@ -809,6 +811,8 @@ impl ActivatedAbilityCostReduction {
             reduction,
             replacement_mana_cost: None,
             display: None,
+            activator: None,
+            non_mana_only: false,
             minimum_total_mana: None,
             per_matching_objects: None,
             per_basic_land_types_among: None,
@@ -827,6 +831,8 @@ impl ActivatedAbilityCostReduction {
             reduction: 0,
             replacement_mana_cost: Some(replacement_mana_cost),
             display: Some(display.into()),
+            activator: None,
+            non_mana_only: false,
             minimum_total_mana: None,
             per_matching_objects: None,
             per_basic_land_types_among: None,
@@ -858,6 +864,26 @@ impl ActivatedAbilityCostReduction {
     pub fn with_display(mut self, display: impl Into<String>) -> Self {
         self.display = Some(display.into());
         self
+    }
+
+    pub fn for_activator(
+        activator: PlayerFilter,
+        reduction: u32,
+        non_mana_only: bool,
+    ) -> Self {
+        Self {
+            filter: ObjectFilter::default(),
+            reduction,
+            replacement_mana_cost: None,
+            display: None,
+            activator: Some(activator),
+            non_mana_only,
+            minimum_total_mana: None,
+            per_matching_objects: None,
+            per_basic_land_types_among: None,
+            condition: None,
+            static_condition: None,
+        }
     }
 
     pub fn with_static_condition(mut self, condition: crate::ConditionExpr) -> Self {
@@ -1016,6 +1042,26 @@ impl StaticAbilityKind for ActivatedAbilityCostReduction {
                     "You may pay {} rather than pay activated ability costs of {}",
                     replacement.to_oracle(),
                     self.filter.description()
+                )
+            }
+        } else if let Some(activator) = &self.activator {
+            let subject = match activator {
+                PlayerFilter::Opponent => "abilities your opponents activate".to_string(),
+                PlayerFilter::You => "abilities you activate".to_string(),
+                _ => format!(
+                    "abilities {} activate",
+                    describe_player_filter_for_spell_target(activator)
+                ),
+            };
+            if self.non_mana_only {
+                format!(
+                    "{} that aren't mana abilities cost {{{}}} less to activate",
+                    subject, self.reduction
+                )
+            } else {
+                format!(
+                    "{} cost {{{}}} less to activate",
+                    subject, self.reduction
                 )
             }
         } else if self.filter == ObjectFilter::source() {

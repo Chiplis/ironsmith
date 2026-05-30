@@ -198,6 +198,7 @@ fn supported_keyword_marker_text(text: &str) -> bool {
     let is_power_greater_marker =
         |prefix: &str| text.starts_with(prefix) && text.ends_with(" greater.");
     text.starts_with("prototype ")
+        || text.starts_with("companion ")
         || text.starts_with("more than meets the eye ")
         || text.starts_with("splice onto ")
         || is_ticket_sticker_marker_line(&text)

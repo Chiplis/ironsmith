@@ -538,6 +538,8 @@ impl StaticAbilityModelInterpreter {
                 reduction,
                 replacement_mana_cost,
                 display,
+                activator,
+                non_mana_only,
                 condition,
                 per_matching_objects,
                 per_basic_land_types_among,
@@ -555,6 +557,17 @@ impl StaticAbilityModelInterpreter {
                             )
                         }),
                     )
+                } else if let Some(activator) = activator.clone() {
+                    let mut reduction_model =
+                        super::ActivatedAbilityCostReduction::for_activator(
+                            activator,
+                            *reduction,
+                            *non_mana_only,
+                        );
+                    if let Some(display) = display {
+                        reduction_model = reduction_model.with_display(display.clone());
+                    }
+                    reduction_model
                 } else {
                     let mut reduction_model =
                         super::ActivatedAbilityCostReduction::new(filter.clone(), *reduction);

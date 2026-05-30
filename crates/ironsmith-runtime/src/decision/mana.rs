@@ -120,6 +120,24 @@ pub fn calculate_effective_activation_total_cost(
     )
 }
 
+pub fn calculate_effective_mana_ability_activation_total_cost(
+    game: &GameState,
+    activator: PlayerId,
+    ability_source: ObjectId,
+    cost: &crate::cost::TotalCost,
+) -> crate::cost::TotalCost {
+    let view = DerivedGameView::new(game);
+    calculate_effective_activation_total_cost_with_view_and_kind(
+        game,
+        activator,
+        ability_source,
+        cost,
+        &[],
+        &view,
+        true,
+    )
+}
+
 pub fn calculate_effective_activation_total_cost_with_chosen_targets(
     game: &GameState,
     activator: PlayerId,
@@ -146,6 +164,26 @@ pub(crate) fn calculate_effective_activation_total_cost_with_view(
     chosen_targets: &[Target],
     view: &DerivedGameView<'_>,
 ) -> crate::cost::TotalCost {
+    calculate_effective_activation_total_cost_with_view_and_kind(
+        game,
+        activator,
+        ability_source,
+        cost,
+        chosen_targets,
+        view,
+        false,
+    )
+}
+
+pub(crate) fn calculate_effective_activation_total_cost_with_view_and_kind(
+    game: &GameState,
+    activator: PlayerId,
+    ability_source: ObjectId,
+    cost: &crate::cost::TotalCost,
+    chosen_targets: &[Target],
+    view: &DerivedGameView<'_>,
+    activation_is_mana_ability: bool,
+) -> crate::cost::TotalCost {
     use crate::ability::AbilityKind;
     use crate::filter::{FilterContext, player_filter_matches_game};
 
@@ -168,6 +206,7 @@ pub(crate) fn calculate_effective_activation_total_cost_with_view(
                 mana_cost,
                 chosen_targets,
                 view,
+                activation_is_mana_ability,
             );
             costs.push(crate::costs::Cost::mana(reduced));
         } else {
@@ -262,6 +301,7 @@ pub fn calculate_effective_activation_mana_cost(
         base_cost,
         &[],
         &view,
+        false,
     )
 }
 
@@ -272,9 +312,10 @@ pub(crate) fn calculate_effective_activation_mana_cost_with_view(
     base_cost: &crate::mana::ManaCost,
     chosen_targets: &[Target],
     view: &DerivedGameView<'_>,
+    activation_is_mana_ability: bool,
 ) -> crate::mana::ManaCost {
     use crate::ability::AbilityKind;
-    use crate::filter::FilterContext;
+    use crate::filter::{FilterContext, player_filter_matches_game};
 
     fn opponents_of(game: &GameState, player: PlayerId) -> Vec<PlayerId> {
         game.turn_store
@@ -335,6 +376,14 @@ pub(crate) fn calculate_effective_activation_mana_cost_with_view(
             }
 
             if let Some(reduction) = static_ability.activated_ability_cost_reduction() {
+                if reduction.non_mana_only && activation_is_mana_ability {
+                    continue;
+                }
+                if let Some(activator_filter) = &reduction.activator
+                    && !player_filter_matches_game(activator_filter, activator, game, &filter_ctx)
+                {
+                    continue;
+                }
                 if !reduction
                     .filter
                     .matches(ability_source_object, &filter_ctx, game)

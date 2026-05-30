@@ -13333,6 +13333,42 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
+    fn parse_zirda_the_dawnwaker_oracle_text() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Zirda, the Dawnwaker")
+            .supertypes(vec![Supertype::Legendary])
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Elemental, Subtype::Fox])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .parse_text(
+                "Companion — Each permanent card in your starting deck has an activated ability. (If this card is your chosen companion, you may put it into your hand from outside the game for {3} as a sorcery.)\nAbilities you activate that aren't mana abilities cost {2} less to activate. This effect can't reduce the mana in that cost to less than one mana.\n{1}, {T}: Target creature can't block this turn.",
+            )
+            .expect("Zirda, the Dawnwaker should parse strictly");
+
+        let debug = format!("{def:?}");
+        assert!(
+            debug.contains("ActivatedAbilityCostReduction")
+                && debug.contains("activator: Some(You)")
+                && debug.contains("non_mana_only: true"),
+            "expected Zirda's non-mana activator cost reduction, got {debug}"
+        );
+        assert!(
+            !debug.contains("KeywordFallbackText") && !debug.contains("unsupported"),
+            "Zirda should not compile through unsupported fallback text, got {debug}"
+        );
+
+        let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
+        assert!(
+            rendered.contains(
+                "Abilities you activate that aren't mana abilities cost {2} less to activate"
+            ) && rendered.contains(
+                "This effect can't reduce the mana in that cost to less than one mana"
+            ),
+            "expected Zirda cost-reduction text to render, got {rendered}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
     fn parse_conditional_cycling_zero_cost_static_line() {
         let def = CardDefinitionBuilder::new(CardId::new(), "New Perspectives Variant")
             .card_types(vec![CardType::Enchantment])

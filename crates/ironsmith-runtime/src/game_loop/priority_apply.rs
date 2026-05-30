@@ -933,7 +933,7 @@ pub fn apply_priority_response_with_dm(
                 let base_cost = mana_ability.mana_cost.clone();
                 let mana_usage_restrictions = mana_ability.mana_usage_restrictions.clone();
                 let mana_source_chosen_creature_type = game.chosen_creature_type(*source);
-                let cost = crate::decision::calculate_effective_activation_total_cost(
+                let cost = crate::decision::calculate_effective_mana_ability_activation_total_cost(
                     game, player, *source, &base_cost,
                 );
 

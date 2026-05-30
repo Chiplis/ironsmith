@@ -2476,6 +2476,20 @@ impl StaticAbility {
         Self::new(ability)
     }
 
+    pub fn reduce_activated_ability_costs_for_activator(
+        activator: crate::target::PlayerFilter,
+        reduction: u32,
+        non_mana_only: bool,
+        minimum_total_mana: Option<u32>,
+    ) -> Self {
+        let mut ability =
+            ActivatedAbilityCostReduction::for_activator(activator, reduction, non_mana_only);
+        if let Some(minimum) = minimum_total_mana {
+            ability = ability.with_minimum_total_mana(minimum);
+        }
+        Self::new(ability)
+    }
+
     pub fn reduce_activated_ability_costs_if_targets(
         filter: crate::target::ObjectFilter,
         reduction: u32,

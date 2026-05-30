@@ -1202,7 +1202,7 @@ fn can_activate_mana_ability(
         permanent_id,
         ability_index,
         |mana_ability| {
-            let total_cost = crate::decision::calculate_effective_activation_total_cost(
+            let total_cost = crate::decision::calculate_effective_mana_ability_activation_total_cost(
                 game,
                 player,
                 permanent_id,
@@ -1380,13 +1380,14 @@ pub(crate) fn can_activate_mana_ability_check_with_view(
         .unwrap_or_else(|| view.has_activated_ability_cost_modifiers());
     let cost_started_at = crate::perf::PerfTimer::start();
     let total_cost = if has_activation_cost_modifiers {
-        crate::decision::calculate_effective_activation_total_cost_with_view(
+        crate::decision::calculate_effective_activation_total_cost_with_view_and_kind(
             game,
             player,
             permanent_id,
             &mana_ability.mana_cost,
             &[],
             view,
+            true,
         )
     } else {
         mana_ability.mana_cost.clone()
@@ -1580,7 +1581,7 @@ pub(crate) fn perform_activate_mana_ability_restricted_colors_with_events(
     if let crate::ability::AbilityKind::Activated(mana_ability) = &ability.kind
         && mana_ability.is_runtime_mana_ability(game, permanent_id, player)
     {
-        let total_cost = crate::decision::calculate_effective_activation_total_cost(
+        let total_cost = crate::decision::calculate_effective_mana_ability_activation_total_cost(
             game,
             player,
             permanent_id,
