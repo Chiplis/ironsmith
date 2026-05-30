@@ -30510,6 +30510,41 @@ fn parse_comma_then_that_player_discards_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_dinrova_horror_strict_oracle_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Dinrova Horror")
+        .mana_cost(crate::mana::ManaCost::from_pips(vec![
+            vec![crate::mana::ManaSymbol::Generic(4)],
+            vec![crate::mana::ManaSymbol::Blue],
+            vec![crate::mana::ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Horror])
+        .power_toughness(crate::card::PowerToughness::fixed(4, 4))
+        .parse_text(
+            "When this creature enters, return target permanent to its owner's hand, then that player discards a card.",
+        )
+        .expect("Dinrova Horror should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("OwnerOf(Tagged"),
+        "expected Dinrova Horror's discard to bind to the returned permanent's owner, got {abilities_debug}"
+    );
+    assert!(
+        !abilities_debug.contains("IteratedPlayer"),
+        "Dinrova Horror should not leave an unbound that-player reference, got {abilities_debug}"
+    );
+    assert!(
+        rendered.contains(
+            "When this creature enters, return target permanent to its owner's hand, then that player discards a card."
+        ),
+        "expected Dinrova Horror's return-then-discard clause to render compactly, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_comma_then_return_source_to_hand_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cyclopean Variant")
         .card_types(vec![CardType::Artifact])

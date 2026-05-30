@@ -982,8 +982,36 @@ pub(crate) fn parse_sentence_comma_then_chain_special(
         return Ok(None);
     }
 
+    if is_that_player_tail && head_is_single_return_to_hand(&head_effects) {
+        bind_that_player_tail_to_returned_owner(&mut tail_effects);
+    }
+
     head_effects.append(&mut tail_effects);
     Ok(Some(head_effects))
+}
+
+fn head_is_single_return_to_hand(effects: &[EffectAst]) -> bool {
+    let [effect] = effects else {
+        return false;
+    };
+
+    matches!(
+        effect,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::ReturnToHand { .. },
+            ..
+        })
+    )
+}
+
+fn bind_that_player_tail_to_returned_owner(effects: &mut [EffectAst]) {
+    for effect in effects {
+        if let EffectAst::SubjectVerb(subject_verb) = effect
+            && subject_verb.subject.player == PlayerAst::That
+        {
+            subject_verb.subject.player = PlayerAst::ItsOwner;
+        }
+    }
 }
 
 pub(crate) fn parse_destroy_then_land_controller_graveyard_count_damage_sentence(

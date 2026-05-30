@@ -3808,6 +3808,126 @@ fn singe_mind_ogre_reveals_a_random_card_from_target_players_hand_and_makes_them
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn dinrova_horror_returns_target_and_its_owner_discards() {
+    struct ChooseDiscardCardDecisionMaker {
+        card_to_discard: ObjectId,
+    }
+
+    impl DecisionMaker for ChooseDiscardCardDecisionMaker {
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            if ctx
+                .candidates
+                .iter()
+                .any(|candidate| candidate.id == self.card_to_discard && candidate.legal)
+            {
+                vec![self.card_to_discard]
+            } else {
+                ctx.candidates
+                    .iter()
+                    .filter(|candidate| candidate.legal)
+                    .map(|candidate| candidate.id)
+                    .take(ctx.min)
+                    .collect()
+            }
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let dinrova = CardDefinitionBuilder::new(CardId::from_raw(78_010), "Dinrova Horror")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Horror])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "When this creature enters, return target permanent to its owner's hand, then that player discards a card.",
+        )
+        .expect("Dinrova Horror should parse for runtime test");
+    let dinrova_id = game.create_object_from_definition(&dinrova, alice, Zone::Battlefield);
+
+    let borrowed_permanent = CardBuilder::new(CardId::from_raw(78_011), "Borrowed Relic")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let target_id = game.create_object_from_card(&borrowed_permanent, alice, Zone::Battlefield);
+    game.set_current_controller(target_id, bob);
+
+    let alice_discard = CardBuilder::new(CardId::from_raw(78_012), "Alice Discard")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let bob_hand_card = CardBuilder::new(CardId::from_raw(78_013), "Bob Keeps")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let alice_discard_id = game.create_object_from_card(&alice_discard, alice, Zone::Hand);
+    let _bob_hand_id = game.create_object_from_card(&bob_hand_card, bob, Zone::Hand);
+
+    let etb_trigger = dinrova
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered.clone()),
+            _ => None,
+        })
+        .expect("Dinrova Horror should have an enters trigger");
+    let target_spec = etb_trigger
+        .choices
+        .first()
+        .cloned()
+        .expect("Dinrova Horror should target a permanent");
+    let event = TriggerEvent::new_with_provenance(
+        EnterBattlefieldEvent::new(dinrova_id, Zone::Stack),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut dm = ChooseDiscardCardDecisionMaker {
+        card_to_discard: alice_discard_id,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(dinrova_id, alice, &mut dm)
+        .with_triggering_event(event)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target_id)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: target_spec,
+            range: 0..1,
+        }]);
+
+    for effect in &etb_trigger.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Dinrova Horror ETB effect should resolve");
+    }
+
+    assert!(
+        game.player(alice).is_some_and(|player| player
+            .hand
+            .iter()
+            .any(|&id| game.object(id).is_some_and(|obj| obj.name == "Borrowed Relic"))),
+        "the targeted permanent should return to its owner's hand"
+    );
+    assert!(
+        game.player(alice).is_some_and(|player| player
+            .graveyard
+            .iter()
+            .any(|&id| game.object(id).is_some_and(|obj| obj.name == "Alice Discard"))),
+        "the target's owner should discard a card"
+    );
+    assert!(
+        game.player(bob).is_some_and(|player| player
+            .hand
+            .iter()
+            .any(|&id| game.object(id).is_some_and(|obj| obj.name == "Bob Keeps"))),
+        "the target's controller should not discard when they do not own the returned permanent"
+    );
+}
+
 #[test]
 fn test_monarch_changes_when_creature_deals_combat_damage_to_monarch() {
     let mut game = setup_game();

@@ -2646,12 +2646,59 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         }
     }
 
+    if let Some(compact) = describe_return_to_hand_then_owner_discards(effects) {
+        return Some(compact);
+    }
+
     describe_roll_choose_destroy_create_structural(effects)
         .or_else(|| describe_draw_discard_then_create_structural(effects))
         .or_else(|| describe_reveal_top_choice_to_hand_rest_graveyard_structural(effects))
         .or_else(|| describe_gain_control_untap_haste_structural(effects))
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
         .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
+}
+
+fn describe_return_to_hand_then_owner_discards(effects: &[Effect]) -> Option<String> {
+    let [return_effect, discard_effect] = effects else {
+        return None;
+    };
+    let returned_tag = effect_tag(return_effect)?;
+    unwrap_effect_tag(return_effect).downcast_ref::<crate::effects::ReturnToHandEffect>()?;
+    let discard = discard_effect.downcast_ref::<crate::effects::DiscardEffect>()?;
+    if discard.count != Value::Fixed(1)
+        || discard.random
+        || discard.any_number
+        || discard.card_filter.is_some()
+        || discard.player
+            != PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(returned_tag.clone()))
+    {
+        return None;
+    }
+
+    let return_text = describe_effect(return_effect)
+        .trim_end_matches('.')
+        .to_string();
+    Some(format!("{return_text}, then that player discards a card."))
+}
+
+fn effect_tag(effect: &Effect) -> Option<&crate::TagKey> {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return Some(&tagged.tag);
+    }
+    if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+        return Some(&tag_all.tag);
+    }
+    None
+}
+
+fn unwrap_effect_tag(effect: &Effect) -> &Effect {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return unwrap_effect_tag(&tagged.effect);
+    }
+    if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+        return unwrap_effect_tag(&tag_all.effect);
+    }
+    effect
 }
 
 fn describe_roll_choose_destroy_create_structural(effects: &[Effect]) -> Option<String> {
