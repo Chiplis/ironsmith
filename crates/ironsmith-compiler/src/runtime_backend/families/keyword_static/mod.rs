@@ -7994,6 +7994,26 @@ pub(crate) fn parse_attacks_each_combat_if_able_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
+    if matches!(
+        words.as_slice(),
+        [
+            "all",
+            "creatures",
+            "attack",
+            "enchanted",
+            "creatures" | "creature" | "creature's",
+            "controller",
+            "each",
+            "combat",
+            "if",
+            "able",
+        ]
+    ) {
+        return Ok(Some(StaticAbilityAst::Static(
+            StaticAbility::all_creatures_attack_attached_controller_each_combat_if_able(),
+        )));
+    }
+
     let Some(attack_idx) = find_index(&words, |word| *word == "attack" || *word == "attacks")
     else {
         return Ok(None);

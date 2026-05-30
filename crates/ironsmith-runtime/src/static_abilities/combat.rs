@@ -748,6 +748,72 @@ impl StaticAbilityKind for MustAttack {
     // by checking if creatures have this ability, rather than using a tracker.
 }
 
+/// Must attack the controller of the object enchanted/equipped by another source if able.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MustAttackAttachedController {
+    attachment_source: ObjectId,
+}
+
+impl MustAttackAttachedController {
+    pub const fn new(attachment_source: ObjectId) -> Self {
+        Self { attachment_source }
+    }
+}
+
+impl StaticAbilityKind for MustAttackAttachedController {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::MustAttackAttachedController
+    }
+
+    fn display(&self) -> String {
+        "Attacks enchanted creature's controller each combat if able".to_string()
+    }
+
+    fn required_attack_player(
+        &self,
+        game: &GameState,
+        _source: ObjectId,
+        _controller: PlayerId,
+    ) -> Option<PlayerId> {
+        let target = game.object(self.attachment_source)?.attached_to?;
+        match target {
+            crate::object::AttachmentTarget::Object(object_id) => game.controller_of_id(object_id),
+            crate::object::AttachmentTarget::Player(player) => Some(player),
+        }
+    }
+}
+
+/// All creatures attack the enchanted creature's controller each combat if able.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct AllCreaturesAttackAttachedControllerEachCombatIfAble;
+
+impl StaticAbilityKind for AllCreaturesAttackAttachedControllerEachCombatIfAble {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::AllCreaturesAttackAttachedControllerEachCombatIfAble
+    }
+
+    fn display(&self) -> String {
+        "All creatures attack enchanted creature's controller each combat if able".to_string()
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        _game: &GameState,
+    ) -> Vec<crate::continuous::ContinuousEffect> {
+        vec![crate::continuous::ContinuousEffect::new(
+            source,
+            controller,
+            crate::continuous::EffectTarget::AllCreatures,
+            crate::continuous::Modification::AddAbility(
+                crate::static_abilities::StaticAbility::must_attack_attached_controller(source),
+            ),
+        )
+        .with_source_type(crate::continuous::EffectSourceType::StaticAbility)]
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum CantAttackUnlessConditionSpec {
     /// Controller controls more permanents matching this filter than defending player.

@@ -83,6 +83,9 @@ impl StaticAbility {
             Some(StaticAbilityId::CanBlockFlying) => Self::can_block_flying(),
             Some(StaticAbilityId::CanBlockOnlyFlying) => Self::can_block_only_flying(),
             Some(StaticAbilityId::MustAttack) => Self::must_attack(),
+            Some(StaticAbilityId::AllCreaturesAttackAttachedControllerEachCombatIfAble) => {
+                Self::all_creatures_attack_attached_controller_each_combat_if_able()
+            }
             Some(StaticAbilityId::MustBlock) => Self::must_block(),
             Some(StaticAbilityId::Shadow) => Self::shadow(),
             Some(StaticAbilityId::Horsemanship) => Self::horsemanship(),

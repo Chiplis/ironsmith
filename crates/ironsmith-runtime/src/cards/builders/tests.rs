@@ -253,6 +253,157 @@ fn day_of_the_moon_chapter_resolution_goads_only_chosen_name() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_public_enemy_oracle_and_compiled_text() {
+    let def = parse_oracle_card_definition("Public Enemy");
+    let rendered = canonical_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("Enchant creature"),
+        "Public Enemy should keep its Aura restriction, got {rendered}"
+    );
+    assert!(
+        rendered
+            .contains("All creatures attack enchanted creature's controller each combat if able."),
+        "Public Enemy should render the required attack-player clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("When enchanted creature dies, draw a card.")
+            || rendered.contains("Whenever enchanted creature dies, draw a card."),
+        "Public Enemy should keep its death trigger, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn public_enemy_requires_legal_attackers_to_attack_enchanted_creatures_controller() {
+    let public_enemy = parse_oracle_card_definition("Public Enemy");
+    let creature = CardDefinitionBuilder::new(CardId::from_raw(91_101), "Grizzly Bears")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+        20,
+    );
+
+    let enchanted_creature =
+        game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+    let aura = game.create_object_from_definition(&public_enemy, bob, Zone::Battlefield);
+    assert!(game.attach_object_to_target(
+        aura,
+        crate::object::AttachmentTarget::Object(enchanted_creature),
+    ));
+    let attacker = game.create_object_from_definition(&creature, charlie, Zone::Battlefield);
+    game.remove_summoning_sickness(attacker);
+    game.turn.active_player = charlie;
+
+    let combat = crate::combat_state::CombatState::default();
+    let options = crate::decision::compute_legal_attackers(&game, &combat);
+    let attacker_option = options
+        .iter()
+        .find(|option| option.creature == attacker)
+        .expect("Charlie's creature should be attack-capable");
+    assert!(
+        attacker_option.must_attack,
+        "Public Enemy should make creatures attack the enchanted creature's controller if able"
+    );
+    assert_eq!(
+        attacker_option.valid_targets,
+        vec![crate::combat_state::AttackTarget::Player(alice)],
+        "Public Enemy should require attacking the enchanted creature's controller, not another player"
+    );
+
+    let mut combat = crate::combat_state::CombatState::default();
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    let wrong_target = [crate::AttackerDeclaration {
+        creature: attacker,
+        target: crate::combat_state::AttackTarget::Player(bob),
+    }];
+    assert!(
+        crate::game_loop::apply_attacker_declarations(
+            &mut game,
+            &mut combat,
+            &mut trigger_queue,
+            &wrong_target,
+        )
+        .is_err(),
+        "attacking a different player should be illegal while the enchanted creature's controller is attackable"
+    );
+
+    let correct_target = [crate::AttackerDeclaration {
+        creature: attacker,
+        target: crate::combat_state::AttackTarget::Player(alice),
+    }];
+    crate::game_loop::apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &correct_target,
+    )
+    .expect("attacking the enchanted creature's controller should be legal");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn public_enemy_does_not_force_attack_when_enchanted_creatures_controller_cant_be_attacked() {
+    let public_enemy = parse_oracle_card_definition("Public Enemy");
+    let creature = CardDefinitionBuilder::new(CardId::from_raw(91_102), "Grizzly Bears")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+        20,
+    );
+
+    let enchanted_creature =
+        game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+    let aura = game.create_object_from_definition(&public_enemy, bob, Zone::Battlefield);
+    assert!(game.attach_object_to_target(
+        aura,
+        crate::object::AttachmentTarget::Object(enchanted_creature),
+    ));
+    let attacker = game.create_object_from_definition(&creature, charlie, Zone::Battlefield);
+    game.remove_summoning_sickness(attacker);
+    game.effect_store
+        .cant_effects
+        .add_cant_attack_defenders(attacker, [alice]);
+    game.turn.active_player = charlie;
+
+    let combat = crate::combat_state::CombatState::default();
+    let options = crate::decision::compute_legal_attackers(&game, &combat);
+    let attacker_option = options
+        .iter()
+        .find(|option| option.creature == attacker)
+        .expect("Charlie's creature should still be able to attack someone else");
+    assert!(
+        !attacker_option.must_attack,
+        "Public Enemy should not force an attack when its required player is not attackable"
+    );
+    assert!(
+        !attacker_option
+            .valid_targets
+            .contains(&crate::combat_state::AttackTarget::Player(alice)),
+        "the restricted enchanted creature's controller should not be a legal target"
+    );
+    assert!(
+        attacker_option
+            .valid_targets
+            .contains(&crate::combat_state::AttackTarget::Player(bob)),
+        "the creature may still attack other legal players"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_lantern_of_insight_public_top_library_static() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Lantern of Insight Variant")
         .card_types(vec![CardType::Artifact])

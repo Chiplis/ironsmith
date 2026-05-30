@@ -1799,6 +1799,13 @@ impl<
         Self::identified(StaticAbilityId::MustAttack, "must attack")
     }
 
+    pub fn all_creatures_attack_attached_controller_each_combat_if_able() -> Self {
+        Self::identified(
+            StaticAbilityId::AllCreaturesAttackAttachedControllerEachCombatIfAble,
+            "All creatures attack enchanted creature's controller each combat if able",
+        )
+    }
+
     pub fn must_block() -> Self {
         Self::identified(StaticAbilityId::MustBlock, "must block")
     }
