@@ -31138,6 +31138,18 @@ impl crate::decision::DecisionMaker for PayCumulativeUpkeep {
     }
 }
 
+struct DeclineCumulativeUpkeep;
+
+impl crate::decision::DecisionMaker for DeclineCumulativeUpkeep {
+    fn decide_boolean(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        false
+    }
+}
+
 fn herald_upkeep_trigger(def: &CardDefinition) -> &crate::ability::TriggeredAbility {
     def.abilities
         .iter()
@@ -31365,6 +31377,52 @@ fn herald_of_leshrac_cumulative_upkeep_sacrifices_when_no_land_can_be_gained() {
         graveyard_object.map(|object| object.name.as_str()),
         Some("Herald of Leshrac"),
         "Herald should be sacrificed to its owner's graveyard when its cumulative upkeep cost cannot be paid"
+    );
+}
+
+#[test]
+fn herald_of_leshrac_cumulative_upkeep_decline_sacrifices_without_taking_land() {
+    let def = herald_of_leshrac_definition();
+    let upkeep = herald_upkeep_trigger(&def);
+    let land_def = test_land_definition("Untaken Land");
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let herald = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let bob_land = game.create_object_from_definition(&land_def, bob, Zone::Battlefield);
+
+    let mut dm = DeclineCumulativeUpkeep;
+    let mut ctx = crate::effects::ExecutionContext::new(herald, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        herald,
+        &upkeep.effects,
+        None,
+        &[],
+    )
+    .expect("Herald declined cumulative upkeep should resolve");
+
+    assert!(
+        !game.battlefield.contains(&herald),
+        "declining a payable cumulative upkeep cost should sacrifice Herald"
+    );
+    let graveyard_object = game
+        .player(alice)
+        .and_then(|player| player.graveyard.first().copied())
+        .and_then(|id| game.object(id));
+    assert_eq!(
+        graveyard_object.map(|object| object.name.as_str()),
+        Some("Herald of Leshrac"),
+        "declining cumulative upkeep should put Herald into its owner's graveyard"
+    );
+    assert_eq!(
+        game.current_controller(bob_land),
+        Some(bob),
+        "declining Herald's upkeep should not gain control of an available land"
     );
 }
 
