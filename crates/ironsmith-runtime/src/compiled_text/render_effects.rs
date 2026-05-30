@@ -30558,6 +30558,19 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             };
             return format!("{subject} must be blocked this turn if able");
         }
+        if cant.duration == Until::EndOfTurn
+            && let crate::effect::Restriction::BeTargeted(filter) = &cant.restriction
+            && *filter
+                == (ObjectFilter {
+                    zone: Some(Zone::Battlefield),
+                    controller: Some(PlayerFilter::You),
+                    card_types: vec![CardType::Creature],
+                    ..Default::default()
+                })
+        {
+            return "Creatures you control can't be the targets of spells or abilities your opponents control this turn"
+                .to_string();
+        }
         if cant.duration == Until::EndOfTurn {
             let restriction_text = describe_restriction(&cant.restriction);
             if restriction_text.to_ascii_lowercase().contains(" each turn") {

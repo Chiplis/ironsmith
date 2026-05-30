@@ -39186,6 +39186,142 @@ fn sporeweb_weaver_damage_trigger_ignores_other_damaged_creatures() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn veilstone_amulet_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Veilstone Amulet");
+    let def = parse_oracle_card_definition("Veilstone Amulet");
+    let rendered = canonical_compiled_lines(&def).join("\n");
+    assert_eq!(
+        rendered,
+        "Whenever you cast a spell, creatures you control can't be the targets of spells or abilities your opponents control this turn.",
+        "Veilstone Amulet should preserve its spell-cast trigger and targeting restriction text"
+    );
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Veilstone Amulet should have a spell-cast triggered ability");
+    let cant = triggered.effects.segments[0]
+        .default_effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::CantEffect>())
+        .expect("Veilstone Amulet trigger should apply a targeting restriction");
+    let expected_filter = ObjectFilter {
+        zone: Some(Zone::Battlefield),
+        controller: Some(PlayerFilter::You),
+        card_types: vec![CardType::Creature],
+        ..Default::default()
+    };
+    assert_eq!(cant.duration, crate::effect::Until::EndOfTurn);
+    assert!(
+        matches!(
+            &cant.restriction,
+            crate::effect::Restriction::BeTargeted(filter) if *filter == expected_filter
+        ),
+        "expected Veilstone Amulet to restrict targeting of creatures you control, got {:?}",
+        cant.restriction
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn veilstone_amulet_trigger_blocks_only_opponents_from_targeting_your_creatures_this_turn() {
+    let def = parse_oracle_card_definition("Veilstone Amulet");
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let creature_def = CardDefinitionBuilder::new(CardId::from_raw(91_300), "Protected Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let protected_id = game.create_object_from_definition(&creature_def, alice, Zone::Battlefield);
+    let bob_creature_id = game.create_object_from_definition(&creature_def, bob, Zone::Battlefield);
+    let bob_source = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_301), "Opponent Ability Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let bob_spell_source = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_304), "Opponent Targeting Spell")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+            .card_types(vec![CardType::Instant])
+            .build(),
+        bob,
+        Zone::Stack,
+    );
+    let alice_source = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_302), "Friendly Ability Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    assert!(
+        crate::targeting::can_target_object(&game, protected_id, bob_source, bob).is_legal(),
+        "opponents should be able to target Alice's creature before Veilstone Amulet triggers"
+    );
+
+    let spell_id = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_303), "Alice Test Spell")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+            .card_types(vec![CardType::Instant])
+            .build(),
+        alice,
+        Zone::Stack,
+    );
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::SpellCastEvent::new(spell_id, alice, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for entry in crate::triggers::check_triggers(&game, &event) {
+        trigger_queue.add(entry);
+    }
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("put Veilstone Amulet trigger on stack");
+    assert_eq!(game.stack.len(), 1, "expected one Veilstone trigger");
+
+    crate::game_loop::resolve_stack_entry(&mut game).expect("resolve Veilstone Amulet trigger");
+
+    assert!(
+        !crate::targeting::can_target_object(&game, protected_id, bob_source, bob).is_legal(),
+        "opponent-controlled sources should not target Alice's protected creature this turn"
+    );
+    assert!(
+        !crate::targeting::can_target_object(&game, protected_id, bob_spell_source, bob)
+            .is_legal(),
+        "opponent-controlled spells should not target Alice's protected creature this turn"
+    );
+    assert!(
+        crate::targeting::can_target_object(&game, protected_id, alice_source, alice).is_legal(),
+        "Alice's own sources should still be able to target Alice's creature"
+    );
+    assert!(
+        crate::targeting::can_target_object(&game, bob_creature_id, bob_source, bob).is_legal(),
+        "Veilstone Amulet should not protect creatures Alice does not control"
+    );
+
+    crate::turn::execute_cleanup_step(&mut game);
+    game.update_cant_effects();
+    assert!(
+        crate::targeting::can_target_object(&game, protected_id, bob_source, bob).is_legal(),
+        "Veilstone Amulet's targeting restriction should expire at cleanup"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_xanthic_statue_strict_regression() {
     assert_oracle_card_parses_strict("Xanthic Statue");
 }

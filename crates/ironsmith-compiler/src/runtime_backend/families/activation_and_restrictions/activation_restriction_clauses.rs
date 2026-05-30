@@ -1383,6 +1383,30 @@ pub(crate) fn parse_negated_object_restriction_clause(
         ["phase", "out"] | ["phase", "out", "this", "turn"] | ["phases", "out"] => {
             Restriction::phase_out(filter)
         }
+        [
+            "be",
+            "the",
+            "target",
+            "of",
+            "spells",
+            "or",
+            "abilities",
+            "your",
+            "opponents",
+            "control",
+        ]
+        | [
+            "be",
+            "the",
+            "targets",
+            "of",
+            "spells",
+            "or",
+            "abilities",
+            "your",
+            "opponents",
+            "control",
+        ] if filter.controller == Some(PlayerFilter::You) => Restriction::be_targeted(filter),
         ["be", "targeted"] => Restriction::be_targeted(filter),
         _ if word_slice_first_is(&remainder_words, "block") && remainder_words.len() > 1 => {
             let attacker_tokens = trim_commas(&remainder_tokens[1..]);
