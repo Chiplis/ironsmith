@@ -2030,6 +2030,7 @@ fn compile_subject_verb_effect(
             controller,
             count_value,
             as_aura,
+            random,
         } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -2045,12 +2046,17 @@ fn compile_subject_verb_effect(
                     {
                         let tag = ctx.next_tag("chosen_return");
                         ctx.last_object_tag = Some(tag.clone());
-                        effects.push(Effect::choose_objects(
+                        let count = if *random {
+                            ChoiceCount::exactly(1).at_random()
+                        } else {
+                            ChoiceCount::exactly(1)
+                        };
+                        effects.push(Effect::new(crate::effects::ChooseObjectsEffect::new(
                             filter.clone(),
-                            1usize,
+                            count,
                             PlayerFilter::You,
                             tag.clone(),
-                        ));
+                        )));
                         ChooseSpec::tagged(tag)
                     }
                     ChooseSpec::WithCount(inner, count)
@@ -2062,10 +2068,11 @@ fn compile_subject_verb_effect(
                         };
                         let tag = ctx.next_tag("chosen_return");
                         ctx.last_object_tag = Some(tag.clone());
+                        let count = if *random { count.at_random() } else { *count };
                         effects.push(Effect::new(
                             crate::effects::ChooseObjectsEffect::new(
                                 filter.clone(),
-                                *count,
+                                count,
                                 PlayerFilter::You,
                                 tag.clone(),
                             )
@@ -2134,6 +2141,9 @@ fn compile_subject_verb_effect(
                 let tag = ctx.next_tag("returned");
                 ctx.last_object_tag = Some(tag.clone());
                 effect = effect.tag(tag);
+            }
+            if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+                ctx.last_object_tag = Some(tagged.tag.as_str().to_string());
             }
             effects.push(effect);
             if *transformed {
@@ -2704,12 +2714,37 @@ fn compile_subject_verb_effect(
             }
 
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-            let mut apply = crate::effects::ApplyContinuousEffect::new(
-                crate::continuous::EffectTarget::Filter(resolved_filter),
-                modifications[0].clone(),
-                duration.clone(),
-            )
-            .lock_filter_at_resolution();
+            let pronoun_fallback_hand_filter = resolved_filter.zone == Some(Zone::Hand)
+                && resolved_filter.owner == Some(PlayerFilter::IteratedPlayer)
+                && {
+                    let mut bare = resolved_filter.clone();
+                    bare.zone = None;
+                    bare.owner = None;
+                    bare == ObjectFilter::default()
+                };
+            let mut apply = if pronoun_fallback_hand_filter {
+                if let Some(tag) = ctx.last_object_tag.clone() {
+                    crate::effects::ApplyContinuousEffect::with_spec(
+                        ChooseSpec::Tagged(TagKey::from(tag.as_str())),
+                        modifications[0].clone(),
+                        duration.clone(),
+                    )
+                } else {
+                    crate::effects::ApplyContinuousEffect::new(
+                        crate::continuous::EffectTarget::Filter(resolved_filter),
+                        modifications[0].clone(),
+                        duration.clone(),
+                    )
+                    .lock_filter_at_resolution()
+                }
+            } else {
+                crate::effects::ApplyContinuousEffect::new(
+                    crate::continuous::EffectTarget::Filter(resolved_filter),
+                    modifications[0].clone(),
+                    duration.clone(),
+                )
+                .lock_filter_at_resolution()
+            };
 
             for modification in modifications.iter().skip(1) {
                 apply = apply.with_additional_modification(modification.clone());

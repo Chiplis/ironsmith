@@ -672,6 +672,7 @@ pub(crate) fn parse_sentence_return_multiple_targets(
                     false,
                     ReturnControllerAst::Preserve,
                     None,
+                    false,
                 ));
             } else {
                 effects.push(EffectAst::subject_verb_return_to_hand(target, false));

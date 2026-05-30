@@ -1070,6 +1070,7 @@ pub(crate) enum SubjectVerbActionAst {
         controller: ReturnControllerAst,
         count_value: Option<Value>,
         as_aura: Option<ReturnAsAuraAst>,
+        random: bool,
     },
     ReturnAllToBattlefield {
         filter: ObjectFilter,
@@ -2281,6 +2282,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 controller,
                 count_value,
                 as_aura,
+                random,
             } => f
                 .debug_struct("ReturnToBattlefield")
                 .field("target", target)
@@ -2290,6 +2292,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("controller", controller)
                 .field("count_value", count_value)
                 .field("as_aura", as_aura)
+                .field("random", random)
                 .finish(),
             Self::ReturnAllToBattlefield {
                 filter,
@@ -3762,6 +3765,7 @@ impl EffectAst {
         converted: bool,
         controller: ReturnControllerAst,
         count_value: Option<Value>,
+        random: bool,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -3774,6 +3778,7 @@ impl EffectAst {
                 controller,
                 count_value,
                 as_aura: None,
+                random,
             },
         )
     }

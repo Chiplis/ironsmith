@@ -2477,11 +2477,133 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
     }
 
     describe_roll_choose_destroy_create_structural(effects)
+        .or_else(|| describe_may_pay_random_graveyard_return_exile_structural(effects))
         .or_else(|| describe_draw_discard_then_create_structural(effects))
         .or_else(|| describe_reveal_top_choice_to_hand_rest_graveyard_structural(effects))
         .or_else(|| describe_gain_control_untap_haste_structural(effects))
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
         .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
+}
+
+fn describe_may_pay_random_graveyard_return_exile_structural(effects: &[Effect]) -> Option<String> {
+    let [may_effect, if_effect, grant_effect, delayed_effect, replacement_effect] = effects else {
+        return None;
+    };
+
+    let with_id = may_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let may = with_id.effect.downcast_ref::<crate::effects::MayEffect>()?;
+    if may.decider != Some(PlayerFilter::You) || may.effects.len() != 1 {
+        return None;
+    }
+    may.effects[0].downcast_ref::<crate::effects::PayManaEffect>()?;
+
+    let conditional = if_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    if conditional.condition != with_id.id
+        || conditional.predicate != crate::effect::EffectPredicate::Happened
+        || !conditional.else_.is_empty()
+        || conditional.then.len() != 2
+    {
+        return None;
+    }
+    let choose = conditional.then[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if choose.chooser != PlayerFilter::You
+        || choose_primary_zone(choose) != Some(Zone::Graveyard)
+        || !choose.count.random
+        || choose.count.min != 1
+        || choose.count.max != Some(1)
+    {
+        return None;
+    }
+
+    fn outer_tagged_return(effect: &Effect) -> Option<(&TagKey, &crate::effects::ReturnFromGraveyardToBattlefieldEffect)> {
+        let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+        let mut inner = tagged.effect.as_ref();
+        while let Some(nested) = inner.downcast_ref::<crate::effects::TaggedEffect>() {
+            inner = nested.effect.as_ref();
+        }
+        Some((
+            &tagged.tag,
+            inner.downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()?,
+        ))
+    }
+
+    let (returned_tag, return_to_battlefield) = outer_tagged_return(&conditional.then[1])?;
+    if !matches!(&return_to_battlefield.target, ChooseSpec::Tagged(tag) if tag == &choose.tag) {
+        return None;
+    }
+
+    let grant = grant_effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .map(|tagged| tagged.effect.as_ref())
+        .unwrap_or(grant_effect)
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if grant.until != Until::Forever
+        || grant.condition.is_some()
+        || !grant.runtime_modifications.is_empty()
+        || !matches!(grant.target_spec.as_ref(), Some(ChooseSpec::Tagged(tag)) if tag == returned_tag)
+    {
+        return None;
+    }
+
+    let mut ability_words = Vec::new();
+    let mut collect_ability = |modification: &crate::continuous::Modification| -> Option<()> {
+        let crate::continuous::Modification::AddAbility(ability) = modification else {
+            return None;
+        };
+        ability_words.push(lowercase_first(&ability.display()));
+        Some(())
+    };
+    collect_ability(grant.modification.as_ref()?)?;
+    for modification in &grant.additional_modifications {
+        collect_ability(modification)?;
+    }
+
+    let schedule = delayed_effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()?;
+    let end_step_trigger = schedule
+        .trigger
+        .downcast_ref::<crate::triggers::BeginningOfEndStepTrigger>()?;
+    if !schedule.one_shot
+        || schedule.start_next_turn
+        || end_step_trigger.player != PlayerFilter::You
+        || schedule.target_tag.as_ref() != Some(returned_tag)
+        || schedule.effects.segments.len() != 1
+    {
+        return None;
+    }
+    let delayed_effects = &schedule.effects.segments[0].default_effects;
+    let [move_to_exile] = delayed_effects.as_slice() else {
+        return None;
+    };
+    let move_to_exile = move_to_exile.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_exile.zone != Zone::Exile
+        || !matches!(&move_to_exile.target, ChooseSpec::Tagged(tag) if tag == returned_tag)
+    {
+        return None;
+    }
+
+    let replacement =
+        replacement_effect.downcast_ref::<crate::effects::RegisterZoneReplacementEffect>()?;
+    if !matches!(&replacement.target, ChooseSpec::Tagged(tag) if tag == returned_tag)
+        || replacement.from_zone != Some(Zone::Battlefield)
+        || replacement.to_zone.is_some()
+        || replacement.replacement_zone != Zone::Exile
+        || replacement.mode != crate::effects::ReplacementApplyMode::OneShot
+        || replacement.optional
+    {
+        return None;
+    }
+
+    let from_text = match &choose.filter.owner {
+        Some(owner) => format!("from {} graveyard", describe_possessive_player_filter(owner)),
+        None => "from a graveyard".to_string(),
+    };
+    let tapped = if return_to_battlefield.tapped { " tapped" } else { "" };
+    let may_text = describe_effect(may_effect).trim_end_matches('.').to_string();
+    Some(format!(
+        "{may_text}. If you do, return {} {from_text} to the battlefield{tapped}. It gains {}. Exile that card at the beginning of your next end step. If it would leave the battlefield, exile it instead of putting it anywhere else.",
+        describe_choose_selection(choose),
+        join_with_and(&ability_words),
+    ))
 }
 
 fn describe_roll_choose_destroy_create_structural(effects: &[Effect]) -> Option<String> {
@@ -20081,7 +20203,12 @@ pub(super) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
     };
 
     if choose.count.is_single() {
-        return with_indefinite_article(&card_desc);
+        let selection = with_indefinite_article(&card_desc);
+        return if choose.count.random {
+            format!("{selection} at random")
+        } else {
+            selection
+        };
     }
     if let Some(runtime_count) = describe_runtime_choice_count(choose) {
         let mut selection = describe_plural_selection(runtime_count, &card_desc);

@@ -279,14 +279,22 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             let condition = ctx.last_effect_id.ok_or_else(|| {
                 CardTextError::ParseError("missing prior effect for if clause".to_string())
             })?;
+            let mut inner_last_object_tag = None;
             let (inner_effects, inner_choices) = with_preserved_lowering_context(
                 ctx,
                 |ctx| {
                     ctx.last_effect_id = Some(condition);
                     ctx.bind_unbound_x_to_last_effect = true;
                 },
-                |ctx| compile_effects(effects, ctx),
+                |ctx| {
+                    let result = compile_effects(effects, ctx);
+                    inner_last_object_tag = ctx.last_object_tag.clone();
+                    result
+                },
             )?;
+            if inner_last_object_tag.is_some() {
+                ctx.last_object_tag = inner_last_object_tag;
+            }
             let predicate = effect_predicate_from_if_result(*predicate);
             let effect = Effect::if_then(condition, predicate, inner_effects);
             (vec![effect], inner_choices)

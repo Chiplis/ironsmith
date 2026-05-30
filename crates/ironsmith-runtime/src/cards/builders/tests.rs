@@ -275,6 +275,249 @@ fn parse_public_enemy_oracle_and_compiled_text() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_kheru_lich_lord_oracle_and_compiled_text() {
+    let def = parse_oracle_card_definition("Kheru Lich Lord");
+    let rendered = canonical_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("At the beginning of your upkeep, you may pay {2}{B}. If you do, return a creature card at random from your graveyard to the battlefield. It gains flying, trample, and haste. Exile that card at the beginning of your next end step. If it would leave the battlefield, exile it instead of putting it anywhere else."),
+        "Kheru Lich Lord should render its random return, grants, delayed exile, and replacement, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("random: true")
+            && debug.contains("ReturnFromGraveyardToBattlefieldEffect")
+            && debug.contains("ScheduleDelayedTriggerEffect")
+            && debug.contains("RegisterZoneReplacementEffect"),
+        "expected Kheru to lower random return, delayed exile, and replacement structurally, got {debug}"
+    );
+    assert!(
+        !debug.contains("__source_exiled__"),
+        "Kheru follow-up references should stay bound to the returned card, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn kheru_lich_lord_paid_upkeep_returns_grants_and_exiles_next_end_step() {
+    struct KheruDecisionMaker {
+        pay: bool,
+    }
+
+    impl crate::decision::DecisionMaker for KheruDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            self.pay
+        }
+    }
+
+    fn kheru_upkeep_trigger(def: &CardDefinition) -> &crate::ability::TriggeredAbility {
+        def.abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered) => Some(triggered),
+                _ => None,
+            })
+            .expect("Kheru Lich Lord should have an upkeep trigger")
+    }
+
+    fn execute_kheru_upkeep(
+        game: &mut crate::game_state::GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        triggered: &crate::ability::TriggeredAbility,
+        pay: bool,
+    ) {
+        let mut dm = KheruDecisionMaker { pay };
+        let mut ctx = crate::effects::ExecutionContext::new(source, controller, &mut dm);
+        crate::game_loop::execute_resolution_program(
+            game,
+            &mut ctx,
+            controller,
+            source,
+            &triggered.effects,
+            None,
+            &[],
+        )
+        .expect("Kheru upkeep trigger should resolve");
+    }
+
+    fn create_graveyard_creature(
+        game: &mut crate::game_state::GameState,
+        owner: PlayerId,
+    ) -> (ObjectId, ironsmith_core::StableId) {
+        let creature = CardDefinitionBuilder::new(CardId::new(), "Returned Probe")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let object_id = game.create_object_from_definition(&creature, owner, Zone::Graveyard);
+        let stable_id = game.object(object_id).expect("creature exists").stable_id;
+        (object_id, stable_id)
+    }
+
+    fn add_kheru_payment_mana(game: &mut crate::game_state::GameState, player: PlayerId) {
+        game.player_mut(player)
+            .expect("player exists")
+            .mana_pool
+            .add(ManaSymbol::Colorless, 2);
+        game.player_mut(player)
+            .expect("player exists")
+            .mana_pool
+            .add(ManaSymbol::Black, 1);
+    }
+
+    let alice = PlayerId::from_index(0);
+    let kheru = parse_oracle_card_definition("Kheru Lich Lord");
+    let triggered = kheru_upkeep_trigger(&kheru);
+
+    let mut declined_game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let declined_source =
+        declined_game.create_object_from_definition(&kheru, alice, Zone::Battlefield);
+    let (declined_card, declined_stable) = create_graveyard_creature(&mut declined_game, alice);
+    execute_kheru_upkeep(&mut declined_game, declined_source, alice, triggered, false);
+    assert_eq!(
+        declined_game
+            .find_object_by_stable_id(declined_stable)
+            .expect("declined card should remain tracked"),
+        declined_card,
+        "declining the optional payment should not move the graveyard creature"
+    );
+    assert_eq!(
+        declined_game
+            .object(declined_card)
+            .expect("declined card exists")
+            .zone,
+        Zone::Graveyard,
+        "declining the optional payment should leave the creature in the graveyard"
+    );
+    assert!(
+        declined_game.effect_store.delayed_triggers.is_empty(),
+        "declining payment should not schedule delayed exile"
+    );
+    assert_eq!(
+        declined_game
+            .effect_store
+            .replacement_effects
+            .count_one_shot_effects_from_source(declined_source),
+        0,
+        "declining payment should not register the leave-battlefield replacement"
+    );
+
+    let mut paid_game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let paid_source = paid_game.create_object_from_definition(&kheru, alice, Zone::Battlefield);
+    let (_graveyard_card, returned_stable) = create_graveyard_creature(&mut paid_game, alice);
+    add_kheru_payment_mana(&mut paid_game, alice);
+    execute_kheru_upkeep(&mut paid_game, paid_source, alice, triggered, true);
+
+    let returned_id = paid_game
+        .find_object_by_stable_id(returned_stable)
+        .expect("returned creature should remain tracked");
+    assert_eq!(
+        paid_game
+            .object(returned_id)
+            .expect("returned card exists")
+            .zone,
+        Zone::Battlefield,
+        "paid branch should return the random graveyard creature to the battlefield"
+    );
+    for ability in [
+        StaticAbilityId::Flying,
+        StaticAbilityId::Trample,
+        StaticAbilityId::Haste,
+    ] {
+        assert!(
+            paid_game.object_has_static_ability_id(returned_id, ability),
+            "returned creature should gain {ability:?}"
+        );
+    }
+    assert_eq!(
+        paid_game.effect_store.delayed_triggers.len(),
+        1,
+        "paid branch should schedule next-end-step exile"
+    );
+    assert_eq!(
+        paid_game
+            .effect_store
+            .replacement_effects
+            .count_one_shot_effects_from_source(paid_source),
+        1,
+        "paid branch should register one leave-battlefield exile replacement"
+    );
+
+    let mut replacement_game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let replacement_source =
+        replacement_game.create_object_from_definition(&kheru, alice, Zone::Battlefield);
+    let (_replacement_graveyard_card, replacement_stable) =
+        create_graveyard_creature(&mut replacement_game, alice);
+    add_kheru_payment_mana(&mut replacement_game, alice);
+    execute_kheru_upkeep(
+        &mut replacement_game,
+        replacement_source,
+        alice,
+        triggered,
+        true,
+    );
+    let replacement_returned_id = replacement_game
+        .find_object_by_stable_id(replacement_stable)
+        .expect("replacement returned creature should remain tracked");
+    let mut replacement_ctx =
+        crate::effects::ExecutionContext::new_default(replacement_source, alice);
+    MoveToZoneEffect::to_graveyard(ChooseSpec::SpecificObject(
+        replacement_returned_id,
+    ))
+    .execute(&mut replacement_game, &mut replacement_ctx)
+    .expect("Kheru leave-battlefield replacement should resolve");
+    let replacement_exiled_id = replacement_game
+        .find_object_by_stable_id(replacement_stable)
+        .expect("replacement exiled creature should remain tracked");
+    assert_eq!(
+        replacement_game
+            .object(replacement_exiled_id)
+            .expect("replacement exiled card exists")
+            .zone,
+        Zone::Exile,
+        "the leave-battlefield replacement should exile the returned creature instead of putting it into the graveyard"
+    );
+    assert_eq!(
+        replacement_game
+            .effect_store
+            .replacement_effects
+            .count_one_shot_effects_from_source(replacement_source),
+        0,
+        "the one-shot leave-battlefield replacement should be consumed after it applies"
+    );
+
+    let end_step_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfEndStepEvent::new(alice),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let delayed_entries = crate::triggers::check_delayed_triggers(&mut paid_game, &end_step_event);
+    assert_eq!(delayed_entries.len(), 1, "expected Kheru delayed trigger to fire");
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for entry in delayed_entries {
+        trigger_queue.add(entry);
+    }
+    crate::game_loop::put_triggers_on_stack(&mut paid_game, &mut trigger_queue)
+        .expect("Kheru delayed trigger should go on stack");
+    crate::game_loop::resolve_stack_entry(&mut paid_game)
+        .expect("Kheru delayed exile trigger should resolve");
+
+    let exiled_id = paid_game
+        .find_object_by_stable_id(returned_stable)
+        .expect("exiled creature should remain tracked");
+    assert_eq!(
+        paid_game.object(exiled_id).expect("exiled card exists").zone,
+        Zone::Exile,
+        "next-end-step delayed trigger should exile the returned creature"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn public_enemy_requires_legal_attackers_to_attack_enchanted_creatures_controller() {
     let public_enemy = parse_oracle_card_definition("Public Enemy");
     let creature = CardDefinitionBuilder::new(CardId::from_raw(91_101), "Grizzly Bears")

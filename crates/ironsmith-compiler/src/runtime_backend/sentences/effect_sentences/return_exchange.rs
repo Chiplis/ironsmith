@@ -599,6 +599,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             converted,
             return_controller,
             count_value,
+            random,
         )
     } else if is_graveyard {
         EffectAst::subject_verb_move_to_zone(

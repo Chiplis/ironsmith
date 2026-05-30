@@ -533,6 +533,7 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
         false,
         battlefield_controller,
         None,
+        false,
     )];
     let tagged_target = TargetAst::Tagged(TagKey::from(IT_TAG), clause.span());
     for descriptor in descriptors {
@@ -750,6 +751,7 @@ pub(crate) fn clone_return_effect_with_subtype(
                 controller,
                 count_value,
                 as_aura,
+                random,
             } => {
                 let mut cloned_target = target.clone();
                 replace_target_subtype(&mut cloned_target, subtype).then(|| {
@@ -760,6 +762,7 @@ pub(crate) fn clone_return_effect_with_subtype(
                         *converted,
                         *controller,
                         count_value.clone(),
+                        *random,
                     );
                     if let EffectAst::SubjectVerb(subject_verb) = &mut effect
                         && let SubjectVerbActionAst::ReturnToBattlefield { as_aura: dst, .. } =

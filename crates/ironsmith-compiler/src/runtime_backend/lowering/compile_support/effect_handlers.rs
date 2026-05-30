@@ -188,15 +188,35 @@ pub(super) fn try_compile_timing_and_control_effect(
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
     let compiled = match effect {
         EffectAst::DelayedUntilNextEndStep { player, effects } => {
+            let outer_last_object_tag = ctx.last_object_tag.clone();
             let (delayed_effects, choices) =
                 compile_delayed_effects_preserving_outer_context(effects, ctx)?;
-            let effect = Effect::new(crate::effects::ScheduleDelayedTriggerEffect::new(
-                ironsmith_core::DelayedTriggerSpec::BeginningOfEndStep(player.clone()),
-                delayed_effects,
-                true,
-                Vec::new(),
-                PlayerFilter::You,
-            ));
+            let references_outer_tag = outer_last_object_tag.as_deref().is_some_and(|tag| {
+                delayed_effects.iter().any(|effect| {
+                    effect
+                        .target_spec()
+                        .is_some_and(|spec| choose_spec_references_tag(spec, tag))
+                })
+            });
+            let delayed = if references_outer_tag {
+                crate::effects::ScheduleDelayedTriggerEffect::from_tag(
+                    TagKey::from(outer_last_object_tag.expect("checked tag presence")),
+                    ironsmith_core::DelayedTriggerSpec::BeginningOfEndStep(player.clone()),
+                    delayed_effects,
+                    true,
+                    Vec::new(),
+                    PlayerFilter::You,
+                )
+            } else {
+                crate::effects::ScheduleDelayedTriggerEffect::new(
+                    ironsmith_core::DelayedTriggerSpec::BeginningOfEndStep(player.clone()),
+                    delayed_effects,
+                    true,
+                    Vec::new(),
+                    PlayerFilter::You,
+                )
+            };
+            let effect = Effect::new(delayed);
             (vec![effect], choices)
         }
         EffectAst::DelayedUntilNextUpkeep { player, effects } => {
@@ -526,8 +546,19 @@ pub(super) fn try_compile_stack_and_condition_effect(
             predicate,
             effects,
         } => {
-            let (inner_effects, inner_choices) =
-                with_preserved_lowering_context(ctx, |_| {}, |ctx| compile_effects(effects, ctx))?;
+            let mut inner_last_object_tag = None;
+            let (inner_effects, inner_choices) = with_preserved_lowering_context(
+                ctx,
+                |_| {},
+                |ctx| {
+                    let result = compile_effects(effects, ctx);
+                    inner_last_object_tag = ctx.last_object_tag.clone();
+                    result
+                },
+            )?;
+            if inner_last_object_tag.is_some() {
+                ctx.last_object_tag = inner_last_object_tag;
+            }
             let predicate = effect_predicate_from_if_result(*predicate);
             let effect = Effect::if_then(*condition, predicate, inner_effects);
             (vec![effect], inner_choices)

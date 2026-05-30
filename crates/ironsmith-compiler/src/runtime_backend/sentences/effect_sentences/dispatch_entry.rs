@@ -601,6 +601,19 @@ fn future_zone_replacement_from_sentence_text(sentence_text: &str) -> Option<Eff
         ));
     }
 
+    if str_contains(&normalized, "would leave the battlefield")
+        && str_contains(&normalized, "exile")
+        && str_contains(&normalized, "instead")
+    {
+        return Some(EffectAst::subject_verb_register_zone_replacement(
+            target(),
+            Some(Zone::Battlefield),
+            None,
+            Zone::Exile,
+            ZoneReplacementDurationAst::OneShot,
+        ));
+    }
+
     if str_contains(&normalized, "would be put into")
         && str_contains(&normalized, "graveyard")
         && str_contains(&normalized, "this turn")

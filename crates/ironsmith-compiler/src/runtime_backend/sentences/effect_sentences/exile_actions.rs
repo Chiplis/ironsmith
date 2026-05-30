@@ -1,6 +1,53 @@
 use super::*;
 use crate::runtime_backend::lexer::word_slice_starts_with;
 
+fn split_delayed_exile_timing_tail(
+    tokens: &[OwnedLexToken],
+) -> Result<(Vec<OwnedLexToken>, Option<DelayedReturnTimingAst>), CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    for word_idx in 0..words.len() {
+        if words[word_idx] != "at" {
+            continue;
+        }
+        if let Some(timing) = parse_delayed_return_timing_words(&words[word_idx..]) {
+            let token_cutoff = token_index_for_word_index(tokens, word_idx).unwrap_or(tokens.len());
+            return Ok((tokens[..token_cutoff].to_vec(), Some(timing)));
+        }
+    }
+    let has_delayed_timing_words = grammar::contains_word(tokens, "beginning")
+        || grammar::contains_word(tokens, "upkeep")
+        || grammar::words_find_phrase(tokens, &["end", "of", "combat"]).is_some()
+        || grammar::contains_word(tokens, "end")
+            && (grammar::contains_word(tokens, "next") || grammar::contains_word(tokens, "step"));
+    if has_delayed_timing_words {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported delayed exile timing clause (clause: '{}')",
+            words.join(" ")
+        )));
+    }
+    Ok((tokens.to_vec(), None))
+}
+
+fn wrap_exile_with_delayed_timing(
+    effect: EffectAst,
+    timing: Option<DelayedReturnTimingAst>,
+) -> EffectAst {
+    match timing {
+        Some(DelayedReturnTimingAst::NextEndStep(player)) => EffectAst::DelayedUntilNextEndStep {
+            player,
+            effects: vec![effect],
+        },
+        Some(DelayedReturnTimingAst::NextUpkeep(player)) => EffectAst::DelayedUntilNextUpkeep {
+            player,
+            effects: vec![effect],
+        },
+        Some(DelayedReturnTimingAst::EndOfCombat) => {
+            EffectAst::DelayedUntilEndOfCombat { effects: vec![effect] }
+        }
+        None => effect,
+    }
+}
+
 pub(crate) fn parse_exile(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
@@ -8,6 +55,8 @@ pub(crate) fn parse_exile(
     let (tokens, until_source_leaves) = split_until_source_leaves_tail(tokens);
     let (tokens, face_down) = split_exile_face_down_suffix(tokens);
     let tokens = split_exile_graveyard_replacement_suffix(tokens);
+    let (tokens_vec, delayed_timing) = split_delayed_exile_timing_tail(tokens)?;
+    let tokens = tokens_vec.as_slice();
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if grammar::contains_word(tokens, "unless") {
         return Err(CardTextError::ParseError(format!(
@@ -38,24 +87,26 @@ pub(crate) fn parse_exile(
         let filter_tokens = &tokens[1..];
         let mut filter = parse_object_filter_lexed(filter_tokens, false)?;
         apply_exile_subject_owner_context(&mut filter, subject);
-        return Ok(if until_source_leaves {
+        let effect = if until_source_leaves {
             EffectAst::subject_verb_exile_until_source_leaves(
                 TargetAst::Object(filter, None, None),
                 face_down,
             )
         } else {
             EffectAst::subject_verb_exile_all(filter, face_down)
-        });
+        };
+        return Ok(wrap_exile_with_delayed_timing(effect, delayed_timing));
     }
     if let Some(filter) = parse_target_player_graveyard_filter(tokens) {
-        return Ok(if until_source_leaves {
+        let effect = if until_source_leaves {
             EffectAst::subject_verb_exile_until_source_leaves(
                 TargetAst::Object(filter, None, None),
                 face_down,
             )
         } else {
             EffectAst::subject_verb_exile_all(filter, face_down)
-        });
+        };
+        return Ok(wrap_exile_with_delayed_timing(effect, delayed_timing));
     }
     if !face_down
         && !until_source_leaves
@@ -129,15 +180,16 @@ pub(crate) fn parse_exile(
     if let Some(spec) = split_trailing_if_clause_lexed(tokens) {
         let mut target = parse_target_phrase(spec.leading_tokens)?;
         apply_exile_subject_hand_owner_context(&mut target, subject);
-        return Ok(EffectAst::Conditional {
-            predicate: spec.predicate,
-            if_true: vec![if until_source_leaves {
-                EffectAst::subject_verb_exile_until_source_leaves(target, face_down)
-            } else {
-                EffectAst::subject_verb_exile(target, face_down)
-            }],
-            if_false: Vec::new(),
-        });
+            let effect = EffectAst::Conditional {
+                predicate: spec.predicate,
+                if_true: vec![if until_source_leaves {
+                    EffectAst::subject_verb_exile_until_source_leaves(target, face_down)
+                } else {
+                    EffectAst::subject_verb_exile(target, face_down)
+                }],
+                if_false: Vec::new(),
+            };
+            return Ok(wrap_exile_with_delayed_timing(effect, delayed_timing));
     } else if grammar::contains_word(tokens, "if") {
         return Err(CardTextError::ParseError(format!(
             "unsupported conditional exile clause (clause: '{}')",
@@ -145,13 +197,31 @@ pub(crate) fn parse_exile(
         )));
     }
 
-    let mut target = parse_target_phrase(tokens)?;
+    let target_words = crate::runtime_backend::token_word_refs(tokens);
+    let mut target = if matches!(
+        target_words.as_slice(),
+        ["it"]
+            | ["them"]
+            | ["that", "card"]
+            | ["that", "creature"]
+            | ["that", "object"]
+            | ["that", "permanent"]
+            | ["those", "cards"]
+            | ["those", "creatures"]
+            | ["those", "objects"]
+            | ["those", "permanents"]
+    ) {
+        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens))
+    } else {
+        parse_target_phrase(tokens)?
+    };
     apply_exile_subject_hand_owner_context(&mut target, subject);
-    Ok(if until_source_leaves {
+    let effect = if until_source_leaves {
         EffectAst::subject_verb_exile_until_source_leaves(target, face_down)
     } else {
         EffectAst::subject_verb_exile(target, face_down)
-    })
+    };
+    Ok(wrap_exile_with_delayed_timing(effect, delayed_timing))
 }
 
 pub(crate) fn parse_same_name_exile_hand_and_graveyard_clause(
