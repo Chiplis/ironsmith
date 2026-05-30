@@ -581,6 +581,48 @@ fn shiny_impetus_buffs_and_goads_enchanted_creature_away_from_aura_controller() 
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn shiny_impetus_stops_buffing_and_goading_when_aura_leaves_battlefield() {
+    let shiny_impetus = parse_oracle_card_definition("Shiny Impetus");
+    let creature = CardDefinitionBuilder::new(CardId::from_raw(91_123), "Grizzly Bears")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
+        20,
+    );
+
+    let enchanted_creature = game.create_object_from_definition(&creature, bob, Zone::Battlefield);
+    let aura = game.create_object_from_definition(&shiny_impetus, alice, Zone::Battlefield);
+    assert!(game.attach_object_to_target(
+        aura,
+        crate::object::AttachmentTarget::Object(enchanted_creature),
+    ));
+
+    assert_eq!(game.current_power(enchanted_creature), Some(4));
+    assert_eq!(game.current_toughness(enchanted_creature), Some(4));
+    assert!(game.is_goaded(enchanted_creature));
+
+    game.move_object_by_effect(aura, Zone::Graveyard)
+        .expect("Shiny Impetus should move to graveyard");
+
+    assert_eq!(game.current_power(enchanted_creature), Some(2));
+    assert_eq!(game.current_toughness(enchanted_creature), Some(2));
+    assert!(
+        !game.is_goaded(enchanted_creature),
+        "Shiny Impetus should stop goading after it leaves the battlefield"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn shiny_impetus_creates_treasure_when_enchanted_creature_attacks() {
     let shiny_impetus = parse_oracle_card_definition("Shiny Impetus");
     let creature = CardDefinitionBuilder::new(CardId::from_raw(91_122), "Grizzly Bears")
