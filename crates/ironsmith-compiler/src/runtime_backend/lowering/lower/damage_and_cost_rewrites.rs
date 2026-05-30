@@ -19,13 +19,13 @@ pub(crate) fn parse_next_spell_cost_reduction_sentence_rewrite(
     tokens: &[OwnedLexToken],
 ) -> Option<EffectAst> {
     let clause_words = token_word_refs(tokens);
-    if !word_refs_have_prefix(clause_words.as_slice(), &["the", "next"]) {
+    if !word_slice_starts_with(clause_words.as_slice(), &["the", "next"]) {
         return None;
     }
 
-    let spell_idx = word_refs_find(clause_words.as_slice(), "spell")?;
-    let costs_idx = word_refs_find(clause_words.as_slice(), "costs")?;
-    let less_idx = word_refs_find(clause_words.as_slice(), "less")?;
+    let spell_idx = word_slice_find_word(clause_words.as_slice(), "spell")?;
+    let costs_idx = word_slice_find_word(clause_words.as_slice(), "costs")?;
+    let less_idx = word_slice_find_word(clause_words.as_slice(), "less")?;
     if clause_words.get(spell_idx + 1).copied() != Some("you")
         || clause_words.get(spell_idx + 2).copied() != Some("cast")
         || clause_words.get(spell_idx + 3).copied() != Some("this")

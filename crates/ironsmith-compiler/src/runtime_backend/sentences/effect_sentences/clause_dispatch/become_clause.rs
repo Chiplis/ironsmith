@@ -6,7 +6,8 @@ use super::super::super::lexer::{
     word_slice_strip_any_suffix,
 };
 use super::super::super::util::{
-    parse_card_type, parse_color, parse_subject, parse_target_phrase, parse_value, span_from_tokens,
+    parse_card_type, parse_color, parse_subject, parse_target_phrase, parse_value,
+    span_from_tokens, word_refs_except,
 };
 use super::super::clause_pattern_helpers::extract_subject_player;
 use super::super::parse_granted_abilities_for_gain_clause;
@@ -454,11 +455,7 @@ pub(crate) fn parse_become_clause(
         }
     }
 
-    let color_tokens = become_words
-        .iter()
-        .copied()
-        .filter(|word| *word != "and" && *word != "or")
-        .collect::<Vec<_>>();
+    let color_tokens = word_refs_except(become_words, &["and", "or"]);
     if !color_tokens.is_empty() {
         let mut colors = crate::color::ColorSet::new();
         let mut all_colors = true;

@@ -12,10 +12,11 @@ use super::super::keyword_static::{
     parse_pt_modifier, parse_pt_modifier_values, parse_value_binding_clause,
 };
 use super::super::lexer::{
-    LexedClause, contains_token_word, word_slice_contains_any_phrase_or_empty,
-    word_slice_contains_any_word, word_slice_contains_phrase_or_empty, word_slice_contains_word,
-    word_slice_eq, word_slice_find_phrase_start_or_zero, word_slice_starts_with,
-    word_slice_starts_with_any, word_slice_strip_first_word_value,
+    LexedClause, contains_token_word, token_slice_starts_with, token_word_refs, word_slice_at_is,
+    word_slice_at_is_any, word_slice_contains_any_phrase_or_empty, word_slice_contains_any_word,
+    word_slice_contains_phrase_or_empty, word_slice_contains_word, word_slice_eq,
+    word_slice_find_phrase_start_or_zero, word_slice_first_is, word_slice_first_is_any,
+    word_slice_starts_with, word_slice_starts_with_any, word_slice_strip_first_word_value,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::find_index as find_token_index;
@@ -29,23 +30,15 @@ use super::chain_carry::{parse_effect_chain, parse_effect_chain_inner, remove_fi
 use super::conditionals::negated_action_word_index;
 use super::{Verb, find_verb};
 
-fn token_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
-    LexedClause::new(tokens).word_refs()
-}
-
-fn token_index_for_word_or_end(clause: LexedClause<'_>, word_idx: usize) -> usize {
-    clause
-        .token_index_for_word_index(word_idx)
-        .unwrap_or(clause.len())
-}
-
 fn trimmed_tail_from_word(clause: LexedClause<'_>, word_idx: usize) -> LexedClause<'_> {
-    let token_idx = token_index_for_word_or_end(clause, word_idx);
+    let token_idx = clause
+        .token_index_for_word_or_end(word_idx)
+        .unwrap_or(clause.len());
     clause.from(token_idx).trimmed()
 }
 
 fn prepend_that_player_life_total_subject(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
-    let words = token_words(tokens);
+    let words = token_word_refs(tokens);
     if !word_slice_starts_with(&words, &["life", "total", "becomes"]) {
         return tokens.to_vec();
     }
@@ -274,7 +267,7 @@ pub(crate) fn parse_has_base_power_clause(
     {
         return Ok(None);
     }
-    if rest_words.get(2).is_some_and(|word| *word == "and") {
+    if word_slice_at_is(rest_words, 2, "and") {
         return Ok(None);
     }
 
@@ -527,11 +520,8 @@ pub(crate) fn parse_get_modifier_values_with_tail(
     ) {
         return Ok((out_power, out_toughness, duration, condition));
     }
-    if matches!(tail_words.first().copied(), Some("and"))
-        && matches!(
-            tail_words.get(1).copied(),
-            Some("gain" | "gains" | "has" | "have")
-        )
+    if word_slice_first_is(&tail_words, "and")
+        && word_slice_at_is_any(&tail_words, 1, &["gain", "gains", "has", "have"])
         && tail_words
             .iter()
             .any(|word| matches!(*word, "trample" | "haste" | "first" | "strike" | "infect"))
@@ -539,7 +529,7 @@ pub(crate) fn parse_get_modifier_values_with_tail(
     {
         return Ok((out_power, out_toughness, duration, condition));
     }
-    if matches!(tail_words.first().copied(), Some("and"))
+    if word_slice_first_is(&tail_words, "and")
         && tail_words
             .iter()
             .any(|word| matches!(*word, "gain" | "gains" | "has" | "have"))
@@ -550,14 +540,14 @@ pub(crate) fn parse_get_modifier_values_with_tail(
     {
         return Ok((out_power, out_toughness, duration, condition));
     }
-    if matches!(tail_words.first().copied(), Some("and"))
+    if word_slice_first_is(&tail_words, "and")
         && tail_words
             .iter()
             .any(|word| matches!(*word, "control" | "controls"))
     {
         return Ok((out_power, out_toughness, duration, condition));
     }
-    if tail_words.first().copied() == Some("or")
+    if word_slice_first_is(&tail_words, "or")
         && let Some(alt_mod) = tail_words.get(1).copied()
         && parse_pt_modifier_values(alt_mod).is_ok()
     {
@@ -690,16 +680,18 @@ pub(crate) fn parse_for_each_opponent_clause(
     }) {
         return Ok(None);
     }
-    if inner_words.first().copied() == Some("choose")
+    if word_slice_first_is(&inner_words, "choose")
         && let Some(then_return_idx) =
             word_slice_find_phrase_start_or_zero(&inner_words, &["then", "return"])
         && let Some(unless_idx) = word_slice_find_phrase_start_or_zero(&inner_words, &["unless"])
         && unless_idx > then_return_idx
         && inner_words.get(unless_idx + 1..unless_idx + 7)
             == Some(["its", "controller", "has", "you", "draw", "a"].as_slice())
-        && inner_words.get(unless_idx + 7) == Some(&"card")
+        && word_slice_at_is(&inner_words, unless_idx + 7, "card")
     {
-        let target_token_end = token_index_for_word_or_end(inner_clause, then_return_idx);
+        let target_token_end = inner_clause
+            .token_index_for_word_or_end(then_return_idx)
+            .unwrap_or(inner_clause.len());
         let target_tokens = LexedClause::new(&inner_tokens[1..target_token_end]).trim();
         let target = parse_target_phrase(&target_tokens)?;
         let return_target = TargetAst::Tagged(TagKey::from(IT_TAG), None);
@@ -748,17 +740,15 @@ pub(crate) fn parse_for_each_opponent_clause(
         }])));
     }
     if inner_words.len() >= 7
-        && inner_words.first().copied() == Some("who")
-        && inner_words.get(1).copied() == Some("has")
+        && word_slice_first_is(&inner_words, "who")
+        && word_slice_at_is(&inner_words, 1, "has")
         && let Some((count, used)) = parse_number(&inner_tokens[2..])
     {
         let cmp_idx = 2 + used;
-        if inner_words.get(cmp_idx).copied() == Some("or")
-            && inner_words.get(cmp_idx + 1).copied() == Some("more")
-            && inner_words.get(cmp_idx + 2).copied() == Some("poison")
-            && inner_words
-                .get(cmp_idx + 3)
-                .is_some_and(|word| *word == "counter" || *word == "counters")
+        if word_slice_at_is(&inner_words, cmp_idx, "or")
+            && word_slice_at_is(&inner_words, cmp_idx + 1, "more")
+            && word_slice_at_is(&inner_words, cmp_idx + 2, "poison")
+            && word_slice_at_is_any(&inner_words, cmp_idx + 3, &["counter", "counters"])
         {
             let effect_start = cmp_idx + 4;
             let effect_clause = trimmed_tail_from_word(inner_clause, effect_start);
@@ -781,7 +771,7 @@ pub(crate) fn parse_for_each_opponent_clause(
             }])));
         }
     }
-    if inner_words.first().copied() == Some("who")
+    if word_slice_first_is(&inner_words, "who")
         && let Some((negation_idx, negation_len)) = negated_action_word_index(&inner_words)
     {
         let effect_token_start =
@@ -790,9 +780,13 @@ pub(crate) fn parse_for_each_opponent_clause(
             } else if let Some(this_way_idx) =
                 word_slice_find_phrase_start_or_zero(&inner_words, &["this", "way"])
             {
-                token_index_for_word_or_end(inner_clause, this_way_idx + 2)
+                inner_clause
+                    .token_index_for_word_or_end(this_way_idx + 2)
+                    .unwrap_or(inner_clause.len())
             } else {
-                token_index_for_word_or_end(inner_clause, negation_idx + negation_len)
+                inner_clause
+                    .token_index_for_word_or_end(negation_idx + negation_len)
+                    .unwrap_or(inner_clause.len())
             };
         let effect_tokens = LexedClause::new(&inner_tokens[effect_token_start..]).trim();
         if effect_tokens.is_empty() {
@@ -809,7 +803,7 @@ pub(crate) fn parse_for_each_opponent_clause(
         }));
     }
 
-    if inner_words.first().copied() == Some("who")
+    if word_slice_first_is(&inner_words, "who")
         && let Some(this_way_idx) =
             word_slice_find_phrase_start_or_zero(&inner_words, &["this", "way"])
     {
@@ -831,7 +825,9 @@ pub(crate) fn parse_for_each_opponent_clause(
         let effect_token_start = if let Some(comma_idx) = comma_idx {
             comma_idx + 1
         } else {
-            token_index_for_word_or_end(inner_clause, 2)
+            inner_clause
+                .token_index_for_word_or_end(2)
+                .unwrap_or(inner_clause.len())
         };
         let effect_tokens = LexedClause::new(&inner_tokens[effect_token_start..]).trim();
         if effect_tokens.is_empty() {
@@ -855,8 +851,8 @@ pub(crate) fn parse_for_each_opponent_clause(
         }));
     }
 
-    let inner_words = token_words(&inner_tokens);
-    if inner_words.first().copied() == Some("who") {
+    let inner_words = token_word_refs(&inner_tokens);
+    if word_slice_first_is(&inner_words, "who") {
         let tapped_land_turn_idx = find_tapped_land_for_mana_this_turn_end(&inner_words);
         if let Some(turn_idx) = tapped_land_turn_idx {
             let effect_clause = trimmed_tail_from_word(inner_clause, turn_idx + 1);
@@ -887,7 +883,7 @@ pub(crate) fn parse_for_each_opponent_clause(
             }));
         }
     }
-    if inner_words.first().copied() == Some("who")
+    if word_slice_first_is(&inner_words, "who")
         && let Some((negation_idx, negation_len)) = negated_action_word_index(&inner_words)
     {
         let effect_token_start =
@@ -896,9 +892,13 @@ pub(crate) fn parse_for_each_opponent_clause(
             } else if let Some(this_way_idx) =
                 word_slice_find_phrase_start_or_zero(&inner_words, &["this", "way"])
             {
-                token_index_for_word_or_end(inner_clause, this_way_idx + 2)
+                inner_clause
+                    .token_index_for_word_or_end(this_way_idx + 2)
+                    .unwrap_or(inner_clause.len())
             } else {
-                token_index_for_word_or_end(inner_clause, negation_idx + negation_len)
+                inner_clause
+                    .token_index_for_word_or_end(negation_idx + negation_len)
+                    .unwrap_or(inner_clause.len())
             };
         let effect_tokens = LexedClause::new(&inner_tokens[effect_token_start..]).trim();
         if effect_tokens.is_empty() {
@@ -911,7 +911,7 @@ pub(crate) fn parse_for_each_opponent_clause(
         let predicate = parse_negated_who_this_way_predicate(&inner_tokens)?;
         return Ok(Some(EffectAst::ForEachPlayerDoesNot { effects, predicate }));
     }
-    if inner_words.first().copied() == Some("who")
+    if word_slice_first_is(&inner_words, "who")
         && let Some(this_way_idx) =
             word_slice_find_phrase_start_or_zero(&inner_words, &["this", "way"])
     {
@@ -933,7 +933,9 @@ pub(crate) fn parse_for_each_opponent_clause(
         let effect_token_start = if let Some(comma_idx) = comma_idx {
             comma_idx + 1
         } else {
-            token_index_for_word_or_end(inner_clause, 2)
+            inner_clause
+                .token_index_for_word_or_end(2)
+                .unwrap_or(inner_clause.len())
         };
         let effect_tokens = LexedClause::new(&inner_tokens[effect_token_start..]).trim();
         if effect_tokens.is_empty() {
@@ -957,8 +959,8 @@ pub(crate) fn parse_for_each_opponent_clause(
         }));
     }
 
-    let inner_words = token_words(&inner_tokens);
-    if inner_words.first().copied() == Some("who") {
+    let inner_words = token_word_refs(&inner_tokens);
+    if word_slice_first_is(&inner_words, "who") {
         let tapped_land_turn_idx = find_tapped_land_for_mana_this_turn_end(&inner_words);
         if let Some(turn_idx) = tapped_land_turn_idx {
             let effect_clause = trimmed_tail_from_word(inner_clause, turn_idx + 1);
@@ -989,7 +991,7 @@ pub(crate) fn parse_for_each_opponent_clause(
             }));
         }
     }
-    if inner_words.first().copied() == Some("who")
+    if word_slice_first_is(&inner_words, "who")
         && let Some((negation_idx, negation_len)) = negated_action_word_index(&inner_words)
     {
         let effect_token_start =
@@ -998,9 +1000,13 @@ pub(crate) fn parse_for_each_opponent_clause(
             } else if let Some(this_way_idx) =
                 word_slice_find_phrase_start_or_zero(&inner_words, &["this", "way"])
             {
-                token_index_for_word_or_end(inner_clause, this_way_idx + 2)
+                inner_clause
+                    .token_index_for_word_or_end(this_way_idx + 2)
+                    .unwrap_or(inner_clause.len())
             } else {
-                token_index_for_word_or_end(inner_clause, negation_idx + negation_len)
+                inner_clause
+                    .token_index_for_word_or_end(negation_idx + negation_len)
+                    .unwrap_or(inner_clause.len())
             };
         let effect_tokens = LexedClause::new(&inner_tokens[effect_token_start..]).trim();
         if effect_tokens.is_empty() {
@@ -1013,7 +1019,7 @@ pub(crate) fn parse_for_each_opponent_clause(
         let predicate = parse_negated_who_this_way_predicate(&inner_tokens)?;
         return Ok(Some(EffectAst::ForEachPlayerDoesNot { effects, predicate }));
     }
-    if inner_words.first().copied() == Some("who")
+    if word_slice_first_is(&inner_words, "who")
         && let Some(this_way_idx) =
             word_slice_find_phrase_start_or_zero(&inner_words, &["this", "way"])
     {
@@ -1035,7 +1041,9 @@ pub(crate) fn parse_for_each_opponent_clause(
         let effect_token_start = if let Some(comma_idx) = comma_idx {
             comma_idx + 1
         } else {
-            token_index_for_word_or_end(inner_clause, 2)
+            inner_clause
+                .token_index_for_word_or_end(2)
+                .unwrap_or(inner_clause.len())
         };
         let effect_tokens = LexedClause::new(&inner_tokens[effect_token_start..]).trim();
         if effect_tokens.is_empty() {
@@ -1156,7 +1164,7 @@ pub(crate) fn parse_who_did_this_way_predicate(
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let inner_clause = LexedClause::new(inner_tokens);
     let inner_words = inner_clause.word_refs();
-    if inner_words.first().copied() != Some("who") {
+    if !word_slice_first_is(&inner_words, "who") {
         return Ok(None);
     }
     let Some(this_way_idx) = word_slice_find_phrase_start_or_zero(&inner_words, &["this", "way"])
@@ -1168,8 +1176,12 @@ pub(crate) fn parse_who_did_this_way_predicate(
     if !supports_tag || this_way_idx <= 2 {
         return Ok(None);
     }
-    let filter_start = token_index_for_word_or_end(inner_clause, 2);
-    let filter_end = token_index_for_word_or_end(inner_clause, this_way_idx);
+    let filter_start = inner_clause
+        .token_index_for_word_or_end(2)
+        .unwrap_or(inner_clause.len());
+    let filter_end = inner_clause
+        .token_index_for_word_or_end(this_way_idx)
+        .unwrap_or(inner_clause.len());
     if filter_start >= filter_end {
         return Ok(None);
     }
@@ -1193,7 +1205,7 @@ fn parse_negated_who_this_way_predicate(
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let inner_clause = LexedClause::new(inner_tokens);
     let inner_words = inner_clause.word_refs();
-    if inner_words.first().copied() != Some("who") {
+    if !word_slice_first_is(&inner_words, "who") {
         return Ok(None);
     }
     let Some(this_way_idx) = word_slice_find_phrase_start_or_zero(&inner_words, &["this", "way"])
@@ -1209,8 +1221,12 @@ fn parse_negated_who_this_way_predicate(
         return Ok(None);
     }
 
-    let filter_start = token_index_for_word_or_end(inner_clause, verb_idx + 1);
-    let filter_end = token_index_for_word_or_end(inner_clause, this_way_idx);
+    let filter_start = inner_clause
+        .token_index_for_word_or_end(verb_idx + 1)
+        .unwrap_or(inner_clause.len());
+    let filter_end = inner_clause
+        .token_index_for_word_or_end(this_way_idx)
+        .unwrap_or(inner_clause.len());
     if filter_start >= filter_end {
         return Ok(None);
     }
@@ -1251,10 +1267,7 @@ pub(crate) fn parse_for_each_player_clause(
 
     let inner_clause = inner_clause.trimmed();
     let inner_tokens = inner_clause.tokens();
-    if inner_tokens.len() > 3
-        && inner_tokens[0].is_word("who")
-        && inner_tokens[1].is_word("controls")
-    {
+    if inner_tokens.len() > 3 && token_slice_starts_with(inner_tokens, &["who", "controls"]) {
         let mut effect_start = None;
         for idx in 2..inner_tokens.len() {
             if let Some(word) = inner_tokens[idx].as_word()
@@ -1327,8 +1340,8 @@ pub(crate) fn parse_for_each_player_clause(
         return Ok(Some(EffectAst::ForEachPlayer { effects }));
     }
 
-    let inner_words = token_words(&inner_tokens);
-    if inner_words.first().copied() == Some("who") {
+    let inner_words = token_word_refs(&inner_tokens);
+    if word_slice_first_is(&inner_words, "who") {
         let tapped_land_turn_idx = find_tapped_land_for_mana_this_turn_end(&inner_words);
         if let Some(turn_idx) = tapped_land_turn_idx {
             let effect_clause = trimmed_tail_from_word(inner_clause, turn_idx + 1);
@@ -1359,7 +1372,7 @@ pub(crate) fn parse_for_each_player_clause(
             }));
         }
     }
-    if inner_words.first().copied() == Some("who")
+    if word_slice_first_is(&inner_words, "who")
         && let Some((negation_idx, negation_len)) = negated_action_word_index(&inner_words)
     {
         let effect_token_start =
@@ -1368,9 +1381,13 @@ pub(crate) fn parse_for_each_player_clause(
             } else if let Some(this_way_idx) =
                 word_slice_find_phrase_start_or_zero(&inner_words, &["this", "way"])
             {
-                token_index_for_word_or_end(inner_clause, this_way_idx + 2)
+                inner_clause
+                    .token_index_for_word_or_end(this_way_idx + 2)
+                    .unwrap_or(inner_clause.len())
             } else {
-                token_index_for_word_or_end(inner_clause, negation_idx + negation_len)
+                inner_clause
+                    .token_index_for_word_or_end(negation_idx + negation_len)
+                    .unwrap_or(inner_clause.len())
             };
         let effect_tokens = LexedClause::new(&inner_tokens[effect_token_start..]).trim();
         if effect_tokens.is_empty() {
@@ -1383,7 +1400,7 @@ pub(crate) fn parse_for_each_player_clause(
         let predicate = parse_negated_who_this_way_predicate(&inner_tokens)?;
         return Ok(Some(EffectAst::ForEachPlayerDoesNot { effects, predicate }));
     }
-    if inner_words.first().copied() == Some("who")
+    if word_slice_first_is(&inner_words, "who")
         && let Some(this_way_idx) =
             word_slice_find_phrase_start_or_zero(&inner_words, &["this", "way"])
     {
@@ -1405,7 +1422,9 @@ pub(crate) fn parse_for_each_player_clause(
         let effect_token_start = if let Some(comma_idx) = comma_idx {
             comma_idx + 1
         } else {
-            token_index_for_word_or_end(inner_clause, 2)
+            inner_clause
+                .token_index_for_word_or_end(2)
+                .unwrap_or(inner_clause.len())
         };
         let effect_tokens = LexedClause::new(&inner_tokens[effect_token_start..]).trim();
         if effect_tokens.is_empty() {

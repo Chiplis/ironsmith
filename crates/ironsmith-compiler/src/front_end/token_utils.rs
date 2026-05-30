@@ -200,13 +200,11 @@ pub fn str_split_once_char<'a>(text: &'a str, needle: char) -> Option<(&'a str, 
 }
 
 pub fn word_view_has_prefix(words: &TokenWordView<'_>, prefix: &[&str]) -> bool {
-    words.len() >= prefix.len() && words.slice_eq(0, prefix)
+    words.starts_with(prefix)
 }
 
 pub fn word_view_has_any_prefix(words: &TokenWordView<'_>, prefixes: &[&[&str]]) -> bool {
-    prefixes
-        .iter()
-        .any(|prefix| word_view_has_prefix(words, prefix))
+    words.starts_with_any(prefixes)
 }
 
 pub fn rewrite_followup_intro_to_if_lexed(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {

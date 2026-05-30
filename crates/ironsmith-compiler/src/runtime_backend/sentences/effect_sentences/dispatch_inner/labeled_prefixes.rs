@@ -34,13 +34,13 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
     if let Some(stripped) = split_labeled_effect_prefix_lexed(tokens) {
         return parse_effect_sentence_lexed(stripped);
     }
-    if tokens.first().is_some_and(|token| token.is_word("if"))
+    if token_slice_first_is(tokens, "if")
         && let Some(mut effects) = parse_exile_replacement_subject_verb_sentence(tokens)?
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if tokens.first().is_some_and(|token| token.is_word("if"))
+    if token_slice_first_is(tokens, "if")
         && let Some(mut effects) = run_subject_verb_primitives_lexed(
             tokens,
             PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
@@ -53,9 +53,7 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
     if let Some(effects) = parse_next_spell_grant_sentence_lexed(tokens)? {
         return Ok(effects);
     }
-    if sentence_words
-        .first()
-        .is_some_and(|word| matches!(*word, "prevent" | "take" | "monstrosity"))
+    if word_slice_first_is_any(&sentence_words, &["prevent", "take", "monstrosity"])
         && let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)?
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
@@ -66,7 +64,7 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
     {
         return Ok(effects);
     }
-    if tokens.first().is_some_and(|token| token.is_word("exile"))
+    if token_slice_first_is(tokens, "exile")
         && grammar::contains_word(tokens, "then")
     {
         if let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)? {
@@ -82,7 +80,7 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
             return Ok(effects);
         }
     }
-    if tokens.first().is_some_and(|token| token.is_word("then")) && tokens.len() > 1 {
+    if token_slice_first_is(tokens, "then") && tokens.len() > 1 {
         return parse_effect_sentence_lexed(&tokens[1..]);
     }
     if let Some(prefix) = split_leading_result_prefix_lexed(tokens) {
@@ -197,13 +195,13 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if sentence_words.first() == Some(&"enchant")
+    if word_slice_first_is(&sentence_words, "enchant")
         && let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)?
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if sentence_words.first() == Some(&"earthbend")
+    if word_slice_first_is(&sentence_words, "earthbend")
         && let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)?
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
@@ -259,7 +257,7 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if sentence_words.first() == Some(&"return")
+    if word_slice_first_is(&sentence_words, "return")
         && word_slice_contains_word(sentence_words.as_slice(), "rounded")
         && word_slice_contains_word(sentence_words.as_slice(), "up")
         && let Some(mut effects) = run_subject_verb_primitives_lexed(
@@ -271,7 +269,7 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if sentence_words.first() == Some(&"choose")
+    if word_slice_first_is(&sentence_words, "choose")
         && crate::runtime_backend::lexer::word_slice_contains_phrase(
             sentence_words.as_slice(),
             &["do", "the", "same", "for"],
@@ -352,7 +350,7 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         sentence_words.as_slice(),
         ["sacrifice", "any", "number", ..] | ["sacrifice", "one", "or", "more", ..]
     );
-    if sentence_words.first() == Some(&"sacrifice") && !sacrifice_counted_prefix {
+    if word_slice_first_is(&sentence_words, "sacrifice") && !sacrifice_counted_prefix {
         let mut effects = parse_effect_chain_lexed(tokens)?;
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
@@ -434,20 +432,26 @@ fn parse_passive_color_type_addition_sentence(
     let Some((tail_len, adds_colors)) = passive_addition_tail_len(&words) else {
         return Ok(None);
     };
-    let Some(is_word_idx) = words.iter().position(|word| matches!(*word, "is" | "are")) else {
+    let Some(is_word_idx) = crate::runtime_backend::lexer::word_slice_find_word_where(
+        &words,
+        |word| matches!(word, "is" | "are"),
+    ) else {
         return Ok(None);
     };
     if is_word_idx + 1 >= words.len().saturating_sub(tail_len) {
         return Ok(None);
     }
 
-    let subject_tokens = &tokens[..token_index_for_word_index(tokens, is_word_idx).unwrap_or(0)];
-    let descriptor_start =
-        token_index_for_word_index(tokens, is_word_idx + 1).unwrap_or(tokens.len());
     let descriptor_end_word_idx = words.len().saturating_sub(tail_len);
-    let descriptor_end =
-        token_index_for_word_index(tokens, descriptor_end_word_idx).unwrap_or(tokens.len());
-    let descriptor_tokens = &tokens[descriptor_start..descriptor_end];
+    let clause = LexedClause::new(tokens);
+    let subject_tokens = clause
+        .before_word(is_word_idx)
+        .unwrap_or_else(|| clause.before(0))
+        .tokens();
+    let descriptor_tokens = clause
+        .between_word_range(is_word_idx + 1, descriptor_end_word_idx)
+        .unwrap_or_else(|| clause.between(tokens.len(), tokens.len()))
+        .tokens();
     let subject_words = TokenWordView::new(subject_tokens).to_word_refs();
 
     let target = if matches!(
@@ -476,15 +480,11 @@ fn parse_passive_color_type_addition_sentence(
             continue;
         }
         if let Some(card_type) = parse_card_type(word) {
-            if !card_types.contains(&card_type) {
-                card_types.push(card_type);
-            }
+            crate::slice_primitives::push_unique(&mut card_types, card_type);
             continue;
         }
         if let Some(subtype) = super::parse_subtype_word(word) {
-            if !subtypes.contains(&subtype) {
-                subtypes.push(subtype);
-            }
+            crate::slice_primitives::push_unique(&mut subtypes, subtype);
             continue;
         }
         return Ok(None);
@@ -628,7 +628,7 @@ fn parse_earthbend_subject_verb_sentence(
         return Ok(Some(vec![earthbend]));
     };
     let mut tail = trim_commas(&tokens[1 + used..]).to_vec();
-    while tail.first().is_some_and(|token| token.is_word("then")) {
+    while token_slice_first_is(&tail, "then") {
         tail.remove(0);
     }
     if tail.is_empty() {
@@ -636,7 +636,7 @@ fn parse_earthbend_subject_verb_sentence(
     }
 
     let mut effects = vec![earthbend];
-    if tail.first().is_some_and(|token| token.is_word("earthbend")) {
+    if token_slice_first_is(&tail, "earthbend") {
         if let Some(mut tail_effects) = parse_earthbend_subject_verb_sentence(&tail)? {
             effects.append(&mut tail_effects);
             return Ok(Some(effects));
@@ -722,7 +722,8 @@ fn is_simple_gain_ability_candidate(tokens: &[OwnedLexToken]) -> bool {
                     | "when"
                     | "whenever"
             )
-        }) || tokens.iter().any(|token| token.is_quote() || token.is_colon()))
+        }) || contains_token_kind(tokens, TokenKind::Quote)
+            || contains_token_kind(tokens, TokenKind::Colon))
 }
 
 fn parse_for_each_opponent_doesnt_subject_verb_sentence(
@@ -738,10 +739,7 @@ pub(crate) fn is_negated_untap_clause(words: &[&str]) -> bool {
 pub(crate) fn parse_token_copy_modifier_sentence(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenCopyFollowup> {
-    let filtered: Vec<&str> = crate::runtime_backend::token_word_refs(tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
+    let filtered = crate::runtime_backend::util::non_article_token_word_refs(tokens);
 
     let is_gain_haste_until_eot = matches!(
         filtered.as_slice(),
@@ -908,10 +906,7 @@ pub(crate) fn parse_token_copy_modifier_sentence(
 pub(crate) fn parse_token_copy_modifier_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenCopyFollowup> {
-    let filtered: Vec<&str> = crate::runtime_backend::token_word_refs(tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
+    let filtered = crate::runtime_backend::util::non_article_token_word_refs(tokens);
 
     let is_gain_haste_until_eot = matches!(
         filtered.as_slice(),

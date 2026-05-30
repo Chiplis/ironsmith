@@ -518,12 +518,11 @@ pub(super) fn drain_segment_phrase_variants(
             })
     });
     if let Some((start_word_idx, end_word_idx)) = segment_match
-        && let Some(start_token_idx) =
-            normalized_token_index_for_word_index(segment_tokens.as_slice(), start_word_idx)
+        && let Some(start_token_idx) = segment_words_view.token_index_for_word_index(start_word_idx)
     {
-        let end_token_idx =
-            normalized_token_index_after_words(segment_tokens.as_slice(), end_word_idx)
-                .unwrap_or(segment_tokens.len());
+        let end_token_idx = segment_words_view
+            .token_index_after_words(end_word_idx)
+            .unwrap_or(segment_tokens.len());
         segment_tokens.drain(start_token_idx..end_token_idx);
     }
 }
@@ -1023,7 +1022,7 @@ pub(super) fn try_apply_leading_tagged_reference_prefix(
     all_words: &mut Vec<&str>,
 ) -> bool {
     if all_words.len() >= 2 && matches!(all_words[0], "that" | "those" | "chosen") {
-        let noun_idx = if all_words.get(1).is_some_and(|word| *word == "other") {
+        let noun_idx = if word_slice_at_is(all_words, 1, "other") {
             2
         } else {
             1

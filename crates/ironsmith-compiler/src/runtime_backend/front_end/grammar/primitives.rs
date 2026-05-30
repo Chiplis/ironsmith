@@ -10,7 +10,9 @@ use crate::cards::builders::{CardTextError, TextSpan};
 use crate::mana::ManaSymbol;
 
 pub(crate) use super::super::lexer::TokenWordView;
-use super::super::lexer::{LexStream, LexToken, TokenKind, word_slice_ends_with};
+use super::super::lexer::{
+    LexStream, LexToken, TokenKind, word_slice_ends_with, word_slice_first_is,
+};
 
 pub(crate) struct MaybeTrace<P, D> {
     parser: P,
@@ -798,20 +800,16 @@ pub(crate) fn split_lexed_once_on_comma<'a>(
     split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
 }
 
-fn primitive_words_end_with(words: &[&str], suffix: &[&str]) -> bool {
-    word_slice_ends_with(words, suffix)
-}
-
 fn should_keep_and_for_power_toughness_axis<'a>(
     current: &'a [LexToken],
     remaining: &'a [LexToken],
 ) -> bool {
     let current_words = TokenWordView::new(current).word_refs();
     let remaining_words = TokenWordView::new(remaining).word_refs();
-    (primitive_words_end_with(&current_words, &["power"])
-        || primitive_words_end_with(&current_words, &["total", "power"])
-        || primitive_words_end_with(&current_words, &["base", "power"]))
-        && remaining_words.first().copied() == Some("toughness")
+    (word_slice_ends_with(&current_words, &["power"])
+        || word_slice_ends_with(&current_words, &["total", "power"])
+        || word_slice_ends_with(&current_words, &["base", "power"]))
+        && word_slice_first_is(&remaining_words, "toughness")
 }
 
 pub(crate) fn split_lexed_slices_on_and<'a>(tokens: &'a [LexToken]) -> Vec<&'a [LexToken]> {

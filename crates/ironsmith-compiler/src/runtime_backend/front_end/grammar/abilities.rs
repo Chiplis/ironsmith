@@ -15,15 +15,20 @@ use crate::zone::Zone;
 use super::super::activation_helpers::parse_subtype_flexible;
 use super::super::effect_sentences::parse_subtype_word;
 use super::super::lexer::{
-    LexStream, LexToken, OwnedLexToken, TokenKind, TokenWordView, find_token_kind, find_token_word,
-    trim_lexed_commas, word_slice_contains_any_word, word_slice_ends_with_any, word_slice_eq,
-    word_slice_eq_any, word_slice_find_word, word_slice_starts_with, word_slice_starts_with_any,
+    LexStream, LexToken, OwnedLexToken, TokenKind, TokenWordView, contains_token_any_word,
+    contains_token_word, contains_token_word_sequence, find_token_any_word, find_token_kind,
+    find_token_word, token_slice_first_is, token_slice_first_is_any, token_slice_starts_with,
+    trim_lexed_commas, word_slice_at_is_any, word_slice_contains_any_word,
+    word_slice_ends_with_any, word_slice_eq, word_slice_eq_any, word_slice_find_word,
+    word_slice_first_is_any, word_slice_starts_with, word_slice_starts_with_any,
+    word_slice_strip_any_prefix,
 };
 use super::super::token_primitives::{slice_contains, str_strip_suffix};
 use super::filters::parse_spell_filter_with_grammar_entrypoint;
 use super::primitives;
 use crate::runtime_backend::util::{
-    parse_card_type, parse_counter_type_from_tokens, parse_counter_type_word, parse_number_word_u32,
+    parse_card_type, parse_counter_type_from_tokens, parse_counter_type_word,
+    parse_number_word_u32, strip_leading_article_word_refs,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -684,14 +689,7 @@ fn parse_legacy_mana_usage_restriction_sentence_lexed(
         return None;
     }
 
-    let mut spell_idx = None;
-    for idx in 0..words.len() {
-        if matches!(words.get(idx), Some("spell" | "spells")) {
-            spell_idx = Some(idx);
-            break;
-        }
-    }
-    let spell_idx = spell_idx?;
+    let spell_idx = words.find_any_word(&["spell", "spells"])?;
     let spec_words = (6..spell_idx)
         .filter_map(|idx| words.get(idx))
         .collect::<Vec<_>>();
@@ -700,7 +698,7 @@ fn parse_legacy_mana_usage_restriction_sentence_lexed(
     }
 
     let mut idx = 0usize;
-    if matches!(spec_words.first().copied(), Some("a" | "an")) {
+    if word_slice_first_is_any(&spec_words, &["a", "an"]) {
         idx += 1;
     }
 
@@ -835,7 +833,7 @@ fn parse_filter_mana_usage_restriction_sentence_lexed(
 }
 
 fn parse_special_mana_usage_spell_filter_words(words: &[&str]) -> Option<ObjectFilter> {
-    let words = strip_optional_leading_article(words);
+    let words = strip_leading_article_word_refs(words);
     if words.is_empty() {
         return None;
     }
@@ -851,7 +849,13 @@ fn parse_special_mana_usage_spell_filter_words(words: &[&str]) -> Option<ObjectF
         );
     }
 
-    if matches!(words, ["spell" | "spells", "from", "your", "graveyard"]) {
+    if word_slice_eq_any(
+        words,
+        &[
+            &["spell", "from", "your", "graveyard"],
+            &["spells", "from", "your", "graveyard"],
+        ],
+    ) {
         return Some(
             ObjectFilter::default()
                 .in_zone(Zone::Graveyard)
@@ -859,11 +863,17 @@ fn parse_special_mana_usage_spell_filter_words(words: &[&str]) -> Option<ObjectF
         );
     }
 
-    if matches!(words, ["spell" | "spells", "from", "exile"]) {
+    if word_slice_eq_any(
+        words,
+        &[&["spell", "from", "exile"], &["spells", "from", "exile"]],
+    ) {
         return Some(ObjectFilter::default().in_zone(Zone::Exile));
     }
 
-    if matches!(words, ["spell" | "spells", "with", "devoid"]) {
+    if word_slice_eq_any(
+        words,
+        &[&["spell", "with", "devoid"], &["spells", "with", "devoid"]],
+    ) {
         return Some(ObjectFilter::default().with_static_ability(StaticAbilityId::MakeColorless));
     }
 
@@ -876,18 +886,19 @@ fn parse_special_mana_usage_spell_filter_words(words: &[&str]) -> Option<ObjectF
         return Some(filter);
     }
 
-    if matches!(words, ["spell" | "spells", "you", "don't" | "dont", "own"]) {
+    if word_slice_eq_any(
+        words,
+        &[
+            &["spell", "you", "don't", "own"],
+            &["spell", "you", "dont", "own"],
+            &["spells", "you", "don't", "own"],
+            &["spells", "you", "dont", "own"],
+        ],
+    ) {
         return Some(ObjectFilter::default().owned_by(PlayerFilter::NotYou));
     }
 
     None
-}
-
-fn strip_optional_leading_article<'a>(words: &'a [&'a str]) -> &'a [&'a str] {
-    match words {
-        ["a" | "an" | "the", rest @ ..] => rest,
-        _ => words,
-    }
 }
 
 pub(crate) fn parse_mana_spend_bonus_sentence_lexed(
@@ -896,14 +907,7 @@ pub(crate) fn parse_mana_spend_bonus_sentence_lexed(
     let (prefix, _) = primitives::words_match_any_prefix(tokens, IF_MANA_SPENT_SPELL_PREFIXES)?;
 
     let words = TokenWordView::new(tokens);
-    let mut spell_idx = None;
-    for idx in 0..words.len() {
-        if matches!(words.get(idx), Some("spell" | "spells")) {
-            spell_idx = Some(idx);
-            break;
-        }
-    }
-    let spell_idx = spell_idx?;
+    let spell_idx = words.find_any_word(&["spell", "spells"])?;
 
     let spec_words = (prefix.len()..spell_idx)
         .filter_map(|idx| words.get(idx))
@@ -967,7 +971,7 @@ pub(crate) fn parse_mana_spend_bonus_sentence_lexed(
         });
     }
 
-    if clause_words.len() < 6 || clause_words.first().copied() != Some("that") {
+    if clause_words.len() < 6 || !word_slice_starts_with(&clause_words, &["that"]) {
         return None;
     }
 
@@ -983,9 +987,7 @@ pub(crate) fn parse_mana_spend_bonus_sentence_lexed(
     let enters_idx = clause_words
         .iter()
         .position(|word| matches!(*word, "enter" | "enters"))?;
-    let with_token_idx = clause_tokens
-        .iter()
-        .position(|token| token.is_word("with"))?;
+    let with_token_idx = find_token_word(&clause_tokens, "with")?;
     let after_with = &clause_tokens[with_token_idx + 1..];
     if after_with.is_empty() {
         return None;
@@ -1020,17 +1022,15 @@ pub(crate) fn parse_mana_spend_bonus_sentence_lexed(
     };
 
     let counter_type = parse_counter_type_from_tokens(&after_with[used..])?;
-    let counter_idx = after_with
-        .iter()
-        .position(|token| token.is_word("counter") || token.is_word("counters"))?;
+    let counter_idx = find_token_any_word(after_with, &["counter", "counters"])?;
     let tail_tokens = trim_lexed_commas(&after_with[counter_idx + 1..]);
     let mut tail: &[OwnedLexToken] = &tail_tokens;
-    if tail.first().is_some_and(|token| token.is_word("on")) {
+    if token_slice_first_is(tail, "on") {
         tail = &tail[1..];
     }
-    if tail.first().is_some_and(|token| token.is_word("it")) {
+    if token_slice_first_is(tail, "it") {
         tail = &tail[1..];
-    } else if tail.first().is_some_and(|token| token.is_word("that")) {
+    } else if token_slice_first_is(tail, "that") {
         tail = &tail[1..];
         if tail
             .first()
@@ -1069,7 +1069,7 @@ pub(crate) fn is_mana_spend_bonus_sentence_lexed(tokens: &[OwnedLexToken]) -> bo
 
 fn parse_simple_mana_spend_bonus_card_type(spec_words: &[&str]) -> Option<crate::types::CardType> {
     let mut idx = 0usize;
-    if matches!(spec_words.first().copied(), Some("a" | "an")) {
+    if word_slice_first_is_any(spec_words, &["a", "an"]) {
         idx += 1;
     }
     let card_type = parse_card_type(spec_words.get(idx).copied()?)?;
@@ -1119,11 +1119,11 @@ pub(crate) fn parse_triggered_times_each_turn_from_words(words: &[&str]) -> Opti
     }?;
     index += 1;
 
-    if words.get(index) == Some(&"time") || words.get(index) == Some(&"times") {
+    if word_slice_at_is_any(words, index, &["time", "times"]) {
         index += 1;
     }
 
-    if words.get(index) == Some(&"each") && words.get(index + 1) == Some(&"turn") {
+    if word_slice_starts_with(&words[index..], &["each", "turn"]) {
         Some(count)
     } else {
         None
@@ -1150,10 +1150,10 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
             other => parse_number_word_u32(other)?,
         };
         let mut index = 5usize;
-        if matches!(words.get(index), Some("time" | "times")) {
+        if words.at_is_any(index, &["time", "times"]) {
             index += 1;
         }
-        if words.get(index) == Some("each") && words.get(index + 1) == Some("turn") {
+        if words.starts_with_at(index, &["each", "turn"]) {
             return Some(ConditionExpr::MaxActivationsPerTurn(count));
         }
     }
@@ -1169,14 +1169,7 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
     }
     if primitives::words_match_any_prefix(tokens, ACTIVATE_ONLY_IF_THERE_PREFIXES).is_some() {
         let descriptor_start = 5usize;
-        let mut in_idx = None;
-        for idx in descriptor_start..words.len() {
-            if words.get(idx) == Some("in") {
-                in_idx = Some(idx);
-                break;
-            }
-        }
-        let in_idx = in_idx?;
+        let in_idx = words.find_any_word_from(&["in"], descriptor_start)?;
         let zone_tail = (in_idx..words.len())
             .filter_map(|idx| words.get(idx))
             .collect::<Vec<_>>();
@@ -1207,8 +1200,7 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
             {
                 card_types.push(card_type);
             }
-            if let Some(subtype) = parse_subtype_word(word)
-                .or_else(|| str_strip_suffix(word, "s").and_then(parse_subtype_word))
+            if let Some(subtype) = parse_subtype_flexible(word)
                 && !slice_contains(&subtypes, &subtype)
             {
                 subtypes.push(subtype);
@@ -1328,7 +1320,7 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
     if word_slice_starts_with(&control_tail, &["a", "creature", "with", "power"])
         || word_slice_starts_with(&control_tail, &["creature", "with", "power"])
     {
-        let power_idx = control_tail.iter().position(|word| *word == "power")?;
+        let power_idx = word_slice_find_word(&control_tail, "power")?;
         let threshold = parse_number_word_u32(control_tail.get(power_idx + 1)?)?;
         let tail = &control_tail[power_idx + 2..];
         if word_slice_eq(tail, &["or", "greater"]) {
@@ -1426,7 +1418,7 @@ pub(crate) fn parse_activation_count_per_turn(words: &[&str]) -> Option<u32> {
     {
         index += 1;
     }
-    if words.get(index) == Some(&"each") && words.get(index + 1) == Some(&"turn") {
+    if word_slice_starts_with(&words[index..], &["each", "turn"]) {
         Some(count)
     } else {
         None
@@ -1439,7 +1431,7 @@ pub(crate) fn is_standard_gift_keyword_tokens_lexed(tokens: &[OwnedLexToken]) ->
         .position(|token| token.kind == TokenKind::LParen)
         .map(|idx| &tokens[..idx])
         .unwrap_or(tokens);
-    if TokenWordView::new(head_tokens).word_refs().get(..1) != Some(&["gift"][..]) {
+    if !token_slice_starts_with(head_tokens, &["gift"]) {
         return false;
     }
     if !primitives::contains_phrase(
@@ -1575,10 +1567,6 @@ mod tests {
     }
 }
 
-fn contains_word_lexed(tokens: &[OwnedLexToken], expected: &str) -> bool {
-    super::super::lexer::contains_token_word(tokens, expected)
-}
-
 fn last_parser_word_text_lexed(tokens: &[OwnedLexToken]) -> Option<&str> {
     tokens.iter().rev().find_map(|token| match token.kind {
         TokenKind::Word | TokenKind::Number | TokenKind::Tilde => Some(token.parser_text()),
@@ -1588,15 +1576,6 @@ fn last_parser_word_text_lexed(tokens: &[OwnedLexToken]) -> Option<&str> {
 
 fn parser_text_contains_char(text: &str, expected: char) -> bool {
     crate::string_primitives::contains_char(text, expected)
-}
-
-fn contains_any_word_lexed(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
-    super::super::lexer::find_token_any_word(tokens, expected).is_some()
-}
-
-fn contains_phrase_lexed(tokens: &[OwnedLexToken], expected: &'static [&'static str]) -> bool {
-    (0..tokens.len())
-        .any(|idx| primitives::parse_prefix(&tokens[idx..], primitives::phrase(expected)).is_some())
 }
 
 pub(crate) fn is_draw_replace_exile_top_face_down_line_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -1609,11 +1588,11 @@ pub(crate) fn is_draw_replace_exile_top_face_down_line_lexed(tokens: &[OwnedLexT
         return false;
     }
 
-    contains_word_lexed(tokens, "exile")
-        && contains_phrase_lexed(tokens, &["top", "card"])
-        && contains_word_lexed(tokens, "library")
-        && contains_phrase_lexed(tokens, &["face", "down"])
-        && contains_word_lexed(tokens, "instead")
+    contains_token_word(tokens, "exile")
+        && contains_token_word_sequence(tokens, &["top", "card"])
+        && contains_token_word(tokens, "library")
+        && contains_token_word_sequence(tokens, &["face", "down"])
+        && contains_token_word(tokens, "instead")
 }
 
 pub(crate) fn is_draw_replacement_double_line_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -1640,30 +1619,30 @@ pub(crate) fn is_draw_replacement_skip_empty_library_line_lexed(tokens: &[OwnedL
 pub(crate) fn is_effect_discard_to_library_replacement_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
-    contains_phrase_lexed(tokens, &["effect", "causes", "you"])
-        && contains_word_lexed(tokens, "discard")
-        && contains_word_lexed(tokens, "top")
-        && contains_word_lexed(tokens, "library")
-        && contains_word_lexed(tokens, "instead")
-        && contains_word_lexed(tokens, "graveyard")
+    contains_token_word_sequence(tokens, &["effect", "causes", "you"])
+        && contains_token_word(tokens, "discard")
+        && contains_token_word(tokens, "top")
+        && contains_token_word(tokens, "library")
+        && contains_token_word(tokens, "instead")
+        && contains_token_word(tokens, "graveyard")
 }
 
 pub(crate) fn is_shuffle_into_library_from_graveyard_line_lexed(tokens: &[OwnedLexToken]) -> bool {
-    contains_phrase_lexed(tokens, &["would", "be", "put"])
-        && contains_word_lexed(tokens, "graveyard")
-        && contains_word_lexed(tokens, "anywhere")
-        && contains_word_lexed(tokens, "shuffle")
-        && contains_word_lexed(tokens, "library")
-        && contains_word_lexed(tokens, "instead")
+    contains_token_word_sequence(tokens, &["would", "be", "put"])
+        && contains_token_word(tokens, "graveyard")
+        && contains_token_word(tokens, "anywhere")
+        && contains_token_word(tokens, "shuffle")
+        && contains_token_word(tokens, "library")
+        && contains_token_word(tokens, "instead")
 }
 
 pub(crate) fn is_discard_or_redirect_replacement_line_lexed(tokens: &[OwnedLexToken]) -> bool {
-    contains_any_word_lexed(tokens, &["enter", "enters"])
-        && contains_word_lexed(tokens, "battlefield")
-        && contains_word_lexed(tokens, "discard")
-        && contains_word_lexed(tokens, "land")
-        && contains_word_lexed(tokens, "instead")
-        && contains_word_lexed(tokens, "graveyard")
+    contains_token_any_word(tokens, &["enter", "enters"])
+        && contains_token_word(tokens, "battlefield")
+        && contains_token_word(tokens, "discard")
+        && contains_token_word(tokens, "land")
+        && contains_token_word(tokens, "instead")
+        && contains_token_word(tokens, "graveyard")
 }
 
 fn parse_unsigned_integer_token<'a>(
@@ -1706,12 +1685,12 @@ pub(crate) fn is_once_each_turn_play_from_exile_marker_guard_lexed(
         primitives::phrase(&["once", "each", "turn", "you", "may", "play"]),
     )
     .is_some()
-        && contains_word_lexed(tokens, "from")
-        && contains_word_lexed(tokens, "exile")
-        && contains_word_lexed(tokens, "cast")
-        && contains_phrase_lexed(tokens, &["spend", "mana"])
-        && contains_phrase_lexed(tokens, &["as", "though", "it", "were"])
-        && contains_phrase_lexed(tokens, &["any", "color", "to"])
+        && contains_token_word(tokens, "from")
+        && contains_token_word(tokens, "exile")
+        && contains_token_word(tokens, "cast")
+        && contains_token_word_sequence(tokens, &["spend", "mana"])
+        && contains_token_word_sequence(tokens, &["as", "though", "it", "were"])
+        && contains_token_word_sequence(tokens, &["any", "color", "to"])
 }
 
 pub(crate) fn is_doctors_companion_marker_line_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -1763,9 +1742,9 @@ pub(crate) fn is_as_long_as_power_odd_or_even_flash_marker_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
     primitives::parse_prefix(tokens, primitives::phrase(&["as", "long", "as"])).is_some()
-        && contains_word_lexed(tokens, "power")
-        && contains_any_word_lexed(tokens, &["odd", "even"])
-        && contains_word_lexed(tokens, "flash")
+        && contains_token_word(tokens, "power")
+        && contains_token_any_word(tokens, &["odd", "even"])
+        && contains_token_word(tokens, "flash")
 }
 
 pub(crate) fn is_if_source_you_control_with_mana_value_double_instead_marker_line_lexed(
@@ -1776,9 +1755,9 @@ pub(crate) fn is_if_source_you_control_with_mana_value_double_instead_marker_lin
         primitives::phrase(&["if", "source", "you", "control", "with"]),
     )
     .is_some()
-        && contains_word_lexed(tokens, "mana")
-        && contains_word_lexed(tokens, "value")
-        && contains_word_lexed(tokens, "double")
+        && contains_token_word(tokens, "mana")
+        && contains_token_word(tokens, "value")
+        && contains_token_word(tokens, "double")
         && last_parser_word_text_lexed(tokens) == Some("instead")
 }
 

@@ -201,10 +201,7 @@ pub(crate) fn parse_gain_control(
     }
 
     let mut idx = 0;
-    if tokens
-        .get(idx)
-        .is_some_and(|token| token.is_word("control"))
-    {
+    if token_slice_at_is(tokens, idx, "control") {
         idx += 1;
     } else {
         return Err(CardTextError::ParseError(
@@ -212,7 +209,7 @@ pub(crate) fn parse_gain_control(
         ));
     }
 
-    if tokens.get(idx).is_some_and(|token| token.is_word("of")) {
+    if token_slice_at_is(tokens, idx, "of") {
         idx += 1;
     }
 
@@ -222,10 +219,7 @@ pub(crate) fn parse_gain_control(
     .map(|offset| idx + offset)
     .or_else(|| {
         find_window_by(&tokens[idx..], 4, |window: &[OwnedLexToken]| {
-            window[0].is_word("for")
-                && window[1].is_word("as")
-                && window[2].is_word("long")
-                && window[3].is_word("as")
+            token_slice_starts_with(window, &["for", "as", "long", "as"])
         })
         .map(|offset| idx + offset)
     });
@@ -469,32 +463,32 @@ pub(crate) fn parse_put_into_hand(
             _ => {}
         }
 
-        if words.get(idx).copied() != Some("choice") {
+        if !word_slice_at_is(&words, idx, "choice") {
             return false;
         }
         idx += 1;
-        if words.get(idx).copied() != Some("of") {
+        if !word_slice_at_is(&words, idx, "of") {
             return false;
         }
         idx += 1;
-        if words.get(idx).copied() == Some("either") {
+        if word_slice_at_is(&words, idx, "either") {
             idx += 1;
         }
-        if words.get(idx).copied() == Some("the") {
+        if word_slice_at_is(&words, idx, "the") {
             idx += 1;
         }
 
-        let top_or_bottom = words.get(idx).copied() == Some("top")
-            && words.get(idx + 1).copied() == Some("or")
-            && words.get(idx + 2).copied() == Some("bottom");
-        let bottom_or_top = words.get(idx).copied() == Some("bottom")
-            && words.get(idx + 1).copied() == Some("or")
-            && words.get(idx + 2).copied() == Some("top");
+        let top_or_bottom = word_slice_at_is(&words, idx, "top")
+            && word_slice_at_is(&words, idx + 1, "or")
+            && word_slice_at_is(&words, idx + 2, "bottom");
+        let bottom_or_top = word_slice_at_is(&words, idx, "bottom")
+            && word_slice_at_is(&words, idx + 1, "or")
+            && word_slice_at_is(&words, idx + 2, "top");
         if !(top_or_bottom || bottom_or_top) {
             return false;
         }
         idx += 3;
-        if words.get(idx).copied() != Some("of") {
+        if !word_slice_at_is(&words, idx, "of") {
             return false;
         }
         words[idx + 1..]
@@ -509,7 +503,7 @@ pub(crate) fn parse_put_into_hand(
     fn parse_counted_those_cards_target(tokens: &[OwnedLexToken]) -> Option<u32> {
         let tokens = trim_commas(tokens);
         let words = crate::runtime_backend::token_word_refs(&tokens);
-        if words.first().copied() != Some("put") {
+        if !word_slice_first_is(&words, "put") {
             return None;
         }
 
@@ -547,7 +541,7 @@ pub(crate) fn parse_put_into_hand(
     if grammar::contains_word(tokens, "back")
         && grammar::contains_word(tokens, "any")
         && grammar::contains_word(tokens, "order")
-        && matches!(clause_words.first().copied(), Some("it" | "them"))
+        && word_slice_first_is_any(&clause_words, &["it", "them"])
     {
         return Ok(EffectAst::subject_verb_reorder_top_of_library(TagKey::from(IT_TAG)));
     }
@@ -576,8 +570,8 @@ pub(crate) fn parse_put_into_hand(
         )
     {
         let mut up_to = false;
-        let (count, used) = if tokens.first().is_some_and(|t| t.is_word("up"))
-            && tokens.get(1).is_some_and(|t| t.is_word("to"))
+        let (count, used) = if token_slice_first_is(tokens, "up")
+            && token_slice_at_is(tokens, 1, "to")
         {
             up_to = true;
             parse_number(&tokens[2..]).map(|(value, used)| (value, used + 2))
@@ -592,17 +586,14 @@ pub(crate) fn parse_put_into_hand(
         })?;
 
         let mut idx = used;
-        if tokens.get(idx).is_some_and(|t| t.is_word("of")) {
+        if token_slice_at_is(tokens, idx, "of") {
             idx += 1;
         }
-        if tokens.get(idx).is_some_and(|t| t.is_word("them")) {
+        if token_slice_at_is(tokens, idx, "them") {
             idx += 1;
-        } else if tokens.get(idx).is_some_and(|t| t.is_word("those")) {
+        } else if token_slice_at_is(tokens, idx, "those") {
             idx += 1;
-            if tokens
-                .get(idx)
-                .is_some_and(|t| t.is_word("card") || t.is_word("cards"))
-            {
+            if token_slice_at_is_any(tokens, idx, &["card", "cards"]) {
                 idx += 1;
             }
         } else {
@@ -612,8 +603,7 @@ pub(crate) fn parse_put_into_hand(
             )));
         }
 
-        if !tokens.get(idx).is_some_and(|t| t.is_word("on"))
-            || !tokens.get(idx + 1).is_some_and(|t| t.is_word("top"))
+        if !token_slice_at_is(tokens, idx, "on") || !token_slice_at_is(tokens, idx + 1, "top")
         {
             return Err(CardTextError::ParseError(format!(
                 "unsupported library rearrange put clause (clause: '{}')",
@@ -655,8 +645,8 @@ pub(crate) fn parse_put_into_hand(
             )
         {
             let mut up_to = false;
-            let (count, used) = if tokens.first().is_some_and(|t| t.is_word("up"))
-                && tokens.get(1).is_some_and(|t| t.is_word("to"))
+            let (count, used) = if token_slice_first_is(tokens, "up")
+                && token_slice_at_is(tokens, 1, "to")
             {
                 up_to = true;
                 parse_number(&tokens[2..]).map(|(value, used)| (value, used + 2))
@@ -670,10 +660,10 @@ pub(crate) fn parse_put_into_hand(
                 ))
             })?;
             let mut idx = used;
-            if tokens.get(idx).is_some_and(|t| t.is_word("of")) {
+            if token_slice_at_is(tokens, idx, "of") {
                 idx += 1;
             }
-            if !tokens.get(idx).is_some_and(|t| t.is_word("them")) {
+            if !token_slice_at_is(tokens, idx, "them") {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported multi-destination put clause (clause: '{}')",
                     clause_words.join(" ")
@@ -708,8 +698,8 @@ pub(crate) fn parse_put_into_hand(
             )
         {
             let mut up_to = false;
-            let (count, used) = if tokens.first().is_some_and(|t| t.is_word("up"))
-                && tokens.get(1).is_some_and(|t| t.is_word("to"))
+            let (count, used) = if token_slice_first_is(tokens, "up")
+                && token_slice_at_is(tokens, 1, "to")
             {
                 up_to = true;
                 parse_number(&tokens[2..]).map(|(value, used)| (value, used + 2))
@@ -724,10 +714,10 @@ pub(crate) fn parse_put_into_hand(
             })?;
             // Accept optional "of" before "them".
             let mut idx = used;
-            if tokens.get(idx).is_some_and(|t| t.is_word("of")) {
+            if token_slice_at_is(tokens, idx, "of") {
                 idx += 1;
             }
-            if !tokens.get(idx).is_some_and(|t| t.is_word("them")) {
+            if !token_slice_at_is(tokens, idx, "them") {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported multi-destination put clause (clause: '{}')",
                     clause_words.join(" ")
@@ -762,7 +752,7 @@ pub(crate) fn parse_put_into_hand(
 
     // Support destination-first wording:
     // "Put onto the battlefield under your control all creature cards ..."
-    if tokens.first().is_some_and(|token| token.is_word("onto")) {
+    if crate::runtime_backend::lexer::token_slice_first_is(tokens, "onto") {
         let mut idx = 1usize;
         while tokens
             .get(idx)
@@ -783,13 +773,13 @@ pub(crate) fn parse_put_into_hand(
         idx += 1;
 
         let mut battlefield_tapped = false;
-        if tokens.get(idx).is_some_and(|token| token.is_word("tapped")) {
+        if token_slice_at_is(tokens, idx, "tapped") {
             battlefield_tapped = true;
             idx += 1;
         }
 
         let mut battlefield_controller = ReturnControllerAst::Preserve;
-        if tokens.get(idx).is_some_and(|token| token.is_word("under")) {
+        if token_slice_at_is(tokens, idx, "under") {
             let consumed =
                 if grammar::words_match_prefix(&tokens[idx..], &["under", "your", "control"])
                     .is_some()
@@ -840,12 +830,8 @@ pub(crate) fn parse_put_into_hand(
             )));
         }
 
-        if target_tokens
-            .first()
-            .is_some_and(|token| token.is_word("attached"))
-            && target_tokens
-                .get(1)
-                .is_some_and(|token| token.is_word("to"))
+        if crate::runtime_backend::lexer::token_slice_first_is(&target_tokens, "attached")
+            && crate::runtime_backend::lexer::token_slice_at_is(&target_tokens, 1, "to")
         {
             let after_to = &target_tokens[2..];
             if after_to.is_empty() {
@@ -855,8 +841,7 @@ pub(crate) fn parse_put_into_hand(
                 )));
             }
 
-            let attachment_target_len = if after_to.first().is_some_and(|token| token.is_word("it"))
-            {
+            let attachment_target_len = if crate::runtime_backend::lexer::token_slice_first_is(after_to, "it") {
                 1usize
             } else if after_to.len() >= 2
                 && after_to[0].is_word("that")

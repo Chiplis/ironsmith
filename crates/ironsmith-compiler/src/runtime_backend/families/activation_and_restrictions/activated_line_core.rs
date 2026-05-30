@@ -1,31 +1,13 @@
 use super::*;
 use crate::runtime_backend::SubjectAst;
 use crate::runtime_backend::ast::SubjectVerbActionAst;
-use crate::runtime_backend::lexer::LexedClause;
 use crate::runtime_backend::lexer::{
     word_slice_contains_any_phrase_or_empty, word_slice_contains_phrase_or_empty,
-    word_slice_contains_word, word_slice_find_phrase_start_or_zero, word_slice_starts_with,
+    word_slice_contains_word, word_slice_eq, word_slice_find_phrase_start_or_zero,
+    word_slice_starts_with,
 };
 
 pub(crate) type ActivationRestrictionCompatWords<'a> = grammar::TokenWordView<'a>;
-
-pub(crate) fn strip_prefix_phrase<'a>(
-    tokens: &'a [OwnedLexToken],
-    phrase: &'static [&'static str],
-) -> Option<&'a [OwnedLexToken]> {
-    LexedClause::new(tokens)
-        .strip_prefix_clause(phrase)
-        .map(|rest| rest.tokens())
-}
-
-pub(crate) fn strip_prefix_phrases<'a, 'p>(
-    tokens: &'a [OwnedLexToken],
-    phrases: &'p [&'p [&'p str]],
-) -> Option<(&'p [&'p str], &'a [OwnedLexToken])> {
-    LexedClause::new(tokens)
-        .strip_any_prefix_clause(phrases)
-        .map(|(phrase, rest)| (phrase, rest.tokens()))
-}
 
 pub(crate) fn joined_activation_clause_text(tokens: &[OwnedLexToken]) -> String {
     crate::runtime_backend::token_word_refs(tokens).join(" ")
@@ -238,7 +220,7 @@ pub(crate) fn parse_activated_line_with_raw(
                     .iter()
                     .any(|word| *word == "color" || *word == "colors");
             let has_any_combination_mana =
-                contains_word_sequence(&mana_words, &["any", "combination", "of"]);
+                word_slice_contains_phrase_or_empty(&mana_words, &["any", "combination", "of"]);
             let has_any_choice_mana = word_slice_contains_word(&mana_words, "any")
                 && (word_slice_contains_word(&mana_words, "color")
                     || word_slice_contains_word(&mana_words, "type")
@@ -477,7 +459,9 @@ pub(crate) fn resolve_activated_mana_x_requirements(
 ) -> Result<(), CardTextError> {
     let clause_word_view = ActivationRestrictionCompatWords::new(sentence_tokens);
     let clause_words = clause_word_view.to_word_refs();
-    if let Some(where_idx) = find_word_sequence_start(&clause_words, &["where", "x", "is"]) {
+    if let Some(where_idx) =
+        word_slice_find_phrase_start_or_zero(&clause_words, &["where", "x", "is"])
+    {
         let clause = clause_words.join(" ");
         let where_token_idx =
             token_index_for_word_index(sentence_tokens, where_idx).ok_or_else(|| {
@@ -494,11 +478,12 @@ pub(crate) fn resolve_activated_mana_x_requirements(
         replace_unbound_x_in_effect_anywhere(effect, &where_value, &clause)?;
     }
 
-    let x_defined_by_removed_this_way = contains_word_sequence(&clause_words, &["this", "way"])
-        && word_slice_contains_word(&clause_words, "removed")
-        && clause_words
-            .iter()
-            .any(|word| matches!(*word, "counter" | "counters"));
+    let x_defined_by_removed_this_way =
+        word_slice_contains_phrase_or_empty(&clause_words, &["this", "way"])
+            && word_slice_contains_word(&clause_words, "removed")
+            && clause_words
+                .iter()
+                .any(|word| matches!(*word, "counter" | "counters"));
 
     if mana_effect_contains_unbound_x(effect)
         && !x_defined_by_cost
@@ -610,16 +595,10 @@ pub(crate) fn infer_activated_functional_zones(
     cost_tokens: &[OwnedLexToken],
     effect_sentences: &[Vec<OwnedLexToken>],
 ) -> Vec<Zone> {
-    let cost_words: Vec<&str> = crate::runtime_backend::token_word_refs(cost_tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
+    let cost_words = crate::runtime_backend::util::non_article_token_word_refs(cost_tokens);
     let effect_words_match = |f: fn(&[&str]) -> bool| {
         effect_sentences.iter().any(|sentence| {
-            let clause_words: Vec<&str> = crate::runtime_backend::token_word_refs(sentence)
-                .into_iter()
-                .filter(|word| !is_article(word))
-                .collect();
+            let clause_words = crate::runtime_backend::util::non_article_token_word_refs(sentence);
             f(&clause_words)
         })
     };
@@ -646,19 +625,11 @@ pub(crate) fn infer_activated_functional_zones_lexed(
     effect_sentences: &[&[OwnedLexToken]],
 ) -> Vec<Zone> {
     let cost_view = ActivationRestrictionCompatWords::new(cost_tokens);
-    let cost_words: Vec<&str> = cost_view
-        .to_word_refs()
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
+    let cost_words = non_article_word_refs(&cost_view.to_word_refs());
     let effect_words_match = |f: fn(&[&str]) -> bool| {
         effect_sentences.iter().any(|sentence| {
             let sentence_view = ActivationRestrictionCompatWords::new(sentence);
-            let clause_words: Vec<&str> = sentence_view
-                .to_word_refs()
-                .into_iter()
-                .filter(|word| !is_article(word))
-                .collect();
+            let clause_words = non_article_word_refs(&sentence_view.to_word_refs());
             f(&clause_words)
         })
     };
@@ -703,22 +674,13 @@ pub(crate) fn normalize_activate_only_restriction(
     activated_sentence_parsers::normalize_activate_only_restriction(tokens, timing)
 }
 
-pub(crate) fn contains_word_sequence(words: &[&str], sequence: &[&str]) -> bool {
-    word_slice_contains_phrase_or_empty(words, sequence)
-}
-
 pub(crate) fn is_for_each_color_among_add_mana_clause(tokens: &[OwnedLexToken]) -> bool {
     let words = ActivationRestrictionCompatWords::new(tokens).to_word_refs();
-    contains_word_sequence(&words, &["for", "each", "color", "among"])
-        && contains_word_sequence(&words, &["add", "one", "mana", "of", "that", "color"])
-}
-
-pub(crate) fn find_word_sequence_start(words: &[&str], sequence: &[&str]) -> Option<usize> {
-    word_slice_find_phrase_start_or_zero(words, sequence)
-}
-
-pub(crate) fn contains_any_word_sequence(words: &[&str], sequences: &[&[&str]]) -> bool {
-    word_slice_contains_any_phrase_or_empty(words, sequences)
+    word_slice_contains_phrase_or_empty(&words, &["for", "each", "color", "among"])
+        && word_slice_contains_phrase_or_empty(
+            &words,
+            &["add", "one", "mana", "of", "that", "color"],
+        )
 }
 
 pub(crate) fn flatten_mana_activation_conditions(
@@ -864,9 +826,7 @@ pub(crate) fn parse_devotion_value_from_add_clause(
                 words.join(" ")
             ))
         })?;
-    if words.get(to_idx + 1).copied() == Some("that")
-        && words.get(to_idx + 2).copied() == Some("color")
-    {
+    if word_slice_starts_with(&words[to_idx + 1..], &["that", "color"]) {
         return Ok(Some(Value::DevotionToChosenColor(player)));
     }
     let color_word = words.get(to_idx + 1).copied().ok_or_else(|| {
@@ -978,7 +938,7 @@ pub(crate) fn parse_enters_tapped_line(
         }
         return Ok(None);
     }
-    if clause_words.first().copied() == Some("this")
+    if word_slice_first_is(&clause_words, "this")
         && word_slice_contains_word(&clause_words, "enters")
         && word_slice_contains_word(&clause_words, "tapped")
     {
@@ -1122,7 +1082,7 @@ pub(crate) fn parse_cost_reduction_line(
         };
         let tail_tokens = trim_commas(&amount_tokens[used..]);
         let tail_words = crate::runtime_backend::token_word_refs(&tail_tokens);
-        if tail_words == ["less", "to", "activate"] {
+        if word_slice_eq(&tail_words, &["less", "to", "activate"]) {
             return Ok(Some(StaticAbility::reduce_activated_ability_costs(
                 ObjectFilter::source(),
                 reduction,
@@ -1132,9 +1092,7 @@ pub(crate) fn parse_cost_reduction_line(
         if word_slice_starts_with(&tail_words, &["less", "to", "activate", "if"]) {
             let condition_tokens = trim_commas(&tail_tokens[4..]);
             let condition_words = crate::runtime_backend::token_word_refs(&condition_tokens);
-            if condition_words.first().copied() == Some("it")
-                && condition_words.get(1).copied() == Some("targets")
-            {
+            if word_slice_starts_with(&condition_words, &["it", "targets"]) {
                 let (count, used) = parse_number(&condition_tokens[2..]).ok_or_else(|| {
                     CardTextError::ParseError(format!(
                         "unsupported activated-ability target condition count (clause: '{}')",
@@ -1234,7 +1192,7 @@ pub(crate) fn parse_cost_reduction_line(
     }
 
     let has_each = word_slice_contains_word(&remaining_words, "each");
-    let has_card_type = contains_word_sequence(&remaining_words, &["card", "type"]);
+    let has_card_type = word_slice_contains_phrase_or_empty(&remaining_words, &["card", "type"]);
     let has_graveyard = word_slice_contains_word(&remaining_words, "graveyard");
 
     if has_each && has_card_type && has_graveyard {

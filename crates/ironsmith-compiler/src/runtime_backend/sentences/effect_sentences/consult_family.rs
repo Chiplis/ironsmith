@@ -7,16 +7,18 @@ use winnow::token::take_till;
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::keyword_static::parse_value_binding_clause;
 use super::super::lexer::{
-    LexStream, LexedClause, OwnedLexToken, contains_token_any_word, contains_token_word,
-    find_token_word, word_slice_contains_word, word_slice_ends_with, word_slice_eq,
-    word_slice_eq_any, word_slice_starts_with,
+    LexStream, OwnedLexToken, TokenKind, contains_token_any_word, contains_token_word,
+    find_token_kind, find_token_word, token_slice_strip_any_word_prefix,
+    word_slice_contains_phrase_or_empty, word_slice_contains_word, word_slice_ends_with,
+    word_slice_eq, word_slice_eq_any, word_slice_first_is, word_slice_starts_with,
 };
 use super::super::token_primitives::{
     find_index, find_window_by, parse_turn_duration_prefix, parse_value_comparison_tokens,
     strip_leading_if_you_do_lexed, word_view_has_prefix,
 };
 use super::super::util::{
-    helper_tag_for_tokens, parse_number, parse_subject, token_index_for_word_index, trim_commas,
+    helper_tag_for_tokens, parse_number, parse_subject, strip_leading_word_refs_any,
+    token_index_for_word_index, trim_commas,
 };
 use super::super::value_helpers::parse_value_from_lexed;
 use super::dispatch_entry::{
@@ -125,11 +127,8 @@ pub(crate) fn parse_consult_traversal_sentence(
     }
 
     let consult_prefix_words = TokenWordView::new(&consult_tokens[consult_verb_idx + 1..until_idx]);
-    let prefix_words: Vec<&str> = consult_prefix_words
-        .word_refs()
-        .into_iter()
-        .filter(|word| !super::super::util::is_article(word))
-        .collect();
+    let raw_prefix_words = consult_prefix_words.word_refs();
+    let prefix_words = super::super::util::non_article_word_refs(&raw_prefix_words);
     if !word_slice_starts_with(&prefix_words, &["cards", "from", "top", "of"])
         || !word_slice_ends_with(&prefix_words, &["library"])
     {
@@ -137,7 +136,7 @@ pub(crate) fn parse_consult_traversal_sentence(
     }
 
     let mut until_tokens = trim_commas(&consult_tokens[until_idx + 1..]);
-    if let Some(comma_idx) = until_tokens.iter().position(|token| token.is_comma()) {
+    if let Some(comma_idx) = find_token_kind(&until_tokens, TokenKind::Comma) {
         until_tokens = trim_commas(&until_tokens[..comma_idx]);
     }
     let (stop_rule, filter) = if let Some((stop_rule, filter)) =
@@ -359,16 +358,10 @@ pub(crate) fn parse_consult_remainder_order(words: &[&str]) -> Option<LibraryBot
     if !word_slice_contains_word(words, "bottom") || !word_slice_contains_word(words, "library") {
         return None;
     }
-    if super::super::activation_and_restrictions::activated_line_core::contains_word_sequence(
-        words,
-        &["random", "order"],
-    ) {
+    if word_slice_contains_phrase_or_empty(words, &["random", "order"]) {
         return Some(LibraryBottomOrderAst::Random);
     }
-    if super::super::activation_and_restrictions::activated_line_core::contains_word_sequence(
-        words,
-        &["any", "order"],
-    ) {
+    if word_slice_contains_phrase_or_empty(words, &["any", "order"]) {
         return Some(LibraryBottomOrderAst::ChooserChooses);
     }
     None
@@ -402,15 +395,6 @@ pub(crate) fn parse_consult_condition_value(tokens: &[OwnedLexToken]) -> Option<
     let filter_tokens = &tokens[filter_start_token_idx..];
     let filter = super::super::object_filters::parse_object_filter(&filter_tokens, false).ok()?;
     Some(Value::Count(filter))
-}
-
-fn strip_prefix_phrases<'a, 'p>(
-    tokens: &'a [OwnedLexToken],
-    phrases: &'p [&'p [&'p str]],
-) -> Option<(&'p [&'p str], &'a [OwnedLexToken])> {
-    LexedClause::new(tokens)
-        .strip_any_prefix_clause(phrases)
-        .map(|(phrase, rest)| (phrase, rest.tokens()))
 }
 
 fn take_remaining_clause_tokens<'a>(
@@ -503,7 +487,7 @@ fn parse_if_you_dont_remainder_inner<'a>(
 pub(crate) fn parse_consult_mana_value_condition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ConsultCastManaValueCondition> {
-    let (.., after_prefix) = strip_prefix_phrases(
+    let (.., after_prefix) = token_slice_strip_any_word_prefix(
         tokens,
         &[
             &["if", "it's", "a", "spell", "with", "mana", "value"][..],
@@ -548,7 +532,7 @@ pub(crate) fn parse_consult_cast_clause(tokens: &[OwnedLexToken]) -> Option<Cons
         _ => return None,
     };
     let tail_tokens = &second_tokens[may_idx + 1..];
-    let (matched_phrase, remainder_tokens) = strip_prefix_phrases(
+    let (matched_phrase, remainder_tokens) = token_slice_strip_any_word_prefix(
         tail_tokens,
         &[
             &["cast", "that", "card"],
@@ -559,7 +543,7 @@ pub(crate) fn parse_consult_cast_clause(tokens: &[OwnedLexToken]) -> Option<Cons
             &["play", "it"],
         ],
     )?;
-    let allow_land = matches!(matched_phrase, ["play", ..]);
+    let allow_land = word_slice_first_is(matched_phrase, "play");
     let remainder_word_view = TokenWordView::new(remainder_tokens);
     let remainder = remainder_word_view.word_refs();
     if word_slice_eq(&remainder, &["this", "turn"]) {
@@ -618,15 +602,10 @@ pub(crate) fn parse_consult_bottom_remainder_clause(
     tokens: &[OwnedLexToken],
     mode: LibraryConsultModeAst,
 ) -> Option<LibraryBottomOrderAst> {
-    let mut clause_words = crate::runtime_backend::token_word_refs(tokens);
-    while clause_words
-        .first()
-        .is_some_and(|word| *word == "then" || *word == "and")
-    {
-        clause_words.remove(0);
-    }
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    let clause_words = strip_leading_word_refs_any(&clause_words, &["then", "and"]);
 
-    let Some(order) = parse_consult_remainder_order(&clause_words) else {
+    let Some(order) = parse_consult_remainder_order(clause_words) else {
         return None;
     };
     let mode_word = match mode {

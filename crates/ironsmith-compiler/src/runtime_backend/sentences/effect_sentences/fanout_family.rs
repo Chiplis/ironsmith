@@ -1,16 +1,18 @@
-use super::super::grammar::primitives::{self as grammar, find_phrase_start};
+use super::super::grammar::primitives::{self as grammar, TokenWordView, find_phrase_start};
 use super::super::keyword_static::parse_pt_modifier;
 use super::super::lexer::{
     LexedClause, OwnedLexToken, find_any_token_word_sequence_span, find_token_word_sequence,
-    find_token_word_sequence_span, word_slice_contains_phrase, word_slice_ends_with,
+    find_token_word_sequence_span, token_slice_at_is, token_slice_at_is_any, token_slice_first_is,
+    token_slice_starts_with_at, word_slice_contains_phrase, word_slice_ends_with,
     word_slice_ends_with_any, word_slice_eq, word_slice_eq_any, word_slice_find_phrase_start,
-    word_slice_matching_value, word_slice_starts_with,
+    word_slice_first_is, word_slice_first_is_any, word_slice_matching_value,
+    word_slice_starts_with,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{find_window_by, rfind_index};
 use super::super::util::{
     is_article, is_source_reference_words, parse_target_phrase, parse_value, span_from_tokens,
-    token_index_for_word_index, trim_commas,
+    trim_commas,
 };
 use super::zone_counter_helpers::{split_until_source_leaves_tail, target_object_filter_mut};
 use super::zone_handlers::collapse_leading_signed_pt_modifier_tokens;
@@ -32,39 +34,23 @@ pub(crate) fn find_same_name_reference_span(
         if !tokens[idx].is_word("with") {
             continue;
         }
-        if idx + 6 < tokens.len()
-            && tokens[idx + 1].is_word("the")
-            && tokens[idx + 2].is_word("same")
-            && tokens[idx + 3].is_word("name")
-            && tokens[idx + 4].is_word("as")
-            && tokens[idx + 5].is_word("that")
+        if token_slice_starts_with_at(tokens, idx + 1, &["the", "same", "name", "as", "that"])
+            && idx + 6 < tokens.len()
         {
             return Ok(Some((idx, idx + 7)));
         }
-        if idx + 5 < tokens.len()
-            && tokens[idx + 1].is_word("same")
-            && tokens[idx + 2].is_word("name")
-            && tokens[idx + 3].is_word("as")
-            && tokens[idx + 4].is_word("that")
+        if token_slice_starts_with_at(tokens, idx + 1, &["same", "name", "as", "that"])
+            && idx + 5 < tokens.len()
         {
             return Ok(Some((idx, idx + 6)));
         }
-        if idx + 4 < tokens.len()
-            && tokens[idx + 1].is_word("the")
-            && tokens[idx + 2].is_word("same")
-            && tokens[idx + 3].is_word("name")
-            && tokens[idx + 4].is_word("as")
-        {
+        if token_slice_starts_with_at(tokens, idx + 1, &["the", "same", "name", "as"]) {
             return Err(CardTextError::ParseError(format!(
                 "missing 'that <object>' in same-name clause (clause: '{}')",
                 crate::runtime_backend::token_word_refs(tokens).join(" ")
             )));
         }
-        if idx + 3 < tokens.len()
-            && tokens[idx + 1].is_word("same")
-            && tokens[idx + 2].is_word("name")
-            && tokens[idx + 3].is_word("as")
-        {
+        if token_slice_starts_with_at(tokens, idx + 1, &["same", "name", "as"]) {
             return Err(CardTextError::ParseError(format!(
                 "missing 'that <object>' in same-name clause (clause: '{}')",
                 crate::runtime_backend::token_word_refs(tokens).join(" ")
@@ -81,31 +67,24 @@ pub(crate) fn strip_same_controller_reference(
     let mut idx = 0usize;
     let mut same_controller = false;
     while idx < tokens.len() {
-        if idx + 2 < tokens.len()
-            && tokens[idx].is_word("that")
-            && tokens[idx + 1].is_word("player")
-            && (tokens[idx + 2].is_word("control") || tokens[idx + 2].is_word("controls"))
+        if token_slice_starts_with_at(tokens, idx, &["that", "player"])
+            && token_slice_at_is_any(tokens, idx + 2, &["control", "controls"])
         {
             same_controller = true;
             idx += 3;
             continue;
         }
-        if idx + 2 < tokens.len()
-            && tokens[idx].is_word("its")
-            && tokens[idx + 1].is_word("controller")
-            && (tokens[idx + 2].is_word("control") || tokens[idx + 2].is_word("controls"))
+        if token_slice_starts_with_at(tokens, idx, &["its", "controller"])
+            && token_slice_at_is_any(tokens, idx + 2, &["control", "controls"])
         {
             same_controller = true;
             idx += 3;
             continue;
         }
-        if idx + 3 < tokens.len()
-            && tokens[idx].is_word("that")
-            && (tokens[idx + 1].is_word("creature")
-                || tokens[idx + 1].is_word("permanent")
-                || tokens[idx + 1].is_word("card"))
-            && tokens[idx + 2].is_word("controller")
-            && (tokens[idx + 3].is_word("control") || tokens[idx + 3].is_word("controls"))
+        if token_slice_at_is(tokens, idx, "that")
+            && token_slice_at_is_any(tokens, idx + 1, &["creature", "permanent", "card"])
+            && token_slice_at_is(tokens, idx + 2, "controller")
+            && token_slice_at_is_any(tokens, idx + 3, &["control", "controls"])
         {
             same_controller = true;
             idx += 4;
@@ -181,10 +160,8 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
     let deal_tokens: Option<&[OwnedLexToken]> = if first_word == "deal" {
         Some(tokens)
     } else if let Some((Verb::Deal, verb_idx)) = find_verb(tokens) {
-        let subject_words: Vec<&str> = crate::runtime_backend::token_word_refs(&tokens[..verb_idx])
-            .into_iter()
-            .filter(|word| !is_article(word))
-            .collect();
+        let subject_words =
+            crate::runtime_backend::util::non_article_token_word_refs(&tokens[..verb_idx]);
         if is_source_reference_words(&subject_words) {
             Some(&tokens[verb_idx..])
         } else {
@@ -196,14 +173,13 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
 
     if let Some(deal_tokens) = deal_tokens {
         let deal_words = crate::runtime_backend::token_word_refs(deal_tokens);
-        let (amount, used) =
-            if deal_words.get(1) == Some(&"that") && deal_words.get(2) == Some(&"much") {
-                (Value::EventValue(EventValueSpec::Amount), 2usize)
-            } else if let Some((value, used)) = parse_value(&deal_tokens[1..]) {
-                (value, used)
-            } else {
-                return Ok(None);
-            };
+        let (amount, used) = if word_slice_starts_with(&deal_words[1..], &["that", "much"]) {
+            (Value::EventValue(EventValueSpec::Amount), 2usize)
+        } else if let Some((value, used)) = parse_value(&deal_tokens[1..]) {
+            (value, used)
+        } else {
+            return Ok(None);
+        };
 
         let after_amount = &deal_tokens[1 + used..];
         if !after_amount
@@ -362,20 +338,13 @@ pub(crate) fn find_shares_color_reference_span(
         if !tokens[idx].is_word("that") {
             continue;
         }
-        if idx + 5 < tokens.len()
-            && (tokens[idx + 1].is_word("shares") || tokens[idx + 1].is_word("share"))
-            && tokens[idx + 2].is_word("a")
-            && tokens[idx + 3].is_word("color")
-            && tokens[idx + 4].is_word("with")
-            && tokens[idx + 5].is_word("it")
+        if token_slice_at_is_any(tokens, idx + 1, &["shares", "share"])
+            && token_slice_starts_with_at(tokens, idx + 2, &["a", "color", "with", "it"])
         {
             return Ok(Some((idx, idx + 6)));
         }
-        if idx + 4 < tokens.len()
-            && (tokens[idx + 1].is_word("shares") || tokens[idx + 1].is_word("share"))
-            && tokens[idx + 2].is_word("a")
-            && tokens[idx + 3].is_word("color")
-            && tokens[idx + 4].is_word("with")
+        if token_slice_at_is_any(tokens, idx + 1, &["shares", "share"])
+            && token_slice_starts_with_at(tokens, idx + 2, &["a", "color", "with"])
         {
             return Err(CardTextError::ParseError(format!(
                 "missing 'it' in shares-color clause (clause: '{}')",
@@ -572,7 +541,8 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
     let Some((verb, verb_idx)) = find_verb(tokens) else {
         return Ok(None);
     };
-    let Some(verb_token_idx) = token_index_for_word_index(tokens, verb_idx) else {
+    let word_view = TokenWordView::new(tokens);
+    let Some(verb_token_idx) = word_view.token_index_for_word_index(verb_idx) else {
         return Ok(None);
     };
 
@@ -673,12 +643,12 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
         ]));
     }
 
-    if words_all.first().copied() == Some("prevent") {
+    if word_slice_first_is(&words_all, "prevent") {
         let mut idx = verb_token_idx + 1;
-        if tokens.get(idx).is_some_and(|token| token.is_word("the")) {
+        if token_slice_at_is(tokens, idx, "the") {
             idx += 1;
         }
-        if !tokens.get(idx).is_some_and(|token| token.is_word("next")) {
+        if !token_slice_at_is(tokens, idx, "next") {
             return Ok(None);
         }
         idx += 1;
@@ -692,20 +662,15 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
             return Ok(None);
         };
         idx += 1;
-        if !tokens.get(idx).is_some_and(|token| token.is_word("damage")) {
+        if !token_slice_at_is(tokens, idx, "damage") {
             return Ok(None);
         }
         idx += 1;
-        if tokens.get(idx..idx + 4).is_none_or(|window| {
-            !window[0].is_word("that")
-                || !window[1].is_word("would")
-                || !window[2].is_word("be")
-                || !window[3].is_word("dealt")
-        }) {
+        if !token_slice_starts_with_at(tokens, idx, &["that", "would", "be", "dealt"]) {
             return Ok(None);
         }
         idx += 4;
-        if !tokens.get(idx).is_some_and(|token| token.is_word("to")) {
+        if !token_slice_at_is(tokens, idx, "to") {
             return Ok(None);
         }
         idx += 1;
@@ -919,10 +884,8 @@ fn strip_trailing_damage_noise(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
 }
 
 fn strip_trailing_where_clause(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
-    let where_idx = tokens
-        .iter()
-        .position(|token| token.is_word("where"))
-        .unwrap_or(tokens.len());
+    let where_idx =
+        crate::runtime_backend::lexer::find_token_word(tokens, "where").unwrap_or(tokens.len());
     strip_trailing_damage_noise(&tokens[..where_idx])
 }
 
@@ -936,7 +899,9 @@ fn tokens_before_word(tokens: &[OwnedLexToken], word_idx: usize) -> Vec<OwnedLex
     let token_end = if word_idx == 0 {
         0
     } else {
-        token_index_for_word_index(tokens, word_idx).unwrap_or(word_idx)
+        TokenWordView::new(tokens)
+            .token_index_for_word_index(word_idx)
+            .unwrap_or(word_idx)
     };
     strip_trailing_damage_noise(&tokens[..token_end])
 }
@@ -1137,7 +1102,7 @@ fn parse_damage_part(
         return Ok(None);
     }
 
-    if matches!(words.first().copied(), Some("each" | "all")) {
+    if word_slice_first_is_any(&words, &["each", "all"]) {
         return parse_each_damage_part(&tokens[1..], player_context);
     }
 
@@ -1223,9 +1188,9 @@ fn equal_damage_target_tail_starts_like_destination(tokens: &[OwnedLexToken]) ->
 fn parse_equal_damage_amount_and_targets(
     tokens: &[OwnedLexToken],
 ) -> Option<(Value, Vec<OwnedLexToken>)> {
-    if !tokens.first().is_some_and(|token| token.is_word("damage"))
-        || !tokens.get(1).is_some_and(|token| token.is_word("equal"))
-        || !tokens.get(2).is_some_and(|token| token.is_word("to"))
+    if !token_slice_first_is(tokens, "damage")
+        || !token_slice_at_is(tokens, 1, "equal")
+        || !token_slice_at_is(tokens, 2, "to")
     {
         return None;
     }
@@ -1252,7 +1217,7 @@ fn parse_equal_damage_amount_and_targets(
 pub(crate) fn parse_compound_damage_fanout_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let deal_tokens = if tokens.first().is_some_and(|token| token.is_word("deal")) {
+    let deal_tokens = if token_slice_first_is(tokens, "deal") {
         tokens
     } else if let Some((Verb::Deal, verb_idx)) = find_verb(tokens) {
         &tokens[verb_idx..]
@@ -1266,14 +1231,13 @@ pub(crate) fn parse_compound_damage_fanout_sentence(
             (amount, target_tokens)
         } else {
             let deal_words = crate::runtime_backend::token_word_refs(deal_tokens);
-            let (amount, used) =
-                if deal_words.get(1) == Some(&"that") && deal_words.get(2) == Some(&"much") {
-                    (Value::EventValue(EventValueSpec::Amount), 2usize)
-                } else if let Some((value, used)) = parse_value(after_deal) {
-                    (value, used)
-                } else {
-                    return Ok(None);
-                };
+            let (amount, used) = if word_slice_starts_with(&deal_words[1..], &["that", "much"]) {
+                (Value::EventValue(EventValueSpec::Amount), 2usize)
+            } else if let Some((value, used)) = parse_value(after_deal) {
+                (value, used)
+            } else {
+                return Ok(None);
+            };
 
             let after_amount = &after_deal[used..];
             if !after_amount

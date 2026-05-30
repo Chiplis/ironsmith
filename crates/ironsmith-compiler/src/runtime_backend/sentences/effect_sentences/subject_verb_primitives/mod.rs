@@ -8,9 +8,11 @@ use super::super::grammar::primitives::{
 };
 use super::super::keyword_static::parse_value_binding_clause;
 use super::super::lexer::{
-    LexedClause, OwnedLexToken, word_slice_contains_word, word_slice_ends_with,
-    word_slice_ends_with_any, word_slice_eq_any, word_slice_find_phrase_start,
-    word_slice_matching_value, word_slice_starts_with,
+    LexedClause, OwnedLexToken, token_slice_starts_with, word_slice_at_is, word_slice_at_is_any,
+    word_slice_contains_word, word_slice_ends_with, word_slice_ends_with_any, word_slice_eq_any,
+    word_slice_find_phrase_start, word_slice_find_word, word_slice_first_is,
+    word_slice_first_is_any, word_slice_last_is, word_slice_matching_value, word_slice_starts_with,
+    word_slice_starts_with_any, word_slice_starts_with_at,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::rule_engine::{
@@ -22,7 +24,8 @@ use super::super::token_primitives::{
 };
 use super::super::util::{
     is_article, is_source_reference_words, mana_pips_from_token, parse_card_type, parse_color,
-    parse_counter_type_from_tokens, parse_subject, token_index_for_word_index, words,
+    parse_counter_type_from_tokens, parse_subject, parse_subtype_flexible,
+    token_index_for_word_index, words,
 };
 use super::super::util::{parse_target_phrase, parse_value, span_from_tokens};
 use super::dispatch_inner::merge_filters;

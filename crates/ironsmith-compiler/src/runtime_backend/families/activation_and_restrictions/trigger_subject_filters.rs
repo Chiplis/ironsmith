@@ -65,7 +65,7 @@ pub(crate) fn parse_discard_trigger_card_filter(
     }
 
     let qualifier_words = crate::runtime_backend::token_word_refs(&qualifier_tokens);
-    if qualifier_words.as_slice() == ["one", "or", "more"] {
+    if word_slice_eq(&qualifier_words, &["one", "or", "more"]) {
         return Ok(None);
     }
 
@@ -193,9 +193,10 @@ pub(crate) fn parse_possessive_clause_player_filter(words: &[&str]) -> PlayerFil
         .is_some()
     };
 
-    if contains_word_sequence(&normalized_words, &["enchanted", "player"])
-        || contains_word_sequence(&normalized_words, &["enchanted", "players"])
-    {
+    if word_slice_contains_any_phrase_or_empty(
+        &normalized_words,
+        &[&["enchanted", "player"], &["enchanted", "players"]],
+    ) {
         return PlayerFilter::TaggedPlayer(TagKey::from("enchanted"));
     }
     if has_attached_controller("enchanted") {
@@ -209,7 +210,8 @@ pub(crate) fn parse_possessive_clause_player_filter(words: &[&str]) -> PlayerFil
     // even if "opponent" appears elsewhere in the clause text.  Check for
     // explicit "each/a/that player" before falling through to the opponent
     // keyword scan.
-    let has_each_player = contains_word_sequence(&normalized_words, &["each", "player"]);
+    let has_each_player =
+        word_slice_contains_phrase_or_empty(&normalized_words, &["each", "player"]);
     if has_each_player {
         PlayerFilter::Any
     } else if contains_your_team_words(words) || word_slice_contains_word(words, "your") {
@@ -224,13 +226,15 @@ pub(crate) fn parse_possessive_clause_player_filter(words: &[&str]) -> PlayerFil
 pub(crate) fn parse_subject_clause_player_filter(words: &[&str]) -> PlayerFilter {
     if contains_your_team_words(words) || word_slice_contains_word(words, "you") {
         PlayerFilter::You
-    } else if contains_word_sequence(words, &["enchanted", "player"])
-        || contains_word_sequence(words, &["enchanted", "players"])
-    {
+    } else if word_slice_contains_any_phrase_or_empty(
+        words,
+        &[&["enchanted", "player"], &["enchanted", "players"]],
+    ) {
         PlayerFilter::TaggedPlayer(TagKey::from("enchanted"))
-    } else if contains_word_sequence(words, &["chosen", "player"])
-        || contains_word_sequence(words, &["chosen", "players"])
-    {
+    } else if word_slice_contains_any_phrase_or_empty(
+        words,
+        &[&["chosen", "player"], &["chosen", "players"]],
+    ) {
         PlayerFilter::ChosenPlayer
     } else if contains_opponent_word(words) {
         PlayerFilter::Opponent
@@ -246,38 +250,53 @@ pub(crate) fn contains_opponent_word(words: &[&str]) -> bool {
 }
 
 pub(crate) fn contains_your_team_words(words: &[&str]) -> bool {
-    contains_any_word_sequence(words, &[&["your", "team"], &["on", "your", "team"]])
+    word_slice_contains_any_phrase_or_empty(words, &[&["your", "team"], &["on", "your", "team"]])
 }
 
 pub(crate) fn parse_trigger_subject_player_filter(subject: &[&str]) -> Option<PlayerFilter> {
-    if subject == ["you"] {
+    if word_slice_eq(subject, &["you"]) {
         return Some(PlayerFilter::You);
     }
-    if subject == ["the", "chosen", "player"] || subject == ["chosen", "player"] {
+    if word_slice_eq_any(
+        subject,
+        &[&["the", "chosen", "player"], &["chosen", "player"]],
+    ) {
         return Some(PlayerFilter::ChosenPlayer);
     }
-    if word_slice_starts_with(subject, &["the", "player", "who", "cast"])
-        || word_slice_starts_with(subject, &["player", "who", "cast"])
-    {
+    if word_slice_starts_with_any(
+        subject,
+        &[
+            &["the", "player", "who", "cast"],
+            &["player", "who", "cast"],
+        ],
+    ) {
         return Some(PlayerFilter::EffectController);
     }
-    if subject == ["a", "player"]
-        || subject == ["any", "player"]
-        || subject == ["player"]
-        || subject == ["one", "or", "more", "players"]
-    {
+    if word_slice_eq_any(
+        subject,
+        &[
+            &["a", "player"],
+            &["any", "player"],
+            &["player"],
+            &["one", "or", "more", "players"],
+        ],
+    ) {
         return Some(PlayerFilter::Any);
     }
-    if subject == ["an", "opponent"]
-        || subject == ["opponent"]
-        || subject == ["opponents"]
-        || subject == ["your", "opponents"]
-        || subject == ["one", "of", "your", "opponents"]
-        || subject == ["one", "or", "more", "of", "your", "opponents"]
-        || subject == ["one", "of", "the", "opponents"]
-        || subject == ["one", "or", "more", "opponents"]
-        || subject == ["each", "opponent"]
-    {
+    if word_slice_eq_any(
+        subject,
+        &[
+            &["an", "opponent"],
+            &["opponent"],
+            &["opponents"],
+            &["your", "opponents"],
+            &["one", "of", "your", "opponents"],
+            &["one", "or", "more", "of", "your", "opponents"],
+            &["one", "of", "the", "opponents"],
+            &["one", "or", "more", "opponents"],
+            &["each", "opponent"],
+        ],
+    ) {
         return Some(PlayerFilter::Opponent);
     }
     if word_slice_ends_with(subject, &["on", "your", "team"])
@@ -307,14 +326,14 @@ pub(crate) fn parse_shuffle_trigger_subject(
     }
 
     if !(word_slice_starts_with(subject, &["a", "spell", "or", "ability", "causes"])
-        && subject.last().copied() == Some("to")
+        && word_slice_last_is(subject, "to")
         && subject.len() > 6)
     {
         return None;
     }
 
     let caused_player_words = &subject[5..subject.len() - 1];
-    if caused_player_words == ["its", "controller"] {
+    if word_slice_eq(caused_player_words, &["its", "controller"]) {
         return Some((PlayerFilter::Any, true, true));
     }
 
@@ -331,7 +350,7 @@ pub(crate) fn parse_spell_or_ability_controller_tail(words: &[&str]) -> Option<P
     if controller_end <= prefix_len + 1 {
         return None;
     }
-    if !matches!(words.last().copied(), Some("control") | Some("controls")) {
+    if !word_slice_ends_with_any(words, &[&["control"], &["controls"]]) {
         return None;
     }
 
@@ -559,7 +578,7 @@ pub(crate) fn parse_trigger_subject_filter_lexed(
         )));
     }
 
-    if contains_word_sequence(
+    if word_slice_contains_phrase_or_empty(
         &subject_words,
         &["power", "greater", "than", "its", "base", "power"],
     ) && subject_words
@@ -571,9 +590,9 @@ pub(crate) fn parse_trigger_subject_filter_lexed(
         if other {
             filter.other = true;
         }
-        if contains_word_sequence(&subject_words, &["you", "control"]) {
+        if word_slice_contains_phrase_or_empty(&subject_words, &["you", "control"]) {
             filter.controller = Some(PlayerFilter::You);
-        } else if contains_any_word_sequence(
+        } else if word_slice_contains_any_phrase_or_empty(
             &subject_words,
             &[&["opponents", "control"], &["opponent", "controls"]],
         ) {
@@ -584,7 +603,7 @@ pub(crate) fn parse_trigger_subject_filter_lexed(
 
     let mut normalized_subject_tokens = subject_tokens.to_vec();
     if find_window_by(&normalized_subject_tokens, 2, |window| {
-        window[0].is_word("each") && window[1].is_word("with")
+        token_slice_starts_with(window, &["each", "with"])
     })
     .is_some()
     {
@@ -609,18 +628,20 @@ pub(crate) fn parse_trigger_subject_filter_lexed(
     let word_view = ActivationRestrictionCompatWords::new(&normalized_subject_tokens);
     let normalized_words = word_view.to_word_refs();
     let controller_phrase = if let Some(idx) =
-        find_word_sequence_start(&normalized_words, &["you", "control"])
+        word_slice_find_phrase_start_or_zero(&normalized_words, &["you", "control"])
             .filter(|idx| idx + 2 < normalized_words.len())
     {
         controller_override = Some(PlayerFilter::You);
         Some((idx, 2usize))
-    } else if let Some(idx) = find_word_sequence_start(&normalized_words, &["opponents", "control"])
-        .filter(|idx| idx + 2 < normalized_words.len())
+    } else if let Some(idx) =
+        word_slice_find_phrase_start_or_zero(&normalized_words, &["opponents", "control"])
+            .filter(|idx| idx + 2 < normalized_words.len())
     {
         controller_override = Some(PlayerFilter::Opponent);
         Some((idx, 2usize))
-    } else if let Some(idx) = find_word_sequence_start(&normalized_words, &["opponent", "controls"])
-        .filter(|idx| idx + 2 < normalized_words.len())
+    } else if let Some(idx) =
+        word_slice_find_phrase_start_or_zero(&normalized_words, &["opponent", "controls"])
+            .filter(|idx| idx + 2 < normalized_words.len())
     {
         controller_override = Some(PlayerFilter::Opponent);
         Some((idx, 2usize))
@@ -695,14 +716,18 @@ pub(crate) fn parse_exact_spell_count_each_turn(words: &[&str]) -> Option<u32> {
         ("ninth", 9u32),
         ("tenth", 10u32),
     ] {
-        if contains_word_sequence(words, &[ordinal, "spell", "cast", "this", "turn"])
-            || contains_word_sequence(words, &[ordinal, "spell", "this", "turn"])
-            || contains_word_sequence(words, &["your", ordinal, "spell", "each", "turn"])
-            || contains_word_sequence(words, &["their", ordinal, "spell", "each", "turn"])
-            || contains_word_sequence(words, &["your", ordinal, "spell", "this", "turn"])
-            || contains_word_sequence(words, &["their", ordinal, "spell", "this", "turn"])
-            || contains_word_sequence(words, &[ordinal, "spell", "each", "turn"])
-        {
+        if word_slice_contains_any_phrase_or_empty(
+            words,
+            &[
+                &[ordinal, "spell", "cast", "this", "turn"],
+                &[ordinal, "spell", "this", "turn"],
+                &["your", ordinal, "spell", "each", "turn"],
+                &["their", ordinal, "spell", "each", "turn"],
+                &["your", ordinal, "spell", "this", "turn"],
+                &["their", ordinal, "spell", "this", "turn"],
+                &[ordinal, "spell", "each", "turn"],
+            ],
+        ) {
             return Some(count);
         }
     }
@@ -744,7 +769,7 @@ pub(crate) fn parse_exact_draw_count_each_turn(words: &[&str]) -> Option<u32> {
             "step",
         ],
     ] {
-        if contains_word_sequence(words, pattern) {
+        if word_slice_contains_phrase_or_empty(words, pattern) {
             return Some(2);
         }
     }
@@ -760,19 +785,23 @@ pub(crate) fn parse_exact_draw_count_each_turn(words: &[&str]) -> Option<u32> {
         ("ninth", 9u32),
         ("tenth", 10u32),
     ] {
-        if contains_word_sequence(words, &[ordinal, "card", "each", "turn"])
-            || contains_word_sequence(words, &[ordinal, "cards", "each", "turn"])
-            || contains_word_sequence(words, &["your", ordinal, "card", "each", "turn"])
-            || contains_word_sequence(words, &["your", ordinal, "cards", "each", "turn"])
-            || contains_word_sequence(words, &["their", ordinal, "card", "each", "turn"])
-            || contains_word_sequence(words, &["their", ordinal, "cards", "each", "turn"])
-            || contains_word_sequence(words, &[ordinal, "card", "this", "turn"])
-            || contains_word_sequence(words, &[ordinal, "cards", "this", "turn"])
-            || contains_word_sequence(words, &["your", ordinal, "card", "this", "turn"])
-            || contains_word_sequence(words, &["your", ordinal, "cards", "this", "turn"])
-            || contains_word_sequence(words, &["their", ordinal, "card", "this", "turn"])
-            || contains_word_sequence(words, &["their", ordinal, "cards", "this", "turn"])
-        {
+        if word_slice_contains_any_phrase_or_empty(
+            words,
+            &[
+                &[ordinal, "card", "each", "turn"],
+                &[ordinal, "cards", "each", "turn"],
+                &["your", ordinal, "card", "each", "turn"],
+                &["your", ordinal, "cards", "each", "turn"],
+                &["their", ordinal, "card", "each", "turn"],
+                &["their", ordinal, "cards", "each", "turn"],
+                &[ordinal, "card", "this", "turn"],
+                &[ordinal, "cards", "this", "turn"],
+                &["your", ordinal, "card", "this", "turn"],
+                &["your", ordinal, "cards", "this", "turn"],
+                &["their", ordinal, "card", "this", "turn"],
+                &["their", ordinal, "cards", "this", "turn"],
+            ],
+        ) {
             return Some(count);
         }
     }
@@ -780,73 +809,65 @@ pub(crate) fn parse_exact_draw_count_each_turn(words: &[&str]) -> Option<u32> {
 }
 
 pub(crate) fn has_draw_except_first_in_draw_step_pattern(words: &[&str]) -> bool {
-    contains_word_sequence(
+    word_slice_contains_any_phrase_or_empty(
         words,
         &[
-            "a", "card", "except", "the", "first", "one", "they", "draw", "in", "each", "of",
-            "their", "draw", "steps",
-        ],
-    ) || contains_word_sequence(
-        words,
-        &[
-            "a", "card", "except", "the", "first", "card", "they", "draw", "in", "each", "of",
-            "their", "draw", "steps",
-        ],
-    ) || contains_word_sequence(
-        words,
-        &[
-            "a", "card", "except", "the", "first", "one", "you", "draw", "in", "each", "of",
-            "your", "draw", "steps",
-        ],
-    ) || contains_word_sequence(
-        words,
-        &[
-            "a", "card", "except", "the", "first", "card", "you", "draw", "in", "each", "of",
-            "your", "draw", "steps",
-        ],
-    ) || contains_word_sequence(
-        words,
-        &[
-            "a", "card", "except", "the", "first", "one", "they", "draw", "in", "their", "draw",
-            "step",
-        ],
-    ) || contains_word_sequence(
-        words,
-        &[
-            "a", "card", "except", "the", "first", "card", "they", "draw", "in", "their", "draw",
-            "step",
-        ],
-    ) || contains_word_sequence(
-        words,
-        &[
-            "a", "card", "except", "the", "first", "one", "you", "draw", "in", "your", "draw",
-            "step",
-        ],
-    ) || contains_word_sequence(
-        words,
-        &[
-            "a", "card", "except", "the", "first", "card", "you", "draw", "in", "your", "draw",
-            "step",
+            &[
+                "a", "card", "except", "the", "first", "one", "they", "draw", "in", "each", "of",
+                "their", "draw", "steps",
+            ],
+            &[
+                "a", "card", "except", "the", "first", "card", "they", "draw", "in", "each", "of",
+                "their", "draw", "steps",
+            ],
+            &[
+                "a", "card", "except", "the", "first", "one", "you", "draw", "in", "each", "of",
+                "your", "draw", "steps",
+            ],
+            &[
+                "a", "card", "except", "the", "first", "card", "you", "draw", "in", "each", "of",
+                "your", "draw", "steps",
+            ],
+            &[
+                "a", "card", "except", "the", "first", "one", "they", "draw", "in", "their",
+                "draw", "step",
+            ],
+            &[
+                "a", "card", "except", "the", "first", "card", "they", "draw", "in", "their",
+                "draw", "step",
+            ],
+            &[
+                "a", "card", "except", "the", "first", "one", "you", "draw", "in", "your", "draw",
+                "step",
+            ],
+            &[
+                "a", "card", "except", "the", "first", "card", "you", "draw", "in", "your", "draw",
+                "step",
+            ],
         ],
     )
 }
 
 pub(crate) fn has_first_spell_each_turn_pattern(words: &[&str]) -> bool {
-    let has_turn_context = contains_word_sequence(words, &["each", "turn"])
-        || contains_word_sequence(words, &["this", "turn"])
-        || contains_word_sequence(words, &["of", "a", "turn"])
-        || contains_word_sequence(words, &["during", "your", "turn"])
-        || contains_word_sequence(words, &["during", "their", "turn"])
-        || contains_word_sequence(words, &["during", "an", "opponents", "turn"])
-        || contains_word_sequence(words, &["during", "an", "opponent's", "turn"])
-        || contains_word_sequence(words, &["during", "an", "opponent", "s", "turn"])
-        || contains_word_sequence(words, &["during", "opponents", "turn"])
-        || contains_word_sequence(words, &["during", "opponent's", "turn"])
-        || contains_word_sequence(words, &["during", "opponent", "s", "turn"])
-        || contains_word_sequence(words, &["during", "each", "opponents", "turn"]);
-    let has_turn_context = has_turn_context
-        || contains_word_sequence(words, &["during", "each", "opponent's", "turn"])
-        || contains_word_sequence(words, &["during", "each", "opponent", "s", "turn"]);
+    let has_turn_context = word_slice_contains_any_phrase_or_empty(
+        words,
+        &[
+            &["each", "turn"],
+            &["this", "turn"],
+            &["of", "a", "turn"],
+            &["during", "your", "turn"],
+            &["during", "their", "turn"],
+            &["during", "an", "opponents", "turn"],
+            &["during", "an", "opponent's", "turn"],
+            &["during", "an", "opponent", "s", "turn"],
+            &["during", "opponents", "turn"],
+            &["during", "opponent's", "turn"],
+            &["during", "opponent", "s", "turn"],
+            &["during", "each", "opponents", "turn"],
+            &["during", "each", "opponent's", "turn"],
+            &["during", "each", "opponent", "s", "turn"],
+        ],
+    );
     if !has_turn_context {
         return false;
     }
@@ -867,24 +888,23 @@ pub(crate) fn has_first_spell_each_turn_pattern(words: &[&str]) -> bool {
 }
 
 pub(crate) fn has_second_spell_turn_pattern(words: &[&str]) -> bool {
-    contains_word_sequence(words, &["second", "spell", "cast", "this", "turn"])
-        || contains_word_sequence(words, &["second", "spell", "this", "turn"])
-        || contains_word_sequence(words, &["your", "second", "spell", "each", "turn"])
-        || contains_word_sequence(words, &["their", "second", "spell", "each", "turn"])
-        || contains_word_sequence(words, &["your", "second", "spell", "this", "turn"])
-        || contains_word_sequence(words, &["their", "second", "spell", "this", "turn"])
-        || contains_word_sequence(words, &["second", "spell", "each", "turn"])
-        || contains_word_sequence(words, &["second", "spell", "during", "your", "turn"])
-        || contains_word_sequence(words, &["second", "spell", "during", "their", "turn"])
-        || contains_word_sequence(
-            words,
+    word_slice_contains_any_phrase_or_empty(
+        words,
+        &[
+            &["second", "spell", "cast", "this", "turn"],
+            &["second", "spell", "this", "turn"],
+            &["your", "second", "spell", "each", "turn"],
+            &["their", "second", "spell", "each", "turn"],
+            &["your", "second", "spell", "this", "turn"],
+            &["their", "second", "spell", "this", "turn"],
+            &["second", "spell", "each", "turn"],
+            &["second", "spell", "during", "your", "turn"],
+            &["second", "spell", "during", "their", "turn"],
             &["second", "spell", "during", "an", "opponents", "turn"],
-        )
-        || contains_word_sequence(words, &["second", "spell", "during", "opponents", "turn"])
-        || contains_word_sequence(
-            words,
+            &["second", "spell", "during", "opponents", "turn"],
             &["second", "spell", "during", "each", "opponents", "turn"],
-        )
+        ],
+    )
 }
 
 pub(crate) fn parse_spell_activity_trigger(
@@ -908,24 +928,34 @@ pub(crate) fn parse_spell_activity_trigger(
     }
 
     let mut actor = parse_subject_clause_player_filter(&clause_words);
-    let during_their_turn = contains_word_sequence(&clause_words, &["during", "their", "turn"])
-        || contains_word_sequence(&clause_words, &["during", "that", "players", "turn"]);
-    let mut during_turn = if contains_word_sequence(&clause_words, &["during", "your", "turn"]) {
-        Some(PlayerFilter::You)
-    } else if contains_word_sequence(&clause_words, &["during", "an", "opponents", "turn"])
-        || contains_word_sequence(&clause_words, &["during", "an", "opponent's", "turn"])
-        || contains_word_sequence(&clause_words, &["during", "an", "opponent", "s", "turn"])
-        || contains_word_sequence(&clause_words, &["during", "opponents", "turn"])
-        || contains_word_sequence(&clause_words, &["during", "opponent's", "turn"])
-        || contains_word_sequence(&clause_words, &["during", "opponent", "s", "turn"])
-        || contains_word_sequence(&clause_words, &["during", "each", "opponents", "turn"])
-        || contains_word_sequence(&clause_words, &["during", "each", "opponent's", "turn"])
-        || contains_word_sequence(&clause_words, &["during", "each", "opponent", "s", "turn"])
-    {
-        Some(PlayerFilter::Opponent)
-    } else {
-        None
-    };
+    let during_their_turn = word_slice_contains_any_phrase_or_empty(
+        &clause_words,
+        &[
+            &["during", "their", "turn"],
+            &["during", "that", "players", "turn"],
+        ],
+    );
+    let mut during_turn =
+        if word_slice_contains_phrase_or_empty(&clause_words, &["during", "your", "turn"]) {
+            Some(PlayerFilter::You)
+        } else if word_slice_contains_any_phrase_or_empty(
+            &clause_words,
+            &[
+                &["during", "an", "opponents", "turn"],
+                &["during", "an", "opponent's", "turn"],
+                &["during", "an", "opponent", "s", "turn"],
+                &["during", "opponents", "turn"],
+                &["during", "opponent's", "turn"],
+                &["during", "opponent", "s", "turn"],
+                &["during", "each", "opponents", "turn"],
+                &["during", "each", "opponent's", "turn"],
+                &["during", "each", "opponent", "s", "turn"],
+            ],
+        ) {
+            Some(PlayerFilter::Opponent)
+        } else {
+            None
+        };
     if during_their_turn {
         if matches!(actor, PlayerFilter::Any) {
             actor = PlayerFilter::Active;
@@ -935,12 +965,18 @@ pub(crate) fn parse_spell_activity_trigger(
         }
     }
     let has_other_than_first_spell_pattern =
-        contains_word_sequence(&clause_words, &["other", "than", "your", "first", "spell"])
-            || contains_word_sequence(&clause_words, &["other", "than", "the", "first", "spell"])
-            || (contains_word_sequence(&clause_words, &["other", "than", "the", "first"])
-                && word_slice_contains_word(&clause_words, "spell")
-                && word_slice_contains_word(&clause_words, "casts")
-                && word_slice_contains_word(&clause_words, "turn"));
+        word_slice_contains_any_phrase_or_empty(
+            &clause_words,
+            &[
+                &["other", "than", "your", "first", "spell"],
+                &["other", "than", "the", "first", "spell"],
+            ],
+        ) || (word_slice_contains_phrase_or_empty(
+            &clause_words,
+            &["other", "than", "the", "first"],
+        ) && word_slice_contains_word(&clause_words, "spell")
+            && word_slice_contains_word(&clause_words, "casts")
+            && word_slice_contains_word(&clause_words, "turn"));
     let second_spell_turn_pattern = has_second_spell_turn_pattern(&clause_words);
     let first_spell_each_turn =
         !has_other_than_first_spell_pattern && has_first_spell_each_turn_pattern(&clause_words);
@@ -956,23 +992,23 @@ pub(crate) fn parse_spell_activity_trigger(
     } else {
         None
     };
-    let from_not_hand =
-        contains_word_sequence(
-            &clause_words,
+    let from_not_hand = word_slice_contains_any_phrase_or_empty(
+        &clause_words,
+        &[
             &["from", "anywhere", "other", "than", "your", "hand"],
-        ) || contains_word_sequence(
-            &clause_words,
             &["from", "anywhere", "other", "than", "their", "hand"],
-        ) || contains_word_sequence(
-            &clause_words,
             &["from", "anywhere", "other", "than", "hand"],
-        ) || find_word_sequence_start(&clause_words, &["from", "anywhere", "other", "than"])
-            .is_some_and(|idx| {
-                clause_words[idx + 4..]
-                    .iter()
-                    .take(4)
-                    .any(|word| *word == "hand")
-            });
+        ],
+    ) || word_slice_find_phrase_start_or_zero(
+        &clause_words,
+        &["from", "anywhere", "other", "than"],
+    )
+    .is_some_and(|idx| {
+        clause_words[idx + 4..]
+            .iter()
+            .take(4)
+            .any(|word| *word == "hand")
+    });
 
     let parse_filter =
         |filter_tokens: &[OwnedLexToken]| -> Result<Option<ObjectFilter>, CardTextError> {
@@ -1004,9 +1040,8 @@ pub(crate) fn parse_spell_activity_trigger(
                 .iter()
                 .filter_map(OwnedLexToken::as_word)
                 .collect();
-            let is_unqualified_spell = filter_words.as_slice() == ["a", "spell"]
-                || filter_words.as_slice() == ["spells"]
-                || filter_words.as_slice() == ["spell"];
+            let is_unqualified_spell =
+                word_slice_eq_any(&filter_words, &[&["a", "spell"], &["spells"], &["spell"]]);
             if filter_tokens.is_empty() || is_unqualified_spell {
                 Ok(None)
             } else {
@@ -1035,21 +1070,14 @@ pub(crate) fn parse_spell_activity_trigger(
                     }
                     Some(filter)
                 };
-                let compact_words = filter_words
-                    .iter()
-                    .copied()
-                    .filter(|word| !is_article(word))
-                    .collect::<Vec<_>>();
+                let compact_words = non_article_word_refs(&filter_words);
                 if compact_words
                     .last()
                     .is_some_and(|last| *last == "spell" || *last == "spells")
                 {
                     let mut qualifier_words = compact_words.clone();
                     qualifier_words.pop();
-                    let qualifier_words = qualifier_words
-                        .into_iter()
-                        .filter(|word| *word != "or" && *word != "and")
-                        .collect::<Vec<_>>();
+                    let qualifier_words = word_refs_except(&qualifier_words, &["or", "and"]);
                     if matches!(
                         qualifier_words.as_slice(),
                         ["of", "the", "chosen", "color"] | ["of", "chosen", "color"]
@@ -1066,10 +1094,7 @@ pub(crate) fn parse_spell_activity_trigger(
                             .is_some_and(|last| *last == "spell" || *last == "spells")
                         {
                             compact_words.pop();
-                            let color_words = compact_words
-                                .into_iter()
-                                .filter(|word| *word != "or" && *word != "and")
-                                .collect::<Vec<_>>();
+                            let color_words = word_refs_except(&compact_words, &["or", "and"]);
                             if !color_words.is_empty()
                                 && color_words.iter().all(|word| parse_color(word).is_some())
                             {
@@ -1106,7 +1131,7 @@ pub(crate) fn parse_spell_activity_trigger(
             (copy, cast, false)
         };
         let between_words = crate::runtime_backend::token_word_refs(&tokens[first + 1..second]);
-        if between_words.as_slice() == ["or"] {
+        if word_slice_eq(&between_words, &["or"]) {
             let filter = parse_filter(tokens.get(second + 1..).unwrap_or_default())?;
             let cast_trigger = TriggerSpec::SpellCast {
                 filter: filter.clone(),
@@ -1177,15 +1202,12 @@ pub(crate) fn is_spawn_scion_token_mana_reminder(tokens: &[OwnedLexToken]) -> bo
             | ["this", "token", "has", ..]
             | ["those", "tokens", "have", ..]
     );
-    starts_with_token_pronoun
-        && words.iter().any(|word| *word == "sacrifice")
-        && words.iter().any(|word| *word == "add")
-        && words.iter().any(|word| *word == "c")
+    starts_with_token_pronoun && word_slice_contains_all_words(&words, &["sacrifice", "add", "c"])
 }
 
 pub(crate) fn is_round_up_each_time_sentence(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    matches!(words.as_slice(), ["round", "up", "each", "time", ..])
+    word_slice_starts_with(&words, &["round", "up", "each", "time"])
 }
 
 pub(crate) enum MayCastItVerb {
@@ -1204,29 +1226,24 @@ pub(crate) struct MayCastTaggedSpec {
 }
 
 pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<MayCastTaggedSpec> {
-    let mut clause_words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
-    while clause_words
-        .first()
-        .is_some_and(|word| *word == "then" || *word == "and")
-    {
-        clause_words.remove(0);
-    }
+    let clause_words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
+    let mut clause_words =
+        crate::runtime_backend::util::strip_leading_word_refs_any(&clause_words, &["then", "and"])
+            .to_vec();
 
     if word_slice_starts_with(&clause_words, &["if", "you", "do"]) {
-        clause_words = clause_words[3..].to_vec();
-        while clause_words
-            .first()
-            .is_some_and(|word| *word == "then" || *word == "and")
-        {
-            clause_words.remove(0);
-        }
+        clause_words = crate::runtime_backend::util::strip_leading_word_refs_any(
+            &clause_words[3..],
+            &["then", "and"],
+        )
+        .to_vec();
     }
 
     let (player, subject_tag, verb_idx) =
         if clause_words.len() >= 4 && clause_words[0] == "you" && clause_words[1] == "may" {
             (PlayerAst::Implicit, None, 2usize)
         } else if clause_words.len() >= 7
-            && clause_words[..5] == ["the", "exiled", "cards", "owner", "may"]
+            && word_slice_starts_with(&clause_words, &["the", "exiled", "cards", "owner", "may"])
         {
             (
                 PlayerAst::ItsOwner,
@@ -1258,14 +1275,15 @@ pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<May
         )
     } else if word_slice_starts_with(rest, &["the", "exiled", "card"]) {
         (TagKey::from(crate::tag::SOURCE_EXILED_TAG), false, 3usize)
-    } else if word_slice_starts_with(rest, &["the", "revealed", "card"])
-        || word_slice_starts_with(rest, &["that", "revealed", "card"])
-    {
+    } else if word_slice_starts_with_any(
+        rest,
+        &[&["the", "revealed", "card"], &["that", "revealed", "card"]],
+    ) {
         (TagKey::from("__last_revealed__"), false, 3usize)
-    } else if word_slice_starts_with(rest, &["the", "copy"])
-        || word_slice_starts_with(rest, &["that", "copy"])
-        || word_slice_starts_with(rest, &["a", "copy"])
-    {
+    } else if word_slice_starts_with_any(
+        rest,
+        &[&["the", "copy"], &["that", "copy"], &["a", "copy"]],
+    ) {
         (TagKey::from(IT_TAG), true, 2usize)
     } else {
         return None;
@@ -1283,7 +1301,7 @@ pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<May
             cost_reduction: None,
         });
     }
-    if tail == ["without", "paying", "its", "mana", "cost"] {
+    if word_slice_eq(tail, &["without", "paying", "its", "mana", "cost"]) {
         return Some(MayCastTaggedSpec {
             tag,
             player,
@@ -1295,16 +1313,13 @@ pub(crate) fn parse_may_cast_it_sentence(tokens: &[OwnedLexToken]) -> Option<May
         });
     }
     if tail.len() >= 13
-        && tail[..12]
-            == [
+        && word_slice_starts_with(
+            tail,
+            &[
                 "without", "paying", "its", "mana", "cost", "if", "its", "a", "spell", "with",
-                "mana", "value",
-            ]
-        && tail.get(12).copied() == Some("less")
-        && tail.get(13).copied() == Some("than")
-        && tail.get(14).copied() == Some("or")
-        && tail.get(15).copied() == Some("equal")
-        && tail.get(16).copied() == Some("to")
+                "mana", "value", "less", "than", "or", "equal", "to",
+            ],
+        )
         && let Some((value, used)) = parse_value_expr_words(&tail[17..])
         && used == tail.len().saturating_sub(17)
     {
@@ -1363,10 +1378,14 @@ pub(crate) fn parse_copy_reference_cost_reduction_sentence(
     if clause_words.len() < 6 {
         return None;
     }
-    if !(word_slice_starts_with(&clause_words, &["that", "copy", "costs"])
-        || word_slice_starts_with(&clause_words, &["the", "copy", "costs"])
-        || word_slice_starts_with(&clause_words, &["a", "copy", "costs"]))
-    {
+    if !word_slice_starts_with_any(
+        &clause_words,
+        &[
+            &["that", "copy", "costs"],
+            &["the", "copy", "costs"],
+            &["a", "copy", "costs"],
+        ],
+    ) {
         return None;
     }
 
@@ -1559,8 +1578,7 @@ pub(crate) fn parse_sentence_exile_that_token_when_source_leaves(
     prior_effects: &[EffectAst],
 ) -> Option<EffectAst> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if clause_words.len() < 6 || !matches!(clause_words.first().copied(), Some("exile" | "exiles"))
-    {
+    if clause_words.len() < 6 || !word_slice_first_is_any(&clause_words, &["exile", "exiles"]) {
         return None;
     }
     let when_idx = find_index(&clause_words, |word| *word == "when")?;
@@ -1571,10 +1589,10 @@ pub(crate) fn parse_sentence_exile_that_token_when_source_leaves(
         return None;
     }
     let object_words = &clause_words[1..when_idx];
-    let is_created_token_reference = object_words == ["that", "token"]
-        || object_words == ["those", "tokens"]
-        || object_words == ["them"]
-        || object_words == ["it"];
+    let is_created_token_reference = word_slice_eq_any(
+        object_words,
+        &[&["that", "token"], &["those", "tokens"], &["them"], &["it"]],
+    );
     if !is_created_token_reference {
         return None;
     }
@@ -1606,7 +1624,10 @@ pub(crate) fn parse_sentence_sacrifice_source_when_that_token_leaves(
     if !is_source_reference_words(subject_words) {
         return None;
     }
-    if clause_words[when_idx + 1..] != ["that", "token", "leaves", "the", "battlefield"] {
+    if !word_slice_eq(
+        &clause_words[when_idx + 1..],
+        &["that", "token", "leaves", "the", "battlefield"],
+    ) {
         return None;
     }
 
@@ -1622,25 +1643,31 @@ pub(crate) fn is_generic_token_reminder_sentence(tokens: &[OwnedLexToken]) -> bo
     if words.is_empty() {
         return false;
     }
-    if word_slice_starts_with(&words, &["it", "has"])
-        || word_slice_starts_with(&words, &["they", "have"])
-    {
+    if word_slice_starts_with_any(&words, &[&["it", "has"], &["they", "have"]]) {
         return true;
     }
-    if word_slice_starts_with(&words, &["when", "it"])
-        || word_slice_starts_with(&words, &["whenever", "it"])
-        || word_slice_starts_with(&words, &["when", "they"])
-        || word_slice_starts_with(&words, &["whenever", "they"])
-    {
+    if word_slice_starts_with_any(
+        &words,
+        &[
+            &["when", "it"],
+            &["whenever", "it"],
+            &["when", "they"],
+            &["whenever", "they"],
+        ],
+    ) {
         return true;
     }
-    if word_slice_starts_with(&words, &["its", "power"])
-        || word_slice_starts_with(&words, &["its", "power", "and", "toughness"])
-        || word_slice_starts_with(&words, &["its", "toughness"])
-    {
+    if word_slice_starts_with_any(
+        &words,
+        &[
+            &["its", "power"],
+            &["its", "power", "and", "toughness"],
+            &["its", "toughness"],
+        ],
+    ) {
         return true;
     }
-    let delayed_lifecycle_reference = matches!(words.first().copied(), Some("exile" | "sacrifice"))
+    let delayed_lifecycle_reference = word_slice_first_is_any(&words, &["exile", "sacrifice"])
         && (is_beginning_of_end_step_words(&words) || is_end_of_combat_words(&words))
         && (word_slice_contains_word(&words, "token")
             || word_slice_contains_word(&words, "tokens")
@@ -1649,10 +1676,15 @@ pub(crate) fn is_generic_token_reminder_sentence(tokens: &[OwnedLexToken]) -> bo
     if delayed_lifecycle_reference {
         return true;
     }
-    word_slice_starts_with(&words, &["when", "this", "token"])
-        || word_slice_starts_with(&words, &["whenever", "this", "token"])
-        || word_slice_starts_with(&words, &["this", "token"])
-        || word_slice_starts_with(&words, &["those", "tokens"])
+    word_slice_starts_with_any(
+        &words,
+        &[
+            &["when", "this", "token"],
+            &["whenever", "this", "token"],
+            &["this", "token"],
+            &["those", "tokens"],
+        ],
+    )
 }
 
 pub(crate) fn strip_embedded_token_rules_text(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
@@ -1691,9 +1723,7 @@ pub(crate) fn append_token_reminder_to_last_create_effect(
         .map(String::as_str)
         .collect::<Vec<_>>();
     let mut prepend_with = false;
-    if word_slice_starts_with(&reminder_words, &["it", "has"])
-        || word_slice_starts_with(&reminder_words, &["they", "have"])
-    {
+    if word_slice_starts_with_any(&reminder_words, &[&["it", "has"], &["they", "have"]]) {
         reminder_words = reminder_words[2..].to_vec();
         prepend_with = true;
     }
@@ -1796,7 +1826,7 @@ pub(crate) fn append_token_reminder_to_effect(
                 exile_at_next_end_step,
                 ..
             } => {
-                if reminder_words == ["haste"] {
+                if word_slice_eq(&reminder_words, &["haste"]) {
                     *has_haste = true;
                     return true;
                 }
@@ -1832,7 +1862,7 @@ pub(crate) fn append_token_reminder_to_effect(
                 exile_at_next_end_step,
                 ..
             } => {
-                if reminder_words == ["haste"] {
+                if word_slice_eq(&reminder_words, &["haste"]) {
                     *has_haste = true;
                     return true;
                 }

@@ -132,7 +132,7 @@ pub(super) fn parse_mana_spent_to_cast_predicate(
     let (amount, _) = parse_number(&amount_tokens)?;
 
     let mut idx = 3;
-    if words.get(idx).copied() == Some("of") {
+    if word_slice_at_is(words, idx, "of") {
         idx += 1;
     }
 
@@ -169,14 +169,14 @@ pub(crate) fn parse_same_color_mana_spent_to_cast_predicate(words: &[&str]) -> O
     let (amount, _) = parse_number(&amount_tokens)?;
 
     let mut idx = 3;
-    if words.get(idx).copied() != Some("mana") || words.get(idx + 1).copied() != Some("of") {
+    if !word_slice_starts_with(&words[idx..], &["mana", "of"]) {
         return None;
     }
     idx += 2;
-    if words.get(idx).copied() == Some("the") {
+    if word_slice_at_is(words, idx, "the") {
         idx += 1;
     }
-    if words.get(idx).copied() != Some("same") || words.get(idx + 1).copied() != Some("color") {
+    if !word_slice_starts_with(&words[idx..], &["same", "color"]) {
         return None;
     }
     idx += 2;

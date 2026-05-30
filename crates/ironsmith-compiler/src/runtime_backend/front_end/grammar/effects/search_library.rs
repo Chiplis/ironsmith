@@ -3,28 +3,6 @@ use ironsmith_core::Value;
 
 const CHOSEN_NAME_TAG: &str = "__chosen_name__";
 
-pub(crate) fn parser_text_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
-    parser_token_word_refs(tokens)
-}
-
-pub(crate) fn parser_word_token_positions(tokens: &[OwnedLexToken]) -> Vec<(usize, &str)> {
-    parser_token_word_positions(tokens)
-}
-
-pub(crate) fn find_parser_word_position(
-    parser_words: &[(usize, &str)],
-    expected: &str,
-) -> Option<usize> {
-    let mut idx = 0usize;
-    while idx < parser_words.len() {
-        if parser_words[idx].1 == expected {
-            return Some(idx);
-        }
-        idx += 1;
-    }
-    None
-}
-
 pub(crate) fn last_non_article_parser_word_token_idx(
     parser_words: &[(usize, &str)],
     end_exclusive: usize,
@@ -52,7 +30,7 @@ pub(crate) fn normalize_subject_routing_word(word: &str) -> String {
 }
 
 pub(crate) fn subject_routing_word_refs(tokens: &[OwnedLexToken]) -> Vec<String> {
-    parser_text_word_refs(tokens)
+    parser_token_word_refs(tokens)
         .into_iter()
         .map(normalize_subject_routing_word)
         .collect()
@@ -431,10 +409,8 @@ fn strip_search_library_color_count_phrase_lexed(
 }
 
 pub(crate) fn is_default_search_library_card_selector(tokens: &[OwnedLexToken]) -> bool {
-    let words = parser_text_word_refs(tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect::<Vec<_>>();
+    let parser_words = parser_token_word_refs(tokens);
+    let words = crate::runtime_backend::util::non_article_word_refs(&parser_words);
     words.is_empty() || word_slice_eq_any(&words, &[&["card"], &["cards"]])
 }
 
@@ -588,7 +564,7 @@ pub(crate) fn find_search_library_trailing_life_followup_lexed<'a>(
         return None;
     }
 
-    let trailing_words = parser_text_word_refs(trailing_tokens);
+    let trailing_words = parser_token_word_refs(trailing_tokens);
     let starts_with_life_clause = word_slice_starts_with_any(
         &trailing_words,
         &[
@@ -658,10 +634,10 @@ pub(crate) fn derive_search_library_effect_routing_lexed(
     clause_markers: SearchLibraryClauseMarkers,
     trailing_discard_before_shuffle: bool,
 ) -> SearchLibraryEffectRouting {
-    let words_all = parser_text_word_refs(tokens);
+    let words_all = parser_token_word_refs(tokens);
     let put_clause_words = clause_markers
         .put_idx
-        .map(|put_idx| parser_text_word_refs(&search_tokens[put_idx..]));
+        .map(|put_idx| parser_token_word_refs(&search_tokens[put_idx..]));
     let destination = if let Some(put_clause_words) = put_clause_words.as_ref() {
         if word_slice_contains_word(put_clause_words, "graveyard") {
             Zone::Graveyard
@@ -678,7 +654,7 @@ pub(crate) fn derive_search_library_effect_routing_lexed(
     let reveal = clause_markers.reveal_idx.is_some();
     let face_down_exile = clause_markers.exile_idx.is_some_and(|idx| {
         word_slice_contains_phrase(
-            &parser_text_word_refs(&search_tokens[idx..]),
+            &parser_token_word_refs(&search_tokens[idx..]),
             &["face", "down"],
         )
     });
@@ -901,7 +877,7 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
         ],
     ) {
         player = PlayerAst::ItsOwner;
-    } else if search_body_words.first().copied() == Some("your")
+    } else if word_slice_first_is(search_body_words, "your")
         && let Some(for_pos) = word_slice_find_word(search_body_words, "for")
         && for_pos > 1
     {
@@ -951,10 +927,7 @@ pub(crate) fn parse_search_library_count_prefix_lexed(
     let mut count_used = 0usize;
     let mut count_value = None;
 
-    if count_tokens.len() >= 2
-        && count_tokens[0].is_word("any")
-        && count_tokens[1].is_word("number")
-    {
+    if token_slice_starts_with(count_tokens, &["any", "number"]) {
         count = ChoiceCount::any_number();
         search_mode = SearchSelectionMode::Optional;
         count_used = 2;
@@ -967,34 +940,22 @@ pub(crate) fn parse_search_library_count_prefix_lexed(
             search_mode = SearchSelectionMode::Optional;
             count_used = 1 + used;
         }
-    } else if count_tokens.len() >= 2
-        && count_tokens[0].is_word("that")
-        && count_tokens[1].is_word("many")
-    {
+    } else if token_slice_starts_with(count_tokens, &["that", "many"]) {
         count = ChoiceCount::dynamic_x();
         count_value = Some(Value::Count(crate::target::ObjectFilter::tagged(
             crate::cards::builders::IT_TAG,
         )));
         count_used = 2;
-    } else if count_tokens
-        .first()
-        .is_some_and(|token| token.is_word("all"))
-    {
+    } else if token_slice_first_is(count_tokens, "all") {
         count = ChoiceCount::any_number();
         search_mode = SearchSelectionMode::AllMatching;
         count_used = 1;
-    } else if count_tokens.len() >= 2
-        && count_tokens[0].is_word("up")
-        && count_tokens[1].is_word("to")
-    {
-        if count_tokens.get(2).is_some_and(|token| token.is_word("x")) {
+    } else if token_slice_starts_with(count_tokens, &["up", "to"]) {
+        if token_slice_at_is(count_tokens, 2, "x") {
             count = ChoiceCount::up_to_dynamic_x();
             search_mode = SearchSelectionMode::Optional;
             count_used = 3;
-        } else if count_tokens.len() >= 4
-            && count_tokens[2].is_word("that")
-            && count_tokens[3].is_word("many")
-        {
+        } else if token_slice_starts_with(&count_tokens[2..], &["that", "many"]) {
             count = ChoiceCount::up_to_dynamic_x();
             search_mode = SearchSelectionMode::Optional;
             count_value = Some(Value::Count(crate::target::ObjectFilter::tagged(
@@ -1006,13 +967,10 @@ pub(crate) fn parse_search_library_count_prefix_lexed(
             search_mode = SearchSelectionMode::Optional;
             count_used = 2 + used;
         }
-    } else if count_tokens.first().is_some_and(|token| token.is_word("x")) {
+    } else if token_slice_first_is(count_tokens, "x") {
         count = ChoiceCount::dynamic_x();
         count_used = 1;
-    } else if count_tokens
-        .first()
-        .is_some_and(|token| token.is_word("exactly"))
-    {
+    } else if token_slice_first_is(count_tokens, "exactly") {
         if let Some((value, used)) = parse_number(&count_tokens[1..]) {
             count = ChoiceCount::exactly(value as usize);
             count_used = 1 + used;
@@ -1022,7 +980,7 @@ pub(crate) fn parse_search_library_count_prefix_lexed(
         count_used = used;
     }
 
-    if count_used < count_tokens.len() && count_tokens[count_used].is_word("of") {
+    if token_slice_at_is(count_tokens, count_used, "of") {
         count_used += 1;
     }
 
@@ -1147,13 +1105,11 @@ pub(crate) fn parse_search_library_object_filter_lexed(
     };
     let (filter_tokens, distinct_names) =
         strip_search_library_different_names_clause_lexed(&filter_tokens);
-    let filter_words = parser_text_word_refs(&filter_tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect::<Vec<_>>();
-    let parser_words = parser_word_token_positions(&filter_tokens);
+    let raw_filter_words = parser_token_word_refs(&filter_tokens);
+    let filter_words = crate::runtime_backend::util::non_article_word_refs(&raw_filter_words);
+    let parser_words = parser_token_word_positions(&filter_tokens);
 
-    if let Some(named_idx) = find_parser_word_position(&parser_words, "named") {
+    if let Some(named_idx) = parser_words.iter().position(|(_, word)| *word == "named") {
         let negated_named = parser_words[..named_idx]
             .iter()
             .rev()

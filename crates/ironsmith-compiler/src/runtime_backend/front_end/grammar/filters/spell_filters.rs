@@ -11,20 +11,13 @@ pub(crate) fn parse_spell_filter_with_grammar_entrypoint_lexed(
     tokens: &[OwnedLexToken],
 ) -> ObjectFilter {
     let words_view = GrammarFilterNormalizedWords::new(tokens);
-    let words: Vec<&str> = words_view
-        .to_word_refs()
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
+    let words = non_article_word_refs(&words_view.to_word_refs());
 
     parse_spell_filter_from_words(&words)
 }
 
 pub(crate) fn parse_spell_filter_with_grammar_entrypoint(tokens: &[OwnedLexToken]) -> ObjectFilter {
-    let words: Vec<&str> = crate::runtime_backend::token_word_refs(tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
+    let words = non_article_token_word_refs(tokens);
 
     parse_spell_filter_from_words(&words)
 }
@@ -65,15 +58,8 @@ pub(super) fn is_plausible_meld_subject_start(word: &str) -> bool {
 }
 
 pub(super) fn find_meld_subject_split(words: &[&str]) -> Option<usize> {
-    words
-        .iter()
-        .enumerate()
-        .find_map(|(idx, word)| {
-            (*word == "and"
-                && words
-                    .get(idx + 1)
-                    .is_some_and(|next| is_plausible_meld_subject_start(next)))
-            .then_some(idx)
-        })
-        .or_else(|| find_index(words, |word| *word == "and"))
+    crate::runtime_backend::lexer::word_slice_find_window_by(words, 2, |window| {
+        window[0] == "and" && is_plausible_meld_subject_start(window[1])
+    })
+    .or_else(|| find_index(words, |word| *word == "and"))
 }

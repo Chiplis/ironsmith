@@ -4,10 +4,8 @@ fn expand_graveyard_or_hand_disjunction_filter(
     mut filter: ObjectFilter,
     words: &[&str],
 ) -> ObjectFilter {
-    let has_graveyard = words
-        .iter()
-        .any(|word| matches!(*word, "graveyard" | "graveyards"));
-    let has_hand = words.iter().any(|word| matches!(*word, "hand" | "hands"));
+    let has_graveyard = word_slice_contains_any_word(words, &["graveyard", "graveyards"]);
+    let has_hand = word_slice_contains_any_word(words, &["hand", "hands"]);
     if !(has_graveyard && has_hand) {
         return filter;
     }
@@ -32,29 +30,26 @@ pub(crate) fn parse_target_player_choose_objects_clause(
 ) -> Result<Option<(PlayerAst, ObjectFilter, ChoiceCount)>, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let (mut chooser, choose_start_idx) =
-        if clause_words.first().copied() == Some("target") && clause_words.len() >= 4 {
+        if word_slice_first_is(&clause_words, "target") && clause_words.len() >= 4 {
             let chooser = match clause_words.get(1).copied() {
                 Some("player") => PlayerAst::Target,
                 Some("opponent") | Some("opponents") => PlayerAst::TargetOpponent,
                 _ => return Ok(None),
             };
-            if !matches!(
-                clause_words.get(2).copied(),
-                Some("choose") | Some("chooses")
-            ) {
+            if !word_slice_at_is_any(&clause_words, 2, &["choose", "chooses"]) {
                 return Ok(None);
             }
             (chooser, 3usize)
         } else if clause_words.len() >= 4
-            && clause_words.first().copied() == Some("that")
-            && matches!(clause_words.get(1).copied(), Some("player" | "players"))
-            && matches!(clause_words.get(2).copied(), Some("choose" | "chooses"))
+            && word_slice_first_is(&clause_words, "that")
+            && word_slice_at_is_any(&clause_words, 1, &["player", "players"])
+            && word_slice_at_is_any(&clause_words, 2, &["choose", "chooses"])
         {
             (PlayerAst::That, 3usize)
         } else if clause_words.len() >= 4
-            && clause_words.first().copied() == Some("the")
-            && matches!(clause_words.get(1).copied(), Some("voter"))
-            && matches!(clause_words.get(2).copied(), Some("choose" | "chooses"))
+            && word_slice_first_is(&clause_words, "the")
+            && word_slice_at_is(&clause_words, 1, "voter")
+            && word_slice_at_is_any(&clause_words, 2, &["choose", "chooses"])
         {
             (PlayerAst::That, 3usize)
         } else {
@@ -171,7 +166,7 @@ pub(crate) fn parse_you_choose_objects_clause(
         return Ok(None);
     }
 
-    let choose_word_idx = if clause_words.first().copied() == Some("you") {
+    let choose_word_idx = if word_slice_first_is(&clause_words, "you") {
         1usize
     } else {
         0usize
@@ -244,7 +239,7 @@ pub(crate) fn parse_you_choose_objects_clause(
             choose_words.truncate(choose_words.len().saturating_sub(2));
             continue;
         }
-        if matches!(choose_words.as_slice(), [.., "from", "there", "in"]) {
+        if word_slice_ends_with(&choose_words, &["from", "there", "in"]) {
             references_it = true;
             references_container_it = true;
             explicit_container_reference = true;
@@ -293,7 +288,7 @@ pub(crate) fn parse_you_choose_objects_clause(
     ) {
         count = ChoiceCount::exactly(value as usize);
         choose_words = choose_words[used..].to_vec();
-    } else if choose_words.first().is_some_and(|word| is_article(word)) {
+    } else if word_slice_first_is_any(&choose_words, &["a", "an", "the"]) {
         choose_words = choose_words[1..].to_vec();
     }
 
@@ -303,7 +298,7 @@ pub(crate) fn parse_you_choose_objects_clause(
             clause_words.join(" ")
         )));
     }
-    if matches!(choose_words.as_slice(), ["of", "them"] | ["of", "those"]) {
+    if word_slice_eq_any(&choose_words, &[&["of", "them"], &["of", "those"]]) {
         references_it = true;
         references_container_it = true;
         choose_words = vec!["card"];
@@ -343,7 +338,7 @@ pub(crate) fn parse_you_choose_objects_clause(
     }
 
     let mut choose_filter =
-        if references_it && matches!(choose_words.as_slice(), ["card"] | ["cards"]) {
+        if references_it && word_slice_eq_any(&choose_words, &[&["card"], &["cards"]]) {
             ObjectFilter::default()
         } else {
             parse_object_filter(&choose_filter_tokens, false).map_err(|_| {
@@ -409,7 +404,7 @@ pub(crate) fn parse_you_choose_player_clause(
         return Ok(None);
     }
 
-    let choose_word_idx = if clause_words.first().copied() == Some("you") {
+    let choose_word_idx = if word_slice_first_is(&clause_words, "you") {
         1usize
     } else {
         0usize
@@ -550,7 +545,7 @@ pub(crate) fn parse_target_player_chooses_then_other_cant_block(
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    if !matches!(tail_words.as_slice(), ["block", "this", "turn"] | ["block"]) {
+    if !word_slice_eq_any(&tail_words, &[&["block", "this", "turn"], &["block"]]) {
         return Ok(None);
     }
 
@@ -905,10 +900,10 @@ pub(crate) fn parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(
         return Ok(None);
     };
     idx += 1;
-    if first_words.get(idx).is_some_and(|word| is_article(word)) {
+    if word_refs_at_is_article(&first_words, idx) {
         idx += 1;
     }
-    if first_words.get(idx) != Some(&"card") || first_words.get(idx + 1) != Some(&"type") {
+    if !word_slice_starts_with_at(&first_words, idx, &["card", "type"]) {
         return Ok(None);
     }
     idx += 2;
@@ -943,14 +938,16 @@ pub(crate) fn parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(
     }
 
     let second_words = crate::runtime_backend::token_word_refs(second);
-    if !matches!(second_words.first().copied(), Some("put" | "puts")) {
+    if !word_slice_first_is_any(&second_words, &["put", "puts"]) {
         return Ok(None);
     }
-    let has_chosen_type = contains_word_sequence(&second_words, &["chosen", "type"]);
-    let has_revealed_this_way = contains_word_sequence(&second_words, &["revealed", "this", "way"]);
-    let has_into_your_hand = contains_word_sequence(&second_words, &["into", "your", "hand"]);
+    let has_chosen_type = word_slice_contains_phrase_or_empty(&second_words, &["chosen", "type"]);
+    let has_revealed_this_way =
+        word_slice_contains_phrase_or_empty(&second_words, &["revealed", "this", "way"]);
+    let has_into_your_hand =
+        word_slice_contains_phrase_or_empty(&second_words, &["into", "your", "hand"]);
     let has_bottom_of_library =
-        contains_word_sequence(&second_words, &["bottom", "of", "your", "library"]);
+        word_slice_contains_phrase_or_empty(&second_words, &["bottom", "of", "your", "library"]);
     if !has_chosen_type || !has_revealed_this_way || !has_into_your_hand || !has_bottom_of_library {
         return Ok(None);
     }
@@ -969,22 +966,20 @@ pub(crate) fn parse_choose_creature_type_phrase_words(
     let Some(mut idx) = parse_choose_phrase_prefix_words(words) else {
         return Ok(None);
     };
-    if words.get(idx) != Some(&"creature") || words.get(idx + 1) != Some(&"type") {
+    if !word_slice_starts_with(&words[idx..], &["creature", "type"]) {
         return Ok(None);
     }
     idx += 2;
 
     let mut excluded_subtypes = Vec::new();
-    if words.get(idx) == Some(&"other") && words.get(idx + 1) == Some(&"than") {
+    if word_slice_starts_with(&words[idx..], &["other", "than"]) {
         let subtype_word = words.get(idx + 2).copied().ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "missing creature subtype exclusion in creature-type choice clause (clause: '{}')",
                 words.join(" ")
             ))
         })?;
-        let subtype = parse_subtype_word(subtype_word)
-            .or_else(|| str_strip_suffix(subtype_word, "s").and_then(parse_subtype_word))
-            .ok_or_else(|| {
+        let subtype = parse_subtype_flexible(subtype_word).ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "unsupported creature subtype exclusion in creature-type choice clause (clause: '{}')",
                     words.join(" ")
@@ -1003,7 +998,7 @@ pub(crate) fn parse_choose_phrase_prefix_words(words: &[&str]) -> Option<usize> 
     }
 
     let mut idx = 1usize;
-    if words.get(idx).is_some_and(|word| is_article(word)) {
+    if word_refs_at_is_article(words, idx) {
         idx += 1;
     }
     Some(idx)
@@ -1015,13 +1010,13 @@ pub(crate) fn parse_choose_color_phrase_words(
     let Some(mut idx) = parse_choose_phrase_prefix_words(words) else {
         return Ok(None);
     };
-    if words.get(idx) != Some(&"color") {
+    if !word_slice_at_is(words, idx, "color") {
         return Ok(None);
     }
     idx += 1;
 
     let mut excluded = None;
-    if words.get(idx) == Some(&"other") && words.get(idx + 1) == Some(&"than") {
+    if word_slice_starts_with(&words[idx..], &["other", "than"]) {
         let color_word = words.get(idx + 2).copied().ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "missing color exclusion in choose-color clause (clause: '{}')",
@@ -1046,11 +1041,11 @@ pub(crate) fn parse_choose_card_type_phrase_words(
     let Some(mut idx) = parse_choose_phrase_prefix_words(words) else {
         return Ok(None);
     };
-    if words.get(idx) == Some(&"card") && words.get(idx + 1) == Some(&"type") {
+    if word_slice_at_is(words, idx, "card") && word_slice_at_is(words, idx + 1, "type") {
         return Ok(Some((idx + 2, Vec::new())));
     }
-    if words.get(idx) == Some(&"permanent")
-        && matches!(words.get(idx + 1).copied(), Some("type" | "types"))
+    if word_slice_at_is(words, idx, "permanent")
+        && word_slice_at_is_any(words, idx + 1, &["type", "types"])
     {
         return Ok(Some((
             idx + 2,
@@ -1075,9 +1070,7 @@ pub(crate) fn parse_choose_card_type_phrase_words(
         let Some(card_type) = parse_card_type(word) else {
             break;
         };
-        if !options.contains(&card_type) {
-            options.push(card_type);
-        }
+        crate::slice_primitives::push_unique(&mut options, card_type);
         consumed_any = true;
         idx += 1;
     }
@@ -1091,7 +1084,7 @@ pub(crate) fn parse_choose_card_type_phrase_words(
 
 pub(crate) fn parse_choose_player_phrase_words(words: &[&str]) -> Option<usize> {
     let mut idx = parse_choose_phrase_prefix_words(words)?;
-    if words.get(idx) != Some(&"player") {
+    if !word_slice_at_is(words, idx, "player") {
         return None;
     }
     idx += 1;
@@ -1100,10 +1093,7 @@ pub(crate) fn parse_choose_player_phrase_words(words: &[&str]) -> Option<usize> 
 
 pub(crate) fn parse_choose_basic_land_type_phrase_words(words: &[&str]) -> Option<usize> {
     let mut idx = parse_choose_phrase_prefix_words(words)?;
-    if words.get(idx) != Some(&"basic")
-        || words.get(idx + 1) != Some(&"land")
-        || words.get(idx + 2) != Some(&"type")
-    {
+    if !word_slice_starts_with_at(words, idx, &["basic", "land", "type"]) {
         return None;
     }
     idx += 3;
@@ -1112,7 +1102,7 @@ pub(crate) fn parse_choose_basic_land_type_phrase_words(words: &[&str]) -> Optio
 
 pub(crate) fn parse_choose_land_type_phrase_words(words: &[&str]) -> Option<usize> {
     let mut idx = parse_choose_phrase_prefix_words(words)?;
-    if words.get(idx) != Some(&"land") || words.get(idx + 1) != Some(&"type") {
+    if !word_slice_starts_with_at(words, idx, &["land", "type"]) {
         return None;
     }
     idx += 2;
@@ -1181,7 +1171,7 @@ pub(crate) fn parse_choose_creature_type_then_become_type(
             (Until::Forever, become_tail_tokens.to_vec())
         };
     let become_words = crate::runtime_backend::token_word_refs(&become_tokens);
-    if become_words.as_slice() != ["that", "type"] {
+    if !word_slice_eq(&become_words, &["that", "type"]) {
         return Ok(None);
     }
 
@@ -1238,7 +1228,7 @@ pub(crate) fn parse_sentence_target_player_chooses_then_puts_on_top_of_library(
     };
 
     let second_words = crate::runtime_backend::token_word_refs(&second_clause);
-    if !matches!(second_words.first().copied(), Some("put" | "puts")) {
+    if !word_slice_first_is_any(&second_words, &["put", "puts"]) {
         return Ok(None);
     }
     let Some(on_idx) = find_index(&second_clause, |token: &OwnedLexToken| token.is_word("on"))
@@ -1262,11 +1252,10 @@ pub(crate) fn parse_sentence_target_player_chooses_then_puts_on_top_of_library(
     let moved_tokens = trim_commas(&second_clause[1..on_idx]);
     let moved_words = crate::runtime_backend::token_word_refs(&moved_tokens);
     let target = if moved_tokens.is_empty()
-        || moved_words.as_slice() == ["it"]
-        || moved_words.as_slice() == ["them"]
-        || moved_words.as_slice() == ["those"]
-        || moved_words.as_slice() == ["those", "cards"]
-    {
+        || word_slice_eq_any(
+            &moved_words,
+            &[&["it"], &["them"], &["those"], &["those", "cards"]],
+        ) {
         TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&second_clause))
     } else {
         parse_target_phrase(&moved_tokens)?
@@ -1295,7 +1284,7 @@ pub(crate) fn parse_sentence_target_player_chooses_then_you_put_it_onto_battlefi
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let split = find_window_by(tokens, 2, |window| {
-        window[0].is_comma() && window[1].is_word("then")
+        token_slice_first_kind(window, TokenKind::Comma) && token_slice_at_is(window, 1, "then")
     })
     .map(|idx| (idx, idx + 2))
     .or_else(|| {
@@ -1336,32 +1325,35 @@ pub(crate) fn parse_sentence_target_player_chooses_then_you_put_it_onto_battlefi
     }
 
     let moved_words = crate::runtime_backend::token_word_refs(&second_clause[2..onto_idx]);
-    let moved_is_tagged_choice = moved_words == ["it"]
-        || moved_words == ["that", "card"]
-        || moved_words == ["that", "permanent"];
+    let moved_is_tagged_choice = word_slice_eq_any(
+        &moved_words,
+        &[&["it"], &["that", "card"], &["that", "permanent"]],
+    );
     if !moved_is_tagged_choice {
         return Ok(None);
     }
 
-    let destination_words: Vec<&str> =
-        crate::runtime_backend::token_word_refs(&second_clause[onto_idx + 1..])
-            .into_iter()
-            .filter(|word| !is_article(word))
-            .collect();
+    let destination_words =
+        crate::runtime_backend::util::non_article_token_word_refs(&second_clause[onto_idx + 1..]);
     if destination_words.first() != Some(&"battlefield") {
         return Ok(None);
     }
     let mut destination_tail: Vec<&str> = destination_words[1..].to_vec();
     let battlefield_tapped = word_slice_contains_word(&destination_tail, "tapped");
     destination_tail.retain(|word| *word != "tapped");
-    let battlefield_controller = if destination_tail.as_slice() == ["under", "your", "control"] {
+    let battlefield_controller = if word_slice_eq(&destination_tail, &["under", "your", "control"])
+    {
         ReturnControllerAst::You
     } else if destination_tail.is_empty() {
         ReturnControllerAst::Preserve
-    } else if destination_tail.as_slice() == ["under", "its", "owners", "control"]
-        || destination_tail.as_slice() == ["under", "their", "owners", "control"]
-        || destination_tail.as_slice() == ["under", "that", "players", "control"]
-    {
+    } else if word_slice_eq_any(
+        &destination_tail,
+        &[
+            &["under", "its", "owners", "control"],
+            &["under", "their", "owners", "control"],
+            &["under", "that", "players", "control"],
+        ],
+    ) {
         ReturnControllerAst::Owner
     } else {
         return Ok(None);

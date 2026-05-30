@@ -5,8 +5,9 @@ use super::super::grammar::effects::{
 };
 use super::super::grammar::primitives as grammar;
 use super::super::lexer::{
-    LexedClause, contains_token_word, word_slice_eq, word_slice_eq_any, word_slice_matching_phrase,
-    word_slice_starts_with,
+    LexedClause, contains_token_word, word_slice_contains_any_word, word_slice_eq,
+    word_slice_eq_any, word_slice_matching_phrase, word_slice_starts_with,
+    word_slice_starts_with_any,
 };
 use super::super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
 use super::super::object_filters::parse_object_filter;
@@ -122,9 +123,10 @@ pub(crate) fn parse_copy_targets_clause(
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
     let words = clause.word_refs();
-    let targets_idx = if word_slice_starts_with(&words, &["the", "copy", "targets"])
-        || word_slice_starts_with(&words, &["that", "copy", "targets"])
-    {
+    let targets_idx = if word_slice_starts_with_any(
+        &words,
+        &[&["the", "copy", "targets"], &["that", "copy", "targets"]],
+    ) {
         2
     } else if word_slice_starts_with(&words, &["copy", "targets"]) {
         1
@@ -352,10 +354,8 @@ pub(crate) fn parse_stack_retarget_filter(
 ) -> Result<ObjectFilter, CardTextError> {
     let clause = LexedClause::new(tokens);
     let words = clause.word_refs();
-    let has_ability = words
-        .iter()
-        .any(|word| matches!(*word, "ability" | "abilities"));
-    let has_spell = words.iter().any(|word| matches!(*word, "spell" | "spells"));
+    let has_ability = word_slice_contains_any_word(&words, &["ability", "abilities"]);
+    let has_spell = word_slice_contains_any_word(&words, &["spell", "spells"]);
     let has_activated = clause.contains_word("activated");
     let has_instant = clause.contains_word("instant");
     let has_sorcery = clause.contains_word("sorcery");
@@ -526,11 +526,8 @@ pub(crate) fn parse_choose_card_name_clause(
     };
     let filter_clause = filter_clause.trimmed();
 
-    let filter_words = filter_clause
-        .word_refs()
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect::<Vec<_>>();
+    let filter_words =
+        crate::runtime_backend::util::non_article_token_word_refs(filter_clause.tokens());
     let filter = if filter_words.is_empty() || word_slice_eq(&filter_words, &["any"]) {
         None
     } else {
@@ -913,16 +910,18 @@ pub(crate) fn parse_until_duration_triggered_clause(
 }
 
 pub(crate) fn parse_power_reference_word_count(words: &[&str]) -> Option<usize> {
-    if word_slice_starts_with(words, &["its", "power"])
-        || word_slice_starts_with(words, &["that", "power"])
-    {
+    if word_slice_starts_with_any(words, &[&["its", "power"], &["that", "power"]]) {
         return Some(2);
     }
-    if word_slice_starts_with(words, &["this", "source", "power"])
-        || word_slice_starts_with(words, &["this", "creature", "power"])
-        || word_slice_starts_with(words, &["that", "creature", "power"])
-        || word_slice_starts_with(words, &["that", "objects", "power"])
-    {
+    if word_slice_starts_with_any(
+        words,
+        &[
+            &["this", "source", "power"],
+            &["this", "creature", "power"],
+            &["that", "creature", "power"],
+            &["that", "objects", "power"],
+        ],
+    ) {
         return Some(3);
     }
     None
@@ -1186,11 +1185,8 @@ pub(crate) fn parse_clash_clause(
         )));
     }
 
-    let tail_words: Vec<&str> = tail_clause
-        .word_refs()
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
+    let tail_words =
+        crate::runtime_backend::util::non_article_token_word_refs(tail_clause.tokens());
     let opponent = match word_slice_matching_phrase(
         &tail_words,
         &[

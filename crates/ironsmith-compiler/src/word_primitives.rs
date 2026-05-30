@@ -25,6 +25,13 @@ pub(crate) fn find_any_phrase_start<'p>(
         .min_by_key(|(_, idx)| *idx)
 }
 
+pub(crate) fn find_any_phrase_span<'p>(
+    words: &[&str],
+    expected: &'p [&'p [&'p str]],
+) -> Option<(&'p [&'p str], usize, usize)> {
+    find_any_phrase_start(words, expected).map(|(phrase, start)| (phrase, start, phrase.len()))
+}
+
 pub(crate) fn find_any_phrase_start_or_zero<'p>(
     words: &[&str],
     expected: &'p [&'p [&'p str]],
@@ -88,6 +95,44 @@ pub(crate) fn equals_any(words: &[&str], expected: &[&[&str]]) -> bool {
     expected.iter().any(|phrase| equals(words, phrase))
 }
 
+pub(crate) fn equals_at(words: &[&str], idx: usize, expected: &[&str]) -> bool {
+    words.get(idx..).is_some_and(|tail| equals(tail, expected))
+}
+
+pub(crate) fn equals_any_at(words: &[&str], idx: usize, expected: &[&[&str]]) -> bool {
+    words
+        .get(idx..)
+        .is_some_and(|tail| equals_any(tail, expected))
+}
+
+pub(crate) fn at_is(words: &[&str], idx: usize, expected: &str) -> bool {
+    words.get(idx).is_some_and(|word| *word == expected)
+}
+
+pub(crate) fn at_is_any(words: &[&str], idx: usize, expected: &[&str]) -> bool {
+    words
+        .get(idx)
+        .is_some_and(|word| expected.iter().any(|candidate| *word == *candidate))
+}
+
+pub(crate) fn first_is(words: &[&str], expected: &str) -> bool {
+    at_is(words, 0, expected)
+}
+
+pub(crate) fn first_is_any(words: &[&str], expected: &[&str]) -> bool {
+    at_is_any(words, 0, expected)
+}
+
+pub(crate) fn last_is(words: &[&str], expected: &str) -> bool {
+    words.last().is_some_and(|word| *word == expected)
+}
+
+pub(crate) fn last_is_any(words: &[&str], expected: &[&str]) -> bool {
+    words
+        .last()
+        .is_some_and(|word| expected.iter().any(|candidate| *word == *candidate))
+}
+
 pub(crate) fn matching_phrase<'p>(
     words: &[&str],
     expected: &'p [&'p [&'p str]],
@@ -112,6 +157,12 @@ pub(crate) fn ends_with_any(words: &[&str], expected: &[&[&str]]) -> bool {
 
 pub(crate) fn starts_with(words: &[&str], expected: &[&str]) -> bool {
     words.len() >= expected.len() && words[..expected.len()] == *expected
+}
+
+pub(crate) fn starts_with_at(words: &[&str], idx: usize, expected: &[&str]) -> bool {
+    words
+        .get(idx..)
+        .is_some_and(|tail| starts_with(tail, expected))
 }
 
 pub(crate) fn starts_with_any(words: &[&str], expected: &[&[&str]]) -> bool {
@@ -196,11 +247,28 @@ pub(crate) fn find_any_word(words: &[&str], expected: &[&str]) -> Option<usize> 
     })
 }
 
+pub(crate) fn find_any_word_from(words: &[&str], expected: &[&str], start: usize) -> Option<usize> {
+    find_word_where_from(words, start, |word| {
+        expected.iter().any(|expected_word| word == *expected_word)
+    })
+}
+
 pub(crate) fn find_word_where(
     words: &[&str],
     mut predicate: impl FnMut(&str) -> bool,
 ) -> Option<usize> {
     words.iter().position(|word| predicate(word))
+}
+
+pub(crate) fn find_word_where_from(
+    words: &[&str],
+    start: usize,
+    mut predicate: impl FnMut(&str) -> bool,
+) -> Option<usize> {
+    words
+        .get(start..)
+        .and_then(|tail| tail.iter().position(|word| predicate(word)))
+        .map(|offset| start + offset)
 }
 
 pub(crate) fn rfind_word_where(
@@ -214,6 +282,16 @@ pub(crate) fn contains_any_word(words: &[&str], expected: &[&str]) -> bool {
     expected.iter().any(|word| contains_word(words, word))
 }
 
+pub(crate) fn contains_no_words(words: &[&str], expected: &[&str]) -> bool {
+    !contains_any_word(words, expected)
+}
+
 pub(crate) fn contains_all_words(words: &[&str], expected: &[&str]) -> bool {
     expected.iter().all(|word| contains_word(words, word))
+}
+
+pub(crate) fn all_words_are_any(words: &[&str], expected: &[&str]) -> bool {
+    crate::slice_primitives::all_match(words, |word| {
+        expected.iter().any(|candidate| word == candidate)
+    })
 }

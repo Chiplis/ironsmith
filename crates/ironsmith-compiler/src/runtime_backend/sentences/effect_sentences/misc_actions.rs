@@ -4,8 +4,10 @@ use crate::cards::builders::{
     SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst,
 };
 use crate::runtime_backend::lexer::{
-    word_slice_contains_phrase, word_slice_contains_word, word_slice_eq, word_slice_eq_any,
-    word_slice_starts_with, word_slice_starts_with_any,
+    token_slice_at_is, word_slice_contains_any_phrase, word_slice_contains_phrase,
+    word_slice_contains_word, word_slice_eq, word_slice_eq_any, word_slice_first_is,
+    word_slice_first_is_any, word_slice_last_is_any, word_slice_starts_with,
+    word_slice_starts_with_any,
 };
 use crate::runtime_backend::parse_counter_type_from_tokens;
 
@@ -347,7 +349,7 @@ pub(crate) fn parse_roll(
 
 pub(crate) fn parse_regenerate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if matches!(words.first().copied(), Some("all" | "each")) {
+    if word_slice_first_is_any(&words, &["all", "each"]) {
         if tokens.len() < 2 {
             return Err(CardTextError::ParseError(
                 "regenerate clause missing filter after each/all".to_string(),
@@ -366,7 +368,7 @@ pub(crate) fn parse_mill(
 ) -> Result<EffectAst, CardTextError> {
     fn parse_trailing_for_each_count(tokens: &[OwnedLexToken]) -> Option<Value> {
         let mut words = crate::runtime_backend::token_word_refs(tokens);
-        if words.first().copied() == Some("card") || words.first().copied() == Some("cards") {
+        if word_slice_first_is_any(&words, &["card", "cards"]) {
             words = words[1..].to_vec();
         }
         if !word_slice_starts_with_any(&words, &[&["for", "each"], &["each"]]) {
@@ -378,15 +380,14 @@ pub(crate) fn parse_mill(
         } else {
             &words[1..]
         };
-        if let Some(on_idx) = after_each
-            .iter()
-            .position(|word| *word == "on")
+        if let Some(on_idx) = crate::runtime_backend::lexer::word_slice_find_word(after_each, "on")
             .filter(|on_idx| *on_idx > 0)
         {
             let counter_words = &after_each[..on_idx];
             let reference = &after_each[on_idx + 1..];
-            if matches!(counter_words.last().copied(), Some("counter" | "counters"))
-                && matches!(reference, ["it"] | ["this"] | ["this", ..])
+            if word_slice_last_is_any(counter_words, &["counter", "counters"])
+                && (word_slice_eq_any(reference, &[&["it"], &["this"]])
+                    || word_slice_starts_with(reference, &["this"]))
             {
                 let counter_tokens = counter_words
                     .iter()
@@ -748,7 +749,7 @@ pub(crate) fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
         ));
     }
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if matches!(words.first().copied(), Some("all" | "each")) {
+    if word_slice_first_is_any(&words, &["all", "each"]) {
         let filter = parse_object_filter(&tokens[1..], false)?;
         return Ok(EffectAst::subject_verb_untap_all(filter));
     }
@@ -837,7 +838,7 @@ pub(crate) fn parse_pay(
     let references_tagged_choice = clause_words
         .iter()
         .any(|word| matches!(*word, "those" | "them"))
-        || word_slice_contains_phrase(&clause_words, &["chosen", "this", "way"]);
+        || word_slice_contains_any_phrase(&clause_words, &[&["chosen", "this", "way"]]);
     let repeats_for_tagged_choice = has_for_each && references_tagged_choice;
 
     if repeats_for_tagged_choice {
@@ -872,7 +873,7 @@ pub(crate) fn parse_pay(
     }
 
     if let Some((amount, used)) = parse_value(tokens)
-        && tokens.get(used).is_some_and(|token| token.is_word("life"))
+        && token_slice_at_is(tokens, used, "life")
     {
         return Ok(subject_verb_player_effect(
             SubjectVerbRoleAst::AffectedPlayer,

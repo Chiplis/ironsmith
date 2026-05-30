@@ -13,43 +13,19 @@ use crate::{
 use super::grammar::primitives::{self as grammar_primitives, split_lexed_slices_on_or};
 use super::keyword_static::parse_pt_modifier;
 use super::lexer::{
-    OwnedLexToken, TokenWordView, word_slice_contains_any_phrase, word_slice_find_phrase_start,
+    OwnedLexToken, TokenWordView, find_token_word, token_slice_at_is,
+    word_slice_contains_any_phrase, word_slice_find_phrase_start, word_slice_first_is,
 };
 use super::util::{
     apply_filter_keyword_constraint, is_article, is_demonstrative_object_head, is_non_outlaw_word,
-    is_outlaw_word, is_permanent_type, is_source_reference_words, parse_alternative_cast_words,
-    parse_card_type, parse_color, parse_counter_type_word, parse_filter_counter_constraint_words,
-    parse_filter_keyword_constraint_words, parse_non_color, parse_non_subtype, parse_non_supertype,
-    parse_non_type, parse_subtype_flexible, parse_subtype_word, parse_supertype_word,
-    parse_unsigned_pt_word, parse_zone_word, push_outlaw_subtypes, token_index_for_word_index,
-    trim_commas,
+    is_outlaw_word, is_permanent_type, is_source_reference_words, non_article_word_refs,
+    parse_alternative_cast_words, parse_card_type, parse_color, parse_counter_type_word,
+    parse_filter_counter_constraint_words, parse_filter_keyword_constraint_words, parse_non_color,
+    parse_non_subtype, parse_non_supertype, parse_non_type, parse_subtype_flexible,
+    parse_subtype_word, parse_supertype_word, parse_unsigned_pt_word, parse_zone_word,
+    push_outlaw_subtypes, trim_commas,
 };
 use super::value_helpers::parse_filter_comparison_tokens;
-
-pub(super) fn normalized_token_index_for_word_index(
-    tokens: &[OwnedLexToken],
-    word_idx: usize,
-) -> Option<usize> {
-    token_index_for_word_index(tokens, word_idx)
-}
-
-pub(super) fn normalized_token_index_after_words(
-    tokens: &[OwnedLexToken],
-    word_count: usize,
-) -> Option<usize> {
-    if word_count == 0 {
-        return Some(0);
-    }
-
-    let word_view = TokenWordView::new(tokens);
-    let word_refs = word_view.to_word_refs();
-    if word_count > word_refs.len() {
-        return None;
-    }
-
-    token_index_for_word_index(tokens, word_count)
-        .or_else(|| (word_count == word_refs.len()).then_some(tokens.len()))
-}
 
 use grammar_primitives::{
     WordSliceInput, parse_full_word_slice, parse_prefix_word_slice, word_slice_eq,
@@ -340,12 +316,12 @@ pub(super) fn strip_not_on_battlefield_phrase(tokens: &mut Vec<OwnedLexToken>) -
     else {
         return false;
     };
-    let Some(token_start) = normalized_token_index_for_word_index(tokens, word_start) else {
+    let Some(token_start) = word_view.token_index_for_word_index(word_start) else {
         return false;
     };
-    let token_end =
-        normalized_token_index_for_word_index(tokens, word_start + matched_phrase.len())
-            .unwrap_or(tokens.len());
+    let token_end = word_view
+        .token_index_for_word_index(word_start + matched_phrase.len())
+        .unwrap_or(tokens.len());
     tokens.drain(token_start..token_end);
     true
 }
@@ -369,7 +345,7 @@ pub(super) fn trim_vote_winner_suffix(tokens: &[OwnedLexToken]) -> (Vec<OwnedLex
         return (tokens.to_vec(), false);
     };
 
-    let Some(token_end) = normalized_token_index_for_word_index(tokens, suffix_start) else {
+    let Some(token_end) = word_view.token_index_for_word_index(suffix_start) else {
         return (tokens.to_vec(), false);
     };
     (trim_commas(&tokens[..token_end]), true)
@@ -434,12 +410,8 @@ pub(super) fn apply_parity_filter_phrases(words: &[&str], filter: &mut ObjectFil
 
 fn parse_simple_object_filter_lexed(tokens: &[OwnedLexToken], other: bool) -> Option<ObjectFilter> {
     let word_view = TokenWordView::new(tokens);
-    let mut words: Vec<&str> = word_view
-        .to_word_refs()
-        .into_iter()
-        .filter(|word| *word != "instead")
-        .filter(|word| !is_article(word))
-        .collect();
+    let mut words = non_article_word_refs(&word_view.to_word_refs());
+    words.retain(|word| *word != "instead");
     if words.is_empty() {
         return None;
     }
@@ -680,17 +652,9 @@ pub(super) fn parse_attached_reference_or_another_disjunction(
     }
 
     let first_word_view = TokenWordView::new(segments[0]);
-    let first_words: Vec<&str> = first_word_view
-        .to_word_refs()
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
+    let first_words = non_article_word_refs(&first_word_view.to_word_refs());
     let second_word_view = TokenWordView::new(segments[1]);
-    let second_words: Vec<&str> = second_word_view
-        .to_word_refs()
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
+    let second_words = non_article_word_refs(&second_word_view.to_word_refs());
 
     let first_is_attached_reference = first_words
         .first()
@@ -721,11 +685,11 @@ pub(crate) fn parse_object_filter(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
-    if let Some(with_idx) = tokens.iter().position(|token| token.is_word("with")) {
+    if let Some(with_idx) = find_token_word(tokens, "with") {
         let base_tokens = trim_commas(&tokens[..with_idx]);
         let tail_words = crate::runtime_backend::token_word_refs(&tokens[with_idx + 1..]);
         if !base_tokens.is_empty()
-            && tail_words.first().is_some_and(|word| *word == "no")
+            && word_slice_first_is(&tail_words, "no")
             && let Some((counter_constraint, consumed)) =
                 parse_filter_counter_constraint_words(&tail_words[1..])
             && consumed == tail_words.len().saturating_sub(1)
@@ -861,9 +825,7 @@ pub(crate) fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) 
         base.could_be_targeted_by = extra.could_be_targeted_by;
     }
     for constraint in extra.tagged_constraints {
-        if !base.tagged_constraints.contains(&constraint) {
-            base.tagged_constraints.push(constraint);
-        }
+        crate::slice_primitives::push_unique(&mut base.tagged_constraints, constraint);
     }
 }
 
@@ -1030,7 +992,7 @@ mod tests {
 }
 
 pub(crate) fn is_comparison_or_delimiter(tokens: &[OwnedLexToken], idx: usize) -> bool {
-    if !tokens.get(idx).is_some_and(|token| token.is_word("or")) {
+    if !token_slice_at_is(tokens, idx, "or") {
         return false;
     }
     let previous_word = (0..idx).rev().find_map(|i| tokens[i].as_word());

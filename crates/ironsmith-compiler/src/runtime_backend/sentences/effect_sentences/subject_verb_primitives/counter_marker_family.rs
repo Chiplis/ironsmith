@@ -145,7 +145,7 @@ pub(crate) fn parse_sentence_put_counter_sequence(
     if !clause.first_is_word("put") {
         return Ok(None);
     }
-    if !clause.contains_any_word(&["counter", "counters"]) {
+    if clause.contains_no_words(&["counter", "counters"]) {
         return Ok(None);
     }
 
@@ -299,7 +299,7 @@ pub(crate) fn parse_sentence_put_counter_sequence(
             return Ok(None);
         }
 
-        if !segment_clause.contains_any_word(&["counter", "counters"]) {
+        if segment_clause.contains_no_words(&["counter", "counters"]) {
             return Ok(None);
         }
 
@@ -397,15 +397,7 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     fn normalize_destination_words<'a>(words: &'a [&'a str]) -> Vec<&'a str> {
-        words
-            .iter()
-            .filter(|word| !is_article(word))
-            .filter_map(|word| match *word {
-                "s" | "'" | "’" => None,
-                _ => Some(strip_quoted_possessive_suffix(word)),
-            })
-            .filter(|word: &&str| !word.is_empty())
-            .collect()
+        crate::runtime_backend::util::non_article_possessive_word_refs(words)
     }
 
     if !clause.first_is_word("return") {
@@ -444,18 +436,16 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
 
     let base_destination_word_storage = destination_clause.before(with_idx).word_refs();
     let base_destination_words = normalize_destination_words(&base_destination_word_storage);
-    let Some(battlefield_idx) = base_destination_words
-        .iter()
-        .position(|word| *word == "battlefield")
+    let Some(battlefield_idx) =
+        crate::runtime_backend::lexer::word_slice_find_word(&base_destination_words, "battlefield")
     else {
         return Ok(None);
     };
     let tapped = word_slice_contains_word(&base_destination_words, "tapped");
-    let destination_tail: Vec<&str> = base_destination_words[battlefield_idx + 1..]
-        .iter()
-        .copied()
-        .filter(|word| *word != "tapped")
-        .collect();
+    let destination_tail = super::super::super::util::word_refs_except(
+        &base_destination_words[battlefield_idx + 1..],
+        &["tapped"],
+    );
     const PRESERVE_CONTROL_TAILS: &[&[&str]] =
         &[&["under", "its", "control"], &["under", "their", "control"]];
     const OWNER_CONTROL_TAILS: &[&[&str]] = &[
@@ -569,15 +559,7 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     fn normalize_destination_words<'a>(words: &'a [&'a str]) -> Vec<&'a str> {
-        words
-            .iter()
-            .filter(|word| !is_article(word))
-            .filter_map(|word| match *word {
-                "s" | "'" | "’" => None,
-                _ => Some(strip_quoted_possessive_suffix(word)),
-            })
-            .filter(|word: &&str| !word.is_empty())
-            .collect()
+        crate::runtime_backend::util::non_article_possessive_word_refs(words)
     }
 
     if !clause
@@ -668,8 +650,7 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence(
     }
 
     let descriptor_clause = counter_clause.before(on_idx).trimmed();
-    if descriptor_clause.is_empty()
-        || !descriptor_clause.contains_any_word(&["counter", "counters"])
+    if descriptor_clause.is_empty() || descriptor_clause.contains_no_words(&["counter", "counters"])
     {
         return Ok(None);
     }
@@ -799,7 +780,7 @@ pub(crate) fn parse_draw_then_connive_sentence(
         return Ok(None);
     }
 
-    if !tail_clause.contains_any_word(&["connive", "connives"]) {
+    if tail_clause.contains_no_words(&["connive", "connives"]) {
         return Ok(None);
     }
 
@@ -854,11 +835,8 @@ pub(crate) fn parse_if_enters_with_additional_counter_sentence(
         return Ok(None);
     };
 
-    let predicate_words: Vec<&str> = predicate_clause
-        .trimmed_word_refs()
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
+    let predicate_words =
+        crate::runtime_backend::util::non_article_word_refs(&predicate_clause.trimmed_word_refs());
     let predicate_is_supported = crate::runtime_backend::lexer::word_slice_eq_any(
         &predicate_words,
         &[

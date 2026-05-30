@@ -7,10 +7,7 @@ pub(crate) fn parse_gain_life_equal_to_power_sentence(
         return Ok(None);
     };
 
-    if words.get(gain_idx + 1) != Some(&"life")
-        || words.get(gain_idx + 2) != Some(&"equal")
-        || words.get(gain_idx + 3) != Some(&"to")
-    {
+    if !word_slice_starts_with_at(&words, gain_idx + 1, &["life", "equal", "to"]) {
         return Ok(None);
     }
 

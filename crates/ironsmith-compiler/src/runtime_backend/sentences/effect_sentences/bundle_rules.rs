@@ -5,10 +5,11 @@ use super::super::activation_and_restrictions::choice_object_clauses::{
     parse_you_choose_objects_clause,
 };
 use super::super::lexer::{
-    OwnedLexToken, TokenKind, split_lexed_sentences, word_slice_contains_all_words,
-    word_slice_contains_any_word, word_slice_contains_phrase, word_slice_contains_word,
-    word_slice_eq, word_slice_eq_any, word_slice_find_any_phrase_span,
-    word_slice_strip_prefix_value,
+    OwnedLexToken, TokenKind, parser_token_word_refs, split_lexed_sentences,
+    word_slice_contains_all_words, word_slice_contains_any_phrase, word_slice_contains_any_word,
+    word_slice_contains_phrase, word_slice_contains_word, word_slice_eq, word_slice_eq_any,
+    word_slice_find_any_phrase_span, word_slice_find_word, word_slice_first_is,
+    word_slice_starts_with, word_slice_strip_prefix_value,
 };
 use super::super::object_filters::parse_object_filter_lexed;
 use super::super::permission_helpers::{
@@ -230,7 +231,7 @@ fn parse_proliferate_then_choose_permanents_phase_out_bundle(
     second_sentence: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
     let first_words = crate::runtime_backend::token_word_refs(first_sentence);
-    let first_words = if first_words.first().copied() == Some("you") {
+    let first_words = if word_slice_first_is(&first_words, "you") {
         &first_words[1..]
     } else {
         &first_words[..]
@@ -291,7 +292,7 @@ fn parse_proliferate_then_choose_permanents_phase_out_single_sentence(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    let words = if words.first().copied() == Some("you") {
+    let words = if word_slice_first_is(&words, "you") {
         &words[1..]
     } else {
         &words[..]
@@ -349,7 +350,7 @@ fn parse_proliferate_then_choose_permanents_phase_out_single_sentence(
 
 fn parse_draw_create_treasure_lose_life_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let words = if clause_words.first().copied() == Some("you") {
+    let words = if word_slice_first_is(&clause_words, "you") {
         &clause_words[1..]
     } else {
         clause_words.as_slice()
@@ -401,7 +402,7 @@ fn parse_draw_create_treasure_lose_life_bundle(tokens: &[OwnedLexToken]) -> Opti
 
 fn looks_like_source_leaves_return_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if words.first().copied() != Some("return") {
+    if !word_slice_first_is(&words, "return") {
         return false;
     }
     if !word_slice_contains_all_words(&words, &["when", "leaves", "battlefield"])
@@ -499,7 +500,7 @@ fn parse_reveal_from_outside_game_or_choose_face_up_exile_to_hand(
         return Ok(None);
     }
     let has_face_up = word_slice_contains_any_word(&choose_words, &["face-up", "faceup"])
-        || word_slice_contains_phrase(&choose_words, &["face", "up"]);
+        || word_slice_contains_any_phrase(&choose_words, &[&["face", "up"]]);
     if !has_face_up {
         return Ok(None);
     }
@@ -571,10 +572,10 @@ fn parse_reveal_from_outside_game_to_hand(
     if !word_slice_contains_all_words(&lowered, &["outside", "game"]) {
         return Ok(None);
     }
-    let Some(reveal_idx) = lowered.iter().position(|word| *word == "reveal") else {
+    let Some(reveal_idx) = word_slice_find_word(&lowered, "reveal") else {
         return Ok(None);
     };
-    let Some(from_idx) = lowered.iter().position(|word| *word == "from") else {
+    let Some(from_idx) = word_slice_find_word(&lowered, "from") else {
         return Ok(None);
     };
     if from_idx <= reveal_idx + 1 {
@@ -654,10 +655,6 @@ fn parse_choose_objects_then_for_each_of_those_bundle(
     second: &[OwnedLexToken],
     third: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    fn word_is(word: Option<&str>, expected: &str) -> bool {
-        word.is_some_and(|word| word.eq_ignore_ascii_case(expected))
-    }
-
     let mut normalized_first = first.to_vec();
     for token in &mut normalized_first {
         token.lowercase_word();
@@ -676,10 +673,7 @@ fn parse_choose_objects_then_for_each_of_those_bundle(
 
     let second_words = crate::runtime_backend::token_word_refs(second);
     if second_words.len() < 5
-        || !word_is(second_words.first().copied(), "for")
-        || !word_is(second_words.get(1).copied(), "each")
-        || !word_is(second_words.get(2).copied(), "of")
-        || !word_is(second_words.get(3).copied(), "those")
+        || !word_slice_starts_with(&second_words, &["for", "each", "of", "those"])
     {
         return Ok(None);
     }
@@ -714,24 +708,6 @@ fn parse_choose_objects_then_for_each_of_those_bundle(
     });
     combined.extend(trailing_effects);
     Ok(Some(combined))
-}
-
-fn parser_words(tokens: &[OwnedLexToken]) -> Vec<String> {
-    tokens
-        .iter()
-        .filter(|token| {
-            !matches!(
-                token.kind,
-                TokenKind::Comma | TokenKind::Period | TokenKind::LParen | TokenKind::RParen
-            )
-        })
-        .map(|token| token.parser_text().to_string())
-        .filter(|word| !word.is_empty())
-        .collect()
-}
-
-fn parser_word_refs(words: &[String]) -> Vec<&str> {
-    words.iter().map(String::as_str).collect()
 }
 
 fn split_search_library_slot_filter_items_lexed(
@@ -798,8 +774,8 @@ fn split_search_library_slot_filter_items_lexed(
 fn parse_search_library_slots_to_hand_bundle(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let sentence_words = parser_words(tokens);
-    let sentence_word_refs = parser_word_refs(&sentence_words);
+    let sentence_words = parser_token_word_refs(tokens);
+    let sentence_word_refs = sentence_words.clone();
     let multi_zone = if sentence_word_refs.len() >= 15
         && word_slice_eq(
             &sentence_word_refs[..4],
@@ -827,10 +803,7 @@ fn parse_search_library_slots_to_hand_bundle(
     let put_those_cards_phrase = [
         "put", "those", "cards", "into", "your", "hand", "then", "shuffle",
     ];
-    let sentence_word_refs = sentence_words
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
+    let sentence_word_refs = sentence_words.clone();
     let reveal_match = word_slice_find_any_phrase_span(
         &sentence_word_refs,
         &[&reveal_phrase, &reveal_them_phrase],
@@ -922,12 +895,12 @@ fn parse_kicked_search_library_slots_replacement_bundle(
         return Ok(None);
     }
 
-    let first_words = parser_words(sentences[0]);
-    let second_words = parser_words(sentences[1]);
-    let third_words = parser_words(sentences[2]);
-    let first_word_refs = parser_word_refs(&first_words);
-    let second_word_refs = parser_word_refs(&second_words);
-    let third_word_refs = parser_word_refs(&third_words);
+    let first_words = parser_token_word_refs(sentences[0]);
+    let second_words = parser_token_word_refs(sentences[1]);
+    let third_words = parser_token_word_refs(sentences[2]);
+    let first_word_refs = first_words.clone();
+    let second_word_refs = second_words.clone();
+    let third_word_refs = third_words.clone();
     if !word_slice_eq(
         &first_word_refs,
         &[
@@ -1025,12 +998,12 @@ fn parse_kicked_multi_zone_search_to_battlefield_replacement_bundle(
         return None;
     }
 
-    let first_words = parser_words(sentences[0]);
-    let second_words = parser_words(sentences[1]);
-    let third_words = parser_words(sentences[2]);
-    let first_word_refs = parser_word_refs(&first_words);
-    let second_word_refs = parser_word_refs(&second_words);
-    let third_word_refs = parser_word_refs(&third_words);
+    let first_words = parser_token_word_refs(sentences[0]);
+    let second_words = parser_token_word_refs(sentences[1]);
+    let third_words = parser_token_word_refs(sentences[2]);
+    let first_word_refs = first_words.clone();
+    let second_word_refs = second_words.clone();
+    let third_word_refs = third_words.clone();
 
     if !word_slice_eq(
         &first_word_refs,
@@ -1105,15 +1078,15 @@ fn parse_soul_partition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst
         return None;
     }
 
-    let first_words = parser_words(sentences[0]);
-    let second_words = parser_words(sentences[1]);
-    let third_words = parser_words(sentences[2]);
-    let first_word_refs = parser_word_refs(&first_words);
-    let second_word_refs = parser_word_refs(&second_words);
-    let third_word_refs = parser_word_refs(&third_words);
+    let first_words = parser_token_word_refs(sentences[0]);
+    let second_words = parser_token_word_refs(sentences[1]);
+    let third_words = parser_token_word_refs(sentences[2]);
+    let first_word_refs = first_words.clone();
+    let second_word_refs = second_words.clone();
+    let third_word_refs = third_words.clone();
     let mana_word = third_words
         .iter()
-        .find(|word| *word == "2" || *word == "{2}");
+        .find(|word| **word == "2" || **word == "{2}");
 
     if !word_slice_eq(
         &first_word_refs,
@@ -1176,8 +1149,8 @@ fn parse_soul_partition_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst
 }
 
 fn parse_empty_laboratory_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
-    let sentence_words = parser_words(tokens);
-    let sentence_word_refs = parser_word_refs(&sentence_words);
+    let sentence_words = parser_token_word_refs(tokens);
+    let sentence_word_refs = sentence_words.clone();
     if !word_slice_eq(
         &sentence_word_refs,
         &[
@@ -1283,8 +1256,8 @@ fn parse_empty_laboratory_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectA
 }
 
 fn parse_shape_anew_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
-    let sentence_words = parser_words(tokens);
-    let sentence_word_refs = parser_word_refs(&sentence_words);
+    let sentence_words = parser_token_word_refs(tokens);
+    let sentence_word_refs = sentence_words.clone();
     if !word_slice_eq(
         &sentence_word_refs,
         &[
@@ -1386,11 +1359,8 @@ fn parse_reveal_until_land_put_all_graveyard_bundle(
         DefendingPlayer,
     }
 
-    let sentence_words = parser_words(tokens);
-    let sentence_word_refs = sentence_words
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
+    let sentence_words = parser_token_word_refs(tokens);
+    let sentence_word_refs = sentence_words.clone();
     let (revealing_player, tail) = word_slice_strip_prefix_value(
         &sentence_word_refs,
         &[
@@ -1533,11 +1503,8 @@ fn parse_consult_then_put_matches_battlefield_rest_bottom_bundle(
 }
 
 fn parse_tap_lands_then_empty_mana_pool_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
-    let sentence_words = parser_words(tokens);
-    let sentence_word_refs = sentence_words
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
+    let sentence_words = parser_token_word_refs(tokens);
+    let sentence_word_refs = sentence_words.clone();
     if !word_slice_eq(
         &sentence_word_refs,
         &[
@@ -1563,8 +1530,8 @@ fn parse_tap_lands_then_empty_mana_pool_bundle(tokens: &[OwnedLexToken]) -> Opti
 }
 
 fn parse_collision_of_realms_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
-    let sentence_words = parser_words(tokens);
-    let sentence_word_refs = parser_word_refs(&sentence_words);
+    let sentence_words = parser_token_word_refs(tokens);
+    let sentence_word_refs = sentence_words.clone();
     if !word_slice_eq(
         &sentence_word_refs,
         &[
@@ -1709,8 +1676,8 @@ fn parse_collision_of_realms_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<Effe
 }
 
 fn parse_nissas_encouragement_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
-    let sentence_words = parser_words(tokens);
-    let sentence_word_refs = parser_word_refs(&sentence_words);
+    let sentence_words = parser_token_word_refs(tokens);
+    let sentence_word_refs = sentence_words.clone();
     if !word_slice_eq(
         &sentence_word_refs,
         &[
@@ -1882,7 +1849,7 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
     if sentences.len() == 3
         && {
             let first_words = crate::runtime_backend::token_word_refs(sentences[0]);
-            let choice_words = if first_words.first().copied() == Some("you") {
+            let choice_words = if word_slice_first_is(&first_words, "you") {
                 &first_words[1..]
             } else {
                 &first_words[..]
@@ -1899,7 +1866,7 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
             )
     {
         let first_words = crate::runtime_backend::token_word_refs(sentences[0]);
-        let choice_words = if first_words.first().copied() == Some("you") {
+        let choice_words = if word_slice_first_is(&first_words, "you") {
             &first_words[1..]
         } else {
             &first_words[..]

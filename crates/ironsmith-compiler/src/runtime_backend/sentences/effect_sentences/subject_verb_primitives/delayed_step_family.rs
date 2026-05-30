@@ -413,14 +413,14 @@ pub(crate) fn try_build_unless(
     let action_word_storage = action_clause.words();
     let action_words = action_word_storage.to_word_refs();
 
-    if action_words.first() == Some(&"pay") || action_words.first() == Some(&"pays") {
+    if word_slice_first_is_any(&action_words, &["pay", "pays"]) {
         if action_clause.contains_phrase(&["mana", "cost"]) {
             return Err(CardTextError::ParseError(format!(
                 "unsupported unless-payment mana-cost clause (clause: '{}')",
                 clause.text()
             )));
         }
-    } else if matches!(action_words.first(), Some(&"draw" | &"draws")) {
+    } else if word_slice_first_is_any(&action_words, &["draw", "draws"]) {
         return Err(CardTextError::ParseError(format!(
             "unsupported non-cost unless action (clause: '{}')",
             clause.text()
@@ -539,7 +539,7 @@ pub(crate) fn try_build_unless(
         }
     }
 
-    if matches!(action_words.first().copied(), Some("discard" | "discards"))
+    if word_slice_first_is_any(&action_words, &["discard", "discards"])
         && let Ok(mut alternative) =
             super::super::zone_handlers::parse_discard(action_clause.tokens(), None)
                 .map(|effect| vec![effect])
@@ -775,26 +775,21 @@ pub(crate) fn parse_sentence_implicit_become_clause(
             )
         };
     let mut rest_words = duration_remainder_clause.as_clause().trimmed_word_refs();
-    if rest_words.first().copied() == Some("still") {
+    if word_slice_first_is(&rest_words, "still") {
         rest_words.remove(0);
     }
     if rest_words.is_empty() {
         return Ok(None);
     }
 
-    let negated = if word_slice_starts_with(&rest_words, &["is", "not"])
-        || word_slice_starts_with(&rest_words, &["are", "not"])
-    {
+    let negated = if word_slice_starts_with_any(&rest_words, &[&["is", "not"], &["are", "not"]]) {
         rest_words.drain(..2);
         true
-    } else if matches!(
-        rest_words.first().copied(),
-        Some("isnt" | "isn't" | "arent" | "aren't")
-    ) {
+    } else if word_slice_first_is_any(&rest_words, &["isnt", "isn't", "arent", "aren't"]) {
         rest_words.remove(0);
         true
     } else {
-        if matches!(rest_words.first().copied(), Some("is" | "are" | "s" | "’s")) {
+        if word_slice_first_is_any(&rest_words, &["is", "are", "s", "’s"]) {
             rest_words.remove(0);
         }
         false
@@ -1047,17 +1042,11 @@ pub(crate) fn parse_sentence_lose_draw_clash_repeat_process(
         &words[..]
     };
     if body_words.len() != 13
-        || words[0] != "you"
-        || words[1] != "lose"
-        || words[3] != "life"
-        || words[4] != "and"
-        || words[5] != "draw"
-        || !matches!(words[7], "card" | "cards")
-        || body_words[8] != "then"
-        || body_words[9] != "clash"
-        || body_words[10] != "with"
-        || body_words[11] != "an"
-        || body_words[12] != "opponent"
+        || !word_slice_starts_with(body_words, &["you", "lose"])
+        || !word_slice_at_is(body_words, 3, "life")
+        || !word_slice_starts_with_at(body_words, 4, &["and", "draw"])
+        || !word_slice_at_is_any(body_words, 7, &["card", "cards"])
+        || !word_slice_starts_with_at(body_words, 8, &["then", "clash", "with", "an", "opponent"])
     {
         return Ok(None);
     }

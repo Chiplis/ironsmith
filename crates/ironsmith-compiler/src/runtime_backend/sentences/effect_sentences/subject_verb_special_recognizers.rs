@@ -1,8 +1,9 @@
 use super::super::grammar::primitives as grammar;
 use super::super::keyword_static::parse_pt_modifier_values;
 use super::super::lexer::{
-    LexedClause, OwnedLexToken, word_slice_eq, word_slice_find_phrase_start,
-    word_slice_matching_phrase, word_slice_starts_with,
+    LexedClause, OwnedLexToken, word_slice_at_is, word_slice_eq, word_slice_find_phrase_start,
+    word_slice_find_word, word_slice_first_is, word_slice_matching_phrase, word_slice_starts_with,
+    word_slice_starts_with_at,
 };
 use super::super::object_filters::parse_object_filter_lexed;
 use super::super::rule_engine::{LexClauseView, LexRuleDef, LexRuleIndex, RULE_SHAPE_STARTS_IF};
@@ -54,7 +55,7 @@ fn parse_keyword_bundle_pump_clause(
         return Ok(None);
     };
     let ability_start = start + 4;
-    if words.get(start + 1..ability_start) != Some(&["if", "it", "has"][..]) {
+    if !word_slice_starts_with_at(words, start + 1, &["if", "it", "has"]) {
         return Ok(None);
     }
     let Some((ability_id, consumed)) = parse_keyword_bundle_static_ability(&words[ability_start..])
@@ -139,7 +140,7 @@ pub(crate) fn parse_keyword_bundle_pump_sentence(
         cursor = next_cursor;
     }
 
-    if words.get(cursor..cursor + 4) != Some(&["and", "so", "on", "for"][..]) {
+    if !word_slice_starts_with_at(&words, cursor, &["and", "so", "on", "for"]) {
         return Ok(None);
     }
     cursor += 4;
@@ -260,8 +261,8 @@ pub(crate) fn parse_scaled_target_power_sentence(
     };
 
     if verb == "double"
-        && let Some(life_total_idx) = words.iter().position(|word| *word == "life")
-        && words.get(life_total_idx + 1) == Some(&"total")
+        && let Some(life_total_idx) = word_slice_find_word(&words, "life")
+        && word_slice_at_is(&words, life_total_idx + 1, "total")
         && let Some((player, player_filter)) =
             parse_double_life_total_subject(&words[1..life_total_idx])
         && life_total_idx + 2 == words.len()
@@ -276,7 +277,7 @@ pub(crate) fn parse_scaled_target_power_sentence(
         "double", "the", "amount", "of", "each", "type", "of", "unspent", "mana",
     ];
     if verb == "double"
-        && words.starts_with(&mana_prefix)
+        && word_slice_starts_with(&words, &mana_prefix)
         && let Some(player) = parse_double_mana_pool_subject(&words[mana_prefix.len()..])
     {
         return Ok(Some(vec![EffectAst::subject_verb_double_mana_pool(player)]));
@@ -312,7 +313,7 @@ pub(crate) fn parse_scaled_target_power_sentence(
         };
     let subject_end = duration_start;
 
-    if words.first().copied() == Some(verb) && words.get(1).copied() == Some("the") {
+    if word_slice_first_is(&words, verb) && word_slice_at_is(&words, 1, "the") {
         let (include_power, include_toughness, subject_start) = match words.get(2..) {
             Some(["power", "of", ..]) => (true, false, 4),
             Some(["toughness", "of", ..]) => (false, true, 4),

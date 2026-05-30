@@ -2,7 +2,7 @@ use super::super::grammar::abilities as ability_grammar;
 use super::super::grammar::filters::spell_filters::parse_spell_filter_with_grammar_entrypoint;
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::keyword_static::parse_cost_modifier_mana_cost;
-use super::super::lexer::OwnedLexToken;
+use super::super::lexer::{OwnedLexToken, word_slice_eq, word_slice_starts_with};
 use super::super::token_primitives::find_index;
 use super::{joined_activation_clause_text, merge_mana_activation_conditions};
 use crate::ability::ActivationTiming;
@@ -233,15 +233,23 @@ pub(crate) fn normalize_activate_only_restriction(
     if words.is_empty() {
         return None;
     }
-    if words == ["activate", "only", "once", "each", "turn"] {
+    let word_refs = words.iter().map(String::as_str).collect::<Vec<_>>();
+    if word_slice_eq(&word_refs, &["activate", "only", "once", "each", "turn"]) {
         return None;
     }
-    if words.len() >= 6 && words[0..6] == ["activate", "only", "once", "each", "turn", "and"] {
+    if word_slice_starts_with(
+        &word_refs,
+        &["activate", "only", "once", "each", "turn", "and"],
+    ) {
         words.drain(0..6);
     }
     let mut index = 0usize;
     while index + 5 <= words.len() {
-        if words[index..index + 5] == ["and", "only", "once", "each", "turn"] {
+        let tail_refs = words[index..]
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        if word_slice_starts_with(&tail_refs, &["and", "only", "once", "each", "turn"]) {
             words.drain(index..index + 5);
         } else {
             index += 1;

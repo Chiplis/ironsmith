@@ -4,9 +4,11 @@ use super::activation_helpers::{
     contains_discard_source_phrase, contains_from_command_zone_phrase,
     contains_source_from_your_graveyard_phrase, contains_source_from_your_hand_phrase,
     find_activation_cost_start, is_article, is_basic_color_word, is_comparison_or_delimiter,
-    is_source_from_your_graveyard_words, join_sentences_with_period, parse_add_mana,
-    parse_filter_comparison_tokens, parse_next_end_step_token_delay_flags, parse_subtype_flexible,
-    split_cost_segments, value_contains_unbound_x,
+    is_source_from_your_graveyard_words, join_sentences_with_period, non_article_token_word_refs,
+    non_article_word_refs, parse_add_mana, parse_filter_comparison_tokens,
+    parse_next_end_step_token_delay_flags, parse_subtype_flexible, split_cost_segments,
+    strip_leading_article_tokens, trim_edge_punctuation_tokens, value_contains_unbound_x,
+    word_refs_at_is_article, word_refs_except,
 };
 use super::effect_ast_traversal::{for_each_nested_effects, for_each_nested_effects_mut};
 use super::effect_sentences::find_verb;
@@ -25,14 +27,22 @@ use super::keyword_static::{
 };
 use super::leaf::{lower_activation_cost_cst, parse_activation_cost_tokens_rewrite};
 use super::lexer::{
-    OwnedLexToken, TokenKind, word_slice_contains_any_phrase, word_slice_contains_phrase,
-    word_slice_contains_word, word_slice_ends_with, word_slice_starts_with,
+    OwnedLexToken, TokenKind, contains_token_kind, token_slice_at_is, token_slice_at_is_any,
+    token_slice_first_is, token_slice_first_is_any, token_slice_first_kind,
+    token_slice_starts_with, token_slice_starts_with_at, word_slice_at_is, word_slice_at_is_any,
+    word_slice_contains_all_words, word_slice_contains_any_phrase,
+    word_slice_contains_any_phrase_or_empty, word_slice_contains_any_word,
+    word_slice_contains_phrase, word_slice_contains_phrase_or_empty, word_slice_contains_word,
+    word_slice_ends_with, word_slice_ends_with_any, word_slice_eq, word_slice_eq_any,
+    word_slice_find_phrase_start_or_zero, word_slice_first_is, word_slice_first_is_any,
+    word_slice_last_is, word_slice_starts_with, word_slice_starts_with_any,
+    word_slice_starts_with_at,
 };
 use super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::token_primitives::{
-    contains_window, find_index, find_window_by, find_window_index, lexed_head_words, rfind_index,
-    slice_contains, slice_ends_with, slice_starts_with, slice_strip_prefix, slice_strip_suffix,
-    str_strip_prefix, str_strip_suffix,
+    contains_window, find_index, find_index_with, find_window_by, find_window_index,
+    lexed_head_words, rfind_index, slice_contains, slice_ends_with, slice_starts_with,
+    slice_strip_prefix, slice_strip_suffix, str_strip_prefix, str_strip_suffix,
 };
 use super::util::{
     current_source_reference_name, is_source_reference_words, mana_pips_from_token,
@@ -72,14 +82,13 @@ pub(crate) mod trigger_subject_filters;
 
 use activated_line_core::*;
 pub(crate) use activated_line_core::{
-    color_from_color_set, combine_mana_activation_condition, contains_word_sequence,
-    find_word_sequence_start, infer_activated_functional_zones_lexed,
-    is_activate_only_restriction_sentence, is_activate_only_restriction_sentence_lexed,
-    is_any_player_may_activate_sentence_lexed, is_trigger_only_restriction_sentence,
-    is_trigger_only_restriction_sentence_lexed, parse_activate_only_timing_lexed,
-    parse_activated_line, parse_activation_condition_lexed, parse_activation_cost,
-    parse_all_creatures_able_to_block_source_line, parse_cost_reduction_line,
-    parse_devotion_value_from_add_clause, parse_enters_tapped_line,
+    color_from_color_set, combine_mana_activation_condition,
+    infer_activated_functional_zones_lexed, is_activate_only_restriction_sentence,
+    is_activate_only_restriction_sentence_lexed, is_any_player_may_activate_sentence_lexed,
+    is_trigger_only_restriction_sentence, is_trigger_only_restriction_sentence_lexed,
+    parse_activate_only_timing_lexed, parse_activated_line, parse_activation_condition_lexed,
+    parse_activation_cost, parse_all_creatures_able_to_block_source_line,
+    parse_cost_reduction_line, parse_devotion_value_from_add_clause, parse_enters_tapped_line,
     parse_mana_spend_bonus_sentence_lexed, parse_mana_usage_restriction_sentence_lexed,
     parse_named_number, parse_source_must_be_blocked_if_able_line,
     parse_triggered_times_each_turn_lexed, scale_dynamic_cost_modifier_value,

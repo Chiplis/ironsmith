@@ -1,4 +1,8 @@
 use super::*;
+use crate::runtime_backend::lexer::{
+    token_slice_at_is, token_slice_first_is, token_slice_starts_with,
+    word_slice_contains_any_phrase, word_slice_find_phrase_start_or_zero, word_slice_first_is,
+};
 
 pub(crate) fn parse_add_mana(
     tokens: &[OwnedLexToken],
@@ -11,10 +15,7 @@ pub(crate) fn parse_add_mana(
     let wrap_instead_if_tail = |base_effect: EffectAst,
                                 tail_tokens: &[OwnedLexToken]|
      -> Result<Option<EffectAst>, CardTextError> {
-        if !tail_tokens
-            .first()
-            .is_some_and(|token| token.is_word("instead"))
-            || !tail_tokens.get(1).is_some_and(|token| token.is_word("if"))
+        if !token_slice_first_is(tail_tokens, "instead") || !token_slice_at_is(tail_tokens, 1, "if")
         {
             return Ok(None);
         }
@@ -84,7 +85,8 @@ pub(crate) fn parse_add_mana(
         .iter()
         .any(|token| mana_pips_from_token(token).is_some());
     if !has_explicit_symbol
-        && let Some(chosen_idx) = find_word_sequence_start(&clause_words, &["chosen", "color"])
+        && let Some(chosen_idx) =
+            word_slice_find_phrase_start_or_zero(&clause_words, &["chosen", "color"])
     {
         let prefix = &clause_words[..chosen_idx];
         let references_mana_of_chosen_color =
@@ -130,44 +132,26 @@ pub(crate) fn parse_add_mana(
         ));
     }
 
-    let any_one = find_window_by(&clause_words, 3, |window| {
-        crate::runtime_backend::lexer::word_slice_eq_any(
-            window,
-            &[&["any", "one", "color"], &["any", "one", "type"]],
-        )
-    })
-    .is_some();
-    let any_color = find_window_by(&clause_words, 2, |window| {
-        crate::runtime_backend::lexer::word_slice_eq_any(
-            window,
-            &[&["any", "color"], &["one", "color"]],
-        )
-    })
-    .is_some();
-    let any_type = find_window_by(&clause_words, 2, |window| {
-        crate::runtime_backend::lexer::word_slice_eq_any(
-            window,
-            &[&["any", "type"], &["one", "type"]],
-        )
-    })
-    .is_some();
+    let any_one = word_slice_contains_any_phrase(
+        &clause_words,
+        &[&["any", "one", "color"], &["any", "one", "type"]],
+    );
+    let any_color =
+        word_slice_contains_any_phrase(&clause_words, &[&["any", "color"], &["one", "color"]]);
+    let any_type =
+        word_slice_contains_any_phrase(&clause_words, &[&["any", "type"], &["one", "type"]]);
     if any_color || any_type {
         let mut amount = parse_value(tokens)
             .map(|(value, _)| value)
             .unwrap_or(Value::Fixed(1));
         let allow_colorless = any_type;
-        let phrase_end = tokens
-            .iter()
-            .enumerate()
-            .find_map(|(idx, token)| {
-                let word = token.as_word()?;
-                if (word == "color" && any_color) || (word == "type" && any_type) {
-                    Some(idx + 1)
-                } else {
-                    None
-                }
-            })
-            .unwrap_or(tokens.len());
+        let phrase_end = crate::slice_primitives::find_index(tokens, |token| {
+            token
+                .as_word()
+                .is_some_and(|word| (word == "color" && any_color) || (word == "type" && any_type))
+        })
+        .map(|idx| idx + 1)
+        .unwrap_or(tokens.len());
         let tail_tokens = trim_leading_commas(&tokens[phrase_end..]);
 
         if tail_tokens.is_empty() || is_mana_pool_tail_tokens(tail_tokens) {
@@ -263,7 +247,7 @@ pub(crate) fn parse_add_mana(
             ));
         }
 
-        if tail_words.first().copied() == Some("among") {
+        if word_slice_first_is(&tail_words, "among") {
             if any_type {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported any-type mana clause without producer filter (clause: '{}')",
@@ -296,7 +280,7 @@ pub(crate) fn parse_add_mana(
     }
 
     let for_each_idx = find_window_by(tokens, 2, |window: &[OwnedLexToken]| {
-        window[0].is_word("for") && window[1].is_word("each")
+        token_slice_starts_with(window, &["for", "each"])
     });
     let mana_scan_end = for_each_idx.unwrap_or(tokens.len());
 
@@ -430,9 +414,12 @@ fn parse_add_mana_colors_among_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if find_word_sequence_start(&words, &["for", "each", "color", "among"]).is_none()
-        || find_word_sequence_start(&words, &["add", "one", "mana", "of", "that", "color"])
-            .is_none()
+    if word_slice_find_phrase_start_or_zero(&words, &["for", "each", "color", "among"]).is_none()
+        || word_slice_find_phrase_start_or_zero(
+            &words,
+            &["add", "one", "mana", "of", "that", "color"],
+        )
+        .is_none()
     {
         return Ok(None);
     }
@@ -539,7 +526,7 @@ pub(crate) fn parse_any_combination_mana_colors(
     let clause_word_storage = ZoneHandlerNormalizedWords::new(tokens);
     let clause_words = clause_word_storage.to_word_refs();
     let Some(combination_idx) =
-        find_word_sequence_start(&clause_words, &["any", "combination", "of"])
+        word_slice_find_phrase_start_or_zero(&clause_words, &["any", "combination", "of"])
     else {
         return Ok(None);
     };

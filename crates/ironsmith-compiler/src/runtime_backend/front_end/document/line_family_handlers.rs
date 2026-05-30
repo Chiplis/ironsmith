@@ -1025,16 +1025,16 @@ pub(super) fn run_statement_probe_line_family(
                 | crate::runtime_backend::grammar::structure::StatementLineFamily::PactNextUpkeep
                 | crate::runtime_backend::grammar::structure::StatementLineFamily::ExilePlayCostsMore
         )
-    ) || (token_words_have_sequence(&ctx.line.tokens, &["chooses", "two", "of", "those", "cards"])
-        && token_words_have_sequence(&ctx.line.tokens, &["shuffle", "the", "chosen", "cards"])
-        && token_words_have_sequence(
+    ) || (contains_token_word_sequence(&ctx.line.tokens, &["chooses", "two", "of", "those", "cards"])
+        && contains_token_word_sequence(&ctx.line.tokens, &["shuffle", "the", "chosen", "cards"])
+        && contains_token_word_sequence(
             &ctx.line.tokens,
             &["put", "the", "rest", "onto", "the", "battlefield"],
         ))
-        || (token_words_have_sequence(
+        || (contains_token_word_sequence(
             &ctx.line.tokens,
             &["for", "as", "long", "as", "that", "card", "remains", "exiled"],
-        ) && token_words_have_sequence(&ctx.line.tokens, &["more", "to", "cast"]))
+        ) && contains_token_word_sequence(&ctx.line.tokens, &["more", "to", "cast"]))
         || looks_like_statement_line_lexed(ctx.line)
         || should_prefer_statement_before_static_for_nonpermanent_spell(
             ctx.preprocessed,

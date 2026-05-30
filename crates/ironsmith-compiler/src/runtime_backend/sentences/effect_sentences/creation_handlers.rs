@@ -15,27 +15,25 @@ use super::super::grammar::primitives as grammar;
 use super::super::grammar::structure::parse_who_player_predicate_lexed;
 use super::super::keyword_static::parse_value_binding_clause;
 use super::super::lexer::{
-    render_token_slice, token_word_refs, word_slice_contains_phrase, word_slice_contains_word,
-    word_slice_eq_any, word_slice_find_phrase_start, word_slice_find_word_where,
-    word_slice_rfind_word_where, word_slice_starts_with,
+    LexedClause, render_token_slice, token_slice_at_is, token_slice_first_is, token_word_refs,
+    word_slice_contains_any_phrase, word_slice_contains_phrase, word_slice_contains_word,
+    word_slice_eq_any, word_slice_find_any_phrase_start, word_slice_find_phrase_start,
+    word_slice_find_word, word_slice_find_word_where, word_slice_first_is, word_slice_first_is_any,
+    word_slice_rfind_word_where, word_slice_starts_with, word_slice_starts_with_any,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{
     find_index as find_token_index, str_split_once_char, str_starts_with_char,
 };
 use super::super::util::{
-    is_article, parse_card_type, parse_color, parse_number, parse_target_phrase, parse_value,
-    token_index_for_word_index, trim_commas, value_contains_unbound_x,
+    is_article, parse_card_type, parse_color, parse_number, parse_subtype_flexible,
+    parse_target_phrase, parse_value, token_index_for_word_index, trim_commas,
+    value_contains_unbound_x,
 };
 use super::clause_pattern_helpers::extract_subject_player;
 use super::conditionals::parse_subtype_word;
 use super::dispatch_entry::target_references_it;
 use super::lex_chain_helpers::starts_with_inline_token_rules_tail;
-
-fn trim_plural_s(word: &str) -> Option<&str> {
-    let bytes = word.as_bytes();
-    (bytes.len() > 1 && bytes[bytes.len() - 1] == b's').then(|| &word[..word.len() - 1])
-}
 
 fn push_unique_card_type(card_types: &mut Vec<CardType>, card_type: CardType) {
     crate::slice_primitives::push_unique(card_types, card_type);
@@ -50,8 +48,10 @@ fn reject_lossy_for_each_fallback(
     full_clause_words: &[&str],
 ) -> Result<(), CardTextError> {
     let words = token_word_refs(tokens);
-    let has_card_type_among = word_slice_contains_phrase(&words, &["card", "type", "among"])
-        || word_slice_contains_phrase(&words, &["card", "types", "among"]);
+    let has_card_type_among = word_slice_contains_any_phrase(
+        &words,
+        &[&["card", "type", "among"], &["card", "types", "among"]],
+    );
     if has_card_type_among {
         return Err(CardTextError::ParseError(format!(
             "unsupported card-types-among create count (clause: '{}')",
@@ -166,10 +166,14 @@ pub(crate) fn parse_copy_modifiers_from_tail(
         ));
     }
 
-    if word_slice_contains_phrase(modifier_words, &["isnt", "legendary"])
-        || word_slice_contains_phrase(modifier_words, &["isn't", "legendary"])
-        || word_slice_contains_phrase(modifier_words, &["is", "not", "legendary"])
-    {
+    if word_slice_contains_any_phrase(
+        modifier_words,
+        &[
+            &["isnt", "legendary"],
+            &["isn't", "legendary"],
+            &["is", "not", "legendary"],
+        ],
+    ) {
         removed_supertypes.push(Supertype::Legendary);
     }
 
@@ -212,8 +216,7 @@ pub(crate) fn parse_copy_modifiers_from_tail(
             tail = &tail[1..];
         }
         if let Some(subtype_word) = tail.first().copied() {
-            let subtype = parse_subtype_word(subtype_word)
-                .or_else(|| trim_plural_s(subtype_word).and_then(parse_subtype_word));
+            let subtype = parse_subtype_flexible(subtype_word);
             let you_control = word_slice_contains_phrase(tail, &["you", "control"]);
             if let Some(subtype) = subtype
                 && you_control
@@ -248,23 +251,26 @@ pub(crate) fn parse_copy_modifiers_from_tail(
             if let Some(card_type) = parse_card_type(word) {
                 push_unique_card_type(&mut added_card_types, card_type);
             }
-            if let Some(subtype) = parse_subtype_word(word)
-                .or_else(|| trim_plural_s(word).and_then(parse_subtype_word))
-            {
+            if let Some(subtype) = parse_subtype_flexible(word) {
                 push_unique_subtype(&mut added_subtypes, subtype);
             }
         }
     } else {
-        let starts_with_identity_clause = word_slice_starts_with(modifier_words, &["its"])
-            || word_slice_starts_with(modifier_words, &["it", "is"])
-            || word_slice_starts_with(modifier_words, &["it", "s"])
-            || word_slice_starts_with(modifier_words, &["it's"])
-            || word_slice_starts_with(modifier_words, &["it’s"])
-            || word_slice_starts_with(modifier_words, &["theyre"])
-            || word_slice_starts_with(modifier_words, &["they", "re"])
-            || word_slice_starts_with(modifier_words, &["they're"])
-            || word_slice_starts_with(modifier_words, &["they’re"])
-            || word_slice_starts_with(modifier_words, &["they", "are"]);
+        let starts_with_identity_clause = word_slice_starts_with_any(
+            modifier_words,
+            &[
+                &["its"],
+                &["it", "is"],
+                &["it", "s"],
+                &["it's"],
+                &["it’s"],
+                &["theyre"],
+                &["they", "re"],
+                &["they're"],
+                &["they’re"],
+                &["they", "are"],
+            ],
+        );
         if starts_with_identity_clause {
             let descriptor_end = word_slice_find_word_where(modifier_words, |word| {
                 matches!(word, "with" | "has" | "have" | "gain" | "gains")
@@ -301,9 +307,7 @@ pub(crate) fn parse_copy_modifiers_from_tail(
                 if let Some(card_type) = parse_card_type(word) {
                     push_unique_card_type(&mut card_types, card_type);
                 }
-                if let Some(subtype) = parse_subtype_word(word)
-                    .or_else(|| trim_plural_s(word).and_then(parse_subtype_word))
-                {
+                if let Some(subtype) = parse_subtype_flexible(word) {
                     push_unique_subtype(&mut subtypes, subtype);
                 }
             }
@@ -332,13 +336,15 @@ pub(crate) fn parse_copy_modifiers_from_tail(
 }
 
 pub(crate) fn parse_next_end_step_token_delay_flags(tail_words: &[&str]) -> (bool, bool) {
-    let has_beginning_of_end_step =
-        word_slice_contains_phrase(
-            tail_words,
+    let has_beginning_of_end_step = word_slice_contains_any_phrase(
+        tail_words,
+        &[
             &["beginning", "of", "the", "next", "end", "step"],
-        ) || word_slice_contains_phrase(tail_words, &["beginning", "of", "next", "end", "step"])
-            || word_slice_contains_phrase(tail_words, &["beginning", "of", "the", "end", "step"])
-            || word_slice_contains_phrase(tail_words, &["beginning", "of", "end", "step"]);
+            &["beginning", "of", "next", "end", "step"],
+            &["beginning", "of", "the", "end", "step"],
+            &["beginning", "of", "end", "step"],
+        ],
+    );
     if !has_beginning_of_end_step {
         return (false, false);
     }
@@ -461,8 +467,10 @@ pub(crate) fn split_copy_source_inline_combat_modifiers(
 ) -> (Vec<OwnedLexToken>, bool, bool, Option<PlayerAst>) {
     let source_words = token_word_refs(source_tokens);
     let modifier_start_word_idx = word_slice_find_word_where(&source_words, |word| word == "thats")
-        .or_else(|| word_slice_find_phrase_start(&source_words, &["that", "is"]))
-        .or_else(|| word_slice_find_phrase_start(&source_words, &["that", "are"]));
+        .or_else(|| {
+            word_slice_find_any_phrase_start(&source_words, &[&["that", "is"], &["that", "are"]])
+                .map(|(_, idx)| idx)
+        });
 
     let Some(modifier_start_word_idx) = modifier_start_word_idx else {
         return (source_tokens.to_vec(), false, false, None);
@@ -475,49 +483,41 @@ pub(crate) fn split_copy_source_inline_combat_modifiers(
         return (source_tokens.to_vec(), false, false, None);
     }
 
-    let attack_target_player_or_planeswalker_controlled_by = (word_slice_contains_phrase(
+    let attack_target_player_or_planeswalker_controlled_by = word_slice_contains_any_phrase(
         modifier_words,
         &[
-            "that",
-            "player",
-            "or",
-            "a",
-            "planeswalker",
-            "they",
-            "control",
+            &[
+                "that",
+                "player",
+                "or",
+                "a",
+                "planeswalker",
+                "they",
+                "control",
+            ],
+            &["that", "player", "or", "planeswalker", "they", "control"],
+            &[
+                "that",
+                "player",
+                "or",
+                "a",
+                "planeswalker",
+                "they",
+                "controls",
+            ],
+            &["that", "player", "or", "planeswalker", "they", "controls"],
+            &[
+                "that",
+                "player",
+                "or",
+                "a",
+                "planeswalker",
+                "their",
+                "control",
+            ],
+            &["that", "player", "or", "planeswalker", "their", "control"],
         ],
-    ) || word_slice_contains_phrase(
-        modifier_words,
-        &["that", "player", "or", "planeswalker", "they", "control"],
-    ) || word_slice_contains_phrase(
-        modifier_words,
-        &[
-            "that",
-            "player",
-            "or",
-            "a",
-            "planeswalker",
-            "they",
-            "controls",
-        ],
-    ) || word_slice_contains_phrase(
-        modifier_words,
-        &["that", "player", "or", "planeswalker", "they", "controls"],
-    ) || word_slice_contains_phrase(
-        modifier_words,
-        &[
-            "that",
-            "player",
-            "or",
-            "a",
-            "planeswalker",
-            "their",
-            "control",
-        ],
-    ) || word_slice_contains_phrase(
-        modifier_words,
-        &["that", "player", "or", "planeswalker", "their", "control"],
-    ))
+    )
     .then_some(PlayerAst::That);
 
     let Some(modifier_start_token_idx) =
@@ -576,9 +576,7 @@ pub(crate) fn parse_create(
     let mut idx = 0;
     let mut count_value = Value::Fixed(1);
     let mut needs_equal_to_dynamic_count = false;
-    if tokens.first().is_some_and(|token| token.is_word("that"))
-        && tokens.get(1).is_some_and(|token| token.is_word("many"))
-    {
+    if token_slice_first_is(tokens, "that") && token_slice_at_is(tokens, 1, "many") {
         count_value = Value::EventValue(EventValueSpec::Amount);
         idx = 2;
     } else if grammar::words_match_any_prefix(
@@ -589,7 +587,7 @@ pub(crate) fn parse_create(
     {
         needs_equal_to_dynamic_count = true;
         idx = 3;
-    } else if tokens.first().is_some_and(|token| token.is_word("x")) {
+    } else if token_slice_first_is(tokens, "x") {
         count_value = Value::X;
         idx = 1;
     } else if let Some((parsed_count, used)) = parse_number(tokens) {
@@ -609,11 +607,8 @@ pub(crate) fn parse_create(
         word_slice_find_word_where(&remaining_words, |word| matches!(word, "token" | "tokens"))
             .ok_or_else(|| CardTextError::ParseError("create clause missing token".to_string()))?;
 
-    let mut name_words: Vec<&str> = remaining_words[..token_idx]
-        .iter()
-        .copied()
-        .filter(|word| !is_article(word))
-        .collect();
+    let mut name_words =
+        crate::runtime_backend::util::non_article_word_refs(&remaining_words[..token_idx]);
     let mut tail_tokens = tokens[idx + token_idx + 1..].to_vec();
     if needs_equal_to_dynamic_count {
         let Some((dynamic_count, equal_token_idx)) =
@@ -643,7 +638,7 @@ pub(crate) fn parse_create(
         word_slice_find_phrase_start(&pre_attach_tail_words, &["for", "each"]);
     if let Some(attached_word_idx) =
         word_slice_find_word_where(&pre_attach_tail_words, |word| word == "attached")
-        && pre_attach_tail_words.get(attached_word_idx + 1) == Some(&"to")
+        && word_slice_starts_with(&pre_attach_tail_words[attached_word_idx + 1..], &["to"])
         && (pre_attach_for_each_idx.is_none()
             || pre_attach_for_each_idx.is_some_and(|for_each_idx| attached_word_idx < for_each_idx))
         && let Some(attached_token_idx) =
@@ -674,16 +669,20 @@ pub(crate) fn parse_create(
     let raw_for_each_idx = word_slice_find_phrase_start(&tail_words, &["for", "each"]);
     let for_each_idx = raw_for_each_idx.filter(|idx| {
         let prefix_words = &tail_words[..*idx];
-        let looks_like_token_rules_text = word_slice_contains_phrase(prefix_words, &["it", "has"])
-            || word_slice_contains_phrase(prefix_words, &["it", "gains"])
-            || word_slice_contains_phrase(prefix_words, &["it", "gets"])
-            || word_slice_contains_phrase(prefix_words, &["this", "token"])
-            || word_slice_contains_phrase(prefix_words, &["that", "token"])
-            || (word_slice_contains_word(prefix_words, "token")
-                && (word_slice_contains_word(prefix_words, "has")
-                    || word_slice_contains_word(prefix_words, "have")
-                    || word_slice_contains_word(prefix_words, "gets")
-                    || word_slice_contains_word(prefix_words, "gains")));
+        let looks_like_token_rules_text = word_slice_contains_any_phrase(
+            prefix_words,
+            &[
+                &["it", "has"],
+                &["it", "gains"],
+                &["it", "gets"],
+                &["this", "token"],
+                &["that", "token"],
+            ],
+        ) || (word_slice_contains_word(prefix_words, "token")
+            && (word_slice_contains_word(prefix_words, "has")
+                || word_slice_contains_word(prefix_words, "have")
+                || word_slice_contains_word(prefix_words, "gets")
+                || word_slice_contains_word(prefix_words, "gains")));
         if looks_like_token_rules_text {
             return false;
         }
@@ -957,9 +956,13 @@ pub(crate) fn parse_create(
         let with_tail_end = for_each_idx.unwrap_or(tail_words.len());
         if with_idx + 1 < with_tail_end {
             let with_words = &tail_words[with_idx + 1..with_tail_end];
-            let has_equipment_rules_subject =
-                word_slice_contains_phrase(with_words, &["equipped", "creature", "has"])
-                    || word_slice_contains_phrase(with_words, &["equipped", "creature", "gets"]);
+            let has_equipment_rules_subject = word_slice_contains_any_phrase(
+                with_words,
+                &[
+                    &["equipped", "creature", "has"],
+                    &["equipped", "creature", "gets"],
+                ],
+            );
             let rules_text_start = word_slice_find_word_where(with_words, |word| {
                 matches!(
                     word,
@@ -1067,13 +1070,14 @@ pub(crate) fn parse_create(
     }
     let name = raw_name_override.unwrap_or_else(|| normalize_token_name(&name_words));
 
-    let grants_unblockable =
-        word_slice_contains_phrase(&tail_words, &["this", "token", "cant", "be", "blocked"])
-            || word_slice_contains_phrase(
-                &tail_words,
-                &["this", "creature", "cant", "be", "blocked"],
-            )
-            || word_slice_contains_phrase(&tail_words, &["cant", "be", "blocked"]);
+    let grants_unblockable = word_slice_contains_any_phrase(
+        &tail_words,
+        &[
+            &["this", "token", "cant", "be", "blocked"],
+            &["this", "creature", "cant", "be", "blocked"],
+            &["cant", "be", "blocked"],
+        ],
+    );
 
     if let Some((start, end)) = rules_text_range {
         if start < end && end <= modifier_tail_words.len() {
@@ -1085,7 +1089,7 @@ pub(crate) fn parse_create(
         }
     }
 
-    if let Some(where_word_idx) = tail_words.iter().position(|word| *word == "where")
+    if let Some(where_word_idx) = word_slice_find_word(&tail_words, "where")
         && let Some(where_token_idx) = token_index_for_word_index(&tail_tokens, where_word_idx)
     {
         let where_value =
@@ -1324,8 +1328,7 @@ pub(crate) fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> O
     if grammar::words_match_prefix(tokens, &["card", "type", "among"]).is_some()
         || grammar::words_match_prefix(tokens, &["card", "types", "among"]).is_some()
     {
-        let after_among_token_idx = token_index_for_word_index(tokens, 3)?;
-        let scope_tokens = trim_commas(&tokens[after_among_token_idx..]);
+        let scope_tokens = trim_commas(LexedClause::new(tokens).from_word(3)?.tokens());
         if let Ok(filter) = parse_object_filter(&scope_tokens, false) {
             return Some(
                 Value::CardTypesAmong(filter).with_surface_hint(ValueSurfaceHint::ForEach),
@@ -1342,8 +1345,13 @@ pub(crate) fn normalize_token_name(words: &[&str]) -> String {
 fn parse_investigate_for_each_count(tokens: &[OwnedLexToken]) -> Result<Value, CardTextError> {
     let words = token_word_refs(tokens);
     if let Some(exiled_idx) = word_slice_find_phrase_start(&words, &["exiled", "this", "way"]) {
-        let filter_end = token_index_for_word_index(tokens, exiled_idx).unwrap_or(tokens.len());
-        let filter_tokens = trim_commas(&tokens[..filter_end]);
+        let clause = LexedClause::new(tokens);
+        let filter_tokens = trim_commas(
+            clause
+                .before_word(exiled_idx)
+                .unwrap_or_else(|| clause.before(tokens.len()))
+                .tokens(),
+        );
         let mut filter = if filter_tokens.is_empty() {
             ObjectFilter::default()
         } else {
@@ -1383,9 +1391,7 @@ pub(crate) fn parse_investigate(
         return Ok(EffectAst::subject_verb_investigate(player, Value::Fixed(1)));
     }
 
-    if tokens.first().is_some_and(|token| token.is_word("for"))
-        && tokens.get(1).is_some_and(|token| token.is_word("each"))
-    {
+    if token_slice_first_is(tokens, "for") && token_slice_at_is(tokens, 1, "each") {
         let filter_tokens = &tokens[2..];
         if filter_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
@@ -1420,10 +1426,8 @@ pub(crate) fn parse_investigate(
     let trailing = trim_commas(&tokens[used..]);
     let trailing_words = token_word_refs(&trailing);
     if matches!(count, Value::X)
-        && trailing_words
-            .first()
-            .is_some_and(|word| *word == "time" || *word == "times")
-        && let Some(where_idx) = trailing_words.iter().position(|word| *word == "where")
+        && word_slice_first_is_any(&trailing_words, &["time", "times"])
+        && let Some(where_idx) = word_slice_find_word(&trailing_words, "where")
     {
         let where_token_idx = token_index_for_word_index(&trailing, where_idx).unwrap_or(0);
         if let Some(where_count) = parse_value_binding_clause(&trailing[where_token_idx..]) {
@@ -1458,34 +1462,28 @@ pub(crate) fn parse_incubate(
 
     let mut trailing = trim_commas(&tokens[used..]).to_vec();
     let mut trailing_words = token_word_refs(&trailing);
-    if trailing_words.first().is_some_and(|word| *word == "once") {
+    if word_slice_first_is(&trailing_words, "once") {
         count = Value::Fixed(1);
         trailing = trim_commas(&trailing[1..]).to_vec();
         trailing_words = token_word_refs(&trailing);
-    } else if trailing_words.first().is_some_and(|word| *word == "twice") {
+    } else if word_slice_first_is(&trailing_words, "twice") {
         count = Value::Fixed(2);
         trailing = trim_commas(&trailing[1..]).to_vec();
         trailing_words = token_word_refs(&trailing);
     } else if let Some((parsed_count, count_used)) = parse_value(&trailing) {
         let count_tail = trim_commas(&trailing[count_used..]).to_vec();
         let count_tail_words = token_word_refs(&count_tail);
-        if count_tail_words
-            .first()
-            .is_some_and(|word| *word == "time" || *word == "times")
-        {
+        if word_slice_first_is_any(&count_tail_words, &["time", "times"]) {
             count = parsed_count;
             trailing = trim_commas(&count_tail[1..]).to_vec();
             trailing_words = token_word_refs(&trailing);
         }
-    } else if trailing_words
-        .first()
-        .is_some_and(|word| *word == "time" || *word == "times")
-    {
+    } else if word_slice_first_is_any(&trailing_words, &["time", "times"]) {
         trailing = trim_commas(&trailing[1..]).to_vec();
         trailing_words = token_word_refs(&trailing);
     }
 
-    if let Some(where_word_idx) = trailing_words.iter().position(|word| *word == "where") {
+    if let Some(where_word_idx) = word_slice_find_word(&trailing_words, "where") {
         let where_token_idx = token_index_for_word_index(&trailing, where_word_idx).unwrap_or(0);
         let Some(where_value) = parse_value_binding_clause(&trailing[where_token_idx..]) else {
             return Err(CardTextError::ParseError(format!(

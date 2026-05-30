@@ -6,7 +6,7 @@ use ironsmith_core::TotalCostKind;
 fn activated_effect_may_be_mana_ability_lexed(tokens: &[OwnedLexToken]) -> bool {
     let line_words = token_word_refs(tokens);
     activated_effect_is_for_each_color_among_add_mana_lexed(tokens)
-        || word_refs_find(line_words.as_slice(), "add").is_some()
+        || word_slice_find_word(line_words.as_slice(), "add").is_some()
             && matches!(
                 line_words.as_slice(),
                 ["add", ..]
@@ -167,7 +167,7 @@ fn extract_fixed_mana_output_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<ManaS
         return None;
     };
     let prefix_words = token_word_refs(&tokens[..add_idx]);
-    if !matches!(prefix_words.as_slice(), [] | ["you"]) {
+    if !crate::runtime_backend::lexer::word_slice_eq_any(&prefix_words, &[&[], &["you"]]) {
         return None;
     }
 
@@ -237,11 +237,11 @@ fn finalize_rewrite_activated_effect_sentences(
         let sentence_words = token_word_refs(&tokens);
         if parse_mana_usage_restriction_sentence_lexed(&tokens).is_some()
             || parse_mana_spend_bonus_sentence_lexed(&tokens).is_some()
-            || word_refs_have_prefix(
+            || word_slice_starts_with(
                 sentence_words.as_slice(),
                 &["spend", "this", "mana", "only"],
             )
-            || word_refs_have_prefix(
+            || word_slice_starts_with(
                 sentence_words.as_slice(),
                 &["when", "you", "spend", "this", "mana", "to", "cast"],
             )
@@ -353,11 +353,11 @@ fn split_rewrite_activated_effect_text_fallback(
         let sentence_words = token_word_refs(&tokens);
         if parse_mana_usage_restriction_sentence_lexed(&tokens).is_some()
             || parse_mana_spend_bonus_sentence_lexed(&tokens).is_some()
-            || word_refs_have_prefix(
+            || word_slice_starts_with(
                 sentence_words.as_slice(),
                 &["spend", "this", "mana", "only"],
             )
-            || word_refs_have_prefix(
+            || word_slice_starts_with(
                 sentence_words.as_slice(),
                 &["when", "you", "spend", "this", "mana", "to", "cast"],
             )

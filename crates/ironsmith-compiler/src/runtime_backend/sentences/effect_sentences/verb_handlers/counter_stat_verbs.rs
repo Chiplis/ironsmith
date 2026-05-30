@@ -417,7 +417,7 @@ pub(crate) fn parse_counter_unless_additional_generic_value(
     }
 
     let mut idx = 1usize;
-    if tokens.get(idx).is_some_and(|token| token.is_word("an")) {
+    if token_slice_at_is(tokens, idx, "an") {
         idx += 1;
     }
     if !tokens
@@ -526,7 +526,7 @@ pub(crate) fn parse_reveal(
         return Ok(EffectAst::subject_verb_reveal_tagged(TagKey::from(IT_TAG)));
     }
     let reveals_conditional_it =
-        words.first() == Some(&"it") && grammar::contains_word(tokens, "if");
+        word_slice_first_is(&words, "it") && grammar::contains_word(tokens, "if");
     if reveals_conditional_it {
         return Ok(EffectAst::subject_verb_reveal_tagged(TagKey::from(IT_TAG)));
     }
@@ -541,7 +541,7 @@ pub(crate) fn parse_reveal(
         );
         if !is_full_hand_reveal {
             if grammar::contains_word(tokens, "from") {
-                if let Some(equal_idx) = words.iter().position(|word| *word == "equal") {
+                if let Some(equal_idx) = word_slice_find_word(&words, "equal") {
                     let tail = &words[equal_idx..];
                     let count_value = if word_slice_starts_with(
                         tail,
@@ -613,9 +613,13 @@ pub(crate) fn parse_reveal(
         )));
     }
 
-    if word_slice_starts_with(&words, &["that", "many", "cards", "from", "the", "top", "of"])
-        || word_slice_starts_with(&words, &["that", "many", "cards", "from", "top", "of"])
-    {
+    if word_slice_starts_with_any(
+        &words,
+        &[
+            &["that", "many", "cards", "from", "the", "top", "of"],
+            &["that", "many", "cards", "from", "top", "of"],
+        ],
+    ) {
         return Ok(EffectAst::subject_verb_reveal_top_cards(
             player,
             Value::PendingEffectMetric {
@@ -639,19 +643,19 @@ pub(crate) fn parse_reveal(
     {
         let after_count = &tokens[count_token_idx + used..];
         let after_words = crate::runtime_backend::token_word_refs(after_count);
-        let top_library_tail = matches!(
-            after_words.get(..4),
-            Some(
-                ["card", "of", "your", "library"]
-                    | ["cards", "of", "your", "library"]
-                    | ["card", "of", "their", "library"]
-                    | ["cards", "of", "their", "library"]
-            )
+        let top_library_tail = word_slice_starts_with_any(
+            &after_words,
+            &[
+                &["card", "of", "your", "library"],
+                &["cards", "of", "your", "library"],
+                &["card", "of", "their", "library"],
+                &["cards", "of", "their", "library"],
+            ],
         );
         if top_library_tail {
             if count == Value::X
                 && let Some(where_word_idx) =
-                    find_word_sequence_start(&words, &["where", "x", "is"])
+                    word_slice_find_phrase_start_or_zero(&words, &["where", "x", "is"])
                 && let Some(where_token_idx) = token_index_for_word_index(tokens, where_word_idx)
                 && let Some(where_value) =
                     parse_prior_effect_count_binding_clause(&tokens[where_token_idx..])
@@ -681,10 +685,10 @@ fn parse_prior_effect_count_binding_clause(tokens: &[OwnedLexToken]) -> Option<V
     }
 
     let mut idx = 3usize;
-    if words.get(idx).copied() == Some("the") {
+    if word_slice_at_is(&words, idx, "the") {
         idx += 1;
     }
-    if words.get(idx).copied() != Some("number") || words.get(idx + 1).copied() != Some("of") {
+    if !word_slice_starts_with(&words[idx..], &["number", "of"]) {
         return None;
     }
 
@@ -816,13 +820,13 @@ pub(crate) fn parse_life_equal_to_value(
     if let Some(value) = parse_dynamic_cost_modifier_value(amount_tokens)? {
         return Ok(Some(value));
     }
-    if matches!(amount_words.get(..2), Some(["equal", "to"])) {
+    if word_slice_starts_with(&amount_words, &["equal", "to"]) {
         let value_tokens = &amount_tokens[2..];
         let mut value_words = crate::runtime_backend::token_word_refs(value_tokens);
 
         let parse_stat_of_target =
             |stat_words: &[&str], constructor: fn(Box<ChooseSpec>) -> Value| {
-                if value_words.starts_with(stat_words) {
+                if word_slice_starts_with(&value_words, stat_words) {
                     let target_tokens = &value_tokens[stat_words.len()..];
                     if let Ok(target) = parse_target_phrase(target_tokens) {
                         let spec = crate::runtime_backend::references::reference_helpers::choose_spec_for_target(&target);
@@ -878,7 +882,7 @@ pub(crate) fn parse_life_equal_to_value(
             (&["toughness", "of"][..], &["toughness"][..]),
             (&["mana", "value", "of"][..], &["mana", "value"][..]),
         ] {
-            if value_words.starts_with(prefix) {
+            if word_slice_starts_with(&value_words, prefix) {
                 let mut reordered = value_words[prefix.len()..].to_vec();
                 reordered.extend_from_slice(stat_words);
                 if let Some((value, used)) =
@@ -988,7 +992,7 @@ fn player_filter_for_life_reference(player: PlayerAst) -> Option<PlayerFilter> {
 
 fn parse_half_life_value(tokens: &[OwnedLexToken], player: PlayerAst) -> Option<Value> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if clause_words.first().copied() != Some("half")
+    if !word_slice_first_is(&clause_words, "half")
         || !grammar::contains_word(tokens, "life")
         || grammar::contains_word(tokens, "lost")
     {

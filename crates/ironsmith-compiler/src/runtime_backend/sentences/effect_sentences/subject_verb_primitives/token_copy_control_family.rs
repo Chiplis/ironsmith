@@ -1,6 +1,7 @@
 use super::*;
 use crate::runtime_backend::lexer::{
-    word_slice_contains_word, word_slice_eq, word_slice_eq_any, word_slice_starts_with,
+    word_slice_at_is, word_slice_contains_word, word_slice_eq, word_slice_eq_any,
+    word_slice_first_is, word_slice_last_is, word_slice_starts_with,
 };
 
 pub(crate) fn parse_sentence_each_player_return_with_additional_counter(
@@ -23,7 +24,7 @@ pub(crate) fn parse_sentence_each_player_reveals_top_count_put_permanents_onto_b
         "each", "player", "reveals", "a", "number", "of", "cards", "from", "the", "top", "of",
         "their", "library", "equal", "to",
     ];
-    if !reveal_words.starts_with(&reveal_prefix) {
+    if !word_slice_starts_with(&reveal_words, &reveal_prefix) {
         return Ok(None);
     }
     let Some(count_clause) = reveal_clause.after_words(reveal_prefix.len()) else {
@@ -596,9 +597,8 @@ pub(crate) fn parse_exile_then_shuffle_graveyard_into_library_sentence(
     }
 
     let head_words = head_slice.word_refs();
-    if !head_words.first().is_some_and(|word| *word == "exile")
-        && !(head_words.first().is_some_and(|word| *word == "you")
-            && head_words.get(1).is_some_and(|word| *word == "exile"))
+    if !word_slice_first_is(&head_words, "exile")
+        && !(word_slice_first_is(&head_words, "you") && word_slice_at_is(&head_words, 1, "exile"))
     {
         return Ok(None);
     }
@@ -718,14 +718,7 @@ pub(crate) fn parse_sentence_comma_then_chain_special(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     fn normalize_words<'a>(words: &'a [&'a str]) -> Vec<&'a str> {
-        words
-            .iter()
-            .filter_map(|word| match *word {
-                "s" | "'" | "’" => None,
-                _ => Some(strip_quoted_possessive_suffix(word)),
-            })
-            .filter(|word: &&str| !word.is_empty())
-            .collect()
+        crate::runtime_backend::util::possessive_normalized_word_refs(words)
     }
 
     let Some((head_clause, tail_clause)) = clause.split_comma_then_trimmed() else {
@@ -747,14 +740,14 @@ pub(crate) fn parse_sentence_comma_then_chain_special(
         word_slice_starts_with(&tail_words, &["put", "this"])
             && word_slice_contains_word(&tail_words, "top")
             && word_slice_contains_word(&tail_words, "owner")
-            && tail_words.last().copied() == Some("library");
+            && word_slice_last_is(&tail_words, "library");
     let is_choose_card_name_tail = crate::runtime_backend::lexer::word_slice_starts_with_any(
         &tail_words,
         &[
             &["choose", "any", "card", "name"],
             &["choose", "a", "card", "name"],
         ],
-    ) && head_words.first().copied() == Some("look");
+    ) && word_slice_first_is(&head_words, "look");
     if !is_that_player_tail
         && !is_return_source_tail
         && !is_put_source_on_top_of_library_tail
@@ -769,9 +762,7 @@ pub(crate) fn parse_sentence_comma_then_chain_special(
     {
         return Ok(None);
     }
-    if is_put_source_on_top_of_library_tail
-        && !head_words.first().is_some_and(|word| *word == "draw")
-    {
+    if is_put_source_on_top_of_library_tail && !word_slice_first_is(&head_words, "draw") {
         return Ok(None);
     }
 

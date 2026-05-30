@@ -1,6 +1,7 @@
 use super::*;
 use crate::runtime_backend::lexer::{
-    word_slice_eq, word_slice_eq_any, word_slice_find_phrase_start, word_slice_starts_with,
+    word_slice_contains_any_phrase, word_slice_eq, word_slice_eq_any, word_slice_find_phrase_start,
+    word_slice_starts_with,
 };
 use crate::runtime_backend::sentences::effect_sentences::lex_chain_helpers::{
     find_verb_lexed, has_effect_head_without_verb_lexed,
@@ -290,16 +291,15 @@ pub(crate) fn parse_sacrifice(
         )));
     }
     let sacrifice_words = crate::runtime_backend::token_word_refs(tokens);
-    let excludes_attached_object = find_window_by(&sacrifice_words, 3, |window| {
-        matches!(
-            window,
-            ["than", "enchanted", "creature"]
-                | ["than", "enchanted", "permanent"]
-                | ["than", "equipped", "creature"]
-                | ["than", "equipped", "permanent"]
-        )
-    })
-    .is_some();
+    let excludes_attached_object = word_slice_contains_any_phrase(
+        &sacrifice_words,
+        &[
+            &["than", "enchanted", "creature"],
+            &["than", "enchanted", "permanent"],
+            &["than", "equipped", "creature"],
+            &["than", "equipped", "permanent"],
+        ],
+    );
     if excludes_attached_object
         && filter.controller.is_none()
         && let Some(controller) = controller_filter_for_token_player(player)
@@ -514,10 +514,7 @@ pub(crate) fn parse_discard(
 pub(crate) fn parse_discard_color_qualifier_filter(
     tokens: &[OwnedLexToken],
 ) -> Option<ObjectFilter> {
-    let qualifier_words: Vec<&str> = crate::runtime_backend::token_word_refs(tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
+    let qualifier_words = crate::runtime_backend::util::non_article_token_word_refs(tokens);
     if qualifier_words.is_empty() {
         return None;
     }
@@ -545,10 +542,7 @@ pub(crate) fn parse_discard_color_qualifier_filter(
 pub(crate) fn parse_discard_chosen_color_qualifier_filter(
     tokens: &[OwnedLexToken],
 ) -> Option<ObjectFilter> {
-    let qualifier_words: Vec<&str> = crate::runtime_backend::token_word_refs(tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
+    let qualifier_words = crate::runtime_backend::util::non_article_token_word_refs(tokens);
     if !matches!(
         qualifier_words.as_slice(),
         ["of", "that", "color"]

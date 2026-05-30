@@ -19,8 +19,9 @@ use super::super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_dynamic_cost_modifier_value,
 };
 use super::super::lexer::{
-    LexStream, word_slice_contains_word, word_slice_ends_with, word_slice_eq_any,
-    word_slice_find_phrase_start, word_slice_matching_phrase, word_slice_starts_with,
+    LexStream, TokenKind, contains_token_kind, token_slice_at_is, word_slice_contains_word,
+    word_slice_ends_with, word_slice_eq_any, word_slice_find_phrase_start, word_slice_first_is_any,
+    word_slice_matching_phrase, word_slice_starts_with,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{
@@ -656,7 +657,7 @@ pub(crate) fn parse_sentence_put_multiple_counters_on_target(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_word_view = ZoneCounterCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
-    if !matches!(clause_words.first().copied(), Some("put") | Some("puts")) {
+    if !word_slice_first_is_any(&clause_words, &["put", "puts"]) {
         return Ok(None);
     }
 
@@ -683,8 +684,8 @@ pub(crate) fn parse_sentence_put_multiple_counters_on_target(
     if first_desc.is_empty() || second_desc.is_empty() {
         return Ok(None);
     }
-    if first_desc.iter().any(|token| token.is_comma())
-        || second_desc.iter().any(|token| token.is_comma())
+    if contains_token_kind(&first_desc, TokenKind::Comma)
+        || contains_token_kind(&second_desc, TokenKind::Comma)
     {
         return Ok(None);
     }
@@ -880,50 +881,40 @@ pub(crate) fn parse_counter_target_count_prefix(
     if tokens[idx].is_word("each") {
         each_prefix = true;
         idx += 1;
-        if tokens.get(idx).is_some_and(|token| token.is_word("of")) {
+        if token_slice_at_is(tokens, idx, "of") {
             idx += 1;
         }
     }
 
     if each_prefix
-        && tokens.get(idx).is_some_and(|token| token.is_word("x"))
-        && tokens
-            .get(idx + 1)
-            .is_some_and(|token| token.is_word("target"))
+        && token_slice_at_is(tokens, idx, "x")
+        && token_slice_at_is(tokens, idx + 1, "target")
     {
         return Ok(Some((ChoiceCount::dynamic_x(), idx + 1)));
     }
 
     if each_prefix
-        && tokens.get(idx).is_some_and(|token| token.is_word("up"))
-        && tokens.get(idx + 1).is_some_and(|token| token.is_word("to"))
-        && tokens.get(idx + 2).is_some_and(|token| token.is_word("x"))
-        && tokens
-            .get(idx + 3)
-            .is_some_and(|token| token.is_word("target"))
+        && token_slice_at_is(tokens, idx, "up")
+        && token_slice_at_is(tokens, idx + 1, "to")
+        && token_slice_at_is(tokens, idx + 2, "x")
+        && token_slice_at_is(tokens, idx + 3, "target")
     {
         return Ok(Some((ChoiceCount::up_to_dynamic_x(), idx + 3)));
     }
 
-    if each_prefix && tokens.get(idx).is_some_and(|token| token.is_word("target")) {
+    if each_prefix && token_slice_at_is(tokens, idx, "target") {
         return Ok(Some((ChoiceCount::any_number(), idx)));
     }
 
-    if tokens.get(idx).is_some_and(|token| token.is_word("any"))
-        && tokens
-            .get(idx + 1)
-            .is_some_and(|token| token.is_word("number"))
-    {
+    if token_slice_at_is(tokens, idx, "any") && token_slice_at_is(tokens, idx + 1, "number") {
         idx += 2;
-        if tokens.get(idx).is_some_and(|token| token.is_word("of")) {
+        if token_slice_at_is(tokens, idx, "of") {
             idx += 1;
         }
         return Ok(Some((ChoiceCount::any_number(), idx)));
     }
 
-    if tokens.get(idx).is_some_and(|token| token.is_word("up"))
-        && tokens.get(idx + 1).is_some_and(|token| token.is_word("to"))
-    {
+    if token_slice_at_is(tokens, idx, "up") && token_slice_at_is(tokens, idx + 1, "to") {
         let Some((value, used)) = parse_number(&tokens[idx + 2..]) else {
             return Err(CardTextError::ParseError(format!(
                 "missing count after 'up to' in counter target clause (clause: '{}')",
@@ -931,7 +922,7 @@ pub(crate) fn parse_counter_target_count_prefix(
             )));
         };
         idx += 2 + used;
-        if tokens.get(idx).is_some_and(|token| token.is_word("of")) {
+        if token_slice_at_is(tokens, idx, "of") {
             idx += 1;
         }
         return Ok(Some((ChoiceCount::up_to(value as usize), idx)));
@@ -946,7 +937,7 @@ pub(crate) fn parse_counter_target_count_prefix(
             let mut pos = idx + consumed;
 
             if values.len() >= 2 {
-                if tokens.get(pos).is_some_and(|token| token.is_word("of")) {
+                if token_slice_at_is(tokens, pos, "of") {
                     pos += 1;
                 }
                 let min = values.iter().copied().min().unwrap() as usize;
@@ -967,7 +958,7 @@ pub(crate) fn parse_counter_target_count_prefix(
 
     if let Some((value, used)) = parse_number(&tokens[idx..]) {
         idx += used;
-        if tokens.get(idx).is_some_and(|token| token.is_word("of")) {
+        if token_slice_at_is(tokens, idx, "of") {
             idx += 1;
         }
         return Ok(Some((ChoiceCount::exactly(value as usize), idx)));
@@ -1094,7 +1085,7 @@ fn parse_transform_like(
     }
     let target_word_view = ZoneCounterCompatWords::new(tokens);
     let target_words = target_word_view.to_word_refs();
-    if matches!(target_words.first().copied(), Some("all" | "each")) {
+    if word_slice_first_is_any(&target_words, &["all", "each"]) {
         let filter_tokens = &tokens[1..];
         let filter = parse_object_filter(filter_tokens, false)?;
         return Ok(EffectAst::ForEachObject {

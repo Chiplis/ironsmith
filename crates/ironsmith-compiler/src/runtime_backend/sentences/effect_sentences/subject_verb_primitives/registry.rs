@@ -391,6 +391,10 @@ impl<'a> SubjectVerbPrimitiveClause<'a> {
         self.lexed().contains_any_word(expected)
     }
 
+    pub(crate) fn contains_no_words(self, expected: &[&str]) -> bool {
+        self.lexed().contains_no_words(expected)
+    }
+
     pub(crate) fn count_word(self, expected: &str) -> usize {
         self.lexed().count_word(expected)
     }
@@ -679,16 +683,8 @@ pub(crate) struct SubjectVerbPrimitive {
     pub(crate) parser: SubjectVerbPrimitiveParser,
 }
 
-pub(super) fn strip_quoted_possessive_suffix(word: &str) -> &str {
-    str_strip_suffix(word, "'s")
-        .or_else(|| str_strip_suffix(word, "’s"))
-        .or_else(|| str_strip_suffix(word, "s'"))
-        .or_else(|| str_strip_suffix(word, "s’"))
-        .unwrap_or(word)
-}
-
 pub(super) fn parse_pluralized_subtype_word(word: &str) -> Option<Subtype> {
-    parse_subtype_word(word).or_else(|| str_strip_suffix(word, "s").and_then(parse_subtype_word))
+    parse_subtype_flexible(word)
 }
 
 fn summarize_effects(effects: &[EffectAst]) -> String {
@@ -962,10 +958,10 @@ pub(crate) fn parse_you_and_target_player_each_draw_sentence(
             _ => return Ok(None),
         };
 
-    if clause_words.get(idx) == Some(&"each") {
+    if word_slice_at_is(&clause_words, idx, "each") {
         idx += 1;
     }
-    if !matches!(clause_words.get(idx).copied(), Some("draw" | "draws")) {
+    if !word_slice_at_is_any(&clause_words, idx, &["draw", "draws"]) {
         return Ok(None);
     }
     idx += 1;
@@ -1140,16 +1136,16 @@ pub(crate) fn parse_sentence_return_half_the_creatures_they_control_to_their_own
     }
 
     let words = stripped_clause.word_refs();
-    let Some(the_idx) = words.iter().position(|word| *word == "the") else {
+    let Some(the_idx) = word_slice_find_word(&words, "the") else {
         return Ok(None);
     };
-    let Some(they_idx) = words.iter().position(|word| *word == "they") else {
+    let Some(they_idx) = word_slice_find_word(&words, "they") else {
         return Ok(None);
     };
-    let Some(control_idx) = words.iter().position(|word| *word == "control") else {
+    let Some(control_idx) = word_slice_find_word(&words, "control") else {
         return Ok(None);
     };
-    let Some(to_idx) = words.iter().position(|word| *word == "to") else {
+    let Some(to_idx) = word_slice_find_word(&words, "to") else {
         return Ok(None);
     };
     let Some(owner_idx) = words
@@ -1365,18 +1361,18 @@ pub(crate) fn parse_sentence_you_and_attacking_player_each_draw_and_lose(
     }
 
     let mut idx = 2usize;
-    if clause_words.get(idx) == Some(&"the") {
+    if word_slice_at_is(&clause_words, idx, "the") {
         idx += 1;
     }
-    if clause_words.get(idx) != Some(&"attacking") || clause_words.get(idx + 1) != Some(&"player") {
+    if !word_slice_starts_with(&clause_words[idx..], &["attacking", "player"]) {
         return Ok(None);
     }
     idx += 2;
 
-    if clause_words.get(idx) == Some(&"each") {
+    if word_slice_at_is(&clause_words, idx, "each") {
         idx += 1;
     }
-    if !matches!(clause_words.get(idx).copied(), Some("draw" | "draws")) {
+    if !word_slice_at_is_any(&clause_words, idx, &["draw", "draws"]) {
         return Ok(None);
     }
     idx += 1;
@@ -1411,8 +1407,8 @@ pub(crate) fn parse_sentence_you_and_attacking_player_each_draw_and_lose(
             draw_clause.as_clause().from(draw_used + 1).word_refs(),
         )
     };
-    if after_draw_words.first() != Some(&"and")
-        || !matches!(after_draw_words.get(1).copied(), Some("lose" | "loses"))
+    if !word_slice_first_is(&after_draw_words, "and")
+        || !word_slice_at_is_any(&after_draw_words, 1, &["lose", "loses"])
     {
         return Ok(None);
     }

@@ -5,6 +5,7 @@ use crate::cards::builders::{
 };
 use crate::runtime_backend::activation_and_restrictions::last_created_token_info;
 use crate::runtime_backend::effect_ast_traversal::for_each_nested_effects_mut;
+use crate::runtime_backend::lexer::{word_slice_contains_any_word, word_slice_contains_phrase};
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::zone::Zone;
 
@@ -166,10 +167,9 @@ fn creature_type_choice_program(
         .split_whitespace()
         .map(|word| word.trim_matches(|ch: char| !ch.is_alphanumeric() && ch != '+'))
         .collect::<Vec<_>>();
-    let has_choice_phrase = words
-        .windows(5)
-        .any(|window| window == ["creature", "type", "of", "your", "choice"]);
-    let has_get = words.iter().any(|word| matches!(*word, "get" | "gets"));
+    let has_choice_phrase =
+        word_slice_contains_phrase(&words, &["creature", "type", "of", "your", "choice"]);
+    let has_get = word_slice_contains_any_word(&words, &["get", "gets"]);
     if !has_choice_phrase || !has_get {
         return None;
     }

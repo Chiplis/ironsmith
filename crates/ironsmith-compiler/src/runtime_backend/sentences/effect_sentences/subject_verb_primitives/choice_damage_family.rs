@@ -236,11 +236,7 @@ pub(crate) fn parse_sentence_destroy_multi_target(
     let mut start = 0usize;
     while start + 4 <= target_clause.len() {
         let window = target_clause.between(start, start + 4);
-        if window[0].is_word("up")
-            && window[1].is_word("to")
-            && window[2].is_word("one")
-            && window[3].is_word("target")
-        {
+        if token_slice_starts_with(window.tokens(), &["up", "to", "one", "target"]) {
             repeated_up_to_one_targets += 1;
         }
         start += 1;
@@ -281,7 +277,7 @@ pub(crate) fn parse_sentence_destroy_multi_target(
         }) {
             return Ok(None);
         }
-        let is_explicit_target = segment_words.first() == Some(&"target")
+        let is_explicit_target = word_slice_first_is(&segment_words, "target")
             || (segment_clause.strip_any_prefix(UP_TO_PREFIXES).is_some()
                 && segment_clause.contains_word("target"));
         if !is_explicit_target && !is_likely_named_or_source_reference_words(&segment_words) {
@@ -787,10 +783,10 @@ pub(crate) fn parse_sentence_unless_pays(
     let before_unless_clause = clause.before(unless_idx);
     let before_words = before_unless_clause.word_refs();
 
-    if before_words.first() == Some(&"counter") {
+    if word_slice_first_is(&before_words, "counter") {
         return Ok(None);
     }
-    if before_words.first() == Some(&"create")
+    if word_slice_first_is(&before_words, "create")
         && before_unless_clause.contains_word("token")
         && before_unless_clause.contains_word("sacrifice")
         && before_unless_clause.contains_word("counter")
@@ -807,7 +803,7 @@ pub(crate) fn parse_sentence_unless_pays(
             == Some(["its", "controller", "has", "you", "draw", "a", "card"].as_slice())
         && let Some(then_return_word_idx) =
             before_unless_clause.find_phrase_start(&["then", "return"])
-        && sentence_words.get(3) == Some(&"choose")
+        && word_slice_at_is(&sentence_words, 3, "choose")
     {
         let Some(target_clause) = clause
             .after_words(4)

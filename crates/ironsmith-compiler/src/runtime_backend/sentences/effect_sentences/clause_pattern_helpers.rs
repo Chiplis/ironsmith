@@ -15,9 +15,11 @@ use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::grammar::structure::split_trailing_if_clause_lexed;
 use super::super::keyword_static::parse_value_binding_clause;
 use super::super::lexer::{
-    LexedClause, find_token_word_sequence, word_slice_contains_word, word_slice_ends_with,
-    word_slice_eq, word_slice_eq_any, word_slice_find_phrase_start, word_slice_find_word_where,
-    word_slice_starts_with,
+    LexedClause, find_token_word_sequence, token_slice_at_is, token_slice_last_is,
+    word_slice_at_is, word_slice_contains_word, word_slice_ends_with, word_slice_eq,
+    word_slice_eq_any, word_slice_find_phrase_start, word_slice_find_word,
+    word_slice_find_word_where, word_slice_first_is, word_slice_first_is_any, word_slice_last_is,
+    word_slice_last_is_any, word_slice_starts_with, word_slice_starts_with_at,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{
@@ -26,7 +28,8 @@ use super::super::token_primitives::{
 use super::super::util::{
     parse_card_type, parse_color, parse_counter_type_from_tokens, parse_counter_type_word,
     parse_number, parse_subject, parse_target_count_range_prefix, parse_target_phrase, parse_value,
-    span_from_tokens, token_index_for_word_index, trim_commas, wrap_target_count,
+    span_from_tokens, strip_leading_article_word_refs, token_index_for_word_index, trim_commas,
+    wrap_target_count,
 };
 use super::chain_carry::find_verb;
 use super::parse_subtype_word;
@@ -70,15 +73,15 @@ pub(crate) fn parse_prevent_next_damage_clause(
     let clause = LexedClause::new(tokens);
     let clause_words = clause.word_refs();
     let clause_text = clause.text();
-    if clause_words.first().copied() != Some("prevent") {
+    if !word_slice_first_is(&clause_words, "prevent") {
         return Ok(None);
     }
 
     let mut idx = 1usize;
-    if clause_words.get(idx) == Some(&"the") {
+    if word_slice_at_is(&clause_words, idx, "the") {
         idx += 1;
     }
-    if clause_words.get(idx) != Some(&"next") {
+    if !word_slice_at_is(&clause_words, idx, "next") {
         return Ok(None);
     }
     idx += 1;
@@ -99,12 +102,12 @@ pub(crate) fn parse_prevent_next_damage_clause(
     };
     idx += amount_used;
 
-    if clause_words.get(idx) != Some(&"damage") {
+    if !word_slice_at_is(&clause_words, idx, "damage") {
         return Ok(None);
     }
     idx += 1;
 
-    if clause_words.get(idx..idx + 4) != Some(["that", "would", "be", "dealt"].as_slice()) {
+    if !word_slice_starts_with_at(&clause_words, idx, &["that", "would", "be", "dealt"]) {
         return Err(CardTextError::ParseError(format!(
             "unsupported prevent-next damage clause tail (clause: '{}')",
             clause_text
@@ -112,7 +115,7 @@ pub(crate) fn parse_prevent_next_damage_clause(
     }
     idx += 4;
 
-    if clause_words.get(idx) != Some(&"to") {
+    if !word_slice_at_is(&clause_words, idx, "to") {
         return Err(CardTextError::ParseError(format!(
             "unsupported prevent-next damage target scope (clause: '{}')",
             clause_text
@@ -288,11 +291,8 @@ pub(crate) fn parse_verb_first_clause(
 }
 
 pub(crate) fn is_simple_chosen_object_reference(tokens: &[OwnedLexToken]) -> bool {
-    let words: Vec<&str> = LexedClause::new(tokens)
-        .word_refs()
-        .into_iter()
-        .filter(|word| !super::super::util::is_article(word) && *word != "then")
-        .collect();
+    let raw_words = LexedClause::new(tokens).word_refs();
+    let words = super::super::util::non_article_word_refs_except(&raw_words, &["then"]);
     if words.is_empty() {
         return false;
     }
@@ -405,7 +405,7 @@ pub(crate) fn parse_copy_spell_clause(
     };
     let tail = &tokens[copy_idx + 1..];
     let split_idx = find_choose_new_targets_split_idx(tail);
-    let exception_idx = clause_words.iter().position(|word| *word == "except");
+    let exception_idx = word_slice_find_word(&clause_words, "except");
     let clause_words_before_exception = exception_idx
         .map(|idx| &clause_words[..idx])
         .unwrap_or(&clause_words);
@@ -625,7 +625,7 @@ fn parse_copy_spell_removed_supertypes(tokens: &[OwnedLexToken]) -> Vec<crate::t
 }
 
 fn strip_copy_count_suffix(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], Option<Value>) {
-    if tokens.last().is_some_and(|token| token.is_word("twice")) {
+    if token_slice_last_is(tokens, "twice") {
         return (
             &tokens[..tokens.len().saturating_sub(1)],
             Some(Value::Fixed(2)),
@@ -680,7 +680,7 @@ fn parse_counter_ability_target_phrase(
                         .get(idx + 3)
                         .is_some_and(|token| token.is_word("control"))))
     };
-    if !clause.contains_word("ability") || !clause.contains_any_word(&["activated", "triggered"]) {
+    if !clause.contains_word("ability") || clause.contains_no_words(&["activated", "triggered"]) {
         return Ok(None);
     }
 
@@ -1110,7 +1110,7 @@ pub(crate) fn parse_prevent_next_time_damage_sentence(
         return Ok(None);
     };
     let clause_words = clause.word_refs();
-    if clause_words.get(would_idx + 1..would_idx + 4) != Some(["deal", "damage", "to"].as_slice()) {
+    if !word_slice_starts_with_at(&clause_words, would_idx + 1, &["deal", "damage", "to"]) {
         return Ok(None);
     }
 
@@ -1168,11 +1168,8 @@ pub(crate) fn parse_prevent_next_time_damage_sentence(
     let source = if source_clause.contains_phrase(&["of", "your", "choice"]) {
         PreventNextTimeDamageSourceAst::Choice
     } else {
-        let mut words = source_words.to_vec();
-        if words.first().is_some_and(|w| matches!(*w, "a" | "an")) {
-            words.remove(0);
-        }
-        if words.last().copied() == Some("source") {
+        let mut words = strip_leading_article_word_refs(&source_words).to_vec();
+        if word_slice_last_is(&words, "source") {
             words.pop();
         }
         if words.is_empty() {
@@ -1277,7 +1274,7 @@ pub(crate) fn parse_redirect_next_damage_sentence(
         };
 
         let redirect_words = &clause_words[is_dealt_idx + 3..];
-        if redirect_words.last().copied() != Some("instead") || redirect_words.len() < 2 {
+        if !word_slice_last_is(redirect_words, "instead") || redirect_words.len() < 2 {
             return Ok(None);
         }
         let target_tokens = redirect_words[..redirect_words.len() - 1]
@@ -1320,7 +1317,7 @@ pub(crate) fn parse_redirect_next_damage_sentence(
         }
 
         let by_idx = this_turn_idx + 2;
-        if clause_words.get(by_idx) != Some(&"by") {
+        if !word_slice_at_is(&clause_words, by_idx, "by") {
             return Ok(None);
         }
         let is_dealt_rel = clause
@@ -1410,14 +1407,8 @@ pub(crate) fn parse_redirect_next_damage_sentence(
         let source = if source_clause.contains_phrase(&["of", "your", "choice"]) {
             PreventNextTimeDamageSourceAst::Choice
         } else {
-            let mut words = source_words.to_vec();
-            if words
-                .first()
-                .is_some_and(|word| matches!(*word, "a" | "an"))
-            {
-                words.remove(0);
-            }
-            if words.last().copied() == Some("source") {
+            let mut words = strip_leading_article_word_refs(&source_words).to_vec();
+            if word_slice_last_is(&words, "source") {
                 words.pop();
             }
             let mut filter = ObjectFilter::default();
@@ -1763,10 +1754,10 @@ pub(crate) fn parse_keyword_mechanic_clause(
     }
 
     let mut start = 0usize;
-    if tokens.get(start).is_some_and(|token| token.is_word("then")) {
+    if token_slice_at_is(tokens, start, "then") {
         start += 1;
     }
-    if tokens.get(start).is_some_and(|token| token.is_word("you")) {
+    if token_slice_at_is(tokens, start, "you") {
         start += 1;
     }
     if start >= tokens.len() {
@@ -1781,7 +1772,7 @@ pub(crate) fn parse_keyword_mechanic_clause(
         return Ok(None);
     }
 
-    if clause_words.first() == Some(&"amass") {
+    if word_slice_first_is(&clause_words, "amass") {
         let mut amount_start = 1usize;
         let mut subtype = None;
 
@@ -1826,7 +1817,7 @@ pub(crate) fn parse_keyword_mechanic_clause(
     }
 
     if clause.first_is_word("roll") && clause.contains_word("dice") {
-        if clause_words.last() == Some(&"dice")
+        if word_slice_last_is(&clause_words, "dice")
             && clause_words.len() >= 5
             && word_slice_eq(
                 &clause_words[clause_words.len() - 3..clause_words.len() - 1],
@@ -1887,10 +1878,7 @@ pub(crate) fn parse_keyword_mechanic_clause(
         }));
     }
 
-    if clause_words.first() == Some(&"dredge")
-        || clause_words.first() == Some(&"warp")
-        || clause_words.first() == Some(&"harness")
-    {
+    if word_slice_first_is_any(&clause_words, &["dredge", "warp", "harness"]) {
         return Err(CardTextError::ParseError(format!(
             "unsupported keyword effect clause (clause: '{}')",
             clause_words.join(" ")
@@ -1979,7 +1967,7 @@ pub(crate) fn parse_keyword_mechanic_clause(
         )));
     }
 
-    if clause_words.first() == Some(&"behold") {
+    if word_slice_first_is(&clause_words, "behold") {
         let mut idx = 1usize;
         let mut count = 1u32;
         if let Some((value, used)) = parse_number(&clause_tokens[idx..]) {
@@ -2017,7 +2005,7 @@ pub(crate) fn parse_keyword_mechanic_clause(
         return Ok(Some(EffectAst::subject_verb_behold(subtype, count)));
     }
 
-    if clause_words.first() == Some(&"blight") {
+    if word_slice_first_is(&clause_words, "blight") {
         let (amount, used) = parse_number(&clause_tokens[1..]).ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "missing numeric amount for blight clause (clause: '{}')",
@@ -2039,7 +2027,7 @@ pub(crate) fn parse_keyword_mechanic_clause(
         )));
     }
 
-    if clause_words.starts_with(&["manifest", "dread"]) {
+    if word_slice_starts_with(&clause_words, &["manifest", "dread"]) {
         let manifest_dread = EffectAst::subject_verb_manifest_dread(PlayerAst::Implicit);
         let trailing_words = &clause_words[2..];
         if trailing_words.is_empty() {
@@ -2053,7 +2041,7 @@ pub(crate) fn parse_keyword_mechanic_clause(
             }));
         }
 
-        if matches!(trailing_words.last(), Some(&"time") | Some(&"times")) {
+        if word_slice_last_is_any(trailing_words, &["time", "times"]) {
             let value_tokens = &clause_tokens[2..clause_tokens.len() - 1];
             let (count, used) = parse_value(value_tokens).ok_or_else(|| {
                 CardTextError::ParseError(format!(
@@ -2113,12 +2101,12 @@ pub(crate) fn parse_keyword_mechanic_clause(
         )));
     }
 
-    if clause_words.first() == Some(&"populate") {
+    if word_slice_first_is(&clause_words, "populate") {
         if clause_words.len() == 1 {
             return Ok(Some(EffectAst::subject_verb_populate(Value::Fixed(1))));
         }
 
-        if clause_words.get(1) == Some(&"twice") && clause_words.len() == 2 {
+        if word_slice_at_is(&clause_words, 1, "twice") && clause_words.len() == 2 {
             return Ok(Some(EffectAst::subject_verb_populate(Value::Fixed(2))));
         }
 
@@ -2129,7 +2117,7 @@ pub(crate) fn parse_keyword_mechanic_clause(
             ))
         })?;
         let trailing = &clause_words[1 + used..];
-        if !matches!(trailing, ["time"] | ["times"]) {
+        if !word_slice_eq_any(trailing, &[&["time"], &["times"]]) {
             return Err(CardTextError::ParseError(format!(
                 "unsupported trailing populate clause (clause: '{}')",
                 clause_words.join(" ")
@@ -2139,11 +2127,11 @@ pub(crate) fn parse_keyword_mechanic_clause(
         return Ok(Some(EffectAst::subject_verb_populate(count)));
     }
 
-    if clause_words.first() == Some(&"meld")
+    if word_slice_first_is(&clause_words, "meld")
         && let Some(into_idx) = word_slice_find_word_where(&clause_words, |word| word == "into")
     {
         let subject_words = &clause_words[1..into_idx];
-        if !matches!(subject_words, ["them"] | ["those", "cards"]) {
+        if !word_slice_eq_any(subject_words, &[&["them"], &["those", "cards"]]) {
             return Err(CardTextError::ParseError(format!(
                 "unsupported meld subject (clause: '{}')",
                 clause_words.join(" ")
@@ -2189,7 +2177,7 @@ pub(crate) fn parse_keyword_mechanic_clause(
         return Ok(Some(effect));
     }
 
-    if clause_words.first() == Some(&"fateseal") {
+    if word_slice_first_is(&clause_words, "fateseal") {
         let (count, used) = parse_value(&clause_tokens[1..]).ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "missing amount for fateseal clause (clause: '{}')",
@@ -2246,7 +2234,7 @@ pub(crate) fn parse_keyword_mechanic_clause(
         let tail_words = &clause_words[explore_idx + 1..];
         if !tail_words.is_empty()
             && !word_slice_eq(tail_words, &["again"])
-            && !matches!(tail_words.last(), Some(&"times"))
+            && !word_slice_last_is(tail_words, "times")
         {
             return Ok(None);
         }
@@ -2269,7 +2257,7 @@ pub(crate) fn parse_keyword_mechanic_clause(
             parse_target_phrase(subject_tokens)?
         };
         let explore = EffectAst::subject_verb_explore(target);
-        if matches!(tail_words.last(), Some(&"times")) {
+        if word_slice_last_is(tail_words, "times") {
             let value_tokens = &clause_tokens[explore_idx + 1..clause_tokens.len() - 1];
             let (count, used) = parse_value(value_tokens).ok_or_else(|| {
                 CardTextError::ParseError(format!(

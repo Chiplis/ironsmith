@@ -16,8 +16,7 @@ use crate::types::Subtype;
 use crate::zone::Zone;
 
 use super::super::activation_and_restrictions::{
-    contains_word_sequence, controller_filter_for_token_player, find_word_sequence_start,
-    parse_devotion_value_from_add_clause,
+    controller_filter_for_token_player, parse_devotion_value_from_add_clause,
 };
 pub(crate) use super::super::activation_helpers::{
     parse_land_could_produce_filter, trim_leading_commas,

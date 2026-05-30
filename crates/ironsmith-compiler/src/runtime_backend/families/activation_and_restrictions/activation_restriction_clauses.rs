@@ -70,7 +70,7 @@ pub(crate) fn parse_cant_restrictions(
         return Ok(None);
     }
 
-    if tokens.iter().any(|token| token.is_word("and")) {
+    if crate::runtime_backend::lexer::contains_token_word(tokens, "and") {
         let segments = grammar::split_lexed_slices_on_and(tokens);
         if segments.is_empty() {
             return Ok(None);
@@ -409,7 +409,10 @@ pub(crate) fn parse_cant_cast_restriction_words(
         }
         let cant_tail = &tail[1..];
 
-        if cant_tail == ["cast", "spells"] || cant_tail == ["cast", "spells", "this", "turn"] {
+        if word_slice_eq_any(
+            cant_tail,
+            &[&["cast", "spells"], &["cast", "spells", "this", "turn"]],
+        ) {
             return Some(Restriction::cast_spells(player));
         }
         if cant_tail.len() >= 6
@@ -430,20 +433,22 @@ pub(crate) fn parse_cant_cast_restriction_words(
                 ObjectFilter::spell().with_mana_value_parity(parity),
             ));
         }
-        if cant_tail == ["cast", "creature", "spells"]
-            || cant_tail == ["cast", "creature", "spells", "this", "turn"]
-        {
+        if word_slice_eq_any(
+            cant_tail,
+            &[
+                &["cast", "creature", "spells"],
+                &["cast", "creature", "spells", "this", "turn"],
+            ],
+        ) {
             return Some(Restriction::cast_creature_spells(player));
         }
-        if cant_tail.first() == Some(&"cast") {
+        if word_slice_first_is(cant_tail, "cast") {
             let mut idx = 1usize;
             if let Some((spell_filter, used)) = parse_cast_limit_qualifier(&cant_tail[idx..]) {
                 idx += used;
-                if cant_tail.get(idx) == Some(&"spell") || cant_tail.get(idx) == Some(&"spells") {
+                if word_slice_at_is_any(cant_tail, idx, &["spell", "spells"]) {
                     idx += 1;
-                    if cant_tail.get(idx) == Some(&"this")
-                        && cant_tail.get(idx + 1) == Some(&"turn")
-                    {
+                    if word_slice_starts_with(&cant_tail[idx..], &["this", "turn"]) {
                         idx += 2;
                     }
                     if idx == cant_tail.len() {
@@ -479,13 +484,13 @@ fn parse_spell_restriction_subject_filter(words: &[&str]) -> Option<ObjectFilter
     let mut filter = ObjectFilter::spell();
     let mut idx = 0usize;
 
-    if words.get(idx) == Some(&"noncreature") {
+    if word_slice_at_is(words, idx, "noncreature") {
         filter = filter.without_type(CardType::Creature);
         idx += 1;
-    } else if words.get(idx) == Some(&"non") && words.get(idx + 1) == Some(&"creature") {
+    } else if word_slice_starts_with(&words[idx..], &["non", "creature"]) {
         filter = filter.without_type(CardType::Creature);
         idx += 2;
-    } else if words.get(idx) != Some(&"spell") && words.get(idx) != Some(&"spells") {
+    } else if !word_slice_at_is_any(words, idx, &["spell", "spells"]) {
         let term = words.get(idx).copied()?;
         if let Some(card_type) = parse_card_type(term.trim_end_matches('s')) {
             filter = filter.with_type(card_type);
@@ -496,18 +501,18 @@ fn parse_spell_restriction_subject_filter(words: &[&str]) -> Option<ObjectFilter
         }
     }
 
-    if words.get(idx) != Some(&"spell") && words.get(idx) != Some(&"spells") {
+    if !word_slice_at_is_any(words, idx, &["spell", "spells"]) {
         return None;
     }
     idx += 1;
 
     while idx < words.len() {
-        if words.get(idx) != Some(&"with") {
+        if !word_slice_at_is(words, idx, "with") {
             return None;
         }
         idx += 1;
 
-        if words.get(idx) == Some(&"mana") && words.get(idx + 1) == Some(&"value") {
+        if word_slice_starts_with(&words[idx..], &["mana", "value"]) {
             let value = words.get(idx + 2)?.parse::<i32>().ok()?;
             let comparison = match (words.get(idx + 3).copied(), words.get(idx + 4).copied()) {
                 (Some("or"), Some("greater")) => {
@@ -528,11 +533,11 @@ fn parse_spell_restriction_subject_filter(words: &[&str]) -> Option<ObjectFilter
             continue;
         }
 
-        if words.get(idx) == Some(&"x")
-            && matches!(words.get(idx + 1), Some(&"in"))
-            && matches!(words.get(idx + 2), Some(&"their") | Some(&"its"))
-            && words.get(idx + 3) == Some(&"mana")
-            && matches!(words.get(idx + 4), Some(&"cost") | Some(&"costs"))
+        if word_slice_at_is(words, idx, "x")
+            && word_slice_at_is(words, idx + 1, "in")
+            && word_slice_at_is_any(words, idx + 2, &["their", "its"])
+            && word_slice_at_is(words, idx + 3, "mana")
+            && word_slice_at_is_any(words, idx + 4, &["cost", "costs"])
         {
             filter.has_x_in_cost = true;
             idx += 5;
@@ -580,21 +585,18 @@ pub(crate) fn parse_cant_cast_subject(words: &[&str]) -> Option<(PlayerFilter, u
 }
 
 pub(crate) fn parse_cast_more_than_one_limit_filter(words: &[&str]) -> Option<ObjectFilter> {
-    if !matches!(words, ["cast", "more", "than", "one", ..]) {
+    if !word_slice_starts_with(words, &["cast", "more", "than", "one"]) {
         return None;
     }
     let mut idx = 4usize;
-    let (spell_filter, consumed) = if words.get(idx) == Some(&"spell") {
+    let (spell_filter, consumed) = if word_slice_at_is(words, idx, "spell") {
         (ObjectFilter::default(), 0usize)
     } else {
         parse_cast_limit_qualifier(&words[idx..])?
     };
     idx += consumed;
 
-    if words.get(idx) != Some(&"spell")
-        || words.get(idx + 1) != Some(&"each")
-        || words.get(idx + 2) != Some(&"turn")
-        || idx + 3 != words.len()
+    if !word_slice_starts_with(&words[idx..], &["spell", "each", "turn"]) || idx + 3 != words.len()
     {
         return None;
     }
@@ -604,37 +606,31 @@ pub(crate) fn parse_cast_more_than_one_limit_filter(words: &[&str]) -> Option<Ob
 
 pub(crate) fn parse_cast_additional_limit_filter(words: &[&str]) -> Option<ObjectFilter> {
     let mut idx = 0usize;
-    if matches!(words, ["who", "has", ..]) {
+    if word_slice_starts_with(words, &["who", "has"]) {
         idx += 2;
     }
 
-    if words.get(idx) != Some(&"cast") {
+    if !word_slice_at_is(words, idx, "cast") {
         return None;
     }
     idx += 1;
-    if words
-        .get(idx)
-        .is_some_and(|word| *word == "a" || *word == "an")
-    {
+    if word_slice_at_is_any(words, idx, &["a", "an"]) {
         idx += 1;
     }
 
     let (first_filter, first_used) = parse_cast_limit_qualifier(&words[idx..])?;
     idx += first_used;
 
-    if words.get(idx) != Some(&"spell") {
+    if !word_slice_at_is(words, idx, "spell") {
         return None;
     }
     idx += 1;
 
-    if words.get(idx) == Some(&"this") && words.get(idx + 1) == Some(&"turn") {
+    if word_slice_starts_with(&words[idx..], &["this", "turn"]) {
         idx += 2;
     }
 
-    if words.get(idx) != Some(&"cant")
-        || words.get(idx + 1) != Some(&"cast")
-        || words.get(idx + 2) != Some(&"additional")
-    {
+    if !word_slice_starts_with(&words[idx..], &["cant", "cast", "additional"]) {
         return None;
     }
     idx += 3;
@@ -645,7 +641,7 @@ pub(crate) fn parse_cast_additional_limit_filter(words: &[&str]) -> Option<Objec
     }
     idx += second_used;
 
-    if words.get(idx) != Some(&"spells") || idx + 1 != words.len() {
+    if !word_slice_at_is(words, idx, "spells") || idx + 1 != words.len() {
         return None;
     }
 
@@ -839,22 +835,23 @@ pub(crate) fn parse_player_negated_restriction_clause(
             target,
         }));
     }
-    if remainder_words.as_slice() == ["cast", "spells"] {
+    if word_slice_eq(&remainder_words, &["cast", "spells"]) {
         return Ok(Some(ParsedCantRestriction {
             restriction: Restriction::cast_spells(player),
             target,
         }));
     }
-    if remainder_words.as_slice()
-        == [
+    if word_slice_eq(
+        &remainder_words,
+        &[
             "activate",
             "abilities",
             "that",
             "arent",
             "mana",
             "abilities",
-        ]
-    {
+        ],
+    ) {
         return Ok(Some(ParsedCantRestriction {
             restriction: Restriction::activate_non_mana_abilities(player),
             target,
@@ -979,7 +976,7 @@ pub(crate) fn target_ast_player_filter(
 }
 
 pub(crate) fn parse_cast_restriction_tail_filter(words: &[&str]) -> Option<ObjectFilter> {
-    if words == ["cast", "spells"] {
+    if word_slice_eq(words, &["cast", "spells"]) {
         return Some(ObjectFilter::default());
     }
     if words.first() != Some(&"cast") || words.last() != Some(&"spells") || words.len() < 3 {
@@ -1032,7 +1029,7 @@ fn parse_and_or_disjunction_filter(
             idx += 1;
             continue;
         }
-        if idx + 1 < tokens.len() && tokens[idx].is_word("and") && tokens[idx + 1].is_word("or") {
+        if token_slice_starts_with_at(tokens, idx, &["and", "or"]) {
             separator_indices.push((idx, idx + 2));
             idx += 2;
             continue;
@@ -1149,7 +1146,7 @@ pub(crate) fn parse_negated_object_restriction_clause(
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    if subject_words.first() == Some(&"if") {
+    if word_slice_first_is(&subject_words, "if") {
         return Ok(None);
     }
 
@@ -1291,7 +1288,7 @@ pub(crate) fn parse_negated_object_restriction_clause(
     if matches!(
         subject_words.as_slice(),
         ["damage"] | ["the", "damage"] | ["that", "damage"]
-    ) && remainder_words.as_slice() == ["be", "prevented"]
+    ) && word_slice_eq(&remainder_words, &["be", "prevented"])
     {
         return Ok(Some(ParsedCantRestriction {
             restriction: Restriction::prevent_damage(),
@@ -1387,7 +1384,7 @@ pub(crate) fn parse_negated_object_restriction_clause(
             Restriction::phase_out(filter)
         }
         ["be", "targeted"] => Restriction::be_targeted(filter),
-        _ if remainder_words.first() == Some(&"block") && remainder_words.len() > 1 => {
+        _ if word_slice_first_is(&remainder_words, "block") && remainder_words.len() > 1 => {
             let attacker_tokens = trim_commas(&remainder_tokens[1..]);
             let attacker_filter = parse_subject_object_filter(&attacker_tokens)?
                 .or_else(|| parse_object_filter(&attacker_tokens, false).ok())
@@ -1640,18 +1637,14 @@ pub(crate) struct ParsedCantRestriction {
 
 pub(crate) fn starts_with_target_indicator(tokens: &[OwnedLexToken]) -> bool {
     let mut idx = 0usize;
-    if tokens.get(idx).is_some_and(|token| token.is_word("any"))
-        && tokens
-            .get(idx + 1)
-            .is_some_and(|token| token.is_word("number"))
-        && tokens.get(idx + 2).is_some_and(|token| token.is_word("of"))
+    if token_slice_at_is(tokens, idx, "any")
+        && token_slice_at_is(tokens, idx + 1, "number")
+        && token_slice_at_is(tokens, idx + 2, "of")
     {
         idx += 3;
     }
 
-    if tokens.get(idx).is_some_and(|token| token.is_word("up"))
-        && tokens.get(idx + 1).is_some_and(|token| token.is_word("to"))
-    {
+    if token_slice_at_is(tokens, idx, "up") && token_slice_at_is(tokens, idx + 1, "to") {
         idx += 2;
         if let Some((_, used)) = parse_number(&tokens[idx..]) {
             idx += used;
@@ -1659,31 +1652,22 @@ pub(crate) fn starts_with_target_indicator(tokens: &[OwnedLexToken]) -> bool {
     } else if let Some((_, used)) = parse_target_count_range_prefix(&tokens[idx..]) {
         idx += used;
     } else if let Some((_, used)) = parse_number(&tokens[idx..])
-        && tokens
-            .get(idx + used)
-            .is_some_and(|token: &OwnedLexToken| token.is_word("target"))
+        && token_slice_at_is(tokens, idx + used, "target")
     {
         idx += used;
-    } else if tokens.get(idx).is_some_and(|token| token.is_word("x"))
-        && tokens
-            .get(idx + 1)
-            .is_some_and(|token| token.is_word("target"))
-    {
+    } else if token_slice_at_is(tokens, idx, "x") && token_slice_at_is(tokens, idx + 1, "target") {
         idx += 1;
     }
 
-    if tokens.get(idx).is_some_and(|token| token.is_word("on")) {
+    if token_slice_at_is(tokens, idx, "on") {
         idx += 1;
     }
 
-    if tokens
-        .get(idx)
-        .is_some_and(|token| token.is_word("another"))
-    {
+    if token_slice_at_is(tokens, idx, "another") {
         idx += 1;
     }
 
-    tokens.get(idx).is_some_and(|token| token.is_word("target"))
+    token_slice_at_is(tokens, idx, "target")
 }
 
 pub(crate) fn find_negation_span(tokens: &[OwnedLexToken]) -> Option<(usize, usize)> {
@@ -1697,16 +1681,13 @@ pub(crate) fn find_negation_span(tokens: &[OwnedLexToken]) -> Option<(usize, usi
             let end = word_view.token_index_after_words(word_idx + 1)?;
             return Some((start, end));
         }
-        if word == "can" && word_view.get(word_idx + 1) == Some("t") {
+        if word == "can" && word_view.at_is(word_idx + 1, "t") {
             let start = word_view.token_index_for_word_index(word_idx)?;
             let end = word_view.token_index_after_words(word_idx + 2)?;
             return Some((start, end));
         }
         if matches!(word, "doesnt" | "dont") {
-            if word_idx >= 2
-                && word_view.get(word_idx - 2) == Some("if")
-                && word_view.get(word_idx - 1) == Some("you")
-            {
+            if word_idx >= 2 && word_view.starts_with_at(word_idx - 2, &["if", "you"]) {
                 continue;
             }
             let next_word = word_view.get(word_idx + 1);
@@ -1717,11 +1698,8 @@ pub(crate) fn find_negation_span(tokens: &[OwnedLexToken]) -> Option<(usize, usi
             let end = word_view.token_index_after_words(word_idx + 1)?;
             return Some((start, end));
         }
-        if matches!(word, "does" | "do" | "can") && word_view.get(word_idx + 1) == Some("not") {
-            if word_idx >= 2
-                && word_view.get(word_idx - 2) == Some("if")
-                && word_view.get(word_idx - 1) == Some("you")
-            {
+        if matches!(word, "does" | "do" | "can") && word_view.at_is(word_idx + 1, "not") {
+            if word_idx >= 2 && word_view.starts_with_at(word_idx - 2, &["if", "you"]) {
                 continue;
             }
             if matches!(word, "does" | "do")
@@ -1767,7 +1745,10 @@ pub(crate) fn parse_subject_object_filter(
 
     let words_all = crate::runtime_backend::token_word_refs(tokens);
     if find_window_by(&words_all, 3, |window| {
-        window == ["power", "or", "toughness"] || window == ["toughness", "or", "power"]
+        word_slice_eq_any(
+            window,
+            &[&["power", "or", "toughness"], &["toughness", "or", "power"]],
+        )
     })
     .is_some()
     {

@@ -10,9 +10,8 @@ use self::subject_verb_followups::{
     run_pre_parse_followup_registry,
 };
 use super::super::activation_and_restrictions::{
-    contains_word_sequence, find_word_sequence_start, parse_choose_card_type_phrase_words,
-    parse_mana_usage_restriction_sentence_lexed, parse_target_player_choose_objects_clause,
-    parse_you_choose_objects_clause,
+    parse_choose_card_type_phrase_words, parse_mana_usage_restriction_sentence_lexed,
+    parse_target_player_choose_objects_clause, parse_you_choose_objects_clause,
 };
 use super::super::effect_ast_traversal::{
     for_each_nested_effects, for_each_nested_effects_mut, try_for_each_nested_effects_mut,
@@ -22,9 +21,10 @@ use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::keyword_static::parse_value_binding_clause;
 use super::super::keyword_static_helpers::parse_granted_activated_or_triggered_ability_for_gain;
 use super::super::lexer::{
-    LexStream, LexedClause, OwnedLexToken, TokenKind, split_lexed_sentences,
-    word_slice_contains_any_phrase, word_slice_contains_phrase, word_slice_ends_with,
-    word_slice_eq, word_slice_eq_any, word_slice_starts_with_any,
+    LexStream, LexedClause, OwnedLexToken, TokenKind, split_lexed_sentences, token_slice_at_is,
+    word_slice_at_is, word_slice_at_is_any, word_slice_contains_any_phrase,
+    word_slice_contains_phrase, word_slice_ends_with, word_slice_eq, word_slice_eq_any,
+    word_slice_find_phrase_start_or_zero, word_slice_first_is_any, word_slice_starts_with_any,
 };
 use super::super::object_filters::{
     is_comparison_or_delimiter, parse_object_filter, parse_object_filter_lexed,
@@ -200,16 +200,15 @@ fn apply_trailing_counter_constraint_to_destroy_all(
     tokens: &[OwnedLexToken],
 ) {
     let token_words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(counter_idx) = token_words
-        .iter()
-        .position(|word| *word == "counter" || *word == "counters")
+    let Some(counter_idx) =
+        crate::runtime_backend::lexer::word_slice_find_word_where(&token_words, |word| {
+            matches!(word, "counter" | "counters")
+        })
     else {
         return;
     };
-    if token_words.get(counter_idx + 1) != Some(&"on")
-        || !token_words
-            .get(counter_idx + 2)
-            .is_some_and(|word| matches!(*word, "it" | "them"))
+    if !word_slice_at_is(&token_words, counter_idx + 1, "on")
+        || !word_slice_at_is_any(&token_words, counter_idx + 2, &["it", "them"])
     {
         return;
     }
@@ -225,7 +224,7 @@ fn apply_trailing_counter_constraint_to_destroy_all(
             !matches!(*word, "or" | "more") && ironsmith_core::parse_cardinal_word(word).is_none()
         })
         .collect::<Vec<_>>();
-    if descriptor_words.first().is_some_and(|word| *word == "no") {
+    if word_slice_first_is_any(&descriptor_words, &["no"]) {
         return;
     }
     let counter_constraint = if descriptor_words.is_empty() {
@@ -1367,7 +1366,7 @@ pub(crate) fn is_cant_be_regenerated_followup_sentence(tokens: &[OwnedLexToken])
         && (words
             .iter()
             .any(|word| matches!(*word, "cant" | "can't" | "cannot"))
-            || word_slice_contains_phrase(&words, &["can", "t", "be", "regenerated"]))
+            || word_slice_contains_any_phrase(&words, &[&["can", "t", "be", "regenerated"]]))
     {
         return true;
     }
@@ -2566,17 +2565,22 @@ pub(crate) fn apply_where_x_to_damage_amounts(
     effects: &mut [EffectAst],
 ) -> Result<(), CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let has_deal_x = find_window_by(&clause_words, 3, |window| {
-        (window[0] == "deal" || window[0] == "deals") && window[1] == "x" && window[2] == "damage"
-    })
-    .is_some();
-    let has_x_life = find_window_by(&clause_words, 3, |window| {
-        (window[0] == "gain" || window[0] == "gains" || window[0] == "lose" || window[0] == "loses")
-            && window[1] == "x"
-            && window[2] == "life"
-    })
-    .is_some();
-    let Some(where_idx) = find_word_sequence_start(&clause_words, &["where", "x", "is"]) else {
+    let has_deal_x = word_slice_contains_any_phrase(
+        &clause_words,
+        &[&["deal", "x", "damage"], &["deals", "x", "damage"]],
+    );
+    let has_x_life = word_slice_contains_any_phrase(
+        &clause_words,
+        &[
+            &["gain", "x", "life"],
+            &["gains", "x", "life"],
+            &["lose", "x", "life"],
+            &["loses", "x", "life"],
+        ],
+    );
+    let Some(where_idx) =
+        word_slice_find_phrase_start_or_zero(&clause_words, &["where", "x", "is"])
+    else {
         return Ok(());
     };
     let has_unbound_x_before_where = clause_words[..where_idx]
@@ -2929,7 +2933,7 @@ pub(crate) fn strip_otherwise_sentence_prefix(
     while tokens.get(idx).is_some_and(OwnedLexToken::is_comma) {
         idx += 1;
     }
-    if tokens.get(idx).is_some_and(|token| token.is_word("then")) {
+    if token_slice_at_is(tokens, idx, "then") {
         idx += 1;
     }
     while tokens.get(idx).is_some_and(OwnedLexToken::is_comma) {
@@ -3010,10 +3014,7 @@ fn token_copy_followup_container_effects_mut(
 pub(crate) fn parse_token_copy_followup_sentence(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenCopyFollowup> {
-    let filtered: Vec<&str> = crate::runtime_backend::token_word_refs(tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
+    let filtered = crate::runtime_backend::util::non_article_token_word_refs(tokens);
     if matches!(
         filtered.as_slice(),
         [
@@ -3055,10 +3056,7 @@ pub(crate) fn parse_token_copy_followup_sentence(
 pub(crate) fn parse_token_copy_followup_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenCopyFollowup> {
-    let filtered: Vec<&str> = crate::runtime_backend::token_word_refs(tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
+    let filtered = crate::runtime_backend::util::non_article_token_word_refs(tokens);
     if matches!(
         filtered.as_slice(),
         [

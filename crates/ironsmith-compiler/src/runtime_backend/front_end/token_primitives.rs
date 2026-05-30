@@ -70,6 +70,11 @@ pub(crate) fn slice_contains_all<T: PartialEq>(items: &[T], expected: &[T]) -> b
 }
 
 #[allow(dead_code)]
+pub(crate) fn slice_all_match<T>(items: &[T], predicate: impl FnMut(&T) -> bool) -> bool {
+    crate::slice_primitives::all_match(items, predicate)
+}
+
+#[allow(dead_code)]
 pub(crate) fn slice_eq_any<T: PartialEq>(items: &[T], patterns: &[&[T]]) -> bool {
     crate::slice_primitives::equals_any(items, patterns)
 }
@@ -131,8 +136,22 @@ pub(crate) fn find_index<T>(items: &[T], predicate: impl FnMut(&T) -> bool) -> O
     crate::slice_primitives::find_index(items, predicate)
 }
 
+pub(crate) fn find_index_with<T>(
+    items: &[T],
+    predicate: impl FnMut(usize, &T) -> bool,
+) -> Option<usize> {
+    crate::slice_primitives::find_index_with(items, predicate)
+}
+
 pub(crate) fn rfind_index<T>(items: &[T], predicate: impl FnMut(&T) -> bool) -> Option<usize> {
     crate::slice_primitives::rfind_index(items, predicate)
+}
+
+pub(crate) fn rfind_index_with<T>(
+    items: &[T],
+    predicate: impl FnMut(usize, &T) -> bool,
+) -> Option<usize> {
+    crate::slice_primitives::rfind_index_with(items, predicate)
 }
 
 pub(crate) fn find_window_index<T: PartialEq>(items: &[T], window: &[T]) -> Option<usize> {
@@ -242,13 +261,11 @@ pub(crate) fn parse_word_phrase<'a>(
 }
 
 pub(crate) fn word_view_has_prefix(words: &TokenWordView<'_>, prefix: &[&str]) -> bool {
-    words.len() >= prefix.len() && words.slice_eq(0, prefix)
+    words.starts_with(prefix)
 }
 
 pub(crate) fn word_view_has_any_prefix(words: &TokenWordView<'_>, prefixes: &[&[&str]]) -> bool {
-    prefixes
-        .iter()
-        .any(|prefix| word_view_has_prefix(words, prefix))
+    words.starts_with_any(prefixes)
 }
 
 pub(crate) fn rewrite_followup_intro_to_if_lexed(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {

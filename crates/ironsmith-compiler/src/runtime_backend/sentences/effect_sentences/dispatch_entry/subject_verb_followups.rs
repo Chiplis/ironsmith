@@ -82,7 +82,7 @@ fn effect_needs_followup_library_shuffle(effect: &EffectAst) -> bool {
 }
 
 fn is_if_you_search_library_this_way_shuffle_sentence(tokens: &[OwnedLexToken]) -> bool {
-    let words = LexedClause::new(tokens).word_refs_where(|word| !is_article(word));
+    let words = crate::runtime_backend::util::non_article_token_word_refs(tokens);
     matches!(
         words.as_slice(),
         [
@@ -616,7 +616,7 @@ fn pre_rule_token_followups(
     if is_generic_token_reminder_sentence(sentence_tokens) {
         let reminder_words = LexedClause::new(sentence_tokens).word_refs();
         let delayed_pronoun_lifecycle =
-            matches!(reminder_words.first().copied(), Some("exile" | "sacrifice"))
+            word_slice_first_is_any(&reminder_words, &["exile", "sacrifice"])
                 && (grammar::contains_word(sentence_tokens, "it")
                     || grammar::contains_word(sentence_tokens, "them"));
         let pronoun_followup_clause =
@@ -670,9 +670,8 @@ fn parse_create_more_of_prior_tokens(
     sentence_tokens: &[OwnedLexToken],
     prior_effects: &[EffectAst],
 ) -> Option<EffectAst> {
-    let create_idx = sentence_tokens
-        .iter()
-        .position(|token| token.is_word("create") || token.is_word("put"))?;
+    let create_idx =
+        crate::runtime_backend::lexer::find_token_any_word(sentence_tokens, &["create", "put"])?;
     if create_idx == 0 {
         return None;
     }

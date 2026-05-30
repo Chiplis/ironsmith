@@ -284,22 +284,15 @@ pub(super) fn try_apply_not_exactly_two_colors_clause(
 pub(super) fn parse_mana_value_eq_counters_on_source_words(
     words: &[&str],
 ) -> Option<(crate::object::CounterType, usize)> {
-    let window = words.get(..12)?;
-    if window[0] != "with"
-        || window[1] != "mana"
-        || window[2] != "value"
-        || window[3] != "equal"
-        || window[4] != "to"
-        || window[5] != "number"
-        || window[6] != "of"
-        || !matches!(window[8], "counter" | "counters")
-        || window[9] != "on"
-        || window[10] != "this"
-        || window[11] != "artifact"
+    if !word_slice_starts_with(
+        words,
+        &["with", "mana", "value", "equal", "to", "number", "of"],
+    ) || !word_slice_at_is_any(words, 8, &["counter", "counters"])
+        || !word_slice_starts_with_at(words, 9, &["on", "this", "artifact"])
     {
         return None;
     }
-    let counter_type = parse_counter_type_word(window[7])?;
+    let counter_type = parse_counter_type_word(*words.get(7)?)?;
     Some((counter_type, 12))
 }
 
@@ -323,12 +316,11 @@ pub(super) fn try_apply_mana_value_eq_counters_on_source_clause(
     let segment_words = segment_words_view.to_word_refs();
     let segment_match = find_mana_value_equal_counter_phrase_bounds(&segment_words);
     if let Some((start_word_idx, end_word_idx)) = segment_match
-        && let Some(start_token_idx) =
-            normalized_token_index_for_word_index(segment_tokens.as_slice(), start_word_idx)
+        && let Some(start_token_idx) = segment_words_view.token_index_for_word_index(start_word_idx)
     {
-        let end_token_idx =
-            normalized_token_index_after_words(segment_tokens.as_slice(), end_word_idx)
-                .unwrap_or(segment_tokens.len());
+        let end_token_idx = segment_words_view
+            .token_index_after_words(end_word_idx)
+            .unwrap_or(segment_tokens.len());
         if start_token_idx < end_token_idx && end_token_idx <= segment_tokens.len() {
             segment_tokens.drain(start_token_idx..end_token_idx);
         }
@@ -528,11 +520,11 @@ pub(super) fn parse_spell_filter_from_words(words: &[&str]) -> ObjectFilter {
 }
 
 fn apply_spell_filter_tagged_relations(filter: &mut ObjectFilter, words: &[&str]) {
-    let shares_card_type = (contains_filter_word(words, "share")
-        || contains_filter_word(words, "shares"))
-        && contains_filter_word(words, "card")
-        && contains_filter_word(words, "type");
-    let references_exiled_card = contains_any_filter_phrase(
+    let shares_card_type = (word_slice_contains_word(words, "share")
+        || word_slice_contains_word(words, "shares"))
+        && word_slice_contains_word(words, "card")
+        && word_slice_contains_word(words, "type");
+    let references_exiled_card = word_slice_contains_any_phrase(
         words,
         &[
             &["with", "exiled", "card"],
@@ -576,7 +568,7 @@ pub(super) fn try_apply_with_clause_tail(
         *filter = filter
             .clone()
             .with_ability_marker("a power and toughness sticker on it");
-        return Some(if words.first().copied() == Some("a") {
+        return Some(if word_slice_first_is(words, "a") {
             7
         } else {
             6
@@ -681,14 +673,8 @@ pub(super) fn apply_spell_filter_parity_phrases(words: &[&str], filter: &mut Obj
     }
 }
 
-pub(super) fn contains_any_filter_phrase(words: &[&str], phrases: &[&[&str]]) -> bool {
-    word_slice_contains_any_phrase(words, phrases)
-}
-
 pub(super) fn find_any_filter_phrase_start(words: &[&str], phrases: &[&[&str]]) -> Option<usize> {
-    phrases.iter().find_map(|phrase| {
-        crate::runtime_backend::lexer::word_slice_find_phrase_start(words, phrase)
-    })
+    word_slice_find_any_phrase_start(words, phrases).map(|(_, idx)| idx)
 }
 
 pub(super) fn find_mana_value_equal_counter_phrase_bounds(
@@ -728,19 +714,11 @@ pub(super) fn find_mana_value_equal_counter_phrase_bounds(
     })
 }
 
-pub(super) fn contains_filter_word(words: &[&str], word: &str) -> bool {
-    word_slice_contains_word(words, word)
-}
-
-pub(super) fn starts_with_any_filter_phrase(words: &[&str], phrases: &[&[&str]]) -> bool {
-    word_slice_starts_with_any(words, phrases)
-}
-
 pub(super) fn attacking_player_filter_from_words(
     words: &[&str],
     pronoun_player_filter: &PlayerFilter,
 ) -> Option<PlayerFilter> {
-    if contains_any_filter_phrase(
+    if word_slice_contains_any_phrase(
         words,
         &[
             &["attacking", "that", "player"],
@@ -749,7 +727,7 @@ pub(super) fn attacking_player_filter_from_words(
     ) {
         return Some(PlayerFilter::IteratedPlayer);
     }
-    if contains_any_filter_phrase(
+    if word_slice_contains_any_phrase(
         words,
         &[
             &["attacking", "defending", "player"],
@@ -758,7 +736,7 @@ pub(super) fn attacking_player_filter_from_words(
     ) {
         return Some(PlayerFilter::Defending);
     }
-    if contains_any_filter_phrase(
+    if word_slice_contains_any_phrase(
         words,
         &[
             &["attacking", "target", "player"],
@@ -767,7 +745,7 @@ pub(super) fn attacking_player_filter_from_words(
     ) {
         return Some(PlayerFilter::target_player());
     }
-    if contains_any_filter_phrase(
+    if word_slice_contains_any_phrase(
         words,
         &[
             &["attacking", "target", "opponent"],
@@ -776,19 +754,19 @@ pub(super) fn attacking_player_filter_from_words(
     ) {
         return Some(PlayerFilter::target_opponent());
     }
-    if contains_any_filter_phrase(words, &[&["attacking", "you"]]) {
+    if word_slice_contains_any_phrase(words, &[&["attacking", "you"]]) {
         return Some(PlayerFilter::You);
     }
-    if contains_any_filter_phrase(words, &[&["attacking", "them"]]) {
+    if word_slice_contains_any_phrase(words, &[&["attacking", "them"]]) {
         return Some(pronoun_player_filter.clone());
     }
-    if contains_any_filter_phrase(
+    if word_slice_contains_any_phrase(
         words,
         &[&["attacking", "opponent"], &["attacking", "opponents"]],
     ) {
         return Some(PlayerFilter::Opponent);
     }
-    if contains_any_filter_phrase(words, &[&["attacking", "one", "of", "your", "opponents"]]) {
+    if word_slice_contains_any_phrase(words, &[&["attacking", "one", "of", "your", "opponents"]]) {
         return Some(PlayerFilter::Opponent);
     }
 
@@ -805,13 +783,13 @@ pub(super) fn apply_reference_and_tag_stage(
     all_words: &mut Vec<&str>,
     segment_tokens: &mut Vec<OwnedLexToken>,
 ) -> ReferenceTagStageResult {
-    if all_words.first().is_some_and(|word| *word == "equipped") {
+    if word_slice_first_is(all_words, "equipped") {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: TagKey::from("equipped"),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
         all_words.remove(0);
-    } else if all_words.first().is_some_and(|word| *word == "enchanted") {
+    } else if word_slice_first_is(all_words, "enchanted") {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: TagKey::from("enchanted"),
             relation: TaggedOpbjectRelation::IsTaggedObject,
@@ -835,10 +813,10 @@ pub(super) fn apply_reference_and_tag_stage(
     }
 
     if let Some(attached_idx) = lower_words_find_index(all_words, |word| word == "attached")
-        && all_words.get(attached_idx + 1) == Some(&"to")
+        && word_slice_at_is(all_words, attached_idx + 1, "to")
     {
         let attached_to_words = &all_words[attached_idx + 2..];
-        if starts_with_any_filter_phrase(attached_to_words, &[&["enchanted", "player"]]) {
+        if word_slice_starts_with_any(attached_to_words, &[&["enchanted", "player"]]) {
             let trim_start = if attached_idx >= 2
                 && all_words[attached_idx - 2] == "that"
                 && matches!(all_words[attached_idx - 1], "were" | "was" | "is" | "are")
@@ -854,7 +832,7 @@ pub(super) fn apply_reference_and_tag_stage(
                 early_return: false,
             };
         }
-        let references_it = starts_with_any_filter_phrase(
+        let references_it = word_slice_starts_with_any(
             attached_to_words,
             &[
                 &["it"],
@@ -895,7 +873,7 @@ pub(super) fn apply_reference_and_tag_stage(
     }
 
     let starts_with_exiled_card =
-        starts_with_any_filter_phrase(all_words, &[&["exiled", "card"], &["exiled", "cards"]]);
+        word_slice_starts_with_any(all_words, &[&["exiled", "card"], &["exiled", "cards"]]);
     if starts_with_exiled_card {
         filter.zone.get_or_insert(Zone::Exile);
     }
@@ -975,7 +953,7 @@ pub(super) fn apply_reference_and_tag_stage(
             &segment_words,
             &["exiled", "with"],
         ) && let Some(exiled_with_token_idx) =
-            normalized_token_index_for_word_index(segment_tokens.as_slice(), exiled_with_idx)
+            segment_words_view.token_index_for_word_index(exiled_with_idx)
         {
             let mut reference_end = exiled_with_token_idx + 2;
             if segment_tokens.get(reference_end).is_some_and(|token| {
@@ -1007,7 +985,7 @@ pub(super) fn apply_reference_and_tag_stage(
             &segment_words,
             &["used", "to", "craft"],
         ) && let Some(used_to_craft_token_idx) =
-            normalized_token_index_for_word_index(segment_tokens.as_slice(), used_to_craft_idx)
+            segment_words_view.token_index_for_word_index(used_to_craft_idx)
         {
             let mut reference_end = used_to_craft_token_idx + 3;
             if segment_tokens.get(reference_end).is_some_and(|token| {
@@ -1050,7 +1028,7 @@ pub(super) fn apply_reference_and_tag_stage(
         all_words.remove(0);
     }
 
-    if starts_with_any_filter_phrase(all_words, &[&["revealed", "card"], &["revealed", "cards"]]) {
+    if word_slice_starts_with_any(all_words, &[&["revealed", "card"], &["revealed", "cards"]]) {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: IT_TAG.into(),
             relation: TaggedOpbjectRelation::IsTaggedObject,
@@ -1058,20 +1036,20 @@ pub(super) fn apply_reference_and_tag_stage(
         all_words.drain(..2);
     }
 
-    let has_share_card_type = (contains_filter_word(all_words, "share")
-        || contains_filter_word(all_words, "shares"))
-        && (contains_filter_word(all_words, "card")
-            || contains_filter_word(all_words, "permanent"))
-        && contains_filter_word(all_words, "type")
-        && contains_filter_word(all_words, "it");
-    let has_share_color = contains_filter_word(all_words, "shares")
-        && contains_filter_word(all_words, "color")
-        && contains_filter_word(all_words, "it");
+    let has_share_card_type = (word_slice_contains_word(all_words, "share")
+        || word_slice_contains_word(all_words, "shares"))
+        && (word_slice_contains_word(all_words, "card")
+            || word_slice_contains_word(all_words, "permanent"))
+        && word_slice_contains_word(all_words, "type")
+        && word_slice_contains_word(all_words, "it");
+    let has_share_color = word_slice_contains_word(all_words, "shares")
+        && word_slice_contains_word(all_words, "color")
+        && word_slice_contains_word(all_words, "it");
     let has_same_mana_value =
-        contains_any_filter_phrase(all_words, &[&["same", "mana", "value", "as"]]);
+        word_slice_contains_any_phrase(all_words, &[&["same", "mana", "value", "as"]]);
     let has_equal_or_lesser_mana_value =
-        contains_any_filter_phrase(all_words, &[&["equal", "or", "lesser", "mana", "value"]]);
-    let has_lte_mana_value_than_that_spell = contains_any_filter_phrase(
+        word_slice_contains_any_phrase(all_words, &[&["equal", "or", "lesser", "mana", "value"]]);
+    let has_lte_mana_value_than_that_spell = word_slice_contains_any_phrase(
         all_words,
         &[
             &[
@@ -1082,7 +1060,7 @@ pub(super) fn apply_reference_and_tag_stage(
             ],
         ],
     );
-    let has_lte_mana_value_as_tagged = contains_any_filter_phrase(
+    let has_lte_mana_value_as_tagged = word_slice_contains_any_phrase(
         all_words,
         &[
             &[
@@ -1106,9 +1084,9 @@ pub(super) fn apply_reference_and_tag_stage(
         ],
     ) || has_equal_or_lesser_mana_value;
     let has_lt_mana_value_as_tagged =
-        contains_any_filter_phrase(all_words, &[&["lesser", "mana", "value"]])
+        word_slice_contains_any_phrase(all_words, &[&["lesser", "mana", "value"]])
             && !has_equal_or_lesser_mana_value;
-    let references_sacrifice_cost_object = contains_any_filter_phrase(
+    let references_sacrifice_cost_object = word_slice_contains_any_phrase(
         all_words,
         &[
             &["the", "sacrificed", "creature"],
@@ -1122,31 +1100,32 @@ pub(super) fn apply_reference_and_tag_stage(
             &["sacrificed", "permanent"],
         ],
     );
-    let references_it_for_mana_value = all_words.iter().any(|word| matches!(*word, "it" | "its"))
-        || contains_any_filter_phrase(
-            all_words,
-            &[
-                &["same", "mana", "value", "as", "object"],
-                &["same", "mana", "value", "as", "creature"],
-                &["same", "mana", "value", "as", "artifact"],
-                &["same", "mana", "value", "as", "permanent"],
-                &["same", "mana", "value", "as", "spell"],
-                &["same", "mana", "value", "as", "card"],
-                &["that", "object"],
-                &["that", "creature"],
-                &["that", "artifact"],
-                &["that", "permanent"],
-                &["that", "spell"],
-                &["that", "card"],
-                &["the", "object"],
-                &["the", "creature"],
-                &["the", "artifact"],
-                &["the", "permanent"],
-                &["the", "spell"],
-                &["the", "card"],
-            ],
-        );
-    let has_same_name_as_tagged_object = contains_any_filter_phrase(
+    let references_it_for_mana_value =
+        crate::runtime_backend::lexer::word_slice_contains_any_word(all_words, &["it", "its"])
+            || word_slice_contains_any_phrase(
+                all_words,
+                &[
+                    &["same", "mana", "value", "as", "object"],
+                    &["same", "mana", "value", "as", "creature"],
+                    &["same", "mana", "value", "as", "artifact"],
+                    &["same", "mana", "value", "as", "permanent"],
+                    &["same", "mana", "value", "as", "spell"],
+                    &["same", "mana", "value", "as", "card"],
+                    &["that", "object"],
+                    &["that", "creature"],
+                    &["that", "artifact"],
+                    &["that", "permanent"],
+                    &["that", "spell"],
+                    &["that", "card"],
+                    &["the", "object"],
+                    &["the", "creature"],
+                    &["the", "artifact"],
+                    &["the", "permanent"],
+                    &["the", "spell"],
+                    &["the", "card"],
+                ],
+            );
+    let has_same_name_as_tagged_object = word_slice_contains_any_phrase(
         all_words,
         &[
             &["same", "name", "as", "spell"],
@@ -1216,7 +1195,7 @@ pub(super) fn apply_reference_and_tag_stage(
         });
     }
 
-    if contains_any_filter_phrase(
+    if word_slice_contains_any_phrase(
         all_words,
         &[
             &["that", "convoked", "this", "spell"],
@@ -1228,19 +1207,19 @@ pub(super) fn apply_reference_and_tag_stage(
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
     }
-    if contains_any_filter_phrase(all_words, &[&["that", "crewed", "it", "this", "turn"]]) {
+    if word_slice_contains_any_phrase(all_words, &[&["that", "crewed", "it", "this", "turn"]]) {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: TagKey::from("crewed_it_this_turn"),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
     }
-    if contains_any_filter_phrase(all_words, &[&["that", "saddled", "it", "this", "turn"]]) {
+    if word_slice_contains_any_phrase(all_words, &[&["that", "saddled", "it", "this", "turn"]]) {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: TagKey::from("saddled_it_this_turn"),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
     }
-    if contains_any_filter_phrase(
+    if word_slice_contains_any_phrase(
         all_words,
         &[
             &["army", "you", "amassed"],
@@ -1253,7 +1232,7 @@ pub(super) fn apply_reference_and_tag_stage(
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
     }
-    if contains_any_filter_phrase(
+    if word_slice_contains_any_phrase(
         all_words,
         &[
             &["exiled", "this", "way"],

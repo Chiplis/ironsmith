@@ -19,10 +19,12 @@ use super::super::activation_and_restrictions::{
 use super::super::grammar::structure::{IfClausePredicateSpec, split_if_clause_lexed};
 use super::super::lexer::{
     LexStream, OwnedLexToken, TokenKind, parser_token_word_positions, parser_token_word_refs,
-    split_lexed_sentences, token_word_refs, trim_lexed_commas, word_slice_contains_all_words,
-    word_slice_contains_any_phrase, word_slice_contains_any_word, word_slice_contains_phrase,
-    word_slice_contains_word, word_slice_eq, word_slice_eq_any, word_slice_find_phrase_start,
-    word_slice_find_word, word_slice_starts_with_any,
+    split_lexed_sentences, token_slice_all_are_kind, token_slice_at_is, token_slice_first_is,
+    token_slice_starts_with, token_word_refs, trim_lexed_commas, word_slice_at_is,
+    word_slice_contains_all_words, word_slice_contains_any_phrase, word_slice_contains_any_word,
+    word_slice_contains_phrase, word_slice_contains_word, word_slice_eq, word_slice_eq_any,
+    word_slice_find_phrase_start, word_slice_find_word, word_slice_first_is,
+    word_slice_starts_with_any,
 };
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::super::search_library_support::{
@@ -157,7 +159,7 @@ pub(crate) fn split_cant_sentence_next_turn_prefix_lexed(
             cursor += 1;
             continue;
         };
-        if rest.iter().all(|token| token.is_period()) {
+        if token_slice_all_are_kind(rest, TokenKind::Period) {
             return Some(tokens[..cursor].to_vec());
         }
         cursor += 1;
@@ -500,7 +502,7 @@ pub(crate) fn split_change_target_clause_lexed(
             use winnow::Parser as _;
             primitives::kw("to").void()
         })
-        && to_tail.first().is_some_and(|token| token.is_word("this"))
+        && token_slice_first_is(to_tail, "this")
     {
         fixed_to_source = true;
         tail_tokens.truncate(before_to.len());
@@ -537,7 +539,7 @@ fn split_for_each_doesnt_clause_lexed<'a>(
     prefixes: &'static [&'static [&'static str]],
 ) -> Option<ForEachDoesntClauseSplit<'a>> {
     let mut clause_tokens = tokens;
-    if token_word_refs(clause_tokens).first().copied() == Some("then") {
+    if word_slice_first_is(&token_word_refs(clause_tokens), "then") {
         clause_tokens = &clause_tokens[1..];
     }
     let start = primitives::words_match_any_prefix(clause_tokens, prefixes)?
@@ -545,7 +547,7 @@ fn split_for_each_doesnt_clause_lexed<'a>(
         .len();
     let inner_tokens = trim_lexed_commas(&clause_tokens[start..]);
     let inner_words = token_word_refs(inner_tokens);
-    if inner_words.first().copied() != Some("who") {
+    if !word_slice_first_is(&inner_words, "who") {
         return None;
     }
     let (negation_idx, negation_len) = negated_action_word_index(&inner_words)?;
@@ -555,12 +557,12 @@ fn split_for_each_doesnt_clause_lexed<'a>(
         comma_idx + 1
     } else if let Some(this_way_idx) = word_slice_find_phrase_start(&inner_words, &["this", "way"])
     {
-        parser_word_token_positions(inner_tokens)
+        parser_token_word_positions(inner_tokens)
             .get(this_way_idx + 2)
             .map(|(idx, _)| *idx)
             .unwrap_or(inner_tokens.len())
     } else {
-        parser_word_token_positions(inner_tokens)
+        parser_token_word_positions(inner_tokens)
             .get(negation_idx + negation_len)
             .map(|(idx, _)| *idx)
             .unwrap_or(inner_tokens.len())
@@ -590,7 +592,7 @@ pub(crate) fn split_negated_who_this_way_filter_tokens_lexed(
     inner_tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     let inner_words = token_word_refs(inner_tokens);
-    if inner_words.first().copied() != Some("who") {
+    if !word_slice_first_is(&inner_words, "who") {
         return None;
     }
     let this_way_idx = word_slice_find_phrase_start(&inner_words, &["this", "way"])?;
@@ -601,7 +603,7 @@ pub(crate) fn split_negated_who_this_way_filter_tokens_lexed(
         return None;
     }
 
-    let parser_words = parser_word_token_positions(inner_tokens);
+    let parser_words = parser_token_word_positions(inner_tokens);
     let filter_start = parser_words.get(verb_idx + 1).map(|(idx, _)| *idx)?;
     let filter_end = parser_words.get(this_way_idx).map(|(idx, _)| *idx)?;
     let filter_tokens = trim_lexed_commas(&inner_tokens[filter_start..filter_end]);
@@ -701,7 +703,7 @@ pub(crate) fn parse_prevent_damage_sentence_lexed(
     }
 
     if let Some(would_idx) = word_slice_find_word(&core_words, "would")
-        && core_words.get(would_idx + 1) == Some(&"deal")
+        && word_slice_at_is(&core_words, would_idx + 1, "deal")
     {
         let source_tokens = &core_tokens[..would_idx];
         let (source, has_color_condition) =
@@ -732,10 +734,7 @@ pub(crate) fn parse_prevent_damage_source_target_lexed(
     }
 
     let (tokens, has_color_condition) = strip_prevent_damage_shares_color_clause_lexed(tokens);
-    let source_words: Vec<&str> = token_word_refs(tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
+    let source_words = crate::runtime_backend::util::non_article_token_word_refs(tokens);
     let is_explicit_reference = word_slice_contains_word(&source_words, "target")
         || source_words
             .first()
@@ -793,10 +792,7 @@ fn prevent_damage_effect_with_optional_condition(
 }
 
 fn prevent_damage_shares_color_clause_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let words: Vec<&str> = token_word_refs(tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
+    let words = crate::runtime_backend::util::non_article_token_word_refs(tokens);
     matches!(
         words.as_slice(),
         ["if", "it", "shares", "color", "with", "that", "permanent"]
@@ -829,10 +825,7 @@ pub(crate) fn parse_prevent_damage_target_scope_lexed(
         )));
     }
 
-    let target_words: Vec<&str> = token_word_refs(tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
+    let target_words = crate::runtime_backend::util::non_article_token_word_refs(tokens);
     if word_slice_eq_any(&target_words, &[&["player"], &["players"]]) {
         return Ok(Some(
             EffectAst::subject_verb_prevent_all_combat_damage_to_players(
@@ -1057,7 +1050,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
                 .is_some()
     }
 
-    let words_all = parser_text_word_refs(tokens);
+    let words_all = parser_token_word_refs(tokens);
     let Some(head_split) = split_search_library_sentence_head_lexed(tokens) else {
         return Ok(None);
     };
@@ -1091,7 +1084,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     if !search_library_starts_with_search_verb_lexed(search_tokens) {
         return Ok(None);
     }
-    let search_words = parser_text_word_refs(search_tokens);
+    let search_words = parser_token_word_refs(search_tokens);
     if search_words.is_empty() {
         return Ok(None);
     }

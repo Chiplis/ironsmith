@@ -1,7 +1,8 @@
 use super::grammar::primitives::{self as grammar, split_lexed_slices_on_or};
 use super::grammar::values::parse_value_comparison_tokens;
 use super::lexer::{
-    OwnedLexToken, TokenKind, contains_token_word, token_word_refs, trim_lexed_commas,
+    OwnedLexToken, TokenKind, contains_token_word, contains_token_word_sequence,
+    find_token_word_sequence_span, token_slice_starts_with_at, token_word_refs, trim_lexed_commas,
     word_slice_starts_with, word_slice_starts_with_any,
 };
 use super::object_filters::parse_object_filter;
@@ -34,25 +35,6 @@ pub(crate) fn word_slice_mentions_nth_from_top(words: &[&str]) -> bool {
     false
 }
 
-fn token_slice_contains_phrase(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> bool {
-    grammar::find_prefix(tokens, || grammar::phrase(phrase)).is_some()
-}
-
-fn find_phrase_token_bounds(
-    tokens: &[OwnedLexToken],
-    phrase: &'static [&'static str],
-) -> Option<(usize, usize)> {
-    if phrase.is_empty() {
-        return None;
-    }
-    let (idx, _, rest) = grammar::find_prefix(tokens, || grammar::phrase(phrase))?;
-    Some((idx, tokens.len() - rest.len()))
-}
-
-fn token_words<'a>(tokens: &'a [OwnedLexToken]) -> Vec<&'a str> {
-    token_word_refs(tokens)
-}
-
 fn is_source_reference_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
     [
         "this",
@@ -73,7 +55,7 @@ fn is_as_long_as_you_control_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn is_source_remains_tapped_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
-    token_slice_contains_phrase(tokens, &["for", "as", "long", "as"])
+    contains_token_word_sequence(tokens, &["for", "as", "long", "as"])
         && contains_token_word(tokens, "remains")
         && contains_token_word(tokens, "tapped")
         && is_source_reference_duration_tokens(tokens)
@@ -83,11 +65,7 @@ fn remove_this_turn_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let mut cleaned = Vec::new();
     let mut idx = 0usize;
     while idx < tokens.len() {
-        if tokens[idx].is_word("this")
-            && tokens
-                .get(idx + 1)
-                .is_some_and(|token| token.is_word("turn"))
-        {
+        if token_slice_starts_with_at(tokens, idx, &["this", "turn"]) {
             idx += 2;
             continue;
         }
@@ -147,7 +125,7 @@ pub(crate) fn parse_restriction_duration_lexed(
         return Ok(Some((duration, trim_lexed_commas(rest).to_vec())));
     }
 
-    if token_words(tokens).len() < 2 {
+    if token_word_refs(tokens).len() < 2 {
         return Ok(None);
     }
 
@@ -173,7 +151,9 @@ pub(crate) fn parse_restriction_duration_lexed(
         }
     }
 
-    if let Some((token_idx, _)) = find_phrase_token_bounds(tokens, &["for", "as", "long", "as"]) {
+    if let Some((token_idx, _)) =
+        find_token_word_sequence_span(tokens, &["for", "as", "long", "as"])
+    {
         let suffix_tokens = &tokens[token_idx..];
         if is_source_remains_tapped_duration_tokens(suffix_tokens) {
             let remainder = trim_lexed_commas(&tokens[..token_idx]).to_vec();
@@ -198,8 +178,8 @@ pub(crate) fn extract_search_library_mana_constraint(
     filter_tokens: &[OwnedLexToken],
 ) -> Option<(Vec<OwnedLexToken>, SearchLibraryManaConstraint)> {
     let (clause_token_start, clause_token_end) =
-        find_phrase_token_bounds(filter_tokens, &["with", "mana", "cost"])
-            .or_else(|| find_phrase_token_bounds(filter_tokens, &["with", "mana", "value"]))?;
+        find_token_word_sequence_span(filter_tokens, &["with", "mana", "cost"])
+            .or_else(|| find_token_word_sequence_span(filter_tokens, &["with", "mana", "value"]))?;
     let base_filter_tokens = trim_commas(&filter_tokens[..clause_token_start]);
     if base_filter_tokens.is_empty() {
         return None;
@@ -295,8 +275,8 @@ pub(crate) fn split_search_same_name_reference_filter(
     tokens: &[OwnedLexToken],
 ) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
     let (start_token_idx, end_token_idx) =
-        find_phrase_token_bounds(tokens, &["with", "the", "same", "name", "as"])
-            .or_else(|| find_phrase_token_bounds(tokens, &["with", "same", "name", "as"]))?;
+        find_token_word_sequence_span(tokens, &["with", "the", "same", "name", "as"])
+            .or_else(|| find_token_word_sequence_span(tokens, &["with", "same", "name", "as"]))?;
     let base_filter_tokens = trim_commas(&tokens[..start_token_idx]);
     let reference_tokens = trim_commas(&tokens[end_token_idx..]);
     Some((base_filter_tokens, reference_tokens))
@@ -317,7 +297,9 @@ pub(crate) fn split_search_different_name_reference_filter(
     ];
 
     for pattern in PATTERNS {
-        if let Some((start_token_idx, end_token_idx)) = find_phrase_token_bounds(tokens, pattern) {
+        if let Some((start_token_idx, end_token_idx)) =
+            find_token_word_sequence_span(tokens, pattern)
+        {
             let base_filter_tokens = trim_commas(&tokens[..start_token_idx]);
             let reference_tokens = trim_commas(&tokens[end_token_idx..]);
             return Some((base_filter_tokens, reference_tokens));
@@ -396,7 +378,7 @@ pub(crate) fn split_search_library_count_value_clause_lexed(
     else {
         return Err(CardTextError::ParseError(format!(
             "unsupported search-library count clause (clause: '{}')",
-            token_words(&count_value_tokens).join(" ")
+            token_word_refs(&count_value_tokens).join(" ")
         )));
     };
 

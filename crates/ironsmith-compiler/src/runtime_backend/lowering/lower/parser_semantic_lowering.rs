@@ -3,7 +3,10 @@ use crate::runtime_backend::ast::{SubjectVerbEffectAst, SubjectVerbSubjectAst};
 use crate::runtime_backend::grammar::structure::{
     StatementLineFamily, classify_statement_line_family_lexed,
 };
-use crate::runtime_backend::lexer::word_slice_starts_with;
+use crate::runtime_backend::lexer::{
+    word_slice_contains_any_phrase, word_slice_contains_any_word, word_slice_contains_phrase,
+    word_slice_contains_word, word_slice_starts_with,
+};
 
 fn parse_effect_sentences_from_text(
     text: &str,
@@ -328,16 +331,19 @@ fn linked_statement_should_stay_grouped(tokens: &[OwnedLexToken]) -> bool {
     }
 
     let words = token_word_refs(tokens);
-    let contains_sequence = |needle: &[&str]| -> bool {
-        !needle.is_empty() && words.windows(needle.len()).any(|window| window == needle)
-    };
 
-    contains_sequence(&[
-        "for", "as", "long", "as", "that", "card", "remains", "exiled",
-    ]) && contains_sequence(&["more", "to", "cast"])
-        || contains_sequence(&["chooses", "two", "of", "those", "cards"])
-            && contains_sequence(&["shuffle", "the", "chosen", "cards"])
-            && contains_sequence(&["put", "the", "rest", "onto", "the", "battlefield"])
+    word_slice_contains_phrase(
+        &words,
+        &[
+            "for", "as", "long", "as", "that", "card", "remains", "exiled",
+        ],
+    ) && word_slice_contains_phrase(&words, &["more", "to", "cast"])
+        || word_slice_contains_phrase(&words, &["chooses", "two", "of", "those", "cards"])
+            && word_slice_contains_phrase(&words, &["shuffle", "the", "chosen", "cards"])
+            && word_slice_contains_phrase(
+                &words,
+                &["put", "the", "rest", "onto", "the", "battlefield"],
+            )
 }
 
 fn statement_group_should_parse_as_effects_first(tokens: &[OwnedLexToken]) -> bool {
@@ -352,25 +358,20 @@ fn statement_group_should_parse_as_effects_first(tokens: &[OwnedLexToken]) -> bo
     {
         return true;
     }
-    let contains_sequence = |needle: &[&str]| -> bool {
-        !needle.is_empty() && words.windows(needle.len()).any(|window| window == needle)
-    };
-    let targeted_temporary_modifier = words.contains(&"target")
-        && contains_sequence(&["until", "end", "of", "turn"])
+    let targeted_temporary_modifier = word_slice_contains_word(&words, "target")
+        && word_slice_contains_phrase(&words, &["until", "end", "of", "turn"])
         && words
             .iter()
             .any(|word| matches!(*word, "get" | "gets" | "gain" | "gains"));
-    contains_sequence(&["if"]) && contains_sequence(&["instead"])
+    word_slice_contains_phrase(&words, &["if"]) && word_slice_contains_phrase(&words, &["instead"])
         || targeted_temporary_modifier
-        || ((contains_sequence(&["cant", "cast"]) || contains_sequence(&["can't", "cast"]))
-            && contains_sequence(&["next", "turn"]))
-        || (contains_sequence(&["until", "end", "of", "turn"])
-            && (words.contains(&"cant")
-                || words.contains(&"can't")
-                || words.contains(&"dont")
-                || words.contains(&"don't")
-                || words.contains(&"doesnt")
-                || words.contains(&"doesn't")))
+        || (word_slice_contains_any_phrase(&words, &[&["cant", "cast"], &["can't", "cast"]])
+            && word_slice_contains_phrase(&words, &["next", "turn"]))
+        || (word_slice_contains_phrase(&words, &["until", "end", "of", "turn"])
+            && word_slice_contains_any_word(
+                &words,
+                &["cant", "can't", "dont", "don't", "doesnt", "doesn't"],
+            ))
 }
 
 fn statement_leading_effect_verb(word: &str) -> bool {
@@ -1365,7 +1366,7 @@ fn lower_rewrite_static_to_chunk_impl(
         }
     }
     let token_words = crate::runtime_backend::lexer::token_word_refs(&lexed);
-    if word_refs_have_suffix(
+    if word_slice_ends_with(
         token_words.as_slice(),
         &["untap", "during", "your", "untap", "step"],
     ) && token_words

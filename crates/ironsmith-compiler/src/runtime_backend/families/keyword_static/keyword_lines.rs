@@ -61,7 +61,7 @@ pub(crate) fn reject_unimplemented_keyword_actions(
 pub(crate) fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     let words_view = crate::runtime_backend::lexer::TokenWordView::new(tokens);
     let words = words_view.word_refs();
-    let first_word_idx = if words.first().copied() == Some("and") {
+    let first_word_idx = if word_slice_at_is(&words, 0, "and") {
         1
     } else {
         0
@@ -69,8 +69,8 @@ pub(crate) fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<Key
     if words.len().saturating_sub(first_word_idx) < 3 {
         return None;
     }
-    if words.get(first_word_idx).copied() != Some("protection")
-        || words.get(first_word_idx + 1).copied() != Some("from")
+    if !word_slice_at_is(&words, first_word_idx, "protection")
+        || !word_slice_at_is(&words, first_word_idx + 1, "from")
     {
         return None;
     }
@@ -79,17 +79,20 @@ pub(crate) fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<Key
     let parse_from_target = |words: &[&str], idx: usize| -> Option<KeywordAction> {
         let value = *words.get(idx + 1)?;
         if value == "each"
-            && words.get(idx + 2).copied() == Some("mana")
-            && words.get(idx + 3).copied() == Some("value")
-            && words.get(idx + 4).copied() == Some("among")
+            && word_slice_at_is(words, idx + 2, "mana")
+            && word_slice_at_is(words, idx + 3, "value")
+            && word_slice_at_is(words, idx + 4, "among")
         {
-            let filter_start = words_view.token_index_for_word_index(idx + 5)?;
-            let filter_tokens = trim_commas(&tokens[filter_start..]);
+            let filter_tokens = trim_commas(
+                LexedClause::new(tokens)
+                    .from_word(idx + 5)?
+                    .tokens(),
+            );
             let filter = parse_object_filter_lexed(&filter_tokens, false).ok()?;
             return Some(KeywordAction::ProtectionFromEachManaValueAmong(filter));
         }
         if matches!(value, "permanent" | "permanents")
-            && words.get(idx + 2).copied() == Some("with")
+            && word_slice_at_is(words, idx + 2, "with")
         {
             let counter_words = &words[idx + 3..];
             if let Some((with_counter, consumed)) = parse_filter_counter_constraint_words(counter_words)
@@ -102,27 +105,27 @@ pub(crate) fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<Key
         }
         match value {
             "the"
-                if words.get(idx + 2).copied() == Some("chosen")
-                    && words.get(idx + 3).copied() == Some("player") =>
+                if word_slice_at_is(words, idx + 2, "chosen")
+                    && word_slice_at_is(words, idx + 3, "player") =>
             {
                 Some(KeywordAction::ProtectionFromChosenPlayer)
             }
             "the"
-                if words.get(idx + 2).copied() == Some("chosen")
-                    && words.get(idx + 3).copied() == Some("color") =>
+                if word_slice_at_is(words, idx + 2, "chosen")
+                    && word_slice_at_is(words, idx + 3, "color") =>
             {
                 Some(KeywordAction::ProtectionFromChosenColor)
             }
             "the"
-                if words.get(idx + 2).copied() == Some("last")
-                    && words.get(idx + 3).copied() == Some("chosen")
-                    && words.get(idx + 4).copied() == Some("color") =>
+                if word_slice_at_is(words, idx + 2, "last")
+                    && word_slice_at_is(words, idx + 3, "chosen")
+                    && word_slice_at_is(words, idx + 4, "color") =>
             {
                 Some(KeywordAction::ProtectionFromChosenColor)
             }
             "colorless" => Some(KeywordAction::ProtectionFromColorless),
             "everything" => Some(KeywordAction::ProtectionFromEverything),
-            "all" if matches!(words.get(idx + 2).copied(), Some("color") | Some("colors")) => {
+            "all" if word_slice_at_is_any(words, idx + 2, &["color", "colors"]) => {
                 Some(KeywordAction::ProtectionFromAllColors)
             }
             _ => parse_color(value)

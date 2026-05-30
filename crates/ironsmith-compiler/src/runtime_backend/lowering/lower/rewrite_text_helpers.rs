@@ -14,18 +14,6 @@ pub(crate) fn lexed_tokens(
     lex_line(text, line_index)
 }
 
-pub(crate) fn word_refs_have_prefix(words: &[&str], prefix: &[&str]) -> bool {
-    word_slice_starts_with(words, prefix)
-}
-
-pub(crate) fn word_refs_have_suffix(words: &[&str], suffix: &[&str]) -> bool {
-    word_slice_ends_with(words, suffix)
-}
-
-pub(crate) fn word_refs_find(words: &[&str], expected: &str) -> Option<usize> {
-    word_slice_find_phrase_start(words, &[expected])
-}
-
 #[derive(Debug, Clone, Default)]
 pub(crate) struct RewriteLoweredCardState {
     pub(crate) haunt_linkage: Option<(Vec<crate::effect::Effect>, Vec<ChooseSpec>)>,

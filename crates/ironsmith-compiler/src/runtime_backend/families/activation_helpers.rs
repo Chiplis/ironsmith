@@ -11,8 +11,10 @@ use super::keyword_static::{
     parse_dynamic_cost_modifier_value, parse_where_x_is_number_of_filter_value,
 };
 use super::lexer::{
-    TokenWordView, token_word_refs, word_slice_contains_word, word_slice_ends_with,
-    word_slice_find_phrase_start, word_slice_starts_with,
+    TokenWordView, token_slice_at_is, token_slice_first_is, token_slice_starts_with_at,
+    token_word_refs, word_slice_at_is, word_slice_contains_word, word_slice_ends_with,
+    word_slice_eq, word_slice_find_any_phrase_start, word_slice_find_phrase_start,
+    word_slice_first_is, word_slice_starts_with,
 };
 pub(crate) use super::object_filters::is_comparison_or_delimiter;
 use super::object_filters::parse_object_filter;
@@ -21,8 +23,11 @@ pub(crate) use super::util::{
     contains_source_from_your_graveyard_phrase, contains_source_from_your_hand_phrase,
     find_activation_cost_start, is_article, is_basic_color_word,
     is_source_from_your_graveyard_words, join_sentences_with_period, mana_pips_from_token,
-    parse_mana_symbol, parse_next_end_step_token_delay_flags, parse_subtype_flexible, parse_value,
-    split_cost_segments, token_index_for_word_index, trim_commas, value_contains_unbound_x,
+    non_article_token_word_refs, non_article_word_refs, parse_mana_symbol,
+    parse_next_end_step_token_delay_flags, parse_subtype_flexible, parse_value,
+    split_cost_segments, strip_leading_article_tokens, token_index_for_word_index, trim_commas,
+    trim_edge_punctuation_tokens, value_contains_unbound_x, word_refs_at_is_article,
+    word_refs_except,
 };
 pub(crate) use super::value_helpers::{
     parse_equal_to_aggregate_filter_value, parse_filter_comparison_tokens,
@@ -33,15 +38,7 @@ fn push_unique_color(colors: &mut Vec<crate::color::Color>, color: crate::color:
 }
 
 fn first_non_comma_token_index(tokens: &[OwnedLexToken]) -> usize {
-    let mut idx = 0usize;
-    while idx < tokens.len() {
-        if !tokens[idx].is_comma() {
-            return idx;
-        }
-        idx += 1;
-    }
-
-    tokens.len()
+    crate::slice_primitives::find_index(tokens, |token| !token.is_comma()).unwrap_or(tokens.len())
 }
 
 pub(crate) fn parse_add_mana(
@@ -54,10 +51,7 @@ pub(crate) fn parse_add_mana(
     let wrap_instead_if_tail = |base_effect: EffectAst,
                                 tail_tokens: &[OwnedLexToken]|
      -> Result<Option<EffectAst>, CardTextError> {
-        if !tail_tokens
-            .first()
-            .is_some_and(|token| token.is_word("instead"))
-            || !tail_tokens.get(1).is_some_and(|token| token.is_word("if"))
+        if !token_slice_first_is(tail_tokens, "instead") || !token_slice_at_is(tail_tokens, 1, "if")
         {
             return Ok(None);
         }
@@ -172,29 +166,29 @@ pub(crate) fn parse_add_mana(
         ));
     }
 
-    let any_one = word_slice_find_phrase_start(&clause_words, &["any", "one", "color"]).is_some()
-        || word_slice_find_phrase_start(&clause_words, &["any", "one", "type"]).is_some();
-    let any_color = word_slice_find_phrase_start(&clause_words, &["any", "color"]).is_some()
-        || word_slice_find_phrase_start(&clause_words, &["one", "color"]).is_some();
-    let any_type = word_slice_find_phrase_start(&clause_words, &["any", "type"]).is_some()
-        || word_slice_find_phrase_start(&clause_words, &["one", "type"]).is_some();
+    let any_one = word_slice_find_any_phrase_start(
+        &clause_words,
+        &[&["any", "one", "color"], &["any", "one", "type"]],
+    )
+    .is_some();
+    let any_color =
+        word_slice_find_any_phrase_start(&clause_words, &[&["any", "color"], &["one", "color"]])
+            .is_some();
+    let any_type =
+        word_slice_find_any_phrase_start(&clause_words, &[&["any", "type"], &["one", "type"]])
+            .is_some();
     if any_color || any_type {
         let mut amount = parse_value(tokens)
             .map(|(value, _)| value)
             .unwrap_or(Value::Fixed(1));
         let allow_colorless = any_type;
-        let phrase_end = tokens
-            .iter()
-            .enumerate()
-            .find_map(|(idx, token)| {
-                let word = token.as_word()?;
-                if (word == "color" && any_color) || (word == "type" && any_type) {
-                    Some(idx + 1)
-                } else {
-                    None
-                }
-            })
-            .unwrap_or(tokens.len());
+        let phrase_end = crate::slice_primitives::find_index(tokens, |token| {
+            token
+                .as_word()
+                .is_some_and(|word| (word == "color" && any_color) || (word == "type" && any_type))
+        })
+        .map(|idx| idx + 1)
+        .unwrap_or(tokens.len());
         let tail_tokens = trim_leading_commas(&tokens[phrase_end..]);
 
         if tail_tokens.is_empty() || is_mana_pool_tail_tokens(tail_tokens) {
@@ -268,8 +262,8 @@ pub(crate) fn parse_add_mana(
                 player, amount, None,
             ));
         }
-        if tail_words.first().copied() == Some("for")
-            && tail_words.get(1).copied() == Some("each")
+        if word_slice_first_is(&tail_words, "for")
+            && word_slice_at_is(&tail_words, 1, "each")
             && word_slice_ends_with(&tail_words, &["removed", "this", "way"])
             && let Some(dynamic_amount) = parse_dynamic_cost_modifier_value(tail_tokens)?
         {
@@ -290,7 +284,7 @@ pub(crate) fn parse_add_mana(
             ));
         }
 
-        if tail_words.first().copied() == Some("among") {
+        if word_slice_first_is(&tail_words, "among") {
             if any_type {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported any-type mana clause without producer filter (clause: '{}')",
@@ -325,7 +319,7 @@ pub(crate) fn parse_add_mana(
     let mut for_each_idx = None;
     let mut token_idx = 0usize;
     while token_idx + 1 < tokens.len() {
-        if tokens[token_idx].is_word("for") && tokens[token_idx + 1].is_word("each") {
+        if token_slice_starts_with_at(tokens, token_idx, &["for", "each"]) {
             for_each_idx = Some(token_idx);
             break;
         }
@@ -424,7 +418,7 @@ pub(crate) fn parse_add_mana(
             && trailing_words
                 .iter()
                 .all(|word| matches!(*word, "to" | "your" | "mana" | "pool"));
-        let has_only_instead_tail = trailing_words.as_slice() == ["instead"];
+        let has_only_instead_tail = word_slice_eq(&trailing_words, &["instead"]);
         if !trailing_words.is_empty() && !has_only_pool_tail && !has_only_instead_tail {
             if let Some(last_idx) = last_mana_idx
                 && let Some(conditional) = wrap_instead_if_tail(
@@ -608,8 +602,7 @@ pub(crate) fn trim_leading_commas(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] 
 pub(crate) fn is_mana_pool_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
     let words_view = TokenWordView::new(tokens);
     let words = words_view.to_word_refs();
-    if words.is_empty()
-        || words[0] != "to"
+    if !word_slice_first_is(&words, "to")
         || !word_slice_contains_word(&words, "mana")
         || !word_slice_contains_word(&words, "pool")
     {
@@ -637,7 +630,7 @@ pub(crate) fn parse_land_could_produce_filter(
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     let words_view = TokenWordView::new(tokens);
     let words = words_view.to_word_refs();
-    if words.len() < 3 || words[0] != "that" {
+    if words.len() < 3 || !word_slice_first_is(&words, "that") {
         return Ok(None);
     }
 

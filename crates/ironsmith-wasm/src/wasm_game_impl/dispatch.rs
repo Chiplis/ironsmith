@@ -1400,9 +1400,26 @@ impl WasmGame {
     #[wasm_bindgen(js_name = forfeitPlayer)]
     pub fn forfeit_player(&mut self, player_index: u8) -> Result<JsValue, JsValue> {
         let player_id = PlayerId::from_index(player_index);
+        // Integrity guard (defense-in-depth): the engine must never mutate a match
+        // that is already decided, and must never re-forfeit a player who is no
+        // longer in the game. Authorization that a forfeit is legitimate lives in
+        // the protocol layer (live receive-gate + transcript verifier); these checks
+        // only ensure a forfeit cannot rewrite a finished or already-eliminated
+        // result. No legitimate flow forfeits post-game or double-forfeits, so a
+        // caller that hits either case is rejected.
+        if self.game_over.is_some() {
+            return Err(JsValue::from_str(
+                "cannot forfeit a player after the game is already decided",
+            ));
+        }
         let Some(player) = self.game.player_mut(player_id) else {
             return Err(JsValue::from_str("invalid player index"));
         };
+        if !player.is_in_game() {
+            return Err(JsValue::from_str(
+                "cannot forfeit a player who is no longer in the game",
+            ));
+        }
 
         player.has_lost = true;
         player.has_left_game = true;

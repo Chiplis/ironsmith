@@ -15,10 +15,11 @@ use crate::effect::Value;
 use crate::runtime_backend::effect_sentences;
 use crate::runtime_backend::effect_sentences::SentenceInput;
 use crate::runtime_backend::front_end::lexer::{
-    LexedClause, word_slice_contains_all_words, word_slice_contains_any_word,
+    LexedClause, TokenKind, find_token_kind, word_slice_contains_all_words,
+    word_slice_contains_any_phrase, word_slice_contains_any_word, word_slice_contains_no_words,
     word_slice_contains_phrase, word_slice_contains_word, word_slice_ends_with, word_slice_eq,
-    word_slice_eq_any, word_slice_find_phrase_start, word_slice_matching_value,
-    word_slice_starts_with, word_slice_starts_with_any,
+    word_slice_eq_any, word_slice_find_phrase_start, word_slice_find_word, word_slice_first_is,
+    word_slice_matching_value, word_slice_starts_with, word_slice_starts_with_any,
 };
 use crate::runtime_backend::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed;
 use crate::runtime_backend::lexer::TokenWordView;
@@ -28,7 +29,10 @@ use crate::runtime_backend::token_primitives::{
     find_index, parse_leading_may_action_lexed, word_view_has_any_prefix,
 };
 use crate::runtime_backend::util::trim_commas;
-use crate::runtime_backend::util::{helper_tag_for_tokens, is_article, parse_subject};
+use crate::runtime_backend::util::{
+    helper_tag_for_tokens, is_article, non_article_token_word_refs, non_article_word_refs,
+    parse_subject, strip_leading_token_word_once_any, word_refs_except,
+};
 use crate::target::{ChooseSpec, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::CardType;
 use crate::zone::Zone;
@@ -123,11 +127,8 @@ pub(crate) fn parse_look_at_top_then_exile_face_down_then_play_while_exiled(
 
     let look_clause = first_clause.before(then_token_idx).trimmed();
     let exile_clause = first_clause.from(exile_token_idx).trimmed();
-    let exile_words: Vec<&str> = exile_clause
-        .word_refs()
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
+    let exile_words =
+        crate::runtime_backend::util::non_article_token_word_refs(exile_clause.tokens());
     let exiles_looked_card_face_down = word_slice_eq_any(
         &exile_words,
         &[
@@ -197,23 +198,26 @@ pub(crate) fn parse_look_at_top_then_put_one_hand_other_bottom(
 
     let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
     let words = LexedClause::new(&second_tokens).word_refs();
-    let starts_with_hand_choice =
-        word_slice_starts_with(
-            &words,
+    let starts_with_hand_choice = word_slice_starts_with_any(
+        &words,
+        &[
             &["put", "one", "of", "them", "into", "your", "hand"],
-        ) || word_slice_starts_with(&words, &["put", "one", "into", "your", "hand"]);
+            &["put", "one", "into", "your", "hand"],
+        ],
+    );
     if !starts_with_hand_choice {
         return Ok(None);
     }
-    let content_words = words
-        .iter()
-        .copied()
-        .filter(|word| !is_article(word))
-        .collect::<Vec<_>>();
-    let puts_other_bottom = word_slice_contains_phrase(&content_words, &["other", "on", "bottom"])
-        || word_slice_contains_phrase(&content_words, &["other", "onto", "bottom"])
-        || word_slice_contains_phrase(&content_words, &["rest", "on", "bottom"])
-        || word_slice_contains_phrase(&content_words, &["rest", "onto", "bottom"]);
+    let content_words = non_article_word_refs(&words);
+    let puts_other_bottom = word_slice_contains_any_phrase(
+        &content_words,
+        &[
+            &["other", "on", "bottom"],
+            &["other", "onto", "bottom"],
+            &["rest", "on", "bottom"],
+            &["rest", "onto", "bottom"],
+        ],
+    );
     if !puts_other_bottom || !word_slice_contains_word(&content_words, "library") {
         return Ok(None);
     }
@@ -264,24 +268,26 @@ pub(crate) fn parse_look_at_top_then_put_one_hand_other_graveyard(
 
     let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
     let words = LexedClause::new(&second_tokens).word_refs();
-    let starts_with_hand_choice =
-        word_slice_starts_with(
-            &words,
+    let starts_with_hand_choice = word_slice_starts_with_any(
+        &words,
+        &[
             &["put", "one", "of", "them", "into", "your", "hand"],
-        ) || word_slice_starts_with(&words, &["put", "one", "into", "your", "hand"]);
+            &["put", "one", "into", "your", "hand"],
+        ],
+    );
     if !starts_with_hand_choice {
         return Ok(None);
     }
-    let content_words = words
-        .iter()
-        .copied()
-        .filter(|word| !is_article(word))
-        .collect::<Vec<_>>();
-    let puts_other_graveyard =
-        word_slice_contains_phrase(&content_words, &["other", "into", "graveyard"])
-            || word_slice_contains_phrase(&content_words, &["other", "into", "your", "graveyard"])
-            || word_slice_contains_phrase(&content_words, &["rest", "into", "your", "graveyard"])
-            || word_slice_contains_phrase(&content_words, &["rest", "into", "graveyard"]);
+    let content_words = non_article_word_refs(&words);
+    let puts_other_graveyard = word_slice_contains_any_phrase(
+        &content_words,
+        &[
+            &["other", "into", "graveyard"],
+            &["other", "into", "your", "graveyard"],
+            &["rest", "into", "your", "graveyard"],
+            &["rest", "into", "graveyard"],
+        ],
+    );
     if !puts_other_graveyard {
         return Ok(None);
     }
@@ -363,11 +369,7 @@ pub(crate) fn parse_choose_same_controller_targets_then_sacrifice_one(
     }
 
     let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
-    let second_words = LexedClause::new(&second_tokens)
-        .word_refs()
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect::<Vec<_>>();
+    let second_words = non_article_token_word_refs(&second_tokens);
     if !word_slice_eq_any(
         &second_words,
         &[
@@ -426,7 +428,7 @@ enum RestAction {
 
 fn parse_rest_action_sentence(tokens: &[OwnedLexToken]) -> Option<RestAction> {
     let words = LexedClause::new(tokens).word_refs();
-    let words = if words.first().copied() == Some("then") {
+    let words = if word_slice_first_is(&words, "then") {
         &words[1..]
     } else {
         words.as_slice()
@@ -722,12 +724,9 @@ fn strip_could_target_suffix(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
 
 fn strip_leading_other(tokens: &[OwnedLexToken]) -> (Vec<OwnedLexToken>, bool) {
     let trimmed = trim_commas(tokens);
-    if let Some(first) = trimmed.first()
-        && (first.is_word("other") || first.is_word("another"))
-    {
-        return (trim_commas(&trimmed[1..]), true);
-    }
-    (trimmed, false)
+    let (stripped, was_stripped) =
+        strip_leading_token_word_once_any(&trimmed, &["other", "another"]);
+    (trim_commas(stripped), was_stripped)
 }
 
 fn parse_copy_for_each_candidate_filter(
@@ -771,9 +770,10 @@ fn parse_copy_for_each_target_sentence(
     let Some(for_each_word_idx) = word_slice_find_phrase_start(&words, &["for", "each"]) else {
         return Ok(None);
     };
-    let Some(copy_word_idx) = words
-        .iter()
-        .position(|word| *word == "copy" || *word == "copies")
+    let Some(copy_word_idx) =
+        crate::runtime_backend::lexer::word_slice_find_word_where(&words, |word| {
+            matches!(word, "copy" | "copies")
+        })
     else {
         return Ok(None);
     };
@@ -833,7 +833,7 @@ fn parse_copy_for_each_target_sentence(
     };
     let candidate_tokens = trim_commas(&tokens[for_each_token_idx + 2..put_copy_token_idx]);
     let after_copy_words = &words[put_copy_word_idx + 3..];
-    let of_offset = after_copy_words.iter().position(|word| *word == "of");
+    let of_offset = word_slice_find_word(after_copy_words, "of");
     let target_start_word_idx = of_offset
         .map(|offset| put_copy_word_idx + 3 + offset + 1)
         .unwrap_or(put_copy_word_idx + 3);
@@ -910,10 +910,14 @@ pub(crate) fn parse_copy_for_each_target_then_each_copy_targets_different(
 
 fn first_sentence_copies_for_each_tagged_object(tokens: &[OwnedLexToken]) -> bool {
     let words = LexedClause::new(tokens).word_refs();
-    (word_slice_contains_phrase(&words, &["for", "each", "of", "those"])
-        || word_slice_contains_phrase(&words, &["for", "each", "of", "them"])
-        || (word_slice_contains_phrase(&words, &["for", "each"])
-            && word_slice_contains_phrase(&words, &["chosen", "this", "way"])))
+    (word_slice_contains_any_phrase(
+        &words,
+        &[
+            &["for", "each", "of", "those"],
+            &["for", "each", "of", "them"],
+        ],
+    ) || (word_slice_contains_phrase(&words, &["for", "each"])
+        && word_slice_contains_phrase(&words, &["chosen", "this", "way"])))
         && words
             .iter()
             .any(|word| *word == "copy" || *word == "copies")
@@ -943,9 +947,10 @@ pub(crate) fn parse_for_each_tagged_copy_then_copy_targets_it(
     }
 
     let wrap_if_result = word_slice_starts_with(&first_words, &["if", "you", "do"]);
-    let Some(copy_word_idx) = first_words
-        .iter()
-        .position(|word| *word == "copy" || *word == "copies")
+    let Some(copy_word_idx) =
+        crate::runtime_backend::lexer::word_slice_find_word_where(&first_words, |word| {
+            matches!(word, "copy" | "copies")
+        })
     else {
         return Ok(None);
     };
@@ -1206,7 +1211,7 @@ pub(crate) fn parse_whenever_gain_life_then_self_animate_source(
     let second = sentences[sentence_idx + 1].lowered();
 
     let first_words = LexedClause::new(first).word_refs();
-    if !word_slice_contains_any_word(&first_words, &["gain", "gains"])
+    if word_slice_contains_no_words(&first_words, &["gain", "gains"])
         || !word_slice_contains_word(&first_words, "life")
     {
         return Ok(None);
@@ -1241,7 +1246,7 @@ pub(crate) fn parse_gain_life_then_self_animate_source(
     let second = sentences[sentence_idx + 1].lowered();
 
     let first_words = LexedClause::new(first).word_refs();
-    if !word_slice_contains_any_word(&first_words, &["gain", "gains"])
+    if word_slice_contains_no_words(&first_words, &["gain", "gains"])
         || !word_slice_contains_word(&first_words, "life")
     {
         return Ok(None);
@@ -1279,14 +1284,9 @@ pub(crate) fn parse_choose_then_do_same_for_filter_then_return_to_battlefield(
         return Ok(None);
     };
 
-    let second_words: Vec<&str> = LexedClause::new(sentences[sentence_idx + 1].lowered())
-        .word_refs_where(|word| !is_article(word));
+    let second_words = non_article_token_word_refs(sentences[sentence_idx + 1].lowered());
     let tapped = word_slice_contains_word(&second_words, "tapped");
-    let second_without_tapped = second_words
-        .iter()
-        .copied()
-        .filter(|word| *word != "tapped")
-        .collect::<Vec<_>>();
+    let second_without_tapped = word_refs_except(&second_words, &["tapped"]);
     if !word_slice_eq_any(
         &second_without_tapped,
         &[
@@ -1330,8 +1330,7 @@ pub(crate) fn parse_delayed_dies_exile_top_power_choose_play(
         return Ok(None);
     };
     let action_tokens = trim_commas(&first_tokens[comma_idx + 1..]);
-    let action_words: Vec<&str> =
-        LexedClause::new(&action_tokens).word_refs_where(|word| !is_article(word));
+    let action_words = non_article_token_word_refs(&action_tokens);
     let starts_with_exile_top_power = word_slice_starts_with(
         &action_words,
         &[
@@ -1345,8 +1344,7 @@ pub(crate) fn parse_delayed_dies_exile_top_power_choose_play(
         return Ok(None);
     }
 
-    let second_words: Vec<&str> = LexedClause::new(sentences[sentence_idx + 1].lowered())
-        .word_refs_where(|word| !is_article(word));
+    let second_words = non_article_token_word_refs(sentences[sentence_idx + 1].lowered());
     let is_until_next_turn_play_clause = word_slice_eq(
         &second_words,
         &[
@@ -1541,9 +1539,7 @@ pub(crate) fn parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard(
         return Ok(None);
     };
     let filter_words = LexedClause::new(&filter_tokens).word_refs();
-    if word_slice_contains_phrase(&filter_words, &["chosen", "type"])
-        || word_slice_contains_phrase(&filter_words, &["that", "type"])
-    {
+    if word_slice_contains_any_phrase(&filter_words, &[&["chosen", "type"], &["that", "type"]]) {
         filter.chosen_creature_type = true;
     }
     effect_sentences::normalize_search_library_filter(&mut filter);
@@ -1608,8 +1604,10 @@ pub(crate) fn parse_consult_match_move_and_bottom_remainder(
         )
         .is_some()
             && word_slice_contains_phrase(&second_words, &["cards", "revealed", "this", "way"])
-            && (word_slice_contains_phrase(&second_words, &["onto", "the", "battlefield"])
-                || word_slice_contains_phrase(&second_words, &["onto", "battlefield"]))
+            && word_slice_contains_any_phrase(
+                &second_words,
+                &[&["onto", "the", "battlefield"], &["onto", "battlefield"]],
+            )
             && crate::runtime_backend::grammar::primitives::contains_word(
                 &second_tokens,
                 "shuffle",
@@ -1754,7 +1752,7 @@ pub(crate) fn parse_conditional_consult_match_move_and_bottom_remainder(
         return Ok(None);
     };
 
-    let Some(comma_idx) = conditional_tokens.iter().position(|token| token.is_comma()) else {
+    let Some(comma_idx) = find_token_kind(conditional_tokens, TokenKind::Comma) else {
         return Ok(None);
     };
     if comma_idx <= 1 {
@@ -1798,9 +1796,14 @@ pub(crate) fn parse_consult_match_move_all_to_graveyard(
 
     let second_tokens = trim_commas(second);
     let second_words = LexedClause::new(&second_tokens).word_refs();
-    let puts_all = word_slice_starts_with(&second_words, &["put", "all"])
-        || word_slice_starts_with(&second_words, &["puts", "all"])
-        || word_slice_starts_with(&second_words, &["that", "player", "puts", "all"]);
+    let puts_all = word_slice_starts_with_any(
+        &second_words,
+        &[
+            &["put", "all"],
+            &["puts", "all"],
+            &["that", "player", "puts", "all"],
+        ],
+    );
     if !puts_all {
         return Ok(None);
     }
@@ -2017,9 +2020,9 @@ pub(crate) fn parse_consult_match_into_hand_others_graveyard(
         )
         .is_some();
     let second_words = LexedClause::new(&second_tokens).word_refs();
-    let others_to_graveyard = (word_slice_contains_phrase(&second_words, &["other", "cards"])
-        || word_slice_contains_phrase(&second_words, &["all", "other"]))
-        && word_slice_contains_word(&second_words, "graveyard");
+    let others_to_graveyard =
+        word_slice_contains_any_phrase(&second_words, &[&["other", "cards"], &["all", "other"]])
+            && word_slice_contains_word(&second_words, "graveyard");
     if !moves_to_hand || !others_to_graveyard {
         return Ok(None);
     }
@@ -2125,9 +2128,9 @@ pub(crate) fn parse_consult_match_into_battlefield_others_graveyard(
         )
         .is_some();
     let second_words = LexedClause::new(&second_tokens).word_refs();
-    let others_to_graveyard = (word_slice_contains_phrase(&second_words, &["other", "cards"])
-        || word_slice_contains_phrase(&second_words, &["all", "other"]))
-        && word_slice_contains_word(&second_words, "graveyard");
+    let others_to_graveyard =
+        word_slice_contains_any_phrase(&second_words, &[&["other", "cards"], &["all", "other"]])
+            && word_slice_contains_word(&second_words, "graveyard");
     if !moves_to_battlefield || !others_to_graveyard {
         return Ok(None);
     }

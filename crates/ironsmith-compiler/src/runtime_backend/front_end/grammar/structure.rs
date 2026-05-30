@@ -10,9 +10,12 @@ use crate::effect::{Comparison, Value};
 
 use super::super::lexer::{
     LexStream, LexToken, OwnedLexToken, TokenKind, TokenWordView, contains_token_kind,
-    find_token_word, trim_lexed_commas, word_slice_contains_any_word, word_slice_contains_word,
+    find_token_word, token_slice_first_is, token_slice_first_is_any, token_slice_last_is,
+    token_slice_starts_with_at, trim_lexed_commas, word_slice_at_is, word_slice_contains_any_word,
+    word_slice_contains_word, word_slice_ends_with, word_slice_first_is_any,
     word_slice_strip_prefix,
 };
+use super::super::token_primitives::{find_index_with, rfind_index_with};
 use super::super::util::{parse_card_type, parse_color, parse_subtype_flexible};
 use super::{primitives, values};
 
@@ -631,7 +634,7 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
         && words[5] == "would"
         && words[6] == "die"
         && words[7] == "this"
-        && words.get(8) == Some(&"turn")
+        && word_slice_at_is(&words, 8, "turn")
     {
         return Some(IfResultPredicate::DiesThisWay);
     }
@@ -811,7 +814,7 @@ fn looks_like_trigger_object_list_tail_lexed(tokens: &[OwnedLexToken]) -> bool {
     if words.is_empty() {
         return false;
     }
-    let starts_with_conjunction = matches!(words.first().copied(), Some("or" | "and" | "and/or"));
+    let starts_with_conjunction = word_slice_first_is_any(&words, &["or", "and", "and/or"]);
     let first_candidate = if starts_with_conjunction {
         words.get(1).copied()
     } else {
@@ -928,74 +931,58 @@ pub(crate) fn find_trigger_effect_list_tail_split_lexed(
     }
 
     if looks_like_discard_qualifier_tail {
-        return tail_tokens.iter().enumerate().find_map(|(idx, token)| {
+        return find_index_with(tail_tokens, |idx, token| {
             if token.kind != TokenKind::Comma {
-                return None;
+                return false;
             }
             let before_words_view = TokenWordView::new(&tail_tokens[..idx]);
             let before_words = before_words_view.word_refs();
-            if word_slice_contains_any_word(&before_words, &["card", "cards"]) {
-                Some(idx)
-            } else {
-                None
-            }
+            word_slice_contains_any_word(&before_words, &["card", "cards"])
         });
     }
 
     if looks_like_trigger_numeric_list_tail_lexed(tail_tokens) {
-        return tail_tokens
-            .iter()
-            .enumerate()
-            .rev()
-            .find_map(|(idx, token)| (token.kind == TokenKind::Comma).then_some(idx));
+        return rfind_index_with(tail_tokens, |_, token| token.kind == TokenKind::Comma);
     }
 
-    tail_tokens
-        .iter()
-        .enumerate()
-        .find_map(|(idx, token)| {
-            if token.kind != TokenKind::Comma {
-                return None;
-            }
-            let before_words_view = TokenWordView::new(&tail_tokens[..idx]);
-            let before_words = before_words_view.word_refs();
-            if word_slice_contains_any_word(&before_words, &["spell", "spells"]) {
-                Some(idx)
-            } else {
-                None
-            }
-        })
-        .or_else(|| {
-            if looks_like_trigger_color_list_tail_lexed(tail_tokens)
-                || looks_like_trigger_object_list_tail_lexed(tail_tokens)
-            {
-                tail_tokens.iter().enumerate().find_map(|(idx, token)| {
-                    if token.kind != TokenKind::Comma {
-                        return None;
-                    }
-                    let Some(next_word) = tail_tokens.get(idx + 1).and_then(OwnedLexToken::as_word)
-                    else {
-                        return None;
-                    };
-                    if matches!(next_word, "and" | "or" | "and/or") {
-                        return None;
-                    }
+    find_index_with(tail_tokens, |idx, token| {
+        if token.kind != TokenKind::Comma {
+            return false;
+        }
+        let before_words_view = TokenWordView::new(&tail_tokens[..idx]);
+        let before_words = before_words_view.word_refs();
+        word_slice_contains_any_word(&before_words, &["spell", "spells"])
+    })
+    .or_else(|| {
+        if looks_like_trigger_color_list_tail_lexed(tail_tokens)
+            || looks_like_trigger_object_list_tail_lexed(tail_tokens)
+        {
+            find_index_with(tail_tokens, |idx, token| {
+                if token.kind != TokenKind::Comma {
+                    return false;
+                }
+                let Some(next_word) = tail_tokens.get(idx + 1).and_then(OwnedLexToken::as_word)
+                else {
+                    return false;
+                };
+                if matches!(next_word, "and" | "or" | "and/or") {
+                    return false;
+                }
 
-                    let next_is_list_item = if looks_like_trigger_color_list_tail_lexed(tail_tokens)
-                    {
-                        parse_color(next_word).is_some()
-                    } else {
-                        looks_like_trigger_objectish_word(next_word)
-                    };
-                    if next_is_list_item {
-                        return None;
-                    }
-                    Some(idx)
-                })
-            } else {
-                None
-            }
-        })
+                let next_is_list_item = if looks_like_trigger_color_list_tail_lexed(tail_tokens) {
+                    parse_color(next_word).is_some()
+                } else {
+                    looks_like_trigger_objectish_word(next_word)
+                };
+                if next_is_list_item {
+                    return false;
+                }
+                true
+            })
+        } else {
+            None
+        }
+    })
 }
 
 pub(crate) fn split_first_time_each_turn_trigger_suffix_lexed(
@@ -1007,7 +994,7 @@ pub(crate) fn split_first_time_each_turn_trigger_suffix_lexed(
         ["for", "the", "first", "time", "each", "turn"].as_slice(),
         ["for", "the", "first", "time", "this", "turn"].as_slice(),
     ] {
-        if words.ends_with(suffix) {
+        if word_slice_ends_with(&words, suffix) {
             let trimmed_word_len = words.len().saturating_sub(suffix.len());
             let trimmed_token_len = trigger_words
                 .token_index_for_word_index(trimmed_word_len)
@@ -1055,10 +1042,7 @@ pub(crate) fn rewrite_attached_controller_trigger_effect_tokens_lexed(
     let mut rewritten = Vec::with_capacity(effects_tokens.len());
     let mut idx = 0usize;
     while idx < effects_tokens.len() {
-        if idx + 1 < effects_tokens.len()
-            && effects_tokens[idx].is_word("that")
-            && effects_tokens[idx + 1].is_word("creature")
-        {
+        if token_slice_starts_with_at(effects_tokens, idx, &["that", "creature"]) {
             let mut enchanted = effects_tokens[idx].clone();
             let _ = enchanted.replace_word("enchanted");
             rewritten.push(enchanted);
@@ -1066,10 +1050,7 @@ pub(crate) fn rewrite_attached_controller_trigger_effect_tokens_lexed(
             idx += 2;
             continue;
         }
-        if idx + 1 < effects_tokens.len()
-            && effects_tokens[idx].is_word("that")
-            && effects_tokens[idx + 1].is_word("permanent")
-        {
+        if token_slice_starts_with_at(effects_tokens, idx, &["that", "permanent"]) {
             let mut enchanted = effects_tokens[idx].clone();
             let _ = enchanted.replace_word("enchanted");
             rewritten.push(enchanted);
@@ -1125,19 +1106,13 @@ fn scan_choose_both_control_card_types(tokens: &[OwnedLexToken]) -> Vec<crate::t
     let Some(if_idx) = find_token_word(tokens, "if") else {
         return Vec::new();
     };
-    let Some(control_idx) = tokens
-        .iter()
-        .enumerate()
-        .skip(if_idx + 1)
-        .find_map(|(idx, token)| token.is_word("control").then_some(idx))
+    let Some(control_idx) =
+        find_token_word(&tokens[if_idx + 1..], "control").map(|idx| if_idx + 1 + idx)
     else {
         return Vec::new();
     };
-    let Some(as_idx) = tokens
-        .iter()
-        .enumerate()
-        .skip(control_idx + 1)
-        .find_map(|(idx, token)| token.is_word("as").then_some(idx))
+    let Some(as_idx) =
+        find_token_word(&tokens[control_idx + 1..], "as").map(|idx| control_idx + 1 + idx)
     else {
         return Vec::new();
     };
@@ -1170,9 +1145,9 @@ pub(crate) fn split_leading_result_prefix_lexed<'a>(
             trailing_tokens,
         });
     }
-    let kind = if trimmed.first().is_some_and(|token| token.is_word("if")) {
+    let kind = if token_slice_first_is(trimmed, "if") {
         LeadingResultPrefixKind::If
-    } else if trimmed.first().is_some_and(|token| token.is_word("when")) {
+    } else if token_slice_first_is(trimmed, "when") {
         LeadingResultPrefixKind::When
     } else {
         return None;
@@ -1434,7 +1409,7 @@ pub(crate) fn split_trailing_unless_clause_lexed<'a>(
 
 pub(crate) fn parse_trailing_if_predicate_lexed(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let trimmed = trim_lexed_commas(tokens);
-    if !trimmed.first().is_some_and(|token| token.is_word("if")) {
+    if !token_slice_first_is(trimmed, "if") {
         return None;
     }
 
@@ -1450,7 +1425,7 @@ pub(crate) fn parse_conditional_predicate_tail_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ConditionalPredicateTailSpec> {
     let mut trimmed = trim_lexed_commas(tokens).to_vec();
-    while trimmed.last().is_some_and(|token| token.is_word("instead")) {
+    while token_slice_last_is(&trimmed, "instead") {
         trimmed.pop();
     }
     let trimmed = trim_lexed_commas(&trimmed);
@@ -1522,7 +1497,7 @@ fn split_trailing_predicate_clause_lexed<'a>(
 
 pub(crate) fn parse_who_player_predicate_lexed(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let trimmed = trim_lexed_commas(tokens);
-    if !trimmed.first().is_some_and(|token| token.is_word("who")) {
+    if !token_slice_first_is(trimmed, "who") {
         return None;
     }
 
@@ -1577,9 +1552,7 @@ pub(crate) fn split_triggered_conditional_clause_lexed<'a>(
     let trigger_tokens = &leading_tokens[start_idx..];
     let after_first_comma = trim_lexed_commas(after_first_comma);
 
-    if let Some(while_idx) = trigger_tokens
-        .iter()
-        .position(|token| token.is_word("while"))
+    if let Some(while_idx) = find_token_word(trigger_tokens, "while")
         && while_idx > 0
     {
         let predicate_tokens = trim_lexed_commas(&trigger_tokens[while_idx + 1..]);

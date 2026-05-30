@@ -1,10 +1,13 @@
 use super::super::lexer::{
-    LexedClause, OwnedLexToken, word_slice_contains_word, word_slice_eq, word_slice_eq_any,
-    word_slice_starts_with,
+    LexedClause, OwnedLexToken, word_slice_at_is, word_slice_contains_word, word_slice_eq,
+    word_slice_eq_any, word_slice_first_is, word_slice_first_is_any, word_slice_last_is_any,
+    word_slice_starts_with, word_slice_starts_with_at,
 };
 use super::super::object_filters::is_comparison_or_delimiter;
 use super::super::token_primitives::parse_leading_may_action_lexed;
-use super::super::util::{is_article, parse_number, parse_number_or_x_value_lexed};
+use super::super::util::{
+    is_article, parse_number, parse_number_or_x_value_lexed, strip_leading_article_word_refs,
+};
 use super::super::value_helpers::{
     parse_value_from_lexed, parse_where_x_greatest_commander_mana_value,
 };
@@ -28,10 +31,10 @@ fn parse_prior_effect_number_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let clause = LexedClause::new(tokens).trimmed();
     let words = clause.word_refs();
     let mut idx = 0usize;
-    if words.get(idx).copied() == Some("the") {
+    if word_slice_at_is(&words, idx, "the") {
         idx += 1;
     }
-    if words.get(idx).copied() != Some("number") || words.get(idx + 1).copied() != Some("of") {
+    if !word_slice_starts_with(&words[idx..], &["number", "of"]) {
         return None;
     }
     let object_clause = clause
@@ -75,10 +78,9 @@ fn parse_prefixed_top_of_your_library_value<T: Copy>(
     let (count, used) = parse_number_or_x_value_lexed(count_clause.tokens())?;
     let tail_clause = count_clause.from(used).trimmed();
     let tail_words = tail_clause.word_refs();
-    if !matches!(
-        tail_words.get(..4),
-        Some(["card", "of", "your", "library"] | ["cards", "of", "your", "library"])
-    ) {
+    if !word_slice_starts_with(&tail_words, &["card", "of", "your", "library"])
+        && !word_slice_starts_with(&tail_words, &["cards", "of", "your", "library"])
+    {
         return None;
     }
 
@@ -87,7 +89,7 @@ fn parse_prefixed_top_of_your_library_value<T: Copy>(
     }
 
     if count == crate::effect::Value::X
-        && matches!(tail_words.get(4..7), Some(["where", "x", "is"]))
+        && word_slice_starts_with_at(&tail_words, 4, &["where", "x", "is"])
     {
         let value_clause = tail_clause.after_words(7)?.trimmed();
         if let Some(resolved) = parse_prior_effect_number_value(value_clause.tokens()) {
@@ -184,20 +186,22 @@ pub(crate) fn parse_counted_looked_cards_into_your_hand_tokens(
     let (count, used) = parse_number(count_clause.tokens())?;
     let tail_words = count_clause.from(used).word_refs();
     let mut idx = 0usize;
-    if tail_words.get(idx).copied() == Some("of") {
+    if word_slice_at_is(&tail_words, idx, "of") {
         idx += 1;
     }
     match tail_words.get(idx).copied() {
         Some("them") => idx += 1,
         Some("those") => {
             idx += 1;
-            if matches!(tail_words.get(idx).copied(), Some("card" | "cards")) {
+            if word_slice_at_is(&tail_words, idx, "card")
+                || word_slice_at_is(&tail_words, idx, "cards")
+            {
                 idx += 1;
             }
         }
         _ => return None,
     }
-    if tail_words.get(idx..idx + 3) != Some(&["into", "your", "hand"]) {
+    if !word_slice_starts_with_at(&tail_words, idx, &["into", "your", "hand"]) {
         return None;
     }
     idx += 3;
@@ -341,12 +345,8 @@ pub(crate) fn parse_may_put_filtered_looked_card_onto_battlefield_and_filtered_i
 pub(crate) fn parse_if_you_dont_put_card_from_among_them_into_your_hand(
     tokens: &[OwnedLexToken],
 ) -> bool {
-    let words: Vec<&str> = LexedClause::new(tokens)
-        .trimmed()
-        .word_refs()
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
+    let trimmed = LexedClause::new(tokens).trimmed();
+    let words = crate::runtime_backend::util::non_article_token_word_refs(trimmed.tokens());
     word_slice_eq_any(
         &words,
         &[
@@ -403,11 +403,9 @@ fn title_case_words(words: &[&str]) -> String {
 }
 
 fn parse_named_card_filter_segment(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
-    let mut segment_words = LexedClause::new(tokens).word_refs();
-    while segment_words.first().is_some_and(|word| is_article(word)) {
-        segment_words.remove(0);
-    }
-    if matches!(segment_words.last().copied(), Some("card" | "cards")) {
+    let all_segment_words = LexedClause::new(tokens).word_refs();
+    let mut segment_words = strip_leading_article_word_refs(&all_segment_words).to_vec();
+    if word_slice_last_is_any(&segment_words, &["card", "cards"]) {
         segment_words.pop();
     }
     if segment_words.is_empty() {
@@ -489,11 +487,7 @@ pub(crate) fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Optio
 
     let filter_clause = LexedClause::new(&filter_tokens);
     let words_all_refs = filter_clause.word_refs();
-    let non_article_words = words_all_refs
-        .iter()
-        .copied()
-        .filter(|word| !is_article(word))
-        .collect::<Vec<_>>();
+    let non_article_words = crate::runtime_backend::util::non_article_word_refs(&words_all_refs);
     if word_slice_eq_any(
         &non_article_words,
         &[&["chosen", "card"], &["chosen", "cards"]],
@@ -564,7 +558,7 @@ pub(crate) fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Optio
         token.is_word("or") && !is_comparison_or_delimiter(&filter_tokens, idx)
     });
     if has_noncomparison_or {
-        let shared_card_suffix = matches!(words_all_refs.last().copied(), Some("card" | "cards"));
+        let shared_card_suffix = word_slice_last_is_any(&words_all_refs, &["card", "cards"]);
         let segments = split_reveal_filter_segments(&filter_tokens);
         if segments.len() >= 2 {
             let mut branches = Vec::new();

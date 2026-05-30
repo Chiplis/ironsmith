@@ -54,7 +54,7 @@ fn matches_sentence_sequence(sentence_words: &[TokenWordView<'_>], expected: &[&
 fn first_sentence_has_prefix(sentence_words: &[TokenWordView<'_>], prefix: &[&str]) -> bool {
     sentence_words
         .first()
-        .is_some_and(|words| words.starts_with(prefix))
+        .is_some_and(|words| word_slice_starts_with(&words.word_refs(), prefix))
 }
 
 fn sentence_has_phrase(sentence_words: &[TokenWordView<'_>], phrase: &[&str]) -> bool {

@@ -19,7 +19,10 @@ use super::keyword_families::{
     KeywordDispatchHint, KeywordLineRule, keyword_line_rules, parse_keyword_dispatch_hint,
 };
 use super::keyword_static::parse_if_this_spell_costs_less_to_cast_line_lexed;
-use super::lexer::{OwnedLexToken, TokenKind, lex_line, render_token_slice, trim_lexed_commas};
+use super::lexer::{
+    OwnedLexToken, TokenKind, lex_line, render_token_slice, token_slice_at_is,
+    token_slice_first_is, token_slice_starts_with, token_slice_starts_with_any, trim_lexed_commas,
+};
 use super::lower::{
     lower_exert_attack_keyword_line, lower_gift_keyword_line, lower_keyword_special_cases,
 };
@@ -212,7 +215,7 @@ pub(super) fn lower_alternative_cast(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
-    if tokens.first().is_some_and(|token| token.is_word("encore")) {
+    if token_slice_first_is(tokens, "encore") {
         let (cost, _) = leading_mana_cost_from_tokens(tokens.get(1..).unwrap_or_default())
             .ok_or_else(|| {
                 CardTextError::ParseError(format!(
@@ -714,7 +717,7 @@ pub(super) fn matches_blitz(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
-    if tokens.get(1).is_some_and(|token| token.is_word("costs")) {
+    if token_slice_at_is(tokens, 1, "costs") {
         return Ok(false);
     }
     Ok(parse_blitz_line_lexed(tokens)?.is_some())
@@ -885,7 +888,7 @@ pub(super) fn matches_mutate(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
-    if !tokens.first().is_some_and(|token| token.is_word("mutate")) {
+    if !token_slice_first_is(tokens, "mutate") {
         return Ok(false);
     }
     Ok(leading_mana_cost_from_tokens(tokens.get(1..).unwrap_or_default()).is_some())
@@ -937,11 +940,11 @@ pub(super) fn matches_exploit(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
-    Ok(token_words_have_prefix(tokens, &["exploit"]))
+    Ok(token_slice_starts_with(tokens, &["exploit"]))
 }
 
 fn is_exert_attack_keyword_line(tokens: &[OwnedLexToken]) -> bool {
-    token_words_have_any_prefix(
+    token_slice_starts_with_any(
         tokens,
         &[
             &["you", "may", "exert"],
@@ -976,7 +979,7 @@ fn parse_additional_cost_kind(tokens: &[OwnedLexToken]) -> Result<bool, CardText
 
 fn parse_alternative_cast_kind(tokens: &[OwnedLexToken]) -> Result<bool, CardTextError> {
     let rendered = render_token_slice(tokens).trim().to_ascii_lowercase();
-    Ok(tokens.first().is_some_and(|token| token.is_word("encore"))
+    Ok(token_slice_first_is(tokens, "encore")
         || parse_self_free_cast_alternative_cost_line_lexed(tokens).is_some()
         || parse_you_may_rather_than_spell_cost_line_lexed(tokens, rendered.as_str())?.is_some()
         || parse_flash_with_additional_cost_line_lexed(tokens).is_some()
@@ -984,22 +987,4 @@ fn parse_alternative_cast_kind(tokens: &[OwnedLexToken]) -> Result<bool, CardTex
         || parse_if_conditional_alternative_cost_line_lexed(tokens, rendered.as_str())?.is_some()
         || parse_prowl_line_lexed(tokens)?.is_some()
         || parse_if_this_spell_costs_less_to_cast_line_lexed(tokens)?.is_some())
-}
-
-fn token_words_have_prefix(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
-    let words = TokenWordView::new(tokens);
-    if words.len() < expected.len() {
-        return false;
-    }
-
-    expected
-        .iter()
-        .enumerate()
-        .all(|(idx, expected_word)| words.get(idx) == Some(*expected_word))
-}
-
-fn token_words_have_any_prefix(tokens: &[OwnedLexToken], expected: &[&[&str]]) -> bool {
-    expected
-        .iter()
-        .any(|phrase| token_words_have_prefix(tokens, phrase))
 }

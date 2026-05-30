@@ -13,7 +13,8 @@ use super::activation_and_restrictions::{
     parse_ability_phrase, parse_single_word_keyword_action, parse_triggered_times_each_turn_lexed,
 };
 use super::grammar::primitives::{
-    TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_commas_or_semicolons,
+    TokenWordView, find_token_index, split_lexed_slices_on_and,
+    split_lexed_slices_on_commas_or_semicolons,
 };
 use super::grammar::structure::{
     find_trigger_effect_list_tail_split_lexed,
@@ -22,13 +23,14 @@ use super::grammar::structure::{
     split_triggered_conditional_clause_lexed,
 };
 use super::lexer::{
-    OwnedLexToken, TokenKind, render_token_slice, split_lexed_sentences, word_slice_contains_word,
-    word_slice_starts_with,
+    OwnedLexToken, TokenKind, render_token_slice, split_lexed_sentences, token_slice_first_is_any,
+    word_slice_at_is, word_slice_at_is_any, word_slice_contains_word, word_slice_find_word,
+    word_slice_first_is, word_slice_starts_with,
 };
 use super::object_filters::parse_object_filter_lexed;
 use super::util::{
     parse_card_type, parse_color, parse_filter_counter_constraint_words,
-    parse_flashback_keyword_line, parse_subtype_flexible, trim_commas,
+    parse_flashback_keyword_line, parse_subtype_flexible, strip_leading_word_refs_any, trim_commas,
 };
 
 fn protection_from_colored_spells_action(words: &[&str]) -> Option<KeywordAction> {
@@ -74,64 +76,10 @@ fn protection_from_each_mana_value_among_action(
     Some(KeywordAction::ProtectionFromEachManaValueAmong(filter))
 }
 
-fn find_token_index(
-    tokens: &[OwnedLexToken],
-    mut predicate: impl FnMut(&OwnedLexToken) -> bool,
-) -> Option<usize> {
-    let mut idx = 0usize;
-    while idx < tokens.len() {
-        if predicate(&tokens[idx]) {
-            return Some(idx);
-        }
-        idx += 1;
-    }
-
-    None
-}
-
-fn contains_keyword_action(actions: &[KeywordAction], expected: &KeywordAction) -> bool {
-    let mut idx = 0usize;
-    while idx < actions.len() {
-        if &actions[idx] == expected {
-            return true;
-        }
-        idx += 1;
-    }
-
-    false
-}
-
-fn token_index_after_word_count(
-    words: &TokenWordView<'_>,
-    word_count: usize,
-    token_len: usize,
-) -> Option<usize> {
-    if word_count == 0 {
-        return Some(0);
-    }
-    if word_count > words.len() {
-        return None;
-    }
-    if word_count == words.len() {
-        return Some(token_len);
-    }
-
-    words.token_index_for_word_index(word_count)
-}
-
-fn trim_plural_s(word: &str) -> Option<&str> {
-    let bytes = word.as_bytes();
-    if bytes.len() <= 1 || bytes[bytes.len() - 1] != b's' {
-        return None;
-    }
-
-    Some(&word[..word.len() - 1])
-}
-
 fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     let words_view = TokenWordView::new(tokens);
     let words = words_view.word_refs();
-    let first_word_idx = if words.first().copied() == Some("and") {
+    let first_word_idx = if word_slice_first_is(&words, "and") {
         1
     } else {
         0
@@ -139,8 +87,8 @@ fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>
     if words.len().saturating_sub(first_word_idx) < 3 {
         return None;
     }
-    if words.get(first_word_idx).copied() != Some("protection")
-        || words.get(first_word_idx + 1).copied() != Some("from")
+    if !word_slice_at_is(&words, first_word_idx, "protection")
+        || !word_slice_at_is(&words, first_word_idx + 1, "from")
     {
         return None;
     }
@@ -149,18 +97,16 @@ fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>
     let parse_from_target = |words: &[&str], idx: usize| -> Option<KeywordAction> {
         let value = *words.get(idx + 1)?;
         if value == "each"
-            && words.get(idx + 2).copied() == Some("mana")
-            && words.get(idx + 3).copied() == Some("value")
-            && words.get(idx + 4).copied() == Some("among")
+            && word_slice_at_is(words, idx + 2, "mana")
+            && word_slice_at_is(words, idx + 3, "value")
+            && word_slice_at_is(words, idx + 4, "among")
         {
             let filter_start = words_view.token_index_for_word_index(idx + 5)?;
             let filter_tokens = trim_commas(&tokens[filter_start..]);
             let filter = parse_object_filter_lexed(&filter_tokens, false).ok()?;
             return Some(KeywordAction::ProtectionFromEachManaValueAmong(filter));
         }
-        if matches!(value, "permanent" | "permanents")
-            && words.get(idx + 2).copied() == Some("with")
-        {
+        if matches!(value, "permanent" | "permanents") && word_slice_at_is(words, idx + 2, "with") {
             let counter_words = &words[idx + 3..];
             if let Some((with_counter, consumed)) =
                 parse_filter_counter_constraint_words(counter_words)
@@ -173,14 +119,14 @@ fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>
         }
         match value {
             "the"
-                if words.get(idx + 2).copied() == Some("chosen")
-                    && words.get(idx + 3).copied() == Some("player") =>
+                if word_slice_at_is(words, idx + 2, "chosen")
+                    && word_slice_at_is(words, idx + 3, "player") =>
             {
                 Some(KeywordAction::ProtectionFromChosenPlayer)
             }
             "colorless" => Some(KeywordAction::ProtectionFromColorless),
             "everything" => Some(KeywordAction::ProtectionFromEverything),
-            "all" if matches!(words.get(idx + 2).copied(), Some("color") | Some("colors")) => {
+            "all" if word_slice_at_is_any(words, idx + 2, &["color", "colors"]) => {
                 Some(KeywordAction::ProtectionFromAllColors)
             }
             _ => parse_color(value)
@@ -201,9 +147,7 @@ fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>
         from_count += 1;
         if let Some(action) = parse_from_target(&words, idx) {
             parsed_count += 1;
-            if !contains_keyword_action(&actions, &action) {
-                actions.push(action);
-            }
+            crate::slice_primitives::push_unique(&mut actions, action);
         }
     }
 
@@ -240,14 +184,14 @@ fn color_only_hexproof_filter_words(words: &[&str]) -> Option<ObjectFilter> {
 fn parse_hexproof_from_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     let words_view = TokenWordView::new(tokens);
     let words = words_view.word_refs();
-    let first_word_idx = if words.first().copied() == Some("and") {
+    let first_word_idx = if word_slice_first_is(&words, "and") {
         1
     } else {
         0
     };
     if words.len().saturating_sub(first_word_idx) < 3
-        || words.get(first_word_idx).copied() != Some("hexproof")
-        || words.get(first_word_idx + 1).copied() != Some("from")
+        || !word_slice_at_is(&words, first_word_idx, "hexproof")
+        || !word_slice_at_is(&words, first_word_idx + 1, "from")
     {
         return None;
     }
@@ -315,10 +259,8 @@ pub(crate) fn rewrite_parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec
 pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     fn parse_simple_keyword_phrase_lexed(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
         let words_view = TokenWordView::new(tokens);
-        let mut words = words_view.word_refs();
-        if words.first().copied() == Some("and") {
-            words.remove(0);
-        }
+        let words = words_view.word_refs();
+        let words = strip_leading_word_refs_any(&words, &["and"]);
         if words.is_empty() {
             return None;
         }
@@ -348,7 +290,7 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
 
         let parse_count_keyword =
             |expected: &str, ctor: fn(u32) -> KeywordAction| -> Option<KeywordAction> {
-                (words.first().copied() == Some(expected))
+                word_slice_first_is(&words, expected)
                     .then(|| words.get(1)?.parse::<u32>().ok().map(ctor))
                     .flatten()
             };
@@ -413,7 +355,7 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
         if let Some(action) = parse_count_keyword("devour", KeywordAction::Devour) {
             return Some(action);
         }
-        if words.first().copied() == Some("dredge")
+        if word_slice_first_is(&words, "dredge")
             && let Some(amount) = words.get(1)
             && amount.parse::<u32>().is_ok()
         {
@@ -425,7 +367,7 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
         }
 
         if words.len() == 2 {
-            return match words.as_slice() {
+            return match words {
                 ["first", "strike"] => Some(KeywordAction::FirstStrike),
                 ["double", "strike"] => Some(KeywordAction::DoubleStrike),
                 ["battle", "cry"] => Some(KeywordAction::BattleCry),
@@ -480,7 +422,7 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
 
     fn parse_splice_keyword_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
         let words = TokenWordView::new(tokens);
-        if words.get(0) != Some("splice") || words.get(1) != Some("onto") {
+        if !word_slice_starts_with(&words.word_refs(), &["splice", "onto"]) {
             return None;
         }
 
@@ -500,14 +442,14 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
         if let Some(action) = protection_from_each_mana_value_among_action(&words, tokens) {
             return Some(vec![action]);
         }
-        let first_word_idx = if words.first().copied() == Some("and") {
+        let first_word_idx = if word_slice_first_is(&words, "and") {
             1
         } else {
             0
         };
         if words.len().saturating_sub(first_word_idx) < 3
-            || words.get(first_word_idx).copied() != Some("protection")
-            || words.get(first_word_idx + 1).copied() != Some("from")
+            || !word_slice_at_is(&words, first_word_idx, "protection")
+            || !word_slice_at_is(&words, first_word_idx + 1, "from")
         {
             return None;
         }
@@ -515,9 +457,9 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
         let parse_from_target = |words: &[&str], idx: usize| -> Option<KeywordAction> {
             let value = *words.get(idx + 1)?;
             if value == "each"
-                && words.get(idx + 2).copied() == Some("mana")
-                && words.get(idx + 3).copied() == Some("value")
-                && words.get(idx + 4).copied() == Some("among")
+                && word_slice_at_is(words, idx + 2, "mana")
+                && word_slice_at_is(words, idx + 3, "value")
+                && word_slice_at_is(words, idx + 4, "among")
             {
                 let filter_start = words_view.token_index_for_word_index(idx + 5)?;
                 let filter_tokens = trim_commas(&tokens[filter_start..]);
@@ -525,7 +467,7 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
                 return Some(KeywordAction::ProtectionFromEachManaValueAmong(filter));
             }
             if matches!(value, "permanent" | "permanents")
-                && words.get(idx + 2).copied() == Some("with")
+                && word_slice_at_is(words, idx + 2, "with")
             {
                 let counter_words = &words[idx + 3..];
                 if let Some((with_counter, consumed)) =
@@ -539,14 +481,14 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
             }
             match value {
                 "the"
-                    if words.get(idx + 2).copied() == Some("chosen")
-                        && words.get(idx + 3).copied() == Some("player") =>
+                    if word_slice_at_is(words, idx + 2, "chosen")
+                        && word_slice_at_is(words, idx + 3, "player") =>
                 {
                     Some(KeywordAction::ProtectionFromChosenPlayer)
                 }
                 "colorless" => Some(KeywordAction::ProtectionFromColorless),
                 "everything" => Some(KeywordAction::ProtectionFromEverything),
-                "all" if matches!(words.get(idx + 2).copied(), Some("color") | Some("colors")) => {
+                "all" if word_slice_at_is_any(words, idx + 2, &["color", "colors"]) => {
                     Some(KeywordAction::ProtectionFromAllColors)
                 }
                 _ => parse_color(value)
@@ -568,9 +510,7 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
             from_count += 1;
             if let Some(action) = parse_from_target(&words, idx) {
                 parsed_count += 1;
-                if !contains_keyword_action(&actions, &action) {
-                    actions.push(action);
-                }
+                crate::slice_primitives::push_unique(&mut actions, action);
             }
         }
 
@@ -770,9 +710,7 @@ pub(crate) fn parse_triggered_line_lexed(
             .find_map(|sentence| parse_triggered_times_each_turn_lexed(sentence))
     }
 
-    let start_idx = if tokens.first().is_some_and(|token| {
-        token.is_word("whenever") || token.is_word("at") || token.is_word("when")
-    }) {
+    let start_idx = if token_slice_first_is_any(tokens, &["whenever", "at", "when"]) {
         1
     } else {
         0
@@ -794,7 +732,7 @@ pub(crate) fn parse_triggered_line_lexed(
         };
         if let Some(prefix_len) = blocked_prefix_len
             && let Some(effect_start_rel) =
-                token_index_after_word_count(&trigger_body_view, prefix_len, trigger_body.len())
+                trigger_body_view.token_index_after_words_or_end(prefix_len)
         {
             let split_idx = start_idx + effect_start_rel;
             let effects_tokens = trim_commas(&tokens[split_idx..]);
@@ -862,7 +800,7 @@ pub(crate) fn parse_triggered_line_lexed(
         };
         if let Some(prefix_len) = leaves_prefix_len
             && let Some(effect_start_rel) =
-                token_index_after_word_count(&trigger_body_view, prefix_len, trigger_body.len())
+                trigger_body_view.token_index_after_words_or_end(prefix_len)
         {
             let split_idx = start_idx + effect_start_rel;
             let trigger_tokens = trim_commas(&tokens[start_idx..split_idx]);
@@ -914,7 +852,7 @@ pub(crate) fn parse_triggered_line_lexed(
             word_idx += 1;
         }
         if let Some(attack_idx) = attack_idx
-            && trigger_words.get(attack_idx + 1).copied() == Some("with")
+            && word_slice_at_is(&trigger_words, attack_idx + 1, "with")
         {
             let subject_words = &trigger_words[..attack_idx];
             if let Some(player) =
@@ -983,9 +921,7 @@ pub(crate) fn parse_triggered_line_lexed(
         }
 
         if let Some(attack_idx) = attack_idx
-            && let Some(with_idx) = trigger_words[attack_idx + 1..]
-                .iter()
-                .position(|word| *word == "with")
+            && let Some(with_idx) = word_slice_find_word(&trigger_words[attack_idx + 1..], "with")
                 .map(|rel| attack_idx + 1 + rel)
             && with_idx > attack_idx + 1
         {

@@ -3,10 +3,12 @@
 use super::super::clause_support::parse_ability_line_lexed;
 use super::super::grammar::primitives as grammar;
 use super::super::lexer::{
-    OwnedLexToken, TokenKind, contains_token_kind, token_word_refs, trim_lexed_commas,
-    word_slice_contains_all_words, word_slice_contains_any_word, word_slice_contains_phrase,
-    word_slice_contains_word, word_slice_ends_with, word_slice_find_word_where,
-    word_slice_starts_with,
+    OwnedLexToken, TokenKind, contains_token_kind, token_slice_at_is_any, token_slice_first_is,
+    token_word_refs, trim_lexed_commas, word_slice_at_is, word_slice_at_is_any,
+    word_slice_contains_all_words, word_slice_contains_any_phrase, word_slice_contains_any_word,
+    word_slice_contains_phrase, word_slice_contains_word, word_slice_ends_with,
+    word_slice_ends_with_any, word_slice_find_word_where, word_slice_first_is,
+    word_slice_first_is_any, word_slice_last_is, word_slice_starts_with,
 };
 use super::super::util::{parse_zone_word, trim_commas};
 use super::chain_carry::{Verb, find_verb};
@@ -117,11 +119,7 @@ const PUT_BACK_PREFIXES: &[&[&str]] = &[
 ];
 
 pub(crate) fn strip_leading_instead_prefix(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
-    if !tokens.first().is_some_and(|token| token.is_word("instead"))
-        || tokens
-            .get(1)
-            .is_some_and(|token| token.is_word("of") || token.is_word("if"))
-    {
+    if !token_slice_first_is(tokens, "instead") || token_slice_at_is_any(tokens, 1, &["of", "if"]) {
         return None;
     }
 
@@ -136,11 +134,7 @@ pub(crate) fn strip_leading_instead_prefix(tokens: &[OwnedLexToken]) -> Option<V
 pub(crate) fn strip_leading_instead_prefix_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
-    if !tokens.first().is_some_and(|token| token.is_word("instead"))
-        || tokens
-            .get(1)
-            .is_some_and(|token| token.is_word("of") || token.is_word("if"))
-    {
+    if !token_slice_first_is(tokens, "instead") || token_slice_at_is_any(tokens, 1, &["of", "if"]) {
         return None;
     }
 
@@ -277,17 +271,21 @@ fn starts_with_player_may_clause_lexed(words: &[&str]) -> bool {
 }
 
 pub(crate) fn is_token_creation_context(tokens: &[OwnedLexToken]) -> bool {
-    tokens.first().is_some_and(|t| t.is_word("create"))
+    token_slice_first_is(tokens, "create")
         && (grammar::contains_word(tokens, "token") || grammar::contains_word(tokens, "tokens"))
 }
 
 fn has_inline_token_rules_context(words: &[&str]) -> bool {
-    word_slice_contains_phrase(words, &["when", "this", "token"])
-        || word_slice_contains_phrase(words, &["whenever", "this", "token"])
-        || word_slice_contains_phrase(words, &["at", "the", "beginning", "of"])
-        || (word_slice_contains_word(words, "except")
-            && word_slice_contains_word(words, "copy")
-            && word_slice_contains_word(words, "token"))
+    word_slice_contains_any_phrase(
+        words,
+        &[
+            &["when", "this", "token"],
+            &["whenever", "this", "token"],
+            &["at", "the", "beginning", "of"],
+        ],
+    ) || (word_slice_contains_word(words, "except")
+        && word_slice_contains_word(words, "copy")
+        && word_slice_contains_word(words, "token"))
 }
 
 fn should_keep_and_for_token_rules(current: &[OwnedLexToken], remaining: &[OwnedLexToken]) -> bool {
@@ -575,7 +573,7 @@ fn should_keep_and_for_exchange_zones_lexed(
 ) -> bool {
     let current_words = token_word_refs(current);
     let remaining_words = token_word_refs(remaining);
-    current_words.first().copied() == Some("exchange")
+    word_slice_first_is(&current_words, "exchange")
         && current_words
             .iter()
             .any(|word| parse_zone_word(word).is_some())
@@ -628,15 +626,15 @@ fn should_keep_and_for_card_type_list_lexed(
 }
 
 fn is_prevent_next_damage_clause_words_lexed(words: &[&str]) -> bool {
-    if words.first().copied() != Some("prevent") {
+    if !word_slice_first_is(words, "prevent") {
         return false;
     }
 
     let mut idx = 1usize;
-    if words.get(idx) == Some(&"the") {
+    if word_slice_at_is(words, idx, "the") {
         idx += 1;
     }
-    if words.get(idx) != Some(&"next") {
+    if !word_slice_at_is(words, idx, "next") {
         return false;
     }
     idx += 1;
@@ -646,9 +644,8 @@ fn is_prevent_next_damage_clause_words_lexed(words: &[&str]) -> bool {
     }
     idx += 1;
 
-    words.get(idx) == Some(&"damage")
-        && words.get(idx + 1..idx + 5) == Some(["that", "would", "be", "dealt"].as_slice())
-        && words.get(idx + 5) == Some(&"to")
+    word_slice_at_is(words, idx, "damage")
+        && word_slice_starts_with(&words[idx + 1..], &["that", "would", "be", "dealt", "to"])
         && word_slice_ends_with(words, &["this", "turn"])
         && words.len() > idx + 7
 }
@@ -679,7 +676,7 @@ fn is_can_attack_as_though_no_defender_clause_words_lexed(words: &[&str]) -> boo
         && word_slice_contains_phrase(tail, &["as", "though"])
         && word_slice_contains_word(tail, "turn")
         && word_slice_contains_word(tail, "have")
-        && tail.last().copied() == Some("defender")
+        && word_slice_last_is(tail, "defender")
 }
 
 fn is_attack_or_block_this_turn_if_able_clause_words_lexed(words: &[&str]) -> bool {
@@ -734,15 +731,19 @@ fn is_must_block_if_able_clause_words_lexed(words: &[&str]) -> bool {
 }
 
 fn is_phase_clause_words_lexed(words: &[&str]) -> bool {
-    (word_slice_ends_with(words, &["phase", "out"])
-        || word_slice_ends_with(words, &["phases", "out"])
-        || word_slice_ends_with(words, &["phase", "in"])
-        || word_slice_ends_with(words, &["phases", "in"]))
-        && words.len() >= 3
+    word_slice_ends_with_any(
+        words,
+        &[
+            &["phase", "out"],
+            &["phases", "out"],
+            &["phase", "in"],
+            &["phases", "in"],
+        ],
+    ) && words.len() >= 3
 }
 
 fn is_choose_target_prelude_clause_words_lexed(words: &[&str]) -> bool {
-    matches!(words.first().copied(), Some("choose" | "chooses"))
+    word_slice_first_is_any(words, &["choose", "chooses"])
         && word_slice_contains_word(words, "target")
 }
 
@@ -752,10 +753,10 @@ fn should_keep_and_for_power_toughness_axis_lexed(
 ) -> bool {
     let current_words = token_word_refs(current);
     let remaining_words = token_word_refs(remaining);
-    (word_slice_ends_with(&current_words, &["power"])
-        || word_slice_ends_with(&current_words, &["total", "power"])
-        || word_slice_ends_with(&current_words, &["base", "power"]))
-        && remaining_words.first().copied() == Some("toughness")
+    word_slice_ends_with_any(
+        &current_words,
+        &[&["power"], &["total", "power"], &["base", "power"]],
+    ) && word_slice_first_is(&remaining_words, "toughness")
 }
 
 fn should_keep_and_for_become_with_quoted_ability(
@@ -1017,7 +1018,7 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                     && word_slice_contains_word(&after_words, "damage");
                 let allow_return_with_counter_followup = !starts_with_for_each_player_or_opponent
                     && has_back_ref
-                    && after_words.first().is_some_and(|word| *word == "return")
+                    && word_slice_first_is(&after_words, "return")
                     && after_words
                         .iter()
                         .any(|word| *word == "counter" || *word == "counters")
@@ -1109,12 +1110,12 @@ pub(crate) fn split_segments_on_comma_effect_head_lexed(
                 || has_effect_head_without_verb_lexed(after);
             let before_words = token_word_refs(before);
             let after_words = token_word_refs(after);
-            let duration_trigger_prefix = (before_words.first() == Some(&"until")
-                || before_words.first() == Some(&"during"))
-                && (grammar::contains_word(before, "whenever")
-                    || grammar::contains_word(before, "when")
-                    || grammar::words_find_phrase(before, &["at", "the"]).is_some());
-            if before_words.first() == Some(&"unless") || duration_trigger_prefix {
+            let duration_trigger_prefix =
+                word_slice_first_is_any(&before_words, &["until", "during"])
+                    && (grammar::contains_word(before, "whenever")
+                        || grammar::contains_word(before, "when")
+                        || grammar::words_find_phrase(before, &["at", "the"]).is_some());
+            if word_slice_first_is(&before_words, "unless") || duration_trigger_prefix {
                 continue;
             }
             if grammar::contains_word(before, "search") && grammar::contains_word(before, "library")
@@ -1122,32 +1123,33 @@ pub(crate) fn split_segments_on_comma_effect_head_lexed(
                 continue;
             }
             if grammar::contains_word(before, "target")
-                && (after_words.first().is_some_and(|word| {
-                    matches!(
-                        *word,
-                        "artifact"
-                            | "battle"
-                            | "creature"
-                            | "enchantment"
-                            | "instant"
-                            | "land"
-                            | "planeswalker"
-                            | "sorcery"
-                    )
-                }) || (after_words.first() == Some(&"or")
-                    && after_words.get(1).is_some_and(|word| {
-                        matches!(
-                            *word,
-                            "artifact"
-                                | "battle"
-                                | "creature"
-                                | "enchantment"
-                                | "instant"
-                                | "land"
-                                | "planeswalker"
-                                | "sorcery"
-                        )
-                    })))
+                && (word_slice_first_is_any(
+                    &after_words,
+                    &[
+                        "artifact",
+                        "battle",
+                        "creature",
+                        "enchantment",
+                        "instant",
+                        "land",
+                        "planeswalker",
+                        "sorcery",
+                    ],
+                ) || (word_slice_first_is(&after_words, "or")
+                    && word_slice_at_is_any(
+                        &after_words,
+                        1,
+                        &[
+                            "artifact",
+                            "battle",
+                            "creature",
+                            "enchantment",
+                            "instant",
+                            "land",
+                            "planeswalker",
+                            "sorcery",
+                        ],
+                    )))
             {
                 continue;
             }

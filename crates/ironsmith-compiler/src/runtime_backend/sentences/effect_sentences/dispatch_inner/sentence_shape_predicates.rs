@@ -15,9 +15,9 @@ fn trailing_counter_constraint(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::filter::CounterConstraint> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    let with_idx = words.iter().position(|word| *word == "with")?;
+    let with_idx = crate::runtime_backend::lexer::word_slice_find_word(&words, "with")?;
     let tail = &words[with_idx + 1..];
-    if tail.first().is_some_and(|word| *word == "no") {
+    if word_slice_first_is(tail, "no") {
         return None;
     }
     let (counter_constraint, consumed) = parse_filter_counter_constraint_words(tail)?;
@@ -53,8 +53,7 @@ fn parse_target_deals_power_damage_to_other_and_self_where_x(
     words: &[&str],
     where_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if words.get(where_idx..where_idx + 5) != Some(["where", "x", "is", "its", "power"].as_slice())
-    {
+    if !word_slice_starts_with_at(words, where_idx, &["where", "x", "is", "its", "power"]) {
         return Ok(None);
     }
 
@@ -105,7 +104,7 @@ fn parse_target_deals_power_damage_to_other_and_self_where_x(
 
 fn where_x_is_number_tapped_this_way(words: &[&str]) -> bool {
     words.len() >= 9
-        && words.get(..6) == Some(["where", "x", "is", "the", "number", "of"].as_slice())
+        && word_slice_starts_with(words, &["where", "x", "is", "the", "number", "of"])
         && crate::runtime_backend::lexer::word_slice_ends_with(words, &["tapped", "this", "way"])
 }
 
@@ -135,21 +134,19 @@ fn prior_effect_metric_source(words: &[&str]) -> ironsmith_core::EffectMetricSou
 }
 
 fn parse_where_x_prior_effect_first_metric_value(words: &[&str], mut idx: usize) -> Option<Value> {
-    let metric = if words.get(idx).copied() == Some("power") {
+    let metric = if word_slice_at_is(words, idx, "power") {
         idx += 1;
         ironsmith_core::EffectMetric::FirstPower
-    } else if words.get(idx).copied() == Some("toughness") {
+    } else if word_slice_at_is(words, idx, "toughness") {
         idx += 1;
         ironsmith_core::EffectMetric::FirstToughness
-    } else if words.get(idx).copied() == Some("mana")
-        && words.get(idx + 1).copied() == Some("value")
-    {
+    } else if word_slice_starts_with(&words[idx..], &["mana", "value"]) {
         idx += 2;
         ironsmith_core::EffectMetric::FirstManaValue
     } else {
         return None;
     };
-    if words.get(idx).copied() != Some("of") {
+    if !word_slice_at_is(words, idx, "of") {
         return None;
     }
     let object_words = &words[idx + 1..];
@@ -177,17 +174,17 @@ fn parse_where_x_prior_effect_first_metric_value(words: &[&str], mut idx: usize)
 }
 
 fn parse_where_x_prior_effect_number_value(words: &[&str]) -> Option<Value> {
-    if words.get(..3) != Some(["where", "x", "is"].as_slice()) {
+    if !word_slice_starts_with(words, &["where", "x", "is"]) {
         return None;
     }
     let mut idx = 3usize;
-    if words.get(idx).copied() == Some("the") {
+    if word_slice_at_is(words, idx, "the") {
         idx += 1;
     }
     if let Some(value) = parse_where_x_prior_effect_first_metric_value(words, idx) {
         return Some(value);
     }
-    if words.get(idx).copied() != Some("number") || words.get(idx + 1).copied() != Some("of") {
+    if !word_slice_starts_with(&words[idx..], &["number", "of"]) {
         return None;
     }
 
@@ -212,7 +209,7 @@ fn parse_where_x_prior_effect_number_value(words: &[&str]) -> Option<Value> {
 }
 
 fn parse_where_x_commander_mana_value_choice(words: &[&str]) -> Option<(EffectAst, Value)> {
-    if words.get(..3) != Some(["where", "x", "is"].as_slice()) {
+    if !word_slice_starts_with(words, &["where", "x", "is"]) {
         return None;
     }
     let tail: Vec<&str> = words
@@ -589,7 +586,7 @@ fn parse_it_is_aura_enchantment_sentence(words: &[&str]) -> Option<Vec<EffectAst
         return None;
     }
 
-    let attachment_filter = if tail.get(5..7) == Some(["you", "control"].as_slice()) {
+    let attachment_filter = if word_slice_starts_with_at(tail, 5, &["you", "control"]) {
         ObjectFilter::creature().you_control()
     } else {
         ObjectFilter::creature()
@@ -690,7 +687,7 @@ fn parse_effect_sentence_lexed_inner(
             &["at", "the", "end", "of", "combat"],
         )
         .is_some();
-    if sentence_words.first() == Some(&"sacrifice")
+    if word_slice_first_is(&sentence_words, "sacrifice")
         && !sacrifice_counted_prefix
         && !sacrifice_delayed_lifecycle
     {
@@ -698,8 +695,7 @@ fn parse_effect_sentence_lexed_inner(
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if sentence_words.first() == Some(&"at")
-        && sentence_words.get(1) == Some(&"this")
+    if word_slice_starts_with(&sentence_words, &["at", "this"])
         && let Some(end_idx) =
             crate::runtime_backend::lexer::word_slice_find_phrase_start(sentence_words.as_slice(), &["end", "of", "combat"])
         && crate::runtime_backend::lexer::word_slice_contains_word(&sentence_words[..end_idx], "next")
@@ -720,9 +716,9 @@ fn parse_effect_sentence_lexed_inner(
     }
 
     let leading_if_replacement_shape =
-        tokens.first().is_some_and(|token| token.is_word("if"))
+        token_slice_first_is(tokens, "if")
             && word_slice_contains_word(&sentence_words, "would");
-    if tokens.first().is_some_and(|token| token.is_word("if"))
+    if token_slice_first_is(tokens, "if")
         && !leading_if_replacement_shape
         && let Ok(Some(mut effects)) =
             parse_conditional_sentence_family_lexed(tokens, parse_effect_chain_lexed)
@@ -1159,9 +1155,8 @@ fn parse_effect_sentence_with_where_x_lexed(
                 ))),
             ),
             _ => {
-                let activation_time_trimmed = primary_where_tokens
-                    .iter()
-                    .position(|token| token.is_word("as"))
+                let activation_time_trimmed =
+                    crate::runtime_backend::lexer::find_token_word(primary_where_tokens, "as")
                     .map(|token_idx| trim_edge_punctuation(&primary_where_tokens[..token_idx]));
                 let specific_where_value =
                     crate::runtime_backend::front_end::grammar::values::parse_players_who_control_more_than_you_value_lexed(
@@ -1209,7 +1204,7 @@ fn parse_effect_sentence_with_where_x_lexed(
     }
     .with_surface_hint(ValueSurfaceHint::WhereXIs);
 
-    let search_like = stripped_words.first().copied() == Some("search");
+    let search_like = word_slice_first_is(&stripped_words, "search");
     let mut effects = if search_like && !trailing_after_where.is_empty() {
         let mut recombined = stripped.clone();
         recombined.extend(trailing_after_where.clone());

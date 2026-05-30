@@ -6,31 +6,29 @@ pub(crate) fn parse_delayed_until_next_end_step_sentence(
     }
 
     let mut idx = 0usize;
-    if !tokens.get(idx).is_some_and(|token| token.is_word("at")) {
+    if !token_slice_at_is(tokens, idx, "at") {
         return Ok(None);
     }
     idx += 1;
 
-    if tokens.get(idx).is_some_and(|token| token.is_word("the")) {
+    if token_slice_at_is(tokens, idx, "the") {
         idx += 1;
     }
-    if !tokens
-        .get(idx)
-        .is_some_and(|token| token.is_word("beginning"))
+    if !token_slice_at_is(tokens, idx, "beginning")
     {
         return Ok(None);
     }
     idx += 1;
-    if !tokens.get(idx).is_some_and(|token| token.is_word("of")) {
+    if !token_slice_at_is(tokens, idx, "of") {
         return Ok(None);
     }
     idx += 1;
 
-    if tokens.get(idx).is_some_and(|token| token.is_word("the")) {
+    if token_slice_at_is(tokens, idx, "the") {
         idx += 1;
     }
 
-    let mut player = if tokens.get(idx).is_some_and(|token| token.is_word("your")) {
+    let mut player = if token_slice_at_is(tokens, idx, "your") {
         idx += 1;
         PlayerFilter::You
     } else {
@@ -38,44 +36,34 @@ pub(crate) fn parse_delayed_until_next_end_step_sentence(
     };
     let mut start_next_turn = false;
 
-    if tokens.get(idx).is_some_and(|token| token.is_word("next")) {
-        if !tokens
-            .get(idx + 1)
-            .is_some_and(|token| token.is_word("end"))
-            || !tokens
-                .get(idx + 2)
-                .is_some_and(|token| token.is_word("step"))
+    if token_slice_at_is(tokens, idx, "next") {
+        if !token_slice_at_is(tokens, idx + 1, "end")
+            || !token_slice_at_is(tokens, idx + 2, "step")
         {
             return Ok(None);
         }
         idx += 3;
     } else {
-        if !tokens.get(idx).is_some_and(|token| token.is_word("end"))
-            || !tokens
-                .get(idx + 1)
-                .is_some_and(|token| token.is_word("step"))
+        if !token_slice_at_is(tokens, idx, "end") || !token_slice_at_is(tokens, idx + 1, "step")
         {
             return Ok(None);
         }
         idx += 2;
     }
 
-    if tokens.get(idx).is_some_and(|token| token.is_word("of")) {
+    if token_slice_at_is(tokens, idx, "of") {
         idx += 1;
-        if tokens.get(idx).is_some_and(|token| token.is_word("that"))
-            && tokens
-                .get(idx + 1)
-                .is_some_and(|token| token.is_word("player") || token.is_word("players"))
+        if token_slice_at_is(tokens, idx, "that")
+            && (token_slice_at_is(tokens, idx + 1, "player")
+                || token_slice_at_is(tokens, idx + 1, "players"))
         {
             player = PlayerFilter::IteratedPlayer;
             idx += 2;
-        } else if tokens.get(idx).is_some_and(|token| token.is_word("your")) {
+        } else if token_slice_at_is(tokens, idx, "your") {
             player = PlayerFilter::You;
             idx += 1;
-        } else if tokens.get(idx).is_some_and(|token| token.is_word("target"))
-            && tokens
-                .get(idx + 1)
-                .is_some_and(|token| token.is_word("player"))
+        } else if token_slice_at_is(tokens, idx, "target")
+            && token_slice_at_is(tokens, idx + 1, "player")
         {
             player = PlayerFilter::Target(Box::new(PlayerFilter::Any));
             idx += 2;
@@ -83,10 +71,8 @@ pub(crate) fn parse_delayed_until_next_end_step_sentence(
             return Ok(None);
         }
 
-        if !tokens.get(idx).is_some_and(|token| token.is_word("next"))
-            || !tokens
-                .get(idx + 1)
-                .is_some_and(|token| token.is_word("turn"))
+        if !token_slice_at_is(tokens, idx, "next")
+            || !token_slice_at_is(tokens, idx + 1, "turn")
         {
             return Ok(None);
         }
@@ -343,13 +329,11 @@ pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
         return Ok(None);
     }
     let mut delayed_filter: Option<ObjectFilter> = None;
-    let split_after_word_idx = if clause_words.get(1) == Some(&"that") {
+    let split_after_word_idx = if word_slice_at_is(&clause_words, 1, "that") {
         let Some(dies_idx) = find_index(clause_words.as_slice(), |word| *word == "dies") else {
             return Ok(None);
         };
-        if clause_words.get(dies_idx + 1) != Some(&"this")
-            || clause_words.get(dies_idx + 2) != Some(&"turn")
-        {
+        if !word_slice_starts_with_at(&clause_words, dies_idx + 1, &["this", "turn"]) {
             return Ok(None);
         }
         dies_idx + 2
@@ -360,12 +344,11 @@ pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
         if dealt_idx <= 1 {
             return Ok(None);
         }
-        let subject_start = token_index_for_word_index(tokens, 1).unwrap_or(tokens.len());
-        let subject_end = token_index_for_word_index(tokens, dealt_idx).unwrap_or(tokens.len());
-        if subject_start >= subject_end {
+        let clause = LexedClause::new(tokens);
+        let Some(subject_clause) = clause.between_word_range(1, dealt_idx) else {
             return Ok(None);
-        }
-        let mut subject_tokens = trim_edge_punctuation(&tokens[subject_start..subject_end]);
+        };
+        let mut subject_tokens = trim_edge_punctuation(subject_clause.tokens());
         if subject_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing object filter in delayed dies-this-way clause (clause: '{}')",
@@ -392,12 +375,11 @@ pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
         if dealt_idx <= 1 {
             return Ok(None);
         }
-        let subject_start = token_index_for_word_index(tokens, 1).unwrap_or(tokens.len());
-        let subject_end = token_index_for_word_index(tokens, dealt_idx).unwrap_or(tokens.len());
-        if subject_start >= subject_end {
+        let clause = LexedClause::new(tokens);
+        let Some(subject_clause) = clause.between_word_range(1, dealt_idx) else {
             return Ok(None);
-        }
-        let mut subject_tokens = trim_edge_punctuation(&tokens[subject_start..subject_end]);
+        };
+        let mut subject_tokens = trim_edge_punctuation(subject_clause.tokens());
         if subject_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing object filter in delayed dies-this-way clause (clause: '{}')",
@@ -418,10 +400,12 @@ pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
     } else {
         return Ok(None);
     };
-    let split_idx =
-        token_index_for_word_index(tokens, split_after_word_idx + 1).unwrap_or(tokens.len());
-    let mut remainder = &tokens[split_idx..];
-    if remainder.first().is_some_and(OwnedLexToken::is_comma) {
+    let clause = LexedClause::new(tokens);
+    let mut remainder = clause
+        .after_words(split_after_word_idx + 1)
+        .unwrap_or_else(|| clause.from(tokens.len()))
+        .tokens();
+    if token_slice_first_kind(remainder, TokenKind::Comma) {
         remainder = &remainder[1..];
     }
     let remainder = trim_commas(remainder);
@@ -447,13 +431,7 @@ pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
 }
 
 pub(crate) fn find_from_among(tokens: &[OwnedLexToken]) -> Option<usize> {
-    tokens.iter().enumerate().find_map(|(idx, token)| {
-        if token.is_word("from") && tokens.get(idx + 1).is_some_and(|t| t.is_word("among")) {
-            Some(idx)
-        } else {
-            None
-        }
-    })
+    crate::runtime_backend::lexer::find_token_word_sequence(tokens, &["from", "among"])
 }
 
 pub(crate) fn find_list_start(tokens: &[OwnedLexToken]) -> Option<usize> {
@@ -475,54 +453,6 @@ pub(crate) fn find_list_start(tokens: &[OwnedLexToken]) -> Option<usize> {
         }
     }
     None
-}
-
-pub(crate) fn trim_commas(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
-    let mut start = 0usize;
-    let mut end = tokens.len();
-    while start < end && tokens[start].is_comma() {
-        start += 1;
-    }
-    while end > start && tokens[end - 1].is_comma() {
-        end -= 1;
-    }
-    tokens[start..end].to_vec()
-}
-
-pub(crate) fn trim_edge_punctuation(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
-    let mut start = 0usize;
-    let mut end = tokens.len();
-    while start < end
-        && (tokens[start].is_comma()
-            || tokens[start].is_period()
-            || tokens[start].is_semicolon()
-            || tokens[start].is_quote())
-    {
-        start += 1;
-    }
-    while end > start
-        && (tokens[end - 1].is_comma()
-            || tokens[end - 1].is_period()
-            || tokens[end - 1].is_semicolon()
-            || tokens[end - 1].is_quote())
-    {
-        end -= 1;
-    }
-    tokens[start..end].to_vec()
-}
-
-pub(crate) fn strip_leading_articles(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
-    let mut start = 0usize;
-    while start < tokens.len() {
-        if let Some(word) = tokens[start].as_word()
-            && is_article(word)
-        {
-            start += 1;
-            continue;
-        }
-        break;
-    }
-    tokens[start..].to_vec()
 }
 
 pub(crate) fn split_choose_list(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexToken>> {

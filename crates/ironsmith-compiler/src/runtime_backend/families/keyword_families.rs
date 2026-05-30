@@ -379,7 +379,7 @@ pub(super) fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<Ke
     let word_view = TokenWordView::new(tokens);
     let first = word_view.get(0)?;
     if first == "basic" {
-        if word_view.get(1) == Some("landcycling") {
+        if word_view.at_is(1, "landcycling") {
             return Some(KeywordDispatchHint::Cycling);
         }
         return None;
@@ -391,7 +391,7 @@ pub(super) fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<Ke
         return Some(KeywordDispatchHint::AlternativeOrExertFamily);
     }
     if matches!(first, "jumpstart" | "jump-start")
-        || (first == "jump" && word_view.get(1) == Some("start"))
+        || (first == "jump" && word_view.at_is(1, "start"))
     {
         return Some(KeywordDispatchHint::AlternativeOrExertFamily);
     }

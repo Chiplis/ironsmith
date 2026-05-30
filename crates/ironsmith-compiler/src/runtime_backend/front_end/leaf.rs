@@ -19,9 +19,11 @@ use super::grammar::values::{
     parse_mana_symbol_group,
 };
 use super::lexer::{
-    OwnedLexToken, TokenKind, lex_line, render_token_slice, word_slice_contains_word,
+    OwnedLexToken, TokenKind, lex_line, render_token_slice, token_slice_at_is,
+    token_slice_first_is, word_slice_at_is, word_slice_at_is_any, word_slice_contains_word,
     word_slice_ends_with, word_slice_eq, word_slice_eq_any, word_slice_find_window_by,
-    word_slice_find_word_where, word_slice_starts_with,
+    word_slice_find_word_where, word_slice_first_is, word_slice_first_is_any,
+    word_slice_last_is_any, word_slice_starts_with, word_slice_starts_with_any,
 };
 use super::object_filters::parse_object_filter_lexed;
 use super::token_primitives::{
@@ -161,15 +163,6 @@ fn parse_color_word(word: &str) -> Option<ColorSet> {
     Color::from_name(word).map(ColorSet::from_color)
 }
 
-fn trim_plural_s(word: &str) -> Option<&str> {
-    let bytes = word.as_bytes();
-    (bytes.len() > 1 && bytes[bytes.len() - 1] == b's').then(|| &word[..word.len() - 1])
-}
-
-fn push_unique_card_type(card_types: &mut Vec<CardType>, card_type: CardType) {
-    crate::slice_primitives::push_unique(card_types, card_type);
-}
-
 fn first_non_comma_token(tokens: &[OwnedLexToken]) -> Option<&OwnedLexToken> {
     for token in tokens {
         if !token.is_comma() {
@@ -180,29 +173,21 @@ fn first_non_comma_token(tokens: &[OwnedLexToken]) -> Option<&OwnedLexToken> {
 }
 
 fn first_non_comma_token_index(tokens: &[OwnedLexToken]) -> Option<usize> {
-    for (idx, token) in tokens.iter().enumerate() {
-        if !token.is_comma() {
-            return Some(idx);
-        }
-    }
-    None
+    crate::slice_primitives::find_index(tokens, |token| !token.is_comma())
 }
 
 fn trim_activation_cost_segment_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     let mut start = first_non_comma_token_index(tokens).unwrap_or(tokens.len());
     let mut end = tokens.len();
 
-    if tokens.get(start).is_some_and(|token| token.is_word("and")) {
+    if token_slice_at_is(tokens, start, "and") {
         start += 1;
         while start < end && tokens[start].is_comma() {
             start += 1;
         }
     }
 
-    if tokens
-        .get(start)
-        .is_some_and(|token| token.is_word("waterbend"))
-    {
+    if token_slice_at_is(tokens, start, "waterbend") {
         start += 1;
         while start < end && tokens[start].is_comma() {
             start += 1;
@@ -224,14 +209,6 @@ fn render_lower_lexed_tokens(tokens: &[OwnedLexToken]) -> String {
     render_trimmed_lexed_tokens(tokens).to_ascii_lowercase()
 }
 
-fn words_match_any(words: &[&str], patterns: &[&[&str]]) -> bool {
-    crate::slice_primitives::equals_any(words, patterns)
-}
-
-fn words_start_with_any(words: &[&str], patterns: &[&[&str]]) -> bool {
-    crate::slice_primitives::starts_with_any(words, patterns)
-}
-
 fn parse_count_prefix_words(words: &[&str]) -> Option<(u32, usize)> {
     let first = words.first().copied()?;
     if let Some(parsed) = count_word_value(first) {
@@ -241,10 +218,7 @@ fn parse_count_prefix_words(words: &[&str]) -> Option<(u32, usize)> {
 }
 
 fn skip_articles(words: &[&str], mut idx: usize) -> usize {
-    while words
-        .get(idx)
-        .is_some_and(|word| matches!(*word, "a" | "an" | "the"))
-    {
+    while word_slice_at_is_any(words, idx, &["a", "an", "the"]) {
         idx += 1;
     }
     idx
@@ -485,14 +459,11 @@ fn parse_generic_choice_prefix_tokens<'a>(
             (ChoiceCount::at_least(1), 3)
         } else if word_slice_starts_with(lowered.as_slice(), &["any", "number", "of"]) {
             (ChoiceCount::any_number(), 3)
-        } else if lowered.first() == Some(&"x") {
+        } else if word_slice_first_is(&lowered, "x") {
             (ChoiceCount::dynamic_x(), 1)
         } else if let Some((count, consumed_words)) = parse_count_prefix_words(lowered.as_slice()) {
             (ChoiceCount::exactly(count as usize), consumed_words)
-        } else if lowered
-            .first()
-            .is_some_and(|word| matches!(*word, "a" | "an" | "the"))
-        {
+        } else if word_slice_first_is_any(&lowered, &["a", "an", "the"]) {
             (ChoiceCount::exactly(1), 1)
         } else {
             (ChoiceCount::exactly(1), 0)
@@ -550,7 +521,7 @@ fn parse_discard_segment_tokens(
         idx += 1;
     }
 
-    if tail.get(idx) == Some(&"card") && tail.get(idx + 1) == Some(&"named") {
+    if word_slice_starts_with(&tail[idx..], &["card", "named"]) {
         let Some(name_tokens) = token_slice_from_word_index(tokens, &words, idx + 3) else {
             return Err(CardTextError::ParseError(format!(
                 "rewrite discard parser expected card name in '{raw}'"
@@ -585,7 +556,7 @@ fn parse_discard_segment_tokens(
                 "rewrite discard parser does not yet support selector '{raw}'"
             )));
         };
-        push_unique_card_type(&mut card_types, card_type);
+        crate::slice_primitives::push_unique(&mut card_types, card_type);
         idx += 1;
     }
 
@@ -630,7 +601,7 @@ fn parse_sacrifice_segment_tokens(
     let lowered = words.to_word_refs();
     let tail = lowered.get(1..).unwrap_or_default();
 
-    if words_match_any(
+    if word_slice_eq_any(
         tail,
         &[
             &["it"],
@@ -655,7 +626,7 @@ fn parse_sacrifice_segment_tokens(
     let mut idx = 0usize;
     let mut count = 1u32;
     let mut up_to = false;
-    if tail.get(0..2) == Some(&["up", "to"])
+    if word_slice_starts_with(tail, &["up", "to"])
         && let Some((parsed, consumed_words)) = parse_count_prefix_words(&tail[2..])
     {
         count = parsed;
@@ -664,7 +635,7 @@ fn parse_sacrifice_segment_tokens(
     } else if let Some((parsed, consumed_words)) = parse_count_prefix_words(tail) {
         count = parsed;
         idx = consumed_words;
-    } else if tail.first().is_some_and(|word| matches!(*word, "a" | "an")) {
+    } else if word_slice_first_is_any(tail, &["a", "an"]) {
         idx = 1;
     }
 
@@ -712,7 +683,7 @@ fn parse_tap_chosen_segment_tokens(
     if let Some((parsed, consumed_words)) = parse_count_prefix_words(tail) {
         count = parsed;
         idx = consumed_words;
-    } else if tail.first().is_some_and(|word| matches!(*word, "a" | "an")) {
+    } else if word_slice_first_is_any(tail, &["a", "an"]) {
         idx = 1;
     }
 
@@ -724,7 +695,7 @@ fn parse_tap_chosen_segment_tokens(
         idx += 1;
     }
 
-    if tail.get(idx) != Some(&"untapped") {
+    if !word_slice_at_is(tail, idx, "untapped") {
         return Err(CardTextError::ParseError(format!(
             "rewrite tap-cost parser expected untapped selector in '{raw}'"
         )));
@@ -764,7 +735,7 @@ fn parse_exile_segment_tokens(
         ));
     }
 
-    if words_match_any(
+    if word_slice_eq_any(
         tail,
         &[
             &["this"],
@@ -778,7 +749,7 @@ fn parse_exile_segment_tokens(
             &["this", "aura"],
             &["this", "vehicle"],
         ],
-    ) || words_start_with_any(
+    ) || word_slice_starts_with_any(
         tail,
         &[
             &["this", "card", "from", "your"],
@@ -955,7 +926,7 @@ fn parse_return_segment_tokens(
     };
 
     let target = &lowered[1..lowered.len() - suffix_len];
-    if words_match_any(
+    if word_slice_eq_any(
         target,
         &[
             &["it"],
@@ -1064,7 +1035,7 @@ fn parse_put_counter_segment_tokens(
     let counter_descriptor = render_lower_lexed_tokens(counter_tokens);
     let counter_type = parse_counter_type_descriptor(counter_descriptor.as_str())?;
 
-    if words_match_any(
+    if word_slice_eq_any(
         target,
         &[
             &["this"],
@@ -1268,7 +1239,7 @@ fn parse_remove_counter_segment_tokens(
         });
     }
 
-    if !words_match_any(
+    if !word_slice_eq_any(
         target,
         &[
             &["this"],
@@ -1407,7 +1378,7 @@ fn parse_pay_segment_tokens(
     let raw = render_trimmed_lexed_tokens(tokens);
     let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
-    if lowered.first().copied() != Some("pay") {
+    if !word_slice_first_is(&lowered, "pay") {
         return Err(CardTextError::ParseError(
             "rewrite pay-cost parser expected leading 'pay'".to_string(),
         ));
@@ -1426,7 +1397,7 @@ fn parse_pay_segment_tokens(
         )));
     }
 
-    if matches!(lowered_rest.last(), Some(&"life") | Some(&"lives")) {
+    if word_slice_last_is_any(&lowered_rest, &["life", "lives"]) {
         let count_words = &lowered_rest[..lowered_rest.len() - 1];
         if let Some((amount, consumed_words)) = parse_count_prefix_words(count_words)
             && consumed_words == count_words.len()
@@ -1464,7 +1435,7 @@ fn parse_exert_segment_tokens(
     let raw = render_trimmed_lexed_tokens(tokens);
     let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
-    if lowered.first().copied() != Some("exert") {
+    if !word_slice_first_is(&lowered, "exert") {
         return Err(CardTextError::ParseError(
             "rewrite exert-cost parser expected leading 'exert'".to_string(),
         ));
@@ -1488,7 +1459,7 @@ fn parse_mill_segment_tokens(
     let raw = render_lower_lexed_tokens(tokens);
     let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
-    if lowered.first().copied() != Some("mill") {
+    if !word_slice_first_is(&lowered, "mill") {
         return Err(CardTextError::ParseError(
             "rewrite mill parser expected leading 'mill'".to_string(),
         ));
@@ -1498,7 +1469,7 @@ fn parse_mill_segment_tokens(
     let (count, consumed_words) =
         if let Some((count, consumed_words)) = parse_count_prefix_words(tail) {
             (count, consumed_words)
-        } else if tail.first().is_some_and(|word| matches!(*word, "a" | "an")) {
+        } else if word_slice_first_is_any(tail, &["a", "an"]) {
             (1, 1)
         } else {
             return Err(CardTextError::ParseError(format!(
@@ -1524,7 +1495,7 @@ fn parse_behold_segment_tokens(
     let raw = render_lower_lexed_tokens(tokens);
     let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
-    if lowered.first().copied() != Some("behold") {
+    if !word_slice_first_is(&lowered, "behold") {
         return Err(CardTextError::ParseError(
             "rewrite behold parser expected leading 'behold'".to_string(),
         ));
@@ -1534,7 +1505,7 @@ fn parse_behold_segment_tokens(
     let (count, consumed_words) =
         if let Some((count, consumed_words)) = parse_count_prefix_words(tail) {
             (count, consumed_words)
-        } else if tail.first().is_some_and(|word| matches!(*word, "a" | "an")) {
+        } else if word_slice_first_is_any(tail, &["a", "an"]) {
             (1, 1)
         } else {
             return Err(CardTextError::ParseError(format!(
@@ -1547,9 +1518,9 @@ fn parse_behold_segment_tokens(
             "rewrite behold parser expected subtype in '{raw}'"
         )));
     };
-    let Some(subtype) = parse_subtype_word(subtype_word)
-        .or_else(|| trim_plural_s(subtype_word).and_then(parse_subtype_word))
-    else {
+    let Some(subtype) = parse_subtype_word(subtype_word).or_else(|| {
+        crate::string_primitives::strip_suffix_char(subtype_word, 's').and_then(parse_subtype_word)
+    }) else {
         return Err(CardTextError::ParseError(format!(
             "rewrite behold parser expected subtype in '{raw}'"
         )));
@@ -1569,7 +1540,7 @@ fn parse_blight_segment_tokens(
     let raw = render_lower_lexed_tokens(tokens);
     let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
-    if lowered.first().copied() != Some("blight") {
+    if !word_slice_first_is(&lowered, "blight") {
         return Err(CardTextError::ParseError(
             "rewrite blight parser expected leading 'blight'".to_string(),
         ));
@@ -1706,7 +1677,7 @@ fn split_activation_cost_segments_tokens(tokens: &[OwnedLexToken]) -> Vec<Vec<Ow
 
         let split_here = if tokens[idx].is_comma() {
             let remainder = &tokens[idx + 1..];
-            let remainder = if remainder.first().is_some_and(|token| token.is_word("and")) {
+            let remainder = if token_slice_first_is(remainder, "and") {
                 &remainder[1..]
             } else {
                 remainder

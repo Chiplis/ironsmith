@@ -67,7 +67,7 @@ pub(crate) fn parse_effect_with_verb(
         Verb::Look => parse_look(tokens, subject),
         Verb::Lose => parse_lose_life(tokens, subject),
         Verb::Gain => {
-            if tokens.first().is_some_and(|token| token.is_word("control")) {
+            if token_slice_first_is(tokens, "control") {
                 parse_gain_control(tokens, subject)
             } else {
                 parse_gain_life(tokens, subject)
@@ -205,10 +205,7 @@ fn parse_library_nth_from_top_destination(tokens: &[OwnedLexToken]) -> Option<Va
         return None;
     }
 
-    let filtered_tail: Vec<&str> = crate::runtime_backend::token_word_refs(&tail_tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
+    let filtered_tail = crate::runtime_backend::util::non_article_token_word_refs(&tail_tokens);
     if let Some((position, used)) = ironsmith_core::parse_ordinal_words(&filtered_tail)
         && filtered_tail
             .get(used..)
@@ -227,7 +224,7 @@ fn parse_library_nth_from_top_destination(tokens: &[OwnedLexToken]) -> Option<Va
         .collect::<Vec<_>>();
     let (amount, used) = parse_value(&amount_tokens)?;
     let amount_words = crate::runtime_backend::token_word_refs(&amount_tokens);
-    if !matches!(amount_words.get(used).copied(), Some("card" | "cards")) {
+    if !word_slice_at_is_any(&amount_words, used, &["card", "cards"]) {
         return None;
     }
     if used + 1 > amount_words.len() {
@@ -251,32 +248,40 @@ pub(crate) fn parse_look(
         if word_slice_starts_with(&words, &["your", "hand"]) {
             return Some((PlayerAst::You, 2));
         }
-        if word_slice_starts_with(&words, &["each", "player", "hand"])
-            || word_slice_starts_with(&words, &["each", "players", "hand"])
-        {
+        if word_slice_starts_with_any(
+            &words,
+            &[&["each", "player", "hand"], &["each", "players", "hand"]],
+        ) {
             return Some((PlayerAst::Any, 3));
         }
         if word_slice_starts_with(&words, &["their", "hand"]) {
             return Some((PlayerAst::That, 2));
         }
-        if word_slice_starts_with(&words, &["that", "player", "hand"])
-            || word_slice_starts_with(&words, &["that", "players", "hand"])
-        {
+        if word_slice_starts_with_any(
+            &words,
+            &[&["that", "player", "hand"], &["that", "players", "hand"]],
+        ) {
             return Some((PlayerAst::That, 3));
         }
-        if word_slice_starts_with(&words, &["target", "player", "hand"])
-            || word_slice_starts_with(&words, &["target", "players", "hand"])
-        {
+        if word_slice_starts_with_any(
+            &words,
+            &[&["target", "player", "hand"], &["target", "players", "hand"]],
+        ) {
             return Some((PlayerAst::Target, 3));
         }
-        if word_slice_starts_with(&words, &["target", "opponent", "hand"])
-            || word_slice_starts_with(&words, &["target", "opponents", "hand"])
-        {
+        if word_slice_starts_with_any(
+            &words,
+            &[
+                &["target", "opponent", "hand"],
+                &["target", "opponents", "hand"],
+            ],
+        ) {
             return Some((PlayerAst::TargetOpponent, 3));
         }
-        if word_slice_starts_with(&words, &["opponent", "hand"])
-            || word_slice_starts_with(&words, &["opponents", "hand"])
-        {
+        if word_slice_starts_with_any(
+            &words,
+            &[&["opponent", "hand"], &["opponents", "hand"]],
+        ) {
             return Some((PlayerAst::Opponent, 2));
         }
         if word_slice_starts_with(&words, &["his", "or", "her", "hand"]) {
@@ -289,32 +294,46 @@ pub(crate) fn parse_look(
         if word_slice_starts_with(&words, &["your", "library"]) {
             return Some((PlayerAst::You, 2));
         }
-        if word_slice_starts_with(&words, &["each", "player", "library"])
-            || word_slice_starts_with(&words, &["each", "players", "library"])
-        {
+        if word_slice_starts_with_any(
+            &words,
+            &[
+                &["each", "player", "library"],
+                &["each", "players", "library"],
+            ],
+        ) {
             return Some((PlayerAst::Any, 3));
         }
         if word_slice_starts_with(&words, &["their", "library"]) {
             return Some((PlayerAst::That, 2));
         }
-        if word_slice_starts_with(&words, &["that", "player", "library"])
-            || word_slice_starts_with(&words, &["that", "players", "library"])
-        {
+        if word_slice_starts_with_any(
+            &words,
+            &[&["that", "player", "library"], &["that", "players", "library"]],
+        ) {
             return Some((PlayerAst::That, 3));
         }
-        if word_slice_starts_with(&words, &["target", "player", "library"])
-            || word_slice_starts_with(&words, &["target", "players", "library"])
-        {
+        if word_slice_starts_with_any(
+            &words,
+            &[
+                &["target", "player", "library"],
+                &["target", "players", "library"],
+            ],
+        ) {
             return Some((PlayerAst::Target, 3));
         }
-        if word_slice_starts_with(&words, &["target", "opponent", "library"])
-            || word_slice_starts_with(&words, &["target", "opponents", "library"])
-        {
+        if word_slice_starts_with_any(
+            &words,
+            &[
+                &["target", "opponent", "library"],
+                &["target", "opponents", "library"],
+            ],
+        ) {
             return Some((PlayerAst::TargetOpponent, 3));
         }
-        if word_slice_starts_with(&words, &["its", "owner", "library"])
-            || word_slice_starts_with(&words, &["its", "owners", "library"])
-        {
+        if word_slice_starts_with_any(
+            &words,
+            &[&["its", "owner", "library"], &["its", "owners", "library"]],
+        ) {
             return Some((PlayerAst::ItsOwner, 3));
         }
         if word_slice_starts_with(&words, &["his", "or", "her", "library"]) {
@@ -345,10 +364,10 @@ pub(crate) fn parse_look(
         if rest.is_empty() {
             return Some(effects);
         }
-        if rest.first().copied() == Some("and") {
+        if word_slice_first_is(rest, "and") {
             rest = &rest[1..];
         }
-        if matches!(rest.first().copied(), Some("any" | "all")) {
+        if word_slice_first_is_any(rest, &["any", "all"]) {
             rest = &rest[1..];
         }
         if matches!(
@@ -686,11 +705,8 @@ pub(crate) fn parse_shuffle(
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if let Some(into_idx) = find_index(&clause_words, |word| *word == "into") {
         let target_words = &clause_words[..into_idx];
-        let destination_words: Vec<&str> = clause_words[into_idx + 1..]
-            .iter()
-            .copied()
-            .filter(|word| !is_article(word))
-            .collect();
+        let destination_words =
+            crate::runtime_backend::util::non_article_word_refs(&clause_words[into_idx + 1..]);
         if matches!(
             target_words,
             ["it"] | ["them"] | ["that", "card"] | ["those", "cards"]
@@ -834,24 +850,17 @@ fn parse_chosen_name_goad_target(
             continue;
         }
 
-        let tail = &target_words[with_word_idx + 1..];
-        let name_word_idx = if tail.first().is_some_and(|word| is_article(word)) {
-            1
-        } else {
-            0
-        };
-        let chosen_name_tail = tail.get(name_word_idx..).is_some_and(|tail| {
-            tail.len() >= 5
-                && matches!(tail[0], "name" | "names")
-                && tail[1] == "chosen"
-                && tail[2] == "for"
-                && tail[3] == "this"
-                && matches!(
-                    tail[4],
-                    "artifact" | "card" | "creature" | "enchantment" | "permanent" | "source"
-                )
-                && tail[5..].iter().all(|word| matches!(*word, "this" | "way"))
-        });
+        let tail = strip_leading_article_word_refs(&target_words[with_word_idx + 1..]);
+        let chosen_name_tail = tail.len() >= 5
+            && matches!(tail[0], "name" | "names")
+            && tail[1] == "chosen"
+            && tail[2] == "for"
+            && tail[3] == "this"
+            && matches!(
+                tail[4],
+                "artifact" | "card" | "creature" | "enchantment" | "permanent" | "source"
+            )
+            && word_slice_all_words_are_any(&tail[5..], &["this", "way"]);
         if !chosen_name_tail {
             continue;
         }

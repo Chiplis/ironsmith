@@ -1,4 +1,8 @@
 use super::*;
+use crate::runtime_backend::lexer::{
+    find_token_word, token_slice_starts_with_at, token_slice_strip_any_word_prefix,
+    token_slice_strip_word_prefix,
+};
 use crate::runtime_backend::util::parse_value;
 use crate::runtime_backend::value_helpers::{
     parse_equal_to_aggregate_filter_value, parse_equal_to_number_of_filter_value,
@@ -64,7 +68,7 @@ pub(crate) fn normalize_cant_words(tokens: &[OwnedLexToken]) -> Vec<String> {
                 normalized.push("cant".to_string());
                 idx += 1;
             }
-            "can" if words.get(idx + 1) == Some(&"t") => {
+            "can" if word_slice_at_is(&words, idx + 1, "t") => {
                 normalized.push("cant".to_string());
                 idx += 2;
             }
@@ -72,7 +76,7 @@ pub(crate) fn normalize_cant_words(tokens: &[OwnedLexToken]) -> Vec<String> {
                 normalized.push("youve".to_string());
                 idx += 1;
             }
-            "you" if words.get(idx + 1) == Some(&"ve") => {
+            "you" if word_slice_at_is(&words, idx + 1, "ve") => {
                 normalized.push("youve".to_string());
                 idx += 2;
             }
@@ -129,7 +133,7 @@ fn cumulative_upkeep_text(words: &[&str]) -> String {
         return text;
     }
 
-    if tail.first().copied() == Some("add")
+    if word_slice_first_is(tail, "add")
         && let Some((cost, consumed)) = leading_mana_symbols_to_oracle(&tail[1..])
         && consumed + 1 == tail.len()
     {
@@ -246,8 +250,8 @@ fn parse_payment_clause_as_effects(
 }
 
 fn find_payment_alternative_or(tokens: &[OwnedLexToken]) -> Option<usize> {
-    tokens.iter().enumerate().find_map(|(idx, token)| {
-        (token.is_word("or") && !is_comparison_or_delimiter(tokens, idx)).then_some(idx)
+    find_index_with(tokens, |idx, token| {
+        token.is_word("or") && !is_comparison_or_delimiter(tokens, idx)
     })
 }
 
@@ -310,7 +314,7 @@ fn parse_dynamic_payment_clause_as_total_cost(
         return Ok(None);
     }
     let token_words = words(&tokens);
-    if token_words.first().copied() == Some("mana")
+    if word_slice_first_is(&token_words, "mana")
         && let Some(value) = parse_equal_to_aggregate_filter_value(&tokens)
             .or_else(|| parse_equal_to_number_of_filter_value(&tokens))
     {
@@ -357,7 +361,7 @@ fn parse_dynamic_payment_clause_as_total_cost(
     let mut additional_generic = None;
     let mut multiplier = None;
     let trailing_words = words(&trailing);
-    if trailing.first().is_some_and(|token| token.is_word("and")) {
+    if token_slice_first_is(&trailing, "and") {
         let life_tokens = trim_edge_punctuation(&trim_commas(&trailing[1..]));
         if let Some((amount, used)) = parse_value(&life_tokens)
             && life_tokens
@@ -548,7 +552,7 @@ pub(crate) fn parse_numeric_keyword_action<F>(
 where
     F: FnOnce(u32) -> KeywordAction,
 {
-    if words.first().copied() != Some(keyword) {
+    if !word_slice_first_is(words, keyword) {
         return None;
     }
     if let Some(amount) = words.get(1).and_then(|word| word.parse::<u32>().ok()) {
@@ -571,10 +575,10 @@ pub(crate) fn parse_cost_keyword_action<F>(
 where
     F: FnOnce(ManaCost) -> KeywordAction,
 {
-    if words.first().copied() != Some(keyword) {
+    if !word_slice_first_is(words, keyword) {
         return None;
     }
-    if matches!(words.get(1).copied(), Some("cost" | "costs")) {
+    if word_slice_at_is_any(words, 1, &["cost", "costs"]) {
         return None;
     }
     if let Some((cost_text, _consumed)) = leading_mana_symbols_to_oracle(&words[1..])
@@ -757,7 +761,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         _ => {}
     }
 
-    if strip_prefix_phrase(phrase_tokens, &["cumulative", "upkeep"]).is_some() {
+    if token_slice_strip_word_prefix(phrase_tokens, &["cumulative", "upkeep"]).is_some() {
         let reminder_start =
             find_index(phrase_tokens, |token| token.is_period()).unwrap_or(phrase_tokens.len());
         let cost_tokens = trim_commas(&phrase_tokens[2..reminder_start]).to_vec();
@@ -807,10 +811,12 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         if words.len() >= 2
             && let Ok(amount) = words[1].parse::<u32>()
         {
-            let has_sorcery_speed =
-                contains_word_sequence(&words, &["activate", "only", "as", "a", "sorcery"]);
+            let has_sorcery_speed = word_slice_contains_phrase_or_empty(
+                &words,
+                &["activate", "only", "as", "a", "sorcery"],
+            );
 
-            let has_once_per_turn = contains_any_word_sequence(
+            let has_once_per_turn = word_slice_contains_any_phrase_or_empty(
                 &words,
                 &[
                     &["activate", "only", "once", "each", "turn"],
@@ -849,7 +855,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         if words.len() >= 2
             && let Ok(amount) = words[1].parse::<u32>()
         {
-            let has_once_per_turn = contains_any_word_sequence(
+            let has_once_per_turn = word_slice_contains_any_phrase_or_empty(
                 &words,
                 &[
                     &["activate", "only", "once", "each", "turn"],
@@ -912,8 +918,8 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         return Some(action);
     }
 
-    if words.first().copied() == Some("aura")
-        && words.get(1).copied() == Some("swap")
+    if word_slice_first_is(&words, "aura")
+        && word_slice_at_is(&words, 1, "swap")
         && let Some((cost_text, _consumed)) = leading_mana_symbols_to_oracle(&words[2..])
         && let Ok(cost) = parse_scryfall_mana_cost(&cost_text)
     {
@@ -1100,7 +1106,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         return marker_text_from_words(&words).map(KeywordAction::MarkerText);
     }
 
-    if let Some((matched_phrase, _)) = strip_prefix_phrases(
+    if let Some((matched_phrase, _)) = token_slice_strip_any_word_prefix(
         phrase_tokens,
         &[&["emerge", "from"], &["job", "select"], &["umbra", "armor"]],
     ) {
@@ -1133,13 +1139,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         let reminder_start = find_index(phrase_tokens, |token| {
             token.is_period() || token.kind == TokenKind::LParen
         })
-        .or_else(|| {
-            phrase_tokens
-                .iter()
-                .enumerate()
-                .skip(1)
-                .find_map(|(idx, token)| token.is_word("at").then_some(idx))
-        })
+        .or_else(|| find_token_word(&phrase_tokens[1..], "at").map(|idx| idx + 1))
         .unwrap_or(phrase_tokens.len());
         let raw_cost_tokens = trim_commas(&phrase_tokens[1..reminder_start]);
         let cost_tokens = strip_leading_keyword_cost_separator(&raw_cost_tokens).to_vec();
@@ -1166,7 +1166,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
     }
 
     if head == "modular" {
-        if words.get(1).copied() == Some("sunburst") {
+        if word_slice_at_is(&words, 1, "sunburst") {
             return Some(KeywordAction::ModularSunburst);
         }
         if words.len() >= 2
@@ -1220,7 +1220,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
     if head == "sunburst" {
         return Some(KeywordAction::Sunburst);
     }
-    if let Some((matched_phrase, _)) = strip_prefix_phrases(
+    if let Some((matched_phrase, _)) = token_slice_strip_any_word_prefix(
         phrase_tokens,
         &[
             &["for", "mirrodin"],
@@ -1466,7 +1466,10 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
             }
             if words.len() >= 3 {
                 let suffix = &words[words.len() - 3..];
-                if suffix == ["cant", "be", "blocked"] || suffix == ["cannot", "be", "blocked"] {
+                if word_slice_eq_any(
+                    suffix,
+                    &[&["cant", "be", "blocked"], &["cannot", "be", "blocked"]],
+                ) {
                     return Some(KeywordAction::Unblockable);
                 }
             }
@@ -1507,10 +1510,7 @@ pub(crate) fn rewrite_attached_controller_trigger_effect_tokens(
     let mut rewritten = Vec::with_capacity(effects_tokens.len());
     let mut idx = 0usize;
     while idx < effects_tokens.len() {
-        if idx + 1 < effects_tokens.len()
-            && effects_tokens[idx].is_word("that")
-            && effects_tokens[idx + 1].is_word("creature")
-        {
+        if token_slice_starts_with_at(effects_tokens, idx, &["that", "creature"]) {
             let first_span = effects_tokens[idx].span();
             let second_span = effects_tokens[idx + 1].span();
             rewritten.push(OwnedLexToken::word("enchanted".to_string(), first_span));
@@ -1518,10 +1518,7 @@ pub(crate) fn rewrite_attached_controller_trigger_effect_tokens(
             idx += 2;
             continue;
         }
-        if idx + 1 < effects_tokens.len()
-            && effects_tokens[idx].is_word("that")
-            && effects_tokens[idx + 1].is_word("permanent")
-        {
+        if token_slice_starts_with_at(effects_tokens, idx, &["that", "permanent"]) {
             let first_span = effects_tokens[idx].span();
             let second_span = effects_tokens[idx + 1].span();
             rewritten.push(OwnedLexToken::word("enchanted".to_string(), first_span));
@@ -1544,14 +1541,12 @@ pub(crate) fn maybe_strip_leading_damage_subject_tokens(
         return None;
     }
 
-    if words.first().copied() == Some("it")
-        && matches!(words.get(1).copied(), Some("deal" | "deals"))
-    {
+    if word_slice_first_is(&words, "it") && word_slice_at_is_any(&words, 1, &["deal", "deals"]) {
         return Some(&tokens[1..]);
     }
 
     for subject_len in 1..tokens.len() {
-        if !matches!(words.get(subject_len).copied(), Some("deal" | "deals")) {
+        if !word_slice_at_is_any(&words, subject_len, &["deal", "deals"]) {
             continue;
         }
         if crate::runtime_backend::front_end::shared::util::is_source_reference_words(
@@ -1573,7 +1568,7 @@ pub(crate) fn looks_like_trigger_object_list_tail(tokens: &[OwnedLexToken]) -> b
         return false;
     }
 
-    let starts_with_or = words.first().copied() == Some("or");
+    let starts_with_or = word_slice_first_is(&words, "or");
     let first_candidate = if starts_with_or {
         words.get(1).copied()
     } else {
@@ -1592,7 +1587,7 @@ pub(crate) fn looks_like_trigger_object_list_tail(tokens: &[OwnedLexToken]) -> b
         return false;
     }
 
-    tokens.iter().any(|token| token.is_comma())
+    contains_token_kind(tokens, TokenKind::Comma)
 }
 
 pub(crate) fn looks_like_trigger_discard_qualifier_tail(
@@ -1646,9 +1641,9 @@ pub(crate) fn looks_like_trigger_type_list_tail(tokens: &[OwnedLexToken]) -> boo
             parse_card_type(word).is_some() || parse_subtype_word(word).is_some()
         });
     first_is_card_type
-        && words.iter().any(|word| matches!(*word, "spell" | "spells"))
-        && words.iter().any(|word| *word == "or")
-        && tokens.iter().any(|token| token.is_comma())
+        && word_slice_contains_any_word(&words, &["spell", "spells"])
+        && word_slice_contains_word(&words, "or")
+        && contains_token_kind(tokens, TokenKind::Comma)
 }
 
 pub(crate) fn looks_like_trigger_color_list_tail(tokens: &[OwnedLexToken]) -> bool {
@@ -1660,8 +1655,8 @@ pub(crate) fn looks_like_trigger_color_list_tail(tokens: &[OwnedLexToken]) -> bo
         return false;
     }
     is_basic_color_word(words[0])
-        && words.iter().any(|word| *word == "or")
-        && tokens.iter().any(|token| token.is_comma())
+        && word_slice_contains_word(&words, "or")
+        && contains_token_kind(tokens, TokenKind::Comma)
 }
 
 pub(crate) fn looks_like_trigger_numeric_list_tail(tokens: &[OwnedLexToken]) -> bool {
@@ -1676,7 +1671,7 @@ pub(crate) fn looks_like_trigger_numeric_list_tail(tokens: &[OwnedLexToken]) -> 
         return false;
     }
     let has_second_number = words.iter().skip(1).any(|word| word.parse::<i32>().is_ok());
-    has_second_number && words.iter().any(|word| *word == "or")
+    has_second_number && word_slice_contains_word(&words, "or")
 }
 
 pub(crate) fn is_trigger_objectish_word(word: &str) -> bool {

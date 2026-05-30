@@ -8,19 +8,21 @@ use super::super::grammar::primitives::{
 };
 use super::super::grammar::structure::parse_trailing_if_predicate_lexed;
 use super::super::lexer::{
-    OwnedLexToken, TokenKind, find_token_kind, trim_lexed_commas, word_slice_contains_phrase,
-    word_slice_contains_word, word_slice_eq, word_slice_eq_any, word_slice_find_any_phrase_start,
-    word_slice_find_phrase_start, word_slice_find_phrase_value, word_slice_find_word_where,
+    OwnedLexToken, TokenKind, contains_token_kind, find_token_kind, find_token_word,
+    token_slice_first_is, trim_lexed_commas, word_slice_contains_phrase, word_slice_contains_word,
+    word_slice_eq, word_slice_eq_any, word_slice_find_any_phrase_start,
+    word_slice_find_phrase_start, word_slice_find_phrase_value, word_slice_find_word,
+    word_slice_find_word_where, word_slice_first_is, word_slice_first_is_any,
     word_slice_starts_with,
 };
 use super::super::lowering_support::{
     rewrite_lower_static_ability_ast, rewrite_parsed_triggered_ability as parsed_triggered_ability,
 };
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
-use super::super::token_primitives::str_contains as string_contains;
+use super::super::token_primitives::{rfind_index_with, str_contains as string_contains};
 use super::super::util::{
     is_article, is_source_reference_words, parse_mana_symbol, parse_target_phrase,
-    span_from_tokens, token_index_for_word_index, trim_commas,
+    span_from_tokens, strip_leading_token_words_any, token_index_for_word_index, trim_commas,
 };
 use super::clause_dispatch::parse_become_clause;
 use super::dispatch_inner::trim_edge_punctuation;
@@ -599,10 +601,6 @@ pub(crate) fn parse_simple_lose_ability_clause_lexed(
     parse_simple_ability_modifier_clause_lexed(tokens, true)
 }
 
-fn lexed_token_index_for_word_index(tokens: &[OwnedLexToken], word_idx: usize) -> Option<usize> {
-    GainAbilityWordView::new(tokens).token_index_for_word_index(word_idx)
-}
-
 fn span_from_lexed_tokens(tokens: &[OwnedLexToken]) -> Option<TextSpan> {
     match (tokens.first(), tokens.last()) {
         (Some(first), Some(last)) => Some(TextSpan {
@@ -658,7 +656,7 @@ fn parse_simple_ability_modifier_clause_lexed(
         return Ok(None);
     };
     let implied_it_subject = verb_idx == 0;
-    let Some(verb_token_idx) = lexed_token_index_for_word_index(tokens, verb_idx) else {
+    let Some(verb_token_idx) = clause_word_view.token_index_for_word_index(verb_idx) else {
         return Ok(None);
     };
 
@@ -678,7 +676,9 @@ fn parse_simple_ability_modifier_clause_lexed(
     let subject_start_token_idx = leading_duration_phrase
         .as_ref()
         .map(|(start_word_idx, _)| {
-            lexed_token_index_for_word_index(tokens, *start_word_idx).unwrap_or(tokens.len())
+            clause_word_view
+                .token_index_for_word_index(*start_word_idx)
+                .unwrap_or(tokens.len())
         })
         .unwrap_or(0);
     if subject_start_token_idx > verb_token_idx {
@@ -756,8 +756,9 @@ fn parse_simple_ability_modifier_clause_lexed(
                 .map(|(start, _, _)| verb_idx + 1 + *start)
                 .unwrap_or(clause_words.len())
         });
-    let ability_end_token_idx =
-        lexed_token_index_for_word_index(tokens, ability_end_word_idx).unwrap_or(tokens.len());
+    let ability_end_token_idx = clause_word_view
+        .token_index_for_word_index(ability_end_word_idx)
+        .unwrap_or(tokens.len());
     let ability_tokens = trim_edge_punctuation(trim_lexed_commas(
         &tokens[verb_token_idx + 1..ability_end_token_idx],
     ));
@@ -780,7 +781,7 @@ fn parse_simple_ability_modifier_clause_lexed(
 
     if let Some((start, len, _)) = duration_phrase {
         let tail_word_idx = verb_idx + 1 + start + len;
-        if let Some(tail_token_idx) = lexed_token_index_for_word_index(tokens, tail_word_idx) {
+        if let Some(tail_token_idx) = clause_word_view.token_index_for_word_index(tail_word_idx) {
             let trailing = trim_lexed_commas(&tokens[tail_token_idx..]);
             if !trailing.is_empty() {
                 return Ok(None);
@@ -1107,8 +1108,8 @@ pub(crate) fn parse_gain_ability_sentence(
 
     let after_gain = &word_list[gain_idx + 1..];
     if matches!(word_list[gain_idx], "gain" | "gains") {
-        let starts_with_life = after_gain.first().is_some_and(|word| *word == "life");
-        let starts_with_control = after_gain.first().is_some_and(|word| *word == "control");
+        let starts_with_life = word_slice_first_is(after_gain, "life");
+        let starts_with_control = word_slice_first_is(after_gain, "control");
         if starts_with_life || starts_with_control {
             return Ok(None);
         }
@@ -1217,13 +1218,9 @@ pub(crate) fn parse_gain_ability_sentence(
     {
         let tail_word_idx = gain_idx + 1 + start_rel + len_words;
         if let Some(tail_token_idx) = token_index_for_word_index(tokens, tail_word_idx) {
-            let mut tail_tokens = trim_commas(&tokens[tail_token_idx..]).to_vec();
-            while tail_tokens
-                .first()
-                .is_some_and(|token| token.is_word("and") || token.is_word("then"))
-            {
-                tail_tokens.remove(0);
-            }
+            let trimmed_tail_tokens = trim_commas(&tokens[tail_token_idx..]);
+            let tail_tokens =
+                strip_leading_token_words_any(&trimmed_tail_tokens, &["and", "then"]).to_vec();
             if !tail_tokens.is_empty() {
                 trailing_tail_tokens = tail_tokens;
             }
@@ -1233,7 +1230,7 @@ pub(crate) fn parse_gain_ability_sentence(
     if !trailing_tail_tokens.is_empty() {
         let tail_view = GainAbilityWordView::new(&trailing_tail_tokens);
         let mut tail_words = tail_view.to_word_refs();
-        if tail_words.first().is_some_and(|word| *word == "and") {
+        if word_slice_first_is(&tail_words, "and") {
             tail_words = tail_words[1..].to_vec();
         }
         if word_slice_eq_any(
@@ -1269,13 +1266,7 @@ pub(crate) fn parse_gain_ability_sentence(
     let (mut abilities, grant_is_choice) =
         parse_granted_abilities_for_gain_clause(&ability_tokens, &word_list, !losing)?;
     if !trailing_tail_tokens.is_empty() {
-        let mut tail_tokens = trailing_tail_tokens.as_slice();
-        if tail_tokens
-            .first()
-            .is_some_and(|token| token.is_word("and") || token.is_word("then"))
-        {
-            tail_tokens = &tail_tokens[1..];
-        }
+        let tail_tokens = strip_leading_token_words_any(&trailing_tail_tokens, &["and", "then"]);
         let (trailing_abilities, trailing_is_choice) =
             parse_granted_abilities_for_gain_clause(tail_tokens, &word_list, false)?;
         if !trailing_abilities.is_empty() && !trailing_is_choice {
@@ -1392,11 +1383,8 @@ pub(crate) fn parse_gain_ability_sentence(
     if !losing
         && let Some((power, toughness, _gi, pump_duration, condition, for_each)) = &pump_effect
         && let Some(local_get_idx) = get_idx
-        && let Some(and_idx) = before_gain
-            .iter()
-            .enumerate()
-            .skip(local_get_idx + 1)
-            .find_map(|(idx, word)| (*word == "and").then_some(idx))
+        && let Some(and_idx) = word_slice_find_word(&before_gain[local_get_idx + 1..], "and")
+            .map(|offset| local_get_idx + 1 + offset)
         && and_idx + 1 < before_gain.len()
     {
         let source_subject_words = &before_gain[..local_get_idx];
@@ -1463,42 +1451,40 @@ pub(crate) fn parse_gain_ability_sentence(
             .map(|(_, _, has_idx, _)| *has_idx))
         .unwrap_or(gain_idx);
     let real_subject_start_word_idx = if let Some(gi) = get_idx {
-        before_gain[..gi]
-            .iter()
-            .enumerate()
-            .rev()
-            .find_map(|(idx, word)| {
-                if matches!(*word, "it" | "they" | "target") {
-                    let mut start_idx = idx;
-                    if idx >= 3 && word_slice_eq(&before_gain[idx - 3..idx], &["up", "to", "one"]) {
-                        start_idx = idx - 3;
-                    } else if idx >= 3
-                        && word_slice_eq(&before_gain[idx - 3..idx], &["up", "to", "x"])
-                    {
-                        start_idx = idx - 3;
-                    } else if idx >= 3
-                        && word_slice_eq(&before_gain[idx - 3..idx], &["any", "number", "of"])
-                    {
-                        start_idx = idx - 3;
-                    } else if idx >= 1 && before_gain[idx - 1] == "x" {
-                        start_idx = idx - 1;
-                    } else if idx >= 4
-                        && word_slice_eq(&before_gain[idx - 4..idx], &["each", "of", "up", "to"])
-                    {
-                        start_idx = idx - 4;
-                    }
-                    Some(subject_start_word_idx + start_idx)
-                } else if *word == "this"
-                    && before_gain.get(idx + 1).is_some_and(|next| {
-                        matches!(*next, "creature" | "permanent" | "spell" | "card")
-                    })
+        let subject_start_for_word = |idx: usize, word: &str| -> Option<usize> {
+            if matches!(word, "it" | "they" | "target") {
+                let mut start_idx = idx;
+                if idx >= 3 && word_slice_eq(&before_gain[idx - 3..idx], &["up", "to", "one"]) {
+                    start_idx = idx - 3;
+                } else if idx >= 3 && word_slice_eq(&before_gain[idx - 3..idx], &["up", "to", "x"])
                 {
-                    Some(subject_start_word_idx + idx)
-                } else {
-                    None
+                    start_idx = idx - 3;
+                } else if idx >= 3
+                    && word_slice_eq(&before_gain[idx - 3..idx], &["any", "number", "of"])
+                {
+                    start_idx = idx - 3;
+                } else if idx >= 1 && before_gain[idx - 1] == "x" {
+                    start_idx = idx - 1;
+                } else if idx >= 4
+                    && word_slice_eq(&before_gain[idx - 4..idx], &["each", "of", "up", "to"])
+                {
+                    start_idx = idx - 4;
                 }
-            })
-            .unwrap_or(subject_start_word_idx)
+                return Some(start_idx);
+            }
+            (word == "this"
+                && before_gain.get(idx + 1).is_some_and(|next| {
+                    matches!(*next, "creature" | "permanent" | "spell" | "card")
+                }))
+            .then_some(idx)
+        };
+        rfind_index_with(&before_gain[..gi], |idx, word| {
+            subject_start_for_word(idx, word).is_some()
+        })
+        .map(|idx| {
+            subject_start_word_idx + subject_start_for_word(idx, before_gain[idx]).unwrap_or(idx)
+        })
+        .unwrap_or(subject_start_word_idx)
     } else {
         subject_start_word_idx
     };
@@ -1905,7 +1891,7 @@ pub(crate) fn parse_granted_activated_or_triggered_ability_for_gain(
         return Ok(None);
     }
 
-    let has_colon = ability_tokens.iter().any(|token| token.is_colon());
+    let has_colon = contains_token_kind(&ability_tokens, TokenKind::Colon);
     let looks_like_trigger = ability_tokens.first().is_some_and(|token| {
         token.is_word("when")
             || token.is_word("whenever")
@@ -1979,10 +1965,7 @@ fn parse_granted_triggered_otherwise_ability(
     let Some(comma_idx) = find_token_kind(ability_tokens, TokenKind::Comma) else {
         return Ok(None);
     };
-    let Some(otherwise_idx) = ability_tokens
-        .iter()
-        .position(|token| token.is_word("otherwise"))
-    else {
+    let Some(otherwise_idx) = find_token_word(ability_tokens, "otherwise") else {
         return Ok(None);
     };
     if otherwise_idx <= comma_idx + 1 || comma_idx <= start_idx {
@@ -2043,7 +2026,7 @@ pub(crate) fn append_gain_ability_trailing_effects(
         }]);
     }
 
-    if trimmed.first().is_some_and(|token| token.is_word("unless")) {
+    if token_slice_first_is(&trimmed, "unless") {
         if let Some(unless_effect) =
             try_build_unless(effects, SubjectVerbPrimitiveClause::new(&trimmed), 0)?
         {
@@ -2116,11 +2099,8 @@ pub(crate) fn parse_gain_ability_to_source_sentence(
     };
     let subject_tokens = &tokens[..gain_token_idx];
     let subject_word_view = GainAbilityWordView::new(subject_tokens);
-    let subject_words: Vec<&str> = subject_word_view
-        .to_word_refs()
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect();
+    let subject_words =
+        crate::runtime_backend::util::non_article_word_refs(&subject_word_view.to_word_refs());
     if !is_source_reference_words(&subject_words) {
         return Ok(None);
     }

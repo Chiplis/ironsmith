@@ -56,7 +56,7 @@ pub(crate) fn parse_attach_object_phrase(
         return Ok(TargetAst::Object(tagged_filter, object_span, None));
     }
 
-    if tokens.first().is_some_and(|token| token.is_word("target"))
+    if crate::runtime_backend::lexer::token_slice_first_is(tokens, "target")
         && let Some((head_slice, _after_attached_to)) =
             super::super::grammar::primitives::split_lexed_once_on_separator(tokens, || {
                 use winnow::Parser as _;
@@ -68,7 +68,7 @@ pub(crate) fn parse_attach_object_phrase(
             return parse_target_phrase(&head_tokens);
         }
     }
-    if tokens.first().is_some_and(|token| token.is_word("target")) {
+    if crate::runtime_backend::lexer::token_slice_first_is(tokens, "target") {
         return parse_target_phrase(tokens);
     }
 
@@ -92,7 +92,7 @@ pub(crate) fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         ));
     }
 
-    if tokens.first().is_some_and(|token| token.is_word("to")) {
+    if crate::runtime_backend::lexer::token_slice_first_is(tokens, "to") {
         let rest = trim_commas(&tokens[1..]);
         let Some(first) = rest.first() else {
             return Err(CardTextError::ParseError(format!(
@@ -304,7 +304,7 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
             )],
         }));
     }
-    if matches!(target_words.first(), Some(&"each") | Some(&"all")) {
+    if word_slice_first_is_any(&target_words, &["each", "all"]) {
         if target_tokens.len() < 2 {
             return Err(CardTextError::ParseError(
                 "missing damage target filter after 'each'".to_string(),
@@ -523,16 +523,14 @@ fn parse_divided_damage_with_amount(
     used: usize,
 ) -> Result<EffectAst, CardTextError> {
     let rest = &tokens[used..];
-    if !rest.first().is_some_and(|token| token.is_word("damage")) {
+    if !crate::runtime_backend::lexer::token_slice_first_is(rest, "damage") {
         return Err(CardTextError::ParseError(format!(
             "missing damage keyword in divided-damage clause (clause: '{}')",
             crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
     let mut target_tokens = &rest[1..];
-    if target_tokens
-        .first()
-        .is_some_and(|token| token.is_word("to"))
+    if crate::runtime_backend::lexer::token_slice_first_is(target_tokens, "to")
     {
         target_tokens = &target_tokens[1..];
     }
@@ -736,7 +734,7 @@ pub(crate) fn parse_deal_damage_with_amount(
     }
     let normalized_target_words =
         crate::runtime_backend::lexer::parser_token_word_refs(target_tokens);
-    let each_player_max_speed_filter = matches!(normalized_target_words.first(), Some(&"each"))
+    let each_player_max_speed_filter = word_slice_first_is(&normalized_target_words, "each")
         && normalized_target_words
             .iter()
             .any(|word| matches!(*word, "player" | "players"))
@@ -745,7 +743,10 @@ pub(crate) fn parse_deal_damage_with_amount(
         let has_max_speed = !(normalized_target_words
             .iter()
             .any(|word| matches!(*word, "does" | "doesnt" | "doesn" | "dont" | "not"))
-            || word_slice_contains_phrase(&normalized_target_words, &["does", "not"]));
+            || word_slice_contains_any_phrase(
+                &normalized_target_words,
+                &[&["does", "not"]],
+            ));
         let filter = if has_max_speed {
             PlayerFilter::with_max_speed(PlayerFilter::Any)
         } else {
@@ -795,7 +796,7 @@ pub(crate) fn parse_deal_damage_with_amount(
         });
     }
 
-    if matches!(target_words.first(), Some(&"each") | Some(&"all"))
+    if word_slice_first_is_any(&target_words, &["each", "all"])
         && let Some(and_each_idx) = find_window_by(&target_words, 3, |window| {
             crate::runtime_backend::lexer::word_slice_eq_any(
                 window,
@@ -841,7 +842,7 @@ pub(crate) fn parse_deal_damage_with_amount(
         });
     }
 
-    if matches!(target_words.first(), Some(&"each") | Some(&"all")) {
+    if word_slice_first_is_any(&target_words, &["each", "all"]) {
         if target_tokens.len() < 2 {
             return Err(CardTextError::ParseError(
                 "missing damage target filter after 'each'".to_string(),
@@ -891,13 +892,13 @@ pub(crate) fn parse_instead_if_control_predicate(
         && count > 1
     {
         let tail = &filter_tokens[used..];
-        if tail.first().is_some_and(|token| token.is_word("or"))
-            && tail.get(1).is_some_and(|token| token.is_word("more"))
+        if token_slice_first_is(tail, "or")
+            && token_slice_at_is(tail, 1, "more")
         {
             min_count = Some(count);
             filter_tokens = &tail[2..];
-        } else if tail.first().is_some_and(|token| token.is_word("or"))
-            && tail.get(1).is_some_and(|token| token.is_word("fewer"))
+        } else if token_slice_first_is(tail, "or")
+            && token_slice_at_is(tail, 1, "fewer")
         {
             // Keep unsupported "or fewer" variants as plain control checks for now.
             filter_tokens = &tail[2..];

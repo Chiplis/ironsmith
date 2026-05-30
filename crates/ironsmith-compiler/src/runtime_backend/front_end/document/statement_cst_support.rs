@@ -34,22 +34,26 @@ pub(super) fn parse_statement_line_cst(
                     | structure::StatementLineFamily::ExilePlayCostsMore
             )
         )
-        || (token_words_have_sequence(&line.tokens, &["chooses", "two", "of", "those", "cards"])
-            && token_words_have_sequence(&line.tokens, &["shuffle", "the", "chosen", "cards"])
-            && token_words_have_sequence(
-                &line.tokens,
-                &["put", "the", "rest", "onto", "the", "battlefield"],
-            ))
-        || (token_words_have_sequence(
+        || (contains_token_word_sequence(
+            &line.tokens,
+            &["chooses", "two", "of", "those", "cards"],
+        ) && contains_token_word_sequence(
+            &line.tokens,
+            &["shuffle", "the", "chosen", "cards"],
+        ) && contains_token_word_sequence(
+            &line.tokens,
+            &["put", "the", "rest", "onto", "the", "battlefield"],
+        ))
+        || (contains_token_word_sequence(
             &line.tokens,
             &[
                 "for", "as", "long", "as", "that", "card", "remains", "exiled",
             ],
-        ) && token_words_have_sequence(&line.tokens, &["more", "to", "cast"]))
-        || (token_words_have_any_prefix(&line.tokens, &[&["if"]])
-            && token_words_have_sequence(&line.tokens, &["instead"]))
-        || (token_words_have_any_prefix(&line.tokens, &[&["each"], &["all"]])
-            && token_words_have_sequence(&line.tokens, &["until", "end", "of", "turn"]))
+        ) && contains_token_word_sequence(&line.tokens, &["more", "to", "cast"]))
+        || (token_slice_starts_with_any(&line.tokens, &[&["if"]])
+            && contains_token_word_sequence(&line.tokens, &["instead"]))
+        || (token_slice_starts_with_any(&line.tokens, &[&["each"], &["all"]])
+            && contains_token_word_sequence(&line.tokens, &["until", "end", "of", "turn"]))
         || looks_like_statement_line_lexed(line);
     if !force_statement
         && parse_static_ability_ast_line_lexed(&line.tokens)
@@ -94,10 +98,10 @@ pub(super) fn parse_statement_line_cst(
     ) {
         return Ok(None);
     }
-    if token_words_have_any_prefix(&line.tokens, &[&["the", "next", "time"]])
-        && token_words_have_sequence(&line.tokens, &["source", "of", "your", "choice"])
-        && token_words_have_sequence(&line.tokens, &["prevent", "that", "damage"])
-        && token_words_have_sequence(&line.tokens, &["damage", "is", "prevented", "this", "way"])
+    if token_slice_starts_with_any(&line.tokens, &[&["the", "next", "time"]])
+        && contains_token_word_sequence(&line.tokens, &["source", "of", "your", "choice"])
+        && contains_token_word_sequence(&line.tokens, &["prevent", "that", "damage"])
+        && contains_token_word_sequence(&line.tokens, &["damage", "is", "prevented", "this", "way"])
     {
         return Ok(Some(StatementLineCst {
             info: line.info.clone(),
@@ -121,7 +125,7 @@ pub(super) fn parse_statement_line_cst(
             }
             Err(err)
                 if looks_like_statement_line_lexed(line)
-                    || token_words_have_any_prefix(
+                    || token_slice_starts_with_any(
                         group_tokens,
                         &[&["choose"], &["if"], &["reveal"]],
                     ) =>
@@ -145,12 +149,12 @@ pub(super) fn parse_statement_line_cst(
 }
 
 fn looks_like_day_night_starts_day_as_enters_static_line(tokens: &[OwnedLexToken]) -> bool {
-    token_words_have_any_prefix(tokens, &[&["if"]])
-        && token_words_have_sequence(tokens, &["neither", "day", "nor", "night"])
-        && token_words_have_sequence(tokens, &["it", "becomes", "day"])
-        && (token_words_have_sequence(tokens, &["as", "this", "creature", "enters"])
-            || token_words_have_sequence(tokens, &["as", "this", "permanent", "enters"])
-            || token_words_have_sequence(tokens, &["as", "this", "object", "enters"]))
+    token_slice_starts_with_any(tokens, &[&["if"]])
+        && contains_token_word_sequence(tokens, &["neither", "day", "nor", "night"])
+        && contains_token_word_sequence(tokens, &["it", "becomes", "day"])
+        && (contains_token_word_sequence(tokens, &["as", "this", "creature", "enters"])
+            || contains_token_word_sequence(tokens, &["as", "this", "permanent", "enters"])
+            || contains_token_word_sequence(tokens, &["as", "this", "object", "enters"]))
 }
 
 fn is_trigger_result_followup_line(line: &PreprocessedLine) -> bool {

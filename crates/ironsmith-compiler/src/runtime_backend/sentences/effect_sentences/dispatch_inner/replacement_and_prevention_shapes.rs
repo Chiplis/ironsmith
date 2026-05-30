@@ -2,7 +2,7 @@ pub(crate) fn parse_monstrosity_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let words = parser_token_word_refs(tokens);
-    if words.first().copied() != Some("monstrosity") {
+    if !word_slice_first_is(&words, "monstrosity") {
         return Ok(None);
     }
 
@@ -89,20 +89,20 @@ pub(crate) fn parse_for_each_counter_removed_sentence(
 
 pub(crate) fn is_exile_that_token_at_end_of_combat(tokens: &[OwnedLexToken]) -> bool {
     let words = parser_token_word_refs(tokens);
-    if words.first().copied() != Some("exile") {
+    if !word_slice_first_is(&words, "exile") {
         return false;
     }
 
-    let at_idx = if matches!(words.get(1).copied(), Some("that" | "the" | "those"))
-        && matches!(words.get(2).copied(), Some("token" | "tokens"))
+    let at_idx = if word_slice_at_is_any(&words, 1, &["that", "the", "those"])
+        && word_slice_at_is_any(&words, 2, &["token", "tokens"])
     {
         3
-    } else if words.get(1).copied() == Some("it") {
+    } else if word_slice_at_is(&words, 1, "it") {
         2
     } else {
         return false;
     };
-    if words.get(at_idx).copied() != Some("at") {
+    if !word_slice_at_is(&words, at_idx, "at") {
         return false;
     }
     has_end_of_combat_tail(&words, at_idx)
@@ -110,20 +110,20 @@ pub(crate) fn is_exile_that_token_at_end_of_combat(tokens: &[OwnedLexToken]) -> 
 
 pub(crate) fn is_exile_that_token_at_end_of_combat_lexed(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if words.first().copied() != Some("exile") {
+    if !word_slice_first_is(&words, "exile") {
         return false;
     }
 
-    let at_idx = if matches!(words.get(1).copied(), Some("that" | "the" | "those"))
-        && matches!(words.get(2).copied(), Some("token" | "tokens"))
+    let at_idx = if word_slice_at_is_any(&words, 1, &["that", "the", "those"])
+        && word_slice_at_is_any(&words, 2, &["token", "tokens"])
     {
         3
-    } else if words.get(1).copied() == Some("it") {
+    } else if word_slice_at_is(&words, 1, "it") {
         2
     } else {
         return false;
     };
-    if words.get(at_idx).copied() != Some("at") {
+    if !word_slice_at_is(&words, at_idx, "at") {
         return false;
     }
     has_end_of_combat_tail(&words, at_idx)
@@ -131,20 +131,20 @@ pub(crate) fn is_exile_that_token_at_end_of_combat_lexed(tokens: &[OwnedLexToken
 
 pub(crate) fn is_sacrifice_that_token_at_end_of_combat(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if words.first().copied() != Some("sacrifice") {
+    if !word_slice_first_is(&words, "sacrifice") {
         return false;
     }
 
-    let at_idx = if matches!(words.get(1).copied(), Some("that" | "the" | "those"))
-        && matches!(words.get(2).copied(), Some("token" | "tokens"))
+    let at_idx = if word_slice_at_is_any(&words, 1, &["that", "the", "those"])
+        && word_slice_at_is_any(&words, 2, &["token", "tokens"])
     {
         3
-    } else if words.get(1).copied() == Some("it") {
+    } else if word_slice_at_is(&words, 1, "it") {
         2
     } else {
         return false;
     };
-    if words.get(at_idx).copied() != Some("at") {
+    if !word_slice_at_is(&words, at_idx, "at") {
         return false;
     }
     has_end_of_combat_tail(&words, at_idx)
@@ -152,20 +152,20 @@ pub(crate) fn is_sacrifice_that_token_at_end_of_combat(tokens: &[OwnedLexToken])
 
 pub(crate) fn is_sacrifice_that_token_at_end_of_combat_lexed(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if words.first().copied() != Some("sacrifice") {
+    if !word_slice_first_is(&words, "sacrifice") {
         return false;
     }
 
-    let at_idx = if matches!(words.get(1).copied(), Some("that" | "the" | "those"))
-        && matches!(words.get(2).copied(), Some("token" | "tokens"))
+    let at_idx = if word_slice_at_is_any(&words, 1, &["that", "the", "those"])
+        && word_slice_at_is_any(&words, 2, &["token", "tokens"])
     {
         3
-    } else if words.get(1).copied() == Some("it") {
+    } else if word_slice_at_is(&words, 1, "it") {
         2
     } else {
         return false;
     };
-    if words.get(at_idx).copied() != Some("at") {
+    if !word_slice_at_is(&words, at_idx, "at") {
         return false;
     }
     has_end_of_combat_tail(&words, at_idx)
@@ -363,9 +363,9 @@ pub(crate) fn parse_destroy_or_exile_all_split_sentence(
         return Ok(None);
     }
 
-    let verb = if words[0] == "destroy" {
+    let verb = if word_slice_first_is(&words, "destroy") {
         Some(Verb::Destroy)
-    } else if words[0] == "exile" {
+    } else if word_slice_first_is(&words, "exile") {
         Some(Verb::Exile)
     } else {
         None
@@ -373,7 +373,7 @@ pub(crate) fn parse_destroy_or_exile_all_split_sentence(
     let Some(verb) = verb else {
         return Ok(None);
     };
-    if words[1] != "all"
+    if !word_slice_at_is(&words, 1, "all")
         || !grammar::contains_word(tokens, "and")
         || grammar::contains_word(tokens, "except")
     {
@@ -407,7 +407,7 @@ pub(crate) fn parse_destroy_or_exile_all_split_sentence(
         if segment.is_empty() {
             continue;
         }
-        if segment.first().is_some_and(|token| token.is_word("all")) {
+        if token_slice_first_is(&segment, "all") {
             segment.remove(0);
         }
         if segment.is_empty() {
@@ -474,7 +474,7 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
     }
 
     let words_all = crate::runtime_backend::token_word_refs(clause_tokens);
-    if words_all.first().copied() != Some("exile")
+    if !word_slice_first_is(&words_all, "exile")
         || !grammar::contains_word(clause_tokens, "then")
         || !grammar::contains_word(clause_tokens, "return")
     {
@@ -482,7 +482,8 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
     }
 
     let split_idx = find_window_by(clause_tokens, 3, |window: &[OwnedLexToken]| {
-        window[0].is_comma() && window[1].is_word("then") && window[2].is_word("return")
+        token_slice_first_kind(window, TokenKind::Comma)
+            && token_slice_starts_with(&window[1..], &["then", "return"])
     });
     let Some(split_idx) = split_idx else {
         return Ok(None);
@@ -629,7 +630,7 @@ pub(crate) fn parse_exile_up_to_one_each_target_type_sentence(
         {
             slice = &slice[3..];
         }
-        if slice.first().is_some_and(|token| token.is_word("target")) {
+        if token_slice_first_is(slice, "target") {
             slice = &slice[1..];
         }
         if slice.is_empty() {
@@ -750,13 +751,10 @@ pub(crate) fn parse_look_at_top_then_exile_one_sentence(
         return Ok(None);
     };
     let mut idx = top_idx + 1 + used_count;
-    if tokens
-        .get(idx)
-        .is_some_and(|token| token.is_word("card") || token.is_word("cards"))
-    {
+    if token_slice_at_is_any(tokens, idx, &["card", "cards"]) {
         idx += 1;
     }
-    if !tokens.get(idx).is_some_and(|token| token.is_word("of")) {
+    if !token_slice_at_is(tokens, idx, "of") {
         return Ok(None);
     }
     idx += 1;
@@ -775,13 +773,13 @@ pub(crate) fn parse_look_at_top_then_exile_one_sentence(
         _ => return Ok(None),
     };
 
-    let mut tail_tokens = trim_commas(&tokens[library_idx + 1..]).to_vec();
-    while tail_tokens
-        .first()
-        .is_some_and(|token| token.is_word("then") || token.is_word("and"))
-    {
-        tail_tokens.remove(0);
-    }
+    let trimmed_tail_tokens = trim_commas(&tokens[library_idx + 1..]);
+    let tail_tokens =
+        crate::runtime_backend::util::strip_leading_token_words_any(
+            &trimmed_tail_tokens,
+            &["then", "and"],
+        )
+        .to_vec();
     let tail_words = crate::runtime_backend::token_word_refs(&tail_tokens);
     let looks_like_exile_one_of_looked = word_slice_starts_with_any(
         &tail_words,

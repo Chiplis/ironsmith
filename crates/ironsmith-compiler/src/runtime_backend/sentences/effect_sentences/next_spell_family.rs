@@ -1,9 +1,11 @@
 use super::super::keyword_static::parse_ability_line;
 use super::super::lexer::{
-    LexedClause, OwnedLexToken, word_slice_ends_with, word_slice_find_phrase_start,
+    LexedClause, OwnedLexToken, word_slice_at_is, word_slice_ends_with,
+    word_slice_find_phrase_start, word_slice_find_word, word_slice_first_is_any,
     word_slice_starts_with,
 };
 use super::super::object_filters::parse_object_filter_lexed;
+use super::super::util::strip_leading_article_word_refs;
 use crate::cards::builders::{CardTextError, EffectAst, PlayerAst, TextSpan};
 use crate::static_abilities::StaticAbility;
 use crate::target::{ObjectFilter, PlayerFilter};
@@ -84,10 +86,10 @@ fn parse_when_next_cast_grant_sentence(
     if !word_slice_starts_with(clause_words, &["when"]) {
         return Ok(None);
     }
-    let Some(next_idx) = clause_words.iter().position(|word| *word == "next") else {
+    let Some(next_idx) = word_slice_find_word(clause_words, "next") else {
         return Ok(None);
     };
-    if next_idx == 0 || clause_words.get(next_idx + 1) != Some(&"cast") {
+    if next_idx == 0 || !word_slice_at_is(clause_words, next_idx + 1, "cast") {
         return Ok(None);
     }
     let caster_words = &clause_words[1..next_idx];
@@ -114,10 +116,7 @@ fn parse_when_next_cast_grant_sentence(
     if this_turn_idx <= next_idx + 2 {
         return Ok(None);
     }
-    let mut subject_words = &clause_words[next_idx + 2..this_turn_idx];
-    while matches!(subject_words.first(), Some(&"a" | &"an" | &"the")) {
-        subject_words = &subject_words[1..];
-    }
+    let subject_words = strip_leading_article_word_refs(&clause_words[next_idx + 2..this_turn_idx]);
     if subject_words.is_empty() {
         return Ok(None);
     }

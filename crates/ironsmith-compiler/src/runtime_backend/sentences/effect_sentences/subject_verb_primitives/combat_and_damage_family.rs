@@ -193,7 +193,7 @@ pub(crate) fn parse_sentence_put_sticker_on(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_words = clause.word_refs();
-    if !matches!(clause_words.first().copied(), Some("put" | "puts")) {
+    if !word_slice_first_is_any(&clause_words, &["put", "puts"]) {
         return Ok(None);
     }
     let Some(sticker_idx) = clause.find_word_any(&["sticker", "stickers"]) else {
@@ -265,7 +265,7 @@ pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice(
         return Ok(None);
     }
 
-    if !destination_clause.contains_any_word(&["hand", "hands"]) {
+    if destination_clause.contains_no_words(&["hand", "hands"]) {
         return Ok(None);
     }
 
@@ -631,8 +631,7 @@ pub(crate) fn parse_sentence_return_multiple_targets(
         }
         if let Some(quantifier) = shared_quantifier.as_deref() {
             let segment_words = segment.word_refs();
-            let has_explicit_quantifier =
-                matches!(segment_words.first().copied(), Some("all" | "each"));
+            let has_explicit_quantifier = word_slice_first_is_any(&segment_words, &["all", "each"]);
             let starts_like_target_reference = matches!(
                 segment_words.first().copied(),
                 Some("target" | "up" | "this" | "that" | "it" | "them" | "another")
@@ -645,7 +644,7 @@ pub(crate) fn parse_sentence_return_multiple_targets(
             }
         }
         let segment_words = segment.word_refs();
-        if matches!(segment_words.first().copied(), Some("all" | "each")) {
+        if word_slice_first_is_any(&segment_words, &["all", "each"]) {
             if segment.len() < 2 {
                 return Err(CardTextError::ParseError(format!(
                     "missing return-all filter (clause: '{}')",

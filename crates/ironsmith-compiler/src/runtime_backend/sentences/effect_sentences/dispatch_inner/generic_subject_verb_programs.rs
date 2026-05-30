@@ -343,19 +343,17 @@ fn parse_source_gets_filter_gains_subject_verb(
     else {
         return Ok(None);
     };
-    let Some(and_idx) = words
-        .iter()
-        .enumerate()
-        .skip(get_idx + 2)
-        .find_map(|(idx, word)| (*word == "and").then_some(idx))
+    let Some(and_idx) =
+        crate::runtime_backend::lexer::word_slice_find_word(&words[get_idx + 2..], "and")
+            .map(|offset| get_idx + 2 + offset)
     else {
         return Ok(None);
     };
-    let Some(gain_idx) = words
-        .iter()
-        .enumerate()
-        .skip(and_idx + 1)
-        .find_map(|(idx, word)| matches!(*word, "gain" | "gains" | "have" | "has").then_some(idx))
+    let Some(gain_idx) =
+        crate::runtime_backend::lexer::word_slice_find_word_where(&words[and_idx + 1..], |word| {
+            matches!(word, "gain" | "gains" | "have" | "has")
+        })
+        .map(|offset| and_idx + 1 + offset)
     else {
         return Ok(None);
     };
@@ -464,11 +462,11 @@ fn parse_target_player_controls_get_subject_verb(
     ) else {
         return Ok(None);
     };
-    let Some(get_idx) = words
-        .iter()
-        .enumerate()
-        .skip(target_idx + 3)
-        .find_map(|(idx, word)| matches!(*word, "get" | "gets").then_some(idx))
+    let Some(get_idx) =
+        crate::runtime_backend::lexer::word_slice_find_word_where(&words[target_idx + 3..], |word| {
+            matches!(word, "get" | "gets")
+        })
+        .map(|offset| target_idx + 3 + offset)
     else {
         return Ok(None);
     };
@@ -544,7 +542,7 @@ pub(crate) fn parse_generic_top_cards_put_counted_into_hand_rest_graveyard_subje
 ) -> Option<Vec<EffectAst>> {
     let clause_tokens = trim_commas(tokens);
     let clause_words = crate::runtime_backend::token_word_refs(&clause_tokens);
-    let then_word_idx = clause_words.iter().position(|word| *word == "then")?;
+    let then_word_idx = word_slice_find_word(&clause_words, "then")?;
     let clause_word_view = TokenWordView::new(&clause_tokens);
     let then_token_idx = clause_word_view.token_index_for_word_index(then_word_idx)?;
     let prefix_tokens = trim_commas(&clause_tokens[..then_token_idx]);
@@ -566,14 +564,14 @@ pub(crate) fn parse_generic_top_cards_put_counted_into_hand_rest_graveyard_subje
     let tail_refs = TokenWordView::new(&count_tokens[used..]).word_refs();
 
     let mut idx = 0usize;
-    if tail_refs.get(idx).copied() == Some("of") {
+    if word_slice_at_is(&tail_refs, idx, "of") {
         idx += 1;
     }
     match tail_refs.get(idx).copied() {
         Some("them") => idx += 1,
         Some("those") => {
             idx += 1;
-            if matches!(tail_refs.get(idx).copied(), Some("card" | "cards")) {
+            if word_slice_at_is_any(&tail_refs, idx, &["card", "cards"]) {
                 idx += 1;
             } else {
                 return None;
@@ -582,54 +580,51 @@ pub(crate) fn parse_generic_top_cards_put_counted_into_hand_rest_graveyard_subje
         _ => return None,
     }
 
-    if tail_refs.get(idx).copied() != Some("into") {
+    if !word_slice_at_is(&tail_refs, idx, "into") {
         return None;
     }
     idx += 1;
 
-    let chooser = if tail_refs.get(idx).copied() == Some("your") {
+    let chooser = if word_slice_at_is(&tail_refs, idx, "your") {
         idx += 1;
         PlayerAst::You
-    } else if tail_refs.get(idx).copied() == Some("their") {
+    } else if word_slice_at_is(&tail_refs, idx, "their") {
         idx += 1;
         PlayerAst::That
-    } else if tail_refs.get(idx..idx + 2) == Some(&["that", "player"]) {
+    } else if word_slice_starts_with(&tail_refs[idx..], &["that", "player"]) {
         idx += 2;
         PlayerAst::That
     } else {
         player
     };
 
-    if tail_refs.get(idx).copied() != Some("hand") {
+    if !word_slice_at_is(&tail_refs, idx, "hand") {
         return None;
     }
     idx += 1;
-    if tail_refs.get(idx).copied() != Some("and") {
+    if !word_slice_at_is(&tail_refs, idx, "and") {
         return None;
     }
     idx += 1;
-    if tail_refs.get(idx).copied() == Some("the") {
+    if word_slice_at_is(&tail_refs, idx, "the") {
         idx += 1;
     }
-    if tail_refs.get(idx).copied() != Some("rest") {
+    if !word_slice_at_is(&tail_refs, idx, "rest") {
         return None;
     }
     idx += 1;
-    if tail_refs.get(idx).copied() != Some("into") {
+    if !word_slice_at_is(&tail_refs, idx, "into") {
         return None;
     }
     idx += 1;
 
-    if tail_refs.get(idx).copied() == Some("your") || tail_refs.get(idx).copied() == Some("their") {
+    if word_slice_at_is_any(&tail_refs, idx, &["your", "their"]) {
         idx += 1;
-    } else if tail_refs.get(idx..idx + 2) == Some(&["that", "player"]) {
+    } else if word_slice_starts_with(&tail_refs[idx..], &["that", "player"]) {
         idx += 2;
     }
 
-    if !matches!(
-        tail_refs.get(idx).copied(),
-        Some("graveyard" | "graveyards")
-    ) {
+    if !word_slice_at_is_any(&tail_refs, idx, &["graveyard", "graveyards"]) {
         return None;
     }
     idx += 1;
@@ -788,12 +783,12 @@ fn parse_generic_consult_reveal_until_battlefield_bottom_subject_verb(
     }
 
     let followup_words = TokenWordView::new(&followup_tokens).word_refs();
-    let puts_match_onto_battlefield = word_slice_starts_with(
+    let puts_match_onto_battlefield = word_slice_starts_with_any(
         followup_words.as_slice(),
-        &["put", "it", "onto", "the", "battlefield"],
-    ) || word_slice_starts_with(
-        followup_words.as_slice(),
-        &["put", "that", "card", "onto", "the", "battlefield"],
+        &[
+            &["put", "it", "onto", "the", "battlefield"],
+            &["put", "that", "card", "onto", "the", "battlefield"],
+        ],
     );
     let puts_rest_bottom = word_slice_contains_word(&followup_words, "rest")
         && word_slice_contains_word(&followup_words, "bottom")
@@ -843,12 +838,12 @@ fn parse_generic_each_player_exile_top_then_cast_any_number_subject_verb(
     }
 
     let exile_words = TokenWordView::new(&exile_tokens).word_refs();
-    let starts_with_each_player_exile = word_slice_starts_with(
+    let starts_with_each_player_exile = word_slice_starts_with_any(
         exile_words.as_slice(),
-        &["exile", "the", "top", "card", "of", "each"],
-    ) || word_slice_starts_with(
-        exile_words.as_slice(),
-        &["exile", "top", "card", "of", "each"],
+        &[
+            &["exile", "the", "top", "card", "of", "each"],
+            &["exile", "top", "card", "of", "each"],
+        ],
     );
     let starts_with_each_player_exile_until_nonland = word_slice_starts_with(
         exile_words.as_slice(),
@@ -1062,13 +1057,6 @@ fn parse_generic_damage_replacement_counters_subject_verb(
     ))
 }
 
-fn normalized_words_without_articles(tokens: &[OwnedLexToken]) -> Vec<&str> {
-    crate::runtime_backend::token_word_refs(tokens)
-        .into_iter()
-        .filter(|word| !is_article(word))
-        .collect()
-}
-
 fn split_once_on_comma(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
     let idx = crate::runtime_backend::lexer::find_token_kind(
         tokens,
@@ -1153,7 +1141,7 @@ pub(crate) fn parse_play_permission_subject_verb(
         return Ok(None);
     };
     let rest = trim_commas(&tokens[tail_idx..]);
-    let remaining_words = normalized_words_without_articles(&rest);
+    let remaining_words = non_article_token_word_refs(&rest);
     if !crate::runtime_backend::lexer::word_slice_eq(
         &remaining_words,
         &[
@@ -1188,7 +1176,7 @@ pub(crate) fn parse_zone_replacement_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let line_words = crate::runtime_backend::token_word_refs(tokens);
-    if line_words.first().copied() != Some("if") {
+    if !word_slice_first_is(&line_words, "if") {
         return Ok(None);
     }
     let has_graveyard_clause =
@@ -1208,7 +1196,7 @@ pub(crate) fn parse_zone_replacement_subject_verb(
         return Ok(None);
     };
     if !crate::runtime_backend::lexer::word_slice_eq(
-        &normalized_words_without_articles(remainder),
+        &non_article_token_word_refs(remainder),
         &["exile", "that", "card", "instead"],
     )
     {
@@ -1466,11 +1454,7 @@ fn parse_generic_vote_option_effects(
         ));
     }
 
-    let option_words: Vec<&str> = words[2..vote_idx]
-        .iter()
-        .copied()
-        .filter(|word| !is_article(word))
-        .collect();
+    let option_words = crate::runtime_backend::util::non_article_word_refs(&words[2..vote_idx]);
     if option_words.is_empty() {
         return Err(CardTextError::ParseError(
             "missing vote option name".to_string(),
@@ -1489,7 +1473,7 @@ fn parse_generic_vote_option_effects(
 
 fn parse_generic_extra_vote(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if words.len() < 3 || words.first().copied() != Some("you") {
+    if words.len() < 3 || !word_slice_first_is(&words, "you") {
         return None;
     }
 

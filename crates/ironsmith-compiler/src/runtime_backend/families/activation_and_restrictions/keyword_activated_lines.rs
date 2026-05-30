@@ -143,16 +143,14 @@ pub(crate) fn parse_craft_line_lexed(
     let tokens = &tokens[..reminder_start];
     let words = ActivationRestrictionCompatWords::new(tokens);
     let words = words.to_word_refs();
-    if !matches!(words.as_slice(), ["craft", "with", ..]) {
+    if !word_slice_starts_with(&words, &["craft", "with"]) {
         return Ok(None);
     }
 
-    let Some(cost_start) = tokens
-        .iter()
-        .enumerate()
-        .skip(2)
-        .find_map(|(idx, token)| mana_pips_from_token(token).is_some().then_some(idx))
-    else {
+    let Some(cost_start) = crate::slice_primitives::find_index(&tokens[2..], |token| {
+        mana_pips_from_token(token).is_some()
+    })
+    .map(|idx| idx + 2) else {
         return Ok(None);
     };
     let material_tokens = trim_edge_punctuation(&tokens[2..cost_start]);
@@ -357,7 +355,7 @@ pub(crate) fn parse_cycling_keyword_cost_groups(
         };
 
         let cost_start = idx;
-        if tokens.get(idx).is_some_and(|token| token.is_word("pay")) {
+        if token_slice_at_is(tokens, idx, "pay") {
             while idx < tokens.len() {
                 let Some(word) = tokens[idx].as_word().map(|word| word.to_ascii_lowercase()) else {
                     break;
@@ -560,15 +558,14 @@ pub(crate) fn parse_equip_line(
         .unwrap_or(tokens);
     let clause_word_view = ActivationRestrictionCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
-    if clause_words.first().copied() != Some("equip") {
+    if !word_slice_first_is(&clause_words, "equip") {
         return Ok(None);
     }
 
-    let first_mana_idx = tokens
-        .iter()
-        .enumerate()
-        .skip(1)
-        .find_map(|(idx, token)| mana_pips_from_token(token).map(|_| idx));
+    let first_mana_idx = crate::slice_primitives::find_index(&tokens[1..], |token| {
+        mana_pips_from_token(token).is_some()
+    })
+    .map(|idx| idx + 1);
 
     let (mana_pips, saw_zero, saw_non_symbol) = tokens.iter().skip(1).fold(
         (Vec::new(), false, false),
@@ -752,7 +749,7 @@ fn parse_equip_target_filter_qualifier(tokens: &[OwnedLexToken]) -> Option<Objec
         return None;
     }
     let mut subtype_words = words.as_slice();
-    if subtype_words.last().copied() == Some("creature") {
+    if word_slice_last_is(subtype_words, "creature") {
         subtype_words = &subtype_words[..subtype_words.len().saturating_sub(1)];
     }
     if subtype_words.is_empty() {

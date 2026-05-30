@@ -123,17 +123,8 @@ pub(super) fn parse_controller_or_owner_of_target_subject(
     Some((SubjectAst::Player(player), target))
 }
 
-fn trim_plural_s(word: &str) -> Option<&str> {
-    let bytes = word.as_bytes();
-    let last = bytes.last().copied()?;
-    if last != b's' && last != b'S' {
-        return None;
-    }
-    word.get(..word.len().saturating_sub(1))
-}
-
 pub(super) fn parse_subtype_word_or_plural(word: &str) -> Option<Subtype> {
-    parse_subtype_word(word).or_else(|| trim_plural_s(word).and_then(parse_subtype_word))
+    parse_subtype_flexible(word)
 }
 
 pub(super) fn has_counter_state_pronoun(subject_words: &[&str]) -> bool {
@@ -167,7 +158,7 @@ pub(super) fn strip_base_power_toughness_subject_tokens<'a>(
     };
 
     let mut stripped = &subject_tokens[..base_token_idx];
-    while stripped.last().is_some_and(|token| token.is_word("s")) {
+    while crate::runtime_backend::lexer::token_slice_last_is(stripped, "s") {
         stripped = &stripped[..stripped.len().saturating_sub(1)];
     }
     stripped

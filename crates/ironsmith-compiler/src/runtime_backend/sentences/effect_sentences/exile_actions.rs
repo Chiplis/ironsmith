@@ -1,5 +1,8 @@
 use super::*;
-use crate::runtime_backend::lexer::word_slice_starts_with;
+use crate::runtime_backend::lexer::{
+    word_slice_at_is, word_slice_first_is, word_slice_first_is_any, word_slice_starts_with,
+    word_slice_starts_with_any,
+};
 
 pub(crate) fn parse_exile(
     tokens: &[OwnedLexToken],
@@ -34,7 +37,7 @@ pub(crate) fn parse_exile(
     )? {
         return Ok(effect);
     }
-    if matches!(clause_words.first().copied(), Some("all" | "each")) {
+    if word_slice_first_is_any(&clause_words, &["all", "each"]) {
         let filter_tokens = &tokens[1..];
         let mut filter = parse_object_filter_lexed(filter_tokens, false)?;
         apply_exile_subject_owner_context(&mut filter, subject);
@@ -295,29 +298,49 @@ pub(crate) fn parse_graveyard_owner_prefix(words: &[&str]) -> Option<(PlayerAst,
     if word_slice_starts_with(words, &["their", "graveyard"]) {
         return Some((PlayerAst::That, 2));
     }
-    if word_slice_starts_with(words, &["that", "player", "graveyard"])
-        || word_slice_starts_with(words, &["that", "players", "graveyard"])
-    {
+    if word_slice_starts_with_any(
+        words,
+        &[
+            &["that", "player", "graveyard"],
+            &["that", "players", "graveyard"],
+        ],
+    ) {
         return Some((PlayerAst::That, 3));
     }
-    if word_slice_starts_with(words, &["target", "player", "graveyard"])
-        || word_slice_starts_with(words, &["target", "players", "graveyard"])
-    {
+    if word_slice_starts_with_any(
+        words,
+        &[
+            &["target", "player", "graveyard"],
+            &["target", "players", "graveyard"],
+        ],
+    ) {
         return Some((PlayerAst::Target, 3));
     }
-    if word_slice_starts_with(words, &["target", "opponent", "graveyard"])
-        || word_slice_starts_with(words, &["target", "opponents", "graveyard"])
-    {
+    if word_slice_starts_with_any(
+        words,
+        &[
+            &["target", "opponent", "graveyard"],
+            &["target", "opponents", "graveyard"],
+        ],
+    ) {
         return Some((PlayerAst::TargetOpponent, 3));
     }
-    if word_slice_starts_with(words, &["its", "controller", "graveyard"])
-        || word_slice_starts_with(words, &["its", "controllers", "graveyard"])
-    {
+    if word_slice_starts_with_any(
+        words,
+        &[
+            &["its", "controller", "graveyard"],
+            &["its", "controllers", "graveyard"],
+        ],
+    ) {
         return Some((PlayerAst::ItsController, 3));
     }
-    if word_slice_starts_with(words, &["its", "owner", "graveyard"])
-        || word_slice_starts_with(words, &["its", "owners", "graveyard"])
-    {
+    if word_slice_starts_with_any(
+        words,
+        &[
+            &["its", "owner", "graveyard"],
+            &["its", "owners", "graveyard"],
+        ],
+    ) {
         return Some((PlayerAst::ItsOwner, 3));
     }
     if word_slice_starts_with(words, &["his", "or", "her", "graveyard"]) {
@@ -346,29 +369,46 @@ fn parse_library_owner_prefix(
             2,
         ));
     }
-    if word_slice_starts_with(words, &["that", "player", "library"])
-        || word_slice_starts_with(words, &["that", "players", "library"])
-    {
+    if word_slice_starts_with_any(
+        words,
+        &[
+            &["that", "player", "library"],
+            &["that", "players", "library"],
+        ],
+    ) {
         return Some((PlayerAst::That, 3));
     }
-    if word_slice_starts_with(words, &["target", "player", "library"])
-        || word_slice_starts_with(words, &["target", "players", "library"])
-    {
+    if word_slice_starts_with_any(
+        words,
+        &[
+            &["target", "player", "library"],
+            &["target", "players", "library"],
+        ],
+    ) {
         return Some((PlayerAst::Target, 3));
     }
-    if word_slice_starts_with(words, &["target", "opponent", "library"])
-        || word_slice_starts_with(words, &["target", "opponents", "library"])
-    {
+    if word_slice_starts_with_any(
+        words,
+        &[
+            &["target", "opponent", "library"],
+            &["target", "opponents", "library"],
+        ],
+    ) {
         return Some((PlayerAst::TargetOpponent, 3));
     }
-    if word_slice_starts_with(words, &["its", "controller", "library"])
-        || word_slice_starts_with(words, &["its", "controllers", "library"])
-    {
+    if word_slice_starts_with_any(
+        words,
+        &[
+            &["its", "controller", "library"],
+            &["its", "controllers", "library"],
+        ],
+    ) {
         return Some((PlayerAst::ItsController, 3));
     }
-    if word_slice_starts_with(words, &["its", "owner", "library"])
-        || word_slice_starts_with(words, &["its", "owners", "library"])
-    {
+    if word_slice_starts_with_any(
+        words,
+        &[&["its", "owner", "library"], &["its", "owners", "library"]],
+    ) {
         return Some((PlayerAst::ItsOwner, 3));
     }
     if word_slice_starts_with(words, &["his", "or", "her", "library"]) {
@@ -391,10 +431,10 @@ pub(crate) fn parse_exile_top_library_clause(
     let tokens = trim_commas(tokens);
     let words = crate::runtime_backend::token_word_refs(&tokens);
     let mut start = 0usize;
-    if words.first().copied() == Some("the") {
+    if word_slice_first_is(&words, "the") {
         start = 1;
     }
-    if words.get(start).copied() != Some("top") {
+    if !word_slice_at_is(&words, start, "top") {
         return None;
     }
 
@@ -402,22 +442,26 @@ pub(crate) fn parse_exile_top_library_clause(
     let (count, used_after_top) = parse_value(&tokens[count_start..])?;
     let after_count = trim_commas(&tokens[count_start + used_after_top..]);
     let after_count_words = crate::runtime_backend::token_word_refs(&after_count);
-    if !matches!(after_count_words.first().copied(), Some("card" | "cards")) {
+    if !word_slice_first_is_any(&after_count_words, &["card", "cards"]) {
         return None;
     }
 
     let after_cards_start = token_index_for_word_index(&after_count, 1)?;
     let after_cards = trim_commas(&after_count[after_cards_start..]);
     let after_cards_words = crate::runtime_backend::token_word_refs(&after_cards);
-    if after_cards_words.first().copied() != Some("of") {
+    if !word_slice_first_is(&after_cards_words, "of") {
         return None;
     }
 
     let owner_tokens = trim_commas(&after_cards[1..]);
     let owner_words = crate::runtime_backend::token_word_refs(&owner_tokens);
-    if word_slice_starts_with(&owner_words, &["each", "opponent", "library"])
-        || word_slice_starts_with(&owner_words, &["each", "opponents", "library"])
-    {
+    if word_slice_starts_with_any(
+        &owner_words,
+        &[
+            &["each", "opponent", "library"],
+            &["each", "opponents", "library"],
+        ],
+    ) {
         return Some(EffectAst::ForEachOpponent {
             effects: vec![EffectAst::subject_verb_exile_top_of_library(
                 PlayerAst::That,

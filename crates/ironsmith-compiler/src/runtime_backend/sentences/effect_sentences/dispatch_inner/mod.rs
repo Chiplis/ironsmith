@@ -18,10 +18,13 @@ use super::super::keyword_static::{
     parse_value_binding_clause_lexed,
 };
 use super::super::lexer::{
-    OwnedLexToken, find_token_word_sequence, parser_token_word_refs, word_slice_contains_any_word,
-    word_slice_contains_phrase, word_slice_contains_word, word_slice_ends_with, word_slice_eq,
-    word_slice_eq_any, word_slice_matching_value, word_slice_starts_with,
-    word_slice_starts_with_any,
+    LexedClause, OwnedLexToken, TokenKind, contains_token_kind, find_token_word_sequence,
+    parser_token_word_refs, token_slice_at_is, token_slice_at_is_any, token_slice_first_is,
+    token_slice_first_kind, token_slice_starts_with, word_slice_at_is, word_slice_at_is_any,
+    word_slice_contains_any_word, word_slice_contains_phrase, word_slice_contains_word,
+    word_slice_ends_with, word_slice_eq, word_slice_eq_any, word_slice_eq_at, word_slice_find_word,
+    word_slice_first_is, word_slice_first_is_any, word_slice_matching_value,
+    word_slice_starts_with, word_slice_starts_with_any, word_slice_starts_with_at,
 };
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::super::rule_engine::{LexClauseView, LexUnsupportedDiagnoser, LexUnsupportedRuleDef};
@@ -30,10 +33,11 @@ use super::super::token_primitives::{
     slice_starts_with,
 };
 use super::super::util::{
-    is_article, is_source_reference_words, parse_card_type, parse_color,
-    parse_filter_counter_constraint_words, parse_subject, parse_target_phrase, parse_value,
-    token_index_for_word_index, words,
+    is_article, is_source_reference_words, non_article_token_word_refs, parse_card_type,
+    parse_color, parse_filter_counter_constraint_words, parse_subject, parse_target_phrase,
+    parse_value, token_index_for_word_index, words,
 };
+pub(crate) use super::super::util::{strip_leading_articles, trim_commas, trim_edge_punctuation};
 use super::sentence_helpers::*;
 use super::zone_handlers::collapse_leading_signed_pt_modifier_tokens;
 use super::{

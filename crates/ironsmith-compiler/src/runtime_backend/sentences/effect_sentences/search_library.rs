@@ -1,10 +1,11 @@
 use super::super::grammar::primitives::{self as grammar, split_lexed_slices_on_or};
 use super::super::grammar::values::parse_value_comparison_tokens;
 use super::super::lexer::{
-    LexedClause, OwnedLexToken, TokenKind, contains_token_word, lex_line, token_word_refs,
+    LexedClause, OwnedLexToken, TokenKind, contains_token_word, contains_token_word_sequence,
+    find_token_word_sequence_span, lex_line, token_slice_starts_with_at, token_word_refs,
     trim_lexed_commas, word_slice_contains_all_words, word_slice_contains_word, word_slice_eq,
     word_slice_eq_any, word_slice_find_any_word, word_slice_find_phrase_start,
-    word_slice_find_word, word_slice_matching_phrase, word_slice_starts_with,
+    word_slice_find_word, word_slice_first_is, word_slice_matching_phrase, word_slice_starts_with,
     word_slice_starts_with_any,
 };
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
@@ -14,7 +15,8 @@ use super::super::token_primitives::{
 };
 use super::super::util::{
     helper_tag_for_tokens, is_article, parse_number, parse_subject, parse_target_phrase,
-    parse_zone_word, span_from_tokens, token_index_for_word_index, trim_commas, words,
+    parse_zone_word, possessive_normalized_word_refs, span_from_tokens,
+    strip_leading_token_words_any, token_index_for_word_index, trim_commas, words,
 };
 use super::sentence_helpers::*;
 use super::{
@@ -40,10 +42,6 @@ pub(crate) enum SearchLibraryManaConstraint {
     OneOf(Vec<u32>),
 }
 
-fn token_words<'a>(tokens: &'a [OwnedLexToken]) -> Vec<&'a str> {
-    token_word_refs(tokens)
-}
-
 fn segment_starts_effect_lexed(tokens: &[OwnedLexToken]) -> bool {
     super::lex_chain_helpers::segment_has_effect_head_lexed(tokens)
 }
@@ -57,21 +55,6 @@ pub(crate) fn parse_search_library_sentence(
         super::chain_carry::parse_effect_chain_with_subject_verb_primitives_lexed,
         super::clause_dispatch::parse_effect_clause_lexed,
     )
-}
-
-fn token_slice_contains_phrase(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> bool {
-    grammar::find_prefix(tokens, || grammar::phrase(phrase)).is_some()
-}
-
-fn find_phrase_token_bounds(
-    tokens: &[OwnedLexToken],
-    phrase: &'static [&'static str],
-) -> Option<(usize, usize)> {
-    if phrase.is_empty() {
-        return None;
-    }
-    let (idx, _, rest) = grammar::find_prefix(tokens, || grammar::phrase(phrase))?;
-    Some((idx, tokens.len() - rest.len()))
 }
 
 #[allow(dead_code)]
@@ -106,14 +89,14 @@ fn is_as_long_as_you_control_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn is_source_remains_tapped_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
-    token_slice_contains_phrase(tokens, &["for", "as", "long", "as"])
+    contains_token_word_sequence(tokens, &["for", "as", "long", "as"])
         && contains_token_word(tokens, "remains")
         && contains_token_word(tokens, "tapped")
         && is_source_reference_duration_tokens(tokens)
 }
 
 fn is_source_remains_battlefield_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
-    token_slice_contains_phrase(tokens, &["for", "as", "long", "as"])
+    contains_token_word_sequence(tokens, &["for", "as", "long", "as"])
         && contains_token_word(tokens, "remains")
         && contains_token_word(tokens, "battlefield")
         && is_source_reference_duration_tokens(tokens)
@@ -123,11 +106,7 @@ fn remove_this_turn_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let mut cleaned = Vec::new();
     let mut idx = 0usize;
     while idx < tokens.len() {
-        if tokens[idx].is_word("this")
-            && tokens
-                .get(idx + 1)
-                .is_some_and(|token| token.is_word("turn"))
-        {
+        if token_slice_starts_with_at(tokens, idx, &["this", "turn"]) {
             idx += 2;
             continue;
         }
@@ -148,17 +127,6 @@ fn card_type_slice_contains(card_types: &[CardType], expected: CardType) -> bool
 
 fn word_has_fragment(word: &str, fragment: &str) -> bool {
     word.match_indices(fragment).next().is_some()
-}
-
-fn strip_known_possessive_suffix(word: &str) -> &str {
-    for suffix in ["'s", "’s", "s'", "s’"] {
-        let start = word.len().saturating_sub(suffix.len());
-        if word.get(start..) == Some(suffix) {
-            return word.get(..start).unwrap_or("");
-        }
-    }
-
-    word
 }
 
 pub(crate) fn parse_search_library_disjunction_filter(
@@ -203,7 +171,7 @@ pub(crate) fn parse_restriction_duration_lexed(
         return Ok(Some((duration, trim_lexed_commas(rest).to_vec())));
     }
 
-    if token_words(tokens).len() < 2 {
+    if token_word_refs(tokens).len() < 2 {
         return Ok(None);
     }
 
@@ -229,7 +197,9 @@ pub(crate) fn parse_restriction_duration_lexed(
         }
     }
 
-    if let Some((token_idx, _)) = find_phrase_token_bounds(tokens, &["for", "as", "long", "as"]) {
+    if let Some((token_idx, _)) =
+        find_token_word_sequence_span(tokens, &["for", "as", "long", "as"])
+    {
         let suffix_tokens = &tokens[token_idx..];
         if is_source_remains_tapped_duration_tokens(suffix_tokens) {
             let remainder = trim_lexed_commas(&tokens[..token_idx]).to_vec();
@@ -245,7 +215,7 @@ pub(crate) fn parse_restriction_duration_lexed(
         }
     }
 
-    if token_slice_contains_phrase(tokens, &["this", "turn"]) {
+    if contains_token_word_sequence(tokens, &["this", "turn"]) {
         let cleaned = remove_this_turn_tokens(tokens);
         let remainder = trim_lexed_commas(&cleaned).to_vec();
         if !remainder.is_empty() {
@@ -261,8 +231,8 @@ pub(crate) fn extract_search_library_mana_constraint(
     filter_tokens: &[OwnedLexToken],
 ) -> Option<(Vec<OwnedLexToken>, SearchLibraryManaConstraint)> {
     let (clause_token_start, clause_token_end) =
-        find_phrase_token_bounds(filter_tokens, &["with", "mana", "cost"])
-            .or_else(|| find_phrase_token_bounds(filter_tokens, &["with", "mana", "value"]))?;
+        find_token_word_sequence_span(filter_tokens, &["with", "mana", "cost"])
+            .or_else(|| find_token_word_sequence_span(filter_tokens, &["with", "mana", "value"]))?;
     let base_filter_tokens = trim_commas(&filter_tokens[..clause_token_start]);
     if base_filter_tokens.is_empty() {
         return None;
@@ -360,8 +330,8 @@ pub(crate) fn split_search_same_name_reference_filter(
     tokens: &[OwnedLexToken],
 ) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
     let (start_token_idx, end_token_idx) =
-        find_phrase_token_bounds(tokens, &["with", "the", "same", "name", "as"])
-            .or_else(|| find_phrase_token_bounds(tokens, &["with", "same", "name", "as"]))?;
+        find_token_word_sequence_span(tokens, &["with", "the", "same", "name", "as"])
+            .or_else(|| find_token_word_sequence_span(tokens, &["with", "same", "name", "as"]))?;
     let base_filter_tokens = trim_commas(&tokens[..start_token_idx]);
     let reference_tokens = trim_commas(&tokens[end_token_idx..]);
     Some((base_filter_tokens, reference_tokens))
@@ -427,18 +397,13 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
         return Ok(None);
     }
 
-    let mut clause_tokens = trim_commas(tokens);
-    while clause_tokens
-        .first()
-        .is_some_and(|token| token.is_word("then") || token.is_word("and"))
-    {
-        clause_tokens.remove(0);
-    }
+    let trimmed_tokens = trim_commas(tokens);
+    let clause_tokens = strip_leading_token_words_any(&trimmed_tokens, &["then", "and"]).to_vec();
     if clause_tokens.is_empty() {
         return Ok(None);
     }
 
-    let clause_words = token_words(&clause_tokens);
+    let clause_words = token_word_refs(&clause_tokens);
     if !clause_words
         .iter()
         .any(|word| *word == "shuffle" || *word == "shuffles")
@@ -468,7 +433,7 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
         subject_tokens.pop();
     }
     let each_player_subject = {
-        let subject_words = token_words(&subject_tokens);
+        let subject_words = token_word_refs(&subject_tokens);
         word_slice_starts_with_any(&subject_words, &[&["each", "player"], &["each", "players"]])
     };
     let subject = if subject_tokens.is_empty() {
@@ -496,7 +461,7 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
     }
 
     let destination_tokens = trim_commas(&body_tokens[into_idx + 1..]);
-    let destination_words = token_words(&destination_tokens);
+    let destination_words = token_word_refs(&destination_tokens);
     if !grammar::contains_word(&destination_tokens, "library") {
         return Ok(None);
     }
@@ -542,7 +507,7 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
     if target_tokens.is_empty() {
         return Ok(None);
     }
-    let target_words = token_words(&target_tokens);
+    let target_words = token_word_refs(&target_tokens);
     if !grammar::contains_word(&target_tokens, "graveyard") {
         return Ok(None);
     }
@@ -605,18 +570,13 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
         return Ok(None);
     }
 
-    let mut clause_tokens = trim_commas(tokens);
-    while clause_tokens
-        .first()
-        .is_some_and(|token| token.is_word("then") || token.is_word("and"))
-    {
-        clause_tokens.remove(0);
-    }
+    let trimmed_tokens = trim_commas(tokens);
+    let clause_tokens = strip_leading_token_words_any(&trimmed_tokens, &["then", "and"]).to_vec();
     if clause_tokens.is_empty() {
         return Ok(None);
     }
 
-    let clause_words = token_words(&clause_tokens);
+    let clause_words = token_word_refs(&clause_tokens);
     if !clause_words
         .iter()
         .any(|word| *word == "shuffle" || *word == "shuffles")
@@ -634,7 +594,7 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
 
     let subject_tokens = trim_commas(&clause_tokens[..shuffle_idx]);
     let owner_of_subject_target = {
-        let subject_words = token_words(&subject_tokens);
+        let subject_words = token_word_refs(&subject_tokens);
         if word_slice_starts_with(&subject_words, &["the", "owner", "of"]) {
             let Some(target_start) = token_index_for_word_index(&subject_tokens, 3) else {
                 return Ok(None);
@@ -696,7 +656,7 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
     if target_tokens.is_empty() {
         return Ok(None);
     }
-    let target_words = token_words(&target_tokens);
+    let target_words = token_word_refs(&target_tokens);
     if let Some(target) = owner_of_subject_target {
         if matches!(
             target_words.as_slice(),
@@ -761,28 +721,12 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
 pub(crate) fn parse_exile_hand_and_graveyard_bundle_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    fn normalize_possessive_words<'a>(words: &'a [&'a str]) -> Vec<&'a str> {
-        words
-            .iter()
-            .filter_map(|word| match *word {
-                "s" | "'" | "’" => None,
-                _ => Some(strip_known_possessive_suffix(word)),
-            })
-            .filter(|word| !word.is_empty())
-            .collect()
-    }
-
     if tokens.is_empty() {
         return Ok(None);
     }
 
-    let mut clause_tokens = trim_commas(tokens);
-    while clause_tokens
-        .first()
-        .is_some_and(|token| token.is_word("then") || token.is_word("and"))
-    {
-        clause_tokens.remove(0);
-    }
+    let trimmed_tokens = trim_commas(tokens);
+    let clause_tokens = strip_leading_token_words_any(&trimmed_tokens, &["then", "and"]).to_vec();
     if clause_tokens.is_empty() {
         return Ok(None);
     }
@@ -800,7 +744,7 @@ pub(crate) fn parse_exile_hand_and_graveyard_bundle_sentence(
     {
         return Ok(None);
     }
-    let clause_words = token_words(&clause_tokens);
+    let clause_words = token_word_refs(&clause_tokens);
 
     let first_zone_idx =
         word_slice_find_any_word(&clause_words, &["hand", "hands", "graveyard", "graveyards"])
@@ -814,7 +758,7 @@ pub(crate) fn parse_exile_hand_and_graveyard_bundle_sentence(
         return Ok(None);
     }
 
-    let owner_words = normalize_possessive_words(&clause_words[4..first_zone_idx]);
+    let owner_words = possessive_normalized_word_refs(&clause_words[4..first_zone_idx]);
     let owner = match word_slice_matching_phrase(
         &owner_words,
         &[
@@ -880,7 +824,7 @@ pub(crate) fn parse_target_player_exiles_creature_and_graveyard_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_tokens = trim_commas(tokens);
-    let clause_words = token_words(&clause_tokens);
+    let clause_words = token_word_refs(&clause_tokens);
     if clause_words.len() < 8 {
         return Ok(None);
     }
@@ -954,7 +898,7 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
     if grammar::words_match_prefix(tokens, &["for", "each"]).is_none() {
         return Ok(None);
     }
-    let words_all = token_words(tokens);
+    let words_all = token_word_refs(tokens);
     let refers_to_exiled = grammar::words_find_phrase(tokens, &["exiled", "this", "way"]).is_some()
         || grammar::words_match_prefix(tokens, &["for", "each", "of", "those", "creatures"])
             .is_some();
@@ -1201,7 +1145,7 @@ pub(crate) fn parse_for_each_destroyed_this_way_sentence(
     let refers_to_destroyed =
         grammar::words_find_phrase(tokens, &["destroyed", "this", "way"]).is_some();
     let refers_to_died = grammar::words_find_phrase(tokens, &["died", "this", "way"]).is_some();
-    let words_all = token_words(tokens);
+    let words_all = token_word_refs(tokens);
     if !refers_to_destroyed && !refers_to_died {
         return Ok(None);
     }
@@ -1263,21 +1207,21 @@ pub(crate) fn parse_for_each_put_into_graveyard_this_way_sentence(
         .ok_or_else(|| {
         CardTextError::ParseError(format!(
             "missing comma after 'for each ... this way' clause (clause: '{}')",
-            token_words(tokens).join(" ")
+            token_word_refs(tokens).join(" ")
         ))
     })?;
     let effect_tokens = trim_commas(after_comma);
     if effect_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing effect after 'for each ... this way' clause (clause: '{}')",
-            token_words(tokens).join(" ")
+            token_word_refs(tokens).join(" ")
         )));
     }
     let effects = parse_effect_chain(&effect_tokens)?;
     if effects.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "empty effect after 'for each ... this way' clause (clause: '{}')",
-            token_words(tokens).join(" ")
+            token_word_refs(tokens).join(" ")
         )));
     }
 
@@ -1290,8 +1234,8 @@ pub(crate) fn parse_for_each_put_into_graveyard_this_way_sentence(
 pub(crate) fn parse_earthbend_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words = token_words(tokens);
-    if words.first().copied() != Some("earthbend") {
+    let words = token_word_refs(tokens);
+    if !word_slice_first_is(&words, "earthbend") {
         return Ok(None);
     }
 
@@ -1312,7 +1256,7 @@ pub(crate) fn parse_earthbend_sentence(
 pub(crate) fn parse_enchant_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words = token_words(tokens);
+    let words = token_word_refs(tokens);
     if words.is_empty() || words[0] != "enchant" {
         return Ok(None);
     }

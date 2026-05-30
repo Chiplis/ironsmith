@@ -9,7 +9,8 @@ use super::activation_and_restrictions::{
 };
 use super::grammar::primitives as grammar;
 use super::lexer::{
-    LexStream, OwnedLexToken, TokenKind, lex_line, render_token_slice, split_lexed_sentences,
+    LexStream, OwnedLexToken, TokenKind, contains_token_word_sequence, lex_line,
+    render_token_slice, split_lexed_sentences,
 };
 
 pub(crate) fn split_text_for_parse(
@@ -185,16 +186,9 @@ fn parse_when_one_or_more_followup_head_inner<'a>(
         .parse_next(input)
 }
 
-fn token_slice_contains_phrase(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> bool {
-    tokens
-        .iter()
-        .enumerate()
-        .any(|(idx, _)| grammar::parse_prefix(&tokens[idx..], grammar::phrase(phrase)).is_some())
-}
-
 fn looks_like_when_one_or_more_this_way_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
     let this_way_in_prefix = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
-        .map(|(before, _after)| token_slice_contains_phrase(before, &["this", "way"]))
+        .map(|(before, _after)| contains_token_word_sequence(before, &["this", "way"]))
         .unwrap_or(false);
     starts_with_lexed_parser(tokens, 0, parse_when_one_or_more_followup_head_inner)
         && this_way_in_prefix

@@ -5,26 +5,32 @@ use winnow::error::{ContextError, ErrMode};
 use super::super::activation_and_restrictions::activated_line_core::parse_named_number;
 use super::super::keyword_static::parse_pt_modifier;
 use super::super::lexer::{
-    OwnedLexToken, word_slice_contains_any_phrase, word_slice_contains_word, word_slice_ends_with,
-    word_slice_eq, word_slice_eq_any, word_slice_starts_with, word_slice_starts_with_any,
+    OwnedLexToken, token_slice_at_is, token_slice_at_is_any, token_slice_first_is_any,
+    token_slice_starts_with_at, word_slice_at_is, word_slice_at_is_any,
+    word_slice_contains_any_phrase, word_slice_contains_word, word_slice_ends_with, word_slice_eq,
+    word_slice_eq_any, word_slice_find_any_phrase_start, word_slice_find_word, word_slice_first_is,
+    word_slice_first_is_any, word_slice_last_is, word_slice_last_is_any, word_slice_starts_with,
+    word_slice_starts_with_any, word_slice_starts_with_at,
 };
 use super::super::object_filters::{
-    apply_parity_filter_phrases, lower_words_find_index, normalized_token_index_after_words,
-    normalized_token_index_for_word_index, parse_attached_reference_or_another_disjunction,
-    parse_filter_face_state_words, parse_object_filter_lexed, push_unique, set_has, slice_has,
-    strip_not_on_battlefield_phrase, token_find_index, trim_vote_winner_suffix,
+    apply_parity_filter_phrases, lower_words_find_index,
+    parse_attached_reference_or_another_disjunction, parse_filter_face_state_words,
+    parse_object_filter_lexed, push_unique, set_has, slice_has, strip_not_on_battlefield_phrase,
+    token_find_index, trim_vote_winner_suffix,
 };
 use super::super::token_primitives::{
-    find_index, rfind_index, slice_contains, slice_ends_with, slice_starts_with, slice_strip_prefix,
+    find_index, rfind_index, rfind_index_with, slice_contains, slice_ends_with, slice_starts_with,
+    slice_strip_prefix,
 };
 use super::super::util::{
     apply_filter_keyword_constraint, is_article, is_demonstrative_object_head, is_non_outlaw_word,
-    is_outlaw_word, is_permanent_type, is_source_reference_words, parse_alternative_cast_words,
-    parse_card_type, parse_color, parse_counter_type_from_tokens, parse_counter_type_word,
-    parse_filter_counter_constraint_words, parse_filter_keyword_constraint_words,
-    parse_mana_symbol_word_flexible, parse_non_color, parse_non_subtype, parse_non_supertype,
-    parse_non_type, parse_number, parse_subtype_flexible, parse_subtype_word, parse_supertype_word,
-    parse_unsigned_pt_word, parse_zone_word, push_outlaw_subtypes, trim_commas,
+    is_outlaw_word, is_permanent_type, is_source_reference_words, non_article_token_word_refs,
+    non_article_word_refs, parse_alternative_cast_words, parse_card_type, parse_color,
+    parse_counter_type_from_tokens, parse_counter_type_word, parse_filter_counter_constraint_words,
+    parse_filter_keyword_constraint_words, parse_mana_symbol_word_flexible, parse_non_color,
+    parse_non_subtype, parse_non_supertype, parse_non_type, parse_number, parse_subtype_flexible,
+    parse_subtype_word, parse_supertype_word, parse_unsigned_pt_word, parse_zone_word,
+    push_outlaw_subtypes, trim_commas, word_refs_except,
 };
 use super::super::value_helpers::parse_filter_comparison_tokens;
 use super::primitives::{self, TokenWordView, split_lexed_slices_on_and, split_lexed_slices_on_or};

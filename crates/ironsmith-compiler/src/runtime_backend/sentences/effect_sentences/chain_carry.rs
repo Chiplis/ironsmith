@@ -11,9 +11,12 @@ use super::super::grammar::structure::{
     LeadingResultPrefixKind, split_leading_result_prefix_lexed, split_trailing_if_clause_lexed,
 };
 use super::super::lexer::{
-    OwnedLexToken, TokenKind, token_word_refs, trim_lexed_commas, word_slice_contains_any_word,
-    word_slice_contains_phrase, word_slice_contains_window_by, word_slice_contains_word,
-    word_slice_eq, word_slice_eq_any, word_slice_find_phrase_start, word_slice_starts_with,
+    OwnedLexToken, TokenKind, token_slice_at_is, token_slice_first_is, token_word_refs,
+    trim_lexed_commas, word_slice_at_is, word_slice_at_is_any, word_slice_contains_any_phrase,
+    word_slice_contains_any_word, word_slice_contains_phrase, word_slice_contains_window_by,
+    word_slice_contains_word, word_slice_eq, word_slice_eq_any, word_slice_find_phrase_start,
+    word_slice_first_is, word_slice_starts_with, word_slice_starts_with_any,
+    word_slice_starts_with_at,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::permission_helpers::{
@@ -26,7 +29,10 @@ use super::super::token_primitives::{
     rfind_index as find_last_token_index, str_contains as string_contains,
     str_contains_char as string_contains_char,
 };
-use super::super::util::is_source_reference_words;
+use super::super::util::{
+    is_source_reference_words, remove_first_word as remove_first_word_tokens,
+    remove_through_first_word as remove_through_first_word_tokens, strip_leading_word_refs_any,
+};
 use super::super::value_helpers::{parse_number_from_lexed, parse_value_from_lexed};
 use super::dispatch_inner::parse_subject_verb_extension_sentence;
 use super::lex_chain_helpers::{
@@ -135,7 +141,7 @@ enum RestAction {
 
 fn parse_rest_action_segment_lexed(tokens: &[OwnedLexToken]) -> Option<RestAction> {
     let words = token_word_refs(tokens);
-    let words = if words.first().copied() == Some("then") {
+    let words = if word_slice_first_is(&words, "then") {
         &words[1..]
     } else {
         words.as_slice()
@@ -214,7 +220,7 @@ fn starts_like_create_fragment_lexed(tokens: &[OwnedLexToken]) -> bool {
     let starts_like_count = parse_number_from_lexed(tokens).is_some()
         || contains_char(first_word, '/')
         || first_word == "x";
-    starts_like_count && words.iter().any(|word| matches!(*word, "token" | "tokens"))
+    starts_like_count && word_slice_contains_any_word(&words, &["token", "tokens"])
 }
 
 pub(super) fn parse_effect_chain_rule_lexed(
@@ -238,24 +244,8 @@ pub(super) const FALLBACK_POST_DIAGNOSTIC_INDEX_LEXED: LexRuleIndex<Vec<EffectAs
 fn parse_exile_library_then_shuffle_graveyard_chain_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    fn normalize_possessive_words<'a>(words: &'a [&'a str]) -> Vec<&'a str> {
-        words
-            .iter()
-            .filter_map(|word| match *word {
-                "s" | "'" | "’" => None,
-                _ => Some(
-                    word.trim_end_matches("'s")
-                        .trim_end_matches("’s")
-                        .trim_end_matches("s'")
-                        .trim_end_matches("s’"),
-                ),
-            })
-            .filter(|word| !word.is_empty())
-            .collect()
-    }
-
     fn parse_owner(words: &[&str]) -> Option<(PlayerFilter, PlayerAst)> {
-        let words = normalize_possessive_words(words);
+        let words = crate::runtime_backend::util::possessive_normalized_word_refs(words);
         if word_slice_eq(&words, &["your"]) {
             Some((PlayerFilter::You, PlayerAst::You))
         } else if word_slice_eq_any(&words, &[&["target", "player"], &["target", "players"]]) {
@@ -284,14 +274,11 @@ fn parse_exile_library_then_shuffle_graveyard_chain_lexed(
         Some(owner) => owner,
         None => return Ok(None),
     };
-    if clause_words.get(library_idx + 1) != Some(&"face")
-        || clause_words.get(library_idx + 2) != Some(&"down")
-        || clause_words.get(library_idx + 3) != Some(&"then")
-        || clause_words.get(library_idx + 4) != Some(&"shuffle")
-        || clause_words.get(library_idx + 5) != Some(&"all")
-        || clause_words.get(library_idx + 6) != Some(&"cards")
-        || clause_words.get(library_idx + 7) != Some(&"from")
-    {
+    if !word_slice_starts_with_at(
+        &clause_words,
+        library_idx + 1,
+        &["face", "down", "then", "shuffle", "all", "cards", "from"],
+    ) {
         return Ok(None);
     }
 
@@ -390,7 +377,7 @@ pub(crate) fn parse_effect_chain_lexed(
         grammar::words_match_any_prefix(tokens, EACH_PLAYER_PREFIXES).is_some();
 
     if let Some(player) = parse_leading_player_may_lexed(tokens) {
-        let mut stripped = remove_through_first_word_lexed(tokens, "may");
+        let mut stripped = remove_through_first_word(tokens, "may");
         if stripped
             .first()
             .is_some_and(|token| token.is_word("have") || token.is_word("has"))
@@ -410,11 +397,9 @@ pub(crate) fn parse_effect_chain_lexed(
         return Ok(vec![EffectAst::MayByPlayer { player, effects }]);
     }
 
-    if tokens.first().is_some_and(|token| token.is_word("may"))
-        && !starts_with_each_opponent
-        && !starts_with_each_player
+    if token_slice_first_is(tokens, "may") && !starts_with_each_opponent && !starts_with_each_player
     {
-        let stripped = remove_first_word_lexed(tokens, "may");
+        let stripped = remove_first_word(tokens, "may");
         let effects = parse_effect_chain_lexed(&stripped)?;
         if leading_may_is_permission_clause_lexed(&stripped)? {
             if immediate_tagged_permission_spec(&stripped)? {
@@ -457,15 +442,21 @@ fn leading_may_is_permission_clause_lexed(tokens: &[OwnedLexToken]) -> Result<bo
 }
 
 fn starts_with_until_end_of_turn_trigger_clause(clause_words: &[&str]) -> bool {
-    (word_slice_starts_with(clause_words, &["until", "end", "of", "turn"])
-        || word_slice_starts_with(clause_words, &["until", "the", "end", "of", "turn"]))
-        && clause_words
-            .get(if clause_words.get(1) == Some(&"the") {
-                5
-            } else {
-                4
-            })
-            .is_some_and(|word| matches!(*word, "when" | "whenever" | "at"))
+    word_slice_starts_with_any(
+        clause_words,
+        &[
+            &["until", "end", "of", "turn"],
+            &["until", "the", "end", "of", "turn"],
+        ],
+    ) && word_slice_at_is_any(
+        clause_words,
+        if word_slice_at_is(clause_words, 1, "the") {
+            5
+        } else {
+            4
+        },
+        &["when", "whenever", "at"],
+    )
 }
 
 fn is_would_enter_replacement_clause(clause_words: &[&str]) -> bool {
@@ -475,7 +466,7 @@ fn is_would_enter_replacement_clause(clause_words: &[&str]) -> bool {
 }
 
 fn is_comparison_or_delimiter_lexed(tokens: &[OwnedLexToken], idx: usize) -> bool {
-    if !tokens.get(idx).is_some_and(|token| token.is_word("or")) {
+    if !token_slice_at_is(tokens, idx, "or") {
         return false;
     }
     let previous_word = (0..idx).rev().find_map(|i| tokens[i].as_word());
@@ -534,7 +525,7 @@ fn action_separator_indices_lexed(tokens: &[OwnedLexToken]) -> Vec<usize> {
                 && (after_words
                     .first()
                     .is_some_and(|word| is_card_type_word(word))
-                    || (after_words.first() == Some(&"or")
+                    || (word_slice_first_is(&after_words, "or")
                         && after_words
                             .get(1)
                             .is_some_and(|word| is_card_type_word(word))))
@@ -564,10 +555,6 @@ fn normalize_or_action_option_lexed(mut option: &[OwnedLexToken]) -> &[OwnedLexT
 pub(crate) fn parse_or_action_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    fn word_is(word: Option<&str>, expected: &str) -> bool {
-        word.is_some_and(|word| word.eq_ignore_ascii_case(expected))
-    }
-
     if !grammar::contains_word(tokens, "or") {
         return Ok(None);
     }
@@ -610,14 +597,10 @@ pub(crate) fn parse_or_action_clause_lexed(
 
         let first_words = crate::runtime_backend::token_word_refs(first);
         let second_words = crate::runtime_backend::token_word_refs(second);
-        if word_is(first_words.first().copied(), "tap")
-            && word_is(second_words.first().copied(), "untap")
-            && first_words.get(1).is_some_and(|word| {
-                word.eq_ignore_ascii_case("all") || word.eq_ignore_ascii_case("each")
-            })
-            && second_words.get(1).is_some_and(|word| {
-                word.eq_ignore_ascii_case("all") || word.eq_ignore_ascii_case("each")
-            })
+        if word_slice_first_is(&first_words, "tap")
+            && word_slice_first_is(&second_words, "untap")
+            && word_slice_at_is_any(&first_words, 1, &["all", "each"])
+            && word_slice_at_is_any(&second_words, 1, &["all", "each"])
         {
             continue;
         }
@@ -860,7 +843,7 @@ mod tests {
 pub(crate) fn parse_effect_chain_with_subject_verb_primitives_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    if tokens.first().is_some_and(|token| token.is_word("and")) {
+    if token_slice_first_is(tokens, "and") {
         return parse_effect_chain_with_subject_verb_primitives_lexed(&tokens[1..]);
     }
 
@@ -1137,11 +1120,10 @@ pub(crate) fn parse_effect_chain_inner_lexed(
         }
         let segment_words = token_word_refs(&segment);
         if word_slice_starts_with(&segment_words, &["all", "abilities", "and"])
-            && matches!(segment_words.get(3).copied(), Some("gain" | "gains"))
+            && word_slice_at_is_any(&segment_words, 3, &["gain", "gains"])
         {
-            let Some(gain_idx) = segment
-                .iter()
-                .position(|token| token.is_word("gain") || token.is_word("gains"))
+            let Some(gain_idx) =
+                crate::runtime_backend::lexer::find_token_any_word(&segment, &["gain", "gains"])
             else {
                 continue;
             };
@@ -1548,9 +1530,14 @@ fn trailing_if_predicate_supported(predicate: &PredicateAst) -> bool {
 }
 
 pub(crate) fn is_beginning_of_end_step_words(words: &[&str]) -> bool {
-    word_slice_contains_phrase(words, &["beginning", "of", "the", "end", "step"])
-        || word_slice_contains_phrase(words, &["beginning", "of", "next", "end", "step"])
-        || word_slice_contains_phrase(words, &["beginning", "of", "the", "next", "end", "step"])
+    word_slice_contains_any_phrase(
+        words,
+        &[
+            &["beginning", "of", "the", "end", "step"],
+            &["beginning", "of", "next", "end", "step"],
+            &["beginning", "of", "the", "next", "end", "step"],
+        ],
+    )
 }
 
 pub(crate) fn is_end_of_combat_words(words: &[&str]) -> bool {
@@ -1809,7 +1796,7 @@ pub(crate) fn expand_segments_with_comma_action_clauses_lexed(
 
         for raw_part in comma_parts {
             let mut part = trim_lexed_commas(&raw_part).to_vec();
-            while part.first().is_some_and(|token| token.is_word("and")) {
+            while token_slice_first_is(&part, "and") {
                 part.remove(0);
             }
             if part.is_empty() {
@@ -1882,7 +1869,7 @@ pub(crate) fn expand_segments_with_multi_create_clauses_lexed(
         let mut local_parts: Vec<Vec<OwnedLexToken>> = Vec::new();
         for raw_part in comma_parts {
             let mut part = trim_lexed_commas(&raw_part).to_vec();
-            while part.first().is_some_and(|token| token.is_word("and")) {
+            while token_slice_first_is(&part, "and") {
                 part.remove(0);
             }
             if part.is_empty() {
@@ -2401,14 +2388,8 @@ pub(crate) fn maybe_apply_carried_player(effect: &mut EffectAst, carried_context
 }
 
 pub(crate) fn clause_words_for_carry_lexed(tokens: &[OwnedLexToken]) -> Vec<&str> {
-    let mut clause_words = token_word_refs(tokens);
-    while clause_words
-        .first()
-        .is_some_and(|word| *word == "then" || *word == "and")
-    {
-        clause_words.remove(0);
-    }
-    clause_words
+    let clause_words = token_word_refs(tokens);
+    strip_leading_word_refs_any(&clause_words, &["then", "and"]).to_vec()
 }
 
 pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
@@ -2428,7 +2409,7 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
                     },
                     action: SubjectVerbActionAst::Draw { .. },
                 })
-            ) && matches!(clause_words.first().copied(), Some("draw"))
+            ) && word_slice_first_is(&clause_words, "draw")
         }
         CarryContext::ForEachPlayer
         | CarryContext::ForEachTargetPlayers(_)
@@ -2744,62 +2725,14 @@ pub(crate) fn parse_leading_player_may(tokens: &[OwnedLexToken]) -> Option<Playe
 }
 
 pub(crate) fn remove_first_word(tokens: &[OwnedLexToken], word: &str) -> Vec<OwnedLexToken> {
-    let mut removed = false;
-    let mut out = Vec::with_capacity(tokens.len());
-    for token in tokens {
-        if !removed && token.is_word(word) {
-            removed = true;
-            continue;
-        }
-        out.push(token.clone());
-    }
-    out
+    remove_first_word_tokens(tokens, word)
 }
 
 pub(crate) fn remove_through_first_word(
     tokens: &[OwnedLexToken],
     word: &str,
 ) -> Vec<OwnedLexToken> {
-    let mut seen = false;
-    let mut out = Vec::new();
-    for token in tokens {
-        if !seen {
-            if token.is_word(word) {
-                seen = true;
-            }
-            continue;
-        }
-        out.push(token.clone());
-    }
-    out
-}
-
-fn remove_first_word_lexed(tokens: &[OwnedLexToken], word: &str) -> Vec<OwnedLexToken> {
-    let mut removed = false;
-    let mut out = Vec::with_capacity(tokens.len());
-    for token in tokens {
-        if !removed && token.is_word(word) {
-            removed = true;
-            continue;
-        }
-        out.push(token.clone());
-    }
-    out
-}
-
-fn remove_through_first_word_lexed(tokens: &[OwnedLexToken], word: &str) -> Vec<OwnedLexToken> {
-    let mut seen = false;
-    let mut out = Vec::new();
-    for token in tokens {
-        if !seen {
-            if token.is_word(word) {
-                seen = true;
-            }
-            continue;
-        }
-        out.push(token.clone());
-    }
-    out
+    remove_through_first_word_tokens(tokens, word)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

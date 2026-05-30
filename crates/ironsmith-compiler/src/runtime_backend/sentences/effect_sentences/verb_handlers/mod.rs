@@ -13,9 +13,7 @@ use crate::target::{
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
-use super::super::activation_and_restrictions::{
-    find_word_sequence_start, parse_devotion_value_from_add_clause,
-};
+use super::super::activation_and_restrictions::parse_devotion_value_from_add_clause;
 use super::super::activation_helpers::parse_add_mana;
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::grammar::structure::{
@@ -28,8 +26,12 @@ use super::super::keyword_static::{
     parse_value_binding_clause,
 };
 use super::super::lexer::{
-    word_slice_contains_phrase, word_slice_contains_word, word_slice_eq, word_slice_eq_any,
-    word_slice_starts_with, word_slice_strip_prefix_value,
+    token_slice_at_is, token_slice_at_is_any, token_slice_first_is, token_slice_first_is_any,
+    token_slice_starts_with, word_slice_all_words_are_any, word_slice_at_is, word_slice_at_is_any,
+    word_slice_contains_any_phrase, word_slice_contains_phrase, word_slice_contains_word,
+    word_slice_eq, word_slice_eq_any, word_slice_find_phrase_start_or_zero, word_slice_find_word,
+    word_slice_first_is, word_slice_first_is_any, word_slice_starts_with,
+    word_slice_starts_with_any, word_slice_starts_with_at, word_slice_strip_prefix_value,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{find_index, find_window_by, rfind_index, str_strip_suffix};
@@ -37,8 +39,8 @@ use super::super::util::{
     is_article, is_source_reference_words, mana_pips_from_token, parse_card_type,
     parse_mana_symbol, parse_number, parse_number_word_u32, parse_target_count_range_prefix,
     parse_target_phrase, parse_value, parse_value_expr_words, replace_unbound_x_with_value,
-    span_from_tokens, token_index_for_word_index, trim_commas, value_contains_unbound_x, words,
-    wrap_target_count,
+    span_from_tokens, strip_leading_article_word_refs, token_index_for_word_index, trim_commas,
+    value_contains_unbound_x, words, wrap_target_count,
 };
 use super::super::value_helpers::{
     parse_equal_to_aggregate_filter_value, parse_equal_to_number_of_counters_on_reference_value,

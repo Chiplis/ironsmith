@@ -38,8 +38,7 @@ fn parse_attachment_quantity_prefix(
         return Ok((crate::effect::Comparison::Equal(value as i32), used + 1));
     }
 
-    if (tokens[0].is_word("fewer") || tokens[0].is_word("less"))
-        && tokens.get(1).is_some_and(|token| token.is_word("than"))
+    if token_slice_first_is_any(tokens, &["fewer", "less"]) && token_slice_at_is(tokens, 1, "than")
     {
         let (value, used) = parse_number(tokens.get(2..).unwrap_or_default()).ok_or_else(|| {
             CardTextError::ParseError("missing quantity in attachment-count predicate".to_string())
@@ -47,8 +46,8 @@ fn parse_attachment_quantity_prefix(
         return Ok((crate::effect::Comparison::LessThan(value as i32), used + 2));
     }
 
-    if (tokens[0].is_word("more") || tokens[0].is_word("greater"))
-        && tokens.get(1).is_some_and(|token| token.is_word("than"))
+    if token_slice_first_is_any(tokens, &["more", "greater"])
+        && token_slice_at_is(tokens, 1, "than")
     {
         let (value, used) = parse_number(tokens.get(2..).unwrap_or_default()).ok_or_else(|| {
             CardTextError::ParseError("missing quantity in attachment-count predicate".to_string())
@@ -61,20 +60,16 @@ fn parse_attachment_quantity_prefix(
 
     if let Some((value, used)) = parse_number(tokens) {
         let value = value as i32;
-        if tokens.get(used).is_some_and(|token| token.is_word("or"))
-            && tokens
-                .get(used + 1)
-                .is_some_and(|token| token.is_word("more") || token.is_word("greater"))
+        if token_slice_at_is(tokens, used, "or")
+            && token_slice_at_is_any(tokens, used + 1, &["more", "greater"])
         {
             return Ok((
                 crate::effect::Comparison::GreaterThanOrEqual(value),
                 used + 2,
             ));
         }
-        if tokens.get(used).is_some_and(|token| token.is_word("or"))
-            && tokens
-                .get(used + 1)
-                .is_some_and(|token| token.is_word("less") || token.is_word("fewer"))
+        if token_slice_at_is(tokens, used, "or")
+            && token_slice_at_is_any(tokens, used + 1, &["less", "fewer"])
         {
             return Ok((crate::effect::Comparison::LessThanOrEqual(value), used + 2));
         }
@@ -326,7 +321,7 @@ fn parse_color_only_object_filter_words(words: &[&str]) -> Option<ObjectFilter> 
 }
 
 fn parse_this_way_object_filter_words(words: &[&str]) -> Option<ObjectFilter> {
-    let has_card_noun = matches!(words.last().copied(), Some("card" | "cards"));
+    let has_card_noun = word_slice_last_is_any(words, &["card", "cards"]);
     let candidates = [
         (words, has_card_noun),
         (
@@ -416,7 +411,7 @@ fn parse_repeated_if_or_predicate(
 }
 
 fn predicate_reference_prefix<'a>(words: &'a [&'a str]) -> Option<&'a [&'a str]> {
-    if words.first().copied() == Some("it") {
+    if word_slice_first_is(words, "it") {
         return Some(&words[..1]);
     }
     if words.len() >= 2
@@ -472,17 +467,17 @@ fn parse_single_card_type_card_descriptor(words: &[&str]) -> Option<ObjectFilter
 }
 
 fn parse_or_predicate(filtered: &[&str]) -> Result<Option<PredicateAst>, CardTextError> {
-    let Some(or_idx) = filtered.iter().enumerate().rev().find_map(|(idx, word)| {
+    let Some(or_idx) = rfind_index_with(filtered, |idx, word| {
         if *word != "or" || idx == 0 || idx + 1 >= filtered.len() {
-            return None;
+            return false;
         }
         if matches!(
             filtered.get(idx + 1).copied(),
             Some("more" | "fewer" | "less" | "greater" | "equal")
         ) {
-            return None;
+            return false;
         }
-        Some(idx)
+        true
     }) else {
         return Ok(None);
     };
@@ -553,7 +548,13 @@ fn permanents_you_control_scope(words: &[&str]) -> Option<ObjectFilter> {
 }
 
 fn cards_in_your_graveyard_scope(words: &[&str]) -> Option<ObjectFilter> {
-    if matches!(words, ["card" | "cards", "in", "your", "graveyard"]) {
+    if word_slice_eq_any(
+        words,
+        &[
+            &["card", "in", "your", "graveyard"],
+            &["cards", "in", "your", "graveyard"],
+        ],
+    ) {
         return Some(
             ObjectFilter::default()
                 .in_zone(Zone::Graveyard)
@@ -580,10 +581,9 @@ fn permanents_and_your_graveyard_scope(words: &[&str]) -> Option<ObjectFilter> {
 
 fn parse_colors_among_predicate(words: &[&str]) -> Option<PredicateAst> {
     if words.len() >= 7
-        && words[0] == "there"
-        && words[1] == "are"
-        && matches!(words.get(3).copied(), Some("color" | "colors"))
-        && words.get(4).copied() == Some("among")
+        && word_slice_starts_with(words, &["there", "are"])
+        && word_slice_at_is_any(words, 3, &["color", "colors"])
+        && word_slice_at_is(words, 4, "among")
         && let Some(count) = parse_named_number(words[2])
         && let Some(filter) = permanents_you_control_scope(&words[5..])
     {
@@ -598,18 +598,13 @@ fn parse_colors_among_predicate(words: &[&str]) -> Option<PredicateAst> {
 
 fn parse_card_types_among_predicate(words: &[&str]) -> Option<PredicateAst> {
     if words.len() >= 9
-        && words[0] == "there"
-        && matches!(words.get(1).copied(), Some("are" | "were"))
-        && words.get(3).copied() == Some("or")
-        && words.get(4).copied() == Some("more")
-        && words.get(5).copied() == Some("card")
-        && matches!(words.get(6).copied(), Some("type" | "types"))
-        && words.get(7).copied() == Some("among")
-        && matches!(words.get(8).copied(), Some("sacrificed" | "sacrificed_0"))
-        && matches!(
-            words.get(9).copied(),
-            Some("permanent" | "permanents") | None
-        )
+        && word_slice_first_is(words, "there")
+        && word_slice_at_is_any(words, 1, &["are", "were"])
+        && word_slice_starts_with(&words[3..], &["or", "more", "card"])
+        && word_slice_at_is_any(words, 6, &["type", "types"])
+        && word_slice_at_is(words, 7, "among")
+        && word_slice_at_is_any(words, 8, &["sacrificed", "sacrificed_0"])
+        && (word_slice_at_is_any(words, 9, &["permanent", "permanents"]) || words.len() == 9)
         && let Some(count) = parse_named_number(words[2])
     {
         return Some(PredicateAst::ValueComparison {
@@ -620,13 +615,10 @@ fn parse_card_types_among_predicate(words: &[&str]) -> Option<PredicateAst> {
     }
 
     if words.len() >= 13
-        && words[0] == "there"
-        && words[1] == "are"
-        && words.get(3).copied() == Some("or")
-        && words.get(4).copied() == Some("more")
-        && words.get(5).copied() == Some("card")
-        && matches!(words.get(6).copied(), Some("type" | "types"))
-        && words.get(7).copied() == Some("among")
+        && word_slice_starts_with(words, &["there", "are"])
+        && word_slice_starts_with(&words[3..], &["or", "more", "card"])
+        && word_slice_at_is_any(words, 6, &["type", "types"])
+        && word_slice_at_is(words, 7, "among")
         && let Some(count) = parse_named_number(words[2])
         && let Some(filter) = permanents_and_your_graveyard_scope(&words[8..])
     {
@@ -711,11 +703,7 @@ fn parse_counted_objects_have_counter_predicate(words: &[&str]) -> Option<Predic
 }
 
 fn parse_happily_style_conjoined_predicate(words: &[&str]) -> Option<PredicateAst> {
-    let cleaned = words
-        .iter()
-        .copied()
-        .filter(|word| *word != ",")
-        .collect::<Vec<_>>();
+    let cleaned = word_refs_except(words, &[","]);
     let words = cleaned.as_slice();
     let second_there_idx =
         crate::runtime_backend::lexer::word_slice_find_phrase_start(&words[1..], &["there", "are"])
@@ -774,11 +762,8 @@ fn parse_card_in_your_graveyard_predicate(words: &[&str]) -> Option<PredicateAst
         return None;
     }
 
-    let in_idx = words
-        .iter()
-        .enumerate()
-        .skip(2)
-        .find_map(|(idx, word)| (*word == "in").then_some(idx))?;
+    let in_idx = crate::runtime_backend::lexer::word_slice_find_word(&words[2..], "in")
+        .map(|idx| idx + 2)?;
     if in_idx <= 2 {
         return None;
     }
@@ -806,11 +791,7 @@ fn parse_card_in_your_graveyard_predicate(words: &[&str]) -> Option<PredicateAst
 pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
     let raw_words_view = GrammarFilterNormalizedWords::new(tokens);
     let raw_words = raw_words_view.to_word_refs();
-    let mut filtered: Vec<&str> = raw_words
-        .iter()
-        .copied()
-        .filter(|word| !is_article(word))
-        .collect();
+    let mut filtered = non_article_word_refs(&raw_words);
 
     if filtered.is_empty() {
         return Err(CardTextError::ParseError(
@@ -823,7 +804,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if filtered.len() >= 2 && filtered[0] == "it" && filtered[1] == "s" {
         filtered.remove(1);
     }
-    if let Some(instead_idx) = filtered.iter().position(|word| *word == "instead")
+    if let Some(instead_idx) = word_slice_find_word(&filtered, "instead")
         && instead_idx > 0
     {
         let maybe_predicate = &filtered[..instead_idx];
@@ -1088,7 +1069,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             controller: Some(PlayerFilter::Opponent),
             ..Default::default()
         };
-        if filtered.last().copied() == Some("creature") {
+        if word_slice_last_is(&filtered, "creature") {
             filter.card_types.push(CardType::Creature);
         }
         return Ok(PredicateAst::ItMatches(filter));
@@ -1249,7 +1230,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         if matches!(right_first, Some("have") | Some("you")) {
             let left_words = &filtered[..and_idx];
             let mut right_words = filtered[and_idx + 1..].to_vec();
-            if right_words.first().copied() == Some("have") {
+            if word_slice_first_is(&right_words, "have") {
                 right_words.insert(0, "you");
             }
             let left_tokens = left_words
@@ -1284,9 +1265,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if word_slice_eq_any(&filtered, &[&["this", "tapped"], &["thiss", "tapped"]])
-        || ((filtered.first().copied() == Some("this")
-            || filtered.first().copied() == Some("thiss"))
-            && filtered.last().copied() == Some("tapped"))
+        || (word_slice_first_is_any(&filtered, &["this", "thiss"])
+            && word_slice_last_is(&filtered, "tapped"))
     {
         return Ok(PredicateAst::SourceIsTapped);
     }
@@ -1300,9 +1280,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             &["this", "creature", "is", "untapped"],
             &["this", "permanent", "is", "untapped"],
         ],
-    ) || ((filtered.first().copied() == Some("this")
-        || filtered.first().copied() == Some("thiss"))
-        && filtered.last().copied() == Some("untapped"))
+    ) || (word_slice_first_is_any(&filtered, &["this", "thiss"])
+        && word_slice_last_is(&filtered, "untapped"))
     {
         return Ok(PredicateAst::Not(Box::new(PredicateAst::SourceIsTapped)));
     }
@@ -1333,11 +1312,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if let Some(is_idx) = find_index(&filtered, |word| matches!(*word, "is" | "are")) {
         let subject_words = &filtered[..is_idx];
-        let is_source_subject =
-            is_source_reference_words(subject_words) || matches!(subject_words, ["it"] | ["its"]);
+        let is_source_subject = is_source_reference_words(subject_words)
+            || word_slice_eq_any(subject_words, &[&["it"], &["its"]]);
         if is_source_subject
-            && filtered.get(is_idx + 1) == Some(&"enchanted")
-            && filtered.get(is_idx + 2) == Some(&"by")
+            && word_slice_starts_with(&filtered[is_idx + 1..], &["enchanted", "by"])
         {
             let attachment_tokens = filtered[is_idx + 3..]
                 .iter()
@@ -1379,7 +1357,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
             let mut negative = matches!(filtered[idx], "isnt" | "isn't" | "arent" | "aren't");
             let mut tail_start = idx + 1;
-            if filtered.get(tail_start).copied() == Some("not") {
+            if word_slice_at_is(&filtered, tail_start, "not") {
                 negative = true;
                 tail_start += 1;
             }
@@ -1425,8 +1403,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         && has_idx + 1 < filtered.len()
     {
         let subject_words = &filtered[..has_idx];
-        let is_source_subject =
-            is_source_reference_words(subject_words) || matches!(subject_words, ["it"] | ["its"]);
+        let is_source_subject = is_source_reference_words(subject_words)
+            || word_slice_eq_any(subject_words, &[&["it"], &["its"]]);
         if is_source_subject
             && let Some((constraint, consumed)) =
                 parse_filter_keyword_constraint_words(&filtered[has_idx + 1..])
@@ -1460,7 +1438,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if word_slice_starts_with(&filtered, &["there", "are", "no"])
         && word_slice_contains_word(&filtered, "counters")
-        && contains_any_filter_phrase(
+        && word_slice_contains_any_phrase(
             &filtered,
             &[&["on", "this"], &["on", "it"], &["on", "them"]],
         )
@@ -1508,15 +1486,14 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if let Some(prefix_len) = source_has_counter_prefix_len
         && raw_words.len() >= prefix_len + 4
-        && !(raw_words.get(prefix_len + 1) == Some(&"or")
-            && raw_words.get(prefix_len + 2) == Some(&"more"))
+        && !word_slice_starts_with(&raw_words[prefix_len + 1..], &["or", "more"])
         && let Some(counter_idx) = find_index(&raw_words[prefix_len..], |word| {
             *word == "counter" || *word == "counters"
         })
         && counter_idx > 0
         && let Some(counter_type) =
             parse_counter_type_from_tokens(&tokens[prefix_len..=prefix_len + counter_idx])
-        && raw_words.get(prefix_len + counter_idx + 1) == Some(&"on")
+        && word_slice_at_is(&raw_words, prefix_len + counter_idx + 1, "on")
         && matches!(
             raw_words.get(prefix_len + counter_idx + 2).copied(),
             Some("it" | "him" | "her" | "them" | "this" | "that")
@@ -1531,11 +1508,15 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     let triggering_object_had_no_counter_prefix_len =
         if word_slice_starts_with(&raw_words, &["it", "had", "no"]) {
             Some(3)
-        } else if word_slice_starts_with(&raw_words, &["this", "creature", "had", "no"])
-            || word_slice_starts_with(&raw_words, &["that", "creature", "had", "no"])
-            || word_slice_starts_with(&raw_words, &["this", "permanent", "had", "no"])
-            || word_slice_starts_with(&raw_words, &["that", "permanent", "had", "no"])
-        {
+        } else if word_slice_starts_with_any(
+            &raw_words,
+            &[
+                &["this", "creature", "had", "no"],
+                &["that", "creature", "had", "no"],
+                &["this", "permanent", "had", "no"],
+                &["that", "permanent", "had", "no"],
+            ],
+        ) {
             Some(4)
         } else {
             None
@@ -1556,11 +1537,15 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     let triggering_object_had_counter_prefix_len =
         if word_slice_starts_with(&raw_words, &["it", "had"]) {
             Some(2)
-        } else if word_slice_starts_with(&raw_words, &["this", "creature", "had"])
-            || word_slice_starts_with(&raw_words, &["that", "creature", "had"])
-            || word_slice_starts_with(&raw_words, &["this", "permanent", "had"])
-            || word_slice_starts_with(&raw_words, &["that", "permanent", "had"])
-        {
+        } else if word_slice_starts_with_any(
+            &raw_words,
+            &[
+                &["this", "creature", "had"],
+                &["that", "creature", "had"],
+                &["this", "permanent", "had"],
+                &["that", "permanent", "had"],
+            ],
+        ) {
             Some(3)
         } else {
             None
@@ -1573,7 +1558,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         && counter_idx > 0
         && let Some(counter_type) =
             parse_counter_type_from_tokens(&tokens[prefix_len..=prefix_len + counter_idx])
-        && raw_words.get(prefix_len + counter_idx + 1) == Some(&"on")
+        && word_slice_at_is(&raw_words, prefix_len + counter_idx + 1, "on")
         && matches!(
             raw_words
                 .get(prefix_len + counter_idx + 2)
@@ -1589,8 +1574,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if word_slice_starts_with(&raw_words, &["there", "are"])
-        && raw_words.get(3).copied() == Some("or")
-        && raw_words.get(4).copied() == Some("more")
+        && word_slice_starts_with(&raw_words[3..], &["or", "more"])
         && raw_words
             .iter()
             .any(|w| *w == "counter" || *w == "counters")
@@ -1601,8 +1585,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             if let Some(counter_idx) = find_index(rest_words.as_slice(), |word| {
                 *word == "counter" || *word == "counters"
             }) && rest_words.len() >= 4
-                && rest_words[0] == "or"
-                && rest_words[1] == "more"
+                && word_slice_starts_with(&rest_words, &["or", "more"])
             {
                 if counter_idx == 2 {
                     return Ok(PredicateAst::SourceHasCountersAtLeast(count));
@@ -1623,15 +1606,14 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if let Some(prefix_len) = source_has_counter_prefix_len
         && raw_words.len() >= prefix_len + 6
         && let Some(count) = parse_named_number(raw_words[prefix_len])
-        && raw_words[prefix_len + 1] == "or"
-        && raw_words[prefix_len + 2] == "more"
+        && word_slice_starts_with(&raw_words[prefix_len + 1..], &["or", "more"])
         && let Some(counter_idx) = find_index(&raw_words[prefix_len + 3..], |word| {
             *word == "counter" || *word == "counters"
         })
         && counter_idx > 0
         && let Some(counter_type) =
             parse_counter_type_from_tokens(&tokens[prefix_len + 3..=prefix_len + 3 + counter_idx])
-        && raw_words.get(prefix_len + 4 + counter_idx) == Some(&"on")
+        && word_slice_at_is(&raw_words, prefix_len + 4 + counter_idx, "on")
         && matches!(
             raw_words.get(prefix_len + 5 + counter_idx).copied(),
             Some("it" | "him" | "her" | "them" | "this" | "that")
@@ -1678,16 +1660,14 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         let mut idx = 2usize;
         if let Some(count) = parse_named_number(filtered[idx]) {
             idx += 1;
-            if filtered.get(idx).copied() == Some("or")
-                && filtered.get(idx + 1).copied() == Some("more")
-            {
+            if word_slice_starts_with(&filtered[idx..], &["or", "more"]) {
                 idx += 2;
             }
-            let looks_like_basic_land_type_clause = filtered.get(idx).copied() == Some("basic")
-                && filtered.get(idx + 1).copied() == Some("land")
-                && matches!(filtered.get(idx + 2).copied(), Some("type" | "types"))
-                && filtered.get(idx + 3).copied() == Some("among")
-                && matches!(filtered.get(idx + 4).copied(), Some("land" | "lands"));
+            let looks_like_basic_land_type_clause =
+                word_slice_starts_with(&filtered[idx..], &["basic", "land"])
+                    && word_slice_at_is_any(&filtered, idx + 2, &["type", "types"])
+                    && word_slice_at_is(&filtered, idx + 3, "among")
+                    && word_slice_at_is_any(&filtered, idx + 4, &["land", "lands"]);
             if looks_like_basic_land_type_clause {
                 let tail = &filtered[idx + 5..];
                 let player = if word_slice_eq_any(
@@ -1722,9 +1702,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         && let Some(count) = parse_named_number(filtered[2])
     {
         let mut idx = 3usize;
-        if filtered.get(idx).copied() == Some("or")
-            && filtered.get(idx + 1).copied() == Some("more")
-        {
+        if word_slice_starts_with(&filtered[idx..], &["or", "more"]) {
             idx += 2;
         }
 
@@ -1806,13 +1784,11 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                 (usize::MAX, usize::MAX, None)
             };
         if count_idx != usize::MAX
-            && filtered.get(count_idx + 1).copied() == Some("or")
-            && filtered.get(count_idx + 2).copied() == Some("more")
-            && filtered.get(count_idx + 3).copied() == Some("card")
-            && matches!(filtered.get(count_idx + 4).copied(), Some("type" | "types"))
-            && filtered.get(count_idx + 5).copied() == Some("among")
-            && matches!(filtered.get(count_idx + 6).copied(), Some("card" | "cards"))
-            && filtered.get(count_idx + 7).copied() == Some("in")
+            && word_slice_starts_with(&filtered[count_idx + 1..], &["or", "more", "card"])
+            && word_slice_at_is_any(&filtered, count_idx + 4, &["type", "types"])
+            && word_slice_at_is(&filtered, count_idx + 5, "among")
+            && word_slice_at_is_any(&filtered, count_idx + 6, &["card", "cards"])
+            && word_slice_at_is(&filtered, count_idx + 7, "in")
             && subject_start <= filtered.len()
             && let Some(count) = parse_named_number(filtered[count_idx])
             && let Some(player) = parse_graveyard_card_types_subject(&filtered[subject_start..])
@@ -1885,7 +1861,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         )
     };
     if let Some((player, subject_len)) = parse_life_total_subject(&filtered)
-        && filtered.get(subject_len).copied() == Some("is")
+        && word_slice_at_is(&filtered, subject_len, "is")
     {
         let tail = &filtered[subject_len + 1..];
         if let Some(rest) = slice_strip_prefix(tail, &["less", "than", "or", "equal", "to"])
@@ -1900,22 +1876,19 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
     if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
-        && matches!(filtered.get(subject_len).copied(), Some("has" | "have"))
+        && word_slice_at_is_any(&filtered, subject_len, &["has", "have"])
         && let Some(count_word) = filtered.get(subject_len + 1).copied()
         && let Some(count) = count_word
             .parse::<i32>()
             .ok()
             .or_else(|| parse_named_number(count_word).map(|n| n as i32))
-        && filtered.get(subject_len + 2).copied() == Some("or")
-        && filtered.get(subject_len + 3).copied() == Some("more")
-        && matches!(
-            filtered.get(subject_len + 4).copied(),
-            Some("card" | "cards")
-        )
-        && filtered.get(subject_len + 5).copied() == Some("in")
+        && word_slice_at_is(&filtered, subject_len + 2, "or")
+        && word_slice_at_is(&filtered, subject_len + 3, "more")
+        && word_slice_at_is_any(&filtered, subject_len + 4, &["card", "cards"])
+        && word_slice_at_is(&filtered, subject_len + 5, "in")
         && let Some(possessive) = filtered.get(subject_len + 6).copied()
         && graveyard_possessive_matches_subject(player, possessive)
-        && filtered.get(subject_len + 7).copied() == Some("graveyard")
+        && word_slice_at_is(&filtered, subject_len + 7, "graveyard")
         && filtered.len() == subject_len + 8
         && let Some(player_filter) = player_filter_for_turn_value(player)
     {
@@ -1926,16 +1899,13 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         });
     }
     if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
-        && matches!(
-            filtered.get(subject_len).copied(),
-            Some("control" | "controls")
-        )
-        && filtered.get(subject_len + 1).copied() == Some("more")
+        && word_slice_at_is_any(&filtered, subject_len, &["control", "controls"])
+        && word_slice_at_is(&filtered, subject_len + 1, "more")
         && let Some(than_offset) = find_index(&filtered[subject_len + 2..], |word| *word == "than")
     {
         let than_idx = subject_len + 2 + than_offset;
         let tail = &filtered[than_idx..];
-        if matches!(tail, ["than", "you"] | ["than", "you", "do"]) {
+        if word_slice_eq_any(tail, &[&["than", "you"], &["than", "you", "do"]]) {
             let filter_tokens = filtered[subject_len + 2..than_idx]
                 .iter()
                 .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
@@ -1954,7 +1924,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
-        && filtered.get(subject_len).copied() == Some("has")
+        && word_slice_at_is(&filtered, subject_len, "has")
         && matches!(
             &filtered[subject_len + 1..],
             ["more", "life", "than", "you"] | ["more", "life", "than", "you", "do"]
@@ -1963,12 +1933,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::PlayerHasMoreLifeThanYou { player });
     }
 
-    if filtered[0] == "you"
-        && matches!(filtered.get(1).copied(), Some("have" | "has"))
-        && filtered.get(2).copied() == Some("more")
-        && filtered.get(3).copied() == Some("life")
-        && filtered.get(4).copied() == Some("than")
-        && matches!(filtered.get(5).copied(), Some("opponent" | "opponents"))
+    if word_slice_first_is(&filtered, "you")
+        && word_slice_at_is_any(&filtered, 1, &["have", "has"])
+        && word_slice_starts_with(&filtered[2..], &["more", "life", "than"])
+        && word_slice_at_is_any(&filtered, 5, &["opponent", "opponents"])
     {
         if matches!(
             raw_words.as_slice(),
@@ -1992,14 +1960,11 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
-        && matches!(filtered.get(subject_len).copied(), Some("has" | "have"))
+        && word_slice_at_is_any(&filtered, subject_len, &["has", "have"])
         && filtered.len() == subject_len + 5
-        && filtered.get(subject_len + 2).copied() == Some("or")
-        && matches!(
-            filtered.get(subject_len + 3).copied(),
-            Some("less" | "fewer")
-        )
-        && filtered.get(subject_len + 4).copied() == Some("life")
+        && word_slice_at_is(&filtered, subject_len + 2, "or")
+        && word_slice_at_is_any(&filtered, subject_len + 3, &["less", "fewer"])
+        && word_slice_at_is(&filtered, subject_len + 4, "life")
         && let Some(amount) = filtered[subject_len + 1]
             .parse::<i32>()
             .ok()
@@ -2036,7 +2001,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
-        && filtered.get(subject_len).copied() == Some("has")
+        && word_slice_at_is(&filtered, subject_len, "has")
         && matches!(
             &filtered[subject_len + 1..],
             ["more", "life", "than", "each", "other", "player"]
@@ -2047,7 +2012,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
-        && filtered.get(subject_len).copied() == Some("has")
+        && word_slice_at_is(&filtered, subject_len, "has")
         && matches!(
             &filtered[subject_len + 1..],
             ["more", "card", "in", "hand", "than", "you"]
@@ -2064,7 +2029,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
-        && filtered.get(subject_len).copied() == Some("has")
+        && word_slice_at_is(&filtered, subject_len, "has")
         && matches!(
             &filtered[subject_len + 1..],
             [
@@ -2082,18 +2047,15 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
-        && matches!(filtered.get(subject_len).copied(), Some("has" | "have"))
+        && word_slice_at_is_any(&filtered, subject_len, &["has", "have"])
         && let Some(count_word) = filtered.get(subject_len + 1).copied()
         && let Some(count) = parse_named_number(count_word)
-        && filtered.get(subject_len + 2).copied() == Some("or")
+        && word_slice_at_is(&filtered, subject_len + 2, "or")
         && let Some(comp_word) = filtered.get(subject_len + 3).copied()
         && matches!(comp_word, "more" | "fewer" | "less")
-        && matches!(
-            filtered.get(subject_len + 4).copied(),
-            Some("card" | "cards")
-        )
-        && filtered.get(subject_len + 5).copied() == Some("in")
-        && filtered.get(subject_len + 6).copied() == Some("hand")
+        && word_slice_at_is_any(&filtered, subject_len + 4, &["card", "cards"])
+        && word_slice_at_is(&filtered, subject_len + 5, "in")
+        && word_slice_at_is(&filtered, subject_len + 6, "hand")
         && filtered.len() == subject_len + 7
     {
         return Ok(if comp_word == "more" {
@@ -2104,7 +2066,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered) {
-        let draw_count_idx = if matches!(filtered.get(subject_len).copied(), Some("drew")) {
+        let draw_count_idx = if word_slice_at_is(&filtered, subject_len, "drew") {
             Some(subject_len + 1)
         } else if matches!(
             filtered.get(subject_len..subject_len + 2),
@@ -2120,10 +2082,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                 .parse::<i32>()
                 .ok()
                 .or_else(|| parse_named_number(count_word).map(|n| n as i32))
-            && filtered.get(count_idx + 1).copied() == Some("or")
-            && filtered.get(count_idx + 2).copied() == Some("more")
-            && matches!(filtered.get(count_idx + 3).copied(), Some("card" | "cards"))
-            && filtered.get(count_idx + 4..count_idx + 6) == Some(&["this", "turn"][..])
+            && word_slice_at_is(&filtered, count_idx + 1, "or")
+            && word_slice_at_is(&filtered, count_idx + 2, "more")
+            && word_slice_at_is_any(&filtered, count_idx + 3, &["card", "cards"])
+            && word_slice_starts_with(&filtered[count_idx + 4..], &["this", "turn"])
             && filtered.len() == count_idx + 6
             && let Some(player_filter) = player_filter_for_turn_value(player)
         {
@@ -2136,30 +2098,25 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
-        && filtered.get(subject_len).copied() == Some("had")
+        && word_slice_at_is(&filtered, subject_len, "had")
         && let Some(count_word) = filtered.get(subject_len + 1).copied()
         && let Some(count) = count_word
             .parse::<i32>()
             .ok()
             .or_else(|| parse_named_number(count_word).map(|n| n as i32))
-        && filtered.get(subject_len + 2).copied() == Some("or")
-        && filtered.get(subject_len + 3).copied() == Some("more")
-        && matches!(
-            filtered.get(subject_len + 4).copied(),
-            Some("land" | "lands")
+        && word_slice_at_is(&filtered, subject_len + 2, "or")
+        && word_slice_at_is(&filtered, subject_len + 3, "more")
+        && word_slice_at_is_any(&filtered, subject_len + 4, &["land", "lands"])
+        && word_slice_at_is_any(&filtered, subject_len + 5, &["enter", "entered"])
+        && word_slice_at_is(&filtered, subject_len + 6, "battlefield")
+        && word_slice_at_is(&filtered, subject_len + 7, "under")
+        && word_slice_at_is_any(
+            &filtered,
+            subject_len + 8,
+            &["your", "their", "that", "its"],
         )
-        && matches!(
-            filtered.get(subject_len + 5).copied(),
-            Some("enter" | "entered")
-        )
-        && filtered.get(subject_len + 6).copied() == Some("battlefield")
-        && filtered.get(subject_len + 7).copied() == Some("under")
-        && matches!(
-            filtered.get(subject_len + 8).copied(),
-            Some("your" | "their" | "that" | "its")
-        )
-        && filtered.get(subject_len + 9).copied() == Some("control")
-        && filtered.get(subject_len + 10..subject_len + 12) == Some(&["this", "turn"][..])
+        && word_slice_at_is(&filtered, subject_len + 9, "control")
+        && word_slice_starts_with(&filtered[subject_len + 10..], &["this", "turn"])
         && filtered.len() == subject_len + 12
         && let Some(player_filter) = player_filter_for_turn_value(player)
     {
@@ -2732,7 +2689,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if filtered.len() >= 4
         && word_slice_eq(&filtered[filtered.len() - 3..], &["cost", "was", "paid"])
     {
-        let start = usize::from(filtered.first().copied() == Some("the"));
+        let start = usize::from(word_slice_first_is(&filtered, "the"));
         if let Some(label) = mana_cost_label_from_words(&filtered[start..filtered.len() - 3]) {
             return Ok(PredicateAst::ThisSpellPaidLabel(label));
         }
@@ -2740,7 +2697,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if filtered.len() >= 4
         && word_slice_eq(&filtered[filtered.len() - 3..], &["cost", "wasnt", "paid"])
     {
-        let start = usize::from(filtered.first().copied() == Some("the"));
+        let start = usize::from(word_slice_first_is(&filtered, "the"));
         if let Some(label) = mana_cost_label_from_words(&filtered[start..filtered.len() - 3]) {
             return Ok(PredicateAst::Not(Box::new(
                 PredicateAst::ThisSpellPaidLabel(label),
@@ -2753,7 +2710,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             &["cost", "was", "not", "paid"],
         )
     {
-        let start = usize::from(filtered.first().copied() == Some("the"));
+        let start = usize::from(word_slice_first_is(&filtered, "the"));
         if let Some(label) = mana_cost_label_from_words(&filtered[start..filtered.len() - 4]) {
             return Ok(PredicateAst::Not(Box::new(
                 PredicateAst::ThisSpellPaidLabel(label),
@@ -2903,7 +2860,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                 | ["that", "permanent", "is", "attached", "to", ..]
         )
     {
-        let attached_start = if filtered.get(2).copied() == Some("is") {
+        let attached_start = if word_slice_at_is(&filtered, 2, "is") {
             5
         } else {
             4
@@ -2966,7 +2923,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         filtered.remove(1);
     }
 
-    let demonstrative_reference_len = if filtered.first().copied() == Some("it") {
+    let demonstrative_reference_len = if word_slice_first_is(&filtered, "it") {
         Some(1usize)
     } else if filtered.len() >= 2
         && filtered[0] == "that"
@@ -3160,7 +3117,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
         if word_slice_eq_any(&descriptor_words, &[&["has", "toxic"], &["have", "toxic"]]) {
             let mut filter = ObjectFilter::default().with_ability_marker("toxic");
-            if filtered.get(1).copied() == Some("creature") {
+            if word_slice_at_is(&filtered, 1, "creature") {
                 filter.card_types.push(CardType::Creature);
             }
             return Ok(PredicateAst::ItMatches(filter));
@@ -3228,9 +3185,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                 {
                     return Ok(PredicateAst::ItIsLandCard);
                 }
-                if filtered.get(0).copied() == Some("that")
-                    && filtered.get(1).copied() == Some("enchantment")
-                {
+                if word_slice_starts_with(&filtered, &["that", "enchantment"]) {
                     return Ok(PredicateAst::TaggedMatches(
                         TagKey::from("triggering"),
                         filter,
@@ -3325,7 +3280,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
             .collect::<Vec<_>>();
         let mut right_words = filtered[or_idx + 1..].to_vec();
-        if right_words.first().copied() == Some("there") {
+        if word_slice_first_is(&right_words, "there") {
             right_words = right_words[1..].to_vec();
         }
         if word_slice_contains_word(&right_words, "graveyard")
@@ -3395,19 +3350,17 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         let mut exact_count: Option<u32> = None;
         if let Some(raw_count) = filtered.get(2)
             && let Some(parsed_count) = parse_named_number(raw_count)
-            && filtered.get(3).copied() == Some("or")
-            && filtered.get(4).copied() == Some("more")
+            && word_slice_starts_with(&filtered[3..], &["or", "more"])
         {
             min_count = Some(parsed_count);
             filter_start = 5;
-        } else if filtered.get(2).copied() == Some("exactly")
+        } else if word_slice_at_is(&filtered, 2, "exactly")
             && let Some(raw_count) = filtered.get(3)
             && let Some(parsed_count) = parse_named_number(raw_count)
         {
             exact_count = Some(parsed_count);
             filter_start = 4;
-        } else if filtered.get(2).copied() == Some("at")
-            && filtered.get(3).copied() == Some("least")
+        } else if word_slice_starts_with(&filtered[2..], &["at", "least"])
             && let Some(raw_count) = filtered.get(4)
             && let Some(parsed_count) = parse_named_number(raw_count)
         {
@@ -3475,19 +3428,17 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         let mut exact_count: Option<u32> = None;
         if let Some(raw_count) = filtered.get(3)
             && let Some(parsed_count) = parse_named_number(raw_count)
-            && filtered.get(4).copied() == Some("or")
-            && filtered.get(5).copied() == Some("more")
+            && word_slice_starts_with(&filtered[4..], &["or", "more"])
         {
             min_count = Some(parsed_count);
             filter_start = 6;
-        } else if filtered.get(3).copied() == Some("exactly")
+        } else if word_slice_at_is(&filtered, 3, "exactly")
             && let Some(raw_count) = filtered.get(4)
             && let Some(parsed_count) = parse_named_number(raw_count)
         {
             exact_count = Some(parsed_count);
             filter_start = 5;
-        } else if filtered.get(3).copied() == Some("at")
-            && filtered.get(4).copied() == Some("least")
+        } else if word_slice_starts_with(&filtered[3..], &["at", "least"])
             && let Some(raw_count) = filtered.get(5)
             && let Some(parsed_count) = parse_named_number(raw_count)
         {
@@ -3640,12 +3591,12 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             &["you", "have", "citys", "blessing"],
             &["you", "have", "city", "blessing"],
         ],
-    ) || word_slice_starts_with(
+    ) || word_slice_starts_with_any(
         &filtered,
-        &["you", "have", "citys", "blessing", "for", "each"],
-    ) || word_slice_starts_with(
-        &filtered,
-        &["you", "have", "city", "blessing", "for", "each"],
+        &[
+            &["you", "have", "citys", "blessing", "for", "each"],
+            &["you", "have", "city", "blessing", "for", "each"],
+        ],
     ) {
         return Ok(PredicateAst::PlayerHasCitysBlessing {
             player: PlayerAst::You,

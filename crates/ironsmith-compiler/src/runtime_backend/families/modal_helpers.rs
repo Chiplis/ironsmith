@@ -2,19 +2,16 @@
 
 use crate::cards::builders::IfResultPredicate;
 
-use super::lexer::{OwnedLexToken, TokenWordView};
+use super::lexer::{OwnedLexToken, TokenWordView, word_slice_at_is, word_slice_contains_word};
 pub(crate) use super::util::{
-    find_activation_cost_start, replace_unbound_x_with_value, starts_with_activation_cost,
-    value_contains_unbound_x,
+    find_activation_cost_start, non_article_word_refs, replace_unbound_x_with_value,
+    starts_with_activation_cost, value_contains_unbound_x,
 };
 
 pub(crate) fn parse_if_result_predicate(tokens: &[OwnedLexToken]) -> Option<IfResultPredicate> {
     let word_view = TokenWordView::new(tokens);
-    let words: Vec<&str> = word_view
-        .to_word_refs()
-        .into_iter()
-        .filter(|word| !super::util::is_article(word))
-        .collect();
+    let raw_words = word_view.to_word_refs();
+    let words = non_article_word_refs(&raw_words);
     let is_result_verb = |word: &str| {
         matches!(
             word,
@@ -92,11 +89,8 @@ pub(crate) fn parse_if_result_predicate_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<IfResultPredicate> {
     let word_view = TokenWordView::new(tokens);
-    let words: Vec<&str> = word_view
-        .to_word_refs()
-        .into_iter()
-        .filter(|word| !super::util::is_article(word))
-        .collect();
+    let raw_words = word_view.to_word_refs();
+    let words = non_article_word_refs(&raw_words);
     let is_result_verb = |word: &str| {
         matches!(
             word,
@@ -161,7 +155,7 @@ pub(crate) fn parse_if_result_predicate_lexed(
     if words.len() >= 2
         && words[0] == "you"
         && (words[1] == "win" || words[1] == "won")
-        && (words.len() == 2 || words.iter().any(|word| *word == "clash"))
+        && (words.len() == 2 || word_slice_contains_word(&words, "clash"))
     {
         return Some(IfResultPredicate::Value(
             crate::effect::Comparison::GreaterThan(0),
@@ -201,7 +195,7 @@ pub(crate) fn parse_if_result_predicate_lexed(
     if words.len() >= 5
         && (words[0] == "that" || words[0] == "it")
         && words[1] == "spell"
-        && words.iter().any(|word| *word == "countered")
+        && word_slice_contains_word(&words, "countered")
         && words[words.len() - 2] == "this"
         && words[words.len() - 1] == "way"
     {
@@ -226,7 +220,7 @@ pub(crate) fn parse_if_result_predicate_lexed(
         && words[5] == "would"
         && words[6] == "die"
         && words[7] == "this"
-        && words.get(8) == Some(&"turn")
+        && word_slice_at_is(&words, 8, "turn")
     {
         return Some(IfResultPredicate::DiesThisWay);
     }

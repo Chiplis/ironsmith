@@ -14,16 +14,14 @@ use crate::object::CounterType;
 use crate::runtime_backend::effect_sentences;
 use crate::runtime_backend::front_end::lexer::{
     LexedClause, word_slice_contains_all_words, word_slice_eq, word_slice_eq_any,
-    word_slice_starts_with,
+    word_slice_find_word, word_slice_starts_with,
 };
 use crate::runtime_backend::object_filters::parse_object_filter_lexed;
-use crate::runtime_backend::util::{is_article, mana_pips_from_token, trim_commas};
+use crate::runtime_backend::util::{
+    mana_pips_from_token, non_article_token_word_refs, trim_commas,
+};
 use crate::target::PlayerFilter;
 use crate::zone::Zone;
-
-fn non_article_words(clause: LexedClause<'_>) -> Vec<&str> {
-    clause.word_refs_where(|word| !is_article(word))
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum GenericSequenceVerb {
@@ -154,7 +152,7 @@ pub(crate) fn parse_iterative_library_procedure_sequence(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let _shape = GenericSubjectVerbSequence::iterative_library_procedure();
     let first_clause = LexedClause::new(sentences[sentence_idx].lowered()).trimmed();
-    let first_words = non_article_words(first_clause);
+    let first_words = non_article_token_word_refs(first_clause.tokens());
     if !word_slice_eq(
         &first_words,
         &["exile", "top", "card", "of", "your", "library"],
@@ -163,7 +161,7 @@ pub(crate) fn parse_iterative_library_procedure_sequence(
     }
 
     let second_clause = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
-    let second_words = non_article_words(second_clause);
+    let second_words = non_article_token_word_refs(second_clause.tokens());
     let second_matches = word_slice_eq_any(
         &second_words,
         &[
@@ -182,7 +180,7 @@ pub(crate) fn parse_iterative_library_procedure_sequence(
     }
 
     let third_clause = LexedClause::new(sentences[sentence_idx + 2].lowered()).trimmed();
-    let third_words = non_article_words(third_clause);
+    let third_words = non_article_token_word_refs(third_clause.tokens());
     let third_matches = word_slice_eq(
         &third_words,
         &[
@@ -308,14 +306,10 @@ pub(crate) fn parse_each_player_shuffle_reveal_then_put_revealed_types_bottom(
             let extra_filter =
                 parse_object_filter_lexed(&second_tokens[extra_start..extra_end], false)?;
             for card_type in extra_filter.card_types {
-                if !battlefield_filter.card_types.contains(&card_type) {
-                    battlefield_filter.card_types.push(card_type);
-                }
+                crate::slice_primitives::push_unique(&mut battlefield_filter.card_types, card_type);
             }
             for subtype in extra_filter.subtypes {
-                if !battlefield_filter.subtypes.contains(&subtype) {
-                    battlefield_filter.subtypes.push(subtype);
-                }
+                crate::slice_primitives::push_unique(&mut battlefield_filter.subtypes, subtype);
             }
         }
     }
@@ -405,7 +399,7 @@ pub(crate) fn parse_damage_prevention_counter_sequence(
     };
 
     let second_clause = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
-    let second_words = non_article_words(second_clause);
+    let second_words = non_article_token_word_refs(second_clause.tokens());
     if !word_slice_starts_with(
         &second_words,
         &["for", "each", "1", "damage", "prevented", "this", "way"],
@@ -414,7 +408,7 @@ pub(crate) fn parse_damage_prevention_counter_sequence(
         return Ok(None);
     }
 
-    let Some(on_idx) = second_words.iter().position(|word| *word == "on") else {
+    let Some(on_idx) = word_slice_find_word(&second_words, "on") else {
         return Ok(None);
     };
     let target_words = &second_words[on_idx + 1..];

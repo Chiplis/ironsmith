@@ -19,19 +19,21 @@ use super::super::keyword_static::{
     parse_pt_modifier_values,
 };
 use super::super::lexer::{
-    LexedClause, OwnedLexToken, contains_token_word, word_slice_contains_any_word,
+    LexedClause, OwnedLexToken, contains_token_word, token_slice_first_is,
+    token_slice_first_is_any, word_slice_at_is, word_slice_at_is_any, word_slice_contains_any_word,
     word_slice_contains_phrase, word_slice_contains_word, word_slice_ends_with, word_slice_eq,
     word_slice_eq_any, word_slice_find_any_phrase_start, word_slice_find_phrase_start,
-    word_slice_find_word, word_slice_find_word_where, word_slice_matching_phrase,
-    word_slice_starts_with, word_slice_strip_prefix_value,
+    word_slice_find_word, word_slice_find_word_where, word_slice_first_is, word_slice_first_is_any,
+    word_slice_matching_phrase, word_slice_starts_with, word_slice_strip_prefix_value,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::permission_helpers::parse_cast_or_play_tagged_clause;
 use super::super::token_primitives::find_index as find_token_index;
 use super::super::util::{
     contains_until_end_of_turn, parse_card_type, parse_color, parse_number, parse_subject,
-    parse_target_phrase, parse_value, parser_trace, parser_trace_stack, span_from_tokens,
-    starts_with_until_end_of_turn, token_index_for_word_index, trim_commas,
+    parse_subtype_flexible, parse_target_phrase, parse_value, parser_trace, parser_trace_stack,
+    span_from_tokens, starts_with_until_end_of_turn, token_index_for_word_index, trim_commas,
+    word_refs_except,
 };
 use super::chain_carry::{parse_leading_player_may, remove_first_word, remove_through_first_word};
 use super::clause_pattern_helpers::extract_subject_player;
@@ -387,10 +389,9 @@ fn parse_for_each_prevent_damage_clause(
         return Ok(None);
     };
 
-    let unless_idx = tokens[prevent_idx..]
-        .iter()
-        .position(|token| token.is_word("unless"))
-        .map(|idx| prevent_idx + idx);
+    let unless_idx =
+        crate::runtime_backend::lexer::find_token_word(&tokens[prevent_idx..], "unless")
+            .map(|idx| prevent_idx + idx);
     let prevent_tokens = trim_commas(match unless_idx {
         Some(idx) => &tokens[prevent_idx..idx],
         None => &tokens[prevent_idx..],
@@ -503,10 +504,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
 
     if let Some(player) = parse_leading_player_may(tokens) {
         let mut stripped = remove_through_first_word(tokens, "may");
-        if stripped
-            .first()
-            .is_some_and(|token| token.is_word("have") || token.is_word("has"))
-        {
+        if token_slice_first_is_any(&stripped, &["have", "has"]) {
             stripped.remove(0);
         }
         let mut effects = parse_effect_chain_with_subject_verb_primitives(&stripped)?;
@@ -516,7 +514,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(EffectAst::MayByPlayer { player, effects });
     }
 
-    if tokens.first().is_some_and(|token| token.is_word("may")) {
+    if token_slice_first_is(tokens, "may") {
         let stripped = remove_first_word(tokens, "may");
         let effects = parse_effect_chain_with_subject_verb_primitives(&stripped)?;
         return Ok(EffectAst::May { effects });
@@ -564,10 +562,9 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     }
 
     if word_slice_starts_with(&clause_words, &["all", "abilities", "and"])
-        && matches!(clause_words.get(3).copied(), Some("gain" | "gains"))
-        && let Some(gain_idx) = tokens
-            .iter()
-            .position(|token| token.is_word("gain") || token.is_word("gains"))
+        && word_slice_at_is_any(&clause_words, 3, &["gain", "gains"])
+        && let Some(gain_idx) =
+            crate::runtime_backend::lexer::find_token_any_word(tokens, &["gain", "gains"])
     {
         let ability_words = &clause_words[gain_idx + 1..];
         let mut abilities = Vec::new();
@@ -674,7 +671,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             == Some(["its", "controller", "has", "you", "draw", "a", "card"].as_slice())
     {
         let choose_start = 3usize;
-        if clause_words.get(choose_start) == Some(&"choose") {
+        if word_slice_at_is(&clause_words, choose_start, "choose") {
             let target_token_start =
                 token_index_for_word_index(tokens, choose_start + 1).unwrap_or(tokens.len());
             let target_token_end =
@@ -726,7 +723,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(effect);
     }
 
-    let choice_words = if clause_words.first().copied() == Some("you") {
+    let choice_words = if word_slice_first_is(&clause_words, "you") {
         &clause_words[1..]
     } else {
         &clause_words[..]
@@ -741,7 +738,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         ));
     }
 
-    if matches!(choice_words, ["choose", "odd", "or", "even"]) {
+    if word_slice_eq(choice_words, &["choose", "odd", "or", "even"]) {
         return Ok(EffectAst::subject_verb_choose_named_option(
             crate::cards::builders::PlayerAst::Implicit,
             vec!["odd".to_string(), "even".to_string()],
@@ -779,7 +776,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         ));
     }
 
-    if matches!(clause_words.first().copied(), Some("choose" | "chooses"))
+    if word_slice_first_is_any(&clause_words, &["choose", "chooses"])
         && word_slice_contains_word(&clause_words, "target")
         && (word_slice_contains_word(&clause_words, "player")
             || word_slice_contains_word(&clause_words, "players"))
@@ -795,7 +792,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         }
     }
 
-    if matches!(clause_words.first().copied(), Some("choose" | "chooses"))
+    if word_slice_first_is_any(&clause_words, &["choose", "chooses"])
         && word_slice_contains_word(&clause_words, "target")
     {
         let target_tokens = trim_commas(&tokens[1..]);
@@ -858,10 +855,9 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             )));
         }
         let mut idx = 3usize;
-        if tail_words.get(idx) == Some(&"this") && tail_words.get(idx + 1) == Some(&"turn") {
+        if word_slice_starts_with(&tail_words[idx..], &["this", "turn"]) {
             idx += 2;
-        } else if tail_words.get(idx) == Some(&"this") && tail_words.get(idx + 1) == Some(&"combat")
-        {
+        } else if word_slice_starts_with(&tail_words[idx..], &["this", "combat"]) {
             idx += 2;
         }
         if idx != tail_words.len() {
@@ -888,7 +884,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         );
     }
 
-    if tokens.first().is_some_and(|token| token.is_word("target")) && find_verb(tokens).is_none() {
+    if token_slice_first_is(tokens, "target") && find_verb(tokens).is_none() {
         let looks_like_restriction_clause = find_negation_span(tokens).is_some()
             || word_slice_contains_any_word(
                 &clause_words,
@@ -910,7 +906,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         .iter()
         .position(|word| matches!(*word, "choose" | "chooses"))
         && choose_word_idx > 0
-        && clause_words.get(choose_word_idx + 1) == Some(&"target")
+        && word_slice_at_is(&clause_words, choose_word_idx + 1, "target")
         && let Some(target_token_idx) = tokens
             .iter()
             .enumerate()
@@ -958,8 +954,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(EffectAst::subject_verb_clear_suspected(None));
     }
 
-    if clause_words.first() == Some(&"cast")
-        && clause_words.get(1) == Some(&"target")
+    if word_slice_starts_with(&clause_words, &["cast", "target"])
         && let Some(without_word_idx) = word_slice_find_phrase_start(
             &clause_words,
             &["without", "paying", "its", "mana", "cost"],
@@ -1182,12 +1177,8 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
                 let (power, toughness, duration, condition) =
                     parse_get_modifier_values_with_tail(modifier_tail, power, toughness)?;
 
-                let mut normalized_subject_words: Vec<&str> = subject_words
-                    .iter()
-                    .copied()
-                    .filter(|word| *word != "each")
-                    .collect();
-                if normalized_subject_words.first().copied() == Some("of") {
+                let mut normalized_subject_words = word_refs_except(&subject_words, &["each"]);
+                if word_slice_first_is(&normalized_subject_words, "of") {
                     normalized_subject_words.remove(0);
                 }
                 if word_slice_eq_any(&normalized_subject_words, &[&["it"], &["they"], &["them"]]) {
@@ -1403,7 +1394,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             && trailing_tokens.is_empty()
             && let Some(actions) = parsed_actions
             && !actions.is_empty()
-            && subject_words.first().copied() == Some("target")
+            && word_slice_first_is(&subject_words, "target")
         {
             let target = parse_target_phrase(subject_tokens)?;
             let abilities = actions.into_iter().map(GrantedAbilityAst::from).collect();
@@ -1462,7 +1453,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             && trailing_tokens.is_empty()
             && let Some(actions) = parsed_actions
             && !actions.is_empty()
-            && subject_words.first().copied() == Some("target")
+            && word_slice_first_is(&subject_words, "target")
         {
             let target = parse_target_phrase(subject_tokens)?;
             let abilities = actions.into_iter().map(GrantedAbilityAst::from).collect();
@@ -1497,7 +1488,7 @@ fn parse_passive_goad_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAs
     let Some(is_word_idx) = word_slice_find_word(&words, "is") else {
         return Ok(None);
     };
-    if !matches!(words.get(is_word_idx + 1).copied(), Some("goaded" | "goad")) {
+    if !word_slice_at_is_any(&words, is_word_idx + 1, &["goaded", "goad"]) {
         return Ok(None);
     }
 

@@ -1,9 +1,12 @@
 use super::*;
 use crate::runtime_backend::effect_sentences::SubjectVerbPrimitiveClause;
 use crate::runtime_backend::lexer::{
-    word_slice_contains_word, word_slice_eq, word_slice_matching_phrase, word_slice_matching_value,
-    word_slice_starts_with,
+    token_slice_at_is, token_slice_first_is, word_slice_at_is, word_slice_contains_phrase_or_empty,
+    word_slice_contains_word, word_slice_eq, word_slice_find_phrase_start_or_zero,
+    word_slice_first_is, word_slice_matching_phrase, word_slice_matching_value,
+    word_slice_starts_with, word_slice_starts_with_any,
 };
+use crate::runtime_backend::util::parse_subtype_flexible;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum DelayedReturnTimingAst {
@@ -93,7 +96,7 @@ pub(crate) fn wrap_return_with_delayed_timing(
 
 pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let rewritten_storage;
-    let tokens = if tokens.first().is_some_and(|token| token.is_word("to")) {
+    let tokens = if token_slice_first_is(tokens, "to") {
         let clause_words = crate::runtime_backend::token_word_refs(tokens);
         let hand_or_battlefield_idx = find_index(&clause_words, |word| {
             matches!(*word, "hand" | "hands" | "battlefield")
@@ -101,7 +104,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         if let Some(hand_or_battlefield_idx) = hand_or_battlefield_idx {
             let mut split_word_idx = hand_or_battlefield_idx + 1;
 
-            if clause_words.get(split_word_idx).copied() == Some("under") {
+            if word_slice_at_is(&clause_words, split_word_idx, "under") {
                 if let Some(control_rel_idx) =
                     find_index(&clause_words[split_word_idx + 1..], |word| {
                         *word == "control"
@@ -213,7 +216,9 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
 
     let mut destination_words = crate::runtime_backend::token_word_refs(destination_tokens);
     let mut destination_excluded_subtypes: Vec<Subtype> = Vec::new();
-    if let Some(except_idx) = find_word_sequence_start(&destination_words, &["except", "for"]) {
+    if let Some(except_idx) =
+        word_slice_find_phrase_start_or_zero(&destination_words, &["except", "for"])
+    {
         let exception_words = &destination_words[except_idx + 2..];
         if exception_words.is_empty() {
             return Err(CardTextError::ParseError(format!(
@@ -225,9 +230,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             if matches!(*word, "and" | "or") {
                 continue;
             }
-            let Some(subtype) = parse_subtype_word(word)
-                .or_else(|| str_strip_suffix(word, "s").and_then(parse_subtype_word))
-            else {
+            let Some(subtype) = parse_subtype_flexible(word) else {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported return exception qualifier '{}' (clause: '{}')",
                     word,
@@ -255,7 +258,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     let transformed = grammar::contains_word(destination_tokens_full, "transformed");
     let converted = grammar::contains_word(destination_tokens_full, "converted");
     let return_controller =
-        if contains_word_sequence(&destination_words, &["under", "your", "control"]) {
+        if word_slice_contains_phrase_or_empty(&destination_words, &["under", "your", "control"]) {
             ReturnControllerAst::You
         } else if destination_words
             .iter()
@@ -296,7 +299,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         let right_words = crate::runtime_backend::token_word_refs(&right_tokens);
 
         let source_filter_for_words = |words: &[&str]| -> Option<ObjectFilter> {
-            if words.first().copied() != Some("this") {
+            if !word_slice_first_is(words, "this") {
                 return None;
             }
             let mut filter = ObjectFilter::source();
@@ -548,12 +551,10 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     };
 
     let mut count_value = None;
-    let (target_tokens, dynamic_count) = if target_words
-        .get(..2)
-        .is_some_and(|words| word_slice_eq(words, &["that", "many"]))
+    let (target_tokens, dynamic_count) = if word_slice_starts_with(&target_words, &["that", "many"])
     {
         let mut object_start = 2usize;
-        if target_words.get(object_start).copied() == Some("of") {
+        if word_slice_at_is(&target_words, object_start, "of") {
             object_start += 1;
         }
         let Some(token_start) = token_index_for_word_index(target_tokens, object_start) else {
@@ -639,19 +640,24 @@ pub(crate) fn parse_exchange(
             } else {
                 &share_words[..]
             };
-        let share_head = if share_head.first().copied() == Some("a") {
+        let share_head = if word_slice_first_is(share_head, "a") {
             &share_head[1..]
         } else {
             share_head
         };
 
-        let shared_type = if word_slice_starts_with(share_head, &["permanent", "type"])
-            || word_slice_starts_with(share_head, &["one", "of", "those", "permanent", "types"])
-        {
+        let shared_type = if word_slice_starts_with_any(
+            share_head,
+            &[
+                &["permanent", "type"],
+                &["one", "of", "those", "permanent", "types"],
+            ],
+        ) {
             SharedTypeConstraintAst::PermanentType
-        } else if word_slice_starts_with(share_head, &["card", "type"])
-            || word_slice_starts_with(share_head, &["one", "of", "those", "types"])
-        {
+        } else if word_slice_starts_with_any(
+            share_head,
+            &[&["card", "type"], &["one", "of", "those", "types"]],
+        ) {
             SharedTypeConstraintAst::CardType
         } else {
             return Err(CardTextError::ParseError(format!(
@@ -859,21 +865,23 @@ pub(crate) fn parse_exchange(
     }
     let zone_exchange = if word_slice_starts_with(&clause_words, &["your"]) {
         Some((PlayerAst::You, 1))
-    } else if word_slice_starts_with(&clause_words, &["target", "player"])
-        || word_slice_starts_with(&clause_words, &["target", "players"])
-    {
+    } else if word_slice_starts_with_any(
+        &clause_words,
+        &[&["target", "player"], &["target", "players"]],
+    ) {
         Some((PlayerAst::Target, 2))
-    } else if word_slice_starts_with(&clause_words, &["target", "opponent"])
-        || word_slice_starts_with(&clause_words, &["target", "opponents"])
-    {
+    } else if word_slice_starts_with_any(
+        &clause_words,
+        &[&["target", "opponent"], &["target", "opponents"]],
+    ) {
         Some((PlayerAst::TargetOpponent, 2))
-    } else if word_slice_starts_with(&clause_words, &["an", "opponent"])
-        || word_slice_starts_with(&clause_words, &["opponent"])
-        || word_slice_starts_with(&clause_words, &["opponents"])
-    {
+    } else if word_slice_starts_with_any(
+        &clause_words,
+        &[&["an", "opponent"], &["opponent"], &["opponents"]],
+    ) {
         Some((
             PlayerAst::Opponent,
-            if clause_words.first().copied() == Some("an") {
+            if word_slice_first_is(&clause_words, "an") {
                 2
             } else {
                 1
@@ -886,7 +894,7 @@ pub(crate) fn parse_exchange(
         && let Some(zone1) = clause_words
             .get(consumed)
             .and_then(|word| parse_zone_word(*word))
-        && clause_words.get(consumed + 1).copied() == Some("and")
+        && word_slice_at_is(&clause_words, consumed + 1, "and")
         && let Some(zone2) = clause_words
             .get(consumed + 2)
             .and_then(|word| parse_zone_word(*word))
@@ -963,7 +971,7 @@ pub(crate) fn parse_exchange(
         count = value;
         idx += used;
     }
-    if tokens.get(idx).is_some_and(|token| token.is_word("target")) {
+    if token_slice_at_is(&tokens, idx, "target") {
         idx += 1;
     }
     if idx >= tokens.len() {

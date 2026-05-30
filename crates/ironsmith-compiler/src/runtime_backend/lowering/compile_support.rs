@@ -53,12 +53,15 @@ use crate::zone::Zone;
 #[allow(unused_imports)]
 use std::collections::HashMap;
 
-use super::activation_and_restrictions::{contains_word_sequence, find_word_sequence_start};
 use super::token_primitives::{
     find_index, find_window_by, slice_contains, str_contains, str_find, str_split_once,
     str_split_once_char, str_starts_with, str_strip_suffix,
 };
-use crate::runtime_backend::lexer::word_slice_contains_word;
+use crate::runtime_backend::lexer::{
+    word_slice_contains_any_phrase, word_slice_contains_phrase,
+    word_slice_contains_phrase_or_empty, word_slice_contains_word,
+    word_slice_find_phrase_start_or_zero,
+};
 
 use super::effect_ast_traversal::{
     assert_effect_ast_variant_coverage, for_each_nested_effects, for_each_nested_effects_mut,
@@ -1875,32 +1878,31 @@ pub(crate) fn token_inline_noncreature_spell_each_opponent_damage_amount(
         })
         .filter(|word| !word.is_empty())
         .collect();
-    let has_noncreature_cast_trigger = find_window_by(&words, 6, |window| {
-        window == ["whenever", "you", "cast", "a", "noncreature", "spell"]
-    })
-    .is_some()
-        || find_window_by(&words, 5, |window| {
-            window == ["whenever", "you", "cast", "noncreature", "spell"]
-        })
-        .is_some();
+    let has_noncreature_cast_trigger = word_slice_contains_any_phrase(
+        &words,
+        &[
+            &["whenever", "you", "cast", "a", "noncreature", "spell"],
+            &["whenever", "you", "cast", "noncreature", "spell"],
+        ],
+    );
     if !has_noncreature_cast_trigger {
         return None;
     }
-    let has_damage_subject = find_window_by(&words, 3, |window| {
-        window == ["this", "token", "deals"]
-            || window == ["this", "creature", "deals"]
-            || window == ["this", "token", "deal"]
-            || window == ["this", "creature", "deal"]
-    })
-    .is_some()
-        || find_window_by(&words, 2, |window| {
-            window == ["it", "deals"] || window == ["it", "deal"]
-        })
-        .is_some();
+    let has_damage_subject = word_slice_contains_any_phrase(
+        &words,
+        &[
+            &["this", "token", "deals"],
+            &["this", "creature", "deals"],
+            &["this", "token", "deal"],
+            &["this", "creature", "deal"],
+            &["it", "deals"],
+            &["it", "deal"],
+        ],
+    );
     if !has_damage_subject {
         return None;
     }
-    if find_window_by(&words, 3, |window| window == ["to", "each", "opponent"]).is_none() {
+    if !word_slice_contains_phrase(&words, &["to", "each", "opponent"]) {
         return None;
     }
     parse_deals_damage_amount(&words)
@@ -1983,7 +1985,7 @@ pub(crate) fn parse_equipment_rules_text(words: &[&str], source_text: &str) -> O
     }
 
     if lines.is_empty() {
-        let has_plus_one = find_window_by(words, 2, |window| window == ["gets", "+1/+1"]).is_some();
+        let has_plus_one = word_slice_contains_phrase(words, &["gets", "+1/+1"]);
         let mut granted_keywords: Vec<&str> = Vec::new();
         for keyword in [
             "vigilance",
@@ -2320,7 +2322,7 @@ fn apply_quoted_token_keyword_rules_text(
 }
 
 fn token_cumulative_upkeep_text_from_words(words: &[&str]) -> Option<String> {
-    let upkeep_idx = find_word_sequence_start(words, &["cumulative", "upkeep"])?;
+    let upkeep_idx = word_slice_find_phrase_start_or_zero(words, &["cumulative", "upkeep"])?;
     let mut cost_symbols = Vec::new();
     for word in &words[upkeep_idx + 2..] {
         if matches!(*word, "when" | "whenever" | "at") {
@@ -3071,7 +3073,8 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
     let has_word = |needle: &str| word_slice_contains_word(words.as_slice(), needle);
     let has_words = |needles: &[&str]| needles.iter().all(|needle| has_word(needle));
     let has_any_word = |needles: &[&str]| needles.iter().any(|needle| has_word(needle));
-    let has_phrase = |phrase: &[&str]| contains_word_sequence(words.as_slice(), phrase);
+    let has_phrase =
+        |phrase: &[&str]| word_slice_contains_phrase_or_empty(words.as_slice(), phrase);
     let has_text = |needle: &str| str_contains(lower.as_str(), needle);
     let has_explicit_pt = words.iter().any(|word| parse_token_pt(word).is_some());
     let has_equipment_rules_subject =
@@ -3816,27 +3819,28 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             "this", "token", "gets", "+1/+1", "for", "each", "card", "named",
         ]) && has_any_word(&["graveyard", "graveyards"])
         {
-            let card_name = find_word_sequence_start(words.as_slice(), &["card", "named"])
-                .and_then(|named_card_idx| {
-                    let start = named_card_idx + 2;
-                    let end = find_index(&words[start..], |word| {
-                        matches!(
-                            *word,
-                            "in" | "from"
-                                | "and"
-                                | "or"
-                                | "with"
-                                | "that"
-                                | "where"
-                                | "when"
-                                | "whenever"
-                        )
+            let card_name =
+                word_slice_find_phrase_start_or_zero(words.as_slice(), &["card", "named"])
+                    .and_then(|named_card_idx| {
+                        let start = named_card_idx + 2;
+                        let end = find_index(&words[start..], |word| {
+                            matches!(
+                                *word,
+                                "in" | "from"
+                                    | "and"
+                                    | "or"
+                                    | "with"
+                                    | "that"
+                                    | "where"
+                                    | "when"
+                                    | "whenever"
+                            )
+                        })
+                        .map(|offset| start + offset)
+                        .unwrap_or(words.len());
+                        (end > start).then(|| title_case_words(&words[start..end]))
                     })
-                    .map(|offset| start + offset)
-                    .unwrap_or(words.len());
-                    (end > start).then(|| title_case_words(&words[start..end]))
-                })
-                .or_else(|| extract_named_card_name(&words, lower.as_str()));
+                    .or_else(|| extract_named_card_name(&words, lower.as_str()));
             if let Some(card_name) = card_name {
                 let mut named_filter = ObjectFilter::default();
                 named_filter.zone = Some(Zone::Graveyard);

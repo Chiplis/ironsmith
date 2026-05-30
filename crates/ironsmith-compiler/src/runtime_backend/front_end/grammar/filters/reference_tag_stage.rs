@@ -73,25 +73,27 @@ pub(super) fn parse_object_filter_inner(
             let fragment_words = fragment_words_view.to_word_refs();
             if word_slice_starts_with(&fragment_words, &["a", "single"]) {
                 count = Some(crate::effect::ChoiceCount::exactly(1));
-                let start = normalized_token_index_for_word_index(&fragment_tokens, 2)
+                let start = fragment_words_view
+                    .token_index_for_word_index(2)
                     .unwrap_or(fragment_tokens.len());
                 fragment_tokens.drain(..start);
-            } else if fragment_words.first().copied() == Some("single") {
+            } else if word_slice_first_is(&fragment_words, "single") {
                 count = Some(crate::effect::ChoiceCount::exactly(1));
-                let start = normalized_token_index_for_word_index(&fragment_tokens, 1)
+                let start = fragment_words_view
+                    .token_index_for_word_index(1)
                     .unwrap_or(fragment_tokens.len());
                 fragment_tokens.drain(..start);
             }
 
             let target_words_view = GrammarFilterNormalizedWords::new(&fragment_tokens);
             let target_words = target_words_view.to_word_refs();
-            if starts_with_any_filter_phrase(&target_words, &[&["you"]]) {
+            if word_slice_starts_with_any(&target_words, &[&["you"]]) {
                 return Ok((Some(PlayerFilter::You), None, only, count));
             }
-            if starts_with_any_filter_phrase(&target_words, &[&["opponent"], &["opponents"]]) {
+            if word_slice_starts_with_any(&target_words, &[&["opponent"], &["opponents"]]) {
                 return Ok((Some(PlayerFilter::Opponent), None, only, count));
             }
-            if starts_with_any_filter_phrase(&target_words, &[&["player"], &["players"]]) {
+            if word_slice_starts_with_any(&target_words, &[&["player"], &["players"]]) {
                 return Ok((Some(PlayerFilter::Any), None, only, count));
             }
 
@@ -116,8 +118,7 @@ pub(super) fn parse_object_filter_inner(
         let target_words_view = GrammarFilterNormalizedWords::new(target_tokens);
         let target_words = target_words_view.to_word_refs();
         if let Some(or_word_idx) = lower_words_find_index(&target_words, |word| word == "or")
-            && let Some(or_token_idx) =
-                normalized_token_index_for_word_index(target_tokens, or_word_idx)
+            && let Some(or_token_idx) = target_words_view.token_index_for_word_index(or_word_idx)
         {
             let left_tokens = trim_commas(&target_tokens[..or_token_idx]);
             let right_tokens = trim_commas(&target_tokens[or_token_idx + 1..]);
@@ -297,11 +298,8 @@ pub(super) fn parse_object_filter_inner(
     let mut segment_tokens = base_tokens.clone();
 
     let all_words_view = GrammarFilterNormalizedWords::new(&base_tokens);
-    let all_words_with_articles: Vec<&str> = all_words_view
-        .to_word_refs()
-        .into_iter()
-        .filter(|word| *word != "instead")
-        .collect();
+    let raw_words_with_articles = all_words_view.to_word_refs();
+    let all_words_with_articles = word_refs_except(&raw_words_with_articles, &["instead"]);
 
     let map_non_article_index = |non_article_idx: usize| -> Option<usize> {
         let mut seen = 0usize;
@@ -334,11 +332,7 @@ pub(super) fn parse_object_filter_inner(
         None
     };
 
-    let mut all_words: Vec<&str> = all_words_with_articles
-        .iter()
-        .copied()
-        .filter(|word| !is_article(word))
-        .collect();
+    let mut all_words = non_article_word_refs(&all_words_with_articles);
 
     try_apply_distinct_powers_clause(&mut filter, &mut all_words);
     try_apply_distinct_creature_types_clause(&mut filter, &mut all_words);
@@ -388,7 +382,7 @@ pub(super) fn parse_object_filter_inner(
 
     try_apply_drawn_this_turn_clause(&mut filter, &mut all_words, &mut segment_tokens);
 
-    if contains_any_filter_phrase(
+    if word_slice_contains_any_phrase(
         &all_words,
         &[
             &["blocked", "by", "one", "of", "those"],
@@ -437,20 +431,20 @@ pub(super) fn parse_object_filter_inner(
 
     strip_object_filter_face_state_words(&mut filter, &mut all_words);
 
-    if contains_any_filter_phrase(&all_words, &[&["entered", "this", "turn"]]) {
+    if word_slice_contains_any_phrase(&all_words, &[&["entered", "this", "turn"]]) {
         return Err(CardTextError::ParseError(format!(
             "unsupported entered-this-turn object filter (clause: '{}')",
             all_words.join(" ")
         )));
     }
-    let has_counter_state_or_clause = contains_any_filter_phrase(
+    let has_counter_state_or_clause = word_slice_contains_any_phrase(
         &all_words,
         &[
             &["counter", "on", "it", "or"],
             &["counter", "on", "them", "or"],
         ],
     );
-    let has_supported_suspended_disjunction = contains_any_filter_phrase(
+    let has_supported_suspended_disjunction = word_slice_contains_any_phrase(
         &all_words,
         &[&["or", "suspended", "card"], &["or", "suspended", "cards"]],
     );
@@ -479,7 +473,7 @@ pub(super) fn parse_object_filter_inner(
     )?;
 
     let _ = try_apply_color_count_phrase(&mut filter, &mut all_words)?;
-    let has_power_or_toughness_clause = contains_any_filter_phrase(
+    let has_power_or_toughness_clause = word_slice_contains_any_phrase(
         &all_words,
         &[&["power", "or", "toughness"], &["toughness", "or", "power"]],
     );
@@ -500,9 +494,11 @@ pub(super) fn parse_object_filter_inner(
     }
     let source_linked_exile_reference = reference_stage.source_linked_exile_reference;
 
-    let references_target_player =
-        contains_any_filter_phrase(&all_words, &[&["target", "player"], &["target", "players"]]);
-    let references_target_opponent = contains_any_filter_phrase(
+    let references_target_player = word_slice_contains_any_phrase(
+        &all_words,
+        &[&["target", "player"], &["target", "players"]],
+    );
+    let references_target_opponent = word_slice_contains_any_phrase(
         &all_words,
         &[&["target", "opponent"], &["target", "opponents"]],
     );
@@ -617,7 +613,7 @@ pub(super) fn parse_object_filter_inner(
         without_idx += 1;
     }
 
-    let has_tap_activated_ability = contains_any_filter_phrase(
+    let has_tap_activated_ability = word_slice_contains_any_phrase(
         &all_words,
         &[
             &[
@@ -796,7 +792,7 @@ pub(super) fn parse_object_filter_inner(
         } else {
             &[]
         };
-        if axis == "power" && value_tokens.first().copied() == Some("and") {
+        if axis == "power" && word_slice_first_is(value_tokens, "and") {
             idx += 1;
             continue;
         }
@@ -842,7 +838,7 @@ pub(super) fn parse_object_filter_inner(
 
     apply_parity_filter_phrases(&clause_words, &mut filter);
 
-    if contains_any_filter_phrase(
+    if word_slice_contains_any_phrase(
         &clause_words,
         &[&["power", "greater", "than", "its", "base", "power"]],
     ) {
@@ -966,7 +962,7 @@ pub(super) fn parse_object_filter_inner(
         }
     }
 
-    if contains_any_filter_phrase(&all_words, &[&["attacked", "this", "turn"]]) {
+    if word_slice_contains_any_phrase(&all_words, &[&["attacked", "this", "turn"]]) {
         filter.attacked_this_turn = true;
     }
 
@@ -980,13 +976,13 @@ pub(super) fn parse_object_filter_inner(
                     saw_spell = true;
                 }
             }
-            "chosen" if all_words.get(idx + 1).copied() == Some("color") => {
+            "chosen" if word_slice_at_is(&all_words, idx + 1, "color") => {
                 filter.chosen_color = true;
             }
-            "chosen" if all_words.get(idx + 1).copied() == Some("type") => {
+            "chosen" if word_slice_at_is(&all_words, idx + 1, "type") => {
                 filter.chosen_creature_type = true;
             }
-            "nonchosen" if all_words.get(idx + 1).copied() == Some("type") => {
+            "nonchosen" if word_slice_at_is(&all_words, idx + 1, "type") => {
                 filter.excluded_chosen_creature_type = true;
             }
             "token" | "tokens" => filter.token = true,
@@ -1103,10 +1099,8 @@ pub(super) fn parse_object_filter_inner(
 
     for segment in &segments {
         let segment_words_view = GrammarFilterNormalizedWords::new(segment);
-        let segment_words: Vec<String> = segment_words_view
-            .to_word_refs()
+        let segment_words: Vec<String> = non_article_word_refs(&segment_words_view.to_word_refs())
             .into_iter()
-            .filter(|word| !is_article(word))
             .map(ToString::to_string)
             .collect();
         segment_words_lists.push(segment_words.clone());
@@ -1131,9 +1125,10 @@ pub(super) fn parse_object_filter_inner(
 
     if segments.len() > 1 {
         let qualifier_in_all_segments = |qualifier: &str| {
-            segment_words_lists
-                .iter()
-                .all(|segment| segment.iter().any(|word| word == qualifier))
+            segment_words_lists.iter().all(|segment| {
+                let segment_refs = segment.iter().map(String::as_str).collect::<Vec<_>>();
+                word_slice_contains_word(&segment_refs, qualifier)
+            })
         };
         let shared_leading_qualifier = |qualifier: &str, opposite: &str| {
             if qualifier_in_all_segments(qualifier) {
@@ -1145,13 +1140,14 @@ pub(super) fn parse_object_filter_inner(
             let Some(first_segment) = segment_words_lists.first() else {
                 return false;
             };
-            if !first_segment.iter().any(|word| word == qualifier) {
+            let first_segment_refs = first_segment.iter().map(String::as_str).collect::<Vec<_>>();
+            if !word_slice_contains_word(&first_segment_refs, qualifier) {
                 return false;
             }
-            segment_words_lists
-                .iter()
-                .skip(1)
-                .all(|segment| !segment.iter().any(|word| word == opposite))
+            segment_words_lists.iter().skip(1).all(|segment| {
+                let segment_refs = segment.iter().map(String::as_str).collect::<Vec<_>>();
+                !word_slice_contains_word(&segment_refs, opposite)
+            })
         };
 
         if filter.tapped && !shared_leading_qualifier("tapped", "untapped") {
@@ -1192,9 +1188,9 @@ pub(super) fn parse_object_filter_inner(
             }
         }
     } else if let Some(types) = segment_types.into_iter().next() {
-        let has_and = contains_filter_word(&all_words, "and");
-        let has_or = contains_filter_word(&all_words, "or");
-        let has_and_or = contains_filter_word(&all_words, "and/or");
+        let has_and = word_slice_contains_word(&all_words, "and");
+        let has_or = word_slice_contains_word(&all_words, "or");
+        let has_and_or = word_slice_contains_word(&all_words, "and/or");
         if types.len() > 1 {
             if has_and || has_or || has_and_or {
                 filter.card_types = types;
@@ -1224,10 +1220,9 @@ pub(super) fn parse_object_filter_inner(
     let and_segment_words_lists: Vec<Vec<String>> = and_segments
         .iter()
         .map(|segment| {
-            GrammarFilterNormalizedWords::new(segment)
-                .to_word_refs()
+            let words = GrammarFilterNormalizedWords::new(segment).to_word_refs();
+            non_article_word_refs(&words)
                 .into_iter()
-                .filter(|word| !is_article(word))
                 .map(ToString::to_string)
                 .collect()
         })
@@ -1482,9 +1477,9 @@ pub(super) fn parse_object_filter_inner(
         apply_basic_land_exception(&mut filter);
     }
 
-    if (contains_filter_word(&all_words, "and")
-        || contains_filter_word(&all_words, "or")
-        || contains_filter_word(&all_words, "and/or"))
+    if (word_slice_contains_word(&all_words, "and")
+        || word_slice_contains_word(&all_words, "or")
+        || word_slice_contains_word(&all_words, "and/or"))
         && !filter.card_types.is_empty()
     {
         filter.all_card_types.clear();
@@ -1656,11 +1651,7 @@ pub(super) fn parse_object_filter_inner(
     // absorbed into the first filter).
     if strict {
         let input_words_view = GrammarFilterNormalizedWords::new(&tokens);
-        let input_words: Vec<&str> = input_words_view
-            .to_word_refs()
-            .into_iter()
-            .filter(|word| !is_article(word))
-            .collect();
+        let input_words = non_article_word_refs(&input_words_view.to_word_refs());
 
         // "and each" / "and every" signals a compound count source when
         // the word after "each"/"every" introduces a new filter (type word,
@@ -1717,7 +1708,8 @@ fn relation_clause_is_inside_aggregate_scope(words: &[&str], relation_start: usi
     let has_aggregate = prefix
         .iter()
         .any(|word| matches!(*word, "greatest" | "least" | "total"));
-    let has_scope_marker = prefix.iter().any(|word| matches!(*word, "among" | "of"));
+    let has_scope_marker =
+        crate::runtime_backend::lexer::word_slice_contains_any_word(prefix, &["among", "of"]);
     has_aggregate && has_scope_marker
 }
 
@@ -1754,11 +1746,7 @@ fn strip_other_than_basic_land_cards_clause(
 fn strip_other_than_basic_land_cards_tokens(segment_tokens: &mut Vec<OwnedLexToken>) {
     let mut idx = 0usize;
     while idx + 3 < segment_tokens.len() {
-        if !segment_tokens[idx].is_word("other")
-            || !segment_tokens[idx + 1].is_word("than")
-            || !segment_tokens[idx + 2].is_word("basic")
-            || !segment_tokens[idx + 3].is_word("land")
-        {
+        if !token_slice_starts_with_at(segment_tokens, idx, &["other", "than", "basic", "land"]) {
             idx += 1;
             continue;
         }

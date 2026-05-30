@@ -68,9 +68,9 @@ use rewrite_support::{
 pub(crate) use rewrite_text_helpers::*;
 
 use super::activation_and_restrictions::{
-    find_word_sequence_start, infer_activated_functional_zones_lexed,
-    is_any_player_may_activate_sentence_lexed, parse_activation_cost,
-    parse_mana_spend_bonus_sentence_lexed, parse_mana_usage_restriction_sentence_lexed,
+    infer_activated_functional_zones_lexed, is_any_player_may_activate_sentence_lexed,
+    parse_activation_cost, parse_mana_spend_bonus_sentence_lexed,
+    parse_mana_usage_restriction_sentence_lexed,
 };
 use super::activation_and_restrictions::{
     parse_channel_line_lexed, parse_cycling_line_lexed, parse_equip_line_lexed,
@@ -102,7 +102,7 @@ use super::lexer::{
 };
 use super::lexer::{
     word_slice_contains_phrase, word_slice_contains_phrase_or_empty, word_slice_ends_with,
-    word_slice_find_phrase_start, word_slice_starts_with,
+    word_slice_find_phrase_start, word_slice_find_word, word_slice_starts_with,
 };
 use super::lowering_support::{
     rewrite_apply_instead_followup_statement_to_last_ability, rewrite_lower_prepared_ability,

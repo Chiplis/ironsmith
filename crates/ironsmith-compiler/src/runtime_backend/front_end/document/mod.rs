@@ -38,9 +38,11 @@ use super::keyword_registry::{parse_keyword_line_cst, rewrite_keyword_dash_parse
 use super::keyword_static::parse_if_this_spell_costs_less_to_cast_line_lexed;
 use super::leaf::{lower_activation_cost_cst, parse_activation_cost_tokens_rewrite};
 use super::lexer::{
-    LexStream, OwnedLexToken, TokenKind, TokenWordView, lex_line, render_token_slice,
-    token_word_refs, trim_lexed_commas, word_slice_ends_with_any, word_slice_eq,
-    word_slice_starts_with,
+    LexStream, OwnedLexToken, TokenKind, TokenWordView, contains_token_word_sequence,
+    find_token_kind, find_token_word, lex_line, render_token_slice, token_slice_ends_with,
+    token_slice_first_is, token_slice_last_kind, token_slice_starts_with,
+    token_slice_starts_with_any, token_slice_words_eq, token_slice_words_eq_any, token_word_refs,
+    trim_lexed_commas, word_slice_ends_with_any, word_slice_eq, word_slice_starts_with,
 };
 use super::preprocess::{
     PreprocessedDocument, PreprocessedItem, PreprocessedLine, preprocess_document,
@@ -179,7 +181,7 @@ fn strip_trailing_trigger_cap_suffix_tokens(
     } else {
         2
     };
-    if !head.last().is_some_and(|token| token.is_period()) {
+    if !token_slice_last_kind(head, TokenKind::Period) {
         return (tokens, None);
     }
     (&head[..head.len() - 1], Some(count))
@@ -426,38 +428,6 @@ fn looks_like_self_enters_with_x_counters_static_sentence(tokens: &[OwnedLexToke
     )
 }
 
-fn token_words_match(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
-    let words = TokenWordView::new(tokens);
-    words.len() == expected.len() && words.slice_eq(0, expected)
-}
-
-fn token_words_match_any(tokens: &[OwnedLexToken], expected: &[&[&str]]) -> bool {
-    expected
-        .iter()
-        .any(|phrase| token_words_match(tokens, phrase))
-}
-
-fn token_words_have_prefix(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
-    TokenWordView::new(tokens).starts_with(expected)
-}
-
-fn token_words_have_any_prefix(tokens: &[OwnedLexToken], expected: &[&[&str]]) -> bool {
-    expected
-        .iter()
-        .any(|phrase| token_words_have_prefix(tokens, phrase))
-}
-
-fn token_words_have_suffix(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
-    let words = TokenWordView::new(tokens);
-    words.len() >= expected.len() && words.slice_eq(words.len() - expected.len(), expected)
-}
-
-fn token_words_have_sequence(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
-    TokenWordView::new(tokens)
-        .find_phrase_start(expected)
-        .is_some()
-}
-
 pub(crate) fn split_compound_buff_and_unblockable_sentence(
     tokens: &[OwnedLexToken],
 ) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
@@ -549,8 +519,8 @@ fn looks_like_numeric_result_prefix_lexed(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn should_skip_keyword_action_static_probe(tokens: &[OwnedLexToken]) -> bool {
-    token_words_have_suffix(tokens, &["cant", "be", "blocked"])
-        && !token_words_have_any_prefix(tokens, &[&["this"], &["it"]])
+    token_slice_ends_with(tokens, &["cant", "be", "blocked"])
+        && !token_slice_starts_with_any(tokens, &[&["this"], &["it"]])
 }
 
 fn should_prefer_statement_before_static_for_nonpermanent_spell(
@@ -589,10 +559,10 @@ fn should_prefer_statement_before_static_for_nonpermanent_spell(
         return false;
     }
     is_nonpermanent_spell
-        && (token_words_have_any_prefix(tokens, &[&["each"], &["all"]])
-            || token_words_have_sequence(tokens, &["until", "end", "of", "turn"])
-            || (token_words_have_any_prefix(tokens, &[&["if"]])
-                && token_words_have_sequence(tokens, &["instead"])))
+        && (token_slice_starts_with_any(tokens, &[&["each"], &["all"]])
+            || contains_token_word_sequence(tokens, &["until", "end", "of", "turn"])
+            || (token_slice_starts_with_any(tokens, &[&["if"]])
+                && contains_token_word_sequence(tokens, &["instead"])))
 }
 
 fn looks_like_activation_cost_prefix(raw: &str) -> bool {
@@ -780,27 +750,21 @@ fn preflight_invalid_payment_keyword_lines(text: &str) -> Option<CardTextError> 
         };
 
         for segment in grammar::split_lexed_slices_on_commas_or_semicolons(&tokens) {
-            let (keyword, cost_start) = if segment.len() >= 2
-                && segment[0].is_word("cumulative")
-                && segment[1].is_word("upkeep")
-            {
-                ("cumulative upkeep", 2)
-            } else if segment.first().is_some_and(|token| token.is_word("echo")) {
-                ("echo", 1)
-            } else {
-                continue;
-            };
+            let (keyword, cost_start) =
+                if token_slice_starts_with(segment, &["cumulative", "upkeep"]) {
+                    ("cumulative upkeep", 2)
+                } else if token_slice_first_is(segment, "echo") {
+                    ("echo", 1)
+                } else {
+                    continue;
+                };
 
             let reminder_start = find_token_index(segment, |token| {
                 token.is_period() || token.kind == TokenKind::LParen
             })
             .or_else(|| {
                 if keyword == "echo" {
-                    segment
-                        .iter()
-                        .enumerate()
-                        .skip(1)
-                        .find_map(|(idx, token)| token.is_word("at").then_some(idx))
+                    find_token_word(&segment[1..], "at").map(|idx| idx + 1)
                 } else {
                     None
                 }
@@ -2004,12 +1968,11 @@ mod tests {
         let line = single_preprocessed_line(
             "Whenever this creature attacks, search your library for artifact card named.",
         );
-        let comma_idx = line
-            .tokens
-            .iter()
-            .enumerate()
-            .find_map(|(idx, token)| token.is_comma().then_some(idx))
-            .expect("expected triggered probe line to contain a comma");
+        let comma_idx = crate::runtime_backend::lexer::find_token_kind(
+            &line.tokens,
+            crate::runtime_backend::lexer::TokenKind::Comma,
+        )
+        .expect("expected triggered probe line to contain a comma");
         let probe = probe_triggered_split(
             &line.tokens[1..comma_idx],
             &line.tokens[comma_idx + 1..],
@@ -2529,7 +2492,7 @@ fn split_reveal_first_draw_line_rewrite_lexed(
     }
 
     let first_tokens = *sentences.first()?;
-    let first_is_reveal_first_draw = token_words_match_any(
+    let first_is_reveal_first_draw = token_slice_words_eq_any(
         first_tokens,
         &[
             &[
@@ -2554,7 +2517,7 @@ fn split_reveal_first_draw_line_rewrite_lexed(
     }
 
     let tail_tokens = clone_sentence_chunk_tokens(tokens, &sentences[1..])?;
-    if !token_words_have_prefix(&tail_tokens, &["whenever", "you", "reveal"]) {
+    if !token_slice_starts_with(&tail_tokens, &["whenever", "you", "reveal"]) {
         return None;
     }
 
@@ -2573,7 +2536,7 @@ fn classify_unsupported_line_reason(line: &PreprocessedLine) -> &'static str {
     if split_lexed_once_on_colon_outside_quotes(&line.tokens).is_some() {
         return "activated-line-not-yet-supported";
     }
-    if token_words_have_prefix(classification_tokens, &["choose"]) {
+    if token_slice_starts_with(classification_tokens, &["choose"]) {
         return "modal-header-not-yet-supported";
     }
     if matches!(

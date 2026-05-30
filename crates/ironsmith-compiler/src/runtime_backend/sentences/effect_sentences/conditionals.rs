@@ -1,6 +1,4 @@
-use super::super::activation_and_restrictions::activated_line_core::{
-    contains_word_sequence, find_word_sequence_start, parse_named_number,
-};
+use super::super::activation_and_restrictions::activated_line_core::parse_named_number;
 use super::super::grammar::effects as effect_grammar;
 use super::super::grammar::effects::{
     split_for_each_opponent_doesnt_clause_lexed, split_for_each_player_doesnt_clause_lexed,
