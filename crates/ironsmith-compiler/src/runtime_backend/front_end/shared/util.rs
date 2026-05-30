@@ -4482,6 +4482,34 @@ pub(crate) fn parse_prowl_line_lexed(
     }))
 }
 
+pub(crate) fn parse_sneak_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+    let Some(cost_tokens) = keyword_cost_tail_tokens(tokens, "sneak") else {
+        return Ok(None);
+    };
+    let (mana_cost, consumed) = leading_mana_cost_from_tokens(&cost_tokens).ok_or_else(|| {
+        CardTextError::ParseError("sneak keyword missing mana cost".to_string())
+    })?;
+    if consumed != cost_tokens.len() {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported sneak keyword cost (clause: '{}')",
+            render_token_slice(&cost_tokens)
+        )));
+    }
+
+    Ok(Some(AlternativeCastingMethod::Composed {
+        name: "Sneak",
+        total_cost: TotalCost::from_costs(vec![
+            Cost::mana(mana_cost),
+            Cost::effect(crate::effects::ReturnUnblockedAttackerToHandCostEffect::new()),
+        ]),
+        condition: Some(
+            crate::static_abilities::ThisSpellCostCondition::DuringDeclareBlockersStep,
+        ),
+    }))
+}
+
 pub(crate) fn parse_eternalize_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ManaCost>, CardTextError> {

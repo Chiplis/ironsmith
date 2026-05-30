@@ -857,7 +857,7 @@ fn greatest_commander_mana_value_owned_by_iterated(filter: &ObjectFilter) -> boo
     greatest_commander_mana_value_owned_by(filter, PlayerFilter::IteratedPlayer)
 }
 
-fn describe_each_player_may_discard_hand_draw_commander_value(
+fn describe_each_player_may_discard_hand_then_draw(
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {
     if for_players.filter != PlayerFilter::Any {
@@ -881,13 +881,23 @@ fn describe_each_player_may_discard_hand_draw_commander_value(
     if draw.player != PlayerFilter::IteratedPlayer {
         return None;
     }
-    let Value::GreatestManaValue(filter) = draw.count.unhinted() else {
-        return None;
-    };
-    greatest_commander_mana_value_owned_by_iterated(filter).then(|| {
-        "Each player may discard their hand and draw cards equal to the greatest mana value of a commander they own on the battlefield or in the command zone"
-            .to_string()
-    })
+    match draw.count.unhinted() {
+        Value::Fixed(count) if *count > 0 => {
+            let count_text = small_number_word(*count as u32).unwrap_or_else(|| count.to_string());
+            Some(format!(
+                "Each player may discard their hand and draw {count_text} cards"
+            ))
+        }
+        Value::GreatestManaValue(filter)
+            if greatest_commander_mana_value_owned_by_iterated(filter) =>
+        {
+            Some(
+                "Each player may discard their hand and draw cards equal to the greatest mana value of a commander they own on the battlefield or in the command zone"
+                    .to_string(),
+            )
+        }
+        _ => None,
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -26599,8 +26609,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
-        if let Some(compact) =
-            describe_each_player_may_discard_hand_draw_commander_value(for_players)
+        if let Some(compact) = describe_each_player_may_discard_hand_then_draw(for_players)
         {
             return compact;
         }
@@ -32395,6 +32404,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if effect
         .downcast_ref::<crate::effects::NinjutsuCostEffect>()
         .is_some()
+        || effect
+            .downcast_ref::<crate::effects::ReturnUnblockedAttackerToHandCostEffect>()
+            .is_some()
     {
         return "Return an unblocked attacker you control to its owner's hand".to_string();
     }

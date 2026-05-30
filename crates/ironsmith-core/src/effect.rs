@@ -3718,6 +3718,15 @@ impl NinjutsuCostEffect {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ReturnUnblockedAttackerToHandCostEffect;
+
+impl ReturnUnblockedAttackerToHandCostEffect {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ConspireCostEffect;
 
 impl ConspireCostEffect {

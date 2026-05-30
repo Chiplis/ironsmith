@@ -89,6 +89,9 @@ fn is_payment_effect(effect: &crate::effect::Effect) -> bool {
         || effect
             .downcast_ref::<effects::NinjutsuCostEffect>()
             .is_some()
+        || effect
+            .downcast_ref::<effects::ReturnUnblockedAttackerToHandCostEffect>()
+            .is_some()
         || effect.downcast_ref::<effects::ExertCostEffect>().is_some()
         || effect
             .downcast_ref::<effects::EmitKeywordActionEffect>()

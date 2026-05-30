@@ -49608,6 +49608,60 @@ fn overpowering_attack_compiled_text_keeps_freerunning_and_extra_combat_clause()
 }
 
 #[test]
+fn parse_oracle_raphaels_technique_supports_sneak_keyword_line() {
+    assert_oracle_card_parses_strict("Raphael's Technique");
+
+    let def = parse_oracle_card_definition("Raphael's Technique");
+
+    let has_sneak = def.alternative_casts.iter().any(|method| {
+        method.name().eq_ignore_ascii_case("Sneak")
+            && method
+                .mana_cost()
+                .is_some_and(|cost| cost.to_oracle() == "{2}{R}")
+            && matches!(
+                method.cast_condition(),
+                Some(crate::static_abilities::ThisSpellCostCondition::DuringDeclareBlockersStep)
+            )
+            && method.non_mana_costs().iter().any(|cost| {
+                cost.effect_ref().is_some_and(|effect| {
+                    effect
+                        .downcast_ref::<crate::effects::NinjutsuCostEffect>()
+                        .is_none()
+                        && effect
+                            .downcast_ref::<
+                                crate::effects::ReturnUnblockedAttackerToHandCostEffect,
+                            >()
+                        .is_some()
+                })
+            })
+    });
+
+    assert!(
+        has_sneak,
+        "Raphael's Technique should encode Sneak as an alternative cast with an unblocked-attacker return cost"
+    );
+}
+
+#[test]
+fn raphaels_technique_compiled_text_keeps_sneak_and_discard_draw_clause() {
+    let def = parse_oracle_card_definition("Raphael's Technique");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("Sneak {2}{R}"),
+        "expected Raphael's Technique to render the Sneak keyword cost, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Each player may discard their hand and draw seven cards"),
+        "expected Raphael's Technique to keep the optional discard/draw clause compact, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("That player draws seven cards"),
+        "expected Raphael's Technique not to split the draw out of the optional action, got {rendered}"
+    );
+}
+
+#[test]
 fn loot_the_key_to_everything_runtime_count_zero_without_other_nonlands() {
     let def = parse_oracle_card_definition("Loot, the Key to Everything");
     let mut game = crate::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);

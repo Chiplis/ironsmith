@@ -29858,6 +29858,189 @@ fn test_everflowing_chalice_etb_trigger_uses_object_kick_count() {
 // =========================================================================
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn raphaels_technique_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(967_237), "Raphael's Technique")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Sneak {2}{R} (You may cast this spell for {2}{R} if you also return an unblocked attacker you control to hand during the declare blockers step.)\nEach player may discard their hand and draw seven cards.",
+        )
+        .expect("Raphael's Technique should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn setup_raphaels_technique_sneak_game(
+    step: crate::game_state::Step,
+    blocked: bool,
+) -> (GameState, PlayerId, ObjectId, ObjectId) {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(step);
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    let raphael = raphaels_technique_definition();
+    let raphael_id = game.create_object_from_definition(&raphael, alice, Zone::Hand);
+    let attacker_id = create_creature(&mut game, "Sneak Attacker", alice, 2, 2);
+
+    let mut combat = crate::combat_state::CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: attacker_id,
+        target: AttackTarget::Player(bob),
+    });
+    if blocked {
+        let blocker_id = create_creature(&mut game, "Sneak Blocker", bob, 2, 2);
+        combat.blockers.insert(attacker_id, vec![blocker_id]);
+    } else {
+        combat.blockers.insert(attacker_id, Vec::new());
+    }
+    game.combat = Some(combat);
+
+    (game, alice, raphael_id, attacker_id)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn raphaels_technique_sneak_alternative_cost_is_legal_only_for_unblocked_attacker_during_declare_blockers() {
+    use crate::alternative_cast::CastingMethod;
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let (game, alice, raphael_id, _) = setup_raphaels_technique_sneak_game(
+        crate::game_state::Step::DeclareBlockers,
+        false,
+    );
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Alternative(0),
+            } if *spell_id == raphael_id
+        )),
+        "Raphael's Technique should offer Sneak during declare blockers with an unblocked attacker"
+    );
+
+    let (mut game, alice, raphael_id, _) = setup_raphaels_technique_sneak_game(
+        crate::game_state::Step::DeclareBlockers,
+        false,
+    );
+    game.turn.step = Some(crate::game_state::Step::CombatDamage);
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        !actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Alternative(0),
+            } if *spell_id == raphael_id
+        )),
+        "Raphael's Technique should not offer Sneak after the declare blockers step"
+    );
+
+    let (game, alice, raphael_id, _) = setup_raphaels_technique_sneak_game(
+        crate::game_state::Step::DeclareBlockers,
+        true,
+    );
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        !actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Alternative(0),
+            } if *spell_id == raphael_id
+        )),
+        "Raphael's Technique should not offer Sneak without an unblocked attacker"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn raphaels_technique_sneak_cost_returns_unblocked_attacker_to_hand() {
+    let (mut game, alice, raphael_id, attacker_id) = setup_raphaels_technique_sneak_game(
+        crate::game_state::Step::DeclareBlockers,
+        false,
+    );
+    let sneak_cost = game
+        .object(raphael_id)
+        .expect("Raphael's Technique exists")
+        .alternative_casts[0]
+        .non_mana_costs()
+        .into_iter()
+        .find(|cost| {
+            cost.effect_ref().is_some_and(|effect| {
+                effect
+                    .downcast_ref::<crate::effects::NinjutsuCostEffect>()
+                    .is_none()
+                    && effect
+                        .downcast_ref::<
+                            crate::effects::ReturnUnblockedAttackerToHandCostEffect,
+                        >()
+                    .is_some()
+            })
+        })
+        .expect("Sneak should include an unblocked-attacker return cost");
+
+    let mut dm = AutoPassDecisionMaker;
+    let mut cost_ctx = crate::costs::CostContext::new(raphael_id, alice, &mut dm)
+        .with_reason(crate::costs::PaymentReason::CastSpell);
+    let result = sneak_cost
+        .pay(&mut game, &mut cost_ctx)
+        .expect("Sneak return cost should be payable");
+    assert!(
+        matches!(result, crate::costs::CostPaymentResult::Paid),
+        "Sneak return cost should be paid"
+    );
+
+    assert!(
+        game.player(alice)
+            .expect("Alice exists")
+            .hand
+            .iter()
+            .filter_map(|id| game.object(*id))
+            .any(|object| object.name == "Sneak Attacker"),
+        "paying Sneak should return the unblocked attacker to its owner's hand"
+    );
+    assert!(
+        game.combat.as_ref().is_some_and(|combat| {
+            combat
+                .attackers
+                .iter()
+                .all(|attacker| attacker.creature != attacker_id)
+        }),
+        "paying Sneak should remove the returned attacker from combat"
+    );
+    assert_eq!(
+        game.object(raphael_id).map(|object| object.zone),
+        Some(Zone::Hand),
+        "paying the non-mana Sneak cost should not move the spell before casting finalization"
+    );
+    assert!(
+        !game.ninjutsu_attack_targets.contains_key(&raphael_id),
+        "Sneak should not record ninjutsu attack-target bookkeeping"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_force_of_will_alternative_cost_available() {
     use crate::cards::definitions::force_of_will;

@@ -2150,6 +2150,18 @@ impl From<crate::effects::ExertCostEffect> for Effect {
     }
 }
 
+impl From<crate::effects::NinjutsuCostEffect> for Effect {
+    fn from(value: crate::effects::NinjutsuCostEffect) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<crate::effects::ReturnUnblockedAttackerToHandCostEffect> for Effect {
+    fn from(value: crate::effects::ReturnUnblockedAttackerToHandCostEffect) -> Self {
+        Self::new(value)
+    }
+}
+
 impl From<crate::effects::ChoosePlayerEffect> for Effect {
     fn from(value: crate::effects::ChoosePlayerEffect) -> Self {
         Self::new(value)

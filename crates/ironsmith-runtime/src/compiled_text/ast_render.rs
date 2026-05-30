@@ -1895,6 +1895,18 @@ pub(super) fn describe_alternative_cast_line(
                 .map(|cost| format!("Prowl {}", cost.to_oracle()))
                 .unwrap_or_else(|| "Prowl".to_string())
         }
+        method if method.is_composed_cost() && method.name().eq_ignore_ascii_case("Sneak") => {
+            method
+                .mana_cost()
+                .map(|cost| {
+                    format!(
+                        "Sneak {} (You may cast this spell for {} if you also return an unblocked attacker you control to hand during the declare blockers step.)",
+                        cost.to_oracle(),
+                        cost.to_oracle()
+                    )
+                })
+                .unwrap_or_else(|| "Sneak".to_string())
+        }
         method if method.is_composed_cost() => {
             let name = method.name();
             let mana_cost = method.mana_cost();

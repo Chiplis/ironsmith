@@ -49,6 +49,7 @@ pub enum ThisSpellCostCondition {
     NotStartingPlayer,
     CreatureCardPutIntoYourGraveyardThisTurn,
     CreatureIsAttackingYou,
+    DuringDeclareBlockersStep,
     YouDealtCombatDamageToPlayerWithSubtypeThisTurn(Subtype),
     YouDealtCombatDamageToPlayerWithSubtypeOrCommanderThisTurn(Subtype),
 }
