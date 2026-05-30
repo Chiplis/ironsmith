@@ -41,6 +41,7 @@ pub enum KeywordActionKind {
     Surveil,
     Train,
     UnlockDoor,
+    Waterbend,
     Vote,
 }
 
@@ -82,6 +83,7 @@ impl KeywordActionKind {
             "surveil" | "surveils" => Some(Self::Surveil),
             "train" | "trains" | "trained" | "training" => Some(Self::Train),
             "unlock" | "unlocks" | "unlocked" | "unlocking" => Some(Self::UnlockDoor),
+            "waterbend" | "waterbends" => Some(Self::Waterbend),
             "vote" | "votes" | "voting" => Some(Self::Vote),
             _ => None,
         }
@@ -130,6 +132,7 @@ impl KeywordActionKind {
             Self::Surveil => "surveil",
             Self::Train => "train",
             Self::UnlockDoor => "unlock this door",
+            Self::Waterbend => "waterbend",
             Self::Vote => "vote",
         }
     }
@@ -177,6 +180,7 @@ impl KeywordActionKind {
             Self::Surveil => "surveils",
             Self::Train => "trains",
             Self::UnlockDoor => "unlocks this door",
+            Self::Waterbend => "waterbends",
             Self::Vote => "votes",
         }
     }

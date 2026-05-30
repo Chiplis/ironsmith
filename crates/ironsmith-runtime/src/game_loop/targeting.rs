@@ -273,6 +273,7 @@ pub(super) fn keyword_action_from_alternative_effect(
     match effect {
         AlternativePaymentEffect::Convoke => KeywordActionKind::Convoke,
         AlternativePaymentEffect::Improvise => KeywordActionKind::Improvise,
+        AlternativePaymentEffect::Waterbend => KeywordActionKind::Waterbend,
     }
 }
 
@@ -280,6 +281,7 @@ pub(super) fn payment_contribution_tag(effect: AlternativePaymentEffect) -> &'st
     match effect {
         AlternativePaymentEffect::Convoke => "convoked_this_spell",
         AlternativePaymentEffect::Improvise => "improvised_this_spell",
+        AlternativePaymentEffect::Waterbend => "waterbent_this_spell",
     }
 }
 

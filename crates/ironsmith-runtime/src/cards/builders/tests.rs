@@ -18854,6 +18854,74 @@ fn parse_omniscience_static_free_cast_permission() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_yue_the_moon_spirit_strictly_compiles_waterbend_free_cast() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(83_001), "Yue, the Moon Spirit")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Spirit, Subtype::Ally])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "Flying, vigilance\n\
+             Waterbend {5}, {T}: You may cast a noncreature spell from your hand without paying its mana cost.",
+        )
+        .expect("Yue, the Moon Spirit should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Flying, vigilance")
+            && rendered.contains(
+                "Waterbend {5}, {T}: You may cast a noncreature spell from your hand without paying its mana cost"
+            ),
+        "expected Yue's compiled text to preserve waterbend and noncreature free-cast wording, got {rendered}"
+    );
+
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Yue should have a waterbend activated ability");
+    assert!(
+        activated.mana_cost.costs().iter().any(|cost| cost.requires_tap()),
+        "Yue's waterbend activation should keep the tap cost"
+    );
+    assert!(
+        activated
+            .additional_restrictions
+            .iter()
+            .any(|restriction| restriction.eq_ignore_ascii_case("Display label: Waterbend.")),
+        "Yue's waterbend activation should retain a structural display label"
+    );
+
+    let [may_effect] = activated.effects.flattened_default_effects() else {
+        panic!(
+            "expected Yue's activation to lower to one optional free-cast effect, got {:#?}",
+            activated.effects.flattened_default_effects()
+        );
+    };
+    let may = may_effect
+        .downcast_ref::<crate::effects::MayEffect>()
+        .expect("Yue's free-cast effect should be optional");
+    let [free_cast] = may.effects.as_slice() else {
+        panic!("expected one nested free-cast effect, got {:#?}", may.effects);
+    };
+    let free_cast = free_cast
+        .downcast_ref::<crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect>()
+        .expect("Yue should lower to the reusable one-shot free-cast effect");
+    assert_eq!(free_cast.zone, Zone::Hand);
+    assert_eq!(free_cast.player, PlayerFilter::You);
+    assert!(free_cast.filter.excluded_card_types.contains(&CardType::Creature));
+    assert!(free_cast.filter.excluded_card_types.contains(&CardType::Land));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_kentaro_static_mana_value_permission() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Kentaro Variant")
         .card_types(vec![CardType::Creature])

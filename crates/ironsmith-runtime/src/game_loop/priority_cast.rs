@@ -3286,7 +3286,7 @@ pub(super) fn continue_activation(
             );
             let display_pip =
                 current_display_pip(&pending.display_mana_pips, &pending.remaining_mana_pips);
-            let options = build_pip_payment_options(
+            let mut options = build_pip_payment_options(
                 game,
                 player_id,
                 &pip,
@@ -3295,6 +3295,14 @@ pub(super) fn continue_activation(
                 allow_black_life,
                 Some(source),
                 &mut *decision_maker,
+            );
+            add_activation_waterbend_pip_payment_options(
+                game,
+                player_id,
+                source,
+                pending.ability_index,
+                &pip,
+                &mut options,
             );
 
             // If no options available (shouldn't happen if we validated correctly), error

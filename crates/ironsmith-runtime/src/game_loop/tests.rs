@@ -28218,6 +28218,182 @@ impl DecisionMaker for ChooseFreeCastOptionByLabel {
     }
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn yue_the_moon_spirit_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(83_001), "Yue, the Moon Spirit")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Spirit, Subtype::Ally])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "Flying, vigilance\n\
+             Waterbend {5}, {T}: You may cast a noncreature spell from your hand without paying its mana cost.",
+        )
+        .expect("Yue, the Moon Spirit should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn yue_waterbend_resolution_effect(def: &crate::cards::CardDefinition) -> Effect {
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Yue should have a waterbend activated ability");
+    let [effect] = activated.effects.flattened_default_effects() else {
+        panic!(
+            "expected Yue's waterbend ability to have one resolution effect, got {:#?}",
+            activated.effects.flattened_default_effects()
+        );
+    };
+    effect.clone()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_yue_waterbend_casts_noncreature_spell_from_hand_without_mana() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let yue = yue_the_moon_spirit_definition();
+    let yue_id = game.create_object_from_definition(&yue, alice, Zone::Battlefield);
+    let free_spell = CardBuilder::new(CardId::from_raw(83_002), "Yue Free Spell")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(9)]]))
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let free_spell_id = game.create_object_from_card(&free_spell, alice, Zone::Hand);
+
+    let effect = yue_waterbend_resolution_effect(&yue);
+    let mut dm = ChooseFreeCastOptionByLabel {
+        needle: "Yue Free Spell",
+    };
+    let mut ctx = ExecutionContext::new(yue_id, alice, &mut dm);
+    execute_effect(&mut game, &effect, &mut ctx)
+        .expect("Yue's waterbend free-cast effect should resolve");
+
+    let stack_entry = game
+        .stack
+        .last()
+        .expect("Yue's waterbend should put the chosen noncreature spell on the stack");
+    assert_eq!(stack_entry.casting_method, CastingMethod::Normal);
+    assert_eq!(stack_entry.controller, alice);
+    let stack_obj = game
+        .object(stack_entry.object_id)
+        .expect("free-cast spell should exist on stack");
+    assert_eq!(stack_obj.name, "Yue Free Spell");
+    assert!(
+        game.object(free_spell_id)
+            .is_none_or(|object| object.zone != Zone::Hand),
+        "Yue's chosen noncreature spell should leave hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_yue_waterbend_does_not_cast_creature_or_wrong_zone_cards() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let yue = yue_the_moon_spirit_definition();
+    let yue_id = game.create_object_from_definition(&yue, alice, Zone::Battlefield);
+    let creature = CardBuilder::new(CardId::from_raw(83_003), "Yue Creature Decoy")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let creature_id = game.create_object_from_card(&creature, alice, Zone::Hand);
+    let graveyard_spell = CardBuilder::new(CardId::from_raw(83_004), "Yue Graveyard Decoy")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .card_types(vec![CardType::Instant])
+        .build();
+    let graveyard_spell_id = game.create_object_from_card(&graveyard_spell, alice, Zone::Graveyard);
+
+    let effect = yue_waterbend_resolution_effect(&yue);
+    let mut dm = ChooseFreeCastOptionByLabel {
+        needle: "Yue Creature Decoy",
+    };
+    let mut ctx = ExecutionContext::new(yue_id, alice, &mut dm);
+    execute_effect(&mut game, &effect, &mut ctx)
+        .expect("Yue's waterbend should resolve even with no legal spell to cast");
+
+    assert!(game.stack.is_empty(), "Yue should not cast an ineligible card");
+    assert_eq!(game.object(creature_id).map(|object| object.zone), Some(Zone::Hand));
+    assert_eq!(
+        game.object(graveyard_spell_id).map(|object| object.zone),
+        Some(Zone::Graveyard),
+        "Yue should only look for noncreature spells in hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_yue_waterbend_activation_taps_artifacts_and_creatures_for_generic_cost() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let yue = yue_the_moon_spirit_definition();
+    let yue_id = game.create_object_from_definition(&yue, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(yue_id);
+
+    let mut helper_ids = Vec::new();
+    for idx in 0..3 {
+        let artifact = CardBuilder::new(CardId::from_raw(83_010 + idx), "Waterbend Artifact")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        helper_ids.push(game.create_object_from_card(&artifact, alice, Zone::Battlefield));
+    }
+    for idx in 0..2 {
+        let creature = CardBuilder::new(CardId::from_raw(83_020 + idx), "Waterbend Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        helper_ids.push(game.create_object_from_card(&creature, alice, Zone::Battlefield));
+    }
+
+    let ability_index = game
+        .object(yue_id)
+        .expect("Yue should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Yue should have a waterbend activated ability");
+    let activate_action = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| matches!(
+            action,
+            crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                if *source == yue_id && *idx == ability_index
+        ))
+        .expect("Yue's waterbend activation should be legal with five helpers and no mana");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = AutoPassDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Yue's waterbend activation should pay costs and go on the stack");
+
+    assert!(game.is_tapped(yue_id), "Yue should tap for its {{T}} cost");
+    assert!(
+        helper_ids.iter().all(|&id| game.is_tapped(id)),
+        "waterbend should tap artifacts and creatures to pay the five generic mana"
+    );
+    assert_eq!(game.stack.len(), 1, "Yue's activated ability should be on the stack");
+}
+
 #[test]
 fn test_effect_driven_free_cast_can_choose_adventure_half_from_hand() {
     let mut game = setup_game();

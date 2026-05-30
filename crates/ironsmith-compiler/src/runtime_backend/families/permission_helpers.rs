@@ -1303,8 +1303,24 @@ fn grant_spec_is_free_cast_from_hand(spec: &crate::grant::GrantSpec) -> bool {
 }
 
 fn clause_is_singular_free_cast_from_hand(clause_words: &[&str]) -> bool {
-    word_slice_contains_phrase(clause_words, &["cast", "a", "spell"])
-        || word_slice_contains_phrase(clause_words, &["cast", "one", "spell"])
+    let Some(cast_idx) = clause_words.iter().position(|word| *word == "cast") else {
+        return false;
+    };
+    let Some(article_idx) = cast_idx.checked_add(1) else {
+        return false;
+    };
+    if !matches!(clause_words.get(article_idx).copied(), Some("a" | "an" | "one")) {
+        return false;
+    }
+    let Some(from_idx) = clause_words[article_idx + 1..]
+        .iter()
+        .position(|word| *word == "from")
+        .map(|idx| article_idx + 1 + idx)
+    else {
+        return false;
+    };
+    clause_words[article_idx + 1..from_idx].contains(&"spell")
+        && clause_words.get(from_idx..from_idx + 3) == Some(["from", "your", "hand"].as_slice())
 }
 
 fn parse_cast_with_tagged_mana_value_limit_clause(

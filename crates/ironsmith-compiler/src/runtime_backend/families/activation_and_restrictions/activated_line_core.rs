@@ -44,6 +44,7 @@ pub(crate) fn parse_prefixed_activated_ability_label(
         Some("boast") => Some("Boast".to_string()),
         Some("exhaust") => Some("Exhaust".to_string()),
         Some("renew") => Some("Renew".to_string()),
+        Some("waterbend") => Some("Waterbend".to_string()),
         _ => None,
     }
 }

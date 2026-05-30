@@ -302,6 +302,7 @@ pub enum ManaPipPaymentAction {
 pub enum AlternativePaymentEffect {
     Convoke,
     Improvise,
+    Waterbend,
 }
 
 /// Tracks a keyword ability payment contribution made while casting a spell.

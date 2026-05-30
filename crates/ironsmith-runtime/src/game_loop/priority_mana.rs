@@ -567,6 +567,73 @@ pub(super) fn add_pip_alternative_payment_options(
     }
 }
 
+pub(super) fn add_activation_waterbend_pip_payment_options(
+    game: &GameState,
+    player: PlayerId,
+    source: ObjectId,
+    ability_index: usize,
+    pip: &[crate::mana::ManaSymbol],
+    options: &mut Vec<ManaPipPaymentOption>,
+) {
+    if !activation_has_display_label(game, source, ability_index, "Waterbend")
+        || !waterbend_can_pay_pip(pip)
+    {
+        return;
+    }
+
+    for permanent_id in get_waterbend_permanents(game, player) {
+        options.push(ManaPipPaymentOption {
+            index: options.len(),
+            description: format!(
+                "Tap {} to pay this pip (Waterbend)",
+                describe_permanent(game, permanent_id)
+            ),
+            action: ManaPipPaymentAction::PayViaAlternative {
+                permanent_id,
+                effect: AlternativePaymentEffect::Waterbend,
+            },
+        });
+    }
+}
+
+fn activation_has_display_label(
+    game: &GameState,
+    source: ObjectId,
+    ability_index: usize,
+    label: &str,
+) -> bool {
+    let Some(ability) = game
+        .object(source)
+        .and_then(|object| object.abilities.get(ability_index))
+    else {
+        return false;
+    };
+    let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {
+        return false;
+    };
+
+    let needle = format!("display label: {}", label.to_ascii_lowercase());
+    activated
+        .additional_restrictions
+        .iter()
+        .any(|restriction| restriction.to_ascii_lowercase().starts_with(&needle))
+}
+
+fn get_waterbend_permanents(game: &GameState, player: PlayerId) -> Vec<ObjectId> {
+    game.battlefield
+        .iter()
+        .filter_map(|&id| {
+            let obj = game.object(id)?;
+            if game.controller_of(obj) != player || game.is_tapped(id) {
+                return None;
+            }
+            (game.current_is_creature(id)
+                || game.current_has_card_type(id, crate::types::CardType::Artifact))
+            .then_some(id)
+        })
+        .collect()
+}
+
 pub(super) fn convoke_can_pay_pip(
     colors: crate::color::ColorSet,
     pip: &[crate::mana::ManaSymbol],
@@ -586,6 +653,11 @@ pub(super) fn convoke_can_pay_pip(
 }
 
 pub(super) fn improvise_can_pay_pip(pip: &[crate::mana::ManaSymbol]) -> bool {
+    pip.iter()
+        .any(|symbol| matches!(symbol, crate::mana::ManaSymbol::Generic(_)))
+}
+
+fn waterbend_can_pay_pip(pip: &[crate::mana::ManaSymbol]) -> bool {
     pip.iter()
         .any(|symbol| matches!(symbol, crate::mana::ManaSymbol::Generic(_)))
 }
@@ -2253,7 +2325,7 @@ pub(super) fn apply_pip_payment_response_activation(
         Some(pending.source),
         crate::costs::PaymentReason::ActivateAbility,
     );
-    let options = build_pip_payment_options(
+    let mut options = build_pip_payment_options(
         game,
         pending.activator,
         &pip,
@@ -2262,6 +2334,14 @@ pub(super) fn apply_pip_payment_response_activation(
         allow_black_life,
         Some(pending.source),
         &mut *decision_maker,
+    );
+    add_activation_waterbend_pip_payment_options(
+        game,
+        pending.activator,
+        pending.source,
+        pending.ability_index,
+        &pip,
+        &mut options,
     );
 
     if choice >= options.len() {

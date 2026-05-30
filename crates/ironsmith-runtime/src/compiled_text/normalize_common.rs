@@ -135,6 +135,9 @@ pub(super) fn describe_cast_limit_spell_filter(filter: &ObjectFilter) -> String 
     if filter == &ObjectFilter::default() {
         return "spell".to_string();
     }
+    if is_noncreature_spell_filter(filter) {
+        return "noncreature spell".to_string();
+    }
     if filter == &ObjectFilter::default().without_type(CardType::Creature) {
         return "noncreature spell".to_string();
     }
@@ -153,6 +156,16 @@ pub(super) fn describe_cast_limit_spell_filter(filter: &ObjectFilter) -> String 
     } else {
         format!("spell matching {}", strip_leading_article(&fallback))
     }
+}
+
+fn is_noncreature_spell_filter(filter: &ObjectFilter) -> bool {
+    let mut base = filter.clone();
+    let excluded = base.excluded_card_types.clone();
+    base.excluded_card_types.clear();
+    base == ObjectFilter::default()
+        && excluded.len() == 2
+        && excluded.contains(&CardType::Creature)
+        && excluded.contains(&CardType::Land)
 }
 
 pub(super) fn describe_cast_ban_spell_filter(filter: &ObjectFilter) -> String {

@@ -32822,6 +32822,9 @@ pub(super) fn collect_activation_restriction_clauses(
     }
 
     for raw in additional_restrictions {
+        if raw.to_ascii_lowercase().starts_with("display label:") {
+            continue;
+        }
         if raw
             .to_ascii_lowercase()
             .contains("exhaust ability only once")
@@ -35961,11 +35964,27 @@ pub(super) fn describe_ability(
             if is_exhaust {
                 line = format!("Exhaust — {line}");
             }
+            if activated_has_display_label(activated, "Waterbend") {
+                if let Some((_, tail)) = line.split_once(": ") {
+                    line = format!("Waterbend {tail}");
+                }
+            }
             line = normalize_ability_self_reference_surface(&line, subject);
             line = normalize_graveyard_source_return_surface(&line, ability);
             vec![line]
         }
     }
+}
+
+fn activated_has_display_label(
+    activated: &crate::ability::ActivatedAbility,
+    label: &str,
+) -> bool {
+    let needle = format!("display label: {}", label.to_ascii_lowercase());
+    activated
+        .additional_restrictions
+        .iter()
+        .any(|restriction| restriction.to_ascii_lowercase().starts_with(&needle))
 }
 
 fn normalize_granted_triggered_ability_surface(surface: String) -> String {

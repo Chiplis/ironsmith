@@ -515,7 +515,7 @@ fn lower_rewrite_activated_to_chunk_impl(
 
     let normalized_cost = line.cost.clone();
     let ability_text = rewrite_activated_display_text(line);
-    let additional_activation_restrictions = if ability_text
+    let mut additional_activation_restrictions = if ability_text
         .as_deref()
         .is_some_and(|text| text.trim_start().starts_with("Exhaust"))
     {
@@ -523,6 +523,12 @@ fn lower_rewrite_activated_to_chunk_impl(
     } else {
         Vec::new()
     };
+    if ability_text
+        .as_deref()
+        .is_some_and(|text| text.trim_start().starts_with("Waterbend"))
+    {
+        additional_activation_restrictions.push("Display label: Waterbend.".to_string());
+    }
     let normalized_effect_text = effect_text.to_ascii_lowercase();
     let normalized_raw_line = line.info.raw_line.to_ascii_lowercase();
 
@@ -719,6 +725,7 @@ fn rewrite_activated_display_text(line: &RewriteActivatedLine) -> Option<String>
         "Boast",
         "Exhaust",
         "Renew",
+        "Waterbend",
         "Channel",
         "Cohort",
         "Teleport",
@@ -728,6 +735,10 @@ fn rewrite_activated_display_text(line: &RewriteActivatedLine) -> Option<String>
         if let Some(idx) = str_find(raw_lower.as_str(), needle.as_str()) {
             return Some(raw[idx..].trim().to_string());
         }
+        let keyword_prefix = format!("{} ", display.to_ascii_lowercase());
+        if raw_lower.starts_with(keyword_prefix.as_str()) {
+            return Some(raw.to_string());
+        }
     }
 
     if let Some(chosen) = line.chosen_option_label.as_deref() {
@@ -735,6 +746,7 @@ fn rewrite_activated_display_text(line: &RewriteActivatedLine) -> Option<String>
             "Boast",
             "Exhaust",
             "Renew",
+            "Waterbend",
             "Channel",
             "Cohort",
             "Teleport",
