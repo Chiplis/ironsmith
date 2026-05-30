@@ -19175,9 +19175,6 @@ pub(super) fn describe_tagged_target_then_cant_restriction(
     let target_only = tagged
         .effect
         .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
-    if cant.duration != crate::effect::Until::EndOfTurn {
-        return None;
-    }
     if let crate::effect::Restriction::BlockSpecificAttacker { blockers, attacker } =
         &cant.restriction
         && attacker.tagged_constraints.iter().any(|constraint| {
@@ -19185,11 +19182,39 @@ pub(super) fn describe_tagged_target_then_cant_restriction(
                 && constraint.tag.as_str() == tagged.tag.as_str()
         })
     {
+        if cant.duration != crate::effect::Until::EndOfTurn {
+            return None;
+        }
         let subject = capitalize_first(&describe_choose_spec(&target_only.target));
         let blockers = pluralize_noun_phrase(strip_leading_article(&blockers.description()));
         return Some(format!(
             "{subject} can't be blocked by {blockers} this turn"
         ));
+    }
+    if let crate::effect::Restriction::BeCountered(filter) = &cant.restriction {
+        if !matches!(
+            cant.duration,
+            crate::effect::Until::Forever | crate::effect::Until::EndOfTurn
+        ) {
+            return None;
+        }
+        if !filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == tagged.tag.as_str()
+        }) {
+            return None;
+        }
+
+        let subject = capitalize_first(&describe_choose_spec(&target_only.target));
+        let suffix = if cant.duration == crate::effect::Until::EndOfTurn {
+            " this turn"
+        } else {
+            ""
+        };
+        return Some(format!("{subject} can't be countered{suffix}"));
+    }
+    if cant.duration != crate::effect::Until::EndOfTurn {
+        return None;
     }
     let (filter, restriction_text) = match &cant.restriction {
         crate::effect::Restriction::Block(filter) => (filter, "can't block this turn"),

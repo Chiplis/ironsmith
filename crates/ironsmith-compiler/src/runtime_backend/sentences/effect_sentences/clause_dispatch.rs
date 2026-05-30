@@ -880,6 +880,22 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         );
     }
 
+    if token_slice_first_is(tokens, "target")
+        && find_negation_span(tokens).is_some()
+        && let (duration, clause_tokens) =
+            parse_restriction_duration(tokens)?.unwrap_or((Until::Forever, tokens.to_vec()))
+        && let Some(restrictions) = parse_cant_restrictions(&clause_tokens)?
+        && let [parsed] = restrictions.as_slice()
+        && let Some(target) = parsed.target.clone()
+    {
+        return Ok(EffectAst::Sequence {
+            effects: vec![
+                EffectAst::subject_verb_target_only(target),
+                EffectAst::subject_verb_cant(parsed.restriction.clone(), duration, None),
+            ],
+        });
+    }
+
     if token_slice_first_is(tokens, "target") && find_verb(tokens).is_none() {
         let looks_like_restriction_clause = find_negation_span(tokens).is_some()
             || word_slice_contains_any_word(

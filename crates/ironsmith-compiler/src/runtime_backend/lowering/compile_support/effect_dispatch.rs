@@ -94,14 +94,7 @@ fn compile_effect_inner(
         return compile_subject_verb_effect(subject_verb, ctx);
     }
     if let EffectAst::Sequence { effects } = effect {
-        let mut compiled_effects = Vec::new();
-        let mut choices = Vec::new();
-        for child in effects {
-            let (mut child_effects, mut child_choices) = compile_effect(child, ctx)?;
-            compiled_effects.append(&mut child_effects);
-            choices.append(&mut child_choices);
-        }
-        return Ok((compiled_effects, choices));
+        return compile_effects(effects, ctx);
     }
     if let EffectAst::ManaRestricted {
         effects,
