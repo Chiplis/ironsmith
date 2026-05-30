@@ -28,8 +28,9 @@ use super::super::token_primitives::{
 };
 use super::super::util::{
     parse_counter_type_from_tokens, parse_counter_type_word, parse_number, parse_target_phrase,
-    parse_value, record_source_reference_surface, source_reference_surface_for_words,
-    span_from_tokens, this_source_surface_for_words, trim_commas,
+    parse_number_or_x_value, parse_value, record_source_reference_surface,
+    source_reference_surface_for_words, span_from_tokens, this_source_surface_for_words,
+    trim_commas,
 };
 use super::super::value_helpers::{
     parse_equal_to_aggregate_filter_value, parse_equal_to_number_of_filter_value,
@@ -196,15 +197,38 @@ pub(crate) fn sentence_case_mode_text(text: &str) -> String {
 pub(crate) fn parse_counter_descriptor(
     tokens: &[OwnedLexToken],
 ) -> Result<(u32, CounterType), CardTextError> {
+    let descriptor_text = render_clause_words(&trim_commas(tokens));
+    let (count, counter_type) = parse_counter_descriptor_value(tokens)?;
+    let Value::Fixed(count) = count else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported dynamic counter amount (clause: '{}')",
+            descriptor_text
+        )));
+    };
+    let count = u32::try_from(count).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported negative counter amount (clause: '{}')",
+            descriptor_text
+        ))
+    })?;
+    Ok((count, counter_type))
+}
+
+pub(crate) fn parse_counter_descriptor_value(
+    tokens: &[OwnedLexToken],
+) -> Result<(Value, CounterType), CardTextError> {
     let descriptor = trim_commas(tokens);
     let descriptor_text = render_clause_words(&descriptor);
-    let (count, used) = parse_number(&descriptor).ok_or_else(|| {
+    let (count, used) = parse_number_or_x_value(&descriptor).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "missing counter amount (clause: '{}')",
             descriptor_text
         ))
     })?;
-    let rest = &descriptor[used..];
+    let mut rest = &descriptor[used..];
+    if rest.first().is_some_and(|token| token.is_word("additional")) {
+        rest = &rest[1..];
+    }
     if !rest
         .iter()
         .any(|token| token.is_word("counter") || token.is_word("counters"))

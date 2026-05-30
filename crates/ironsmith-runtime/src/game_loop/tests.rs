@@ -1786,6 +1786,109 @@ fn rise_from_the_grave_targets_only_creature_cards_in_graveyards() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn abuelo_awakening_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(73_951), "Abuelo's Awakening")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::X],
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Return target artifact or non-Aura enchantment card from your graveyard to the battlefield with X additional +1/+1 counters on it. It's a 1/1 Spirit creature with flying in addition to its other types.",
+        )
+        .expect("Abuelo's Awakening should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn abuelo_awakening_targets_artifacts_and_non_aura_enchantments_in_your_graveyard() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let spell = abuelo_awakening_definition();
+    let effects = spell.spell_effect.as_ref().expect("expected spell effects");
+
+    let artifact = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(73_952), "Buried Relic")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Graveyard,
+    );
+    let non_aura_enchantment = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(73_953), "Buried Shrine")
+            .card_types(vec![CardType::Enchantment])
+            .build(),
+        alice,
+        Zone::Graveyard,
+    );
+    let aura = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(73_954), "Buried Aura")
+            .card_types(vec![CardType::Enchantment])
+            .subtypes(vec![Subtype::Aura])
+            .build(),
+        alice,
+        Zone::Graveyard,
+    );
+    let opponent_artifact = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(73_955), "Opponent Relic")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Graveyard,
+    );
+
+    let requirements = extract_target_requirements(&game, effects, alice, None);
+    assert_eq!(requirements.len(), 1, "Abuelo should have one target");
+    let legal_targets = &requirements[0].legal_targets;
+    assert!(legal_targets.contains(&Target::Object(artifact)));
+    assert!(legal_targets.contains(&Target::Object(non_aura_enchantment)));
+    assert!(!legal_targets.contains(&Target::Object(aura)));
+    assert!(!legal_targets.contains(&Target::Object(opponent_artifact)));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn abuelo_awakening_returns_with_x_counters_and_animates_target() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let spell = abuelo_awakening_definition();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Stack);
+    game.object_mut(spell_id).unwrap().x_value = Some(3);
+
+    let target_card = CardBuilder::new(CardId::from_raw(73_956), "Sleeping Idol")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let target_id = game.create_object_from_card(&target_card, alice, Zone::Graveyard);
+    let target_stable = game.object(target_id).expect("target exists").stable_id;
+
+    game.push_to_stack(
+        StackEntry::new(spell_id, alice)
+            .with_x(3)
+            .with_targets(vec![Target::Object(target_id)]),
+    );
+    resolve_stack_entry(&mut game).expect("Abuelo's Awakening should resolve");
+
+    let returned_id = game
+        .find_object_by_stable_id(target_stable)
+        .expect("returned object should still exist");
+    assert!(game.battlefield.contains(&returned_id));
+    assert_eq!(
+        game.counter_count(returned_id, crate::object::CounterType::PlusOnePlusOne),
+        3
+    );
+
+    let card_types = game.calculated_card_types(returned_id);
+    assert!(card_types.contains(&CardType::Artifact));
+    assert!(card_types.contains(&CardType::Creature));
+    assert!(game.calculated_subtypes(returned_id).contains(&Subtype::Spirit));
+    assert!(game.object_has_ability(returned_id, &StaticAbility::flying()));
+    assert_eq!(game.current_power(returned_id), Some(4));
+    assert_eq!(game.current_toughness(returned_id), Some(4));
+}
+
 #[test]
 fn regeneration_count_tracks_used_shields_until_cleanup() {
     let mut game = setup_game();

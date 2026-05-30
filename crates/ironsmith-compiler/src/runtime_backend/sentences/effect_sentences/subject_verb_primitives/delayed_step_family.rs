@@ -1,4 +1,5 @@
 use super::*;
+use crate::static_abilities::StaticAbility;
 
 pub(super) fn wrap_delayed_next_step_unless_pays(
     step: DelayedNextStepKind,
@@ -877,18 +878,56 @@ pub(crate) fn parse_sentence_implicit_become_clause(
         && let Some(tail_len) = addition_tail_len
         && body_words.len() > 1 + tail_len
     {
-        let subtype_words = &body_words[1..body_words.len().saturating_sub(tail_len)];
-        let mut subtypes = Vec::new();
-        for word in subtype_words {
-            let Some(subtype) = parse_pluralized_subtype_word(word) else {
-                return Ok(None);
+        let descriptor_words = &body_words[1..body_words.len().saturating_sub(tail_len)];
+        let (descriptor_words, abilities) = if let Some(with_idx) = descriptor_words
+            .iter()
+            .position(|word| *word == "with")
+        {
+            let ability_words = &descriptor_words[with_idx + 1..];
+            let abilities = match ability_words {
+                ["flying"] => vec![StaticAbility::flying()],
+                _ => return Ok(None),
             };
-            if !iter_contains(subtypes.iter(), &subtype) {
-                subtypes.push(subtype);
+            (&descriptor_words[..with_idx], abilities)
+        } else {
+            (descriptor_words, Vec::new())
+        };
+
+        let mut card_types = Vec::new();
+        let mut subtypes = Vec::new();
+        for word in descriptor_words {
+            if *word == "and" {
+                continue;
             }
-        }
-        if subtypes.is_empty() {
+            if let Some(card_type) = parse_card_type(word) {
+                if !iter_contains(card_types.iter(), &card_type) {
+                    card_types.push(card_type);
+                }
+                continue;
+            }
+            if let Some(subtype) = parse_pluralized_subtype_word(word) {
+                if !iter_contains(subtypes.iter(), &subtype) {
+                    subtypes.push(subtype);
+                }
+                continue;
+            }
             return Ok(None);
+        }
+        if card_types.is_empty() && subtypes.is_empty() {
+            return Ok(None);
+        }
+        if !card_types.is_empty() || !abilities.is_empty() {
+            return Ok(Some(vec![EffectAst::subject_verb_become_base_pt_creature(
+                power,
+                toughness,
+                target,
+                card_types,
+                subtypes,
+                None,
+                abilities,
+                Vec::new(),
+                duration,
+            )]));
         }
         return Ok(Some(vec![
             EffectAst::subject_verb_set_base_power_toughness(

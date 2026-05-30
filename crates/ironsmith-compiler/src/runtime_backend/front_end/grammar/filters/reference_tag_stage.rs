@@ -1397,6 +1397,42 @@ pub(super) fn parse_object_filter_inner(
         }
     }
 
+    let artifact_or_non_aura_enchantment = all_words.windows(4).any(|window| {
+        matches!(
+            window,
+            ["artifact", "or", "non-aura", "enchantment"]
+                | ["artifact", "or", "nonaura", "enchantment"]
+        )
+    }) || all_words.windows(5).any(|window| {
+        matches!(
+            window,
+            ["artifact", "or", "non", "aura", "enchantment"]
+        )
+    });
+    if artifact_or_non_aura_enchantment
+        && filter.any_of.is_empty()
+        && slice_has(&filter.card_types, &CardType::Artifact)
+        && slice_has(&filter.card_types, &CardType::Enchantment)
+        && slice_has(&filter.excluded_subtypes, &Subtype::Aura)
+    {
+        let mut artifact_branch = filter.clone();
+        artifact_branch.any_of.clear();
+        artifact_branch.card_types.retain(|card_type| *card_type == CardType::Artifact);
+        artifact_branch
+            .excluded_subtypes
+            .retain(|subtype| *subtype != Subtype::Aura);
+
+        let mut enchantment_branch = filter.clone();
+        enchantment_branch.any_of.clear();
+        enchantment_branch
+            .card_types
+            .retain(|card_type| *card_type == CardType::Enchantment);
+
+        let mut disjunction = ObjectFilter::default();
+        disjunction.any_of = vec![artifact_branch, enchantment_branch];
+        filter = disjunction;
+    }
+
     if let Some(or_subtype) = legendary_or_subtype
         && filter.any_of.is_empty()
         && slice_has(&filter.supertypes, &Supertype::Legendary)

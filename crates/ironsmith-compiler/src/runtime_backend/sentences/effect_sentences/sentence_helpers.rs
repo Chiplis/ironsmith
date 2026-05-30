@@ -90,7 +90,7 @@ pub(crate) use super::subject_verb_primitives::{
 };
 pub(crate) use super::zone_counter_helpers::{
     apply_exile_subject_hand_owner_context, apply_shuffle_subject_graveyard_owner_context,
-    parse_counter_descriptor, parse_counter_target_count_prefix,
+    parse_counter_descriptor, parse_counter_descriptor_value, parse_counter_target_count_prefix,
     parse_half_starting_life_total_value, parse_put_counters,
     parse_sentence_put_multiple_counters_on_target, parse_transform,
     split_until_source_leaves_tail, target_object_filter_mut,

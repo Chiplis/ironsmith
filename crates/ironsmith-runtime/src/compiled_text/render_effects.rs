@@ -2477,11 +2477,210 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
     }
 
     describe_roll_choose_destroy_create_structural(effects)
+        .or_else(|| describe_return_with_counters_and_animation_structural(effects))
         .or_else(|| describe_draw_discard_then_create_structural(effects))
         .or_else(|| describe_reveal_top_choice_to_hand_rest_graveyard_structural(effects))
         .or_else(|| describe_gain_control_untap_haste_structural(effects))
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
         .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
+}
+
+fn describe_return_with_counters_and_animation_structural(effects: &[Effect]) -> Option<String> {
+    let [return_effect, counters_effect, animation_effect] = effects else {
+        return None;
+    };
+
+    let (returned_tag, return_to_battlefield) =
+        structural_tagged_return_from_graveyard_to_battlefield(return_effect)?;
+    if return_to_battlefield.tapped || return_to_battlefield.as_aura.is_some() {
+        return None;
+    }
+
+    let counters = structural_unwrap_render_wrappers(counters_effect)
+        .downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if counters.distributed
+        || counters.target_count.is_some()
+        || !matches!(&counters.target, ChooseSpec::Tagged(tag) if tag == returned_tag)
+    {
+        return None;
+    }
+
+    let animation = structural_unwrap_render_wrappers(animation_effect)
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if !matches!(animation.target, crate::continuous::EffectTarget::Source)
+        || animation.until != Until::Forever
+        || animation.condition.is_some()
+        || !animation.runtime_modifications.is_empty()
+        || !matches!(&animation.target_spec, Some(ChooseSpec::Tagged(tag)) if tag == returned_tag)
+    {
+        return None;
+    }
+
+    let (target_text, graveyard_owner) =
+        describe_graveyard_return_target(&return_to_battlefield.target)?;
+    let from_graveyard = match graveyard_owner {
+        Some(owner) => describe_possessive_player_filter(&owner),
+        None => "a".to_string(),
+    };
+    let counter_text = describe_additional_counter_phrase(counters);
+    let animation_text = describe_animation_clause(animation)?;
+
+    Some(format!(
+        "Return {target_text} from {from_graveyard} graveyard to the battlefield with {counter_text} on it. It's {animation_text} in addition to its other types."
+    ))
+}
+
+fn structural_tagged_return_from_graveyard_to_battlefield(
+    effect: &Effect,
+) -> Option<(
+    &TagKey,
+    &crate::effects::ReturnFromGraveyardToBattlefieldEffect,
+)> {
+    let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let return_to_battlefield = tagged
+        .effect
+        .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()?;
+    Some((&tagged.tag, return_to_battlefield))
+}
+
+fn describe_graveyard_return_target(spec: &ChooseSpec) -> Option<(String, Option<PlayerFilter>)> {
+    match spec {
+        ChooseSpec::Target(inner) => {
+            let (inner_text, owner) = describe_graveyard_return_target(inner)?;
+            if inner_text.starts_with("target ") {
+                Some((inner_text, owner))
+            } else {
+                Some((format!("target {inner_text}"), owner))
+            }
+        }
+        ChooseSpec::Object(filter) => {
+            let (text, owner) = describe_graveyard_object_filter_without_zone(filter)?;
+            Some((text, owner))
+        }
+        _ => graveyard_owner_from_spec(spec)
+            .map(|owner| (describe_choose_spec_without_graveyard_zone(spec), owner)),
+    }
+}
+
+fn describe_graveyard_object_filter_without_zone(
+    filter: &ObjectFilter,
+) -> Option<(String, Option<PlayerFilter>)> {
+    if !filter.any_of.is_empty() {
+        let mut owner: Option<PlayerFilter> = None;
+        let mut owner_seen = false;
+        let mut parts = Vec::new();
+        for branch in &filter.any_of {
+            if branch.zone != Some(Zone::Graveyard) {
+                return None;
+            }
+            if owner_seen {
+                if branch.owner != owner {
+                    return None;
+                }
+            } else {
+                owner = branch.owner.clone();
+                owner_seen = true;
+            }
+            parts.push(describe_graveyard_branch_without_zone(branch));
+        }
+        let text = if parts.iter().all(|part| part.ends_with(" card")) {
+            let card_parts = parts
+                .iter()
+                .map(|part| part.trim_end_matches(" card").to_string())
+                .collect::<Vec<_>>();
+            format!("{} card", join_with_or(&card_parts))
+        } else {
+            join_with_or(&parts)
+        };
+        return Some((text, owner));
+    }
+
+    if filter.zone != Some(Zone::Graveyard) {
+        return None;
+    }
+    Some((describe_graveyard_branch_without_zone(filter), filter.owner.clone()))
+}
+
+fn describe_graveyard_branch_without_zone(filter: &ObjectFilter) -> String {
+    let mut display_filter = filter.clone();
+    display_filter.zone = None;
+    display_filter.owner = None;
+    display_filter.single_graveyard = false;
+
+    let mut text = strip_leading_article(&display_filter.description()).to_string();
+    if !text.contains(" card") && !text.ends_with(" cards") {
+        text.push_str(" card");
+    }
+    text
+}
+
+fn describe_additional_counter_phrase(put: &crate::effects::PutCountersEffect) -> String {
+    let counter_text = describe_put_counter_phrase(&put.amount, put.counter_type);
+    if let Some(rest) = counter_text.strip_prefix("a ") {
+        return format!("an additional {rest}");
+    }
+    if let Some((amount, rest)) = counter_text.split_once(' ') {
+        return format!("{amount} additional {rest}");
+    }
+    format!("additional {counter_text}")
+}
+
+fn describe_animation_clause(apply: &crate::effects::ApplyContinuousEffect) -> Option<String> {
+    let mut card_types = Vec::new();
+    let mut subtypes = Vec::new();
+    let mut abilities = Vec::new();
+    let mut power_toughness: Option<(&Value, &Value)> = None;
+
+    let modifications = apply
+        .modification
+        .iter()
+        .chain(apply.additional_modifications.iter());
+    for modification in modifications {
+        match modification {
+            crate::continuous::Modification::AddCardTypes(types) => {
+                card_types.extend(types.iter().copied());
+            }
+            crate::continuous::Modification::AddSubtypes(types) => {
+                subtypes.extend(types.iter().copied());
+            }
+            crate::continuous::Modification::AddAbility(ability) => {
+                abilities.push(lowercase_first(&ability.display()));
+            }
+            crate::continuous::Modification::SetPowerToughness {
+                power,
+                toughness,
+                sublayer: crate::continuous::PtSublayer::Setting,
+            } => {
+                power_toughness = Some((power, toughness));
+            }
+            _ => return None,
+        }
+    }
+
+    let (power, toughness) = power_toughness?;
+    if card_types.is_empty() && subtypes.is_empty() {
+        return None;
+    }
+
+    let mut descriptor = Vec::new();
+    descriptor.extend(subtypes.iter().map(ToString::to_string));
+    descriptor.extend(
+        card_types
+            .iter()
+            .map(|card_type| describe_card_type_word_local(*card_type).to_string()),
+    );
+
+    let mut text = format!(
+        "a {}/{} {}",
+        describe_value(power),
+        describe_value(toughness),
+        descriptor.join(" ")
+    );
+    if !abilities.is_empty() {
+        text.push_str(" with ");
+        text.push_str(&join_with_and(&abilities));
+    }
+    Some(text)
 }
 
 fn describe_roll_choose_destroy_create_structural(effects: &[Effect]) -> Option<String> {

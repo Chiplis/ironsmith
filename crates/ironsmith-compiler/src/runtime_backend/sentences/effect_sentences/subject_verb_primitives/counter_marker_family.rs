@@ -536,10 +536,10 @@ pub(crate) fn parse_return_with_counters_on_it_sentence(
     )];
     let tagged_target = TargetAst::Tagged(TagKey::from(IT_TAG), clause.span());
     for descriptor in descriptors {
-        let (count, counter_type) = parse_counter_descriptor(descriptor.tokens())?;
+        let (count, counter_type) = parse_counter_descriptor_value(descriptor.tokens())?;
         effects.push(EffectAst::subject_verb_put_counters(
             counter_type,
-            Value::Fixed(count as i32),
+            count,
             tagged_target.clone(),
             None,
             false,
@@ -689,10 +689,10 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence(
     )];
     let tagged_target = TargetAst::Tagged(TagKey::from(IT_TAG), clause.span());
     for descriptor in descriptors {
-        let (count, counter_type) = parse_counter_descriptor(descriptor.tokens())?;
+        let (count, counter_type) = parse_counter_descriptor_value(descriptor.tokens())?;
         effects.push(EffectAst::subject_verb_put_counters(
             counter_type,
-            Value::Fixed(count as i32),
+            count,
             tagged_target.clone(),
             None,
             false,
@@ -824,7 +824,7 @@ pub(crate) fn parse_sentence_draw_then_connive(
 fn parse_additional_counter_descriptor_on_target(
     counter_clause: SubjectVerbPrimitiveClause<'_>,
     accepted_targets: &[&[&str]],
-) -> Result<Option<(u32, crate::object::CounterType)>, CardTextError> {
+) -> Result<Option<(Value, crate::object::CounterType)>, CardTextError> {
     let counter_clause = counter_clause.trimmed();
     let Some((descriptor_clause, on_target_clause)) =
         counter_clause.rsplit_once_on_word_trimmed("on")
@@ -840,7 +840,7 @@ fn parse_additional_counter_descriptor_on_target(
         return Ok(None);
     }
 
-    parse_counter_descriptor(descriptor_clause.tokens()).map(Some)
+    parse_counter_descriptor_value(descriptor_clause.tokens()).map(Some)
 }
 
 pub(crate) fn parse_if_enters_with_additional_counter_sentence(
@@ -884,7 +884,7 @@ pub(crate) fn parse_if_enters_with_additional_counter_sentence(
     };
     let put_counter = EffectAst::subject_verb_put_counters(
         counter_type,
-        Value::Fixed(count as i32),
+        count,
         TargetAst::Tagged(TagKey::from(IT_TAG), clause.span()),
         None,
         false,
@@ -944,7 +944,7 @@ pub(crate) fn parse_put_onto_battlefield_with_additional_counters_sentence(
 
     effects.push(EffectAst::subject_verb_put_counters(
         counter_type,
-        Value::Fixed(count as i32),
+        count,
         TargetAst::Tagged(TagKey::from(IT_TAG), clause.span()),
         None,
         false,
@@ -1080,7 +1080,7 @@ pub(crate) fn parse_each_player_return_with_additional_counter_sentence(
 
     per_player_effects.push(EffectAst::subject_verb_put_counters(
         counter_type,
-        Value::Fixed(count as i32),
+        count,
         TargetAst::Tagged(TagKey::from(IT_TAG), clause.span()),
         None,
         false,

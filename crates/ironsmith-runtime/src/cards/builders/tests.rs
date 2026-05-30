@@ -42812,6 +42812,36 @@ fn parse_ghost_vacuum_base_pt_and_subtype_followup_sentence() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn abuelo_awakening_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Abuelo's Awakening");
+
+    let def = parse_oracle_card_definition("Abuelo's Awakening");
+    let compiled = crate::compiled_text::compiled_text_lines(&def).join(" ");
+    assert!(
+        compiled.contains("Return target artifact or non-Aura enchantment card from your graveyard to the battlefield with X additional +1/+1 counters on it"),
+        "expected X additional counters return wording, got {compiled}"
+    );
+    assert!(
+        compiled.contains("It's a 1/1 Spirit creature with flying in addition to its other types"),
+        "expected Spirit creature with flying animation wording, got {compiled}"
+    );
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("ReturnFromGraveyardToBattlefieldEffect")
+            && debug.contains("PutCountersEffect")
+            && debug.contains("amount: X")
+            && debug.contains("AddCardTypes")
+            && debug.contains("Creature")
+            && debug.contains("AddSubtypes")
+            && debug.contains("Spirit")
+            && debug.contains("Flying"),
+        "expected return, X counters, and Spirit/flying animation effects, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_sothera_supervoid_end_step_trigger() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Sothera, the Supervoid")
         .card_types(vec![CardType::Enchantment])
