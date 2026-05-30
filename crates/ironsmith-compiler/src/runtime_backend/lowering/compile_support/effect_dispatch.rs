@@ -11,6 +11,14 @@ struct EffectCompileHandlerDef {
     run: EffectCompileHandler,
 }
 
+fn describe_value_for_mode(value: &Value) -> String {
+    match value {
+        Value::Fixed(amount) => amount.to_string(),
+        Value::X => "X".to_string(),
+        _ => "that many".to_string(),
+    }
+}
+
 const EFFECT_COMPILE_HANDLERS: [EffectCompileHandlerDef; 14] = [
     EffectCompileHandlerDef {
         run: effect_combat_resource_handlers::try_compile_combat_and_damage_effect,
@@ -425,6 +433,51 @@ fn compile_subject_verb_effect(
             let effect =
                 tag_object_target_effect(Effect::explore(spec.clone()), &spec, ctx, "explored");
             Ok((vec![effect], choices))
+        }
+        SubjectVerbActionAst::Endure { target, amount } => {
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
+            let Value::Fixed(token_size) = amount.clone() else {
+                return Err(CardTextError::ParseError(
+                    "unsupported variable endure token size".to_string(),
+                ));
+            };
+            if token_size < 0 {
+                return Err(CardTextError::ParseError(
+                    "unsupported negative endure count".to_string(),
+                ));
+            }
+            let token_text = format!("{token_size}/{token_size} white Spirit creature token");
+            let token = token_definition_for(token_text.as_str()).ok_or_else(|| {
+                CardTextError::ParseError("unsupported endure Spirit token".to_string())
+            })?;
+            let amount_text = describe_value_for_mode(&amount);
+            let counter_description = if amount == Value::Fixed(1) {
+                "Put a +1/+1 counter on it".to_string()
+            } else {
+                format!("Put {amount_text} +1/+1 counters on it")
+            };
+            let token_description = if amount == Value::Fixed(1) {
+                "Create a 1/1 white Spirit creature token".to_string()
+            } else {
+                format!("Create a {amount_text}/{amount_text} white Spirit creature token")
+            };
+            let modes = vec![
+                crate::effect::EffectMode::new(
+                    counter_description,
+                    vec![Effect::put_counters(
+                        crate::object::CounterType::PlusOnePlusOne,
+                        amount.clone(),
+                        spec,
+                    )],
+                ),
+                crate::effect::EffectMode::new(
+                    token_description,
+                    vec![Effect::create_tokens(token, Value::Fixed(1))],
+                ),
+            ];
+            Ok((vec![Effect::choose_one(modes)], choices))
         }
         SubjectVerbActionAst::Exploit => {
             let id = ctx.next_effect_id();

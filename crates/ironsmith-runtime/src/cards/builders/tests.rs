@@ -262,6 +262,124 @@ fn rootpath_purifier_makes_only_your_lands_and_library_land_cards_basic() {
     );
 }
 
+fn kin_tree_nurturer_endure_effect(def: &CardDefinition) -> &Effect {
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Kin-Tree Nurturer should compile an enters trigger");
+    let effects = triggered.effects.flattened_default_effects();
+    let [effect] = effects else {
+        panic!("Kin-Tree Nurturer should have exactly one endure effect, got {effects:#?}");
+    };
+    effect
+}
+
+#[test]
+fn kin_tree_nurturer_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Kin-Tree Nurturer");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let compiled = unprocessed_compiled_lines(&def);
+    let rendered = compiled.join("\n");
+    let oracle = oracle_text_by_name()
+        .get("Kin-Tree Nurturer")
+        .expect("Kin-Tree Nurturer oracle text")
+        .clone();
+    let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+        crate::semantic_compare::compare_semantics_scored(
+            &oracle,
+            &compiled,
+            Some(crate::semantic_compare::EmbeddingConfig {
+                dims: 384,
+                mismatch_threshold: 0.99,
+            }),
+        );
+
+    assert!(
+        ability_debug.contains("ChooseModeEffect")
+            && ability_debug.contains("PutCountersEffect")
+            && ability_debug.contains("CreateTokenEffect")
+            && ability_debug.contains("Spirit"),
+        "Kin-Tree Nurturer should structurally lower endure to counter-or-Spirit modes, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains("Lifelink")
+            && rendered.contains("When this creature enters, it endures 1."),
+        "expected Kin-Tree Nurturer compiled text to preserve lifelink and endure, got {rendered}"
+    );
+    assert!(
+        similarity >= 0.99 && !mismatch,
+        "expected Kin-Tree Nurturer semantic comparison to clear target, score={similarity}, mismatch={mismatch}, compiled={compiled:?}"
+    );
+}
+
+#[test]
+fn kin_tree_nurturer_endure_counter_mode_puts_counter_on_it() {
+    let def = parse_oracle_card_definition("Kin-Tree Nurturer");
+    let effect = kin_tree_nurturer_endure_effect(&def);
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_chosen_modes(Some(vec![0]));
+
+    crate::effects::execute_effect(&mut game, effect, &mut ctx)
+        .expect("Kin-Tree Nurturer endure counter mode should resolve");
+
+    assert_eq!(
+        game.counter_count(source, CounterType::PlusOnePlusOne),
+        1,
+        "counter mode should put one +1/+1 counter on Kin-Tree Nurturer"
+    );
+    assert!(
+        game.objects_in_zone(Zone::Battlefield)
+            .into_iter()
+            .filter(|&id| id != source)
+            .filter_map(|id| game.object(id))
+            .all(|object| object.name != "Spirit"),
+        "counter mode should not create the Spirit token branch"
+    );
+}
+
+#[test]
+fn kin_tree_nurturer_endure_token_mode_creates_white_spirit() {
+    let def = parse_oracle_card_definition("Kin-Tree Nurturer");
+    let effect = kin_tree_nurturer_endure_effect(&def);
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_chosen_modes(Some(vec![1]));
+
+    crate::effects::execute_effect(&mut game, effect, &mut ctx)
+        .expect("Kin-Tree Nurturer endure token mode should resolve");
+
+    assert_eq!(
+        game.counter_count(source, CounterType::PlusOnePlusOne),
+        0,
+        "token mode should not put the counter branch on Kin-Tree Nurturer"
+    );
+    let spirits = game
+        .objects_in_zone(Zone::Battlefield)
+        .into_iter()
+        .filter(|&id| id != source)
+        .filter_map(|id| game.object(id))
+        .filter(|object| {
+            object.name == "Spirit"
+                && object.card_types == [CardType::Creature]
+                && object.subtypes == [Subtype::Spirit]
+                && object.color_override == Some(crate::color::ColorSet::WHITE)
+                && object.base_power == Some(crate::card::PtValue::Fixed(1))
+                && object.base_toughness == Some(crate::card::PtValue::Fixed(1))
+                && game.controller_of(object) == alice
+        })
+        .count();
+    assert_eq!(spirits, 1, "token mode should create one 1/1 white Spirit");
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_day_of_the_moon_goads_creatures_with_chosen_name() {

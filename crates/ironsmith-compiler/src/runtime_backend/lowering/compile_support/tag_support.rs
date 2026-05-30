@@ -78,6 +78,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::Transform { target }
             | SubjectVerbActionAst::Convert { target }
             | SubjectVerbActionAst::Explore { target }
+            | SubjectVerbActionAst::Endure { target, .. }
             | SubjectVerbActionAst::Connive { target, .. }
             | SubjectVerbActionAst::ExchangeControlHeterogeneous {
                 permanent1: target, ..
@@ -564,6 +565,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Support { .. }
         | SubjectVerbActionAst::Adapt { .. }
         | SubjectVerbActionAst::Explore { .. }
+        | SubjectVerbActionAst::Endure { .. }
         | SubjectVerbActionAst::Exploit
         | SubjectVerbActionAst::ConniveIterated
         | SubjectVerbActionAst::OpenAttraction

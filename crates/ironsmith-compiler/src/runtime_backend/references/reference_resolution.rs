@@ -374,6 +374,9 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::Explore { target } => {
                     maybe_tag_target(target, frame, id_gen, "explored")?;
                 }
+                SubjectVerbActionAst::Endure { target, .. } => {
+                    maybe_tag_target(target, frame, id_gen, "endured")?;
+                }
                 SubjectVerbActionAst::Connive { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "connived")?;
                 }
@@ -1859,6 +1862,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Support { .. }
             | SubjectVerbActionAst::Adapt { .. }
             | SubjectVerbActionAst::Explore { .. }
+            | SubjectVerbActionAst::Endure { .. }
             | SubjectVerbActionAst::Exploit
             | SubjectVerbActionAst::ConniveIterated
             | SubjectVerbActionAst::OpenAttraction
@@ -2500,6 +2504,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::Transform { target }
             | SubjectVerbActionAst::Convert { target }
             | SubjectVerbActionAst::Explore { target }
+            | SubjectVerbActionAst::Endure { target, .. }
             | SubjectVerbActionAst::Connive { target, .. }
             | SubjectVerbActionAst::FightIterated { creature2: target }
             | SubjectVerbActionAst::Exile { target, .. }

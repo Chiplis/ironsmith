@@ -819,6 +819,7 @@ fn parse_effect_sentence_with_where_x_lexed(
         };
         match action {
             SubjectVerbActionAst::Explore { target }
+            | SubjectVerbActionAst::Endure { target, .. }
             | SubjectVerbActionAst::Connive { target, .. }
             | SubjectVerbActionAst::ExchangeTextBoxes { target }
             | SubjectVerbActionAst::Attach { target, .. }
