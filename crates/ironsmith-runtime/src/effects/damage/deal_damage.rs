@@ -8,7 +8,7 @@ use crate::effects::EffectExecutor;
 use crate::effects::helpers::{
     resolve_objects_for_effect, resolve_player_from_spec, resolve_value,
 };
-use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
+use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget, TargetReusePolicy};
 use crate::events::DamageEvent;
 use crate::events::DamageTarget;
 use crate::events::LifeLossEvent;
@@ -157,6 +157,14 @@ pub(crate) fn apply_processed_damage_outcome(
 }
 
 impl EffectExecutor for DealDamageEffect {
+    fn target_reuse_policy(&self) -> TargetReusePolicy {
+        if matches!(self.target, ChooseSpec::AnyOtherTarget) {
+            TargetReusePolicy::AlwaysDeclareNew
+        } else {
+            TargetReusePolicy::ReuseCompatiblePrevious
+        }
+    }
+
     fn execute(
         &self,
         game: &mut GameState,

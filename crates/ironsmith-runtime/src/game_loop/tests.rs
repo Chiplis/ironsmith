@@ -10550,6 +10550,205 @@ fn stack_spell_with_granted_static_ability_still_executes_spell_effect() {
 }
 
 #[test]
+fn cone_of_flame_resolves_three_damage_amounts_to_three_targets() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let cone = CardDefinitionBuilder::new(CardId::new(), "Cone of Flame")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Cone of Flame deals 1 damage to any target, 2 damage to another target, and 3 damage to a third target.",
+        )
+        .expect("Cone of Flame should parse");
+    let first_creature = CardBuilder::new(CardId::from_raw(995_000), "First Target Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let second_creature = CardBuilder::new(CardId::from_raw(995_001), "Second Target Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    let first_creature_id = game.create_object_from_card(&first_creature, bob, Zone::Battlefield);
+    let second_creature_id = game.create_object_from_card(&second_creature, bob, Zone::Battlefield);
+    let cone_id = game.create_object_from_definition(&cone, alice, Zone::Stack);
+
+    let entry = StackEntry::new(cone_id, alice)
+        .with_targets(vec![
+            Target::Player(bob),
+            Target::Object(first_creature_id),
+            Target::Object(second_creature_id),
+        ])
+        .with_target_assignments(vec![
+            crate::game_state::TargetAssignment {
+                spec: crate::target::ChooseSpec::AnyTarget,
+                range: 0..1,
+            },
+            crate::game_state::TargetAssignment {
+                spec: crate::target::ChooseSpec::AnyOtherTarget,
+                range: 1..2,
+            },
+            crate::game_state::TargetAssignment {
+                spec: crate::target::ChooseSpec::AnyOtherTarget,
+                range: 2..3,
+            },
+        ]);
+    game.push_to_stack(entry);
+
+    resolve_stack_entry(&mut game).expect("Cone of Flame should resolve");
+
+    assert_eq!(game.player(bob).expect("Bob should exist").life, 19);
+    assert_eq!(game.damage_on(first_creature_id), 2);
+    assert_eq!(game.damage_on(second_creature_id), 3);
+}
+
+#[test]
+fn cone_of_flame_skips_only_targets_that_become_illegal_before_resolution() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let cone = CardDefinitionBuilder::new(CardId::new(), "Cone of Flame")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Cone of Flame deals 1 damage to any target, 2 damage to another target, and 3 damage to a third target.",
+        )
+        .expect("Cone of Flame should parse");
+    let first_creature = CardBuilder::new(CardId::from_raw(995_020), "First Target Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let second_creature = CardBuilder::new(CardId::from_raw(995_021), "Second Target Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    let first_creature_id = game.create_object_from_card(&first_creature, bob, Zone::Battlefield);
+    let second_creature_id = game.create_object_from_card(&second_creature, bob, Zone::Battlefield);
+    let cone_id = game.create_object_from_definition(&cone, alice, Zone::Stack);
+
+    let entry = StackEntry::new(cone_id, alice)
+        .with_targets(vec![
+            Target::Player(bob),
+            Target::Object(first_creature_id),
+            Target::Object(second_creature_id),
+        ])
+        .with_target_assignments(vec![
+            crate::game_state::TargetAssignment {
+                spec: crate::target::ChooseSpec::AnyTarget,
+                range: 0..1,
+            },
+            crate::game_state::TargetAssignment {
+                spec: crate::target::ChooseSpec::AnyOtherTarget,
+                range: 1..2,
+            },
+            crate::game_state::TargetAssignment {
+                spec: crate::target::ChooseSpec::AnyOtherTarget,
+                range: 2..3,
+            },
+        ]);
+    game.push_to_stack(entry);
+
+    game.move_object_by_effect(first_creature_id, Zone::Graveyard)
+        .expect("first creature should leave the battlefield before resolution");
+    resolve_stack_entry(&mut game).expect("Cone of Flame should resolve remaining legal targets");
+
+    assert_eq!(game.player(bob).expect("Bob should exist").life, 19);
+    assert_eq!(game.damage_on(first_creature_id), 0);
+    assert_eq!(game.damage_on(second_creature_id), 3);
+}
+
+#[test]
+fn cone_of_flame_exposes_three_target_requirements_and_ignores_missing_target_slot() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let cone = CardDefinitionBuilder::new(CardId::new(), "Cone of Flame")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Cone of Flame deals 1 damage to any target, 2 damage to another target, and 3 damage to a third target.",
+        )
+        .expect("Cone of Flame should parse");
+    let effects = cone
+        .spell_effect
+        .as_ref()
+        .expect("Cone of Flame should have spell effects")
+        .flattened_default_effects();
+
+    let requirements = extract_target_requirements(&game, effects, alice, None);
+    assert_eq!(
+        requirements.len(),
+        3,
+        "Cone of Flame should require three target choices, got {requirements:?}"
+    );
+    assert!(
+        requirements
+            .iter()
+            .all(|requirement| requirement.min_targets == 1 && requirement.max_targets == Some(1)),
+        "each Cone of Flame damage clause should require exactly one target, got {requirements:?}"
+    );
+
+    let creature = CardBuilder::new(CardId::from_raw(995_010), "Only Creature Target")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let creature_id = game.create_object_from_card(&creature, bob, Zone::Battlefield);
+    let cone_id = game.create_object_from_definition(&cone, alice, Zone::Stack);
+
+    let entry = StackEntry::new(cone_id, alice)
+        .with_targets(vec![Target::Player(bob), Target::Object(creature_id)])
+        .with_target_assignments(vec![
+            crate::game_state::TargetAssignment {
+                spec: crate::target::ChooseSpec::AnyTarget,
+                range: 0..1,
+            },
+            crate::game_state::TargetAssignment {
+                spec: crate::target::ChooseSpec::AnyOtherTarget,
+                range: 1..2,
+            },
+            crate::game_state::TargetAssignment {
+                spec: crate::target::ChooseSpec::AnyOtherTarget,
+                range: 2..3,
+            },
+        ]);
+    game.push_to_stack(entry);
+
+    resolve_stack_entry(&mut game)
+        .expect("Cone of Flame should handle an incomplete target assignment without panicking");
+
+    assert_eq!(game.player(bob).expect("Bob should exist").life, 19);
+    assert_eq!(game.damage_on(creature_id), 2);
+
+    let duplicate_cone_id = game.create_object_from_definition(&cone, alice, Zone::Stack);
+    let duplicate_entry = StackEntry::new(duplicate_cone_id, alice)
+        .with_targets(vec![Target::Player(bob), Target::Player(bob), Target::Player(bob)])
+        .with_target_assignments(vec![
+            crate::game_state::TargetAssignment {
+                spec: crate::target::ChooseSpec::AnyTarget,
+                range: 0..1,
+            },
+            crate::game_state::TargetAssignment {
+                spec: crate::target::ChooseSpec::AnyOtherTarget,
+                range: 1..2,
+            },
+            crate::game_state::TargetAssignment {
+                spec: crate::target::ChooseSpec::AnyOtherTarget,
+                range: 2..3,
+            },
+        ]);
+    game.push_to_stack(duplicate_entry);
+
+    resolve_stack_entry(&mut game)
+        .expect("Cone of Flame should ignore repeated choices for later 'other' targets");
+
+    assert_eq!(
+        game.player(bob).expect("Bob should exist").life,
+        18,
+        "duplicate later targets should not receive the 2- and 3-damage clauses"
+    );
+}
+
+#[test]
 fn magma_mine_activated_ability_sacrifices_source_and_deals_counter_scaled_damage_to_player() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);

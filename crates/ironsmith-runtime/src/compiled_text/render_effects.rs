@@ -5118,6 +5118,41 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         unwrap_tag_wrappers(effect)
     }
 
+    fn damage_series_target_text(target: &ChooseSpec, idx: usize, total: usize) -> Option<String> {
+        match target.base() {
+            ChooseSpec::AnyTarget if idx == 0 => Some("any target".to_string()),
+            ChooseSpec::AnyOtherTarget if idx == 1 && total >= 3 => {
+                Some("another target".to_string())
+            }
+            ChooseSpec::AnyOtherTarget if idx >= 2 && total >= 3 => {
+                let ordinal = ordinal_word((idx + 1) as u32)?;
+                Some(format!("a {ordinal} target"))
+            }
+            ChooseSpec::AnyOtherTarget => Some("any other target".to_string()),
+            _ => None,
+        }
+    }
+
+    fn describe_repeated_damage_target_series(filtered: &[&Effect]) -> Option<String> {
+        if filtered.len() < 2 {
+            return None;
+        }
+
+        let mut clauses = Vec::with_capacity(filtered.len());
+        for (idx, effect) in filtered.iter().enumerate() {
+            let damage = unwrap_tag_wrappers(effect)
+                .downcast_ref::<crate::effects::DealDamageEffect>()?;
+            let (amount, where_x) = describe_damage_amount_clause(&damage.amount);
+            if where_x.is_some() || damage.source_is_combat {
+                return None;
+            }
+            let target = damage_series_target_text(&damage.target, idx, filtered.len())?;
+            clauses.push(format!("{amount} to {target}"));
+        }
+
+        Some(format!("Deal {}", join_with_and(&clauses)))
+    }
+
     fn describe_dynamic_return_from_graveyard_bundle(
         effects: &[Effect],
         filtered: &[&Effect],
@@ -10898,6 +10933,22 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             parts.push(rendered);
             idx += 3;
             continue;
+        }
+        if idx + 1 < filtered.len() {
+            let mut series_end = idx;
+            while series_end < filtered.len()
+                && unwrap_tag_wrappers(filtered[series_end])
+                    .downcast_ref::<crate::effects::DealDamageEffect>()
+                    .is_some()
+            {
+                series_end += 1;
+            }
+            if let Some(rendered) = describe_repeated_damage_target_series(&filtered[idx..series_end])
+            {
+                parts.push(rendered);
+                idx = series_end;
+                continue;
+            }
         }
         if idx + 3 < filtered.len()
             && let Some(rendered) =

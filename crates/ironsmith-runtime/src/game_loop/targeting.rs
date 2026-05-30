@@ -2318,8 +2318,23 @@ pub(super) fn validate_stack_entry_targets_with_view(
             };
 
             let start = valid_targets.len();
-            for target in &entry.targets[assignment.range.clone()] {
+            if assignment.range.end > entry.targets.len()
+                || assignment.range.start > entry.targets.len()
+            {
+                invalid_count += assignment
+                    .range
+                    .end
+                    .saturating_sub(entry.targets.len())
+                    .max(1);
+            }
+            let available_start = assignment.range.start.min(entry.targets.len());
+            let available_end = assignment.range.end.min(entry.targets.len());
+            for target in &entry.targets[available_start..available_end] {
+                let repeats_prior_target =
+                    matches!(assignment.spec.base(), ChooseSpec::AnyOtherTarget)
+                        && entry.targets[..available_start].contains(target);
                 if legal_targets.contains(target)
+                    && !repeats_prior_target
                     || (contains_exchange_control
                         && exchange_control_target_still_targetable(game, entry, target, view))
                 {
@@ -2338,7 +2353,7 @@ pub(super) fn validate_stack_entry_targets_with_view(
             });
         }
 
-        let all_invalid = invalid_count == entry.targets.len();
+        let all_invalid = valid_targets.is_empty() && invalid_count > 0;
         return (valid_targets, valid_assignments, all_invalid);
     }
 

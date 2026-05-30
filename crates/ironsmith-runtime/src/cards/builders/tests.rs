@@ -37419,6 +37419,29 @@ fn assert_oracle_card_fails_strict(name: &str) {
 }
 
 #[test]
+fn cone_of_flame_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Cone of Flame");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+
+    assert_eq!(
+        rendered,
+        "Cone of Flame deals 1 damage to any target, 2 damage to another target, and 3 damage to a third target."
+    );
+
+    let debug = format!("{:#?}", def.spell_effect);
+    let compact = debug.split_whitespace().collect::<String>();
+    assert!(
+        compact.contains("DealDamageEffect")
+            && compact.contains("Fixed(1,)")
+            && compact.contains("Fixed(2,)")
+            && compact.contains("Fixed(3,)")
+            && compact.contains("AnyTarget")
+            && compact.matches("AnyOtherTarget").count() >= 2,
+        "expected Cone of Flame to lower to three distinct target damage effects, got {debug}"
+    );
+}
+
+#[test]
 fn when_we_were_young_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("When We Were Young");
     let rendered = canonical_compiled_lines(&def).join(" ");

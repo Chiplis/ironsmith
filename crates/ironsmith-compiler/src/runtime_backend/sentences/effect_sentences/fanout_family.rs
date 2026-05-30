@@ -1212,6 +1212,92 @@ fn compound_damage_effects(
     }
 }
 
+fn starts_with_damage_amount(tokens: &[OwnedLexToken]) -> bool {
+    let Some((_amount, used)) = parse_value(tokens) else {
+        return false;
+    };
+    tokens
+        .get(used)
+        .is_some_and(|token| token.is_word("damage"))
+}
+
+fn next_damage_amount_target_part(tokens: &[OwnedLexToken]) -> Option<(usize, usize)> {
+    for idx in 0..tokens.len() {
+        if tokens[idx].is_comma() {
+            let mut next = idx + 1;
+            if tokens.get(next).is_some_and(|token| token.is_word("and")) {
+                next += 1;
+            }
+            if starts_with_damage_amount(&tokens[next..]) {
+                return Some((idx, next));
+            }
+        } else if tokens[idx].is_word("and") {
+            let next = idx + 1;
+            if starts_with_damage_amount(&tokens[next..]) {
+                return Some((idx, next));
+            }
+        }
+    }
+    None
+}
+
+fn parse_repeated_damage_amount_target_series(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let deal_tokens = if tokens.first().is_some_and(|token| token.is_word("deal")) {
+        tokens
+    } else if let Some((Verb::Deal, verb_idx)) = find_verb(tokens) {
+        &tokens[verb_idx..]
+    } else {
+        return Ok(None);
+    };
+
+    let mut rest = deal_tokens[1..].to_vec();
+    let mut effects = Vec::new();
+    loop {
+        rest = trim_commas(&rest);
+        if rest.first().is_some_and(|token| token.is_word("and")) {
+            rest = trim_commas(&rest[1..]);
+        }
+        if rest.is_empty() {
+            break;
+        }
+
+        let Some((amount, used)) = parse_value(&rest) else {
+            return Ok(None);
+        };
+        rest = rest[used..].to_vec();
+        if !rest.first().is_some_and(|token| token.is_word("damage")) {
+            return Ok(None);
+        }
+        rest = rest[1..].to_vec();
+        if rest.first().is_some_and(|token| token.is_word("to")) {
+            rest = rest[1..].to_vec();
+        }
+
+        let (target_tokens, next_rest) = if let Some((split_idx, next_start)) =
+            next_damage_amount_target_part(&rest)
+        {
+            (&rest[..split_idx], rest[next_start..].to_vec())
+        } else {
+            (rest.as_slice(), Vec::new())
+        };
+        let target_tokens = strip_trailing_damage_noise(target_tokens);
+        if target_tokens.is_empty() {
+            return Ok(None);
+        }
+        let target = parse_target_phrase(&target_tokens)?;
+        effects.push(EffectAst::subject_verb_damage(amount, target));
+        rest = next_rest;
+    }
+
+    if effects.len() >= 2 {
+        Ok(Some(effects))
+    } else {
+        Ok(None)
+    }
+}
+
 fn equal_damage_target_tail_starts_like_destination(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::runtime_backend::token_word_refs(tokens);
     matches!(
@@ -1252,6 +1338,10 @@ fn parse_equal_damage_amount_and_targets(
 pub(crate) fn parse_compound_damage_fanout_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(effects) = parse_repeated_damage_amount_target_series(tokens)? {
+        return Ok(Some(effects));
+    }
+
     let deal_tokens = if tokens.first().is_some_and(|token| token.is_word("deal")) {
         tokens
     } else if let Some((Verb::Deal, verb_idx)) = find_verb(tokens) {
