@@ -1452,6 +1452,7 @@ pub(super) fn auto_pay_spell_tap_cost_steps(
         };
 
         let mut cost_ctx = CostContext::new(pending.spell_id, pending.caster, &mut *decision_maker)
+            .with_reason(crate::costs::PaymentReason::CastSpell)
             .with_provenance(pending.provenance);
         cost_ctx.tagged_objects = pending.tagged_objects.clone();
         cost_ctx.x_value = pending.x_value;
@@ -1498,6 +1499,7 @@ pub(super) fn continue_spell_cost_payment(
         ActivationCostStep::Cost(cost) => {
             let mut cost_ctx =
                 CostContext::new(pending.spell_id, pending.caster, &mut *decision_maker)
+                    .with_reason(crate::costs::PaymentReason::CastSpell)
                     .with_provenance(pending.provenance);
             cost_ctx.tagged_objects = pending.tagged_objects.clone();
             cost_ctx.x_value = pending.x_value;

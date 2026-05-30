@@ -31166,6 +31166,156 @@ fn oroku_saki_sneak_casting_method_is_only_available_during_declare_blockers() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn oroku_saki_priority_cast_with_sneak_pays_cost_and_enters_tapped_attacking() {
+    let mut game = setup_game();
+    let (alice, bob, attacker) = make_oroku_saki_sneak_combat(&mut game);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    if let Some(player) = game.player_mut(alice) {
+        player.mana_pool.add(ManaSymbol::Black, 1);
+        player.mana_pool.add(ManaSymbol::Colorless, 1);
+    }
+    let oroku = game.create_object_from_definition(
+        &oroku_saki_shredder_rising_definition(),
+        alice,
+        Zone::Hand,
+    );
+
+    let sneak_action = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Hand,
+                    casting_method: crate::alternative_cast::CastingMethod::Alternative(_),
+                } if *spell_id == oroku
+            )
+        })
+        .expect("Sneak should be offered as a real priority cast action");
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    state.set_auto_choose_single_pip_payment(false);
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = SelectFirstDecisionMaker;
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(sneak_action),
+        &mut dm,
+    )
+    .expect("selecting Sneak should start the cast flow");
+
+    let next_cost_ctx = match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::SelectOptions(
+            ctx,
+        )) => ctx,
+        other => panic!("expected next-cost chooser for Sneak cast, got {other:?}"),
+    };
+    let sneak_cost_index = next_cost_ctx
+        .options
+        .iter()
+        .find(|option| option.description.contains("unblocked attacker"))
+        .map(|option| option.index)
+        .expect("Sneak cast should include the unblocked-attacker return cost");
+
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::NextCostChoice(sneak_cost_index),
+        &mut dm,
+    )
+    .expect("paying the Sneak return cost from the stack should succeed");
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .hand
+            .iter()
+            .any(|id| game.object(*id).is_some_and(|obj| obj.name == "Oroku Saki Sneak Attacker")),
+        "Sneak should return the unblocked attacker to hand during casting"
+    );
+    assert!(
+        game.combat
+            .as_ref()
+            .is_some_and(|combat| !combat.attackers.iter().any(|info| info.creature == attacker)),
+        "the returned attacker should leave combat during Sneak cost payment"
+    );
+    let stack_oroku = state
+        .pending_cast
+        .as_ref()
+        .map(|pending| pending.spell_id)
+        .expect("Oroku Saki should still be pending after paying the Sneak return cost");
+    assert!(
+        game.object(stack_oroku)
+            .is_some_and(|obj| obj.zone == Zone::Stack),
+        "Oroku Saki should be proposed onto the stack during casting"
+    );
+    assert_eq!(
+        game.ninjutsu_attack_targets
+            .get(&stack_oroku)
+            .and_then(|targets| targets.last()),
+        Some(&AttackTarget::Player(bob)),
+        "Sneak should record the returned attacker's target for resolution"
+    );
+
+    match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::SelectOptions(
+            _,
+        )) => {}
+        other => panic!("expected mana payment prompt after Sneak cost, got {other:?}"),
+    }
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::ManaPipPayment(0),
+        &mut dm,
+    )
+    .expect("paying {B} for Sneak should succeed");
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::ManaPipPayment(0),
+        &mut dm,
+    )
+    .expect("paying {1} for Sneak should finish casting");
+
+    let stack_entry = game
+        .stack
+        .last()
+        .expect("Oroku Saki should remain on the stack after the Sneak cast is finalized");
+    assert_eq!(stack_entry.object_id, stack_oroku);
+    assert!(
+        stack_entry.optional_costs_paid.was_paid_label("Sneak"),
+        "the finalized stack entry should record that Sneak was used"
+    );
+
+    resolve_stack_entry(&mut game).expect("Oroku Saki sneak spell should resolve");
+
+    let entered = game
+        .battlefield
+        .iter()
+        .copied()
+        .find(|id| game.object(*id).is_some_and(|obj| obj.name == "Oroku Saki, Shredder Rising"))
+        .expect("Oroku Saki should enter the battlefield");
+    assert!(game.is_tapped(entered), "Oroku Saki should enter tapped after sneak");
+    assert!(
+        game.combat.as_ref().is_some_and(|combat| {
+            combat
+                .attackers
+                .iter()
+                .any(|info| info.creature == entered && info.target == AttackTarget::Player(bob))
+        }),
+        "Oroku Saki should enter attacking the returned attacker's target"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn oroku_saki_cast_with_sneak_enters_tapped_and_attacking() {
     let mut game = setup_game();
     let (alice, bob, _attacker) = make_oroku_saki_sneak_combat(&mut game);
