@@ -184,6 +184,10 @@ pub(crate) enum TriggerSpec {
         player: PlayerFilter,
         filter: ObjectFilter,
     },
+    PlayerRollsResult {
+        player: PlayerFilter,
+        result: u32,
+    },
     AbilityActivated {
         activator: PlayerFilter,
         filter: ObjectFilter,

@@ -3053,6 +3053,23 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
     }
 
+    if let Some(roll_word_idx) = find_index(&words, |word| *word == "roll" || *word == "rolls") {
+        let subject_words = &words[..roll_word_idx];
+        let result_words = &words[roll_word_idx + 1..];
+        if let Some(player) = parse_trigger_subject_player_filter(subject_words) {
+            let result_words = if result_words.first() == Some(&"a") {
+                &result_words[1..]
+            } else {
+                result_words
+            };
+            if let Some((result, used)) = ironsmith_core::parse_cardinal_words(result_words)
+                && used == result_words.len()
+            {
+                return Ok(TriggerSpec::PlayerRollsResult { player, result });
+            }
+        }
+    }
+
     if let Some(last_word) = words.last().copied()
         && let Some(action) = crate::events::KeywordActionKind::from_trigger_word(last_word)
     {

@@ -4519,6 +4519,39 @@ fn test_parse_clown_car_compiled_text_keeps_odd_even_branches_and_token_identity
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_complaints_clerk_roll_one_trigger_creates_clown_robot() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Complaints Clerk")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Beast])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "When this creature enters, open an Attraction. (Put the top card of your Attraction deck onto the battlefield.)\nWhenever you roll a 1, create a 1/1 white Clown Robot artifact creature token.",
+        )
+        .expect("Complaints Clerk should parse strictly");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("PlayerRollsResult") && debug.contains("result: 1"),
+        "expected exact roll-one trigger, got {debug}"
+    );
+    assert!(
+        debug.contains("CreateToken") && debug.contains("Clown") && debug.contains("Robot"),
+        "expected Clown Robot token creation payload, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Whenever you roll a 1"),
+        "expected roll-one trigger wording, got {rendered}"
+    );
+    assert!(
+        rendered.contains("1/1 white Clown Robot artifact creature token"),
+        "expected Clown Robot token wording, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_sevinnes_reclamation_flashback_copy_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Sevinne's Reclamation")
         .card_types(vec![CardType::Sorcery])

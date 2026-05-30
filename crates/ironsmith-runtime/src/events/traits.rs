@@ -105,6 +105,8 @@ pub enum EventKind {
     PermanentUntapped,
     /// A player performed a keyword action (investigate, scry, earthbend, etc.)
     KeywordAction,
+    /// A player rolled a die.
+    DieRolled,
     /// The day/night designation changed from day to night or night to day.
     DayNightChanged,
     /// Players finished voting (for council's dilemma, etc.)

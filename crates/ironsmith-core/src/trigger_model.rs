@@ -158,6 +158,10 @@ pub enum TriggerKind {
         player: PlayerFilter,
         filter: ObjectFilter,
     },
+    PlayerRollsResult {
+        player: PlayerFilter,
+        result: u32,
+    },
     AbilityActivatedQualified {
         activator: PlayerFilter,
         filter: ObjectFilter,
@@ -650,6 +654,12 @@ impl Trigger {
         Self::typed(
             "player_taps_for_mana",
             TriggerKind::PlayerTapsForMana { player, filter },
+        )
+    }
+    pub fn player_rolls_result(player: PlayerFilter, result: u32) -> Self {
+        Self::typed(
+            "player_rolls_result",
+            TriggerKind::PlayerRollsResult { player, result },
         )
     }
     pub fn ability_activated_qualified(
