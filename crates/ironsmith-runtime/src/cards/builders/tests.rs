@@ -168,6 +168,100 @@ fn party_dude_strict_parser_and_compiled_text_regression() {
     );
 }
 
+#[test]
+fn rootpath_purifier_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Rootpath Purifier");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert!(
+        def.abilities.iter().any(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => {
+                static_ability.id() == StaticAbilityId::AddSupertypes
+            }
+            _ => false,
+        }),
+        "Rootpath Purifier should parse its basic-supertype static ability strictly, got {ability_debug}"
+    );
+    assert!(
+        ability_debug.contains("AddSupertypes")
+            && ability_debug.contains("Basic")
+            && ability_debug.contains("Library")
+            && ability_debug.contains("Battlefield"),
+        "Rootpath Purifier should structurally add Basic to battlefield lands and library land cards, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains("Lands you control")
+            && rendered.contains("land cards in your library")
+            && rendered.contains("are basic"),
+        "Rootpath Purifier compiled text should cover the full basic-supertype clause, got {rendered}"
+    );
+}
+
+#[test]
+fn rootpath_purifier_makes_only_your_lands_and_library_land_cards_basic() {
+    let rootpath = parse_oracle_card_definition("Rootpath Purifier");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+
+    let alice_battlefield_land = CardBuilder::new(CardId::new(), "Alice Battlefield Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let bob_battlefield_land = CardBuilder::new(CardId::new(), "Bob Battlefield Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let alice_library_land = CardBuilder::new(CardId::new(), "Alice Library Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let alice_library_spell = CardBuilder::new(CardId::new(), "Alice Library Spell")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let bob_library_land = CardBuilder::new(CardId::new(), "Bob Library Land")
+        .card_types(vec![CardType::Land])
+        .build();
+
+    game.create_object_from_definition(&rootpath, alice, Zone::Battlefield);
+    let alice_battlefield_land_id =
+        game.create_object_from_card(&alice_battlefield_land, alice, Zone::Battlefield);
+    let bob_battlefield_land_id =
+        game.create_object_from_card(&bob_battlefield_land, bob, Zone::Battlefield);
+    let alice_library_land_id =
+        game.create_object_from_card(&alice_library_land, alice, Zone::Library);
+    let alice_library_spell_id =
+        game.create_object_from_card(&alice_library_spell, alice, Zone::Library);
+    let bob_library_land_id = game.create_object_from_card(&bob_library_land, bob, Zone::Library);
+
+    let is_basic = |game: &crate::game_state::GameState, id| {
+        game.current_characteristics(id)
+            .expect("object should have current characteristics")
+            .supertypes
+            .contains(&Supertype::Basic)
+    };
+
+    assert!(
+        is_basic(&game, alice_battlefield_land_id),
+        "Rootpath Purifier should make lands you control basic"
+    );
+    assert!(
+        is_basic(&game, alice_library_land_id),
+        "Rootpath Purifier should make land cards in your library basic"
+    );
+    assert!(
+        !is_basic(&game, bob_battlefield_land_id),
+        "Rootpath Purifier should not make lands opponents control basic"
+    );
+    assert!(
+        !is_basic(&game, alice_library_spell_id),
+        "Rootpath Purifier should not make nonland cards in your library basic"
+    );
+    assert!(
+        !is_basic(&game, bob_library_land_id),
+        "Rootpath Purifier should not make land cards in opponents' libraries basic"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_day_of_the_moon_goads_creatures_with_chosen_name() {
