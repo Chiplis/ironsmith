@@ -427,6 +427,17 @@ impl ZoneChangeTrigger {
         } else {
             subject_description_for_zone_change(&self.object_filter)
         };
+        if let Some(rest) = filter_desc
+            .strip_prefix("an opponent's ")
+            .or_else(|| filter_desc.strip_prefix("opponent's "))
+        {
+            let article = if matches!(rest.chars().next(), Some('a' | 'e' | 'i' | 'o' | 'u')) {
+                "an"
+            } else {
+                "a"
+            };
+            filter_desc = format!("{article} {rest} an opponent controls");
+        }
         if self.to == ZonePattern::Specific(Zone::Battlefield)
             && enters_origin_phrase(self).is_some()
             && let Some(stripped) = filter_desc.strip_suffix(" you own")

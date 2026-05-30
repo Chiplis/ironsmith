@@ -201,6 +201,13 @@ impl TriggerMatcher for AttacksTrigger {
         } else {
             subject
         };
+        let passive_opponent_attacked = self.one_or_more
+            && attacked_target_must_be_player
+            && matches!(attacked_player.as_ref(), Some(PlayerFilter::Opponent))
+            && display_filter == ObjectFilter::creature();
+        if passive_opponent_attacked {
+            return "Whenever one or more of your opponents are attacked".to_string();
+        }
         let target_tail = match (attacked_player.as_ref(), attacked_target_must_be_player) {
             (Some(PlayerFilter::Opponent), true) => " an opponent",
             (Some(PlayerFilter::Any), true) => " a player",

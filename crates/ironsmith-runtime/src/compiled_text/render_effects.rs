@@ -14019,6 +14019,21 @@ pub(super) fn describe_inline_ability_with_self_subject(
             }
         }
         AbilityKind::Activated(activated) => {
+            if let Some(level) = activated.additional_restrictions.iter().find_map(|restriction| {
+                restriction.strip_prefix("__ironsmith_class_level:")
+            }) {
+                let effects = activated.effects.flattened_default_effects();
+                if let [effect] = effects
+                    && let Some(put) = effect.downcast_ref::<crate::effects::PutCountersEffect>()
+                    && put.counter_type == crate::CounterType::Level
+                    && matches!(put.target, ChooseSpec::Source)
+                {
+                    return format!(
+                        "{}: Level {level}",
+                        describe_cost_list(activated.mana_cost.costs())
+                    );
+                }
+            }
             let mut line = String::new();
             let mut pre = Vec::new();
             if !activated.mana_cost.costs().is_empty() {
@@ -14740,7 +14755,7 @@ fn apply_triggered_presentation_label(
         return line;
     };
     let label = label.trim();
-    if label.is_empty() || line.starts_with(label) {
+    if label.is_empty() || label.starts_with("__ironsmith_") || line.starts_with(label) {
         return line;
     }
     format!("{label} — {line}")
@@ -33234,6 +33249,9 @@ pub(super) fn collect_activation_restriction_clauses(
     }
 
     for raw in additional_restrictions {
+        if raw.starts_with("__ironsmith_class_level:") {
+            continue;
+        }
         if raw
             .to_ascii_lowercase()
             .contains("exhaust ability only once")
@@ -35917,6 +35935,24 @@ fn describe_backup_keyword(triggered: &crate::ability::TriggeredAbility) -> Opti
     Some(format!("Backup {}", backup.amount))
 }
 
+fn describe_class_level_activation(activated: &crate::ability::ActivatedAbility) -> Option<String> {
+    let level = activated
+        .additional_restrictions
+        .iter()
+        .find_map(|restriction| restriction.strip_prefix("__ironsmith_class_level:"))?;
+    let [effect] = activated.effects.flattened_default_effects() else {
+        return None;
+    };
+    let put = effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if put.counter_type != crate::CounterType::Level || !matches!(put.target, ChooseSpec::Source) {
+        return None;
+    }
+    Some(format!(
+        "{}: Level {level}",
+        describe_cost_list(activated.mana_cost.costs())
+    ))
+}
+
 pub(super) fn describe_ability(
     index: usize,
     ability: &Ability,
@@ -36230,6 +36266,9 @@ pub(super) fn describe_ability(
             vec![line]
         }
         AbilityKind::Activated(activated) => {
+            if let Some(level_text) = describe_class_level_activation(activated) {
+                return vec![level_text];
+            }
             if activated.choices.is_empty()
                 && matches!(activated.timing, ActivationTiming::SorcerySpeed)
                 && activated.effects.segments.len() == 1
@@ -36560,6 +36599,9 @@ pub(super) fn card_self_reference_phrase_for_card(card: &crate::card::Card) -> &
     }
     if card.subtypes.contains(&Subtype::Fortification) {
         return "this Fortification";
+    }
+    if card.subtypes.contains(&Subtype::Class) {
+        return "this Class";
     }
     if card.subtypes.contains(&Subtype::Saga) {
         return "this Saga";

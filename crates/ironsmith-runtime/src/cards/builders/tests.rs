@@ -141,6 +141,34 @@ fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
     );
 }
 
+#[test]
+fn party_dude_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Party Dude");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        ability_debug.contains("AttacksTrigger")
+            || ability_debug.contains("AttacksOneOrMore")
+            || ability_debug.contains("one_or_more: true"),
+        "Party Dude should parse the opponent-attacked trigger strictly, got {ability_debug}"
+    );
+    assert!(
+        ability_debug.contains("WithCount")
+            && ability_debug.contains("ChoiceCount")
+            && ability_debug.contains("Hand")
+            && ability_debug.contains("WhereXIs"),
+        "Party Dude should structurally keep the hand-size X pump and up-to-one target, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains("{1}{G}: Level 2")
+            && rendered.contains("{4}{G}: Level 3")
+            && rendered.contains("Whenever one or more of your opponents are attacked")
+            && rendered.contains("up to one target attacking creature gets +X/+X until end of turn, where X is the number of cards in your hand"),
+        "expected Party Dude compiled text to preserve class level and opponent-attacked pump clauses, got {rendered}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_day_of_the_moon_goads_creatures_with_chosen_name() {

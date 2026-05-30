@@ -459,6 +459,72 @@ fn combine_level_ability_statics(
     out
 }
 
+const CLASS_LEVEL_MARKER_PREFIX: &str = "__ironsmith_class_level:";
+
+fn class_level_marker(ability: &ironsmith::ability::ActivatedAbility) -> Option<u32> {
+    ability
+        .additional_restrictions
+        .iter()
+        .find_map(|restriction| restriction.strip_prefix(CLASS_LEVEL_MARKER_PREFIX))
+        .and_then(|level| level.parse::<u32>().ok())
+}
+
+fn class_level_activation_condition(level: u32) -> ironsmith::ConditionExpr {
+    let required_counters = level.saturating_sub(2);
+    if required_counters == 0 {
+        return ironsmith::ConditionExpr::SourceHasNoCounter(ironsmith::CounterType::Level);
+    }
+    ironsmith::ConditionExpr::And(
+        Box::new(ironsmith::ConditionExpr::SourceHasCounterAtLeast {
+            counter_type: ironsmith::CounterType::Level,
+            count: required_counters,
+        }),
+        Box::new(ironsmith::ConditionExpr::Not(Box::new(
+            ironsmith::ConditionExpr::SourceHasCounterAtLeast {
+                counter_type: ironsmith::CounterType::Level,
+                count: required_counters + 1,
+            },
+        ))),
+    )
+}
+
+fn and_condition(
+    left: Option<ironsmith::ConditionExpr>,
+    right: ironsmith::ConditionExpr,
+) -> ironsmith::ConditionExpr {
+    left.map(|left| ironsmith::ConditionExpr::And(Box::new(left), Box::new(right.clone())))
+        .unwrap_or(right)
+}
+
+fn apply_class_level_runtime_gates(definition: &mut ironsmith::cards::CardDefinition) {
+    if !definition.card.subtypes.contains(&ironsmith::Subtype::Class) {
+        return;
+    }
+
+    let mut current_level = None;
+    for ability in &mut definition.abilities {
+        if let ironsmith::ability::AbilityKind::Activated(activated) = &mut ability.kind
+            && let Some(level) = class_level_marker(activated)
+        {
+            activated.activation_condition = Some(and_condition(
+                activated.activation_condition.take(),
+                class_level_activation_condition(level),
+            ));
+            current_level = Some(level);
+            continue;
+        }
+
+        let Some(level) = current_level else {
+            continue;
+        };
+        if let ironsmith::ability::AbilityKind::Triggered(triggered) = &mut ability.kind
+            && triggered.presentation_label.is_none()
+        {
+            triggered.presentation_label = Some(format!("{CLASS_LEVEL_MARKER_PREFIX}{level}"));
+        }
+    }
+}
+
 fn runtime_definition_from_core_model(
     definition: compiler::CardDefinition,
 ) -> Result<ironsmith::cards::CardDefinition, CompilerIntegrationError> {
@@ -470,6 +536,7 @@ fn runtime_definition_from_core_model(
         runtime_optional_cost_from_core_model,
     )?;
     definition.abilities = combine_level_ability_statics(definition.abilities);
+    apply_class_level_runtime_gates(&mut definition);
     if let Some(spell_effect) = &mut definition.spell_effect {
         remove_redundant_target_only_effects_in_program(spell_effect);
     }

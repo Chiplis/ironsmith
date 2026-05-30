@@ -2185,6 +2185,220 @@ fn frontier_warmonger_grants_menace_only_to_qualifying_attackers_until_cleanup()
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn party_dude_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_144), "Party Dude")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Class])
+        .parse_text(
+            "(Gain the next level as a sorcery to add its ability.)\n\
+             When this Class enters, each player creates a Food token.\n\
+             {1}{G}: Level 2\n\
+             Whenever an artifact an opponent controls is put into a graveyard from the battlefield, draw a card.\n\
+             {4}{G}: Level 3\n\
+             Whenever one or more of your opponents are attacked, up to one target attacking creature gets +X/+X until end of turn, where X is the number of cards in your hand.",
+        )
+        .expect("Party Dude should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_cards_in_hand(game: &mut GameState, player: PlayerId, count: u32) {
+    for index in 0..count {
+        let card = CardBuilder::new(CardId::from_raw(72_200 + index), "Hand Filler").build();
+        game.create_object_from_card(&card, player, Zone::Hand);
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_party_dude_at_level(game: &mut GameState, party_dude_id: ObjectId, level: u32) {
+    let counters = level.saturating_sub(1);
+    if counters > 0 {
+        game.add_counters(party_dude_id, crate::object::CounterType::Level, counters);
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn party_dude_level_ability_index(game: &GameState, party_dude_id: ObjectId, level: u32) -> usize {
+    game.object(party_dude_id)
+        .expect("Party Dude should be on the battlefield")
+        .abilities
+        .iter()
+        .enumerate()
+        .find_map(|(index, ability)| match &ability.kind {
+            AbilityKind::Activated(activated)
+                if activated
+                    .additional_restrictions
+                    .iter()
+                    .any(|restriction| restriction == &format!("__ironsmith_class_level:{level}")) =>
+            {
+                Some(index)
+            }
+            _ => None,
+        })
+        .expect("Party Dude should have the requested class level ability")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn party_dude_can_activate_level(game: &GameState, party_dude_id: ObjectId, level: u32) -> bool {
+    let ability_index = party_dude_level_ability_index(game, party_dude_id, level);
+    crate::decision::compute_legal_actions(game, PlayerId::from_index(0))
+        .iter()
+        .any(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == party_dude_id && *idx == ability_index
+            )
+        })
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn party_dude_pumps_target_attacking_creature_when_an_opponent_is_attacked() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+
+    let party_dude = party_dude_definition();
+    let party_dude_id = game.create_object_from_definition(&party_dude, alice, Zone::Battlefield);
+    put_party_dude_at_level(&mut game, party_dude_id, 3);
+    put_cards_in_hand(&mut game, alice, 3);
+    let attacker = create_creature(&mut game, "Party Attacker", bob, 2, 2);
+    game.remove_summoning_sickness(attacker);
+    game.turn.active_player = bob;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[AttackerDeclaration {
+            creature: attacker,
+            target: AttackTarget::Player(charlie),
+        }],
+    )
+    .expect("Bob should be able to attack Charlie");
+    game.combat = Some(combat.clone());
+    assert_eq!(trigger_queue.entries.len(), 1, "Party Dude should trigger once");
+
+    let mut dm = SelectFirstDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Party Dude trigger should go on the stack with a target");
+    resolve_stack_entry(&mut game).expect("Party Dude trigger should resolve");
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        game.calculated_power(attacker),
+        Some(5),
+        "Party Dude should give +X/+X where X is its controller's hand size"
+    );
+    assert_eq!(game.calculated_toughness(attacker), Some(5));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn party_dude_does_not_trigger_before_level_three_when_an_opponent_is_attacked() {
+    for level in [1, 2] {
+        let mut game = setup_three_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+
+        let party_dude = party_dude_definition();
+        let party_dude_id =
+            game.create_object_from_definition(&party_dude, alice, Zone::Battlefield);
+        put_party_dude_at_level(&mut game, party_dude_id, level);
+        let attacker = create_creature(&mut game, "Early Party Attacker", bob, 2, 2);
+        game.remove_summoning_sickness(attacker);
+        game.turn.active_player = bob;
+        game.turn.phase = Phase::Combat;
+        game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+        let mut combat = CombatState::default();
+        let mut trigger_queue = TriggerQueue::new();
+        apply_attacker_declarations(
+            &mut game,
+            &mut combat,
+            &mut trigger_queue,
+            &[AttackerDeclaration {
+                creature: attacker,
+                target: AttackTarget::Player(charlie),
+            }],
+        )
+        .expect("Bob should be able to attack Charlie");
+
+        assert!(
+            trigger_queue.entries.is_empty(),
+            "Party Dude should not have its level 3 attack trigger at level {level}"
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn party_dude_class_level_activations_are_level_gated() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+
+    let party_dude = party_dude_definition();
+    let party_dude_id = game.create_object_from_definition(&party_dude, alice, Zone::Battlefield);
+
+    assert!(party_dude_can_activate_level(&game, party_dude_id, 2));
+    assert!(!party_dude_can_activate_level(&game, party_dude_id, 3));
+
+    game.add_counters(party_dude_id, crate::object::CounterType::Level, 1);
+    assert!(!party_dude_can_activate_level(&game, party_dude_id, 2));
+    assert!(party_dude_can_activate_level(&game, party_dude_id, 3));
+
+    game.add_counters(party_dude_id, crate::object::CounterType::Level, 1);
+    assert!(!party_dude_can_activate_level(&game, party_dude_id, 2));
+    assert!(!party_dude_can_activate_level(&game, party_dude_id, 3));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn party_dude_does_not_trigger_when_its_controller_is_attacked() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let party_dude = party_dude_definition();
+    let party_dude_id = game.create_object_from_definition(&party_dude, alice, Zone::Battlefield);
+    put_party_dude_at_level(&mut game, party_dude_id, 3);
+    let attacker = create_creature(&mut game, "Uninvited Attacker", bob, 2, 2);
+    game.remove_summoning_sickness(attacker);
+    game.turn.active_player = bob;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[AttackerDeclaration {
+            creature: attacker,
+            target: AttackTarget::Player(alice),
+        }],
+    )
+    .expect("Bob should be able to attack Alice");
+    put_triggers_on_stack(&mut game, &mut trigger_queue).expect("empty trigger queue should process");
+
+    assert!(
+        game.stack.is_empty(),
+        "Party Dude should not trigger when its controller, not an opponent, is attacked"
+    );
+}
+
 #[test]
 fn guardian_of_the_ages_loses_defender_and_stops_triggering() {
     let mut game = setup_game();
