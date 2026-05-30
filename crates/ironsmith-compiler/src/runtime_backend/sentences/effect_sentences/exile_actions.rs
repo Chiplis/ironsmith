@@ -427,6 +427,18 @@ pub(crate) fn parse_exile_top_library_clause(
             )],
         });
     }
+    if word_slice_starts_with(&owner_words, &["each", "player", "library"])
+        || word_slice_starts_with(&owner_words, &["each", "players", "library"])
+    {
+        return Some(EffectAst::ForEachPlayer {
+            effects: vec![EffectAst::subject_verb_exile_top_of_library(
+                PlayerAst::That,
+                count,
+                vec![helper_tag_for_tokens(&tokens, "exiled")],
+                Vec::new(),
+            )],
+        });
+    }
 
     let default_player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
     let (player, used_words) = parse_library_owner_prefix(&owner_words, default_player)?;

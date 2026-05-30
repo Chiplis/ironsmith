@@ -16,8 +16,9 @@ use super::super::permission_helpers::{
     parse_until_your_next_turn_may_play_tagged_clause,
 };
 use super::super::token_primitives::find_index;
-use super::super::util::{parse_subject, span_from_tokens, trim_commas, words};
+use super::super::util::{parse_subject, span_from_tokens, trim_commas};
 use super::dispatch_entry::parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard;
+use super::sentence_helpers::parse_counter_descriptor;
 use super::zone_handlers::parse_exile_top_library_clause;
 use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, IT_TAG, LibraryBottomOrderAst, LibraryConsultModeAst,
@@ -151,6 +152,55 @@ fn parse_exile_top_library_then_play_bundle(
     };
 
     Ok(Some(vec![exile_effect, permission_effect]))
+}
+
+fn parse_each_player_exile_top_library_put_counters_bundle(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let tokens = trim_commas(tokens);
+    let and_idx = find_index(&tokens, |token| token.is_word("and"))?;
+    let exile_clause = trim_commas(&tokens[..and_idx]);
+    let put_clause = trim_commas(&tokens[and_idx + 1..]);
+    if !exile_clause
+        .first()
+        .is_some_and(|token| token.is_word("exile"))
+        || !put_clause
+            .first()
+            .is_some_and(|token| token.is_word("put"))
+    {
+        return None;
+    }
+
+    let exile_effect = parse_exile_top_library_clause(&exile_clause[1..], None)?;
+    if !matches!(exile_effect, EffectAst::ForEachPlayer { .. }) {
+        return None;
+    }
+
+    let on_idx = find_index(&put_clause, |token| token.is_word("on"))?;
+    let descriptor = trim_commas(&put_clause[1..on_idx]);
+    let target_tail = trim_commas(&put_clause[on_idx + 1..]);
+    let target_words = crate::runtime_backend::token_word_refs(&target_tail);
+    if !word_slice_eq(&target_words, &["each", "of", "them"])
+        && !word_slice_eq(&target_words, &["each", "of", "those", "cards"])
+    {
+        return None;
+    }
+    let (count, counter_type) = parse_counter_descriptor(&descriptor).ok()?;
+
+    let filter = ObjectFilter::tagged(crate::tag::SOURCE_EXILED_TAG).in_zone(Zone::Exile);
+    Some(vec![
+        exile_effect,
+        EffectAst::ForEachObject {
+            filter,
+            effects: vec![EffectAst::subject_verb_put_counters(
+                counter_type,
+                Value::Fixed(count as i32),
+                TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                None,
+                false,
+            )],
+        },
+    ])
 }
 
 fn parse_choose_type_then_phase_out_bundle(
@@ -1801,6 +1851,9 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
         return Some(effects);
     }
     if let Some(effects) = parse_shape_anew_bundle(tokens) {
+        return Some(effects);
+    }
+    if let Some(effects) = parse_each_player_exile_top_library_put_counters_bundle(tokens) {
         return Some(effects);
     }
     if let Some(effects) = parse_reveal_until_land_put_all_graveyard_bundle(tokens) {

@@ -46943,6 +46943,33 @@ fn parse_etali_attack_exiles_each_players_top_card_and_casts_any_number() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_pako_arcane_retriever_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Pako, Arcane Retriever");
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("ForPlayersEffect")
+            && abilities_debug.contains("ExileTopOfLibraryEffect")
+            && abilities_debug.contains("ForEachObject")
+            && abilities_debug.contains("PutCountersEffect")
+            && abilities_debug.contains("excluded_card_types")
+            && abilities_debug.contains("Creature"),
+        "expected Pako to lower to per-player top-library exile, fetch counters, and a noncreature count filter, got {abilities_debug}"
+    );
+
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("exile the top card of each player's library")
+            && rendered.contains("put a fetch counter")
+            && rendered.contains("for each noncreature card exiled this way"),
+        "expected Pako compiled text to preserve the each-player exile and noncreature-exiled-this-way clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn villainous_wealth_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Villainous Wealth");
 

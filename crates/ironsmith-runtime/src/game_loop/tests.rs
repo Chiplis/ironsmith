@@ -261,6 +261,160 @@ fn put_test_cards_in_zone(game: &mut GameState, player: PlayerId, zone: Zone, co
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn pako_arcane_retriever_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(74_300), "Pako, Arcane Retriever")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elemental, Subtype::Dog])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "Partner with Haldan, Avid Arcanist\n\
+             Haste\n\
+             Whenever Pako attacks, exile the top card of each player's library and put a fetch counter on each of them. Put a +1/+1 counter on Pako for each noncreature card exiled this way.",
+        )
+        .expect("Pako, Arcane Retriever should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_named_library_card(
+    game: &mut GameState,
+    owner: PlayerId,
+    id: u32,
+    name: &str,
+    card_types: Vec<CardType>,
+) {
+    let mut builder = CardBuilder::new(CardId::from_raw(id), name).card_types(card_types.clone());
+    if card_types.contains(&CardType::Creature) {
+        builder = builder.power_toughness(PowerToughness::fixed(2, 2));
+    }
+    let card = builder.build();
+    game.create_object_from_card(&card, owner, Zone::Library);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_pako_attack(game: &mut GameState, pako_id: ObjectId) {
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    apply_attacker_declarations(
+        game,
+        &mut combat,
+        &mut trigger_queue,
+        &[AttackerDeclaration {
+            creature: pako_id,
+            target: AttackTarget::Player(bob),
+        }],
+    )
+    .expect("Pako attack declaration should be legal");
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Pako should trigger once when it attacks"
+    );
+    put_triggers_on_stack(game, &mut trigger_queue).expect("Pako trigger should go on the stack");
+    while !game.stack.is_empty() {
+        resolve_stack_entry(game).expect("Pako attack trigger should resolve");
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn pako_attack_exiles_each_players_top_card_adds_fetch_and_counts_noncreatures() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let pako = pako_arcane_retriever_definition();
+    let pako_id = game.create_object_from_definition(&pako, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(pako_id);
+    put_named_library_card(
+        &mut game,
+        alice,
+        74_301,
+        "Alice Noncreature",
+        vec![CardType::Sorcery],
+    );
+    put_named_library_card(
+        &mut game,
+        bob,
+        74_302,
+        "Bob Creature",
+        vec![CardType::Creature],
+    );
+
+    resolve_pako_attack(&mut game, pako_id);
+
+    let exiled_names = game
+        .exile
+        .iter()
+        .filter_map(|id| game.object(*id).map(|object| object.name.clone()))
+        .collect::<Vec<_>>();
+    assert!(
+        exiled_names.contains(&"Alice Noncreature".to_string())
+            && exiled_names.contains(&"Bob Creature".to_string()),
+        "Pako should exile the top card of each player's library, got {exiled_names:?}"
+    );
+    for &exiled_id in &game.exile {
+        assert_eq!(
+            game.counter_count(exiled_id, crate::object::CounterType::Named("fetch")),
+            1,
+            "each exiled card should get one fetch counter"
+        );
+    }
+    assert_eq!(
+        game.counter_count(pako_id, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "Pako should get one +1/+1 counter for only the noncreature card exiled this way"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn pako_attack_with_only_creature_cards_exiled_adds_no_plus_one_counters() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let pako = pako_arcane_retriever_definition();
+    let pako_id = game.create_object_from_definition(&pako, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(pako_id);
+    put_named_library_card(
+        &mut game,
+        alice,
+        74_303,
+        "Alice Creature",
+        vec![CardType::Creature],
+    );
+    put_named_library_card(
+        &mut game,
+        bob,
+        74_304,
+        "Bob Creature",
+        vec![CardType::Creature],
+    );
+
+    resolve_pako_attack(&mut game, pako_id);
+
+    assert_eq!(
+        game.exile.len(),
+        2,
+        "Pako should still exile one card from each player"
+    );
+    assert_eq!(
+        game.counter_count(pako_id, crate::object::CounterType::PlusOnePlusOne),
+        0,
+        "Pako should not get +1/+1 counters when only creature cards were exiled"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn attack_with_toad(
     game: &mut GameState,
     toad_id: ObjectId,

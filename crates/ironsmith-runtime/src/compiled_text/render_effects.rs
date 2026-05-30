@@ -19236,6 +19236,9 @@ pub(super) fn describe_tagged_this_way_action(filter: &ObjectFilter) -> Option<&
         if tag == "__it__" && filter.zone == Some(Zone::Exile) {
             return Some("exiled");
         }
+        if tag == crate::tag::SOURCE_EXILED_TAG && filter.zone == Some(Zone::Exile) {
+            return Some("exiled");
+        }
         if tag.starts_with("exiled_") || crate::cards::is_sentence_helper_tag(tag, "exiled") {
             Some("exiled")
         } else if tag.starts_with("revealed_")

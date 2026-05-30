@@ -63,6 +63,29 @@ fn this_way_object_count_value() -> Value {
     }
 }
 
+fn this_way_filtered_count_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+    if !tokens_reference_objects_this_way(tokens) || !grammar::contains_word(tokens, "exiled") {
+        return None;
+    }
+    let action_idx = find_token_index(tokens, |token| token.is_word("exiled"))?;
+    let filter_tokens = trim_commas(&tokens[..action_idx]);
+    let mut filter = if filter_tokens.is_empty()
+        || ZoneCounterCompatWords::new(&filter_tokens)
+            .to_word_refs()
+            .iter()
+            .all(|word| matches!(*word, "card" | "cards" | "object" | "objects"))
+    {
+        ObjectFilter::default()
+    } else {
+        parse_object_filter(&filter_tokens, false).ok()?
+    };
+    filter = filter.in_zone(Zone::Exile).match_tagged(
+        TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+        TaggedOpbjectRelation::IsTaggedObject,
+    );
+    Some(Value::Count(filter))
+}
+
 fn render_clause_words(tokens: &[OwnedLexToken]) -> String {
     ZoneCounterCompatWords::new(tokens).to_word_refs().join(" ")
 }
@@ -592,6 +615,10 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
             let mut count =
                 if let Some(dynamic) = parse_create_for_each_dynamic_count(&count_filter_tokens) {
                     dynamic
+                } else if let Some(filtered_count) =
+                    this_way_filtered_count_value(&count_filter_tokens)
+                {
+                    filtered_count
                 } else if tokens_reference_objects_this_way(&count_filter_tokens) {
                     this_way_object_count_value()
                 } else {
