@@ -31001,6 +31001,210 @@ fn test_force_of_will_alternative_cost_casting_flow() {
     assert_eq!(exiled[0].name, "Counterspell");
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn oroku_saki_shredder_rising_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(147_759), "Oroku Saki, Shredder Rising")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Black],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Ninja])
+        .power_toughness(PowerToughness::fixed(3, 1))
+        .parse_text(
+            "Sneak {1}{B} (You may cast this spell for {1}{B} if you also return an unblocked attacker you control to hand during the declare blockers step. He enters tapped and attacking.)\n\
+             Whenever Oroku Saki deals combat damage to a player, you draw a card and lose 1 life.",
+        )
+        .expect("Oroku Saki, Shredder Rising should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn make_oroku_saki_sneak_combat(game: &mut GameState) -> (PlayerId, PlayerId, ObjectId) {
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let attacker_card = CardBuilder::new(CardId::from_raw(147_760), "Oroku Saki Sneak Attacker")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let attacker = game.create_object_from_card(&attacker_card, alice, Zone::Battlefield);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareBlockers);
+    game.combat = Some(crate::combat_state::CombatState {
+        attackers: vec![crate::combat_state::AttackerInfo {
+            creature: attacker,
+            target: AttackTarget::Player(bob),
+        }],
+        ..crate::combat_state::CombatState::default()
+    });
+    (alice, bob, attacker)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn oroku_saki_sneak_cost_returns_unblocked_attacker_from_stack() {
+    use crate::costs::{Cost, CostContext, CostPayer, PaymentReason};
+
+    let mut game = setup_game();
+    let (alice, bob, attacker) = make_oroku_saki_sneak_combat(&mut game);
+    let oroku = game.create_object_from_definition(
+        &oroku_saki_shredder_rising_definition(),
+        alice,
+        Zone::Stack,
+    );
+    let cost = Cost::effect(crate::effects::NinjutsuCostEffect::declare_blockers_step_only());
+    let mut dm = SelectFirstDecisionMaker;
+    let mut ctx = CostContext::new(oroku, alice, &mut dm).with_reason(PaymentReason::CastSpell);
+
+    cost.can_pay(&game, &ctx)
+        .expect("Oroku Saki sneak cost should be payable from the stack while casting");
+    cost.pay(&mut game, &mut ctx)
+        .expect("Oroku Saki sneak cost should return the unblocked attacker");
+
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .hand
+            .iter()
+            .any(|id| game.object(*id).is_some_and(|obj| obj.name == "Oroku Saki Sneak Attacker")),
+        "sneak should return the unblocked attacker to hand"
+    );
+    assert!(
+        game.combat
+            .as_ref()
+            .is_some_and(|combat| !combat.attackers.iter().any(|info| info.creature == attacker)),
+        "returned attacker should be removed from combat"
+    );
+    assert_eq!(
+        game.ninjutsu_attack_targets
+            .get(&oroku)
+            .and_then(|targets| targets.last()),
+        Some(&AttackTarget::Player(bob)),
+        "sneak should record the returned attacker's combat target for resolution"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn oroku_saki_sneak_cost_requires_declare_blockers_unblocked_attacker() {
+    use crate::costs::{Cost, CostContext, CostPayer, PaymentReason};
+
+    let mut game = setup_game();
+    let (alice, bob, attacker) = make_oroku_saki_sneak_combat(&mut game);
+    let oroku = game.create_object_from_definition(
+        &oroku_saki_shredder_rising_definition(),
+        alice,
+        Zone::Stack,
+    );
+    let cost = Cost::effect(crate::effects::NinjutsuCostEffect::declare_blockers_step_only());
+    let mut dm = SelectFirstDecisionMaker;
+
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+    let ctx = CostContext::new(oroku, alice, &mut dm).with_reason(PaymentReason::CastSpell);
+    assert!(
+        cost.can_pay(&game, &ctx).is_err(),
+        "Oroku Saki sneak should not be payable before blockers are declared"
+    );
+
+    game.turn.step = Some(crate::game_state::Step::CombatDamage);
+    let ctx = CostContext::new(oroku, alice, &mut dm).with_reason(PaymentReason::CastSpell);
+    assert!(
+        cost.can_pay(&game, &ctx).is_err(),
+        "Oroku Saki sneak should only be payable during the declare blockers step"
+    );
+
+    game.turn.step = Some(crate::game_state::Step::DeclareBlockers);
+    let blocker = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(147_761), "Oroku Saki Sneak Blocker")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    if let Some(combat) = game.combat.as_mut() {
+        combat.blockers.insert(attacker, vec![blocker]);
+    }
+    let ctx = CostContext::new(oroku, alice, &mut dm).with_reason(PaymentReason::CastSpell);
+    assert!(
+        cost.can_pay(&game, &ctx).is_err(),
+        "Oroku Saki sneak should not be payable without an unblocked attacker"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn oroku_saki_sneak_casting_method_is_only_available_during_declare_blockers() {
+    let mut game = setup_game();
+    let (alice, _bob, _attacker) = make_oroku_saki_sneak_combat(&mut game);
+    if let Some(player) = game.player_mut(alice) {
+        player.mana_pool.add(ManaSymbol::Colorless, 1);
+        player.mana_pool.add(ManaSymbol::Black, 1);
+    }
+    let oroku_def = oroku_saki_shredder_rising_definition();
+    let oroku = game.create_object_from_definition(&oroku_def, alice, Zone::Hand);
+    let spell = game.object(oroku).expect("Oroku Saki should exist");
+    let sneak = spell
+        .alternative_casts
+        .iter()
+        .find(|method| method.name() == "Sneak")
+        .cloned()
+        .expect("Oroku Saki should have a sneak alternative cast");
+
+    assert!(
+        crate::decision::can_cast_with_alternative_from_hand(&game, alice, spell, oroku, &sneak),
+        "Sneak should grant permission to cast Oroku Saki during the declare blockers step"
+    );
+
+    game.turn.step = Some(crate::game_state::Step::CombatDamage);
+    let spell = game.object(oroku).expect("Oroku Saki should still exist");
+    assert!(
+        !crate::decision::can_cast_with_alternative_from_hand(&game, alice, spell, oroku, &sneak),
+        "Sneak should not remain available after the declare blockers step"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn oroku_saki_cast_with_sneak_enters_tapped_and_attacking() {
+    let mut game = setup_game();
+    let (alice, bob, _attacker) = make_oroku_saki_sneak_combat(&mut game);
+    let oroku = game.create_object_from_definition(
+        &oroku_saki_shredder_rising_definition(),
+        alice,
+        Zone::Stack,
+    );
+    game.ninjutsu_attack_targets
+        .insert(oroku, vec![AttackTarget::Player(bob)]);
+
+    let mut paid = crate::cost::OptionalCostsPaid::default();
+    paid.mark_label_paid("Sneak");
+    game.stack.push(
+        StackEntry::new(oroku, alice)
+            .with_casting_method(crate::alternative_cast::CastingMethod::Alternative(0))
+            .with_optional_costs_paid(paid),
+    );
+
+    resolve_stack_entry(&mut game).expect("Oroku Saki sneak spell should resolve");
+
+    let entered = game
+        .battlefield
+        .iter()
+        .copied()
+        .find(|id| game.object(*id).is_some_and(|obj| obj.name == "Oroku Saki, Shredder Rising"))
+        .expect("Oroku Saki should enter the battlefield");
+    assert!(game.is_tapped(entered), "Oroku Saki should enter tapped after sneak");
+    assert!(
+        game.combat.as_ref().is_some_and(|combat| {
+            combat
+                .attackers
+                .iter()
+                .any(|info| info.creature == entered && info.target == AttackTarget::Player(bob))
+        }),
+        "Oroku Saki should enter attacking the returned attacker's target"
+    );
+}
+
 #[test]
 fn test_non_mana_only_flashback_does_not_require_printed_mana_cost() {
     use crate::alternative_cast::{AlternativeCastingMethod, CastingMethod};

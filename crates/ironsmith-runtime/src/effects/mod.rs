@@ -154,7 +154,8 @@ pub use permanents::{
     ExertCostEffect, FlipEffect, GrantObjectAbilityEffect, MeldEffect, MonstrosityEffect,
     NinjutsuCostEffect, NinjutsuEffect, PhaseInEffect, PhaseOutEffect, PutStickerEffect,
     ReconfigureEffect, RegenerateEffect, RenownEffect, SaddleCostEffect, SoulbondPairEffect,
-    SuspectEffect, TapEffect, TransformEffect, UmbraArmorEffect, UnearthEffect, UntapEffect,
+    SuspectEffect, TapEffect, TransformEffect, UmbraArmorEffect, UnblockedAttackerReturnTiming,
+    UnearthEffect, UntapEffect,
 };
 pub use player::{
     AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, BecomeMonarchEffect,

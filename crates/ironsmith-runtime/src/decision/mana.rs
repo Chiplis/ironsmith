@@ -1005,6 +1005,53 @@ fn casting_method_grants_flash_timing(
     )
 }
 
+fn casting_method_grants_declare_blockers_alt_timing(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+) -> bool {
+    if game.turn.phase != crate::game_state::Phase::Combat
+        || game.turn.step != Some(crate::game_state::Step::DeclareBlockers)
+    {
+        return false;
+    }
+
+    let method = match casting_method {
+        CastingMethod::Alternative(idx) => spell.alternative_casts.get(*idx).cloned(),
+        CastingMethod::PlayFrom {
+            zone,
+            use_alternative: Some(idx),
+            ..
+        }
+        | CastingMethod::SplitOtherHalfPlayFrom {
+            zone,
+            use_alternative: idx,
+            ..
+        } => {
+            crate::decision::resolve_play_from_alternative_method(game, player, spell, *zone, *idx)
+                .or_else(|| spell.cast_alternative_method.clone())
+        }
+        _ => None,
+    };
+
+    let Some(method) = method else {
+        return false;
+    };
+    if !method.name().eq_ignore_ascii_case("Sneak") {
+        return false;
+    }
+
+    method.non_mana_costs().iter().any(|cost| {
+        cost.effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::NinjutsuCostEffect>())
+            .is_some_and(|effect| {
+                effect.timing
+                    == crate::effects::UnblockedAttackerReturnTiming::DeclareBlockersStepOnly
+            })
+    })
+}
+
 fn casting_method_grants_library_search_timing(
     game: &GameState,
     spell: &crate::object::Object,
@@ -1031,6 +1078,12 @@ fn casting_method_grants_special_timing(
     casting_method: &CastingMethod,
 ) -> bool {
     casting_method_grants_flash_timing(ctx.game, ctx.player, spell, casting_method)
+        || casting_method_grants_declare_blockers_alt_timing(
+            ctx.game,
+            ctx.player,
+            spell,
+            casting_method,
+        )
         || (ctx.allow_library_search_cast_timing
             && casting_method_grants_library_search_timing(
                 ctx.game,

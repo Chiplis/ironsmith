@@ -17322,6 +17322,60 @@ fn parse_ninjutsu_keyword_line_builds_hand_activated_ability() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oroku_saki_shredder_rising_sneak_keyword_strictly() {
+    let name = "Oroku Saki, Shredder Rising";
+    let oracle = oracle_card_info_by_name()
+        .get(name)
+        .unwrap_or_else(|| panic!("missing oracle text for regression card '{name}'"))
+        .oracle_text
+        .clone();
+    let def = CardDefinitionBuilder::new(CardId::from_raw(147_759), name)
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Black],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Ninja])
+        .power_toughness(PowerToughness::fixed(3, 1))
+        .parse_text(oracle)
+        .expect("Oroku Saki, Shredder Rising should parse strictly from oracle text");
+
+    assert_eq!(
+        def.alternative_casts.len(),
+        1,
+        "Oroku Saki should have one sneak alternative cast"
+    );
+    let sneak = &def.alternative_casts[0];
+    assert_eq!(sneak.name(), "Sneak");
+    assert_eq!(
+        sneak.mana_cost().map(ManaCost::to_oracle),
+        Some("{1}{B}".to_string())
+    );
+    let cost_debug = format!("{:?}", sneak.non_mana_costs());
+    assert!(
+        cost_debug.contains("NinjutsuCostEffect")
+            && cost_debug.contains("DeclareBlockersStepOnly"),
+        "sneak should structurally include a declare-blockers-only return-unblocked-attacker cost, got {cost_debug}"
+    );
+
+    let rendered = canonical_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Sneak {1}{B}"),
+        "compiled text should render the sneak keyword line, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Whenever Oroku Saki deals combat damage to a player"),
+        "compiled text should keep Oroku Saki's combat-damage trigger, got {rendered}"
+    );
+    assert!(
+        !rendered.to_ascii_lowercase().contains("unsupported"),
+        "strict compiled text should not contain unsupported markers, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn source_cost_compiled_text_does_not_leak_placeholder_surfaces() {
     let memory_jar = CardDefinitionBuilder::new(CardId::new(), "Memory Jar Variant")
         .card_types(vec![CardType::Artifact])

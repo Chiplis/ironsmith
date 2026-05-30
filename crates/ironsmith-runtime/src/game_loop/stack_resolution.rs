@@ -998,6 +998,22 @@ pub(super) fn resolve_stack_entry_full(
                     ),
                     _ => false,
                 };
+                let cast_with_sneak = entry.optional_costs_paid.was_paid_label("Sneak")
+                    || obj.optional_costs_paid.was_paid_label("Sneak");
+                if cast_with_sneak {
+                    game.tap(result.new_id);
+                    if let Some(attack_target) = game
+                        .ninjutsu_attack_targets
+                        .remove(&entry.object_id)
+                        .and_then(|mut targets| targets.pop())
+                        && let Some(combat) = game.combat.as_mut()
+                    {
+                        combat.attackers.push(crate::combat_state::AttackerInfo {
+                            creature: result.new_id,
+                            target: attack_target,
+                        });
+                    }
+                }
                 if cast_with_dash {
                     let dash_haste = crate::effects::ApplyContinuousEffect::new(
                         crate::continuous::EffectTarget::Specific(result.new_id),

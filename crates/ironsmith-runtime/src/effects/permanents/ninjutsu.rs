@@ -7,6 +7,7 @@
 //!   battlefield tapped and attacking the recorded target.
 
 use crate::combat_state::{AttackTarget, AttackerInfo, get_attack_target, is_unblocked};
+use crate::costs::PaymentReason;
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
 use crate::effect::EffectOutcome;
@@ -19,16 +20,35 @@ use crate::game_state::{GameState, Phase, Step};
 use crate::ids::{ObjectId, PlayerId};
 use crate::types::CardType;
 use crate::zone::Zone;
-pub use ironsmith_core::{NinjutsuCostEffect, NinjutsuEffect};
+pub use ironsmith_core::{NinjutsuCostEffect, NinjutsuEffect, UnblockedAttackerReturnTiming};
 
-fn in_ninjutsu_window(game: &GameState) -> bool {
+fn in_unblocked_attacker_return_window(
+    game: &GameState,
+    timing: UnblockedAttackerReturnTiming,
+) -> bool {
     if game.turn.phase != Phase::Combat {
         return false;
     }
-    matches!(
-        game.turn.step,
-        Some(Step::DeclareBlockers | Step::CombatDamage | Step::EndCombat)
-    )
+    match timing {
+        UnblockedAttackerReturnTiming::AfterBlockersDeclared => matches!(
+            game.turn.step,
+            Some(Step::DeclareBlockers | Step::CombatDamage | Step::EndCombat)
+        ),
+        UnblockedAttackerReturnTiming::DeclareBlockersStepOnly => {
+            game.turn.step == Some(Step::DeclareBlockers)
+        }
+    }
+}
+
+fn unblocked_attacker_return_window_error(timing: UnblockedAttackerReturnTiming) -> &'static str {
+    match timing {
+        UnblockedAttackerReturnTiming::AfterBlockersDeclared => {
+            "Ninjutsu can only be activated during combat after blockers are declared"
+        }
+        UnblockedAttackerReturnTiming::DeclareBlockersStepOnly => {
+            "This cost can only be paid during the declare blockers step"
+        }
+    }
 }
 
 fn unblocked_attackers(game: &GameState, controller: PlayerId) -> Vec<ObjectId> {
@@ -63,19 +83,18 @@ impl EffectExecutor for NinjutsuCostEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if !in_ninjutsu_window(game) {
+        if !in_unblocked_attacker_return_window(game, self.timing) {
             return Err(ExecutionError::Impossible(
-                "Ninjutsu can only be activated during combat after blockers are declared"
-                    .to_string(),
+                unblocked_attacker_return_window_error(self.timing).to_string(),
             ));
         }
 
         let Some(source_obj) = game.object(ctx.source) else {
             return Err(ExecutionError::ObjectNotFound(ctx.source));
         };
-        if source_obj.zone != Zone::Hand {
+        if !matches!(source_obj.zone, Zone::Hand | Zone::Stack) {
             return Err(ExecutionError::Impossible(
-                "Ninjutsu source must be in hand".to_string(),
+                "Ninjutsu source must be in hand or on the stack".to_string(),
             ));
         }
 
@@ -164,16 +183,54 @@ impl EffectExecutor for NinjutsuCostEffect {
 }
 
 impl CostExecutableEffect for NinjutsuCostEffect {
+    fn can_execute_as_cost_with_reason(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        reason: PaymentReason,
+    ) -> Result<(), CostValidationError> {
+        if !in_unblocked_attacker_return_window(game, self.timing) {
+            return Err(CostValidationError::Other(
+                unblocked_attacker_return_window_error(self.timing).to_string(),
+            ));
+        }
+
+        let Some(source_obj) = game.object(source) else {
+            return Err(CostValidationError::Other(
+                "Ninjutsu source does not exist".to_string(),
+            ));
+        };
+        let stack_allowed = reason == PaymentReason::CastSpell;
+        if source_obj.zone != Zone::Hand && !(stack_allowed && source_obj.zone == Zone::Stack) {
+            return Err(CostValidationError::Other(
+                if stack_allowed {
+                    "Ninjutsu source must be in hand or on the stack"
+                } else {
+                    "Ninjutsu source must be in hand"
+                }
+                .to_string(),
+            ));
+        }
+
+        if unblocked_attackers(game, controller).is_empty() {
+            return Err(CostValidationError::Other(
+                "No unblocked attacker you control to return".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+
     fn can_execute_as_cost(
         &self,
         game: &GameState,
         source: ObjectId,
         controller: PlayerId,
     ) -> Result<(), CostValidationError> {
-        if !in_ninjutsu_window(game) {
+        if !in_unblocked_attacker_return_window(game, self.timing) {
             return Err(CostValidationError::Other(
-                "Ninjutsu can only be activated during combat after blockers are declared"
-                    .to_string(),
+                unblocked_attacker_return_window_error(self.timing).to_string(),
             ));
         }
 

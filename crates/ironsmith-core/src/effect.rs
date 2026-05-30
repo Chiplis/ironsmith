@@ -3722,11 +3722,28 @@ impl UnearthEffect {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct NinjutsuCostEffect;
+pub enum UnblockedAttackerReturnTiming {
+    #[default]
+    AfterBlockersDeclared,
+    DeclareBlockersStepOnly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct NinjutsuCostEffect {
+    pub timing: UnblockedAttackerReturnTiming,
+}
 
 impl NinjutsuCostEffect {
     pub fn new() -> Self {
-        Self
+        Self {
+            timing: UnblockedAttackerReturnTiming::AfterBlockersDeclared,
+        }
+    }
+
+    pub fn declare_blockers_step_only() -> Self {
+        Self {
+            timing: UnblockedAttackerReturnTiming::DeclareBlockersStepOnly,
+        }
     }
 }
 

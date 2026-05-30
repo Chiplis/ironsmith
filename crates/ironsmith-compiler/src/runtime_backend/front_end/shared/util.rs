@@ -5108,6 +5108,45 @@ pub(crate) fn parse_blitz_line_lexed(
     parse_blitz_line(tokens)
 }
 
+pub(crate) fn parse_sneak_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
+    if !token_slice_first_is(tokens, "sneak") {
+        return Ok(None);
+    }
+
+    let (mana_cost, consumed_mana_tokens) =
+        leading_mana_cost_from_tokens(tokens.get(1..).unwrap_or_default()).ok_or_else(|| {
+            CardTextError::ParseError("sneak keyword missing mana cost".to_string())
+        })?;
+    let consumed_mana_tokens = consumed_mana_tokens.min(tokens.len().saturating_sub(1));
+    let tail_words = crate::runtime_backend::token_word_refs(
+        tokens.get(1 + consumed_mana_tokens..).unwrap_or_default(),
+    );
+    if !tail_words.is_empty()
+        && !word_slice_starts_with(
+            tail_words.as_slice(),
+            &["you", "may", "cast", "this", "spell"],
+        )
+    {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported sneak reminder text tail: '{}'",
+            tail_words.join(" ")
+        )));
+    }
+
+    Ok(Some(AlternativeCastingMethod::Composed {
+        name: "Sneak",
+        total_cost: TotalCost::from_costs(vec![
+            crate::costs::Cost::mana(mana_cost),
+            crate::costs::Cost::effect(crate::effect::Effect::new(
+                crate::effects::NinjutsuCostEffect::declare_blockers_step_only(),
+            )),
+        ]),
+        condition: None,
+    }))
+}
+
 pub(crate) fn parse_transmute_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
