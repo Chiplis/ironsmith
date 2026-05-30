@@ -109,6 +109,7 @@ pub(crate) enum TriggerSpec {
     AttacksAndIsntBlocked(ObjectFilter),
     AttacksWhileSaddled(ObjectFilter),
     AttacksOneOrMore(ObjectFilter),
+    PlayersAttackedOneOrMore(PlayerFilter),
     AttacksOneOrMoreWithMinTotal {
         filter: ObjectFilter,
         min_total_attackers: u32,

@@ -21,6 +21,9 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::AttacksAndIsntBlocked(filter) => Trigger::attacks_and_isnt_blocked(filter),
         TriggerSpec::AttacksWhileSaddled(filter) => Trigger::attacks_while_saddled(filter),
         TriggerSpec::AttacksOneOrMore(filter) => Trigger::attacks_one_or_more(filter),
+        TriggerSpec::PlayersAttackedOneOrMore(player_filter) => {
+            Trigger::players_attacked_one_or_more(player_filter)
+        }
         TriggerSpec::AttacksOneOrMoreWithMinTotal {
             filter,
             min_total_attackers,

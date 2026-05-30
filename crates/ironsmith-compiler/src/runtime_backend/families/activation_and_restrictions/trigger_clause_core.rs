@@ -3409,10 +3409,7 @@ pub(crate) fn parse_trigger_clause_lexed(
     if word_slice_ends_with(&words, &["are", "attacked"]) && words.len() > 2 {
         let attacked_player_words = &words[..words.len() - 2];
         if let Some(player_filter) = parse_trigger_subject_player_filter(attacked_player_words) {
-            let mut filter = ObjectFilter::creature();
-            filter.attacking_player_or_planeswalker_controlled_by = Some(player_filter.clone());
-            filter.targets_only_player = Some(player_filter);
-            return Ok(TriggerSpec::AttacksOneOrMore(filter));
+            return Ok(TriggerSpec::PlayersAttackedOneOrMore(player_filter));
         }
     }
 

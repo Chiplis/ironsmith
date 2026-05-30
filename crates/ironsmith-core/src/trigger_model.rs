@@ -41,6 +41,9 @@ pub enum TriggerKind {
     AttacksOneOrMore {
         filter: ObjectFilter,
     },
+    PlayersAttackedOneOrMore {
+        player_filter: PlayerFilter,
+    },
     AttacksOneOrMoreWithMinTotal {
         filter: ObjectFilter,
         min_total_attackers: usize,
@@ -397,6 +400,12 @@ impl Trigger {
         Self::typed(
             "attacks_one_or_more",
             TriggerKind::AttacksOneOrMore { filter },
+        )
+    }
+    pub fn players_attacked_one_or_more(player_filter: PlayerFilter) -> Self {
+        Self::typed(
+            "players_attacked_one_or_more",
+            TriggerKind::PlayersAttackedOneOrMore { player_filter },
         )
     }
     pub fn attacks_one_or_more_with_min_total(

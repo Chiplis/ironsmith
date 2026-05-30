@@ -148,9 +148,8 @@ fn party_dude_strict_parser_and_compiled_text_regression() {
     let rendered = unprocessed_compiled_lines(&def).join("\n");
 
     assert!(
-        ability_debug.contains("AttacksTrigger")
-            || ability_debug.contains("AttacksOneOrMore")
-            || ability_debug.contains("one_or_more: true"),
+        ability_debug.contains("PlayersAttackedTrigger")
+            || ability_debug.contains("PlayersAttackedOneOrMore"),
         "Party Dude should parse the opponent-attacked trigger strictly, got {ability_debug}"
     );
     assert!(

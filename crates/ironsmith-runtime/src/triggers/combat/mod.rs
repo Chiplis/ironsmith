@@ -28,7 +28,7 @@ mod this_deals_combat_damage_to_player;
 mod this_deals_damage;
 mod this_deals_damage_to;
 
-pub use attacks::AttacksTrigger;
+pub use attacks::{AttacksTrigger, PlayersAttackedTrigger};
 pub use attacks_alone::AttacksAloneTrigger;
 pub use attacks_and_isnt_blocked::AttacksAndIsntBlockedTrigger;
 pub use attacks_while_saddled::AttacksWhileSaddledTrigger;

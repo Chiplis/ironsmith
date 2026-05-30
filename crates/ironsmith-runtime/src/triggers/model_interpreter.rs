@@ -121,6 +121,9 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::AttacksOneOrMore { filter } => {
             crate::triggers::Trigger::attacks_one_or_more(filter)
         }
+        TriggerKind::PlayersAttackedOneOrMore { player_filter } => {
+            crate::triggers::Trigger::players_attacked_one_or_more(player_filter)
+        }
         TriggerKind::AttacksOneOrMoreWithMinTotal {
             filter,
             min_total_attackers,
