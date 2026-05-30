@@ -313,6 +313,31 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
         let filter = parse_object_filter(&target_tokens[1..], false)?;
         return Ok(Some(EffectAst::subject_verb_damage_each(amount, filter)));
     }
+    if crate::runtime_backend::lexer::word_slice_eq_any(
+        &target_words,
+        &[
+            &["that", "creature", "and", "that", "player"],
+            &["that", "creatures", "and", "that", "player"],
+        ],
+    ) {
+        let creature_target = TargetAst::Object(
+            ObjectFilter::creature(),
+            span_from_tokens(&target_tokens),
+            None,
+        );
+        return Ok(Some(EffectAst::Sequence {
+            effects: vec![
+                EffectAst::subject_verb_damage(
+                    amount.clone(),
+                    TargetAst::Player(
+                        PlayerFilter::ControllerOf(crate::target::ObjectRef::Target),
+                        None,
+                    ),
+                ),
+                EffectAst::subject_verb_damage(amount, creature_target),
+            ],
+        }));
+    }
     let target = parse_target_phrase(&target_tokens)?;
     Ok(Some(EffectAst::subject_verb_damage(amount, target)))
 }

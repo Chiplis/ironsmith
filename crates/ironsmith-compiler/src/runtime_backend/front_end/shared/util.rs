@@ -2525,6 +2525,28 @@ pub(crate) fn parse_subject(tokens: &[OwnedLexToken]) -> SubjectAst {
         return SubjectAst::Player(player);
     }
 
+    if word_slice_starts_with(slice, &["target"])
+        && word_slice_ends_with_any(
+            slice,
+            &[
+                &["controller"],
+                &["controllers"],
+                &["controller's"],
+                &["controllers'"],
+                &["owner"],
+                &["owners"],
+                &["owner's"],
+                &["owners'"],
+            ],
+        )
+    {
+        let player = match slice.last().copied() {
+            Some("owner" | "owners" | "owner's" | "owners'") => PlayerAst::ItsOwner,
+            _ => PlayerAst::ItsController,
+        };
+        return SubjectAst::Player(player);
+    }
+
     if word_slice_starts_with(slice, &["its", "controller"]) {
         return SubjectAst::Player(PlayerAst::ItsController);
     }

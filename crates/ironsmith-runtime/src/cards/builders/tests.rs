@@ -10029,6 +10029,39 @@ fn test_parse_ignite_memories_keeps_random_hand_reveal_and_damage_link() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_friendly_fire_keeps_controller_random_reveal_and_double_damage_link() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Friendly Fire")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Target creature's controller reveals a card at random from their hand. Friendly Fire deals damage to that creature and that player equal to the revealed card's mana value.",
+        )
+        .expect("Friendly Fire should parse");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("ChooseObjectsEffect")
+            && debug.contains("random: true")
+            && debug.contains("ControllerOf(Target)")
+            && debug.contains("RevealTaggedEffect")
+            && debug.matches("DealDamageEffect").count() == 2
+            && debug.contains("ManaValueOf"),
+        "expected controller random reveal and linked damage to creature and controller, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Target creature's controller reveals a card at random from their hand")
+            && rendered.contains("Friendly Fire deals damage to that creature and that player equal to the revealed card's mana value"),
+        "expected Friendly Fire compiled text to preserve the random reveal and shared revealed-card damage amount, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_singe_mind_ogre_keeps_random_hand_reveal_and_life_loss_link() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Singe-Mind Ogre")
         .mana_cost(ManaCost::from_pips(vec![

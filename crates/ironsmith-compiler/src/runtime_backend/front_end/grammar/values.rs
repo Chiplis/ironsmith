@@ -694,6 +694,12 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
         &["that", "card", "mana", "value"],
         &["that", "card's", "mana", "value"],
         &["that", "cards", "mana", "value"],
+        &["the", "revealed", "card", "mana", "value"],
+        &["the", "revealed", "card's", "mana", "value"],
+        &["the", "revealed", "cards", "mana", "value"],
+        &["revealed", "card", "mana", "value"],
+        &["revealed", "card's", "mana", "value"],
+        &["revealed", "cards", "mana", "value"],
         &[
             "the",
             "mana",

@@ -587,6 +587,7 @@ pub(crate) fn parse_sentence_target_player_reveals_random_card_from_hand_matched
             | PlayerAst::TargetOpponent
             | PlayerAst::Opponent
             | PlayerAst::That
+            | PlayerAst::ItsController
     ) {
         return Ok(None);
     }
@@ -643,6 +644,9 @@ pub(crate) fn parse_sentence_target_player_reveals_random_card_from_hand_matched
             PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
             PlayerAst::Opponent => PlayerFilter::Opponent,
             PlayerAst::That => PlayerFilter::IteratedPlayer,
+            PlayerAst::ItsController => {
+                PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)
+            }
             _ => return Ok(None),
         }),
         ..ObjectFilter::default()

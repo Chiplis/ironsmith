@@ -3704,6 +3704,70 @@ fn ignite_memories_reveals_a_random_card_from_target_players_hand_and_damages_th
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn friendly_fire_reveals_random_card_from_target_creature_controller_and_damages_both() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let friendly_fire = CardDefinitionBuilder::new(CardId::from_raw(70_004), "Friendly Fire")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Target creature's controller reveals a card at random from their hand. Friendly Fire deals damage to that creature and that player equal to the revealed card's mana value.",
+        )
+        .expect("Friendly Fire should parse");
+
+    let target_card = CardBuilder::new(CardId::from_raw(70_005), "Target Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    let revealed_card = CardBuilder::new(CardId::from_raw(70_006), "Expensive Secret")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(5)]]))
+        .card_types(vec![CardType::Artifact])
+        .build();
+
+    let target_id = game.create_object_from_card(&target_card, bob, Zone::Battlefield);
+    let revealed_id = game.create_object_from_card(&revealed_card, bob, Zone::Hand);
+    let spell_id = game.create_object_from_definition(&friendly_fire, alice, Zone::Stack);
+    game.stack.push(
+        crate::game_state::StackEntry::new(spell_id, alice)
+            .with_targets(vec![crate::game_state::Target::Object(target_id)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
+                    crate::filter::ObjectFilter::creature(),
+                )),
+                range: 0..1,
+            }]),
+    );
+
+    let bob_life_before = game.player(bob).expect("bob exists").life;
+    let mut dm = CaptureRevealDecisionMaker::default();
+
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Friendly Fire should resolve");
+
+    assert!(
+        dm.view_calls.iter().all(|(_, subject, zone, public, cards)| {
+            *subject == bob && *zone == Zone::Hand && *public && cards == &vec![revealed_id]
+        }),
+        "Friendly Fire should publicly reveal the random card from the target creature controller's hand"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").life,
+        bob_life_before - 5,
+        "Friendly Fire should damage the target creature's controller by the revealed card's mana value"
+    );
+    assert_eq!(
+        game.damage_on(target_id),
+        5,
+        "Friendly Fire should damage the target creature by the revealed card's mana value"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn singe_mind_ogre_reveals_a_random_card_from_target_players_hand_and_makes_them_lose_life() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);

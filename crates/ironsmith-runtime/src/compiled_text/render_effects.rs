@@ -27006,7 +27006,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
         let chooser = describe_player_filter(&choose.chooser);
-        let choose_verb = player_verb(&chooser, "choose", "chooses");
+        let choose_verb = if choose.count.random {
+            player_verb(&chooser, "choose at random", "chooses at random")
+        } else {
+            player_verb(&chooser, "choose", "chooses")
+        };
         let search_like = choose.is_search
             || (choose_primary_zone(choose) == Some(Zone::Library)
                 && choose.tag.as_str().starts_with("searched"));
