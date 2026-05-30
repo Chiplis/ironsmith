@@ -860,6 +860,15 @@ pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Val
         | Some([
             "amount", "of", "damage", "it", "dealt", "to", "that", "player",
         ]) => return Some(Value::EventValue(EventValueSpec::Amount)),
+        Some([
+            "the", "number", "of", "unique", "vowels", "on", "that", "sticker",
+        ])
+        | Some(["number", "of", "unique", "vowels", "on", "that", "sticker"]) => {
+            return Some(Value::PendingEffectMetric {
+                source: EffectMetricSource::Outcome,
+                metric: EffectMetric::NameStickerUniqueVowels,
+            });
+        }
         Some(["the", "number", "of", "opponents", "you", "have"])
         | Some(["number", "of", "opponents", "you", "have"])
         | Some(["the", "number", "of", "opponents"])

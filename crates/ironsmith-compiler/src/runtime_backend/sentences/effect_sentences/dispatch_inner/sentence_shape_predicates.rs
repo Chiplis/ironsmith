@@ -814,8 +814,59 @@ fn parse_effect_sentence_with_where_x_lexed(
     }
 
     fn bind_dynamic_target_counts(effect: &mut EffectAst, replacement: &Value) {
-        let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect else {
-            return;
+        let action = match effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) => action,
+            EffectAst::Conditional {
+                if_true, if_false, ..
+            } => {
+                for effect in if_true.iter_mut().chain(if_false.iter_mut()) {
+                    bind_dynamic_target_counts(effect, replacement);
+                }
+                return;
+            }
+            EffectAst::UnlessPays { effects, .. }
+            | EffectAst::May { effects }
+            | EffectAst::MayByPlayer { effects, .. }
+            | EffectAst::ResolvedIfResult { effects, .. }
+            | EffectAst::ResolvedWhenResult { effects, .. }
+            | EffectAst::IfResult { effects, .. }
+            | EffectAst::WhenResult { effects, .. }
+            | EffectAst::ForEachOpponent { effects }
+            | EffectAst::ForEachPlayersFiltered { effects, .. }
+            | EffectAst::ForEachPlayer { effects }
+            | EffectAst::ForEachTargetPlayers { effects, .. }
+            | EffectAst::ForEachObject { effects, .. }
+            | EffectAst::ForEachTagged { effects, .. }
+            | EffectAst::ForEachOpponentDoesNot { effects, .. }
+            | EffectAst::ForEachPlayerDoesNot { effects, .. }
+            | EffectAst::ForEachOpponentDid { effects, .. }
+            | EffectAst::ForEachPlayerDid { effects, .. }
+            | EffectAst::ForEachTaggedPlayer { effects, .. }
+            | EffectAst::RepeatProcess { effects, .. }
+            | EffectAst::DelayedUntilNextEndStep { effects, .. }
+            | EffectAst::DelayedUntilNextUpkeep { effects, .. }
+            | EffectAst::DelayedUntilNextDrawStep { effects, .. }
+            | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
+            | EffectAst::DelayedUntilEndOfCombat { effects }
+            | EffectAst::DelayedTriggerThisTurn { effects, .. }
+            | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
+            | EffectAst::VoteOption { effects, .. } => {
+                for effect in effects {
+                    bind_dynamic_target_counts(effect, replacement);
+                }
+                return;
+            }
+            EffectAst::UnlessAction {
+                effects,
+                alternative,
+                ..
+            } => {
+                for effect in effects.iter_mut().chain(alternative.iter_mut()) {
+                    bind_dynamic_target_counts(effect, replacement);
+                }
+                return;
+            }
+            _ => return,
         };
         match action {
             SubjectVerbActionAst::Explore { target }

@@ -33,6 +33,7 @@ pub enum EffectMetric {
     CardTypesAmong,
     GreatestPlayerCount,
     IteratedPlayerCount,
+    NameStickerUniqueVowels,
     OtherNumber,
 }
 

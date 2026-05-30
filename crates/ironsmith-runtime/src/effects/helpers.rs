@@ -352,6 +352,14 @@ fn resolve_effect_metric(
                 })
                 .unwrap_or(0)
         }
+        EffectMetric::NameStickerUniqueVowels => outcome
+            .execution_facts
+            .iter()
+            .find_map(|fact| match fact {
+                crate::effect::ExecutionFact::OtherNumber(value) => Some(*value as i32),
+                _ => None,
+            })
+            .unwrap_or(0),
         EffectMetric::OtherNumber => outcome
             .execution_facts
             .iter()
@@ -2382,7 +2390,12 @@ pub fn validate_target(
 
     match (target, spec) {
         // Selection wrappers do not change target legality.
-        (_, ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _)) => {
+        (
+            _,
+            ChooseSpec::Target(inner)
+            | ChooseSpec::WithCount(inner, _)
+            | ChooseSpec::WithCountValue(inner, _, _),
+        ) => {
             validate_target(game, target, inner, ctx)
         }
         (ResolvedTarget::Object(id), ChooseSpec::Object(filter)) => {
@@ -2515,7 +2528,10 @@ pub fn resolve_objects_for_effect_with_choice_description(
     {
         if !ctx.targets.is_empty()
             && matches!(spec.base(), ChooseSpec::Object(_))
-            && !matches!(spec, ChooseSpec::WithCount(_, _))
+            && !matches!(
+                spec,
+                ChooseSpec::WithCount(_, _) | ChooseSpec::WithCountValue(_, _, _)
+            )
             && filter.tagged_constraints.is_empty()
         {
             if let Ok(objects) = resolve_objects_from_spec(game, spec, ctx)

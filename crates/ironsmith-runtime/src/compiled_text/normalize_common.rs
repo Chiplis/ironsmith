@@ -7811,6 +7811,9 @@ fn describe_effect_metric_value(
             "the greatest number of cards a player discarded this way".to_string()
         }
         crate::effect::EffectMetric::IteratedPlayerCount => "that many".to_string(),
+        crate::effect::EffectMetric::NameStickerUniqueVowels => {
+            "the number of unique vowels on that sticker".to_string()
+        }
         crate::effect::EffectMetric::OtherNumber => "the other result".to_string(),
     };
     match offset {
@@ -8494,7 +8497,7 @@ pub(super) fn choose_spec_allows_multiple(spec: &ChooseSpec) -> bool {
     match spec {
         ChooseSpec::Target(inner) => choose_spec_allows_multiple(inner),
         ChooseSpec::All(_) | ChooseSpec::EachPlayer(_) => true,
-        ChooseSpec::WithCount(inner, count) => {
+        ChooseSpec::WithCount(inner, count) | ChooseSpec::WithCountValue(inner, count, _) => {
             if count.is_dynamic_x() {
                 true
             } else if let Some(max) = count.max {
@@ -8504,6 +8507,25 @@ pub(super) fn choose_spec_allows_multiple(spec: &ChooseSpec) -> bool {
             }
         }
         _ => false,
+    }
+}
+
+fn choose_spec_where_x_count_value(spec: &ChooseSpec) -> Option<&Value> {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. } | ChooseSpec::Target(spec) => {
+            choose_spec_where_x_count_value(spec)
+        }
+        ChooseSpec::WithCount(inner, _) => choose_spec_where_x_count_value(inner),
+        ChooseSpec::WithCountValue(inner, count, value) => {
+            if count.is_dynamic_x()
+                && value.has_surface_hint(ironsmith_core::ValueSurfaceHint::WhereXIs)
+            {
+                Some(value)
+            } else {
+                choose_spec_where_x_count_value(inner)
+            }
+        }
+        _ => None,
     }
 }
 
@@ -9262,15 +9284,31 @@ pub(super) fn describe_apply_continuous_effect(
         return Some(text);
     }
 
+    let where_x_count_value = effect
+        .target_spec
+        .as_ref()
+        .and_then(choose_spec_where_x_count_value);
+    let display_target = if plural_target
+        && where_x_count_value.is_some()
+        && target.contains("target ")
+    {
+        format!("{target} each")
+    } else {
+        target.clone()
+    };
     let clauses = describe_apply_continuous_clauses(effect, plural_target);
     if clauses.is_empty() {
         return None;
     }
 
-    let mut text = format!("{target} {}", join_with_and(&clauses));
+    let mut text = format!("{display_target} {}", join_with_and(&clauses));
     if let Some(tail) = describe_apply_continuous_tail(effect) {
         text.push(' ');
         text.push_str(&tail);
+    }
+    if let Some(value) = where_x_count_value {
+        text.push_str(", where X is ");
+        text.push_str(&describe_value(value));
     }
     Some(text)
 }

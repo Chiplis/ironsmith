@@ -37729,6 +37729,219 @@ fn assert_oracle_card_fails_strict(name: &str) {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn wolf_in_clothing_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Wolf in _____ Clothing");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered_lower.contains("put a name sticker on it")
+            && rendered_lower.contains("up to x target creatures")
+            && rendered_lower.contains("where x is the number of unique vowels on that sticker"),
+        "expected Wolf in _____ Clothing to render its name-sticker where-X clause, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("PutStickerEffect")
+            && ability_debug.contains("NameSticker")
+            && ability_debug.contains("ReflexiveTriggerEffect")
+            && ability_debug.contains("NameStickerUniqueVowels"),
+        "expected Wolf in _____ Clothing to lower to a name-sticker reflexive trigger using the unique-vowel value, got {ability_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn wolf_in_clothing_enters_effects(def: &CardDefinition) -> Vec<Effect> {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) if triggered.trigger.display().contains("enters") => {
+                Some(triggered.effects.segments[0].default_effects.clone())
+            }
+            _ => None,
+        })
+        .expect("Wolf in _____ Clothing should have an enters triggered ability")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct WolfStickerDecisionMaker {
+    accept_name_sticker: bool,
+    unique_vowels: usize,
+    targets: Vec<ObjectId>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl crate::decision::DecisionMaker for WolfStickerDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        self.accept_name_sticker
+    }
+
+    fn decide_options(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        if ctx.description.contains("unique vowels") {
+            return vec![self.unique_vowels];
+        }
+        ctx.options
+            .iter()
+            .filter(|option| option.legal)
+            .map(|option| option.index)
+            .take(ctx.min)
+            .collect()
+    }
+
+    fn decide_targets(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::TargetsContext,
+    ) -> Vec<crate::game_state::Target> {
+        let requirement = ctx
+            .requirements
+            .first()
+            .expect("Wolf in _____ Clothing should ask for one target group");
+        let max_targets = requirement.max_targets.unwrap_or(self.unique_vowels);
+        self.targets
+            .iter()
+            .copied()
+            .map(crate::game_state::Target::Object)
+            .filter(|target| requirement.legal_targets.contains(target))
+            .take(max_targets)
+            .collect()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn wolf_test_creature(
+    game: &mut crate::game_state::GameState,
+    name: &str,
+    controller: PlayerId,
+) -> ObjectId {
+    let card = crate::card::CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    game.create_object_from_card(&card, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn wolf_enters_event(
+    game: &crate::game_state::GameState,
+    source_id: ObjectId,
+) -> crate::triggers::TriggerEvent {
+    let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(source_id)
+            .expect("Wolf in _____ Clothing should be on the battlefield"),
+        game,
+    );
+    crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::ZoneChangeEvent::with_cause(
+            source_id,
+            Zone::Stack,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            Some(snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    )
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn wolf_in_clothing_name_sticker_vowel_count_limits_reflexive_targets() {
+    let def = parse_oracle_card_definition("Wolf in _____ Clothing");
+    let effects = wolf_in_clothing_enters_effects(&def);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let source_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let first = wolf_test_creature(&mut game, "First Target", bob);
+    let second = wolf_test_creature(&mut game, "Second Target", bob);
+    let third = wolf_test_creature(&mut game, "Third Target", bob);
+    let fourth = wolf_test_creature(&mut game, "Fourth Target", bob);
+    let mut dm = WolfStickerDecisionMaker {
+        accept_name_sticker: true,
+        unique_vowels: 3,
+        targets: vec![first, second, third, fourth],
+    };
+    let mut ctx = crate::effects::ExecutionContext::new_default(source_id, alice)
+        .with_triggering_event(wolf_enters_event(&game, source_id))
+        .with_decision_maker(&mut dm);
+
+    for effect in &effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Wolf in _____ Clothing enters effects should resolve");
+    }
+
+    let reflexive_entry = game
+        .stack
+        .last()
+        .expect("accepting the name sticker should create a reflexive triggered ability");
+    assert_eq!(reflexive_entry.event_value_amount, Some(3));
+    assert_eq!(
+        reflexive_entry.targets.len(),
+        3,
+        "the reflexive trigger should choose no more targets than the unique-vowel count"
+    );
+
+    crate::game_loop::resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Wolf in _____ Clothing reflexive trigger should resolve");
+
+    for target in [first, second, third] {
+        assert_eq!(
+            game.calculated_power(target),
+            Some(1),
+            "chosen target should get -1/-1 until end of turn"
+        );
+        assert_eq!(
+            game.calculated_toughness(target),
+            Some(1),
+            "chosen target should get -1/-1 until end of turn"
+        );
+    }
+    assert_eq!(game.calculated_power(fourth), Some(2));
+    assert_eq!(game.calculated_toughness(fourth), Some(2));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn wolf_in_clothing_declining_name_sticker_creates_no_reflexive_trigger() {
+    let def = parse_oracle_card_definition("Wolf in _____ Clothing");
+    let effects = wolf_in_clothing_enters_effects(&def);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let source_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let target = wolf_test_creature(&mut game, "Decline Target", bob);
+    let mut dm = WolfStickerDecisionMaker {
+        accept_name_sticker: false,
+        unique_vowels: 3,
+        targets: vec![target],
+    };
+    let mut ctx = crate::effects::ExecutionContext::new_default(source_id, alice)
+        .with_triggering_event(wolf_enters_event(&game, source_id))
+        .with_decision_maker(&mut dm);
+
+    for effect in &effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Wolf in _____ Clothing declined enters effects should resolve");
+    }
+
+    assert!(
+        game.stack.is_empty(),
+        "declining the name sticker should not create the when-you-do reflexive trigger"
+    );
+    assert_eq!(game.calculated_power(target), Some(2));
+    assert_eq!(game.calculated_toughness(target), Some(2));
+}
+
 #[test]
 fn alena_kessig_trapper_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("Alena, Kessig Trapper");

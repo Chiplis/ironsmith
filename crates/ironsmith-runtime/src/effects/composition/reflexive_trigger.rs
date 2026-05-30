@@ -1,8 +1,11 @@
 //! Reflexive trigger effect implementation.
 
 use crate::decisions::context::{TargetRequirementContext, TargetsContext};
-use crate::effect::{Effect, EffectId, EffectOutcome, EffectPredicate, EffectPredicateRuntimeExt};
+use crate::effect::{
+    Effect, EffectId, EffectOutcome, EffectPredicate, EffectPredicateRuntimeExt, ExecutionFact,
+};
 use crate::effects::EffectExecutor;
+use crate::effects::helpers::resolve_value;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::{GameState, StackEntry};
 use crate::target::ChooseSpec;
@@ -62,7 +65,18 @@ fn choose_reflexive_targets(
     let mut chosen_targets = Vec::new();
 
     for spec in choices {
-        let count = spec.count();
+        let mut count = spec.count();
+        if count.is_dynamic_x() && let Some(value) = spec.count_value() {
+            let resolved = resolve_value(game, value, ctx).ok()?.max(0) as usize;
+            if count.up_to_x {
+                count.max = Some(resolved);
+            } else {
+                count.min = resolved;
+                count.max = Some(resolved);
+            }
+            count.dynamic_x = false;
+            count.up_to_x = false;
+        }
         let legal_targets = crate::targeting::compute_legal_targets_with_tagged_objects(
             game,
             spec,
@@ -96,6 +110,17 @@ fn choose_reflexive_targets(
     }
 
     Some(chosen_targets)
+}
+
+fn reflexive_event_value_amount(outcome: &EffectOutcome) -> Option<i32> {
+    outcome
+        .execution_facts
+        .iter()
+        .find_map(|fact| match fact {
+            ExecutionFact::OtherNumber(value) => Some(*value as i32),
+            _ => None,
+        })
+        .or_else(|| outcome.as_count())
 }
 
 #[cfg(test)]
@@ -222,13 +247,26 @@ impl EffectExecutor for ReflexiveTriggerEffect {
             return Ok(EffectOutcome::resolved());
         }
 
-        let targets = choose_reflexive_targets(game, ctx, &self.choices)
-            .ok_or(ExecutionError::InvalidTarget)?;
+        let event_value_amount = reflexive_event_value_amount(outcome);
+        let previous_event_value_amount = ctx.event_value_amount;
+        let targets = {
+            if let Some(amount) = event_value_amount {
+                ctx.event_value_amount = Some(amount);
+            }
+            let targets = choose_reflexive_targets(game, ctx, &self.choices);
+            ctx.event_value_amount = previous_event_value_amount;
+            targets
+        }
+        .ok_or(ExecutionError::InvalidTarget)?;
 
         let mut entry = StackEntry::ability(ctx.source, ctx.controller, self.effects.clone())
             .with_targets(targets)
             .with_optional_costs_paid(ctx.optional_costs_paid.clone())
             .with_tagged_objects(ctx.tagged_objects.clone());
+
+        if let Some(amount) = event_value_amount {
+            entry = entry.with_event_value_amount(amount);
+        }
 
         if let Some(x) = ctx.x_value {
             entry = entry.with_x(x);

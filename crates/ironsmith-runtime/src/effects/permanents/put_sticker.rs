@@ -1,4 +1,5 @@
-use crate::effect::EffectOutcome;
+use crate::decisions::{SelectOptionsContext, SelectableOption};
+use crate::effect::{EffectOutcome, ExecutionFact};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_single_object_from_spec;
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -18,6 +19,31 @@ impl PutStickerEffect {
     pub fn new(target: ChooseSpec, action: KeywordActionKind) -> Self {
         Self { target, action }
     }
+}
+
+fn choose_name_sticker_unique_vowels(game: &GameState, ctx: &mut ExecutionContext) -> Option<u32> {
+    let options = (0..=6)
+        .map(|count| SelectableOption::new(count, count.to_string()))
+        .collect::<Vec<_>>();
+    let choice_ctx = SelectOptionsContext::new(
+        ctx.controller,
+        Some(ctx.source),
+        "Choose the number of unique vowels on the name sticker",
+        options,
+        1,
+        1,
+    );
+    let selected = ctx.decision_maker.decide_options(game, &choice_ctx);
+    if ctx.decision_maker.awaiting_choice() {
+        return None;
+    }
+    Some(
+        selected
+            .into_iter()
+            .next()
+            .filter(|count| *count <= 6)
+            .unwrap_or(0) as u32,
+    )
 }
 
 impl EffectExecutor for PutStickerEffect {
@@ -42,13 +68,26 @@ impl EffectExecutor for PutStickerEffect {
         let snapshot = game
             .object(object_id)
             .map(|object| ObjectSnapshot::from_object(object, game));
+        let unique_vowels = if self.action == KeywordActionKind::NameSticker {
+            let Some(count) = choose_name_sticker_unique_vowels(game, ctx) else {
+                return Ok(EffectOutcome::count(0));
+            };
+            Some(count)
+        } else {
+            None
+        };
+        let event_amount = unique_vowels.unwrap_or(1);
         let event = TriggerEvent::new_with_provenance(
-            KeywordActionEvent::new(self.action, ctx.controller, ctx.source, 1)
+            KeywordActionEvent::new(self.action, ctx.controller, ctx.source, event_amount)
                 .with_snapshot(snapshot),
             ctx.provenance,
         );
 
-        Ok(EffectOutcome::with_objects(vec![object_id]).with_event(event))
+        let mut outcome = EffectOutcome::with_objects(vec![object_id]).with_event(event);
+        if let Some(unique_vowels) = unique_vowels {
+            outcome = outcome.with_execution_fact(ExecutionFact::OtherNumber(unique_vowels));
+        }
+        Ok(outcome)
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

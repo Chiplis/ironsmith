@@ -50,7 +50,7 @@ pub fn choose_spec_is_plural(spec: &ChooseSpec) -> bool {
     match spec {
         ChooseSpec::Target(inner) => choose_spec_is_plural(inner),
         ChooseSpec::All(_) | ChooseSpec::EachPlayer(_) => true,
-        ChooseSpec::WithCount(inner, count) => {
+        ChooseSpec::WithCount(inner, count) | ChooseSpec::WithCountValue(inner, count, _) => {
             if !count.dynamic_x && count.max == Some(1) {
                 false
             } else {
