@@ -592,7 +592,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::ExchangeTextBoxes { .. }
         | SubjectVerbActionAst::ExchangeZones { .. }
         | SubjectVerbActionAst::PutRestOnBottomOfLibrary
-        | SubjectVerbActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn
+        | SubjectVerbActionAst::DontLoseThisManaAsStepsEnd { .. }
         | SubjectVerbActionAst::ExchangeValues { .. }
         | SubjectVerbActionAst::ExileInsteadOfGraveyardThisTurn
         | SubjectVerbActionAst::ControlCombatChoicesThisTurn { .. }

@@ -5,8 +5,9 @@ use super::super::grammar::effects::{
 };
 use super::super::grammar::primitives as grammar;
 use super::super::lexer::{
-    LexedClause, contains_token_word, word_slice_contains_any_word, word_slice_eq,
-    word_slice_eq_any, word_slice_matching_phrase, word_slice_starts_with,
+    LexedClause, contains_token_word, token_word_refs, word_slice_contains_any_word,
+    word_slice_contains_phrase, word_slice_eq, word_slice_eq_any, word_slice_matching_phrase,
+    word_slice_starts_with,
     word_slice_starts_with_any,
 };
 use super::super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
@@ -72,6 +73,8 @@ const DONT_LOSE_THIS_MANA_PATTERNS: &[&[&str]] = &[
     &[
         "you", "don't", "lose", "this", "mana", "as", "steps", "and", "phases", "end",
     ],
+    &["you", "dont", "lose", "this", "mana", "as", "steps", "end"],
+    &["you", "don't", "lose", "this", "mana", "as", "steps", "end"],
 ];
 const ALL_CREATURES_ABLE_TO_BLOCK_PREFIXES: &[&[&str]] =
     &[&["all", "creatures", "able", "to", "block"]];
@@ -570,8 +573,14 @@ pub(crate) fn parse_dont_lose_this_mana_as_steps_and_phases_end_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     if LexedClause::new(tokens).matches_any_words(DONT_LOSE_THIS_MANA_PATTERNS) {
+        let words = token_word_refs(tokens);
+        let include_phase_ends =
+            word_slice_contains_phrase(&words, &["steps", "and", "phases", "end"]);
         return Ok(Some(
-            EffectAst::subject_verb_dont_lose_this_mana_as_steps_and_phases_end_this_turn(),
+            EffectAst::subject_verb_dont_lose_this_mana_as_steps_end(
+                crate::effect::Until::EndOfTurn,
+                include_phase_ends,
+            ),
         ));
     }
     Ok(None)

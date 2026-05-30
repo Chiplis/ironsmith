@@ -3428,7 +3428,11 @@ pub(crate) fn parse_trigger_clause_lexed(
                             }
                         }
                         if one_or_more {
-                            TriggerSpec::AttacksOneOrMore(filter)
+                            if player_subject && attacked_player_filter.is_none() {
+                                TriggerSpec::PlayerAttacks(filter)
+                            } else {
+                                TriggerSpec::AttacksOneOrMore(filter)
+                            }
                         } else {
                             TriggerSpec::Attacks(filter)
                         }

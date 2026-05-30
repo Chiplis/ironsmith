@@ -75,6 +75,19 @@ pub fn execute_effect(
     ctx: &mut ExecutionContext,
 ) -> Result<EffectOutcome, ExecutionError> {
     let mut outcome = effect.0.execute(game, ctx)?;
+    let added_mana = outcome
+        .events
+        .iter()
+        .rev()
+        .find_map(|event| event.downcast::<crate::events::ManaAddedEvent>());
+    if let Some(event) = added_mana {
+        ctx.mana.last_mana_added = Some((event.player, event.mana.clone()));
+    } else if effect
+        .downcast_ref::<crate::effects::RetainManaUntilEndOfTurnEffect>()
+        .is_none()
+    {
+        ctx.mana.last_mana_added = None;
+    }
 
     if !outcome.events.is_empty() {
         let execution_node = game.provenance_graph_mut().alloc_child(

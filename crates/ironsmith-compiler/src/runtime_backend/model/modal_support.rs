@@ -337,7 +337,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::ExchangeTextBoxes { .. }
             | SubjectVerbActionAst::ExchangeZones { .. }
             | SubjectVerbActionAst::PutRestOnBottomOfLibrary
-            | SubjectVerbActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn
+            | SubjectVerbActionAst::DontLoseThisManaAsStepsEnd { .. }
             | SubjectVerbActionAst::ExchangeValues { .. }
             | SubjectVerbActionAst::ExileInsteadOfGraveyardThisTurn
             | SubjectVerbActionAst::ControlCombatChoicesThisTurn { .. }

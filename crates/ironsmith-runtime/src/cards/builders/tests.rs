@@ -37729,6 +37729,157 @@ fn assert_oracle_card_fails_strict(name: &str) {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn avatar_roku_firebender_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition("Avatar Roku, Firebender");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("Whenever a player attacks, add six {R}")
+            && rendered_lower
+                .contains("until end of combat, you don't lose this mana as steps end"),
+        "expected Avatar Roku attack trigger to keep six-red and end-of-combat mana-retention text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("{R}{R}{R}: Target creature gets +3/+0 until end of turn"),
+        "expected Avatar Roku activated pump ability in compiled text, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("player_attacks: true")
+            && debug.contains("AddScaledManaEffect")
+            && debug.contains("Fixed(\n                                                6")
+            && debug.contains("duration: EndOfCombat")
+            && debug.contains("include_phase_ends: false"),
+        "expected Avatar Roku to model player-attack trigger, six red mana, and steps-only retention structurally, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn avatar_roku_firebender_attack_trigger_adds_six_red_mana_once() {
+    let def = parse_oracle_card_definition("Avatar Roku, Firebender");
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let attacker = CardDefinitionBuilder::new(CardId::new(), "Attack Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let attacker_id = game.create_object_from_definition(&attacker, bob, Zone::Battlefield);
+    game.remove_summoning_sickness(attacker_id);
+    game.turn.active_player = bob;
+    game.turn.phase = crate::game_state::Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = crate::combat_state::CombatState::default();
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    crate::game_loop::apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[crate::decision::AttackerDeclaration {
+            creature: attacker_id,
+            target: crate::combat_state::AttackTarget::Player(alice),
+        }],
+    )
+    .expect("attack declaration should succeed");
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Avatar Roku attack trigger should go on stack");
+
+    assert_eq!(
+        game.player(alice).expect("Alice exists").mana_pool.red,
+        0,
+        "Avatar Roku should not add mana before the trigger resolves"
+    );
+    crate::game_loop::resolve_stack_entry(&mut game).expect("Avatar Roku trigger should resolve");
+    assert_eq!(
+        game.player(alice).expect("Alice exists").mana_pool.red,
+        6,
+        "Avatar Roku should add six red mana to its controller when a player attacks"
+    );
+    game.empty_mana_pools();
+    assert_eq!(
+        game.player(alice).expect("Alice exists").mana_pool.red,
+        6,
+        "Avatar Roku mana should survive combat step boundaries before end of combat"
+    );
+    game.turn.step = Some(crate::game_state::Step::EndCombat);
+    game.empty_mana_pools();
+    assert_eq!(
+        game.player(alice).expect("Alice exists").mana_pool.red,
+        0,
+        "Avatar Roku mana should not persist past end of combat"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn avatar_roku_firebender_activated_ability_pumps_only_creature_targets() {
+    let def = parse_oracle_card_definition("Avatar Roku, Firebender");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated.clone()),
+            _ => None,
+        })
+        .expect("Avatar Roku should have an activated pump ability");
+    let ChooseSpec::Target(inner) = &activated.choices[0] else {
+        panic!("Avatar Roku pump ability should target a creature");
+    };
+    let ChooseSpec::Object(filter) = inner.as_ref() else {
+        panic!("Avatar Roku pump ability should use an object target");
+    };
+    assert!(
+        filter.card_types.contains(&CardType::Creature),
+        "Avatar Roku pump ability should require a creature target, got {filter:?}"
+    );
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let creature = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::new(), "Pump Target")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    assert_eq!(game.current_power(creature), Some(2));
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(creature)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: ChooseSpec::target_creature(),
+            range: 0..1,
+        }]);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &activated.effects,
+        None,
+        &[],
+    )
+    .expect("Avatar Roku pump ability should resolve");
+    assert_eq!(
+        game.current_power(creature),
+        Some(5),
+        "Avatar Roku should give the target creature +3/+0 until end of turn"
+    );
+}
+
 #[test]
 fn alena_kessig_trapper_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("Alena, Kessig Trapper");

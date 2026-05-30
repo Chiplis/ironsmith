@@ -15,6 +15,7 @@ use crate::effects::VoteResult;
 use crate::events::cause::EventCause;
 use crate::game_state::{GameState, TargetAssignment};
 use crate::ids::{ObjectId, PlayerId};
+use crate::mana::ManaSymbol;
 use crate::provenance::ProvNodeId;
 use crate::replacement::{ReplacementEffect, ReplacementEffectId, ReplacementEffectKey};
 use crate::snapshot::ObjectSnapshot;
@@ -160,6 +161,8 @@ pub struct ManaExecutionContext {
     pub mana_usage_restrictions: Vec<crate::ability::ManaUsageRestriction>,
     /// Chosen creature type snapshot for mana produced by the source.
     pub mana_source_chosen_creature_type: Option<Subtype>,
+    /// Mana most recently added while resolving the current effect sequence.
+    pub last_mana_added: Option<(PlayerId, Vec<ManaSymbol>)>,
 }
 
 /// Ephemeral replacement effects scoped to the current resolution path.

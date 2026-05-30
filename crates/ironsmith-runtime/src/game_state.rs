@@ -23,6 +23,7 @@ use crate::effect::Until;
 use crate::events::{Event, EventKind, KeywordActionKind};
 use crate::filter::PlayerFilterExt;
 use crate::ids::{ObjectId, PlayerId, StableId, reset_runtime_id_counters};
+use crate::mana::ManaSymbol;
 use crate::object::{AttachmentTarget, AuraAttachmentFilter, Object};
 use crate::player::Player;
 use crate::prevention::PreventionEffectManager;
@@ -1594,6 +1595,16 @@ pub struct CombatChoiceControlEffect {
     pub timestamp: u64,
 }
 
+/// Temporary permission for specific mana to remain in a player's mana pool.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ManaRetentionEffect {
+    pub player: PlayerId,
+    pub mana: Vec<ManaSymbol>,
+    pub duration: Until,
+    pub include_phase_ends: bool,
+    pub created_turn: u32,
+}
+
 /// An effect that causes one player to control another player's decisions.
 #[derive(Debug, Clone)]
 pub struct PlayerControlEffect {
@@ -1970,6 +1981,9 @@ pub struct GameState {
     /// Temporary effects that redirect attacker/blocker choices this turn.
     pub combat_choice_control_effects: Vec<CombatChoiceControlEffect>,
 
+    /// Temporary effects that keep recently produced mana through step/phase ends.
+    pub mana_retention_effects: Vec<ManaRetentionEffect>,
+
     /// Timestamp counter for combat-choice control effects.
     pub combat_choice_control_timestamp: u64,
 
@@ -2180,6 +2194,7 @@ impl GameState {
             scoped_player_control_effects: Vec::new(),
             player_control_timestamp: 0,
             combat_choice_control_effects: Vec::new(),
+            mana_retention_effects: Vec::new(),
             combat_choice_control_timestamp: 0,
             saddled_until_end_of_turn: HashSet::new(),
             soulbond_pairs: HashMap::new(),
@@ -6977,6 +6992,7 @@ impl GameState {
         }
         self.turn_store.grant_cast_uses_this_turn.clear();
         self.saddled_until_end_of_turn.clear();
+        self.mana_retention_effects.clear();
         self.ninjutsu_attack_targets.clear();
         self.combat_damage_player_batch_hits.clear();
         self.speed_increase_triggered_this_turn.clear();
@@ -7190,6 +7206,37 @@ impl GameState {
             .retain(|effect| effect.expires_on_turn != current_turn);
     }
 
+    pub fn add_mana_retention(
+        &mut self,
+        player: PlayerId,
+        mana: Vec<ManaSymbol>,
+        duration: Until,
+        include_phase_ends: bool,
+    ) {
+        self.mana_retention_effects.push(ManaRetentionEffect {
+            player,
+            mana,
+            duration,
+            include_phase_ends,
+            created_turn: self.turn.turn_number,
+        });
+    }
+
+    fn mana_retention_applies_at_current_boundary(&self, effect: &ManaRetentionEffect) -> bool {
+        if !effect.include_phase_ends && self.turn.step.is_none() {
+            return false;
+        }
+        match effect.duration {
+            Until::EndOfCombat => {
+                self.turn.phase == Phase::Combat && self.turn.step != Some(Step::EndCombat)
+            }
+            Until::EndOfTurn => {
+                self.turn.turn_number == effect.created_turn && self.turn.step != Some(Step::Cleanup)
+            }
+            _ => self.turn.turn_number == effect.created_turn,
+        }
+    }
+
     fn clear_player_control_from_source(&mut self, stable_id: StableId) {
         self.player_control_effects.retain(|effect| {
             !(matches!(effect.duration, PlayerControlDuration::UntilSourceLeaves)
@@ -7206,10 +7253,48 @@ impl GameState {
     /// Empties all players' mana pools.
     /// Called at the end of each step and phase per MTG rules.
     pub fn empty_mana_pools(&mut self) {
+        let retained_mana: HashMap<PlayerId, Vec<ManaSymbol>> = self
+            .mana_retention_effects
+            .iter()
+            .filter(|effect| self.mana_retention_applies_at_current_boundary(effect))
+            .fold(HashMap::new(), |mut retained, effect| {
+                retained
+                    .entry(effect.player)
+                    .or_insert_with(Vec::new)
+                    .extend(effect.mana.iter().copied());
+                retained
+            });
+
         for player in &mut self.players {
+            let pool_before_empty = player.mana_pool.clone();
             player.mana_pool.empty();
             player.restricted_mana.clear();
+            if let Some(mana) = retained_mana.get(&player.id) {
+                for symbol in [
+                    ManaSymbol::White,
+                    ManaSymbol::Blue,
+                    ManaSymbol::Black,
+                    ManaSymbol::Red,
+                    ManaSymbol::Green,
+                    ManaSymbol::Colorless,
+                ] {
+                    let retained_count =
+                        mana.iter().filter(|retained| **retained == symbol).count() as u32;
+                    let preserved = retained_count.min(pool_before_empty.amount(symbol));
+                    if preserved > 0 {
+                        player.mana_pool.add(symbol, preserved);
+                    }
+                }
+            }
         }
+        let phase = self.turn.phase;
+        let step = self.turn.step;
+        let turn_number = self.turn.turn_number;
+        self.mana_retention_effects.retain(|effect| match effect.duration {
+            Until::EndOfCombat => phase == Phase::Combat && step != Some(Step::EndCombat),
+            Until::EndOfTurn => turn_number == effect.created_turn && step != Some(Step::Cleanup),
+            _ => turn_number == effect.created_turn,
+        });
     }
 
     /// Clears the tracking for OncePerTurn activated abilities.

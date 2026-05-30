@@ -1450,15 +1450,25 @@ impl<E> ExecuteWithSourceEffect<E> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct RetainManaUntilEndOfTurnEffect {
     pub player: PlayerFilter,
+    pub duration: Until,
+    pub include_phase_ends: bool,
 }
 
 impl RetainManaUntilEndOfTurnEffect {
-    pub fn new(player: PlayerFilter) -> Self {
-        Self { player }
+    pub fn new(player: PlayerFilter, duration: Until, include_phase_ends: bool) -> Self {
+        Self {
+            player,
+            duration,
+            include_phase_ends,
+        }
     }
 
     pub fn you() -> Self {
-        Self::new(PlayerFilter::You)
+        Self::new(PlayerFilter::You, Until::EndOfTurn, true)
+    }
+
+    pub fn you_until(duration: Until, include_phase_ends: bool) -> Self {
+        Self::new(PlayerFilter::You, duration, include_phase_ends)
     }
 }
 

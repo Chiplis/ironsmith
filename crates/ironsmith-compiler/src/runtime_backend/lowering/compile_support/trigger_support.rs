@@ -20,6 +20,7 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::Attacks(filter) => Trigger::attacks(filter),
         TriggerSpec::AttacksAndIsntBlocked(filter) => Trigger::attacks_and_isnt_blocked(filter),
         TriggerSpec::AttacksWhileSaddled(filter) => Trigger::attacks_while_saddled(filter),
+        TriggerSpec::PlayerAttacks(filter) => Trigger::player_attacks(filter),
         TriggerSpec::AttacksOneOrMore(filter) => Trigger::attacks_one_or_more(filter),
         TriggerSpec::AttacksOneOrMoreWithMinTotal {
             filter,
@@ -531,7 +532,9 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         | TriggerSpec::ThisDealsCombatDamageToPlayer
         | TriggerSpec::DealsCombatDamageToPlayer { .. } => Some(PlayerFilter::DamagedPlayer),
         TriggerSpec::ThisAttacks | TriggerSpec::ThisBecomesBlocked => Some(PlayerFilter::Defending),
-        TriggerSpec::Attacks(filter) | TriggerSpec::AttacksOneOrMore(filter)
+        TriggerSpec::Attacks(filter)
+        | TriggerSpec::PlayerAttacks(filter)
+        | TriggerSpec::AttacksOneOrMore(filter)
             if filter
                 .attacking_player_or_planeswalker_controlled_by
                 .is_some() =>
@@ -611,6 +614,7 @@ pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventVa
             | TriggerSpec::ThisDealsCombatDamageToPlayer
             | TriggerSpec::DealsCombatDamageToPlayer { .. }
             | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { .. }
+            | TriggerSpec::PlayerAttacks(_)
             | TriggerSpec::AttacksOneOrMore(_)
             | TriggerSpec::AttacksOneOrMoreWithMinTotal { .. }
             | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_)

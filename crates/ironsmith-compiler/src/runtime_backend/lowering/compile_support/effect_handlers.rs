@@ -49,7 +49,7 @@ fn compile_delayed_trigger_spec(
         TriggerSpec::AttacksAndIsntBlocked(filter) => Ok(
             ironsmith_core::DelayedTriggerSpec::AttacksAndIsntBlocked(filter.clone()),
         ),
-        TriggerSpec::AttacksOneOrMore(filter) => Ok(
+        TriggerSpec::PlayerAttacks(filter) | TriggerSpec::AttacksOneOrMore(filter) => Ok(
             ironsmith_core::DelayedTriggerSpec::AttacksOneOrMore(filter.clone()),
         ),
         TriggerSpec::Blocks(filter) => {

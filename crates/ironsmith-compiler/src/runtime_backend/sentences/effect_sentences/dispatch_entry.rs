@@ -2367,7 +2367,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::ExchangeTextBoxes { .. }
             | SubjectVerbActionAst::ExchangeZones { .. }
             | SubjectVerbActionAst::PutRestOnBottomOfLibrary
-            | SubjectVerbActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn
+            | SubjectVerbActionAst::DontLoseThisManaAsStepsEnd { .. }
             | SubjectVerbActionAst::ExchangeValues { .. }
             | SubjectVerbActionAst::ExileInsteadOfGraveyardThisTurn
             | SubjectVerbActionAst::ControlCombatChoicesThisTurn { .. }

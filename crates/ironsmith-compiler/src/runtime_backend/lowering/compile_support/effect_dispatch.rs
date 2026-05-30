@@ -504,9 +504,15 @@ fn compile_subject_verb_effect(
 
             Ok((vec![move_rest], Vec::new()))
         }
-        SubjectVerbActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn => Ok((
+        SubjectVerbActionAst::DontLoseThisManaAsStepsEnd {
+            duration,
+            include_phase_ends,
+        } => Ok((
             vec![Effect::new(
-                crate::effects::RetainManaUntilEndOfTurnEffect::you(),
+                crate::effects::RetainManaUntilEndOfTurnEffect::you_until(
+                    duration.clone(),
+                    *include_phase_ends,
+                ),
             )],
             Vec::new(),
         )),

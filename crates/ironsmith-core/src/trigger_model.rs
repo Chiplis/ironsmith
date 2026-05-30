@@ -38,6 +38,9 @@ pub enum TriggerKind {
     AttacksWhileSaddled {
         filter: ObjectFilter,
     },
+    PlayerAttacks {
+        filter: ObjectFilter,
+    },
     AttacksOneOrMore {
         filter: ObjectFilter,
     },
@@ -392,6 +395,9 @@ impl Trigger {
             "attacks_while_saddled",
             TriggerKind::AttacksWhileSaddled { filter },
         )
+    }
+    pub fn player_attacks(filter: ObjectFilter) -> Self {
+        Self::typed("player_attacks", TriggerKind::PlayerAttacks { filter })
     }
     pub fn attacks_one_or_more(filter: ObjectFilter) -> Self {
         Self::typed(

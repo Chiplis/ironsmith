@@ -82,6 +82,7 @@ fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
             | TriggerSpec::ThisDealsCombatDamageToPlayer
             | TriggerSpec::DealsCombatDamageToPlayer { .. }
             | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { .. }
+            | TriggerSpec::PlayerAttacks(_)
             | TriggerSpec::AttacksOneOrMore(_)
             | TriggerSpec::AttacksOneOrMoreWithMinTotal { .. }
             | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_)
@@ -1887,7 +1888,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::ExchangeTextBoxes { .. }
             | SubjectVerbActionAst::ExchangeZones { .. }
             | SubjectVerbActionAst::PutRestOnBottomOfLibrary
-            | SubjectVerbActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn
+            | SubjectVerbActionAst::DontLoseThisManaAsStepsEnd { .. }
             | SubjectVerbActionAst::ExchangeValues { .. }
             | SubjectVerbActionAst::ExileInsteadOfGraveyardThisTurn
             | SubjectVerbActionAst::ControlCombatChoicesThisTurn { .. }

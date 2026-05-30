@@ -118,6 +118,7 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::AttacksWhileSaddled { filter } => {
             crate::triggers::Trigger::attacks_while_saddled(filter)
         }
+        TriggerKind::PlayerAttacks { filter } => crate::triggers::Trigger::player_attacks(filter),
         TriggerKind::AttacksOneOrMore { filter } => {
             crate::triggers::Trigger::attacks_one_or_more(filter)
         }

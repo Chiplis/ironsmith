@@ -108,6 +108,7 @@ pub(crate) enum TriggerSpec {
     Attacks(ObjectFilter),
     AttacksAndIsntBlocked(ObjectFilter),
     AttacksWhileSaddled(ObjectFilter),
+    PlayerAttacks(ObjectFilter),
     AttacksOneOrMore(ObjectFilter),
     AttacksOneOrMoreWithMinTotal {
         filter: ObjectFilter,
@@ -833,7 +834,10 @@ pub(crate) enum SubjectVerbActionAst {
         zone2: Zone,
     },
     PutRestOnBottomOfLibrary,
-    DontLoseThisManaAsStepsAndPhasesEndThisTurn,
+    DontLoseThisManaAsStepsEnd {
+        duration: Until,
+        include_phase_ends: bool,
+    },
     ExchangeValues {
         left: ExchangeValueAst,
         right: ExchangeValueAst,
@@ -1885,9 +1889,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("zone2", zone2)
                 .finish(),
             Self::PutRestOnBottomOfLibrary => f.write_str("PutRestOnBottomOfLibrary"),
-            Self::DontLoseThisManaAsStepsAndPhasesEndThisTurn => {
-                f.write_str("DontLoseThisManaAsStepsAndPhasesEndThisTurn")
-            }
+            Self::DontLoseThisManaAsStepsEnd {
+                duration,
+                include_phase_ends,
+            } => f
+                .debug_struct("DontLoseThisManaAsStepsEnd")
+                .field("duration", duration)
+                .field("include_phase_ends", include_phase_ends)
+                .finish(),
             Self::ExchangeValues {
                 left,
                 right,
@@ -4993,11 +5002,17 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_dont_lose_this_mana_as_steps_and_phases_end_this_turn() -> Self {
+    pub(crate) fn subject_verb_dont_lose_this_mana_as_steps_end(
+        duration: crate::effect::Until,
+        include_phase_ends: bool,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn,
+            SubjectVerbActionAst::DontLoseThisManaAsStepsEnd {
+                duration,
+                include_phase_ends,
+            },
         )
     }
 

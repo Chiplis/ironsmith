@@ -980,17 +980,22 @@ pub(crate) fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
     }
 
     let source_tapped_duration = cant_sentence_has_source_remains_tapped_duration(tokens);
-    let words = token_word_refs(tokens);
-    if word_slice_contains_all_words(&words, &["lose", "mana", "steps", "phases", "end"]) {
-        return Ok(Some(vec![
-            EffectAst::subject_verb_dont_lose_this_mana_as_steps_and_phases_end_this_turn(),
-        ]));
-    }
     let Some(prepared_clause) = prepare_cant_sentence_restriction_clause_lexed(tokens)? else {
         return Ok(None);
     };
     let duration = prepared_clause.duration;
     let clause_tokens = prepared_clause.clause_tokens;
+    let words = token_word_refs(&clause_tokens);
+    if word_slice_contains_all_words(&words, &["lose", "mana", "steps", "end"]) {
+        let include_phase_ends =
+            word_slice_contains_phrase(&words, &["steps", "and", "phases", "end"]);
+        return Ok(Some(vec![
+            EffectAst::subject_verb_dont_lose_this_mana_as_steps_end(
+                duration,
+                include_phase_ends,
+            ),
+        ]));
+    }
 
     let Some(restrictions) = parse_cant_restrictions(&clause_tokens)? else {
         return Err(CardTextError::ParseError(format!(

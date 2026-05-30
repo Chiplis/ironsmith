@@ -329,6 +329,30 @@ pub(crate) fn parse_add_mana(
                 player, mana, amount,
             ));
         }
+        if let Some(last_mana_idx) = last_mana_idx
+            && let Some(amount) = tokens[..last_mana_idx]
+                .iter()
+                .filter_map(|token| token.as_word())
+                .find_map(ironsmith_core::parse_cardinal_word)
+            && amount > 1
+        {
+            parser_trace_stack("parse_add_mana:scaled-cardinal", tokens);
+            return Ok(EffectAst::subject_verb_add_mana_scaled(
+                player,
+                mana,
+                Value::Fixed(amount as i32),
+            ));
+        }
+        if let Some((Value::Fixed(amount), _consumed)) = parse_value(tokens)
+            && amount > 1
+        {
+            parser_trace_stack("parse_add_mana:scaled-fixed", tokens);
+            return Ok(EffectAst::subject_verb_add_mana_scaled(
+                player,
+                mana,
+                Value::Fixed(amount),
+            ));
+        }
         if let Some(amount) = parse_equal_to_aggregate_filter_value(tokens)
             .or_else(|| parse_add_mana_equal_amount_value(tokens))
         {

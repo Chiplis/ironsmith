@@ -455,6 +455,11 @@ impl Trigger {
         Self::new(AttacksTrigger::one_or_more(filter))
     }
 
+    /// Create a "when a player attacks" trigger.
+    pub fn player_attacks(filter: ObjectFilter) -> Self {
+        Self::new(AttacksTrigger::player_attacks(filter))
+    }
+
     /// Create a "when N or more [filter] attack" trigger that fires once per declaration.
     pub fn attacks_one_or_more_with_min_total(
         filter: ObjectFilter,

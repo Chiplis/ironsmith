@@ -28551,6 +28551,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             .collect::<Vec<_>>()
             .join("");
         let mana_text = if mana.is_empty() { "{0}" } else { &mana };
+        if let Value::Fixed(amount) = add_scaled.amount {
+            return format!(
+                "Add {} {}{}",
+                number_word(amount).unwrap_or_else(|| amount.to_string()),
+                mana_text,
+                describe_add_mana_destination_suffix(&add_scaled.player)
+            );
+        }
         if let Value::Count(filter) = &add_scaled.amount {
             return format!(
                 "Add {} for each {}{}",
@@ -29648,11 +29656,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         return prompt.description.clone();
     }
     if let Some(retain) = effect.downcast_ref::<crate::effects::RetainManaUntilEndOfTurnEffect>() {
+        let duration = describe_until(&retain.duration);
+        let ending = if retain.include_phase_ends {
+            "steps and phases end"
+        } else {
+            "steps end"
+        };
         return match retain.player {
-            PlayerFilter::You => {
-                "Until end of turn, you don't lose this mana as steps and phases end".to_string()
-            }
-            _ => "Until end of turn, mana doesn't empty as steps and phases end".to_string(),
+            PlayerFilter::You => format!("{duration}, you don't lose this mana as {ending}"),
+            _ => format!("{duration}, mana doesn't empty as {ending}"),
         };
     }
     if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {

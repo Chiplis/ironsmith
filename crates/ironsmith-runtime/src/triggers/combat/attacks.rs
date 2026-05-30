@@ -19,6 +19,9 @@ pub struct AttacksTrigger {
     pub one_or_more: bool,
     /// Minimum number of total attackers required for this trigger to fire.
     pub min_total_attackers: usize,
+    /// Render the trigger using player-attack wording when the source text used
+    /// a player as the attacking subject.
+    pub player_attacks: bool,
 }
 
 impl AttacksTrigger {
@@ -28,6 +31,7 @@ impl AttacksTrigger {
             filter,
             one_or_more: false,
             min_total_attackers: 1,
+            player_attacks: false,
         }
     }
 
@@ -37,6 +41,17 @@ impl AttacksTrigger {
             filter,
             one_or_more: true,
             min_total_attackers: 1,
+            player_attacks: false,
+        }
+    }
+
+    /// Create a trigger for "whenever a player attacks" wording.
+    pub fn player_attacks(filter: ObjectFilter) -> Self {
+        Self {
+            filter,
+            one_or_more: true,
+            min_total_attackers: 1,
+            player_attacks: true,
         }
     }
 
@@ -50,6 +65,7 @@ impl AttacksTrigger {
             filter,
             one_or_more: true,
             min_total_attackers: min_total_attackers.max(1),
+            player_attacks: false,
         }
     }
 
@@ -212,6 +228,9 @@ impl TriggerMatcher for AttacksTrigger {
         };
 
         if self.one_or_more {
+            if self.player_attacks && self.min_total_attackers == 1 {
+                return format!("Whenever a player attacks{target_tail}");
+            }
             if self.min_total_attackers > 1 {
                 let min_total = ironsmith_core::cardinal_word(self.min_total_attackers as u32)
                     .unwrap_or_else(|| self.min_total_attackers.to_string());
