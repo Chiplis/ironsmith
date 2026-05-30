@@ -61,6 +61,10 @@ fn first_word_you(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "you")
 }
 
+fn first_word_you_or_until(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_in(sentences, sentence_idx, &["you", "until"])
+}
+
 fn first_word_look(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "look")
 }
@@ -444,7 +448,7 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         feature_tag: Some("cast-target-graveyard-spell-replacement"),
         priority: 242,
         consumed_sentences: 2,
-        predicate: first_word_you,
+        predicate: first_word_you_or_until,
         parser: generic_subject_verb_sequences::pairs::parse_may_cast_target_graveyard_spell_then_exile_replacement,
     },
     SequenceRuleDef {

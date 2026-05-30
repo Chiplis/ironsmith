@@ -1,6 +1,6 @@
 use crate::effect::{Until, Value, ValueComparisonOperator};
 use crate::host::{CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, TagKey};
-use crate::target::ObjectFilter;
+use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 use winnow::combinator::alt;
@@ -1055,11 +1055,17 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             };
         if let Some(from_idx) = find_token_index(zone_grant_tokens, |token| token.is_word("from")) {
             let zone_words = token_word_refs(&zone_grant_tokens[from_idx..]);
+            let top_of_your_graveyard = word_slice_eq(
+                &zone_words,
+                &["from", "the", "top", "of", "your", "graveyard"],
+            );
             let zone = if word_slice_eq(
                 &zone_words,
                 &["from", "the", "top", "of", "your", "library"],
             ) {
                 Some(Zone::Library)
+            } else if top_of_your_graveyard {
+                Some(Zone::Graveyard)
             } else if word_slice_eq(&zone_words, &["from", "your", "graveyard"]) {
                 Some(Zone::Graveyard)
             } else if word_slice_eq(&zone_words, &["from", "exile"]) {
@@ -1070,7 +1076,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             if let Some(zone) = zone {
                 let subject_tokens = trim_lexed_commas(&zone_grant_tokens[..from_idx]);
                 let subject_words = token_word_refs(subject_tokens);
-                let filter = if word_slice_eq(&subject_words, &["spells"]) {
+                let mut filter = if word_slice_eq(&subject_words, &["spells"]) {
                     ObjectFilter::default()
                 } else if let Some(filter) =
                     parse_permission_subject_filter_tokens_lexed(subject_tokens)?
@@ -1079,6 +1085,14 @@ pub(crate) fn parse_permission_clause_spec_lexed(
                 } else {
                     return Ok(None);
                 };
+                if top_of_your_graveyard {
+                    filter.owner = Some(PlayerFilter::You);
+                    filter.top_of_graveyard = true;
+                    for branch in &mut filter.any_of {
+                        branch.owner = Some(PlayerFilter::You);
+                        branch.top_of_graveyard = true;
+                    }
+                }
                 return Ok(Some(PermissionClauseSpec::GrantBySpec {
                     player,
                     spec: crate::grant::GrantSpec::new(

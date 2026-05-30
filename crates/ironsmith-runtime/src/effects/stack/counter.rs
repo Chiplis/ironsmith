@@ -11,6 +11,51 @@ use crate::target::ChooseSpec;
 use crate::zone::Zone;
 pub use ironsmith_core::CounterEffect;
 
+fn countered_spell_exiles_due_to_cast_method(
+    game: &GameState,
+    target_id: crate::ids::ObjectId,
+) -> bool {
+    let Some(entry) = game.stack.iter().find(|entry| entry.object_id == target_id) else {
+        return false;
+    };
+    let Some(object) = game.object(target_id) else {
+        return false;
+    };
+
+    match &entry.casting_method {
+        crate::alternative_cast::CastingMethod::Alternative(idx) => object
+            .alternative_casts
+            .get(*idx)
+            .map(|method| method.exiles_after_resolution())
+            .unwrap_or(false),
+        crate::alternative_cast::CastingMethod::GrantedEscape { .. }
+        | crate::alternative_cast::CastingMethod::GrantedFlashback
+        | crate::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom { .. } => true,
+        crate::alternative_cast::CastingMethod::PlayFrom {
+            use_alternative: Some(idx),
+            zone,
+            ..
+        } => crate::decision::resolve_play_from_alternative_method(
+            game,
+            entry.controller,
+            object,
+            *zone,
+            *idx,
+        )
+        .or_else(|| object.cast_alternative_method.clone())
+        .map(|method| method.exiles_after_resolution())
+        .unwrap_or(false),
+        crate::alternative_cast::CastingMethod::Normal
+        | crate::alternative_cast::CastingMethod::FaceDown
+        | crate::alternative_cast::CastingMethod::SplitOtherHalf
+        | crate::alternative_cast::CastingMethod::Fuse
+        | crate::alternative_cast::CastingMethod::PlayFrom {
+            use_alternative: None,
+            ..
+        } => false,
+    }
+}
+
 /// Effect that counters a target spell on the stack.
 ///
 /// This removes the spell from the stack and puts it into its owner's graveyard.
@@ -66,11 +111,16 @@ impl EffectExecutor for CounterEffect {
         // Find the stack entry for this object
         if game.stack.iter().any(|e| e.object_id == target_id) {
             let additional_effects = ctx.additional_replacement_effects_snapshot();
+            let destination = if countered_spell_exiles_due_to_cast_method(game, target_id) {
+                Zone::Exile
+            } else {
+                Zone::Graveyard
+            };
             let outcome = process_zone_change_with_additional_effects(
                 game,
                 target_id,
                 Zone::Stack,
-                Zone::Graveyard,
+                destination,
                 ctx.cause.clone(),
                 &mut ctx.decision_maker,
                 &additional_effects,

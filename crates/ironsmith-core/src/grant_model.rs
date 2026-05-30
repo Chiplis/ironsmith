@@ -417,6 +417,19 @@ where
             }
         }
 
+        fn top_graveyard_castable_filter(filter: &ObjectFilter) -> ObjectFilter {
+            let mut filter = filter.clone();
+            filter.zone = None;
+            filter.owner = None;
+            filter.top_of_graveyard = false;
+            for branch in &mut filter.any_of {
+                branch.zone = None;
+                branch.owner = None;
+                branch.top_of_graveyard = false;
+            }
+            filter
+        }
+
         fn flashback_filter_description(filter: &ObjectFilter) -> String {
             if filter.any_of.len() == 2 {
                 let first = &filter.any_of[0];
@@ -511,6 +524,16 @@ where
             && self.filter == ObjectFilter::default()
         {
             return format!("{may_prefix} play lands and cast spells from your graveyard");
+        }
+        if matches!(self.grantable, Grantable::PlayFrom)
+            && self.zone == Zone::Graveyard
+            && self.filter.top_of_graveyard
+        {
+            let filter = top_graveyard_castable_filter(&self.filter);
+            return format!(
+                "{may_prefix} cast {} from the top of your graveyard",
+                castable_filter_description(&filter)
+            );
         }
         if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Library

@@ -567,6 +567,47 @@ pub(crate) fn parse_may_cast_target_graveyard_spell_then_exile_replacement(
     let first_words = LexedClause::new(&first).word_refs();
     let second_words = LexedClause::new(&second).word_refs();
 
+    let first_is_top_graveyard_temporary_cast = word_slice_starts_with(
+        &first_words,
+        &["until", "end", "of", "turn", "you", "may", "cast"],
+    ) && word_slice_contains_phrase(
+        &first_words,
+        &["from", "the", "top", "of", "your", "graveyard"],
+    ) && word_slice_contains_all_words(&first_words, &["instant", "sorcery", "spells"]);
+    let second_is_cast_this_way_to_any_graveyard_replacement = word_slice_eq(
+        &second_words,
+        &[
+            "if", "a", "spell", "cast", "this", "way", "would", "be", "put", "into", "a",
+            "graveyard", "exile", "it", "instead",
+        ],
+    );
+    if first_is_top_graveyard_temporary_cast
+        && second_is_cast_this_way_to_any_graveyard_replacement
+    {
+        let mut filter = ObjectFilter::default();
+        filter.zone = Some(Zone::Graveyard);
+        filter.owner = Some(PlayerFilter::You);
+        filter.top_of_graveyard = true;
+        filter.card_types = vec![CardType::Instant, CardType::Sorcery];
+
+        return Ok(Some(vec![EffectAst::subject_verb_grant_by_spec(
+            crate::grant::GrantSpec::new(
+                crate::grant::Grantable::DerivedAlternativeCast(
+                    crate::grant::DerivedAlternativeCast::GraveyardCastFromCardManaCost {
+                        additional_costs: Vec::new(),
+                        usage_limit: None,
+                        condition: None,
+                        exiles_after_resolution: true,
+                    },
+                ),
+                filter,
+                Zone::Graveyard,
+            ),
+            PlayerAst::You,
+            crate::grant::GrantDuration::UntilEndOfTurn,
+        )]));
+    }
+
     let has_from_graveyard =
         word_slice_contains_phrase(&first_words, &["from", "your", "graveyard"]);
     let without_paying_mana_cost =

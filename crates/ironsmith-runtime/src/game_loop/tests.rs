@@ -24732,6 +24732,289 @@ fn test_legend_rule_with_different_controllers() {
 // ============================================================================
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn bosium_strip_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_700), "Bösium Strip")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "{3}, {T}: Until end of turn, you may cast instant and sorcery spells from the top of your graveyard. If a spell cast this way would be put into a graveyard, exile it instead.",
+        )
+        .expect("Bösium Strip should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn bosium_test_spell(id: u32, name: &str, card_type: CardType) -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(id), name)
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![card_type])
+        .parse_text("Scry 1.")
+        .expect("Bösium test spell should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_bosium_strip_activation(
+    game: &mut GameState,
+    bosium_id: ObjectId,
+    controller: PlayerId,
+) {
+    let activated = game
+        .object(bosium_id)
+        .expect("Bösium Strip should exist")
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated.clone()),
+            _ => None,
+        })
+        .expect("Bösium Strip should have an activated ability");
+
+    let mut dm = SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(bosium_id, controller, &mut dm);
+    for effect in &activated.effects {
+        crate::effects::execute_effect(game, effect, &mut ctx)
+            .expect("Bösium Strip activation effect should resolve");
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_bosium_strip_grants_only_top_instant_or_sorcery_from_graveyard() {
+    use crate::alternative_cast::CastingMethod;
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+    game.turn.active_player = alice;
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Blue, 2);
+
+    let bosium_id = game.create_object_from_definition(&bosium_strip_definition(), alice, Zone::Battlefield);
+    let lower_instant = bosium_test_spell(72_701, "Buried Instant", CardType::Instant);
+    let lower_instant_id = game.create_object_from_definition(&lower_instant, alice, Zone::Graveyard);
+    let top_sorcery = bosium_test_spell(72_702, "Top Sorcery", CardType::Sorcery);
+    let top_sorcery_id = game.create_object_from_definition(&top_sorcery, alice, Zone::Graveyard);
+
+    assert!(
+        !compute_legal_actions(&game, alice).iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell { from_zone: Zone::Graveyard, .. }
+        )),
+        "graveyard spells should not be castable before Bösium Strip resolves"
+    );
+
+    resolve_bosium_strip_activation(&mut game, bosium_id, alice);
+    let actions = compute_legal_actions(&game, alice);
+
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Graveyard,
+                casting_method: CastingMethod::PlayFrom {
+                    zone: Zone::Graveyard,
+                    use_alternative: Some(_),
+                    ..
+                },
+            } if *spell_id == top_sorcery_id
+        )),
+        "Bösium Strip should allow casting the top instant or sorcery from graveyard, got {actions:?}"
+    );
+    assert!(
+        !actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell { spell_id, from_zone: Zone::Graveyard, .. }
+                if *spell_id == lower_instant_id
+        )),
+        "Bösium Strip should not allow casting a non-top graveyard instant, got {actions:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_bosium_strip_does_not_grant_top_creature_or_buried_spell() {
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+    game.turn.active_player = alice;
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Blue, 2);
+
+    let bosium_id = game.create_object_from_definition(&bosium_strip_definition(), alice, Zone::Battlefield);
+    let buried_sorcery = bosium_test_spell(72_703, "Buried Sorcery", CardType::Sorcery);
+    let buried_sorcery_id = game.create_object_from_definition(&buried_sorcery, alice, Zone::Graveyard);
+    let top_creature = CardBuilder::new(CardId::from_raw(72_704), "Top Creature")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let top_creature_id = game.create_object_from_card(&top_creature, alice, Zone::Graveyard);
+
+    resolve_bosium_strip_activation(&mut game, bosium_id, alice);
+    let actions = compute_legal_actions(&game, alice);
+
+    assert!(
+        !actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell { spell_id, from_zone: Zone::Graveyard, .. }
+                if *spell_id == buried_sorcery_id || *spell_id == top_creature_id
+        )),
+        "Bösium Strip should require the top graveyard card to be an instant or sorcery, got {actions:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_bosium_strip_cast_spell_exiles_on_resolution() {
+    use crate::alternative_cast::CastingMethod;
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+    game.turn.active_player = alice;
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Blue, 1);
+
+    let bosium_id = game.create_object_from_definition(&bosium_strip_definition(), alice, Zone::Battlefield);
+    let spell = bosium_test_spell(72_705, "Top Instant", CardType::Instant);
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Graveyard);
+    let stable_id = game.object(spell_id).expect("spell should exist").stable_id;
+
+    resolve_bosium_strip_activation(&mut game, bosium_id, alice);
+    let cast_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id: id,
+                from_zone: Zone::Graveyard,
+                casting_method: CastingMethod::PlayFrom { use_alternative: Some(_), .. },
+            } if *id == spell_id
+        ))
+        .expect("Bösium Strip should allow casting the top instant");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(cast_action),
+        &mut dm,
+    )
+    .expect("Bösium Strip graveyard cast should start");
+    resolve_stack_entry(&mut game).expect("Bösium-cast spell should resolve");
+
+    let moved_id = game
+        .find_object_by_stable_id(stable_id)
+        .expect("spell should still be tracked after resolution");
+    assert_eq!(
+        game.object(moved_id).expect("spell should exist").zone,
+        Zone::Exile,
+        "spell cast with Bösium Strip should be exiled on resolution"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_bosium_strip_cast_spell_exiles_when_countered() {
+    use crate::alternative_cast::CastingMethod;
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+    game.turn.active_player = alice;
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Blue, 1);
+
+    let bosium_id = game.create_object_from_definition(&bosium_strip_definition(), alice, Zone::Battlefield);
+    let spell = bosium_test_spell(72_706, "Countered Top Instant", CardType::Instant);
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Graveyard);
+    let stable_id = game.object(spell_id).expect("spell should exist").stable_id;
+
+    resolve_bosium_strip_activation(&mut game, bosium_id, alice);
+    let cast_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id: id,
+                from_zone: Zone::Graveyard,
+                casting_method: CastingMethod::PlayFrom { use_alternative: Some(_), .. },
+            } if *id == spell_id
+        ))
+        .expect("Bösium Strip should allow casting the top instant");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(cast_action),
+        &mut dm,
+    )
+    .expect("Bösium Strip graveyard cast should start");
+
+    let stack_spell = game
+        .find_object_by_stable_id(stable_id)
+        .expect("spell should be on the stack");
+    let counter_source = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(72_707), "Counter Source")
+            .card_types(vec![CardType::Instant])
+            .build(),
+        bob,
+        Zone::Stack,
+    );
+    let mut counter_ctx = crate::effects::ExecutionContext::new(counter_source, bob, &mut dm);
+    crate::effects::execute_effect(
+        &mut game,
+        &Effect::new(crate::effects::CounterEffect::new(
+            crate::target::ChooseSpec::SpecificObject(stack_spell),
+        )),
+        &mut counter_ctx,
+    )
+    .expect("counter effect should resolve");
+
+    let moved_id = game
+        .find_object_by_stable_id(stable_id)
+        .expect("countered spell should still be tracked");
+    assert_eq!(
+        game.object(moved_id).expect("spell should exist").zone,
+        Zone::Exile,
+        "spell cast with Bösium Strip should be exiled if countered"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_marang_river_prowler_not_castable_from_graveyard_without_black_or_green_permanent() {
     use crate::decision::compute_legal_actions;

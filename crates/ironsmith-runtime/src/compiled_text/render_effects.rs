@@ -32324,6 +32324,39 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         {
             return "That card's owner may play it for as long as it remains exiled".to_string();
         }
+        if let crate::grant::Grantable::DerivedAlternativeCast(
+            crate::grant::DerivedAlternativeCast::GraveyardCastFromCardManaCost {
+                exiles_after_resolution: true,
+                ..
+            },
+        ) = &grant.spec.grantable
+            && grant.spec.zone == Zone::Graveyard
+            && grant.spec.filter.top_of_graveyard
+            && grant.duration == crate::grant::GrantDuration::UntilEndOfTurn
+        {
+            let spell_text = if grant
+                .spec
+                .filter
+                .card_types
+                .contains(&crate::types::CardType::Instant)
+                && grant
+                    .spec
+                    .filter
+                    .card_types
+                    .contains(&crate::types::CardType::Sorcery)
+            {
+                "instant and sorcery spells".to_string()
+            } else {
+                let mut filter = grant.spec.filter.clone();
+                filter.zone = None;
+                filter.owner = None;
+                filter.top_of_graveyard = false;
+                format!("{} spells", strip_indefinite_article(&filter.description()))
+            };
+            return format!(
+                "Until end of turn, you may cast {spell_text} from the top of your graveyard. If a spell cast this way would be put into a graveyard, exile it instead"
+            );
+        }
         let duration = match grant.duration {
             crate::grant::GrantDuration::UntilEndOfTurn => " until end of turn",
             crate::grant::GrantDuration::UntilYourNextTurnEnd => " until the end of your next turn",

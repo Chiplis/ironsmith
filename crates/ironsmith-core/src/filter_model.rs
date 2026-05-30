@@ -362,6 +362,7 @@ pub struct ObjectFilter {
     pub first_spell_cast_each_turn: bool,
     pub owner: Option<PlayerFilter>,
     pub single_graveyard: bool,
+    pub top_of_graveyard: bool,
     pub targets_player: Option<PlayerFilter>,
     pub targets_object: Option<Box<ObjectFilter>>,
     pub targets_any_of: bool,
@@ -681,6 +682,7 @@ impl ObjectFilter {
         generic.cast_by = self.cast_by.clone();
         generic.first_spell_cast_each_turn = self.first_spell_cast_each_turn;
         generic.single_graveyard = self.single_graveyard;
+        generic.top_of_graveyard = self.top_of_graveyard;
         self != &generic
     }
 
@@ -774,6 +776,11 @@ impl ObjectFilter {
 
     pub fn single_graveyard(mut self) -> Self {
         self.single_graveyard = true;
+        self
+    }
+
+    pub fn top_of_graveyard(mut self) -> Self {
+        self.top_of_graveyard = true;
         self
     }
 
@@ -1935,7 +1942,14 @@ impl ObjectFilter {
             };
             if zone == Zone::Exile && has_source_exiled_constraint {
             } else if let Some(zone_name) = zone_name {
-                if let Some(owner) = &self.owner {
+                if zone == Zone::Graveyard && self.top_of_graveyard {
+                    let graveyard = self
+                        .owner
+                        .as_ref()
+                        .map(|owner| format!("{} graveyard", describe_possessive_player_filter(owner)))
+                        .unwrap_or_else(|| "a graveyard".to_string());
+                    parts.push(format!("on top of {graveyard}"));
+                } else if let Some(owner) = &self.owner {
                     parts.push(format!(
                         "in {} {}",
                         describe_possessive_player_filter(owner),

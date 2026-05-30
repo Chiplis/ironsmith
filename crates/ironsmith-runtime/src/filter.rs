@@ -1793,6 +1793,19 @@ impl ObjectFilterExt for ObjectFilter {
             }
         }
 
+        if self.top_of_graveyard {
+            if object.zone != Zone::Graveyard {
+                return false;
+            }
+            let is_top_card = game
+                .player(object.owner)
+                .and_then(|player| player.graveyard.last())
+                .is_some_and(|top_id| *top_id == object.id);
+            if !is_top_card {
+                return false;
+            }
+        }
+
         if let Some(kind) = self.stack_kind {
             if let Some(entry) = stack_entry {
                 if !Self::stack_entry_matches_kind(entry, kind) {
@@ -2508,6 +2521,19 @@ impl ObjectFilterExt for ObjectFilter {
             && snapshot.zone != *zone
         {
             return false;
+        }
+
+        if self.top_of_graveyard {
+            if snapshot.zone != Zone::Graveyard {
+                return false;
+            }
+            let is_top_card = game
+                .player(snapshot.owner)
+                .and_then(|player| player.graveyard.last())
+                .is_some_and(|top_id| *top_id == snapshot.object_id);
+            if !is_top_card {
+                return false;
+            }
         }
 
         // Controller check
@@ -3788,7 +3814,14 @@ impl ObjectFilterExt for ObjectFilter {
                 // Keep wording compact: "card exiled with this permanent" is
                 // clearer than appending an extra "in exile" qualifier.
             } else if let Some(zone_name) = zone_name {
-                if let Some(owner) = &self.owner {
+                if zone == Zone::Graveyard && self.top_of_graveyard {
+                    let graveyard = self
+                        .owner
+                        .as_ref()
+                        .map(|owner| format!("{} graveyard", describe_possessive_player_filter(owner)))
+                        .unwrap_or_else(|| "a graveyard".to_string());
+                    parts.push(format!("on top of {graveyard}"));
+                } else if let Some(owner) = &self.owner {
                     parts.push(format!(
                         "in {} {}",
                         describe_possessive_player_filter(owner),

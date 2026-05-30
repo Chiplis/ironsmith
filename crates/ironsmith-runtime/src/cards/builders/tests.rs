@@ -24923,6 +24923,28 @@ fn elvish_refueler_strict_parser_and_compiled_text_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn bosium_strip_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Bösium Strip");
+    let lines = canonical_compiled_lines(&def);
+    let expected = "{3}, {T}: Until end of turn, you may cast instant and sorcery spells from the top of your graveyard. If a spell cast this way would be put into a graveyard, exile it instead.";
+
+    assert!(
+        lines.iter().any(|line| line == expected),
+        "expected Bösium Strip top-graveyard cast permission line, got {lines:?}"
+    );
+
+    let debug = format!("{:#?}", def);
+    assert!(
+        debug.contains("GrantBySpecEffect")
+            && debug.contains("GraveyardCastFromCardManaCost")
+            && debug.contains("top_of_graveyard: true")
+            && debug.contains("exiles_after_resolution: true"),
+        "expected Bösium Strip to lower to a top-graveyard cast grant that exiles spells cast this way, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_mercenary_token_with_tap_pump_ability() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Mercenary Token Variant")
         .card_types(vec![CardType::Creature])
