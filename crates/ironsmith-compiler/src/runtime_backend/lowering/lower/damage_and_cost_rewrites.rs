@@ -118,6 +118,72 @@ pub(crate) fn parse_each_player_and_their_creatures_damage_sentence_rewrite(
     }])
 }
 
+pub(crate) fn parse_class_level_activation_level(effect_text: &str) -> Option<u32> {
+    let normalized = effect_text
+        .trim()
+        .trim_end_matches('.')
+        .trim()
+        .to_ascii_lowercase();
+    let rest = normalized.strip_prefix("level ")?.trim();
+    if rest.is_empty() || !rest.chars().all(|ch| ch.is_ascii_digit()) {
+        return None;
+    }
+    rest.parse().ok()
+}
+
+pub(crate) fn class_level_activation_condition(level: u32) -> Option<crate::ConditionExpr> {
+    let required_counters = level.checked_sub(2)?;
+    Some(crate::ConditionExpr::ValueComparison {
+        left: crate::effect::Value::CountersOnSource(crate::object::CounterType::Level),
+        operator: crate::effect::ValueComparisonOperator::Equal,
+        right: crate::effect::Value::fixed(required_counters as i32),
+    })
+}
+
+fn class_level_counter_threshold(level: u32) -> Option<u32> {
+    level.checked_sub(1)
+}
+
+fn apply_class_level_condition_to_new_ability(ability: &mut Ability, required_counters: u32) {
+    let condition = crate::ConditionExpr::SourceHasCounterAtLeast {
+        counter_type: crate::object::CounterType::Level,
+        count: required_counters,
+    };
+    match &mut ability.kind {
+        AbilityKind::Triggered(triggered) => {
+            triggered.intervening_if = Some(match triggered.intervening_if.take() {
+                Some(existing) => {
+                    crate::ConditionExpr::And(Box::new(existing), Box::new(condition))
+                }
+                None => condition,
+            });
+        }
+        AbilityKind::Activated(activated) => {
+            if is_class_level_activation_condition(activated.activation_condition.as_ref()) {
+                return;
+            }
+            activated.activation_condition = Some(match activated.activation_condition.take() {
+                Some(existing) => {
+                    crate::ConditionExpr::And(Box::new(existing), Box::new(condition))
+                }
+                None => condition,
+            });
+        }
+        AbilityKind::Static(_) => {}
+    }
+}
+
+fn is_class_level_activation_condition(condition: Option<&crate::ConditionExpr>) -> bool {
+    matches!(
+        condition,
+        Some(crate::ConditionExpr::ValueComparison {
+            left: crate::effect::Value::CountersOnSource(crate::object::CounterType::Level),
+            operator: crate::effect::ValueComparisonOperator::Equal,
+            right: crate::effect::Value::Fixed(_),
+        })
+    )
+}
+
 #[allow(dead_code)]
 pub(crate) fn lower_rewrite_document(
     doc: RewriteSemanticDocument,
@@ -145,12 +211,22 @@ pub(crate) fn lower_normalized_card_ast(
     } = ast;
 
     let mut level_abilities = Vec::new();
+    let mut active_class_level_counter_threshold = None;
     let mut last_restrictable_ability: Option<usize> = None;
     let mut state = RewriteLoweredCardState::default();
 
     for item in items {
         match item {
             NormalizedCardItem::Line(line) => {
+                let class_level_for_line = parse_class_level_activation_level(
+                    line.info
+                        .raw_line
+                        .split_once(':')
+                        .map(|(_, effect)| effect)
+                        .unwrap_or(line.info.raw_line.as_str()),
+                );
+                let class_level_threshold_for_new_abilities = active_class_level_counter_threshold;
+                let abilities_before = builder.abilities.len();
                 rewrite_lower_line_ast(
                     &mut builder,
                     &mut state,
@@ -159,6 +235,14 @@ pub(crate) fn lower_normalized_card_ast(
                     allow_unsupported,
                     &mut last_restrictable_ability,
                 )?;
+                if let Some(required_counters) = class_level_threshold_for_new_abilities {
+                    for ability in &mut builder.abilities[abilities_before..] {
+                        apply_class_level_condition_to_new_ability(ability, required_counters);
+                    }
+                }
+                if let Some(level) = class_level_for_line {
+                    active_class_level_counter_threshold = class_level_counter_threshold(level);
+                }
             }
             NormalizedCardItem::Modal(modal) => {
                 let abilities_before = builder.abilities.len();

@@ -207,6 +207,343 @@ fn parse_robe_of_the_archmagi_compiled_text_includes_class_equip_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_scavengers_talent_oracle_and_compiled_text() {
+    let def = parse_oracle_card_definition("Scavenger's Talent");
+    let rendered = canonical_compiled_lines(&def).join("\n");
+
+    assert_eq!(
+        rendered,
+        "Whenever one or more creatures you control die, create a Food token. This ability triggers only once each turn.\n\
+{1}{B}: Level 2\n\
+Whenever you sacrifice a permanent, target player mills two cards.\n\
+{2}{B}: Level 3\n\
+At the beginning of your end step, you may sacrifice three other nonland permanents. If you do, return a creature card from your graveyard to the battlefield with a finality counter on it."
+    );
+
+    let activated = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(activated.len(), 2, "expected two class level activations");
+    assert!(activated.iter().all(|ability| {
+        matches!(
+            ability.timing,
+            crate::ability::ActivationTiming::SorcerySpeed
+        )
+    }));
+
+    assert_eq!(
+        activated[0].activation_condition,
+        Some(crate::ConditionExpr::ValueComparison {
+            left: crate::effect::Value::CountersOnSource(crate::object::CounterType::Level),
+            operator: crate::effect::ValueComparisonOperator::Equal,
+            right: crate::effect::Value::fixed(0),
+        })
+    );
+    assert_eq!(
+        activated[1].activation_condition,
+        Some(crate::ConditionExpr::ValueComparison {
+            left: crate::effect::Value::CountersOnSource(crate::object::CounterType::Level),
+            operator: crate::effect::ValueComparisonOperator::Equal,
+            right: crate::effect::Value::fixed(1),
+        })
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn scavengers_talent_level_activations_add_counters_and_gate_triggers() {
+    struct NoopDecisionMaker;
+    impl crate::decision::DecisionMaker for NoopDecisionMaker {}
+
+    fn condition_applies(
+        game: &crate::game_state::GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        condition: &crate::ConditionExpr,
+    ) -> bool {
+        crate::condition_eval::evaluate_condition_external(
+            game,
+            condition,
+            &crate::condition_eval::ExternalEvaluationContext {
+                controller,
+                source,
+                filter_source: Some(source),
+                ..Default::default()
+            },
+        )
+    }
+
+    let def = parse_oracle_card_definition("Scavenger's Talent");
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let activated = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let level_two = activated[0].effects.clone();
+    let level_two_condition = activated[0]
+        .activation_condition
+        .as_ref()
+        .expect("Level 2 activation should require level 1")
+        .clone();
+    let level_three = activated[1].effects.clone();
+    let level_three_condition = activated[1]
+        .activation_condition
+        .as_ref()
+        .expect("Level 3 activation should require Level 2")
+        .clone();
+
+    let sacrifice_trigger_condition = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered)
+                if triggered
+                    .trigger
+                    .downcast_ref::<crate::triggers::other::PlayerSacrificesTrigger>()
+                    .is_some() => triggered.intervening_if.as_ref(),
+            _ => None,
+        })
+        .expect("Level 2 sacrifice trigger should have a level gate")
+        .clone();
+    let end_step_trigger_condition = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered)
+                if triggered
+                    .trigger
+                    .downcast_ref::<crate::triggers::phase_step::BeginningOfEndStepTrigger>()
+                    .is_some() => triggered.intervening_if.as_ref(),
+            _ => None,
+        })
+        .expect("Level 3 end-step trigger should have a level gate")
+        .clone();
+
+    assert!(condition_applies(&game, source, alice, &level_two_condition));
+    assert!(!condition_applies(
+        &game,
+        source,
+        alice,
+        &level_three_condition
+    ));
+    assert!(!condition_applies(
+        &game,
+        source,
+        alice,
+        &sacrifice_trigger_condition
+    ));
+
+    let mut dm = NoopDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &level_two,
+        None,
+        &[],
+    )
+    .expect("Level 2 activation should resolve");
+    assert_eq!(
+        game.counter_count(source, crate::object::CounterType::Level),
+        1
+    );
+    assert!(condition_applies(
+        &game,
+        source,
+        alice,
+        &level_three_condition
+    ));
+    assert!(!condition_applies(
+        &game,
+        source,
+        alice,
+        &level_two_condition
+    ));
+    assert!(condition_applies(
+        &game,
+        source,
+        alice,
+        &sacrifice_trigger_condition
+    ));
+    assert!(!condition_applies(
+        &game,
+        source,
+        alice,
+        &end_step_trigger_condition
+    ));
+
+    let mut dm = NoopDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &level_three,
+        None,
+        &[],
+    )
+    .expect("Level 3 activation should resolve");
+    assert_eq!(
+        game.counter_count(source, crate::object::CounterType::Level),
+        2
+    );
+    assert!(condition_applies(
+        &game,
+        source,
+        alice,
+        &end_step_trigger_condition
+    ));
+    assert!(!condition_applies(
+        &game,
+        source,
+        alice,
+        &level_three_condition
+    ));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn scavengers_talent_level_three_branch_sacrifices_and_returns_with_finality() {
+    struct AcceptAndChooseLegal;
+
+    impl crate::decision::DecisionMaker for AcceptAndChooseLegal {
+        fn decide_boolean(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            true
+        }
+
+        fn decide_objects(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .take(ctx.max.unwrap_or(ctx.min))
+                .collect()
+        }
+    }
+
+    fn artifact(name: &str) -> CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Artifact])
+            .build()
+    }
+
+    let def = parse_oracle_card_definition("Scavenger's Talent");
+    let end_step = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered)
+                if triggered
+                    .trigger
+                    .downcast_ref::<crate::triggers::phase_step::BeginningOfEndStepTrigger>()
+                    .is_some() => Some(triggered),
+            _ => None,
+        })
+        .expect("Scavenger's Talent should have a level-three end-step trigger");
+
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.add_counters(source, crate::object::CounterType::Level, 2);
+
+    let _first =
+        game.create_object_from_definition(&artifact("First Bauble"), alice, Zone::Battlefield);
+    let _second =
+        game.create_object_from_definition(&artifact("Second Bauble"), alice, Zone::Battlefield);
+    let _third =
+        game.create_object_from_definition(&artifact("Third Bauble"), alice, Zone::Battlefield);
+    let land = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::new(), "Spare Swamp")
+            .card_types(vec![CardType::Land])
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    let _reanimated = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::new(), "Graveyard Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Graveyard,
+    );
+
+    let mut dm = AcceptAndChooseLegal;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &end_step.effects,
+        None,
+        &[],
+    )
+    .expect("Scavenger's Talent level-three trigger should resolve");
+
+    let graveyard_names = game
+        .objects_in_zone(Zone::Graveyard)
+        .iter()
+        .filter_map(|id| game.object(*id))
+        .map(|object| object.name.as_str())
+        .collect::<Vec<_>>();
+    for sacrificed in ["First Bauble", "Second Bauble", "Third Bauble"] {
+        assert!(
+            graveyard_names.contains(&sacrificed),
+            "expected {sacrificed} in graveyard, got {graveyard_names:?}"
+        );
+    }
+    assert_eq!(
+        game.object(source).map(|object| object.zone),
+        Some(Zone::Battlefield),
+        "the source should not be a legal 'other' sacrifice choice"
+    );
+    assert_eq!(
+        game.object(land).map(|object| object.zone),
+        Some(Zone::Battlefield),
+        "land permanents should not be sacrificed by the nonland choice"
+    );
+    let reanimated = game
+        .objects_in_zone(Zone::Battlefield)
+        .into_iter()
+        .find(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Graveyard Bear")
+        })
+        .expect("Graveyard Bear should return to the battlefield");
+    assert_eq!(
+        game.counter_count(reanimated, crate::object::CounterType::Finality),
+        1,
+        "end-step effects: {:#?}",
+        end_step.effects
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn day_of_the_moon_chapter_resolution_goads_only_chosen_name() {
     struct ChooseMemnite;
 

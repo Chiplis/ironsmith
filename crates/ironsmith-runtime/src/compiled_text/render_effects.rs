@@ -12212,6 +12212,20 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 2;
             continue;
         }
+        if idx + 2 < filtered.len()
+            && let Some(choose) =
+                filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(put) = filtered[idx + 2].downcast_ref::<crate::effects::PutCountersEffect>()
+            && let Some(compact) = describe_choose_then_move_to_battlefield_with_counter(
+                choose,
+                filtered[idx + 1],
+                put,
+            )
+        {
+            parts.push(compact);
+            idx += 3;
+            continue;
+        }
         if idx + 1 < filtered.len()
             && let Some(choose) =
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
@@ -17154,6 +17168,37 @@ fn describe_loyalty_activation_prefix_for_activated(
     })
 }
 
+fn describe_class_level_activation_level(
+    activated: &crate::ability::ActivatedAbility,
+) -> Option<u32> {
+    if !activated.choices.is_empty()
+        || !matches!(activated.timing, ActivationTiming::SorcerySpeed)
+        || activated.effects.segments.len() != 1
+        || !activated.effects.segments[0].self_replacements.is_empty()
+        || activated.effects.segments[0].default_effects.len() != 1
+    {
+        return None;
+    }
+    let put = activated.effects.segments[0].default_effects[0]
+        .downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if put.counter_type != CounterType::Level
+        || put.amount != Value::Fixed(1)
+        || !matches!(put.target.base(), ChooseSpec::Source)
+    {
+        return None;
+    }
+    match &activated.activation_condition {
+        Some(crate::ConditionExpr::ValueComparison {
+            left: Value::CountersOnSource(counter_type),
+            operator: crate::effect::ValueComparisonOperator::Equal,
+            right: Value::Fixed(required_counters),
+        }) if *counter_type == CounterType::Level && *required_counters >= 0 => {
+            Some(*required_counters as u32 + 2)
+        }
+        _ => None,
+    }
+}
+
 fn loyalty_prefix_amount(value: &Value) -> Option<String> {
     match value.unhinted() {
         Value::Fixed(amount) => Some((*amount).max(0).to_string()),
@@ -20834,6 +20879,73 @@ pub(super) fn describe_choose_then_move_to_battlefield(
     ))
 }
 
+fn describe_choose_then_move_to_battlefield_with_counter(
+    choose: &crate::effects::ChooseObjectsEffect,
+    move_effect: &Effect,
+    put_counters: &crate::effects::PutCountersEffect,
+) -> Option<String> {
+    let move_to_zone = unwrap_tag_wrappers_for_countered_move(move_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let ChooseSpec::Tagged(counter_target_tag) = put_counters.target.base() else {
+        return None;
+    };
+    if choose.is_search
+        || !choose.count.is_single()
+        || !move_to_battlefield_uses_chosen_tag(move_to_zone, choose.tag.as_str())
+        || !effect_has_tag_wrapper(move_effect, counter_target_tag.as_str())
+        || put_counters.amount != Value::Fixed(1)
+    {
+        return None;
+    }
+
+    let counter_text = describe_counter_type(put_counters.counter_type);
+    let tapped = if move_to_zone.enters_tapped {
+        " tapped"
+    } else {
+        ""
+    };
+    let control_suffix = match move_to_zone.battlefield_controller {
+        crate::effects::BattlefieldController::Preserve => String::new(),
+        crate::effects::BattlefieldController::Owner => " under its owner's control".to_string(),
+        crate::effects::BattlefieldController::You => String::new(),
+    };
+
+    if choose_primary_zone(choose)? == Zone::Graveyard
+        && choose.chooser == PlayerFilter::You
+        && choose.filter.owner.as_ref() == Some(&PlayerFilter::You)
+    {
+        return Some(format!(
+            "return {} from your graveyard to the battlefield{tapped}{control_suffix} with a {counter_text} counter on it",
+            describe_choose_selection(choose)
+        ));
+    }
+
+    let moved = describe_choose_then_move_to_battlefield(choose, move_to_zone)?;
+    Some(format!(
+        "{moved} with a {counter_text} counter on it"
+    ))
+}
+
+fn effect_has_tag_wrapper(effect: &Effect, tag: &str) -> bool {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        tagged.tag.as_str() == tag || effect_has_tag_wrapper(&tagged.effect, tag)
+    } else if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+        tag_all.tag.as_str() == tag || effect_has_tag_wrapper(&tag_all.effect, tag)
+    } else {
+        false
+    }
+}
+
+fn unwrap_tag_wrappers_for_countered_move(effect: &Effect) -> &Effect {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return unwrap_tag_wrappers_for_countered_move(&tagged.effect);
+    }
+    if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+        return unwrap_tag_wrappers_for_countered_move(&tag_all.effect);
+    }
+    effect
+}
+
 pub(super) fn describe_choose_then_move_to_library(
     choose: &crate::effects::ChooseObjectsEffect,
     move_to_zone: &crate::effects::MoveToZoneEffect,
@@ -24217,6 +24329,7 @@ fn describe_with_id_if_clause(
     }
 
     let then_text = describe_effect_list(&if_effect.then);
+    let then_text = compact_choose_return_with_counter_text(&then_text);
     let else_text = describe_effect_list(&if_effect.else_);
 
     let condition = if with_id
@@ -24396,6 +24509,26 @@ fn describe_with_id_if_clause(
             lowercase_first(&else_text)
         ))
     }
+}
+
+fn compact_choose_return_with_counter_text(text: &str) -> String {
+    let trimmed = text.trim();
+    let Some(rest) = trimmed
+        .strip_prefix("you choose ")
+        .or_else(|| trimmed.strip_prefix("You choose "))
+    else {
+        return text.to_string();
+    };
+    let Some((chosen, tail)) = rest.split_once(". Return it from graveyard to the battlefield. Put a ")
+    else {
+        return text.to_string();
+    };
+    let Some(counter) = tail.strip_suffix(" counter on it") else {
+        return text.to_string();
+    };
+    format!(
+        "return {chosen} from your graveyard to the battlefield with a {counter} counter on it"
+    )
 }
 
 fn describe_declined_may_mill_then_damage(
@@ -35685,6 +35818,10 @@ pub(super) fn split_trigger_intervening_if(
                     None => limit,
                 });
             }
+            crate::ConditionExpr::SourceHasCounterAtLeast {
+                counter_type: CounterType::Level,
+                ..
+            } => {}
             other => non_limit.push(other),
         }
     }
@@ -36132,6 +36269,12 @@ pub(super) fn describe_ability(
             vec![line]
         }
         AbilityKind::Activated(activated) => {
+            if let Some(level) = describe_class_level_activation_level(activated) {
+                return vec![format!(
+                    "{}: Level {level}",
+                    describe_cost_list(activated.mana_cost.costs())
+                )];
+            }
             if activated.choices.is_empty()
                 && matches!(activated.timing, ActivationTiming::SorcerySpeed)
                 && activated.effects.segments.len() == 1

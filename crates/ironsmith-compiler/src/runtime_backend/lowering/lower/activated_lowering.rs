@@ -526,6 +526,47 @@ fn lower_rewrite_activated_to_chunk_impl(
     let normalized_effect_text = effect_text.to_ascii_lowercase();
     let normalized_raw_line = line.info.raw_line.to_ascii_lowercase();
 
+    if let Some(level) = parse_class_level_activation_level(effect_text.as_str()) {
+        let effects_ast = vec![EffectAst::subject_verb_put_counters(
+            crate::object::CounterType::Level,
+            crate::effect::Value::fixed(1),
+            TargetAst::Source(None),
+            None,
+            false,
+        )];
+        let mut parsed = ParsedAbility {
+            ability: Ability {
+                kind: AbilityKind::Activated(ActivatedAbility {
+                    mana_cost: normalized_cost,
+                    effects: ResolutionProgram::default(),
+                    choices: vec![],
+                    timing: ActivationTiming::SorcerySpeed,
+                    is_loyalty_ability: line.is_loyalty_ability,
+                    additional_restrictions: additional_activation_restrictions,
+                    activation_restrictions: vec![],
+                    activation_condition: class_level_activation_condition(level),
+                    mana_output: None,
+                    mana_usage_restrictions: vec![],
+                }),
+                functional_zones: vec![Zone::Battlefield],
+            }
+            .into(),
+            text: ability_text,
+            effects_ast: Some(effects_ast),
+            reference_imports: ReferenceImports::default(),
+            trigger_spec: None,
+        };
+        apply_pending_mana_restrictions(&mut parsed, &mana_restrictions)?;
+        apply_chosen_option_condition_to_activated(
+            &mut parsed,
+            line.chosen_option_label.as_deref(),
+        );
+        return Ok(LoweredRewriteActivatedLine {
+            chunk: LineAst::Ability(parsed),
+            restrictions,
+        });
+    }
+
     if str_contains(normalized_effect_text.as_str(), "add x mana")
         && !str_contains(normalized_raw_line.as_str(), "where x is")
         && !activation_cost_defines_x_for_mana_ability(&normalized_cost)

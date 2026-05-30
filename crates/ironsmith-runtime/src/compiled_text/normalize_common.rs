@@ -3201,6 +3201,18 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "sacrifice three creatures",
         )
         .replace(
+            "you may sacrifice three another nonland permanents you control",
+            "you may sacrifice three other nonland permanents",
+        )
+        .replace(
+            "Whenever one or more a creature you control dies",
+            "Whenever one or more creatures you control die",
+        )
+        .replace(
+            "whenever one or more a creature you control dies",
+            "whenever one or more creatures you control die",
+        )
+        .replace(
             "you may sacrifice another creature you control",
             "you may sacrifice another creature",
         )

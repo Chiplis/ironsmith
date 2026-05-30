@@ -1677,6 +1677,9 @@ pub(super) fn is_keyword_style_line(line: &str) -> bool {
     if is_keyword_phrase(&lower) || normalize_keyword_list_phrase(&lower).is_some() {
         return true;
     }
+    if lower.contains(": level ") {
+        return true;
+    }
     [
         "enchant ",
         "equip ",

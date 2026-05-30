@@ -790,6 +790,11 @@ pub(crate) fn compile_annotated_effects_with_context(
         }
 
         let (mut effect_list, effect_choices) = compile_effect(&current.effect, ctx)?;
+        ensure_return_effect_exports_annotated_tag(
+            &current.effect,
+            current.out_env.known_last_object_tag(),
+            &mut effect_list,
+        );
         if let Some(id) = current.assigned_effect_id {
             if !effect_list.is_empty() {
                 assign_effect_result_id(
@@ -814,6 +819,42 @@ pub(crate) fn compile_annotated_effects_with_context(
 
     let compiled = prepend_missing_target_choice_prelude(compiled, &choices);
     Ok((compiled, choices))
+}
+
+fn ensure_return_effect_exports_annotated_tag(
+    ast: &EffectAst,
+    tag: Option<&TagKey>,
+    effects: &mut Vec<Effect>,
+) {
+    let Some(tag) = tag else {
+        return;
+    };
+    if !tag.as_str().starts_with("returned_") || !effect_ast_returns_to_battlefield(ast) {
+        return;
+    }
+    let Some(effect) = effects.pop() else {
+        return;
+    };
+    if effect_has_tag(&effect, tag) {
+        effects.push(effect);
+    } else {
+        effects.push(effect.tag(tag.clone()));
+    }
+}
+
+fn effect_ast_returns_to_battlefield(ast: &EffectAst) -> bool {
+    matches!(
+        ast,
+        EffectAst::SubjectVerb(subject_verb)
+            if matches!(subject_verb.action, SubjectVerbActionAst::ReturnToBattlefield { .. })
+    )
+}
+
+fn effect_has_tag(effect: &Effect, tag: &TagKey) -> bool {
+    let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() else {
+        return false;
+    };
+    tagged.tag == *tag || effect_has_tag(&tagged.effect, tag)
 }
 
 fn assign_effect_result_id(
