@@ -58,16 +58,17 @@ impl EffectExecutor for LookAtTopCardsEffect {
                     .view_cards(game, viewer, &top_cards, &view_ctx);
             }
         } else {
+            let viewer_id = resolve_player_filter(game, &self.viewer, ctx)?;
             let view_ctx = ViewCardsContext::new(
-                ctx.controller,
+                viewer_id,
                 player_id,
                 Some(ctx.source),
                 crate::zone::Zone::Library,
                 "Look at cards from the top of a library",
             );
             ctx.decision_maker
-                .view_cards(game, ctx.controller, &top_cards, &view_ctx);
-            ctx.remember_face_down_exile_viewers(&top_cards, ctx.controller);
+                .view_cards(game, viewer_id, &top_cards, &view_ctx);
+            ctx.remember_face_down_exile_viewers(&top_cards, viewer_id);
             ctx.set_tagged_objects(self.tag.clone(), snapshots.clone());
         }
 
@@ -300,5 +301,41 @@ mod tests {
         assert_eq!(call.zone, Zone::Library);
         assert!(!call.public);
         assert_eq!(call.cards.len(), 2);
+    }
+
+    #[test]
+    fn look_at_top_can_view_another_players_library() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        add_cards_to_library(&mut game, alice, 4);
+
+        let mut dm = CaptureViewDm::default();
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        let effect = LookAtTopCardsEffect::viewed_by(
+            PlayerFilter::You,
+            PlayerFilter::Opponent,
+            2,
+            "looked",
+        );
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("execute look-at-top");
+
+        let tagged_count = ctx
+            .tagged_objects
+            .get(&TagKey::from("looked"))
+            .map(|snapshots| snapshots.len());
+        drop(ctx);
+
+        assert_eq!(dm.calls.len(), 1);
+        let call = &dm.calls[0];
+        assert_eq!(call.viewer, bob);
+        assert_eq!(call.subject, alice);
+        assert_eq!(call.zone, Zone::Library);
+        assert!(!call.public);
+        assert_eq!(call.cards.len(), 2);
+        assert_eq!(tagged_count, Some(2));
     }
 }

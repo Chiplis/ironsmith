@@ -1196,7 +1196,15 @@ fn compile_subject_verb_effect(
             ctx.last_player_filter = Some(player_filter);
             Ok((vec![Effect::new(choose)], subject.into_choices()))
         }
-        SubjectVerbActionAst::LookAtTopCards { count, tag, reveal } => {
+        SubjectVerbActionAst::LookAtTopCards {
+            count,
+            tag,
+            reveal,
+            viewer,
+        } => {
+            let viewer_filter = viewer
+                .map(|player| resolve_non_target_player_filter(player, &current_reference_env(ctx)))
+                .transpose()?;
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let player_filter = subject.clone_player_filter();
             let resolved_tag = if tag.as_str() == IT_TAG {
@@ -1210,6 +1218,13 @@ fn compile_subject_verb_effect(
             }
             let effect = if *reveal {
                 Effect::reveal_top_cards(player_filter, count.clone(), resolved_tag)
+            } else if let Some(viewer_filter) = viewer_filter {
+                Effect::look_at_top_cards_viewed_by(
+                    player_filter,
+                    viewer_filter,
+                    count.clone(),
+                    resolved_tag,
+                )
             } else {
                 Effect::look_at_top_cards(player_filter, count.clone(), resolved_tag)
             };

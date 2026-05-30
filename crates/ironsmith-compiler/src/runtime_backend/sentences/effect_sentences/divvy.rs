@@ -128,7 +128,12 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 false,
                 0,
             ),
-            EffectAst::subject_verb_look_at_top_cards(PlayerAst::You, count, source_tag.clone()),
+            EffectAst::subject_verb_look_at_top_cards_viewed_by(
+                PlayerAst::You,
+                PlayerAst::That,
+                count,
+                source_tag.clone(),
+            ),
             EffectAst::ChooseObjectsAcrossZones {
                 filter: ObjectFilter::tagged(source_tag.clone()),
                 count: ChoiceCount::any_number(),

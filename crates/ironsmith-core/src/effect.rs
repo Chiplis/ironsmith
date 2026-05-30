@@ -5414,6 +5414,7 @@ impl MayMoveToZoneEffect {
 #[derive(Debug, Clone, PartialEq)]
 pub struct LookAtTopCardsEffect {
     pub player: PlayerFilter,
+    pub viewer: PlayerFilter,
     pub count: Value,
     pub tag: TagKey,
     pub reveal: bool,
@@ -5421,8 +5422,18 @@ pub struct LookAtTopCardsEffect {
 
 impl LookAtTopCardsEffect {
     pub fn new(player: PlayerFilter, count: impl Into<Value>, tag: impl Into<TagKey>) -> Self {
+        Self::viewed_by(player.clone(), player, count, tag)
+    }
+
+    pub fn viewed_by(
+        player: PlayerFilter,
+        viewer: PlayerFilter,
+        count: impl Into<Value>,
+        tag: impl Into<TagKey>,
+    ) -> Self {
         Self {
             player,
+            viewer,
             count: count.into(),
             tag: tag.into(),
             reveal: false,
@@ -5435,7 +5446,8 @@ impl LookAtTopCardsEffect {
         tag: impl Into<TagKey>,
     ) -> Self {
         Self {
-            player,
+            player: player.clone(),
+            viewer: player,
             count: count.into(),
             tag: tag.into(),
             reveal: true,

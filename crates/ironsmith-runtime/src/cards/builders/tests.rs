@@ -32155,6 +32155,10 @@ fn parse_oracle_saurons_ransom_face_pile_regression() {
     let debug = format!("{:#?}", def.spell_effect);
     assert!(debug.contains("ChoosePlayerEffect"), "{debug}");
     assert!(debug.contains("LookAtTopCardsEffect"), "{debug}");
+    assert!(
+        debug.contains("viewer: TaggedPlayer(") && debug.contains("divvy_opponent"),
+        "expected the chosen opponent to view the hidden library cards, got {debug}"
+    );
     assert!(debug.contains("ChooseObjectsEffect"), "{debug}");
     assert!(debug.contains("UnlessActionEffect"), "{debug}");
     assert!(debug.contains("RingTemptsYouEffect"), "{debug}");

@@ -884,6 +884,17 @@ impl Effect {
         ))
     }
 
+    pub fn look_at_top_cards_viewed_by(
+        player: crate::target::PlayerFilter,
+        viewer: crate::target::PlayerFilter,
+        count: Value,
+        tag: impl Into<crate::tag::TagKey>,
+    ) -> Self {
+        Self::new(crate::effects::LookAtTopCardsEffect::viewed_by(
+            player, viewer, count, tag,
+        ))
+    }
+
     pub fn reveal_top_cards(
         player: crate::target::PlayerFilter,
         count: Value,

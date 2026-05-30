@@ -911,6 +911,7 @@ pub(crate) enum SubjectVerbActionAst {
         count: Value,
         tag: TagKey,
         reveal: bool,
+        viewer: Option<PlayerAst>,
     },
     PutIntoHand {
         object: ObjectRefAst,
@@ -2008,11 +2009,17 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("count_value", count_value)
                 .field("tag", tag)
                 .finish(),
-            Self::LookAtTopCards { count, tag, reveal } => f
+            Self::LookAtTopCards {
+                count,
+                tag,
+                reveal,
+                viewer,
+            } => f
                 .debug_struct("LookAtTopCards")
                 .field("count", count)
                 .field("tag", tag)
                 .field("reveal", reveal)
+                .field("viewer", viewer)
                 .finish(),
             Self::PutIntoHand { object } => f.debug_tuple("PutIntoHand").field(object).finish(),
             Self::MayMoveToZone { target, zone } => f
@@ -5310,7 +5317,16 @@ impl EffectAst {
         count: Value,
         tag: TagKey,
     ) -> Self {
-        Self::subject_verb_top_library_cards(player, count, tag, false)
+        Self::subject_verb_top_library_cards(player, None, count, tag, false)
+    }
+
+    pub(crate) fn subject_verb_look_at_top_cards_viewed_by(
+        player: PlayerAst,
+        viewer: PlayerAst,
+        count: Value,
+        tag: TagKey,
+    ) -> Self {
+        Self::subject_verb_top_library_cards(player, Some(viewer), count, tag, false)
     }
 
     pub(crate) fn subject_verb_reveal_top_cards(
@@ -5318,11 +5334,12 @@ impl EffectAst {
         count: Value,
         tag: TagKey,
     ) -> Self {
-        Self::subject_verb_top_library_cards(player, count, tag, true)
+        Self::subject_verb_top_library_cards(player, None, count, tag, true)
     }
 
     fn subject_verb_top_library_cards(
         player: PlayerAst,
+        viewer: Option<PlayerAst>,
         count: Value,
         tag: TagKey,
         reveal: bool,
@@ -5330,7 +5347,12 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::LibraryOwner,
             player,
-            SubjectVerbActionAst::LookAtTopCards { count, tag, reveal },
+            SubjectVerbActionAst::LookAtTopCards {
+                count,
+                tag,
+                reveal,
+                viewer,
+            },
         )
     }
 

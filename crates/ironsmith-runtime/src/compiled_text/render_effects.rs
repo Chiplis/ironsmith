@@ -6260,6 +6260,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             || choose_player.filter != PlayerFilter::Opponent
             || choose_player.random
             || look.player != PlayerFilter::You
+            || look.viewer != chosen_opponent
             || look.tag.as_str() != "divvy_source"
             || choose.tag.as_str() != "divvy_pile"
             || choose.chooser != chosen_opponent

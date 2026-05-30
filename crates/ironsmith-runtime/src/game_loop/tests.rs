@@ -24354,13 +24354,15 @@ fn run_saurons_ransom_face_pile_resolution(
     expected_graveyard_names: &[&str],
 ) {
     use crate::decision::DecisionMaker;
-    use crate::decisions::context::SelectObjectsContext;
+    use crate::decisions::context::{SelectObjectsContext, ViewCardsContext};
     use crate::effects::{ExecutionContext, execute_effect};
 
     struct SauronsRansomDecisionMaker {
+        library_owner: PlayerId,
         opponent: PlayerId,
         split_names: &'static [&'static str],
         keep_opponent_pile: bool,
+        saw_opponent_view: bool,
     }
 
     impl DecisionMaker for SauronsRansomDecisionMaker {
@@ -24408,6 +24410,27 @@ fn run_saurons_ransom_face_pile_resolution(
                 .map(|candidate| vec![candidate.id])
                 .unwrap_or_default()
         }
+
+        fn view_cards(
+            &mut self,
+            _game: &GameState,
+            viewer: PlayerId,
+            cards: &[ObjectId],
+            ctx: &ViewCardsContext,
+        ) {
+            assert_eq!(
+                viewer, self.opponent,
+                "the chosen opponent should view the hidden library cards"
+            );
+            assert_eq!(
+                ctx.subject, self.library_owner,
+                "the viewed cards should come from the caster's library"
+            );
+            assert_eq!(ctx.zone, Zone::Library);
+            assert!(!ctx.public);
+            assert_eq!(cards.len(), 4);
+            self.saw_opponent_view = true;
+        }
     }
 
     let mut game = setup_game();
@@ -24449,9 +24472,11 @@ fn run_saurons_ransom_face_pile_resolution(
         .as_ref()
         .expect("Sauron's Ransom should have spell effects");
     let mut dm = SauronsRansomDecisionMaker {
+        library_owner: alice,
         opponent: bob,
         split_names: &["Ransom Alpha", "Ransom Beta"],
         keep_opponent_pile,
+        saw_opponent_view: false,
     };
     let mut ctx = ExecutionContext::new_default(source_id, alice).with_decision_maker(&mut dm);
 
@@ -24459,6 +24484,11 @@ fn run_saurons_ransom_face_pile_resolution(
         execute_effect(&mut game, effect, &mut ctx)
             .expect("Sauron's Ransom effect should resolve");
     }
+    drop(ctx);
+    assert!(
+        dm.saw_opponent_view,
+        "Sauron's Ransom should let the chosen opponent privately view the caster's top cards"
+    );
 
     let alice_hand = game.player(alice).expect("alice exists").hand.clone();
     let alice_graveyard = game.player(alice).expect("alice exists").graveyard.clone();
