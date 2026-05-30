@@ -1537,6 +1537,24 @@ fn compile_subject_verb_effect(
                 })
             }
         }
+        SubjectVerbActionAst::PreventAllCombatDamageToTarget { target, duration } => {
+            if let TargetAst::Object(filter, explicit_target_span, _) = target
+                && explicit_target_span.is_none()
+            {
+                let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+                Ok((
+                    vec![Effect::prevent_all_combat_damage_to(
+                        resolved_filter,
+                        duration.clone(),
+                    )],
+                    Vec::new(),
+                ))
+            } else {
+                Err(CardTextError::ParseError(
+                    "unsupported targeted prevent-all combat damage target scope".to_string(),
+                ))
+            }
+        }
         SubjectVerbActionAst::PreventAllDamageFromSourceFilter {
             duration,
             source_filter,

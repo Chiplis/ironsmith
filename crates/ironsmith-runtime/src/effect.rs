@@ -2405,6 +2405,17 @@ impl Effect {
         ))
     }
 
+    /// Create a "prevent all combat damage to matching permanents" effect.
+    pub fn prevent_all_combat_damage_to(filter: ObjectFilter, until: Until) -> Self {
+        use crate::effects::PreventAllDamageEffect;
+        use crate::prevention::DamageFilter;
+        Self::new(PreventAllDamageEffect::matching_with_filter(
+            filter,
+            DamageFilter::combat(),
+            until,
+        ))
+    }
+
     /// Create a "prevent all damage to matching permanents" effect.
     pub fn prevent_all_damage_to(filter: ObjectFilter, until: Until) -> Self {
         use crate::effects::PreventAllDamageEffect;

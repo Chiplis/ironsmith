@@ -2368,6 +2368,28 @@ fn apply_prevention_for_damage_assignment(
         })
         .collect();
 
+    let target_filter_matches: std::collections::HashMap<_, _> = match &target {
+        DamageTarget::Object(object_id) => game
+            .effect_store
+            .prevention_effects
+            .shields()
+            .iter()
+            .filter_map(|shield| {
+                let crate::prevention::PreventionTarget::PermanentsMatching(filter) =
+                    &shield.protected
+                else {
+                    return None;
+                };
+                let filter_ctx = game.filter_context_for(shield.controller, Some(shield.source));
+                let matches = game
+                    .object(*object_id)
+                    .is_some_and(|object| filter.matches(object, &filter_ctx, game));
+                Some((shield.id, matches))
+            })
+            .collect(),
+        DamageTarget::Player(_) => std::collections::HashMap::new(),
+    };
+
     let result = match target {
         DamageTarget::Player(player_id) => game
             .effect_store
@@ -2399,6 +2421,7 @@ fn apply_prevention_for_damage_assignment(
                     &source_card_types,
                     can_prevent,
                     &source_filter_matches,
+                    &target_filter_matches,
                 )
         }
     };

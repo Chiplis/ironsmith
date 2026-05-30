@@ -15205,6 +15205,191 @@ fn parse_oracle_winds_of_qal_sisma_ferocious_prevents_only_opponents_creature_da
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_loyal_unicorn_strictly_compiles() {
+    assert_oracle_card_parses_strict("Loyal Unicorn");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_oracle_loyal_unicorn_renders_prevention_and_vigilance_clauses() {
+    let def = parse_oracle_card_definition("Loyal Unicorn");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Vigilance"),
+        "Loyal Unicorn should retain its printed vigilance keyword, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Lieutenant — At the beginning of combat on your turn, if you control your commander, prevent all combat damage that would be dealt to creatures you control this turn. Other creatures you control gain vigilance until end of turn."
+        ),
+        "Loyal Unicorn should render the commander condition, scoped combat prevention, and separate vigilance grant, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_loyal_unicorn_test_creature(
+    game: &mut crate::game_state::GameState,
+    name: &str,
+    controller: PlayerId,
+    power: i32,
+    toughness: i32,
+) -> ObjectId {
+    let card = crate::card::CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(power, toughness))
+        .build();
+    game.create_object_from_card(&card, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_loyal_unicorn_begin_combat_trigger(
+    game: &mut crate::game_state::GameState,
+    active_player: PlayerId,
+) {
+    let event = crate::events::RawEvent::new(
+        crate::events::BeginningOfCombatEvent::new(active_player),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for entry in crate::triggers::check_triggers(game, &event) {
+        trigger_queue.add(entry);
+    }
+    crate::game_loop::put_triggers_on_stack(game, &mut trigger_queue)
+        .expect("Loyal Unicorn beginning-of-combat trigger should go on the stack");
+    crate::game_loop::resolve_stack_entry(game)
+        .expect("Loyal Unicorn beginning-of-combat trigger should resolve");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn loyal_unicorn_with_your_commander_prevents_combat_damage_to_your_creatures() {
+    let loyal_unicorn = parse_oracle_card_definition("Loyal Unicorn");
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let loyal_unicorn_id =
+        game.create_object_from_definition(&loyal_unicorn, alice, Zone::Battlefield);
+    let commander_id =
+        create_loyal_unicorn_test_creature(&mut game, "Alice Commander", alice, 2, 2);
+    game.set_as_commander(commander_id, alice);
+    let protected_blocker =
+        create_loyal_unicorn_test_creature(&mut game, "Protected Blocker", alice, 2, 2);
+    let bob_attacker =
+        create_loyal_unicorn_test_creature(&mut game, "Bob Attacker", bob, 3, 3);
+
+    game.turn.active_player = alice;
+    game.turn.phase = crate::game_state::Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::BeginCombat);
+    resolve_loyal_unicorn_begin_combat_trigger(&mut game, alice);
+
+    assert_eq!(
+        game.effect_store.prevention_effects.shields().len(),
+        1,
+        "Loyal Unicorn should create one combat-damage prevention shield"
+    );
+    let shield = &game.effect_store.prevention_effects.shields()[0];
+    assert!(
+        shield.damage_filter.combat_only
+            && matches!(
+                shield.protected,
+                crate::prevention::PreventionTarget::PermanentsMatching(_)
+            ),
+        "Loyal Unicorn shield should protect matching permanents from combat damage, got {shield:?}"
+    );
+
+    assert!(
+        game.object_has_static_ability_id(protected_blocker, StaticAbilityId::Vigilance),
+        "Loyal Unicorn should grant vigilance to other creatures you control"
+    );
+    assert!(
+        game.object_has_static_ability_id(loyal_unicorn_id, StaticAbilityId::Vigilance),
+        "Loyal Unicorn should keep its own printed vigilance"
+    );
+    assert!(
+        !game.object_has_static_ability_id(bob_attacker, StaticAbilityId::Vigilance),
+        "Loyal Unicorn should not grant vigilance to opponents' creatures"
+    );
+
+    let noncombat = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        bob_attacker,
+        crate::events::DamageTarget::Object(protected_blocker),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        noncombat.assignments,
+        vec![crate::events::processing::ProcessedDamageAssignment {
+            target: crate::events::DamageTarget::Object(protected_blocker),
+            amount: 3,
+        }],
+        "Loyal Unicorn should not prevent noncombat damage to creatures you control"
+    );
+
+    let mut combat = crate::combat_state::CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: bob_attacker,
+        target: crate::combat_state::AttackTarget::Player(alice),
+    });
+    combat.blockers.insert(bob_attacker, vec![protected_blocker]);
+
+    game.turn.step = Some(crate::game_state::Step::CombatDamage);
+    let events = crate::game_loop::execute_combat_damage_step(&mut game, &combat, false);
+    assert!(
+        events.len() >= 2,
+        "blocked combat should assign damage in both directions, got {events:?}"
+    );
+    assert_eq!(
+        game.damage_on(protected_blocker),
+        0,
+        "Loyal Unicorn should prevent combat damage to creatures you control"
+    );
+    assert_eq!(
+        game.damage_on(bob_attacker),
+        2,
+        "Loyal Unicorn should not prevent combat damage dealt to opponents' creatures"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn loyal_unicorn_without_your_commander_does_not_trigger() {
+    let loyal_unicorn = parse_oracle_card_definition("Loyal Unicorn");
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+
+    game.create_object_from_definition(&loyal_unicorn, alice, Zone::Battlefield);
+    let ally = create_loyal_unicorn_test_creature(&mut game, "Uninspired Ally", alice, 2, 2);
+
+    game.turn.active_player = alice;
+    game.turn.phase = crate::game_state::Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::BeginCombat);
+    let event = crate::events::RawEvent::new(
+        crate::events::BeginningOfCombatEvent::new(alice),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let triggered = crate::triggers::check_triggers(&game, &event);
+    assert!(
+        triggered.is_empty(),
+        "Loyal Unicorn should not trigger when you do not control your commander, got {triggered:#?}"
+    );
+    assert!(
+        game.effect_store.prevention_effects.shields().is_empty(),
+        "Loyal Unicorn should not create a prevention shield without its commander condition"
+    );
+    assert!(
+        !game.object_has_static_ability_id(ally, StaticAbilityId::Vigilance),
+        "Loyal Unicorn should not grant vigilance without its commander condition"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_prevent_next_damage_to_any_target_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Amulet of Kroog Variant")
         .parse_text(

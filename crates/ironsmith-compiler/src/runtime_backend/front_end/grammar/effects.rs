@@ -847,6 +847,14 @@ pub(crate) fn parse_prevent_damage_target_scope_lexed(
             ),
         ));
     }
+    if let Ok(filter) = parse_object_filter(tokens, false) {
+        return Ok(Some(
+            EffectAst::subject_verb_prevent_all_combat_damage_to_target(
+                TargetAst::Object(filter, None, None),
+                crate::effect::Until::EndOfTurn,
+            ),
+        ));
+    }
 
     Err(CardTextError::ParseError(format!(
         "unsupported prevent-all target scope '{}'",

@@ -12932,6 +12932,14 @@ pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
         return Some(compact);
     }
 
+    if matches!(effects, [first, _]
+        if first.downcast_ref::<crate::effects::PreventAllDamageEffect>().is_some()
+            || first.downcast_ref::<crate::effects::PreventAllCombatDamageEffect>().is_some()
+            || first.downcast_ref::<crate::effects::PreventAllCombatDamageFromEffect>().is_some())
+    {
+        return None;
+    }
+
     let compact = describe_effect_list(effects);
     let compact_trimmed = compact.trim();
     if !compact_trimmed.is_empty()

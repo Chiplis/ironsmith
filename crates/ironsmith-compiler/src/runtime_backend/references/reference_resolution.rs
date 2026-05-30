@@ -713,6 +713,7 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget { target, .. }
                 | SubjectVerbActionAst::RedirectNextTimeDamageToSource { target, .. }
                 | SubjectVerbActionAst::PreventDamage { target, .. }
+                | SubjectVerbActionAst::PreventAllCombatDamageToTarget { target, .. }
                 | SubjectVerbActionAst::PreventAllDamageToTarget { target, .. }
                 | SubjectVerbActionAst::PreventDamageToTargetPutCounters { target, .. }
                 | SubjectVerbActionAst::PutOrRemoveCounters { target, .. } => {
@@ -1966,6 +1967,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::PreventAllCombatDamage { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSource { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSourceFilter { .. }
+            | SubjectVerbActionAst::PreventAllCombatDamageToTarget { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageToPlayers { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }
             | SubjectVerbActionAst::PreventNextTimeDamage { .. }
@@ -2765,6 +2767,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                     + bind_unresolved_it_in_target(target, seed_tag)
             }
             SubjectVerbActionAst::PreventAllDamageToTarget { target, .. } => {
+                bind_unresolved_it_in_target(target, seed_tag)
+            }
+            SubjectVerbActionAst::PreventAllCombatDamageToTarget { target, .. } => {
                 bind_unresolved_it_in_target(target, seed_tag)
             }
             SubjectVerbActionAst::PreventAllDamageFromSourceFilter { source_filter, .. } => {

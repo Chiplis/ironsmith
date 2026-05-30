@@ -1184,6 +1184,17 @@ impl Effect {
         ))
     }
 
+    pub fn prevent_all_combat_damage_to(
+        target: crate::target::ObjectFilter,
+        until: Until,
+    ) -> Self {
+        Self::new(crate::effects::PreventAllDamageEffect::matching_with_filter(
+            target,
+            ironsmith_core::DamageFilter::combat(),
+            until,
+        ))
+    }
+
     pub fn prevent_all_damage_to(target: crate::target::ObjectFilter, until: Until) -> Self {
         Self::new(crate::effects::PreventAllDamageEffect::matching(
             target, until,

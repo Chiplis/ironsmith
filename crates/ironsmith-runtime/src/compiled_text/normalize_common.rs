@@ -8292,6 +8292,20 @@ pub(super) fn describe_put_counter_phrase(count: &Value, counter_type: CounterTy
 pub(super) fn describe_apply_continuous_target(
     effect: &crate::effects::ApplyContinuousEffect,
 ) -> (String, bool) {
+    if effect.target_spec.is_none()
+        && let crate::continuous::EffectTarget::Filter(filter) = &effect.target
+        && filter.other
+    {
+        let description = filter.description();
+        let rest = description
+            .strip_prefix("another ")
+            .unwrap_or(description.as_str())
+            .trim();
+        let rest = strip_indefinite_article(rest).trim();
+        if !rest.is_empty() {
+            return (format!("other {}", pluralize_noun_phrase(rest)), true);
+        }
+    }
     effect_text_shared::describe_apply_continuous_target(effect, describe_choose_spec, |filter| {
         pluralize_noun_phrase(&filter.description())
     })
@@ -9611,17 +9625,19 @@ pub(super) fn describe_damage_filter(filter: &crate::prevention::DamageFilter) -
 
 pub(super) fn describe_prevention_target(
     target: &crate::prevention::PreventionTarget,
-) -> &'static str {
+) -> String {
     match target {
-        crate::prevention::PreventionTarget::Player(_) => "that player",
-        crate::prevention::PreventionTarget::Permanent(_) => "that permanent",
-        crate::prevention::PreventionTarget::PermanentsMatching(_) => "matching permanents",
-        crate::prevention::PreventionTarget::Players => "players",
-        crate::prevention::PreventionTarget::You => "you",
-        crate::prevention::PreventionTarget::YouAndPermanentsYouControl => {
-            "you and permanents you control"
+        crate::prevention::PreventionTarget::Player(_) => "that player".to_string(),
+        crate::prevention::PreventionTarget::Permanent(_) => "that permanent".to_string(),
+        crate::prevention::PreventionTarget::PermanentsMatching(filter) => {
+            pluralize_noun_phrase(strip_indefinite_article(&filter.description()))
         }
-        crate::prevention::PreventionTarget::All => "all players and permanents",
+        crate::prevention::PreventionTarget::Players => "players".to_string(),
+        crate::prevention::PreventionTarget::You => "you".to_string(),
+        crate::prevention::PreventionTarget::YouAndPermanentsYouControl => {
+            "you and permanents you control".to_string()
+        }
+        crate::prevention::PreventionTarget::All => "all players and permanents".to_string(),
     }
 }
 
@@ -10394,6 +10410,19 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::PlayerControls { player, filter } => {
             let subject = describe_player_filter(player);
+            if subject == "you"
+                && filter.is_commander
+                && filter
+                    .controller
+                    .as_ref()
+                    .is_none_or(|controller| matches!(controller, PlayerFilter::You))
+                && filter
+                    .owner
+                    .as_ref()
+                    .is_none_or(|owner| matches!(owner, PlayerFilter::You))
+            {
+                return "you control your commander".to_string();
+            }
             if matches!(
                 filter.zone,
                 Some(
