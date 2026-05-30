@@ -1813,6 +1813,10 @@ impl<
         Self::identified(StaticAbilityId::MustAttack, "must attack")
     }
 
+    pub fn attached_goaded_by_source_controller(display: impl Into<String>) -> Self {
+        Self::identified(StaticAbilityId::AttachedGoadedBySourceController, display)
+    }
+
     pub fn all_creatures_attack_attached_controller_each_combat_if_able() -> Self {
         Self::identified(
             StaticAbilityId::AllCreaturesAttackAttachedControllerEachCombatIfAble,
