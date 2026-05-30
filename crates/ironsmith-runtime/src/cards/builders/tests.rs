@@ -50210,3 +50210,143 @@ fn occult_epiphany_runtime_x_zero_draws_discards_and_creates_no_tokens() {
         "X=0 should create no Spirit tokens"
     );
 }
+
+#[test]
+fn voidstone_gargoyle_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Voidstone Gargoyle");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        ability_debug.contains("ChooseCardNameAsEnters")
+            && ability_debug.contains("nonland: true"),
+        "Voidstone Gargoyle should choose a nonland card name as it enters, got {ability_debug}"
+    );
+    assert!(
+        ability_debug.contains("CastSpellsMatching")
+            && ability_debug.contains("{chosen name}")
+            && ability_debug.contains("ActivateAbilitiesOf"),
+        "Voidstone Gargoyle should restrict spells and activated abilities with the chosen name, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains("As this creature enters, choose a nonland card name."),
+        "expected nonland card-name choice text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Spells with the chosen name can't be cast."),
+        "expected chosen-name spell cast restriction text, got {rendered}"
+    );
+    assert!(
+        rendered
+            .contains("Activated abilities of sources with the chosen name can't be activated."),
+        "expected chosen-name activated ability restriction text, got {rendered}"
+    );
+}
+
+#[test]
+fn voidstone_gargoyle_as_enters_choice_records_nonland_names_and_rejects_land_names() {
+    struct ChooseName(&'static str);
+
+    impl crate::decision::DecisionMaker for ChooseName {
+        fn decide_text(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            _ctx: &crate::decisions::context::TextInputContext,
+        ) -> String {
+            self.0.to_string()
+        }
+    }
+
+    let def = parse_oracle_card_definition("Voidstone Gargoyle");
+    let alice = PlayerId::from_index(0);
+
+    let mut game = crate::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let gargoyle = game.create_object_from_definition(&def, alice, Zone::Hand);
+    let result = game
+        .move_object_with_etb_processing_with_dm(
+            gargoyle,
+            Zone::Battlefield,
+            &mut ChooseName("Lightning Bolt"),
+        )
+        .expect("Voidstone Gargoyle should enter with ETB processing");
+    assert_eq!(
+        game.chosen_named_option(result.new_id),
+        Some("Lightning Bolt"),
+        "nonland card names should be recorded for Voidstone Gargoyle"
+    );
+
+    let mut game = crate::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let gargoyle = game.create_object_from_definition(&def, alice, Zone::Hand);
+    let result = game
+        .move_object_with_etb_processing_with_dm(gargoyle, Zone::Battlefield, &mut ChooseName("Forest"))
+        .expect("Voidstone Gargoyle should enter even if a land name is offered");
+    assert_eq!(
+        game.chosen_named_option(result.new_id),
+        None,
+        "land card names should not be accepted for a nonland card-name choice"
+    );
+}
+
+#[test]
+fn voidstone_gargoyle_runtime_blocks_casting_only_spells_with_the_chosen_name() {
+    let def = parse_oracle_card_definition("Voidstone Gargoyle");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let gargoyle = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.set_chosen_named_option(gargoyle, "Lightning Bolt".to_string());
+
+    let lightning_bolt = CardDefinitionBuilder::new(CardId::new(), "Lightning Bolt")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let shock = CardDefinitionBuilder::new(CardId::new(), "Shock")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let bolt_id = game.create_object_from_definition(&lightning_bolt, bob, Zone::Hand);
+    let shock_id = game.create_object_from_definition(&shock, bob, Zone::Hand);
+
+    game.update_cant_effects();
+
+    let bolt = game.object(bolt_id).expect("Lightning Bolt should exist");
+    let shock = game.object(shock_id).expect("Shock should exist");
+    assert!(
+        crate::decision::violates_any_cant_cast_restriction(&game, bob, bolt),
+        "Voidstone Gargoyle should stop the chosen spell name from being cast"
+    );
+    assert!(
+        !crate::decision::violates_any_cant_cast_restriction(&game, bob, shock),
+        "Voidstone Gargoyle should not stop differently named spells from being cast"
+    );
+}
+
+#[test]
+fn voidstone_gargoyle_runtime_blocks_activated_abilities_only_from_sources_with_the_chosen_name() {
+    let def = parse_oracle_card_definition("Voidstone Gargoyle");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let gargoyle = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.set_chosen_named_option(gargoyle, "Lightning Bolt".to_string());
+
+    let named_source = CardDefinitionBuilder::new(CardId::new(), "Lightning Bolt")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("{T}: Add {C}.")
+        .expect("named activated source should parse");
+    let other_source = CardDefinitionBuilder::new(CardId::new(), "Sol Ring")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("{T}: Add {C}.")
+        .expect("other activated source should parse");
+    let named_id = game.create_object_from_definition(&named_source, bob, Zone::Battlefield);
+    let other_id = game.create_object_from_definition(&other_source, bob, Zone::Battlefield);
+
+    game.update_cant_effects();
+
+    assert!(
+        !game.can_activate_abilities_of(named_id),
+        "Voidstone Gargoyle should stop abilities of sources with the chosen name"
+    );
+    assert!(
+        game.can_activate_abilities_of(other_id),
+        "Voidstone Gargoyle should not stop abilities of differently named sources"
+    );
+}

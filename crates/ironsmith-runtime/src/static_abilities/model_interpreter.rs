@@ -1157,8 +1157,12 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::ChoosePlayerAsEnters(display) => {
                 StaticAbility::choose_player_as_enters(display.clone())
             }
-            ironsmith_core::StaticAbilityPayload::ChooseCardNameAsEnters(display) => {
-                StaticAbility::choose_card_name_as_enters(display.clone())
+            ironsmith_core::StaticAbilityPayload::ChooseCardNameAsEnters { display, nonland } => {
+                if *nonland {
+                    StaticAbility::choose_nonland_card_name_as_enters(display.clone())
+                } else {
+                    StaticAbility::choose_card_name_as_enters(display.clone())
+                }
             }
             ironsmith_core::StaticAbilityPayload::ChooseCreatureTypeAsEnters(display) => {
                 StaticAbility::choose_creature_type_as_enters(display.clone())
@@ -1828,11 +1832,12 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     }
 
     fn card_name_choice_as_enters(&self) -> Option<super::ChooseCardNameAsEntersSpec> {
-        matches!(
-            self.payload(),
-            ironsmith_core::StaticAbilityPayload::ChooseCardNameAsEnters(_)
-        )
-        .then_some(super::ChooseCardNameAsEntersSpec)
+        match self.payload() {
+            ironsmith_core::StaticAbilityPayload::ChooseCardNameAsEnters { nonland, .. } => {
+                Some(super::ChooseCardNameAsEntersSpec { nonland: *nonland })
+            }
+            _ => None,
+        }
     }
 
     fn basic_land_type_choice_as_enters(&self) -> Option<super::ChooseBasicLandTypeAsEntersSpec> {

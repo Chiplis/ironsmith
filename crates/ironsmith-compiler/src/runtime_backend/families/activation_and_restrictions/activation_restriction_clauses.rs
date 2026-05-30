@@ -533,6 +533,18 @@ fn parse_spell_restriction_subject_filter(words: &[&str]) -> Option<ObjectFilter
             continue;
         }
 
+        if word_slice_starts_with(&words[idx..], &["the", "chosen", "name"]) {
+            filter.name = Some("{chosen name}".to_string());
+            idx += 3;
+            continue;
+        }
+
+        if word_slice_starts_with(&words[idx..], &["chosen", "name"]) {
+            filter.name = Some("{chosen name}".to_string());
+            idx += 2;
+            continue;
+        }
+
         if word_slice_at_is(words, idx, "x")
             && word_slice_at_is(words, idx + 1, "in")
             && word_slice_at_is_any(words, idx + 2, &["their", "its"])

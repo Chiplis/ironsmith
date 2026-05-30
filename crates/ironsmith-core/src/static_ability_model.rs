@@ -351,7 +351,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         condition: Option<Condition>,
     },
     ChoosePlayerAsEnters(String),
-    ChooseCardNameAsEnters(String),
+    ChooseCardNameAsEnters { display: String, nonland: bool },
     ChooseCreatureTypeAsEnters(String),
     ChooseNamedOptionAsEnters {
         options: Vec<String>,
@@ -1135,8 +1135,8 @@ where
             StaticAbilityPayload::ChoosePlayerAsEnters(display) => {
                 StaticAbilityPayload::ChoosePlayerAsEnters(display)
             }
-            StaticAbilityPayload::ChooseCardNameAsEnters(display) => {
-                StaticAbilityPayload::ChooseCardNameAsEnters(display)
+            StaticAbilityPayload::ChooseCardNameAsEnters { display, nonland } => {
+                StaticAbilityPayload::ChooseCardNameAsEnters { display, nonland }
             }
             StaticAbilityPayload::ChooseCreatureTypeAsEnters(display) => {
                 StaticAbilityPayload::ChooseCreatureTypeAsEnters(display)
@@ -3087,7 +3087,21 @@ impl<
         Self {
             id: Some(StaticAbilityId::ChooseCardNameAsEnters),
             label: display.clone(),
-            payload: StaticAbilityPayload::ChooseCardNameAsEnters(display),
+            payload: StaticAbilityPayload::ChooseCardNameAsEnters {
+                display,
+                nonland: false,
+            },
+        }
+    }
+    pub fn choose_nonland_card_name_as_enters(display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ChooseCardNameAsEnters),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ChooseCardNameAsEnters {
+                display,
+                nonland: true,
+            },
         }
     }
     pub fn redirect_damage_from_you_and_other_permanents_to_source() -> Self {

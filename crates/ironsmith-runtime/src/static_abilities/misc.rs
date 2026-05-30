@@ -1483,12 +1483,23 @@ impl StaticAbilityKind for ChoosePlayerAsEnters {
 /// "As this enters, choose a card name."
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChooseCardNameAsEnters {
+    pub nonland: bool,
     pub display: String,
 }
 
 impl ChooseCardNameAsEnters {
     pub fn new(display: String) -> Self {
-        Self { display }
+        Self {
+            nonland: false,
+            display,
+        }
+    }
+
+    pub fn nonland(display: String) -> Self {
+        Self {
+            nonland: true,
+            display,
+        }
     }
 }
 
@@ -1502,7 +1513,9 @@ impl StaticAbilityKind for ChooseCardNameAsEnters {
     }
 
     fn card_name_choice_as_enters(&self) -> Option<ChooseCardNameAsEntersSpec> {
-        Some(ChooseCardNameAsEntersSpec)
+        Some(ChooseCardNameAsEntersSpec {
+            nonland: self.nonland,
+        })
     }
 }
 

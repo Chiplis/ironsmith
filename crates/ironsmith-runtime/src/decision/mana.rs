@@ -590,7 +590,14 @@ pub(crate) fn spell_matches_cast_filter(
     spell: &crate::object::Object,
     spell_filter: &crate::target::ObjectFilter,
 ) -> bool {
-    spell_filter.matches(spell, &crate::target::FilterContext::default(), game)
+    let mut cast_filter = spell_filter.clone();
+    if cast_filter.zone == Some(Zone::Stack)
+        && matches!(cast_filter.stack_kind, Some(crate::filter::StackObjectKind::Spell))
+    {
+        cast_filter.zone = None;
+        cast_filter.stack_kind = None;
+    }
+    cast_filter.matches(spell, &crate::target::FilterContext::default(), game)
 }
 
 pub(crate) fn snapshot_matches_cast_filter(
@@ -598,7 +605,14 @@ pub(crate) fn snapshot_matches_cast_filter(
     snapshot: &crate::snapshot::ObjectSnapshot,
     spell_filter: &crate::target::ObjectFilter,
 ) -> bool {
-    spell_filter.matches_snapshot(snapshot, &crate::target::FilterContext::default(), game)
+    let mut cast_filter = spell_filter.clone();
+    if cast_filter.zone == Some(Zone::Stack)
+        && matches!(cast_filter.stack_kind, Some(crate::filter::StackObjectKind::Spell))
+    {
+        cast_filter.zone = None;
+        cast_filter.stack_kind = None;
+    }
+    cast_filter.matches_snapshot(snapshot, &crate::target::FilterContext::default(), game)
 }
 
 pub(crate) fn spells_cast_this_turn_matching_filter(

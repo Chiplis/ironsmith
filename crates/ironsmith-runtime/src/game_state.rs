@@ -4535,11 +4535,15 @@ impl GameState {
                             self.set_chosen_player(new_id, options[chosen_idx]);
                         }
                     }
-                    if static_ability.card_name_choice_as_enters().is_some() {
+                    if let Some(spec) = static_ability.card_name_choice_as_enters() {
                         let choice_ctx = crate::decisions::context::TextInputContext::new(
                             controller,
                             Some(new_id),
-                            "Choose a card name",
+                            if spec.nonland {
+                                "Choose a nonland card name"
+                            } else {
+                                "Choose a card name"
+                            },
                         )
                         .with_placeholder("Enter a card name")
                         .require_known_value(true);
@@ -4553,8 +4557,15 @@ impl GameState {
                         }
                         let mut registry = CardRegistry::new();
                         registry.ensure_cards_loaded([chosen_name]);
-                        let canonical_name = registry
-                            .get(chosen_name)
+                        let definition = registry.get(chosen_name);
+                        if spec.nonland
+                            && definition.is_none_or(|definition| {
+                                definition.card.card_types.contains(&crate::types::CardType::Land)
+                            })
+                        {
+                            continue;
+                        }
+                        let canonical_name = definition
                             .map(|definition| definition.name().to_string())
                             .unwrap_or_else(|| chosen_name.to_string());
                         self.set_chosen_named_option(new_id, canonical_name);

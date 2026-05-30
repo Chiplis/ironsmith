@@ -812,6 +812,35 @@ pub(crate) trait RestrictionExt {
     );
 }
 
+fn resolve_chosen_name_spell_filters(
+    game: &crate::game_state::GameState,
+    source: Option<crate::ids::ObjectId>,
+    spell_filter: &ObjectFilter,
+) -> Vec<ObjectFilter> {
+    let Some(source) = source else {
+        return vec![spell_filter.clone()];
+    };
+    if spell_filter.name.as_deref() != Some("{chosen name}") {
+        return vec![spell_filter.clone()];
+    }
+
+    game.chosen_named_option(source)
+        .map(|chosen_names| {
+            chosen_names
+                .lines()
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .map(|name| {
+                    let mut resolved = spell_filter.clone();
+                    resolved.name = Some(name.to_string());
+                    resolved
+                })
+                .collect::<Vec<_>>()
+        })
+        .filter(|filters| !filters.is_empty())
+        .unwrap_or_default()
+}
+
 impl RestrictionExt for Restriction {
     fn apply(
         &self,
@@ -867,9 +896,12 @@ impl RestrictionExt for Restriction {
                 }
             }
             Restriction::CastSpellsMatching(filter, spell_filter) => {
+                let spell_filters = resolve_chosen_name_spell_filters(game, source, spell_filter);
                 for player in &game.players {
                     if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
-                        tracker.add_cant_cast_filter(player.id, spell_filter.clone());
+                        for spell_filter in &spell_filters {
+                            tracker.add_cant_cast_filter(player.id, spell_filter.clone());
+                        }
                     }
                 }
             }

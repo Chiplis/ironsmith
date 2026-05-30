@@ -1229,10 +1229,12 @@ pub(crate) fn parse_activated_abilities_cant_be_activated_line(
     // which is correct for many adjective chains, but incorrect for this rules pattern.
     let subject_words = crate::runtime_backend::util::non_article_token_word_refs(&subject_tokens);
 
-    let filter = if matches!(
+    let chosen_name_subject = matches!(
         subject_words.as_slice(),
         ["sources", "with", "chosen", "name"] | ["sources", "with", "the", "chosen", "name"]
-    ) {
+    );
+
+    let filter = if chosen_name_subject {
         let mut filter = ObjectFilter::default();
         filter.name = Some("{chosen name}".to_string());
         filter
@@ -1267,7 +1269,11 @@ pub(crate) fn parse_activated_abilities_cant_be_activated_line(
         Restriction::activate_abilities_of(filter)
     };
 
-    let display_subject = subject_words.join(" ");
+    let display_subject = if chosen_name_subject {
+        "sources with the chosen name".to_string()
+    } else {
+        subject_words.join(" ")
+    };
     let display = if non_mana_only {
         format!(
             "Activated abilities of {display_subject} can't be activated unless they're mana abilities."
@@ -1375,10 +1381,12 @@ pub(crate) fn parse_activated_abilities_cant_be_activated_line_lexed(
 
     let subject_words = crate::runtime_backend::util::non_article_token_word_refs(subject_tokens);
 
-    let filter = if matches!(
+    let chosen_name_subject = matches!(
         subject_words.as_slice(),
         ["sources", "with", "chosen", "name"] | ["sources", "with", "the", "chosen", "name"]
-    ) {
+    );
+
+    let filter = if chosen_name_subject {
         let mut filter = ObjectFilter::default();
         filter.name = Some("{chosen name}".to_string());
         filter
@@ -1412,7 +1420,11 @@ pub(crate) fn parse_activated_abilities_cant_be_activated_line_lexed(
         Restriction::activate_abilities_of(filter)
     };
 
-    let display_subject = subject_words.join(" ");
+    let display_subject = if chosen_name_subject {
+        "sources with the chosen name".to_string()
+    } else {
+        subject_words.join(" ")
+    };
     let display = if non_mana_only {
         format!(
             "Activated abilities of {display_subject} can't be activated unless they're mana abilities."
@@ -2400,13 +2412,25 @@ pub(crate) fn parse_choose_card_name_as_enters_line(
     else {
         return Ok(None);
     };
-    if !word_slice_eq(&words[idx..], &["choose", "a", "card", "name"]) {
+    let nonland = if word_slice_eq(&words[idx..], &["choose", "a", "nonland", "card", "name"]) {
+        true
+    } else if word_slice_eq(&words[idx..], &["choose", "a", "card", "name"]) {
+        false
+    } else {
         return Ok(None);
-    }
+    };
 
-    Ok(Some(StaticAbility::choose_card_name_as_enters(format!(
-        "As {display_subject} enters, choose a card name."
-    ))))
+    let display = if nonland {
+        format!("As {display_subject} enters, choose a nonland card name.")
+    } else {
+        format!("As {display_subject} enters, choose a card name.")
+    };
+
+    Ok(Some(if nonland {
+        StaticAbility::choose_nonland_card_name_as_enters(display)
+    } else {
+        StaticAbility::choose_card_name_as_enters(display)
+    }))
 }
 
 pub(crate) fn parse_source_is_chosen_type_in_addition_line(
