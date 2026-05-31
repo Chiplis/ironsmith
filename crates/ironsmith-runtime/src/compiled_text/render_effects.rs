@@ -12455,6 +12455,30 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 3;
             continue;
         }
+        if idx + 4 < filtered.len()
+            && let Some(shuffle) =
+                filtered[idx].downcast_ref::<crate::effects::ShuffleLibraryEffect>()
+            && let Some(reveal_top) =
+                filtered[idx + 1].downcast_ref::<crate::effects::RevealTopEffect>()
+            && let Some(reveal_permission) = unwrap_tag_wrappers(filtered[idx + 2])
+                .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+            && let Some(grant_play) =
+                filtered[idx + 3].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+            && let Some(grant_free_cast) = filtered[idx + 4]
+                .downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>()
+            && let Some(compact) =
+                describe_shuffle_then_reveal_top_then_temporarily_play_revealed_top_card(
+                    shuffle,
+                    reveal_top,
+                    reveal_permission,
+                    grant_play,
+                    grant_free_cast,
+                )
+        {
+            parts.push(compact);
+            idx += 5;
+            continue;
+        }
         if idx + 3 < filtered.len()
             && let Some(reveal_top) = filtered[idx].downcast_ref::<crate::effects::RevealTopEffect>()
             && let Some(reveal_permission) = unwrap_tag_wrappers(filtered[idx + 1])
@@ -21348,7 +21372,44 @@ fn describe_reveal_top_then_temporarily_play_revealed_top_card(
         return None;
     }
 
-    Some("Reveal the top card of your library. Until end of turn, for as long as that card remains on top of your library, play with the top card of your library revealed and you may play that card without paying its mana cost".to_string())
+    Some(
+        concat!(
+            "Reveal the top card of your library. Until end of turn, ",
+            "for as long as that card remains on top of your library, ",
+            "play with the top card of your library revealed and you may play ",
+            "that card without paying its mana cost"
+        )
+        .to_string(),
+    )
+}
+
+fn describe_shuffle_then_reveal_top_then_temporarily_play_revealed_top_card(
+    shuffle: &crate::effects::ShuffleLibraryEffect,
+    reveal_top: &crate::effects::RevealTopEffect,
+    reveal_permission: &crate::effects::ApplyContinuousEffect,
+    grant_play: &crate::effects::GrantPlayTaggedEffect,
+    grant_free_cast: &crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect,
+) -> Option<String> {
+    if shuffle.player != PlayerFilter::You {
+        return None;
+    }
+
+    describe_reveal_top_then_temporarily_play_revealed_top_card(
+        reveal_top,
+        reveal_permission,
+        grant_play,
+        grant_free_cast,
+    )?;
+
+    Some(
+        concat!(
+            "Shuffle your library, then reveal the top card. Until end of turn, ",
+            "for as long as that card remains on top of your library, ",
+            "play with the top card of your library revealed and you may play ",
+            "that card without paying its mana cost"
+        )
+        .to_string(),
+    )
 }
 
 fn describe_exile_top_then_play_without_paying_mana(

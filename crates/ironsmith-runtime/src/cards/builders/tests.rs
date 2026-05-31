@@ -35410,7 +35410,8 @@ fn temporal_aperture_oracle_parses_and_renders_top_library_permission() {
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
-        rendered_lower.contains("for as long as that card remains on top of your library")
+        rendered_lower.contains("shuffle your library, then reveal the top card")
+            && rendered_lower.contains("for as long as that card remains on top of your library")
             && rendered_lower.contains("play with the top card of your library revealed")
             && rendered_lower.contains("you may play that card without paying its mana cost"),
         "expected Temporal Aperture compiled text to preserve the revealed-top-card permission, got {rendered}"
