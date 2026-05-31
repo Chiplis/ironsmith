@@ -511,10 +511,21 @@ impl RuleRestriction {
 }
 
 fn display_rule_restriction_condition(condition: &crate::ConditionExpr) -> Option<String> {
-    match condition {
-        crate::ConditionExpr::Not(inner) if is_you_have_max_speed_condition(inner) => {
-            Some("unless you have max speed".to_string())
+    if let crate::ConditionExpr::Not(inner) = condition {
+        if is_you_have_max_speed_condition(inner) {
+            return Some("unless you have max speed".to_string());
         }
+        if let crate::ConditionExpr::SourceMatches(filter) = inner.as_ref()
+            && let Some(parity) = filter.total_counters_parity
+            && let Some(label) = parity.explicit_label()
+        {
+            return Some(format!(
+                "unless it has an {label} number of counters on it"
+            ));
+        }
+    }
+
+    match condition {
         crate::ConditionExpr::ActivationTiming(
             crate::ability::ActivationTiming::DuringYourTurn,
         ) => Some("During your turn".to_string()),

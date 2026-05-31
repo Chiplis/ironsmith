@@ -1363,16 +1363,35 @@ pub(crate) fn parse_cant_clause(
         )));
     }
 
-    if word_slice_starts_with(
+    if word_slice_starts_with_any(
         &normalized,
-        &["this", "cant", "attack", "or", "block", "unless"],
+        &[
+            &[
+                "this", "creature", "cant", "attack", "or", "block", "unless",
+            ],
+            &["this", "cant", "attack", "or", "block", "unless"],
+        ],
     ) && word_slice_ends_with(
         &normalized,
         &["even", "number", "of", "counters", "on", "it"],
     ) {
-        return Ok(Some(StaticAbility::rule_fallback_text(
-            format_negated_restriction_display(tokens),
+        let condition = crate::ConditionExpr::Not(Box::new(crate::ConditionExpr::SourceMatches(
+            ObjectFilter::source()
+                .with_total_counters_parity(crate::filter::ParityRequirement::Even),
         )));
+        return Ok(Some(
+            StaticAbility::restriction(
+                crate::effect::Restriction::attack_or_block(ObjectFilter::source()),
+                format_negated_restriction_display(tokens),
+            )
+            .with_condition(condition)
+            .unwrap_or_else(|| {
+                StaticAbility::restriction(
+                    crate::effect::Restriction::attack_or_block(ObjectFilter::source()),
+                    format_negated_restriction_display(tokens),
+                )
+            }),
+        ));
     }
 
     const CANT_ATTACK_OR_BLOCK_UNLESS_PREFIXES: &[&[&str]] = &[

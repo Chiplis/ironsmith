@@ -758,6 +758,7 @@ pub(super) fn substitute_legendary_source_reference(
         && (lower.contains(", this creature has ") || lower.contains(" this creature has "));
     let uses_named_source_surface = lower.starts_with("this creature gets ")
         || conditional_static_self_surface
+        || lower.starts_with("this creature can't attack or block unless ")
         || lower.contains("if this land has ")
         || lower.starts_with("whenever this creature deals combat damage to a player")
         || lower.contains(": this creature gets ")

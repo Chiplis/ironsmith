@@ -11213,6 +11213,11 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             if let Some(text) = describe_source_matches_keyword_condition(filter) {
                 return text;
             }
+            if let Some(parity) = filter.total_counters_parity
+                && let Some(label) = parity.explicit_label()
+            {
+                return format!("it has an {label} number of counters on it");
+            }
             let desc = filter.description();
             let stripped = strip_leading_article(&desc).to_ascii_lowercase();
             if stripped == "permanent" {
@@ -11385,6 +11390,11 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
 	                        format!("{subject} is {phrase}")
 	                    }
 	                };
+	                if let Some(parity) = filter.total_counters_parity
+	                    && let Some(label) = parity.explicit_label()
+	                {
+	                    return format!("{subject} has an {label} number of counters on it");
+	                }
 
 	                if card_context
 	                    && !filter.card_types.is_empty()

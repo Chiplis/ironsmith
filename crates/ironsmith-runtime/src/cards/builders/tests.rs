@@ -38769,6 +38769,56 @@ fn parse_oracle_card_definition(name: &str) -> CardDefinition {
         .unwrap_or_else(|err| panic!("strict parser regression failed for '{name}': {err:?}"))
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn add_sab_sunen_library_cards(game: &mut crate::game_state::GameState, player: PlayerId) {
+    for index in 0..3 {
+        let card = crate::card::CardBuilder::new(
+            CardId::new(),
+            &format!("Sab-Sunen Library Card {index}"),
+        )
+        .card_types(vec![CardType::Creature])
+        .build();
+        game.create_object_from_card(&card, player, Zone::Library);
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_sab_sunen_first_main_phase(
+    game: &mut crate::game_state::GameState,
+    sab_sunen: ObjectId,
+    active_player: PlayerId,
+) {
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfPrecombatMainPhaseEvent::new(active_player),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for entry in crate::triggers::check_triggers(game, &event)
+        .into_iter()
+        .filter(|entry| entry.source == sab_sunen)
+    {
+        trigger_queue.add(entry);
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Sab-Sunen should trigger exactly once at its controller's first main phase"
+    );
+    crate::game_loop::put_triggers_on_stack(game, &mut trigger_queue)
+        .expect("Sab-Sunen trigger should go on the stack");
+    crate::game_loop::resolve_stack_entry(game).expect("Sab-Sunen trigger should resolve");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn sab_sunen_plus_one_counters(game: &crate::game_state::GameState, sab_sunen: ObjectId) -> u32 {
+    game.object(sab_sunen)
+        .expect("Sab-Sunen should exist")
+        .counters
+        .get(&crate::object::CounterType::PlusOnePlusOne)
+        .copied()
+        .unwrap_or(0)
+}
+
 fn assert_oracle_card_parses_strict(name: &str) {
     let oracle = oracle_text_by_name()
         .get(name)
@@ -38793,6 +38843,144 @@ fn assert_oracle_card_fails_strict(name: &str) {
         result.is_err(),
         "strict parser regression expected failure for '{name}', but parse succeeded.\nOracle text:\n{}",
         oracle
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sab_sunen_luxa_embodied_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition("Sab-Sunen, Luxa Embodied");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    let lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        lower.contains("can't attack or block unless")
+            && lower.contains("even number of counters on it"),
+        "expected Sab-Sunen's even-counter attack/block restriction, got {rendered}"
+    );
+    assert!(
+        lower.contains("put a +1/+1 counter on")
+            && lower.contains("odd number of counters on it")
+            && lower.contains("draw two cards"),
+        "expected Sab-Sunen's put-counter-then-odd-counter draw clause, got {rendered}"
+    );
+    assert!(
+        !lower.contains("unsupported predicate") && !lower.contains("unsupported effect"),
+        "Sab-Sunen should compile without unsupported fallbacks, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sab_sunen_luxa_embodied_can_attack_and_block_only_with_even_counter_count() {
+    let def = parse_oracle_card_definition("Sab-Sunen, Luxa Embodied");
+    let blocker_def = CardDefinitionBuilder::new(CardId::new(), "Sab-Sunen Test Attacker")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let sab_sunen = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let attacker = game.create_object_from_definition(&blocker_def, bob, Zone::Battlefield);
+    game.remove_summoning_sickness(sab_sunen);
+    game.refresh_continuous_state();
+
+    assert!(
+        crate::rules::combat::can_attack(
+            game.object(sab_sunen).expect("Sab-Sunen exists"),
+            &game
+        ),
+        "zero counters is even, so Sab-Sunen should be able to attack"
+    );
+    assert!(
+        crate::rules::combat::can_block(
+            game.object(attacker).expect("attacker exists"),
+            game.object(sab_sunen).expect("Sab-Sunen exists"),
+            &game,
+        ),
+        "zero counters is even, so Sab-Sunen should be able to block"
+    );
+
+    game.add_counters(sab_sunen, crate::object::CounterType::PlusOnePlusOne, 1);
+    game.refresh_continuous_state();
+    assert!(
+        !crate::rules::combat::can_attack(
+            game.object(sab_sunen).expect("Sab-Sunen exists"),
+            &game
+        ),
+        "one counter is odd, so Sab-Sunen should not be able to attack"
+    );
+    assert!(
+        !crate::rules::combat::can_block(
+            game.object(attacker).expect("attacker exists"),
+            game.object(sab_sunen).expect("Sab-Sunen exists"),
+            &game,
+        ),
+        "one counter is odd, so Sab-Sunen should not be able to block"
+    );
+
+    game.add_counters(sab_sunen, crate::object::CounterType::PlusOnePlusOne, 1);
+    game.refresh_continuous_state();
+    assert!(
+        crate::rules::combat::can_attack(
+            game.object(sab_sunen).expect("Sab-Sunen exists"),
+            &game
+        ),
+        "two counters is even, so Sab-Sunen should be able to attack again"
+    );
+    assert!(
+        crate::rules::combat::can_block(
+            game.object(attacker).expect("attacker exists"),
+            game.object(sab_sunen).expect("Sab-Sunen exists"),
+            &game,
+        ),
+        "two counters is even, so Sab-Sunen should be able to block again"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sab_sunen_luxa_embodied_first_main_phase_draws_only_when_counter_total_becomes_odd() {
+    let def = parse_oracle_card_definition("Sab-Sunen, Luxa Embodied");
+
+    let mut odd_game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let odd_sab_sunen = odd_game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    add_sab_sunen_library_cards(&mut odd_game, alice);
+    let bob_main_phase = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfPrecombatMainPhaseEvent::new(bob),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert!(
+        crate::triggers::check_triggers(&odd_game, &bob_main_phase)
+            .into_iter()
+            .all(|entry| entry.source != odd_sab_sunen),
+        "Sab-Sunen should not trigger at the beginning of an opponent's first main phase"
+    );
+    resolve_sab_sunen_first_main_phase(&mut odd_game, odd_sab_sunen, alice);
+    assert_eq!(sab_sunen_plus_one_counters(&odd_game, odd_sab_sunen), 1);
+    assert_eq!(
+        odd_game.player(alice).expect("player exists").hand.len(),
+        2,
+        "moving from zero to one counter should satisfy the odd-counter draw branch"
+    );
+
+    let mut even_game = crate::tests::test_helpers::setup_two_player_game();
+    let even_sab_sunen = even_game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    even_game.add_counters(
+        even_sab_sunen,
+        crate::object::CounterType::PlusOnePlusOne,
+        1,
+    );
+    add_sab_sunen_library_cards(&mut even_game, alice);
+    resolve_sab_sunen_first_main_phase(&mut even_game, even_sab_sunen, alice);
+    assert_eq!(sab_sunen_plus_one_counters(&even_game, even_sab_sunen), 2);
+    assert_eq!(
+        even_game.player(alice).expect("player exists").hand.len(),
+        0,
+        "moving from one to two counters should not satisfy the odd-counter draw branch"
     );
 }
 

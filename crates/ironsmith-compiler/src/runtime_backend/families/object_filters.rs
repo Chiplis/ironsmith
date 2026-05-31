@@ -382,6 +382,27 @@ pub(super) fn apply_parity_filter_phrases(words: &[&str], filter: &mut ObjectFil
         }
     }
 
+    for (parity, phrases) in [
+        (
+            ParityRequirement::Odd,
+            &[
+                &["odd", "number", "of", "counters", "on", "it"][..],
+                &["odd", "number", "of", "counters", "on", "them"][..],
+            ][..],
+        ),
+        (
+            ParityRequirement::Even,
+            &[
+                &["even", "number", "of", "counters", "on", "it"][..],
+                &["even", "number", "of", "counters", "on", "them"][..],
+            ][..],
+        ),
+    ] {
+        if word_slice_contains_any_phrase(words, phrases) {
+            filter.total_counters_parity = Some(parity);
+        }
+    }
+
     if word_slice_contains_any_phrase(
         words,
         &[
@@ -988,6 +1009,15 @@ mod tests {
 
         assert_eq!(filter.mana_value_parity, Some(ParityRequirement::Odd));
         assert_eq!(filter.power_parity, Some(ParityRequirement::Chosen));
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_detects_total_counter_parity() {
+        let tokens = tokenize_line("odd number of counters on it", 0);
+
+        let filter = parse_object_filter_lexed(&tokens, false).expect("object filter should parse");
+
+        assert_eq!(filter.total_counters_parity, Some(ParityRequirement::Odd));
     }
 }
 
