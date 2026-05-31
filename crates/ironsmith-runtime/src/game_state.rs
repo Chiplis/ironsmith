@@ -4295,6 +4295,80 @@ impl GameState {
         )
     }
 
+    pub fn move_object_with_etb_processing_without_aura_attachment_choice_with_initial_counters(
+        &mut self,
+        old_id: ObjectId,
+        new_zone: Zone,
+        initial_enters_with_counters: Vec<(crate::object::CounterType, u32)>,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Option<EntersResult> {
+        self.move_object_with_etb_processing_with_dm_and_cause_internal(
+            old_id,
+            new_zone,
+            crate::events::cause::EventCause::effect(),
+            decision_maker,
+            false,
+            initial_enters_with_counters,
+        )
+    }
+
+    pub fn move_objects_with_etb_processing(
+        &mut self,
+        old_ids: &[ObjectId],
+        new_zone: Zone,
+    ) -> Vec<EntersResult> {
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        self.move_objects_with_etb_processing_with_dm(old_ids, new_zone, &mut dm)
+    }
+
+    pub fn move_objects_with_etb_processing_with_dm(
+        &mut self,
+        old_ids: &[ObjectId],
+        new_zone: Zone,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Vec<EntersResult> {
+        if new_zone != Zone::Battlefield || old_ids.len() <= 1 {
+            return old_ids
+                .iter()
+                .filter_map(|old_id| {
+                    self.move_object_with_etb_processing_with_dm(*old_id, new_zone, decision_maker)
+                })
+                .collect();
+        }
+
+        let Some(from) = old_ids
+            .first()
+            .and_then(|old_id| self.object(*old_id).map(|obj| obj.zone))
+        else {
+            return Vec::new();
+        };
+        let same_from_zone = old_ids
+            .iter()
+            .all(|old_id| self.object(*old_id).is_some_and(|obj| obj.zone == from));
+        let initial_counters = if same_from_zone {
+            crate::events::processing::take_one_shot_enter_with_counters_for_batch(
+                self,
+                old_ids,
+                from,
+                crate::events::cause::EventCause::effect(),
+            )
+        } else {
+            std::collections::HashMap::new()
+        };
+
+        old_ids
+            .iter()
+            .filter_map(|old_id| {
+                self.move_object_with_etb_processing_with_initial_counters_with_dm(
+                    *old_id,
+                    new_zone,
+                    initial_counters.get(old_id).cloned().unwrap_or_default(),
+                    decision_maker,
+                )
+            })
+            .collect()
+    }
+
     fn move_object_with_etb_processing_with_dm_and_cause_internal(
         &mut self,
         old_id: ObjectId,

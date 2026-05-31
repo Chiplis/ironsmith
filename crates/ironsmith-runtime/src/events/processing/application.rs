@@ -95,7 +95,9 @@ pub(super) fn apply_trait_replacement(
         } => {
             let resolved_count = resolve_value_for_etb(count, game, effect.source);
             let modified = apply_trait_enter_with_counters(
+                game,
                 &event,
+                effect,
                 *counter_type,
                 resolved_count,
                 added_subtypes,
@@ -718,7 +720,9 @@ fn apply_trait_enter_untapped(event: &Event) -> Option<Event> {
 }
 
 fn apply_trait_enter_with_counters(
+    game: &GameState,
     event: &Event,
+    effect: &ReplacementEffect,
     counter_type: CounterType,
     count: u32,
     added_subtypes: &[crate::types::Subtype],
@@ -740,20 +744,73 @@ fn apply_trait_enter_with_counters(
         EventKind::ZoneChange => {
             let zone_change = downcast_event::<ZoneChangeEvent>(event.inner())?;
             if zone_change.to == Zone::Battlefield {
-                Some(
-                    event.rewrap(
-                        EnterBattlefieldEvent::new(*zone_change.objects.first()?, zone_change.from)
-                            .with_counters(counter_type, count)
-                            .with_added_subtypes(added_subtypes)
-                            .with_added_abilities(added_abilities),
-                    ),
-                )
+                if zone_change.objects.len() > 1
+                    && (!added_subtypes.is_empty() || !added_abilities.is_empty())
+                {
+                    return None;
+                }
+                let matching_objects = matching_zone_change_entering_objects(game, effect, zone_change);
+                if matching_objects.is_empty() {
+                    return None;
+                }
+                if zone_change.objects.len() == 1 {
+                    Some(
+                        event.rewrap(
+                            EnterBattlefieldEvent::new(matching_objects[0], zone_change.from)
+                                .with_counters(counter_type, count)
+                                .with_added_subtypes(added_subtypes)
+                                .with_added_abilities(added_abilities),
+                        ),
+                    )
+                } else {
+                    Some(event.rewrap(zone_change.with_enters_with_counters_for_objects(
+                        &matching_objects,
+                        counter_type,
+                        count,
+                    )))
+                }
             } else {
                 None
             }
         }
         _ => None,
     }
+}
+
+fn matching_zone_change_entering_objects(
+    game: &GameState,
+    effect: &ReplacementEffect,
+    zone_change: &crate::events::ZoneChangeEvent,
+) -> Vec<crate::ids::ObjectId> {
+    let Some(matcher) = effect.matcher.as_ref() else {
+        return Vec::new();
+    };
+    let ctx = crate::events::EventContext::for_replacement_effect(
+        effect.controller,
+        effect.source,
+        game,
+    );
+
+    zone_change
+        .objects
+        .iter()
+        .copied()
+        .filter(|object| {
+            let snapshot = zone_change
+                .snapshots()
+                .iter()
+                .find(|snapshot| snapshot.object_id == *object)
+                .cloned();
+            let single = crate::events::ZoneChangeEvent::with_cause(
+                *object,
+                zone_change.from,
+                zone_change.to,
+                zone_change.cause.clone(),
+                snapshot,
+            );
+            matcher.matches_event(&single, &ctx)
+        })
+        .collect()
 }
 
 fn apply_trait_enter_as_copy(
@@ -909,7 +966,7 @@ fn resolve_trait_redirect_target(
     Some(new_target)
 }
 
-fn resolve_value_for_etb(
+pub(super) fn resolve_value_for_etb(
     count: &crate::effect::Value,
     game: &GameState,
     source: crate::ids::ObjectId,

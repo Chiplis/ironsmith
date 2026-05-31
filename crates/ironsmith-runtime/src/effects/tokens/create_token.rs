@@ -90,27 +90,43 @@ impl EffectExecutor for CreateTokenEffect {
         );
         let entry_options = TokenEntryOptions::new(self.enters_tapped, self.enters_attacking);
 
-        let mut created_ids = Vec::with_capacity(count);
-        let mut events = Vec::with_capacity(count);
-        let pending_start = game.effect_store.pending_trigger_events.len();
-
+        let mut pending_token_ids = Vec::with_capacity(count);
+        let mut token_tracks_creature_etb = Vec::with_capacity(count);
         for _ in 0..count {
             let id = game.new_object_id();
             let mut token_obj = Object::from_token_definition(id, &self.token, controller_id);
             token_obj.zone = Zone::Command;
-            let token_is_creature = token_obj.is_creature();
-
+            token_tracks_creature_etb.push(token_obj.is_creature());
             game.add_object(token_obj);
+            pending_token_ids.push(id);
+        }
+
+        let batch_initial_counters =
+            crate::events::processing::take_one_shot_enter_with_counters_for_batch(
+                game,
+                &pending_token_ids,
+                Zone::Command,
+                ctx.cause.clone(),
+            );
+
+        let mut created_ids = Vec::with_capacity(count);
+        let mut events = Vec::with_capacity(count);
+        let pending_start = game.effect_store.pending_trigger_events.len();
+
+        for (idx, id) in pending_token_ids.into_iter().enumerate() {
+            let initial_counters = batch_initial_counters.get(&id).cloned().unwrap_or_default();
             let entry_result = if self.suppress_aura_attachment_choice {
-                game.move_object_with_etb_processing_without_aura_attachment_choice(
+                game.move_object_with_etb_processing_without_aura_attachment_choice_with_initial_counters(
                     id,
                     Zone::Battlefield,
+                    initial_counters,
                     &mut ctx.decision_maker,
                 )
             } else {
-                game.move_object_with_etb_processing_with_dm(
+                game.move_object_with_etb_processing_with_initial_counters_with_dm(
                     id,
                     Zone::Battlefield,
+                    initial_counters,
                     &mut ctx.decision_maker,
                 )
             };
@@ -127,7 +143,8 @@ impl EffectExecutor for CreateTokenEffect {
             if entered_battlefield {
                 let effective_tapped = entry_result.enters_tapped || self.enters_tapped;
                 let entered_is_creature = game.current_is_creature(entered_id);
-                let tracks_creature_etb = entered_is_creature || token_is_creature;
+                let tracks_creature_etb = entered_is_creature
+                    || token_tracks_creature_etb.get(idx).copied().unwrap_or(false);
                 apply_token_battlefield_entry(
                     game,
                     ctx,

@@ -270,6 +270,109 @@ fn storyweave_saga_mode_adds_lore_and_next_enchantment_creature_enters_with_coun
 }
 
 #[test]
+fn storyweave_next_enchantment_creature_batch_puts_counters_on_each_matching_entry() {
+    let def = parse_oracle_card_definition("Storyweave");
+    let modal = storyweave_modal_effect(&def).clone();
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+
+    let storyweave_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let saga = CardDefinitionBuilder::new(CardId::from_raw(92_607), "Saga Probe")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Saga])
+        .build();
+    let saga_id = game.create_object_from_definition(&saga, alice, Zone::Battlefield);
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(storyweave_id, alice, &mut dm)
+        .with_chosen_modes(Some(vec![1]))
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(saga_id)])
+        .with_target_assignments(vec![storyweave_target_assignment(&modal, 1)]);
+
+    modal
+        .execute(&mut game, &mut ctx)
+        .expect("Storyweave Saga mode should resolve");
+
+    let enchantment_creature = CardDefinitionBuilder::new(
+        CardId::from_raw(92_608),
+        "Batch Enchantment Creature",
+    )
+    .card_types(vec![CardType::Enchantment, CardType::Creature])
+    .power_toughness(PowerToughness::fixed(2, 2))
+    .build();
+    let non_enchantment_creature = CardDefinitionBuilder::new(
+        CardId::from_raw(92_609),
+        "Batch Non-Enchantment Creature",
+    )
+    .card_types(vec![CardType::Creature])
+    .power_toughness(PowerToughness::fixed(2, 2))
+    .build();
+
+    let first = game.create_object_from_definition(&enchantment_creature, alice, Zone::Hand);
+    let non_matching =
+        game.create_object_from_definition(&non_enchantment_creature, alice, Zone::Hand);
+    let second = game.create_object_from_definition(&enchantment_creature, alice, Zone::Hand);
+    let entries = game.move_objects_with_etb_processing(
+        &[first, non_matching, second],
+        Zone::Battlefield,
+    );
+    assert_eq!(entries.len(), 3, "all batch objects should enter");
+
+    assert_eq!(
+        game.counter_count(entries[0].new_id, CounterType::PlusOnePlusOne),
+        2,
+        "the first matching enchantment creature in a simultaneous event should get counters"
+    );
+    assert_eq!(
+        game.counter_count(entries[1].new_id, CounterType::PlusOnePlusOne),
+        0,
+        "nonmatching objects in the same simultaneous event should not get counters"
+    );
+    assert_eq!(
+        game.counter_count(entries[2].new_id, CounterType::PlusOnePlusOne),
+        2,
+        "each matching enchantment creature in the simultaneous event should get counters"
+    );
+
+    let later = game.create_object_from_definition(&enchantment_creature, alice, Zone::Hand);
+    let later_entry = game
+        .move_object_with_etb_processing(later, Zone::Battlefield)
+        .expect("later enchantment creature should enter");
+    assert_eq!(
+        game.counter_count(later_entry.new_id, CounterType::PlusOnePlusOne),
+        0,
+        "Storyweave's one-shot replacement should be consumed once by the simultaneous batch"
+    );
+
+    let mut second_ctx = crate::effects::ExecutionContext::new(storyweave_id, alice, &mut dm)
+        .with_chosen_modes(Some(vec![1]))
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(saga_id)])
+        .with_target_assignments(vec![storyweave_target_assignment(&modal, 1)]);
+    modal
+        .execute(&mut game, &mut second_ctx)
+        .expect("Storyweave Saga mode should resolve a second time for token coverage");
+
+    let token = CardDefinitionBuilder::new(CardId::from_raw(92_610), "Storyweave Token")
+        .token()
+        .card_types(vec![CardType::Enchantment, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let mut token_ctx = crate::effects::ExecutionContext::new(storyweave_id, alice, &mut dm);
+    let token_outcome = CreateTokenEffect::new(token, 2, PlayerFilter::Specific(alice))
+        .execute(&mut game, &mut token_ctx)
+        .expect("token creation should resolve");
+    let token_ids = token_outcome.objects().expect("token IDs should be returned");
+    assert_eq!(token_ids.len(), 2);
+    assert!(
+        token_ids
+            .iter()
+            .all(|id| game.counter_count(*id, CounterType::PlusOnePlusOne) == 2),
+        "one token-creation event should give counters to each matching token entering in that event"
+    );
+}
+
+#[test]
 fn storyweave_future_etb_replacement_expires_at_cleanup() {
     let def = parse_oracle_card_definition("Storyweave");
     let modal = storyweave_modal_effect(&def).clone();

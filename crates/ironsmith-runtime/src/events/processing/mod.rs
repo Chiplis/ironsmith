@@ -2617,6 +2617,85 @@ pub struct TokenCreationReplacementResult {
     pub additional_tokens: Vec<(ironsmith_core::AdditionalTokenKind, u32)>,
 }
 
+/// Apply one-shot "the next time one or more ... enter" counter replacements to
+/// a simultaneous ETB batch and consume each matching replacement once.
+pub(crate) fn take_one_shot_enter_with_counters_for_batch(
+    game: &mut GameState,
+    objects: &[ObjectId],
+    from: Zone,
+    cause: crate::events::cause::EventCause,
+) -> std::collections::HashMap<ObjectId, Vec<(CounterType, u32)>> {
+    use crate::events::ZoneChangeEvent;
+
+    if objects.len() <= 1 {
+        return std::collections::HashMap::new();
+    }
+
+    game.update_replacement_effects();
+    let effects = game
+        .effect_store
+        .replacement_effects
+        .effects()
+        .iter()
+        .filter(|effect| game.effect_store.replacement_effects.is_one_shot(effect.id))
+        .filter(|effect| {
+            matches!(
+                &effect.replacement,
+                ReplacementAction::EnterWithCounters {
+                    added_subtypes,
+                    added_abilities,
+                    ..
+                } if added_subtypes.is_empty() && added_abilities.is_empty()
+            )
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+
+    if effects.is_empty() {
+        return std::collections::HashMap::new();
+    }
+
+    let provenance = game
+        .provenance_graph_mut()
+        .alloc_root_event(crate::events::EventKind::ZoneChange);
+    let mut current_event = Event::new_with_provenance(
+        ZoneChangeEvent::batch(objects.to_vec(), from, Zone::Battlefield, cause),
+        provenance,
+    );
+    let mut counters_by_object: std::collections::HashMap<ObjectId, Vec<(CounterType, u32)>> =
+        std::collections::HashMap::new();
+
+    for effect in effects {
+        if trait_effect_matches_event(game, &effect, &current_event, None).is_none() {
+            continue;
+        }
+
+        let result = apply_trait_replacement(game, current_event.clone(), &effect);
+        consume_one_shot_if_applied(game, effect.id, &result);
+
+        let TraitApplyResult::Modified(modified_event) = result else {
+            continue;
+        };
+        let Some(zone_change) =
+            crate::events::downcast_event::<ZoneChangeEvent>(modified_event.inner())
+        else {
+            current_event = modified_event;
+            continue;
+        };
+
+        counters_by_object.clear();
+        for (object, counter_type, count) in &zone_change.enters_with_counters {
+            counters_by_object
+                .entry(*object)
+                .or_default()
+                .push((*counter_type, *count));
+        }
+        current_event = modified_event;
+    }
+
+    counters_by_object
+}
+
 /// Process a token creation event with known token characteristics.
 ///
 /// Returns the final original-token count and any separately defined tokens added by replacements.

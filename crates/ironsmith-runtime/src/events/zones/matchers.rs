@@ -62,8 +62,8 @@ impl ReplacementMatcher for WouldEnterBattlefieldMatcher {
                 }
                 zone_change
                     .objects
-                    .first()
-                    .is_some_and(|&id| self.matches_would_enter_object(id, ctx))
+                    .iter()
+                    .any(|&id| self.matches_would_enter_object(id, ctx))
             }
             EventKind::EnterBattlefield => {
                 let Some(etb) = downcast_event::<EnterBattlefieldEvent>(event) else {

@@ -7,6 +7,7 @@ use crate::events::cause::EventCause;
 use crate::events::traits::{EventKind, GameEventType};
 use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId};
+use crate::object::CounterType;
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
 use crate::zone::Zone;
@@ -40,6 +41,9 @@ pub struct ZoneChangeEvent {
     pub snapshots: Vec<ObjectSnapshot>,
     /// Optional tagged object snapshots attached to this zone-change event.
     pub object_tags: HashMap<TagKey, Vec<ObjectSnapshot>>,
+    /// Counters individual objects should enter with when a batch ETB replacement
+    /// applies to only the matching objects in the batch.
+    pub enters_with_counters: Vec<(ObjectId, CounterType, u32)>,
 }
 
 impl ZoneChangeEvent {
@@ -60,6 +64,7 @@ impl ZoneChangeEvent {
             snapshots: snapshot.iter().cloned().collect(),
             snapshot,
             object_tags: HashMap::new(),
+            enters_with_counters: Vec::new(),
         }
     }
 
@@ -81,6 +86,7 @@ impl ZoneChangeEvent {
             snapshots: snapshot.iter().cloned().collect(),
             snapshot,
             object_tags: HashMap::new(),
+            enters_with_counters: Vec::new(),
         }
     }
 
@@ -107,6 +113,7 @@ impl ZoneChangeEvent {
             snapshot,
             snapshots,
             object_tags: HashMap::new(),
+            enters_with_counters: Vec::new(),
         }
     }
 
@@ -122,6 +129,31 @@ impl ZoneChangeEvent {
     pub fn with_object_tag(mut self, tag: TagKey, snapshot: ObjectSnapshot) -> Self {
         self.object_tags.entry(tag).or_default().push(snapshot);
         self
+    }
+
+    /// Return a new event with additional enters-with-counters records for the
+    /// supplied destination objects.
+    pub fn with_enters_with_counters_for_objects(
+        &self,
+        objects: &[ObjectId],
+        counter_type: CounterType,
+        count: u32,
+    ) -> Self {
+        let mut enters_with_counters = self.enters_with_counters.clone();
+        for object in objects {
+            if let Some((_, _, existing)) = enters_with_counters
+                .iter_mut()
+                .find(|(id, ct, _)| id == object && *ct == counter_type)
+            {
+                *existing = existing.saturating_add(count);
+            } else {
+                enters_with_counters.push((*object, counter_type, count));
+            }
+        }
+        Self {
+            enters_with_counters,
+            ..self.clone()
+        }
     }
 
     /// The destination-zone objects represented by this event.
