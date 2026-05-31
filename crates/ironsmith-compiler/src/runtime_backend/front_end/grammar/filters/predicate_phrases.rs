@@ -1073,7 +1073,11 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::ItMatches(filter));
     }
 
-    if filtered.len() >= 3 && filtered[0] == "opponent" && filtered[1] == "controls" {
+    if filtered.len() >= 3
+        && filtered[0] == "opponent"
+        && filtered[1] == "controls"
+        && !(filtered[2] == "more" && word_slice_contains_word(&filtered[3..], "than"))
+    {
         let control_tokens = filtered[2..]
             .iter()
             .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
@@ -1094,6 +1098,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         && raw_words[0] == "an"
         && raw_words[1] == "opponent"
         && raw_words[2] == "controls"
+        && !(raw_words[3] == "more" && word_slice_contains_word(&raw_words[4..], "than"))
     {
         let control_tokens = raw_words[3..]
             .iter()
@@ -3607,6 +3612,35 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                 player: PlayerAst::You,
                 tag: TagKey::from(IT_TAG),
                 filter: ObjectFilter::default().in_zone(Zone::Hand),
+            },
+        )));
+    }
+
+    let didnt_put_onto_battlefield = matches!(
+        filtered.as_slice(),
+        ["you", "dont", "put", "the", "card", "onto", "battlefield"]
+            | ["you", "didnt", "put", "the", "card", "onto", "battlefield"]
+            | [
+                "you", "did", "not", "put", "the", "card", "onto", "battlefield"
+            ]
+            | ["you", "dont", "put", "card", "onto", "battlefield"]
+            | ["you", "didnt", "put", "card", "onto", "battlefield"]
+            | ["you", "did", "not", "put", "card", "onto", "battlefield"]
+            | ["you", "dont", "put", "that", "card", "onto", "battlefield"]
+            | ["you", "didnt", "put", "that", "card", "onto", "battlefield"]
+            | [
+                "you", "did", "not", "put", "that", "card", "onto", "battlefield"
+            ]
+            | ["you", "dont", "put", "it", "onto", "battlefield"]
+            | ["you", "didnt", "put", "it", "onto", "battlefield"]
+            | ["you", "did", "not", "put", "it", "onto", "battlefield"]
+    );
+    if didnt_put_onto_battlefield {
+        return Ok(PredicateAst::Not(Box::new(
+            PredicateAst::PlayerTaggedObjectMatches {
+                player: PlayerAst::You,
+                tag: TagKey::from(IT_TAG),
+                filter: ObjectFilter::default().in_zone(Zone::Battlefield),
             },
         )));
     }

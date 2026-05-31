@@ -42226,6 +42226,283 @@ fn bucolic_ranch_activated_ability_can_decline_hand_and_bottom_the_card() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn scholar_of_new_horizons_strict_regression_parses() {
+    assert_oracle_card_parses_strict("Scholar of New Horizons");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn scholar_of_new_horizons_compiled_text_keeps_optional_battlefield_and_fallback_hand() {
+    let def = parse_oracle_card_definition("Scholar of New Horizons");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    let lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        lower.contains("search your library for a plains card and reveal it"),
+        "expected Plains search and reveal text, got {rendered}"
+    );
+    assert!(
+        lower.contains("if an opponent controls more lands than you, you may put that card onto the battlefield tapped"),
+        "expected optional battlefield branch keyed by more lands, got {rendered}"
+    );
+    assert!(
+        lower.contains("if you don't put the card onto the battlefield, put it into your hand")
+            || lower.contains("if you dont put the card onto the battlefield, put it into your hand"),
+        "expected fallback hand branch keyed by not putting onto battlefield, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn scholar_of_new_horizons_enters_with_plus_one_counter() {
+    let def = parse_oracle_card_definition("Scholar of New Horizons");
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let scholar_in_hand = game.create_object_from_definition(&def, alice, Zone::Hand);
+    let scholar = game
+        .move_object_with_etb_processing(scholar_in_hand, Zone::Battlefield)
+        .expect("Scholar of New Horizons should enter")
+        .new_id;
+
+    assert_eq!(game.counter_count(scholar, CounterType::PlusOnePlusOne), 1);
+    assert!(
+        game.object(scholar).is_some(),
+        "Scholar should remain on the battlefield"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[derive(Default)]
+struct ScholarOfNewHorizonsDecisionMaker {
+    object_choice: Option<ObjectId>,
+    boolean_decisions: Vec<bool>,
+    boolean_index: usize,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl crate::decision::DecisionMaker for ScholarOfNewHorizonsDecisionMaker {
+    fn decide_objects(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        if let Some(choice) = self.object_choice
+            && ctx
+                .candidates
+                .iter()
+                .any(|candidate| candidate.legal && candidate.id == choice)
+        {
+            return vec![choice];
+        }
+        ctx.candidates
+            .iter()
+            .filter(|candidate| candidate.legal)
+            .map(|candidate| candidate.id)
+            .take(ctx.min)
+            .collect()
+    }
+
+    fn decide_boolean(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        let choice = self
+            .boolean_decisions
+            .get(self.boolean_index)
+            .copied()
+            .unwrap_or(false);
+        self.boolean_index += 1;
+        choice
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn scholar_of_new_horizons_activated_ability(
+    def: &CardDefinition,
+) -> &crate::ability::ActivatedAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Scholar of New Horizons should have an activated ability")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn scholar_test_land(name: &str) -> crate::card::Card {
+    crate::card::CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Plains])
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn scholar_named_objects_in_zone(
+    game: &crate::game_state::GameState,
+    player: PlayerId,
+    zone: Zone,
+    name: &str,
+) -> Vec<ObjectId> {
+    game.objects_in_zone(zone)
+        .into_iter()
+        .filter(|&id| {
+            game.object(id)
+                .is_some_and(|object| object.name == name && game.controller_of(object) == player)
+        })
+        .collect()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn execute_scholar_of_new_horizons_activation(
+    opponent_has_more_lands: bool,
+    put_onto_battlefield: bool,
+) -> (
+    crate::game_state::GameState,
+    PlayerId,
+    PlayerId,
+    ObjectId,
+    ObjectId,
+    usize,
+) {
+    let def = parse_oracle_card_definition("Scholar of New Horizons");
+    let activated = scholar_of_new_horizons_activated_ability(&def);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let scholar_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let plains_id = game.create_object_from_card(
+        &scholar_test_land("Searched Plains"),
+        alice,
+        Zone::Library,
+    );
+
+    let (alice_lands, bob_lands) = if opponent_has_more_lands {
+        (1, 2)
+    } else {
+        (2, 1)
+    };
+    for idx in 0..alice_lands {
+        game.create_object_from_card(
+            &scholar_test_land(&format!("Alice Land {idx}")),
+            alice,
+            Zone::Battlefield,
+        );
+    }
+    for idx in 0..bob_lands {
+        game.create_object_from_card(
+            &scholar_test_land(&format!("Bob Land {idx}")),
+            bob,
+            Zone::Battlefield,
+        );
+    }
+
+    let mut dm = ScholarOfNewHorizonsDecisionMaker {
+        object_choice: Some(plains_id),
+        boolean_decisions: vec![put_onto_battlefield],
+        boolean_index: 0,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(scholar_id, alice, &mut dm);
+    for effect in &activated.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Scholar of New Horizons activation should resolve");
+    }
+    drop(ctx);
+    let boolean_count = dm.boolean_index;
+
+    (game, alice, bob, scholar_id, plains_id, boolean_count)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn scholar_of_new_horizons_activation_cost_keeps_tap_and_remove_counter_from_permanent() {
+    let def = parse_oracle_card_definition("Scholar of New Horizons");
+    let activated = scholar_of_new_horizons_activated_ability(&def);
+    let cost_debug = format!("{:#?}", activated.mana_cost).to_ascii_lowercase();
+
+    assert!(cost_debug.contains("tapeffect"), "expected tap cost, got {cost_debug}");
+    assert!(
+        cost_debug.contains("removeanycountersamongeffect")
+            && cost_debug.contains("min_count: 1")
+            && cost_debug.contains("controller: some(")
+            && cost_debug.contains("you"),
+        "expected remove-a-counter-from-a-permanent-you-control cost, got {cost_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn scholar_of_new_horizons_more_lands_accepts_battlefield_branch_tapped() {
+    let (game, alice, _bob, _scholar_id, _plains_id, boolean_count) =
+        execute_scholar_of_new_horizons_activation(true, true);
+
+    assert_eq!(
+        boolean_count, 1,
+        "more-lands branch should offer the optional battlefield choice"
+    );
+    let battlefield_plains =
+        scholar_named_objects_in_zone(&game, alice, Zone::Battlefield, "Searched Plains");
+    assert_eq!(
+        battlefield_plains.len(),
+        1,
+        "searched Plains should be on the battlefield"
+    );
+    assert!(
+        game.is_tapped(battlefield_plains[0]),
+        "accepted Plains should enter tapped"
+    );
+    assert!(
+        scholar_named_objects_in_zone(&game, alice, Zone::Hand, "Searched Plains").is_empty(),
+        "accepted Plains should not also be in hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn scholar_of_new_horizons_more_lands_declines_battlefield_and_puts_card_in_hand() {
+    let (game, alice, _bob, _scholar_id, _plains_id, boolean_count) =
+        execute_scholar_of_new_horizons_activation(true, false);
+
+    assert_eq!(
+        boolean_count, 1,
+        "more-lands branch should offer the optional battlefield choice"
+    );
+    assert_eq!(
+        scholar_named_objects_in_zone(&game, alice, Zone::Hand, "Searched Plains").len(),
+        1,
+        "declined Plains should be put into hand"
+    );
+    assert!(
+        scholar_named_objects_in_zone(&game, alice, Zone::Battlefield, "Searched Plains").is_empty(),
+        "declined Plains should not be on the battlefield"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn scholar_of_new_horizons_without_more_lands_skips_battlefield_choice_and_puts_card_in_hand() {
+    let (game, alice, _bob, _scholar_id, _plains_id, boolean_count) =
+        execute_scholar_of_new_horizons_activation(false, true);
+
+    assert_eq!(
+        boolean_count, 0,
+        "without more lands, the optional battlefield choice should not be offered"
+    );
+    assert_eq!(
+        scholar_named_objects_in_zone(&game, alice, Zone::Hand, "Searched Plains").len(),
+        1,
+        "without more lands, Plains should be put into hand"
+    );
+    assert!(
+        scholar_named_objects_in_zone(&game, alice, Zone::Battlefield, "Searched Plains").is_empty(),
+        "without more lands, Plains should not be on the battlefield"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn woodlurker_mimic_strict_regression_parses() {
     assert_oracle_card_parses_strict("Woodlurker Mimic");
 }
