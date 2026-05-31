@@ -1719,6 +1719,7 @@ fn compile_subject_verb_effect(
         SubjectVerbActionAst::RedirectNextTimeDamageToSource {
             source,
             target,
+            destination,
             all_this_turn,
         } => {
             let source_spec = match source {
@@ -1737,6 +1738,14 @@ fn compile_subject_verb_effect(
                     source_spec.clone(),
                     spec,
                 );
+                let effect = match destination {
+                    crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceObject => {
+                        effect
+                    }
+                    crate::cards::builders::RedirectNextTimeDamageDestinationAst::Controller => {
+                        effect.to_controller()
+                    }
+                };
                 let effect = if *all_this_turn {
                     effect.all_this_turn()
                 } else {

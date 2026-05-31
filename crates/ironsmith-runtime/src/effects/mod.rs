@@ -133,7 +133,8 @@ pub use damage::{
     ClearDamageEffect, DealDamageEffect, DealDistributedDamageEffect, PreventNextTimeDamageEffect,
     PreventNextTimeDamageSource, PreventNextTimeDamageTarget,
     RedirectAllDamageThisTurnToTargetEffect, RedirectNextDamageToTargetEffect,
-    RedirectNextTimeDamageSource, RedirectNextTimeDamageToSourceEffect,
+    RedirectNextTimeDamageDestination, RedirectNextTimeDamageSource,
+    RedirectNextTimeDamageToSourceEffect,
 };
 pub use delayed::{
     ExileTaggedWhenSourceLeavesEffect, SacrificeSourceWhenTaggedLeavesEffect,

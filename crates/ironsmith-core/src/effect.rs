@@ -119,6 +119,12 @@ pub enum RedirectNextTimeDamageSource {
     Filter(crate::filter_model::ObjectFilter),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RedirectNextTimeDamageDestination {
+    SourceObject,
+    Controller,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum RetargetMode {
     All,
@@ -3457,6 +3463,7 @@ impl RedirectNextDamageToTargetEffect {
 pub struct RedirectNextTimeDamageToSourceEffect {
     pub source: RedirectNextTimeDamageSource,
     pub target: Option<ChooseSpec>,
+    pub destination: RedirectNextTimeDamageDestination,
     pub all_this_turn: bool,
 }
 
@@ -3465,8 +3472,14 @@ impl RedirectNextTimeDamageToSourceEffect {
         Self {
             source,
             target: Some(target),
+            destination: RedirectNextTimeDamageDestination::SourceObject,
             all_this_turn: false,
         }
+    }
+
+    pub fn to_controller(mut self) -> Self {
+        self.destination = RedirectNextTimeDamageDestination::Controller;
+        self
     }
 
     pub fn all_this_turn(mut self) -> Self {

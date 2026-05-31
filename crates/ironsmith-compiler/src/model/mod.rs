@@ -14,8 +14,8 @@ pub use parse_types::{
     ClashOpponentAst, ControlDurationAst, DamageBySpec, ExchangeValueAst, ExchangeValueKindAst,
     ExtraTurnAnchorAst, LibraryBottomOrderAst, LibraryConsultModeAst, LibraryConsultStopRuleAst,
     ObjectRefAst, PlayerAst, PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst,
-    RetargetModeAst, ReturnControllerAst, SearchLibrarySlotAst, SharedTypeConstraintAst, TargetAst,
-    ZoneReplacementDurationAst,
+    RedirectNextTimeDamageDestinationAst, RetargetModeAst, ReturnControllerAst,
+    SearchLibrarySlotAst, SharedTypeConstraintAst, TargetAst, ZoneReplacementDurationAst,
 };
 pub use reference::{
     AnnotatedEffect, AnnotatedEffectSequence, LoweredEffects, RefState, ReferenceEnv,
