@@ -15,6 +15,8 @@ pub struct ThisAttacksWithNOthersTrigger {
     pub other_count: usize,
     /// Whether the trigger requires exactly that many other attackers.
     pub exact: bool,
+    /// Optional rendered subject, used when the parser saw a named source.
+    pub display_subject: Option<String>,
 }
 
 impl ThisAttacksWithNOthersTrigger {
@@ -22,6 +24,15 @@ impl ThisAttacksWithNOthersTrigger {
         Self {
             other_count,
             exact: false,
+            display_subject: None,
+        }
+    }
+
+    pub fn with_display_subject(other_count: usize, display_subject: Option<String>) -> Self {
+        Self {
+            other_count,
+            exact: false,
+            display_subject,
         }
     }
 
@@ -29,6 +40,7 @@ impl ThisAttacksWithNOthersTrigger {
         Self {
             other_count,
             exact: true,
+            display_subject: None,
         }
     }
 }
@@ -67,8 +79,9 @@ impl TriggerMatcher for ThisAttacksWithNOthersTrigger {
                 "Whenever this creature attacks, if you attacked with exactly {count} other {noun} this combat"
             )
         } else {
+            let subject = self.display_subject.as_deref().unwrap_or("this creature");
             format!(
-                "Whenever this creature and at least {} other {} attack",
+                "Whenever {subject} and at least {} other {} attack",
                 self.other_count, noun
             )
         }
@@ -175,5 +188,18 @@ mod tests {
             crate::provenance::ProvNodeId::default(),
         );
         assert!(!trigger.matches(&too_many_event, &ctx));
+    }
+
+    #[test]
+    fn paladin_elizabeth_taggerdy_named_battalion_display_keeps_threshold_subject() {
+        let trigger = ThisAttacksWithNOthersTrigger::with_display_subject(
+            2,
+            Some("Paladin Elizabeth Taggerdy".to_string()),
+        );
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever Paladin Elizabeth Taggerdy and at least 2 other creatures attack"
+        );
     }
 }

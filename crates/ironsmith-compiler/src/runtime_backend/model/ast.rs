@@ -102,6 +102,10 @@ pub(crate) enum TriggerSpec {
         display: String,
     },
     ThisAttacks,
+    ThisAttacksWithNOthers {
+        other_count: u32,
+        display_subject: Option<String>,
+    },
     ThisAttacksWithExactlyNOthers(u32),
     ThisAttacksAndIsntBlocked,
     ThisAttacksWhileSaddled,
@@ -1091,6 +1095,7 @@ pub(crate) enum SubjectVerbActionAst {
         to_top: bool,
         battlefield_controller: ReturnControllerAst,
         battlefield_tapped: bool,
+        battlefield_attacking: bool,
         attached_to: Option<TargetAst>,
     },
     MoveToLibraryTopOrBottomChoice {
@@ -2324,6 +2329,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 to_top,
                 battlefield_controller,
                 battlefield_tapped,
+                battlefield_attacking,
                 attached_to,
             } => f
                 .debug_struct("MoveToZone")
@@ -2332,6 +2338,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("to_top", to_top)
                 .field("battlefield_controller", battlefield_controller)
                 .field("battlefield_tapped", battlefield_tapped)
+                .field("battlefield_attacking", battlefield_attacking)
                 .field("attached_to", attached_to)
                 .finish(),
             Self::MoveToLibraryTopOrBottomChoice { target } => f
@@ -3844,6 +3851,26 @@ impl EffectAst {
         battlefield_tapped: bool,
         attached_to: Option<TargetAst>,
     ) -> Self {
+        Self::subject_verb_move_to_zone_with_attacking(
+            target,
+            zone,
+            to_top,
+            battlefield_controller,
+            battlefield_tapped,
+            false,
+            attached_to,
+        )
+    }
+
+    pub(crate) fn subject_verb_move_to_zone_with_attacking(
+        target: TargetAst,
+        zone: Zone,
+        to_top: bool,
+        battlefield_controller: ReturnControllerAst,
+        battlefield_tapped: bool,
+        battlefield_attacking: bool,
+        attached_to: Option<TargetAst>,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3853,6 +3880,7 @@ impl EffectAst {
                 to_top,
                 battlefield_controller,
                 battlefield_tapped,
+                battlefield_attacking,
                 attached_to,
             },
         )

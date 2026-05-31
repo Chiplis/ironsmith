@@ -3420,6 +3420,36 @@ pub(crate) fn parse_trigger_clause_lexed(
                 .token_index_for_word_index(attack_word_idx)
                 .unwrap_or(tokens.len());
             let subject_tokens = &tokens[..attack_token_idx];
+            if let Some(and_idx) = find_index(subject_tokens, |token| token.is_word("and")) {
+                let left = trim_edge_punctuation(&subject_tokens[..and_idx]);
+                let right = trim_edge_punctuation(&subject_tokens[and_idx + 1..]);
+                if !left.is_empty()
+                    && token_slice_at_is(&right, 0, "at")
+                    && token_slice_at_is(&right, 1, "least")
+                    && let Some((other_count, used)) = parse_number(&right[2..])
+                    && right
+                        .get(2 + used)
+                        .is_some_and(|token| token.is_word("other"))
+                    && right.get(3 + used).is_some_and(|token| {
+                        token.is_word("creature") || token.is_word("creatures")
+                    })
+                {
+                    let rendered_subject =
+                        crate::runtime_backend::lexer::render_token_slice(&left)
+                            .trim()
+                            .to_string();
+                    let display_subject = if rendered_subject == "this" {
+                        current_source_reference_name()
+                    } else {
+                        Some(rendered_subject)
+                    }
+                    .filter(|subject| !subject.is_empty());
+                    return Ok(TriggerSpec::ThisAttacksWithNOthers {
+                        other_count,
+                        display_subject,
+                    });
+                }
+            }
             let player_subject = trigger_subject_player_selector_lexed(subject_tokens).is_some();
             let one_or_more = ActivationRestrictionCompatWords::new(subject_tokens)
                 .slice_eq(0, &["one", "or", "more"])

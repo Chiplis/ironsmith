@@ -1170,12 +1170,6 @@ pub(crate) fn parse_put_into_hand(
         destination_tail.retain(|token| !token.is_word("and"));
         destination_tail.retain(|token| !token.is_word("tapped"));
         destination_tail.retain(|token| !token.is_word("attacking"));
-        if battlefield_attacking {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported put destination after 'onto' (clause: '{}')",
-                clause_words.join(" ")
-            )));
-        }
 
         let mut attached_to_target: Option<TargetAst> = None;
         if destination_tail
@@ -1286,12 +1280,13 @@ pub(crate) fn parse_put_into_hand(
             apply_source_zone_constraint(&mut target, Zone::Command);
         }
 
-        return Ok(EffectAst::subject_verb_move_to_zone(
+        return Ok(EffectAst::subject_verb_move_to_zone_with_attacking(
             target,
             Zone::Battlefield,
             false,
             battlefield_controller,
             battlefield_tapped,
+            battlefield_attacking,
             attached_to_target,
         ));
     }

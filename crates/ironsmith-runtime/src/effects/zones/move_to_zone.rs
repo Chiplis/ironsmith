@@ -1,6 +1,7 @@
 //! Move to zone effect implementation.
 
 use crate::effect::{EffectOutcome, OutcomeObjectMemory};
+use crate::combat_state::{AttackerInfo, get_attack_target};
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_tagged_object_id};
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -165,6 +166,15 @@ impl EffectExecutor for MoveToZoneEffect {
                         };
                         match move_to_battlefield_with_options(game, ctx, object_id, options) {
                             BattlefieldEntryOutcome::Moved(new_id) => {
+                                if self.enters_attacking
+                                    && let Some(combat) = game.combat.as_mut()
+                                    && let Some(target) = get_attack_target(combat, ctx.source).cloned()
+                                {
+                                    combat.attackers.push(AttackerInfo {
+                                        creature: new_id,
+                                        target,
+                                    });
+                                }
                                 ctx.refresh_target_snapshot(target_lki_before_move.clone());
                                 affected_memory.push(OutcomeObjectMemory::from_snapshot(
                                     &target_lki_before_move,
@@ -329,6 +339,7 @@ impl CostExecutableEffect for MoveToZoneEffect {
 mod tests {
     use super::*;
     use crate::card::CardBuilder;
+    use crate::combat_state::{AttackTarget, AttackerInfo, CombatState};
     use crate::effect::Effect;
     use crate::effects::ExecutionContext;
     use crate::events::zones::matchers::WouldGoToGraveyardMatcher;
@@ -353,6 +364,108 @@ mod tests {
             .build();
         game.add_object(Object::from_card(id, &card, owner, Zone::Battlefield));
         id
+    }
+
+    fn create_named_creature_in_zone(
+        game: &mut GameState,
+        owner: PlayerId,
+        name: &str,
+        zone: Zone,
+    ) -> crate::ids::ObjectId {
+        let id = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(id.0 as u32), name)
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::White],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .build();
+        game.add_object(Object::from_card(id, &card, owner, zone));
+        id
+    }
+
+    #[test]
+    fn paladin_elizabeth_taggerdy_move_enters_tapped_and_attacking_same_defender() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let paladin = create_named_creature_in_zone(
+            &mut game,
+            alice,
+            "Paladin Elizabeth Taggerdy",
+            Zone::Battlefield,
+        );
+        let vault_dweller =
+            create_named_creature_in_zone(&mut game, alice, "Vault Dweller", Zone::Hand);
+        game.combat = Some(CombatState {
+            attackers: vec![AttackerInfo {
+                creature: paladin,
+                target: AttackTarget::Player(bob),
+            }],
+            ..CombatState::default()
+        });
+
+        let mut ctx = ExecutionContext::new_default(paladin, alice);
+        let outcome = MoveToZoneEffect::new(
+            ChooseSpec::SpecificObject(vault_dweller),
+            Zone::Battlefield,
+            false,
+        )
+        .tapped()
+        .attacking()
+        .execute(&mut game, &mut ctx)
+        .expect("Paladin Elizabeth Taggerdy move should resolve");
+
+        let moved = outcome
+            .affected_objects()
+            .and_then(|ids| ids.first().copied())
+            .or_else(|| match outcome.value {
+                crate::effect::OutcomeValue::Objects(ref ids) => ids.first().copied(),
+                _ => None,
+            })
+            .expect("moved creature id should be reported");
+        assert!(game.battlefield.contains(&moved));
+        assert!(game.is_tapped(moved), "moved creature should enter tapped");
+        let combat = game.combat.as_ref().expect("combat should remain active");
+        let moved_attacker = combat
+            .attackers
+            .iter()
+            .find(|info| info.creature == moved)
+            .expect("moved creature should enter attacking");
+        assert_eq!(moved_attacker.target, AttackTarget::Player(bob));
+    }
+
+    #[test]
+    fn paladin_elizabeth_taggerdy_move_without_active_combat_does_not_attack() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let paladin = create_named_creature_in_zone(
+            &mut game,
+            alice,
+            "Paladin Elizabeth Taggerdy",
+            Zone::Battlefield,
+        );
+        let vault_dweller =
+            create_named_creature_in_zone(&mut game, alice, "Vault Dweller", Zone::Hand);
+
+        let mut ctx = ExecutionContext::new_default(paladin, alice);
+        let outcome = MoveToZoneEffect::new(
+            ChooseSpec::SpecificObject(vault_dweller),
+            Zone::Battlefield,
+            false,
+        )
+        .tapped()
+        .attacking()
+        .execute(&mut game, &mut ctx)
+        .expect("Paladin Elizabeth Taggerdy move should resolve outside combat");
+
+        let moved = match outcome.value {
+            crate::effect::OutcomeValue::Objects(ids) => ids[0],
+            _ => panic!("expected moved object id"),
+        };
+        assert!(game.battlefield.contains(&moved));
+        assert!(game.is_tapped(moved), "moved creature should still enter tapped");
+        assert!(game.combat.is_none(), "no attacker should be added without combat");
     }
 
     #[test]

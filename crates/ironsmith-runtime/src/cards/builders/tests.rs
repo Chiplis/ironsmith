@@ -35101,6 +35101,48 @@ fn parse_fallen_shinobi_uses_top_library_exile_and_plural_play_permission() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_paladin_elizabeth_taggerdy_battalion_puts_hand_creature_tapped_and_attacking() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Paladin Elizabeth Taggerdy")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 2))
+        .parse_text(
+            "Battalion — Whenever Paladin Elizabeth Taggerdy and at least two other creatures attack, draw a card, then you may put a creature card with mana value X or less from your hand onto the battlefield tapped and attacking, where X is Paladin Elizabeth Taggerdy's power.",
+        )
+        .expect("Paladin Elizabeth Taggerdy should parse strictly");
+
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("thisattackswithnotherstrigger") && debug.contains("other_count: 2"),
+        "expected battalion-style source-plus-two-others trigger, got {debug}"
+    );
+    assert!(
+        debug.contains("lessthanorequalexpr")
+            && debug.contains("wherexis")
+            && debug.contains("paladin elizabeth taggerdy"),
+        "expected mana-value X gate to keep the named source-power binding, got {debug}"
+    );
+    assert!(
+        debug.contains("enters_attacking: true"),
+        "expected battlefield move to enter attacking, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("paladin elizabeth taggerdy and at least")
+            && rendered.contains("other creatures attack"),
+        "expected named battalion trigger wording, got {rendered}"
+    );
+    assert!(
+        rendered.contains("mana value x or less from your hand onto the battlefield tapped and attacking")
+            && rendered.contains("where x is paladin elizabeth taggerdy"),
+        "expected tapped-and-attacking hand put with source-power X binding, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_necropotence_style_face_down_exile_with_delayed_return() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Necropotence Variant")
         .card_types(vec![CardType::Enchantment])

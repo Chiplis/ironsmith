@@ -24,6 +24,10 @@ pub enum TriggerKind {
     ThisAttacks,
     ThisAttacksPlayerWithMostLife,
     ThisAttacksWithGreaterPower,
+    ThisAttacksWithNOthers {
+        count: usize,
+        display_subject: Option<String>,
+    },
     ThisAttacksWithExactNOthers {
         count: usize,
     },
@@ -361,6 +365,18 @@ impl Trigger {
         Self::typed(
             "this_attacks_with_greater_power",
             TriggerKind::ThisAttacksWithGreaterPower,
+        )
+    }
+    pub fn this_attacks_with_n_others_display_subject(
+        count: usize,
+        display_subject: Option<String>,
+    ) -> Self {
+        Self::typed(
+            "this_attacks_with_n_others",
+            TriggerKind::ThisAttacksWithNOthers {
+                count,
+                display_subject,
+            },
         )
     }
     pub fn this_attacks_with_exact_n_others(count: usize) -> Self {

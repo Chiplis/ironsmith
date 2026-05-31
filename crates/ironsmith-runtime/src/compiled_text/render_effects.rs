@@ -18834,8 +18834,13 @@ fn describe_for_players_choose_then_move_to_battlefield(
     } else {
         ""
     };
+    let attacking = if move_to_zone.enters_attacking {
+        " and attacking"
+    } else {
+        ""
+    };
     Some(format!(
-        "{subject} chooses {chosen} {choice_location}. Put those cards onto the battlefield{tapped} under your control"
+        "{subject} chooses {chosen} {choice_location}. Put those cards onto the battlefield{tapped}{attacking} under your control"
     ))
 }
 
@@ -20603,6 +20608,7 @@ pub(super) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
     if let Some(rest) = card_desc.strip_suffix(" hands") {
         card_desc = format!("{rest} hand");
     }
+    let where_x_suffix = apply_mana_value_where_x_surface(&mut card_desc, &choose.filter);
     if card_desc == "with different names" {
         card_desc = "card with different names".to_string();
     } else if card_desc == "with different powers" {
@@ -20646,18 +20652,46 @@ pub(super) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
     };
 
     if choose.count.is_single() {
-        return with_indefinite_article(&card_desc);
+        return format!("{}{}", with_indefinite_article(&card_desc), where_x_suffix);
     }
     if let Some(runtime_count) = describe_runtime_choice_count(choose) {
         let mut selection = describe_plural_selection(runtime_count, &card_desc);
         selection.push_str(&describe_runtime_choice_where_clause(choose).unwrap_or_default());
+        selection.push_str(&where_x_suffix);
         return selection;
     }
     if let Some(exact) = choose_exact_count(choose) {
         let count_text = number_word(exact as i32).unwrap_or_else(|| exact.to_string());
-        return describe_plural_selection(count_text, &card_desc);
+        let mut selection = describe_plural_selection(count_text, &card_desc);
+        selection.push_str(&where_x_suffix);
+        return selection;
     }
-    describe_plural_selection(describe_choice_count(&choose.count), &card_desc)
+    let mut selection = describe_plural_selection(describe_choice_count(&choose.count), &card_desc);
+    selection.push_str(&where_x_suffix);
+    selection
+}
+
+fn apply_mana_value_where_x_surface(card_desc: &mut String, filter: &ObjectFilter) -> String {
+    let Some(crate::filter::Comparison::LessThanOrEqualExpr(value)) = filter.mana_value.as_ref()
+    else {
+        return String::new();
+    };
+    if !value_prefers_where_x(value) {
+        return String::new();
+    }
+
+    let basis = describe_value(value);
+    let needle = format!("mana value {basis} or less");
+    if card_desc.contains(&needle) {
+        *card_desc = card_desc.replace(&needle, "mana value X or less");
+    } else if let Some(start) = card_desc.find("mana value ") {
+        let tail_start = start + "mana value ".len();
+        if let Some(rel_end) = card_desc[tail_start..].find(" or less") {
+            let end = tail_start + rel_end + " or less".len();
+            card_desc.replace_range(start..end, "mana value X or less");
+        }
+    }
+    format!(", where X is {basis}")
 }
 
 fn describe_stack_spell_choice(choose: &crate::effects::ChooseObjectsEffect) -> Option<String> {
@@ -21047,9 +21081,21 @@ pub(super) fn describe_choose_then_move_to_battlefield(
     };
 
     let chooser = describe_player_filter(&choose.chooser);
-    let chosen = describe_choose_selection(choose);
+    let mut chosen = describe_choose_selection(choose);
+    let where_x_clause = if let Some((head, tail)) = chosen.split_once(", where X is ") {
+        let tail = tail.to_string();
+        chosen = head.to_string();
+        format!(", where X is {tail}")
+    } else {
+        String::new()
+    };
     let tapped = if move_to_zone.enters_tapped {
         " tapped"
+    } else {
+        ""
+    };
+    let attacking = if move_to_zone.enters_attacking {
+        " and attacking"
     } else {
         ""
     };
@@ -21081,14 +21127,14 @@ pub(super) fn describe_choose_then_move_to_battlefield(
             "those cards"
         };
         return Some(format!(
-            "{} {choose_verb} {chosen} {choice_location}. Put {moved} onto the battlefield{tapped}{control_suffix}",
+            "{} {choose_verb} {chosen} {choice_location}. Put {moved} onto the battlefield{tapped}{attacking}{control_suffix}{where_x_clause}",
             capitalize_first(&chooser)
         ));
     }
 
     let put_verb = player_verb(&chooser, "put", "puts");
     Some(format!(
-        "{chooser} {put_verb} {chosen} {origin} onto the battlefield{tapped}{control_suffix}"
+        "{chooser} {put_verb} {chosen} {origin} onto the battlefield{tapped}{attacking}{control_suffix}{where_x_clause}"
     ))
 }
 
@@ -27606,6 +27652,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 } else {
                     ""
                 };
+                let attacking_suffix = if move_to_zone.enters_attacking {
+                    " and attacking"
+                } else {
+                    ""
+                };
                 let controller_suffix = match move_to_zone.battlefield_controller {
                     crate::effects::BattlefieldController::Preserve => "",
                     crate::effects::BattlefieldController::Owner => owner_control_suffix,
@@ -27616,9 +27667,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                         || tag.as_str().starts_with("exiled_")
                         || crate::cards::is_sentence_helper_tag(tag.as_str(), "exiled"))
                 {
-                    format!("Return {target} to the battlefield{tapped_suffix}{controller_suffix}")
+                    format!("Return {target} to the battlefield{tapped_suffix}{attacking_suffix}{controller_suffix}")
                 } else {
-                    format!("Put {target} onto the battlefield{tapped_suffix}{controller_suffix}")
+                    format!("Put {target} onto the battlefield{tapped_suffix}{attacking_suffix}{controller_suffix}")
                 }
             }
             Zone::Stack => format!("Put {target} on the stack"),
