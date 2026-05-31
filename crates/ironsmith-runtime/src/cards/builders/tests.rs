@@ -14876,6 +14876,53 @@ fn parse_swift_reconfiguration_vehicle_transform_line() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_spider_man_no_more_transform_strict_and_compiled_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Spider-Man No More")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(
+            "Enchant creature\nEnchanted creature is a Citizen with base power and toughness 1/1. It has defender and loses all other abilities.",
+        )
+        .expect("Spider-Man No More should parse strictly");
+
+    let static_ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        static_ids.contains(&StaticAbilityId::SetBasePowerToughnessForFilter),
+        "expected base power/toughness static ability, got {static_ids:?}"
+    );
+    assert!(
+        static_ids.contains(&StaticAbilityId::RemoveAllAbilitiesForFilter),
+        "expected ability-removal static ability, got {static_ids:?}"
+    );
+    assert!(
+        static_ids.contains(&StaticAbilityId::AttachedAbilityGrant),
+        "expected attached defender grant, got {static_ids:?}"
+    );
+    assert!(
+        static_ids.contains(&StaticAbilityId::SetCreatureSubtypes),
+        "expected Citizen to replace other creature types, got {static_ids:?}"
+    );
+
+    let compiled = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        compiled.contains("Enchanted creature is a Citizen with base power and toughness 1/1."),
+        "expected compact transform wording, got {compiled}"
+    );
+    assert!(
+        compiled.contains("It has defender and loses all other abilities."),
+        "expected defender-plus-other-abilities wording, got {compiled}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_ensoul_artifact_style_transform_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ensoul Artifact")
         .card_types(vec![CardType::Enchantment])
