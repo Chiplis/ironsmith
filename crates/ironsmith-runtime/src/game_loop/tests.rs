@@ -21979,6 +21979,182 @@ fn test_fallen_shinobi_trigger_exiles_top_two_cards_and_grants_play_permission()
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn mindleech_mass_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(90_467), "Mindleech Mass")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Horror])
+        .power_toughness(PowerToughness::fixed(6, 6))
+        .parse_text(
+            "Trample\nWhenever this creature deals combat damage to a player, you may look at that player's hand. If you do, you may cast a spell from among those cards without paying its mana cost.",
+        )
+        .expect("Mindleech Mass should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct MindleechMassDecisionMaker {
+    boolean_choices: Vec<bool>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for MindleechMassDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        if self.boolean_choices.is_empty() {
+            return false;
+        }
+        self.boolean_choices.remove(0)
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_mindleech_mass_damage_trigger(
+    game: &mut GameState,
+    definition: &crate::cards::CardDefinition,
+    source_id: ObjectId,
+    damaged_player: PlayerId,
+    dm: &mut dyn DecisionMaker,
+) {
+    let controller = game
+        .controller_of_id(source_id)
+        .expect("Mindleech Mass should have a controller");
+    let triggered = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Mindleech Mass should have a combat damage trigger");
+
+    let damage_event = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            source_id,
+            crate::events::DamageTarget::Player(damaged_player),
+            6,
+            true,
+            crate::events::cause::EventCause::combat_damage(source_id),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut ctx = ExecutionContext::new_default(source_id, controller)
+        .with_decision_maker(dm)
+        .with_triggering_event(damage_event);
+    for effect in &triggered.effects {
+        execute_effect(game, effect, &mut ctx).expect("Mindleech Mass trigger should resolve");
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn mindleech_mass_casts_spell_from_damaged_players_hand_without_paying() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let definition = mindleech_mass_definition();
+    let mindleech_id = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+
+    let spell = CardBuilder::new(CardId::from_raw(90_468), "Mindleech Victim Spell")
+        .card_types(vec![CardType::Sorcery])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+        .build();
+    let land = CardBuilder::new(CardId::from_raw(90_469), "Mindleech Victim Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let _spell_id = game.create_object_from_card(&spell, bob, Zone::Hand);
+    let land_id = game.create_object_from_card(&land, bob, Zone::Hand);
+
+    let mut dm = MindleechMassDecisionMaker {
+        boolean_choices: vec![true, true, true],
+    };
+    resolve_mindleech_mass_damage_trigger(&mut game, &definition, mindleech_id, bob, &mut dm);
+
+    assert!(
+        dm.boolean_choices.is_empty(),
+        "Mindleech Mass should consume the look and free-cast choices"
+    );
+
+    let stack_entry = game
+        .stack
+        .last()
+        .expect("accepting Mindleech Mass should cast the spell from hand");
+    assert_eq!(stack_entry.controller, alice);
+    assert_eq!(stack_entry.casting_method, crate::alternative_cast::CastingMethod::Normal);
+    let stack_spell = game
+        .object(stack_entry.object_id)
+        .expect("cast spell should be on stack");
+    assert_eq!(stack_spell.name, "Mindleech Victim Spell");
+    assert_eq!(stack_spell.zone, Zone::Stack);
+    assert_eq!(stack_spell.owner, bob);
+    assert!(
+        game.object(land_id).is_some_and(|object| object.zone == Zone::Hand),
+        "Mindleech Mass should not offer lands as spells to cast"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn mindleech_mass_declining_look_prevents_free_cast_branch() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let definition = mindleech_mass_definition();
+    let mindleech_id = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+
+    let spell = CardBuilder::new(CardId::from_raw(90_470), "Declined Mindleech Spell")
+        .card_types(vec![CardType::Sorcery])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+        .build();
+    let spell_id = game.create_object_from_card(&spell, bob, Zone::Hand);
+
+    let mut dm = MindleechMassDecisionMaker {
+        boolean_choices: vec![false],
+    };
+    resolve_mindleech_mass_damage_trigger(&mut game, &definition, mindleech_id, bob, &mut dm);
+
+    assert!(game.stack.is_empty(), "declining the look should skip the free-cast branch");
+    assert!(
+        game.object(spell_id).is_some_and(|object| object.zone == Zone::Hand),
+        "declining the look should leave the damaged player's spell in hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn mindleech_mass_declining_free_cast_leaves_spell_in_hand() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let definition = mindleech_mass_definition();
+    let mindleech_id = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+
+    let spell = CardBuilder::new(CardId::from_raw(90_471), "Uncast Mindleech Spell")
+        .card_types(vec![CardType::Sorcery])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+        .build();
+    let spell_id = game.create_object_from_card(&spell, bob, Zone::Hand);
+
+    let mut dm = MindleechMassDecisionMaker {
+        boolean_choices: vec![true, false],
+    };
+    resolve_mindleech_mass_damage_trigger(&mut game, &definition, mindleech_id, bob, &mut dm);
+
+    assert!(game.stack.is_empty(), "declining the free cast should not cast a spell");
+    assert!(
+        game.object(spell_id).is_some_and(|object| object.zone == Zone::Hand),
+        "declining the free cast should leave the damaged player's spell in hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn riveteers_charm_mode_one_limits_sacrifice_to_greatest_mana_value_ties() {
     struct ChooseSacrificeFromGreatestTie {

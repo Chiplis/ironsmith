@@ -33561,6 +33561,20 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             }
         }
 
+        if may_cast_matching.zone == Zone::Hand
+            && may_cast_matching.zone_owner != may_cast_matching.player
+            && may_cast_matching.filter
+                == crate::target::ObjectFilter::nonland().in_zone(Zone::Hand)
+            && matches!(
+                may_cast_matching.payment,
+                ironsmith_core::MayCastMatchingSpellPayment::WithoutPayingManaCost
+            )
+        {
+            return format!(
+                "{player} may cast a spell from among those cards without paying its mana cost"
+            );
+        }
+
         let mut spell_text = if let Some(kind) = may_cast_matching.filter.alternative_cast {
             format!("a spell with {}", alternative_cast_kind_text(kind))
         } else if !may_cast_matching.filter.card_types.is_empty() {
@@ -33594,10 +33608,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             spell_text = format!("a {spell_text}");
         }
         let zone_text = match may_cast_matching.zone {
-            Zone::Hand => format!(
-                "from {} hand",
-                describe_possessive_player_filter(&may_cast_matching.player)
-            ),
+            Zone::Hand => {
+                let owner = if may_cast_matching.zone_owner == may_cast_matching.player {
+                    &may_cast_matching.player
+                } else {
+                    &may_cast_matching.zone_owner
+                };
+                format!("from {} hand", describe_possessive_player_filter(owner))
+            }
             Zone::Graveyard => {
                 if may_cast_matching.filter.owner == Some(crate::filter::PlayerFilter::You) {
                     "from your graveyard".to_string()
