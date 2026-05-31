@@ -26507,6 +26507,281 @@ fn test_flashback_not_available_from_hand() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn nemesis_trap_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_617), "Nemesis Trap")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .subtypes(vec![Subtype::Trap])
+        .parse_text(
+            "If a white creature is attacking, you may pay {B}{B} rather than pay this spell's mana cost.\n\
+             Exile target attacking creature. Create a token that's a copy of that creature. Exile it at the beginning of the next end step.",
+        )
+        .expect("Nemesis Trap should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_mana_colored_creature(
+    game: &mut GameState,
+    name: &str,
+    owner: PlayerId,
+    mana_symbol: ManaSymbol,
+) -> ObjectId {
+    let card = CardBuilder::new(CardId::new(), name)
+        .mana_cost(ManaCost::from_pips(vec![vec![mana_symbol]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    game.create_object_from_card(&card, owner, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn declare_bob_attacker_at_alice(game: &mut GameState, attacker: ObjectId) {
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = bob;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+    game.turn.priority_player = Some(alice);
+    game.remove_summoning_sickness(attacker);
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    apply_attacker_declarations(
+        game,
+        &mut combat,
+        &mut trigger_queue,
+        &[AttackerDeclaration {
+            creature: attacker,
+            target: AttackTarget::Player(alice),
+        }],
+    )
+    .expect("attacker declaration should be legal");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn nemesis_trap_alternative_cost_requires_white_attacker() {
+    use crate::decision::compute_legal_actions;
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let mut game = setup_game();
+    let trap = nemesis_trap_definition();
+    let trap_id = game.create_object_from_definition(&trap, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Black, 2);
+    let black_attacker =
+        create_mana_colored_creature(&mut game, "Black Attacker", bob, ManaSymbol::Black);
+    declare_bob_attacker_at_alice(&mut game, black_attacker);
+
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        !actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Alternative(0),
+            } if *spell_id == trap_id
+        )),
+        "Nemesis Trap should not expose its alternative cost without a white attacking creature; actions={actions:?}"
+    );
+
+    let mut game = setup_game();
+    let trap = nemesis_trap_definition();
+    let trap_id = game.create_object_from_definition(&trap, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Black, 2);
+    let white_attacker =
+        create_mana_colored_creature(&mut game, "White Attacker", bob, ManaSymbol::White);
+    declare_bob_attacker_at_alice(&mut game, white_attacker);
+
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Alternative(0),
+            } if *spell_id == trap_id
+        )),
+        "Nemesis Trap should expose its {{B}}{{B}} alternative cost while a white creature is attacking; actions={actions:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn nemesis_trap_rejects_nonattacking_target() {
+    use crate::decision::compute_legal_actions;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let trap = nemesis_trap_definition();
+    let trap_id = game.create_object_from_definition(&trap, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Black, 2);
+    let white_attacker =
+        create_mana_colored_creature(&mut game, "White Attacker", bob, ManaSymbol::White);
+    let nonattacking_creature =
+        create_mana_colored_creature(&mut game, "Home Creature", bob, ManaSymbol::White);
+    declare_bob_attacker_at_alice(&mut game, white_attacker);
+
+    let cast_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Alternative(0),
+            } if *spell_id == trap_id
+        ))
+        .expect("Nemesis Trap alternative cast should be legal");
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+    apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(cast_action),
+    )
+    .expect("Nemesis Trap alternative cast should start");
+
+    let result = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Object(nonattacking_creature)]),
+    );
+    assert!(
+        result.is_err(),
+        "Nemesis Trap should reject a nonattacking creature target"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn nemesis_trap_exiles_attacker_copies_it_and_exiles_copy_next_end_step() {
+    use crate::decision::compute_legal_actions;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let trap = nemesis_trap_definition();
+    let trap_id = game.create_object_from_definition(&trap, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Black, 2);
+    let white_attacker =
+        create_mana_colored_creature(&mut game, "White Attacker", bob, ManaSymbol::White);
+    let attacker_stable_id = game
+        .object(white_attacker)
+        .expect("white attacker exists")
+        .stable_id;
+    declare_bob_attacker_at_alice(&mut game, white_attacker);
+
+    let cast_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Alternative(0),
+            } if *spell_id == trap_id
+        ))
+        .expect("Nemesis Trap alternative cast should be legal");
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = TriggerQueue::new();
+    apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(cast_action),
+    )
+    .expect("Nemesis Trap alternative cast should start");
+    apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Object(white_attacker)]),
+    )
+    .expect("attacking creature target should be legal");
+
+    assert_eq!(game.stack.len(), 1, "Nemesis Trap should be on the stack");
+    assert_eq!(
+        game.stack[0].casting_method,
+        CastingMethod::Alternative(0),
+        "Nemesis Trap should remember that its alternative cost was paid"
+    );
+    resolve_stack_entry(&mut game).expect("Nemesis Trap should resolve");
+
+    assert!(
+        !game.battlefield.contains(&white_attacker),
+        "Nemesis Trap should exile the targeted attacking creature"
+    );
+    assert!(
+        game.exile.iter().any(|&id| game.object(id).is_some_and(
+            |object| object.stable_id == attacker_stable_id && object.name == "White Attacker"
+        )),
+        "the targeted attacking creature should be in exile"
+    );
+    let token_id = *game
+        .battlefield
+        .iter()
+        .find(|&&id| {
+            game.object(id).is_some_and(|object| {
+                object.name == "White Attacker"
+                    && game.controller_of(object) == alice
+                    && object.kind == ObjectKind::Token
+            })
+        })
+        .expect("Nemesis Trap should create a token copy under the caster's control");
+    let token_stable_id = game
+        .object(token_id)
+        .expect("token copy should exist")
+        .stable_id;
+
+    let end_step_event = TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfEndStepEvent::new(game.turn.active_player),
+        crate::provenance::ProvNodeId::default(),
+    );
+    for trigger in crate::triggers::check_delayed_triggers(&mut game, &end_step_event) {
+        trigger_queue.add(trigger);
+    }
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Nemesis Trap delayed exile trigger should go on the stack");
+    while !game.stack_is_empty() {
+        resolve_stack_entry(&mut game).expect("Nemesis Trap delayed exile trigger should resolve");
+    }
+
+    assert!(
+        !game.battlefield.contains(&token_id),
+        "Nemesis Trap's token copy should leave the battlefield at the next end step"
+    );
+    assert!(
+        game.exile.iter().any(|&id| game.object(id).is_some_and(
+            |object| object.stable_id == token_stable_id && object.name == "White Attacker"
+        )),
+        "Nemesis Trap's token copy should be exiled at the next end step"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_flashback_exiles_after_resolution() {
     use crate::cards::definitions::think_twice;

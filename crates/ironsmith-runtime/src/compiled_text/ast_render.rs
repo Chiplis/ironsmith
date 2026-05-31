@@ -2190,7 +2190,8 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
         if matches!(
             method,
             AlternativeCastingMethod::FlashWithAdditionalCost { .. }
-        ) {
+        ) || (method.is_composed_cost() && method.cast_condition().is_some())
+        {
             leading_alternative_cast_lines.push(line);
         } else {
             alternative_cast_lines.push(line);

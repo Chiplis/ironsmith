@@ -168,6 +168,53 @@ fn party_dude_strict_parser_and_compiled_text_regression() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn nemesis_trap_definition() -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_146), "Nemesis Trap")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .subtypes(vec![Subtype::Trap])
+        .parse_text(
+            "If a white creature is attacking, you may pay {B}{B} rather than pay this spell's mana cost.\n\
+             Exile target attacking creature. Create a token that's a copy of that creature. Exile it at the beginning of the next end step.",
+        )
+        .expect("Nemesis Trap should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn nemesis_trap_strict_parser_and_compiled_text_regression() {
+    let def = nemesis_trap_definition();
+    let alternative_debug = format!("{:#?}", def.alternative_casts);
+    let lines = crate::compiled_text::compiled_text_lines(&def);
+    let rendered = lines.join("\n");
+
+    assert!(
+        alternative_debug.contains("ConditionExpr")
+            && alternative_debug.contains("MatchingFilter")
+            && alternative_debug.contains("Creature")
+            && alternative_debug.contains("colors: Some")
+            && alternative_debug.contains("attacking: true")
+            && alternative_debug.contains("GreaterThanOrEqual"),
+        "Nemesis Trap should structurally preserve the conditional white-attacker alternative cost, got {alternative_debug}"
+    );
+    assert_eq!(
+        lines.first().map(String::as_str),
+        Some("If a white creature is attacking, you may pay {B}{B} rather than pay this spell's mana cost."),
+        "Nemesis Trap's conditional alternative cost should render before the spell effect, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Exile target attacking creature")
+            && rendered.contains("Create a token that's a copy of that creature")
+            && rendered.contains("Exile it at the beginning of the next end step"),
+        "Nemesis Trap compiled text should cover exile, copy-token, and delayed-exile clauses, got {rendered}"
+    );
+}
+
 #[test]
 fn rootpath_purifier_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Rootpath Purifier");

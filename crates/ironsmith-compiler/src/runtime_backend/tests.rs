@@ -5470,6 +5470,25 @@ fn rewrite_static_condition_parses_multicolor_devotion_comparison() {
 }
 
 #[test]
+fn rewrite_static_condition_parses_attacking_filter_subject() {
+    let tokens = lex_line("a white creature is attacking", 0)
+        .expect("rewrite lexer should classify attacking-filter condition clause");
+
+    let parsed = super::keyword_static::parse_static_condition_clause(&tokens)
+        .expect("attacking-filter condition clause should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("CountComparison"), "{debug}");
+    assert!(debug.contains("MatchingFilter"), "{debug}");
+    assert!(debug.contains("card_types"), "{debug}");
+    assert!(debug.contains("Creature"), "{debug}");
+    assert!(debug.contains("colors: Some"), "{debug}");
+    assert!(debug.contains("attacking: true"), "{debug}");
+    assert!(debug.contains("GreaterThanOrEqual"), "{debug}");
+    assert!(debug.contains("a white creature is attacking"), "{debug}");
+}
+
+#[test]
 fn rewrite_anthem_subject_parses_enchanted_player_controls() {
     let tokens = lex_line("Creatures enchanted player controls", 0)
         .expect("rewrite lexer should classify enchanted-player-controls subject");

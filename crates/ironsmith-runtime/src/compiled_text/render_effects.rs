@@ -2651,7 +2651,8 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         return Some(compact);
     }
 
-    describe_roll_choose_destroy_create_structural(effects)
+    describe_exile_then_create_token_copy_structural(effects)
+        .or_else(|| describe_roll_choose_destroy_create_structural(effects))
         .or_else(|| describe_draw_discard_then_create_structural(effects))
         .or_else(|| describe_reveal_top_choice_to_hand_rest_graveyard_structural(effects))
         .or_else(|| describe_gain_control_untap_haste_structural(effects))
@@ -2701,6 +2702,52 @@ fn unwrap_structural_effect_tag(effect: &Effect) -> &Effect {
         return unwrap_structural_effect_tag(&tag_all.effect);
     }
     effect
+}
+
+fn describe_exile_then_create_token_copy_structural(effects: &[Effect]) -> Option<String> {
+    let [move_effect, create_effect] = effects else {
+        return None;
+    };
+    let tag = structural_effect_tag(move_effect)?;
+    let move_to = unwrap_structural_effect_tag(move_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to.zone != Zone::Exile {
+        return None;
+    }
+    let create = unwrap_structural_effect_tag(create_effect)
+        .downcast_ref::<crate::effects::CreateTokenCopyEffect>()?;
+    if !matches!(&create.target, ChooseSpec::Tagged(create_tag) if create_tag == tag)
+        || create.count != Value::Fixed(1)
+        || create.controller != PlayerFilter::You
+        || create.enters_tapped
+        || create.has_haste
+        || create.enters_attacking
+        || create.exile_at_end_of_combat
+        || create.pt_adjustment.is_some()
+        || create.set_base_power_toughness.is_some()
+        || create.set_colors.is_some()
+        || create.set_card_types.is_some()
+        || create.set_subtypes.is_some()
+        || !create.added_card_types.is_empty()
+        || !create.added_subtypes.is_empty()
+        || !create.removed_supertypes.is_empty()
+        || !create.granted_static_abilities.is_empty()
+    {
+        return None;
+    }
+
+    let referent = describe_prevention_follow_up_target(&move_to.target);
+    let mut text = format!(
+        "{}. Create a token that's a copy of {referent}",
+        describe_effect(move_effect).trim_end_matches('.')
+    );
+    if create.sacrifice_at_next_end_step {
+        text.push_str(". Sacrifice it at the beginning of the next end step");
+    }
+    if create.exile_at_next_end_step {
+        text.push_str(". Exile it at the beginning of the next end step");
+    }
+    Some(text)
 }
 
 fn describe_roll_choose_destroy_create_structural(effects: &[Effect]) -> Option<String> {
