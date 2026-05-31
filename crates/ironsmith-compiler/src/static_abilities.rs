@@ -5,8 +5,9 @@ pub use ironsmith_core::{
     CopyActivatedAbilities, CopyTriggeredAbilities, CostIncrease, CostIncreaseManaCost,
     CostReduction, CostReductionManaCost, DefendingPlayerAttackCondition,
     EnterAsCopyLinkedExilePairSpec, GraveyardCountMetric, LandwalkKind, ManaSpendPermission,
-    PregameActionKind, PregameBeginOnBattlefieldSpec, RemoveCardTypesForFilter, SetColorsForFilter,
-    StaticAbilityId, ThisSpellCastRestrictionKind, ThisSpellCastTiming,
+    OptionalLifeAdditionalCost, PregameActionKind, PregameBeginOnBattlefieldSpec,
+    RemoveCardTypesForFilter, SetColorsForFilter, StaticAbilityId, ThisSpellCastRestrictionKind,
+    ThisSpellCastTiming,
 };
 
 pub const PREVENT_ALL_DAMAGE_DEALT_BY_THIS_PERMANENT: StaticAbilityId =

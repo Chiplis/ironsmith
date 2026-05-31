@@ -12,7 +12,7 @@ use super::super::grammar::structure::{
 };
 use super::super::lexer::{
     OwnedLexToken, TokenKind, token_slice_at_is, token_slice_first_is, token_word_refs,
-    trim_lexed_commas,
+    trim_lexed_commas, word_slice_starts_with,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::permission_helpers::{
@@ -489,6 +489,9 @@ pub(crate) fn parse_effect_chain_lexed(
             .is_some_and(|token| CHAIN_HAVE_OR_HAS_WORD_PATTERN.matches_token(token))
         {
             stripped.remove(0);
+        }
+        if word_slice_starts_with(&token_word_refs(&stripped), &["choose", "to"]) {
+            stripped = remove_through_first_word_tokens(&stripped, "to");
         }
         let mut effects = parse_effect_chain_lexed(&stripped)?;
         for effect in &mut effects {

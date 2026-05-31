@@ -17,6 +17,7 @@ use crate::static_abilities::StaticAbility;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
+use ironsmith_core::CostComponent;
 
 mod activated_lowering;
 mod damage_and_cost_rewrites;
@@ -95,7 +96,9 @@ use super::ir::{
     RewriteSagaChapterLine, RewriteSemanticDocument, RewriteSemanticItem, RewriteStatementLine,
     RewriteStaticLine, RewriteTriggeredLine,
 };
-use super::keyword_static::parse_if_this_spell_costs_less_to_cast_line_lexed;
+use super::keyword_static::{
+    parse_if_this_spell_costs_less_to_cast_line_lexed, parse_value_binding_clause,
+};
 use super::lexer::{
     OwnedLexToken, TokenKind, TokenWordView, contains_token_word_sequence, lex_line,
     render_token_slice, split_lexed_sentences, token_slice_ends_with, token_slice_starts_with,

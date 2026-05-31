@@ -215,6 +215,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     LevelAbility(Box<LevelAbilityModel<T, E, C, Cond>>),
     HexproofFrom(ObjectFilter),
     Protection(ProtectionFrom),
+    PreventAllCombatDamageToPermanentsMatching(ObjectFilter),
     RuleRestriction {
         restriction: Restriction,
         display: String,
@@ -902,6 +903,9 @@ where
             }
             StaticAbilityPayload::HexproofFrom(filter) => StaticAbilityPayload::HexproofFrom(filter),
             StaticAbilityPayload::Protection(from) => StaticAbilityPayload::Protection(from),
+            StaticAbilityPayload::PreventAllCombatDamageToPermanentsMatching(filter) => {
+                StaticAbilityPayload::PreventAllCombatDamageToPermanentsMatching(filter)
+            }
             StaticAbilityPayload::RuleRestriction {
                 restriction,
                 display,
@@ -1765,6 +1769,10 @@ impl<
 
     pub fn draft_rule_text(text: impl Into<String>) -> Self {
         Self::identified(StaticAbilityId::DraftRuleText, text)
+    }
+
+    pub fn deck_construction_rule_text(text: impl Into<String>) -> Self {
+        Self::identified(StaticAbilityId::DeckConstructionRuleText, text)
     }
 
     pub fn rule_fallback_text(text: impl Into<String>) -> Self {
@@ -3328,6 +3336,13 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
+    pub fn prevent_all_combat_damage_to_permanents_matching(filter: ObjectFilter) -> Self {
+        Self {
+            id: Some(StaticAbilityId::PreventAllCombatDamageToPermanentsMatching),
+            label: "prevent all combat damage to permanents matching filter".into(),
+            payload: StaticAbilityPayload::PreventAllCombatDamageToPermanentsMatching(filter),
+        }
+    }
     pub fn prevent_all_damage_to_self() -> Self {
         Self {
             id: Some(StaticAbilityId::PreventAllDamageToSelf),
@@ -3483,6 +3498,13 @@ impl<
         Self {
             id: Some(StaticAbilityId::EffectDiscardToLibraryReplacement),
             label: "effect discard to library replacement".into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
+    pub fn opponent_effect_discard_this_to_battlefield_replacement() -> Self {
+        Self {
+            id: Some(StaticAbilityId::OpponentEffectDiscardThisToBattlefieldReplacement),
+            label: "opponent effect discard this to battlefield replacement".into(),
             payload: StaticAbilityPayload::None,
         }
     }
@@ -4165,14 +4187,45 @@ impl CostReduction {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct OptionalLifeAdditionalCost {
+    pub label: String,
+    pub life_cost: u32,
+}
+
+impl OptionalLifeAdditionalCost {
+    pub fn new(label: impl Into<String>, life_cost: u32) -> Self {
+        Self {
+            label: label.into(),
+            life_cost,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct CostReductionManaCost {
     pub filter: ObjectFilter,
     pub cost: ManaCost,
+    pub optional_life_additional_cost: Option<OptionalLifeAdditionalCost>,
 }
 
 impl CostReductionManaCost {
     pub fn new(filter: ObjectFilter, cost: ManaCost) -> Self {
-        Self { filter, cost }
+        Self {
+            filter,
+            cost,
+            optional_life_additional_cost: None,
+        }
+    }
+
+    pub fn with_optional_life_additional_cost(
+        mut self,
+        label: impl Into<String>,
+        life_cost: u32,
+    ) -> Self {
+        self.optional_life_additional_cost = Some(OptionalLifeAdditionalCost::new(
+            label, life_cost,
+        ));
+        self
     }
     pub fn with_condition(self, _condition: Condition) -> Self {
         self

@@ -2,6 +2,7 @@ use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::effect::{EffectOutcome, ExecutionFact};
 use crate::effects::{EffectExecutor, helpers::resolve_player_filter};
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::other::DieRolledEvent;
 use crate::game_state::GameState;
 use crate::target::PlayerFilter;
 
@@ -50,6 +51,7 @@ impl EffectExecutor for RollDiceChooseResultEffect {
         }
 
         let mut results = Vec::with_capacity(self.count as usize);
+        let mut events = Vec::with_capacity(self.count as usize);
         for _ in 0..self.count {
             let result = if let Some(forced) = game.take_forced_die_roll() {
                 forced.clamp(1, self.sides)
@@ -59,6 +61,10 @@ impl EffectExecutor for RollDiceChooseResultEffect {
                 faces[0]
             };
             game.turn_store.turn_history.record_die_roll(player, result);
+            events.push(crate::triggers::TriggerEvent::new_with_provenance(
+                DieRolledEvent::new(player, ctx.source, result, self.sides),
+                ctx.provenance,
+            ));
             results.push(result);
         }
 
@@ -86,6 +92,7 @@ impl EffectExecutor for RollDiceChooseResultEffect {
             .unwrap_or(chosen);
 
         Ok(EffectOutcome::count(chosen as i32)
+            .with_events(events)
             .with_execution_fact(ExecutionFact::ChosenNumber(chosen))
             .with_execution_fact(ExecutionFact::OtherNumber(other)))
     }

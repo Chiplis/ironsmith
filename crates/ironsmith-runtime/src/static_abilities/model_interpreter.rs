@@ -655,9 +655,15 @@ impl StaticAbilityModelInterpreter {
         model: &CompiledStaticAbility,
     ) -> Option<super::CostReductionManaCost> {
         match &model.payload {
-            ironsmith_core::StaticAbilityPayload::CostReductionManaCost(reduction) => Some(
-                super::CostReductionManaCost::new(reduction.filter.clone(), reduction.cost.clone()),
-            ),
+            ironsmith_core::StaticAbilityPayload::CostReductionManaCost(reduction) => {
+                let mut runtime = super::CostReductionManaCost::new(
+                    reduction.filter.clone(),
+                    reduction.cost.clone(),
+                );
+                runtime.optional_life_additional_cost =
+                    reduction.optional_life_additional_cost.clone();
+                Some(runtime)
+            }
             ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
                 Self::cached_cost_reduction_mana_cost(ability)
                     .map(|reduction| reduction.with_condition(condition.clone()))
@@ -920,6 +926,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::Protection(from) => {
                 StaticAbility::protection(from.clone())
             }
+            ironsmith_core::StaticAbilityPayload::PreventAllCombatDamageToPermanentsMatching(
+                filter,
+            ) => StaticAbility::prevent_all_combat_damage_to_permanents_matching(filter.clone()),
             ironsmith_core::StaticAbilityPayload::HexproofFrom(filter) => {
                 StaticAbility::hexproof_from(filter.clone())
             }

@@ -22,6 +22,7 @@ use super::grammar::abilities::{
     is_draw_replacement_skip_empty_library_line_lexed,
     is_during_your_turn_prevent_all_damage_to_source_line_lexed,
     is_effect_discard_to_library_replacement_line_lexed,
+    is_opponent_effect_discard_this_to_battlefield_replacement_line_lexed,
     is_enchanted_land_is_chosen_type_line_lexed,
     is_if_source_you_control_with_mana_value_double_instead_marker_line_lexed,
     is_krrik_black_mana_life_payment_line_lexed,
@@ -33,6 +34,7 @@ use super::grammar::abilities::{
     is_play_top_card_your_library_revealed_line_lexed, is_players_cant_cycle_line_lexed,
     is_players_cant_pay_life_or_sacrifice_line_lexed,
     is_players_play_top_card_libraries_revealed_line_lexed, is_players_skip_upkeep_line_lexed,
+    is_prevent_all_combat_damage_to_matching_permanents_line_lexed,
     is_prevent_all_combat_damage_to_source_line_lexed,
     is_prevent_all_damage_dealt_to_creatures_line_lexed,
     is_prevent_all_damage_to_source_by_creatures_line_lexed,
@@ -2920,6 +2922,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_cast_this_spell_as_though_it_had_flash_line),
         single_static_ability_ast_rule!(parse_during_your_turn_prevent_all_damage_to_source_line),
         single_static_ability_ast_rule!(parse_prevent_all_combat_damage_to_source_line),
+        single_static_ability_ast_rule!(
+            parse_prevent_all_combat_damage_to_matching_permanents_line
+        ),
         single_static_ability_ast_rule!(
             parse_prevent_all_noncombat_damage_to_other_creatures_you_control_line
         ),
@@ -6641,9 +6646,109 @@ pub(crate) fn parse_cost_modifier_prefix_condition(
     Ok((None, 0))
 }
 
+fn parse_optional_life_additional_cost_reduction_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let additional_words = crate::runtime_backend::token_word_refs(tokens);
+    if !word_slice_starts_with(
+        &additional_words,
+        &["as", "an", "additional", "cost", "to", "cast"],
+    ) {
+        return Ok(None);
+    }
+
+    let Some(additional_spells_word_idx) = find_index(&additional_words, |word| {
+        *word == "spell" || *word == "spells"
+    }) else {
+        return Ok(None);
+    };
+    let Some(cost_subject_start) = token_index_for_word_index(tokens, 6) else {
+        return Ok(None);
+    };
+    let Some(additional_spells_idx) = token_index_for_word_index(tokens, additional_spells_word_idx)
+    else {
+        return Ok(None);
+    };
+    let subject_tokens = trim_commas(&tokens[cost_subject_start..additional_spells_idx]);
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let mut filter = parse_spell_filter_with_grammar_entrypoint(&subject_tokens);
+    let subject_words = crate::runtime_backend::token_word_refs(&subject_tokens);
+    if word_slice_contains_word(&subject_words, "permanent") {
+        filter.card_types = ObjectFilter::permanent_card().card_types;
+    }
+    filter.cast_by = Some(PlayerFilter::You);
+
+    let Some(pay_word_idx) = find_index(&additional_words, |word| *word == "pay") else {
+        return Ok(None);
+    };
+    let payment_words = &additional_words[pay_word_idx + 1..];
+    let Some(life_cost) = payment_words
+        .first()
+        .and_then(|word| parse_number_word_i32(word))
+        .and_then(|amount| u32::try_from(amount).ok())
+    else {
+        return Ok(None);
+    };
+    if !word_slice_contains_word(&payment_words, "life") {
+        return Ok(None);
+    }
+
+    let Some(those_spells_idx) =
+        word_slice_find_phrase_start(&additional_words, &["those", "spells"])
+    else {
+        return Ok(None);
+    };
+    if !word_slice_contains_phrase(
+        &additional_words[those_spells_idx..],
+        &["paid", "life", "this", "way"],
+    )
+    {
+        return Ok(None);
+    }
+    let Some(costs_word_idx) = find_index(&additional_words[those_spells_idx..], |word| {
+        *word == "cost" || *word == "costs"
+    }) else {
+        return Ok(None);
+    };
+    let costs_word_idx = those_spells_idx + costs_word_idx;
+    let Some(costs_idx) = token_index_for_word_index(tokens, costs_word_idx) else {
+        return Ok(None);
+    };
+    let amount_tokens = &tokens[costs_idx + 1..];
+    let (_, parsed_mana_cost) = parse_cost_modifier_components(amount_tokens);
+    let Some((reduction, _)) = parsed_mana_cost else {
+        return Ok(None);
+    };
+    let remaining_words = crate::runtime_backend::token_word_refs(amount_tokens);
+    if parse_cost_modifier_direction(&remaining_words) != Some(CostModifierDirection::Less)
+        || !word_slice_contains_word(&remaining_words, "cast")
+    {
+        return Ok(None);
+    }
+
+    let label_end = find_token_kind(tokens, TokenKind::Period)
+        .map(|idx| idx + 1)
+        .unwrap_or(costs_idx);
+    let label = render_token_slice(&tokens[..label_end])
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    Ok(Some(StaticAbility::new(
+        crate::static_abilities::CostReductionManaCost::new(filter, reduction)
+            .with_optional_life_additional_cost(label, life_cost),
+    )))
+}
+
 pub(crate) fn parse_spells_cost_modifier_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    if let Some(ability) = parse_optional_life_additional_cost_reduction_line(tokens)? {
+        return Ok(Some(ability));
+    }
+
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if clause_words.len() < 4 {
         return Ok(None);
@@ -8660,6 +8765,33 @@ pub(crate) fn parse_prevent_all_combat_damage_to_source_line(
     Ok(None)
 }
 
+pub(crate) fn parse_prevent_all_combat_damage_to_matching_permanents_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    if !is_prevent_all_combat_damage_to_matching_permanents_line_lexed(tokens) {
+        return Ok(None);
+    }
+    let Some((_phrase_idx, phrase_end)) = find_token_word_sequence_span(
+        tokens,
+        &[
+            "prevent", "all", "combat", "damage", "that", "would", "be", "dealt", "to",
+        ],
+    ) else {
+        return Ok(None);
+    };
+    let target_tokens = trim_commas(&tokens[phrase_end..]);
+    if target_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "prevent-all combat damage static line missing target filter (clause: '{}')",
+            render_token_slice(tokens)
+        )));
+    }
+    let filter = parse_object_filter_lexed(&target_tokens, false)?;
+    Ok(Some(
+        StaticAbility::prevent_all_combat_damage_to_permanents_matching(filter),
+    ))
+}
+
 pub(crate) fn parse_during_your_turn_prevent_all_damage_to_source_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -9825,6 +9957,12 @@ pub(crate) fn parse_effect_discard_to_library_replacement_line(
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if is_effect_discard_to_library_replacement_line_lexed(tokens) {
         return Ok(Some(StaticAbility::effect_discard_to_library_replacement()));
+    }
+
+    if is_opponent_effect_discard_this_to_battlefield_replacement_line_lexed(tokens) {
+        return Ok(Some(
+            StaticAbility::opponent_effect_discard_this_to_battlefield_replacement(),
+        ));
     }
 
     Ok(None)

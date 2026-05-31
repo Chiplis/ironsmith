@@ -2416,6 +2416,146 @@ fn open_the_way_reveals_x_lands_to_battlefield_tapped_and_bottoms_rest() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn covenant_of_minds_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(416_862), "Covenant of Minds")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Reveal the top three cards of your library. Target opponent may choose to put those cards into your hand. If they don't, put those cards into your graveyard and draw five cards.",
+        )
+        .expect("Covenant of Minds should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct CovenantOfMindsDecisionMaker {
+    accept_opponent_choice: bool,
+    expected_decider: PlayerId,
+    prompts: usize,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for CovenantOfMindsDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        self.prompts += 1;
+        assert_eq!(
+            ctx.player, self.expected_decider,
+            "Covenant of Minds choice should be made by the targeted opponent"
+        );
+        self.accept_opponent_choice
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_covenant_library_card(game: &mut GameState, owner: PlayerId, name: &str) -> ObjectId {
+    let card = CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Instant])
+        .build();
+    game.create_object_from_card(&card, owner, Zone::Library)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn setup_covenant_of_minds_stack(
+    game: &mut GameState,
+    alice: PlayerId,
+    bob: PlayerId,
+) -> (ObjectId, Vec<crate::ids::StableId>) {
+    let covenant = covenant_of_minds_definition();
+    let spell_id = game.create_object_from_definition(&covenant, alice, Zone::Stack);
+    for idx in 0..5 {
+        create_covenant_library_card(game, alice, &format!("Covenant Draw Filler {idx}"));
+    }
+    let mut revealed = Vec::new();
+    for name in ["Covenant Revealed A", "Covenant Revealed B", "Covenant Revealed C"] {
+        let id = create_covenant_library_card(game, alice, name);
+        revealed.push(game.object(id).expect("revealed card exists").stable_id);
+    }
+
+    game.push_to_stack(StackEntry::new(spell_id, alice).with_targets(vec![Target::Player(bob)]));
+    (spell_id, revealed)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn covenant_of_minds_opponent_accepts_puts_revealed_cards_into_your_hand() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let (_spell_id, revealed) = setup_covenant_of_minds_stack(&mut game, alice, bob);
+
+    let mut dm = CovenantOfMindsDecisionMaker {
+        accept_opponent_choice: true,
+        expected_decider: bob,
+        prompts: 0,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Covenant of Minds should resolve");
+    assert_eq!(dm.prompts, 1, "Covenant should ask exactly one may-choice");
+
+    for stable_id in revealed {
+        let id = game
+            .find_object_by_stable_id(stable_id)
+            .expect("revealed card should still exist");
+        assert!(
+            game.player(alice).expect("alice exists").hand.contains(&id),
+            "accepted opponent choice should put revealed card {id:?} into Alice's hand"
+        );
+    }
+    assert_eq!(
+        game.player(alice).expect("alice exists").hand.len(),
+        3,
+        "accepting should not draw the fallback five cards"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").library.len(),
+        5,
+        "accepting should leave the five unrevealed library cards in place"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn covenant_of_minds_opponent_declines_graveyards_revealed_cards_and_draws_five() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let (_spell_id, revealed) = setup_covenant_of_minds_stack(&mut game, alice, bob);
+
+    let mut dm = CovenantOfMindsDecisionMaker {
+        accept_opponent_choice: false,
+        expected_decider: bob,
+        prompts: 0,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Covenant of Minds should resolve");
+    assert_eq!(dm.prompts, 1, "Covenant should ask exactly one may-choice");
+
+    for stable_id in revealed {
+        let id = game
+            .find_object_by_stable_id(stable_id)
+            .expect("revealed card should still exist");
+        assert!(
+            game.player(alice).expect("alice exists").graveyard.contains(&id),
+            "declining should put revealed card {id:?} into Alice's graveyard"
+        );
+    }
+    assert_eq!(
+        game.player(alice).expect("alice exists").hand.len(),
+        5,
+        "declining should draw the remaining five library cards"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").library.len(),
+        0,
+        "declining should draw the five unrevealed library cards after moving the revealed cards"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn rise_from_the_grave_returns_creature_under_your_control_black_zombie() {
     let mut game = setup_game();
@@ -12947,6 +13087,205 @@ fn vexing_shusher_activation_targets_spell_and_stops_countering_it() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn loxodon_smiter_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(290_543), "Loxodon Smiter")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elephant, Subtype::Soldier])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "This spell can't be countered.\nIf a spell or ability an opponent controls causes you to discard this card, put it onto the battlefield instead of putting it into your graveyard.",
+        )
+        .expect("Loxodon Smiter should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn loxodon_smiter_spell_cant_be_countered_runtime() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let loxodon = loxodon_smiter_definition();
+    let smiter_spell = game.create_object_from_definition(&loxodon, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(smiter_spell, alice));
+
+    game.update_cant_effects();
+    assert!(
+        !game.can_be_countered(smiter_spell),
+        "Loxodon Smiter should be uncounterable while it is a spell on the stack"
+    );
+
+    let counter_source = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Counter Source")
+            .card_types(vec![CardType::Instant])
+            .build(),
+        bob,
+        Zone::Stack,
+    );
+    let mut dm = SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(counter_source, bob, &mut dm);
+    let outcome = crate::effects::execute_effect(
+        &mut game,
+        &Effect::counter(crate::target::ChooseSpec::SpecificObject(smiter_spell)),
+        &mut ctx,
+    )
+    .expect("counter attempt should resolve as protected");
+
+    assert_eq!(outcome.status, crate::effect::OutcomeStatus::Protected);
+    assert!(
+        game.stack.iter().any(|entry| entry.object_id == smiter_spell),
+        "Loxodon Smiter should remain on the stack after a counter attempt"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn loxodon_smiter_opponent_effect_discard_replacement_moves_to_battlefield() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let loxodon = loxodon_smiter_definition();
+    let smiter = game.create_object_from_definition(&loxodon, alice, Zone::Hand);
+    let discard_source = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Opponent Discard Spell")
+            .card_types(vec![CardType::Sorcery])
+            .build(),
+        bob,
+        Zone::Stack,
+    );
+    let mut dm = SelectFirstDecisionMaker;
+
+    let result = crate::events::processing::execute_discard(
+        &mut game,
+        smiter,
+        alice,
+        crate::events::cause::EventCause::from_effect(discard_source, bob),
+        false,
+        crate::provenance::ProvNodeId::default(),
+        &mut dm,
+    );
+
+    assert_eq!(result.final_zone, Zone::Battlefield);
+    let moved = result
+        .new_id
+        .expect("Loxodon Smiter should have moved to the battlefield");
+    assert!(
+        game.object(moved).is_some_and(|object| object.name == "Loxodon Smiter"
+            && object.zone == Zone::Battlefield),
+        "opponent-controlled discard effect should put Loxodon Smiter onto the battlefield"
+    );
+    assert!(
+        !game
+            .player(alice)
+            .expect("Alice exists")
+            .graveyard
+            .iter()
+            .any(|&id| game
+                .object(id)
+                .is_some_and(|object| object.name == "Loxodon Smiter")),
+        "Loxodon Smiter should not be put into Alice's graveyard when the replacement applies"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn loxodon_smiter_discard_replacement_ignores_own_effects_and_costs() {
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let loxodon = loxodon_smiter_definition();
+
+    for (source_controller, cause_kind) in [(alice, "own effect"), (bob, "opponent cost")] {
+        let mut game = setup_game();
+        let smiter = game.create_object_from_definition(&loxodon, alice, Zone::Hand);
+        let discard_source = game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Discard Source")
+                .card_types(vec![CardType::Sorcery])
+                .build(),
+            source_controller,
+            Zone::Stack,
+        );
+        let cause = if cause_kind == "own effect" {
+            crate::events::cause::EventCause::from_effect(discard_source, source_controller)
+        } else {
+            crate::events::cause::EventCause::from_cost(discard_source, source_controller)
+        };
+        let mut dm = SelectFirstDecisionMaker;
+
+        let result = crate::events::processing::execute_discard(
+            &mut game,
+            smiter,
+            alice,
+            cause,
+            false,
+            crate::provenance::ProvNodeId::default(),
+            &mut dm,
+        );
+
+        assert_eq!(
+            result.final_zone,
+            Zone::Graveyard,
+            "Loxodon Smiter should go to the graveyard for {cause_kind}"
+        );
+        assert!(
+            game.player(alice)
+                .expect("Alice exists")
+                .graveyard
+                .iter()
+                .any(|&id| game
+                    .object(id)
+                    .is_some_and(|object| object.name == "Loxodon Smiter")),
+            "Loxodon Smiter should be in Alice's graveyard for {cause_kind}"
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn loxodon_smiter_discard_replacement_only_applies_to_itself() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let loxodon = loxodon_smiter_definition();
+    let smiter = game.create_object_from_definition(&loxodon, alice, Zone::Hand);
+    let other_card = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Other Discarded Card")
+            .card_types(vec![CardType::Creature])
+            .build(),
+        alice,
+        Zone::Hand,
+    );
+    let discard_source = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Opponent Discard Spell")
+            .card_types(vec![CardType::Sorcery])
+            .build(),
+        bob,
+        Zone::Stack,
+    );
+    let mut dm = SelectFirstDecisionMaker;
+
+    let result = crate::events::processing::execute_discard(
+        &mut game,
+        other_card,
+        alice,
+        crate::events::cause::EventCause::from_effect(discard_source, bob),
+        false,
+        crate::provenance::ProvNodeId::default(),
+        &mut dm,
+    );
+
+    assert_eq!(result.final_zone, Zone::Graveyard);
+    assert!(
+        game.object(smiter)
+            .is_some_and(|object| object.zone == Zone::Hand),
+        "Loxodon Smiter's replacement should not apply to another discarded card"
+    );
+}
+
 #[test]
 fn magma_mine_activated_ability_sacrifices_source_and_deals_counter_scaled_damage_to_player() {
     let mut game = setup_game();
@@ -16669,6 +17008,145 @@ fn test_goddric_celebration_granted_ability_buffs_only_dragons() {
         game.calculated_power(human_ally_id),
         Some(2),
         "non-Dragons you control should not get pumped"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn kjeldoran_elite_guard_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Kjeldoran Elite Guard")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Soldier])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "{T}: Target creature gets +2/+2 until end of turn. When that creature leaves the battlefield this turn, sacrifice this creature. Activate only during combat.",
+        )
+        .expect("Kjeldoran Elite Guard should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn zone_contains_named(game: &GameState, zone: Zone, name: &str) -> bool {
+    game.objects_in_zone(zone).into_iter().any(|id| {
+        game.object(id)
+            .is_some_and(|object| object.name.eq_ignore_ascii_case(name))
+    })
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn kjeldoran_elite_guard_delayed_trigger_tracks_only_targeted_creature() {
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::BeginCombat);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let guard = kjeldoran_elite_guard_definition();
+    let guard_id = game.create_object_from_definition(&guard, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(guard_id);
+
+    let target = CardBuilder::new(CardId::new(), "Chosen Target")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let decoy = CardBuilder::new(CardId::new(), "Decoy Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let target_id = game.create_object_from_card(&target, bob, Zone::Battlefield);
+    let decoy_id = game.create_object_from_card(&decoy, bob, Zone::Battlefield);
+
+    let activate_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source, .. } if *source == guard_id
+            )
+        })
+        .expect("Kjeldoran Elite Guard should be activatable during combat");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = ChooseSpecificObjectDecisionMaker::new(target_id);
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Kjeldoran Elite Guard activation should choose the target and go on the stack");
+
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Object(target_id)]),
+        &mut dm,
+    )
+    .expect("Kjeldoran Elite Guard target choice should complete activation");
+
+    if !game.stack.is_empty() {
+        resolve_stack_entry(&mut game).expect("Kjeldoran Elite Guard activation should resolve");
+    }
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        game.calculated_power(target_id),
+        Some(4),
+        "the chosen target should get +2/+2 until end of turn"
+    );
+    assert_eq!(
+        game.calculated_power(decoy_id),
+        Some(2),
+        "an untargeted creature should not get the pump"
+    );
+
+    game.move_object(
+        decoy_id,
+        Zone::Graveyard,
+        crate::events::cause::EventCause::effect(),
+    )
+    .expect("decoy should move to graveyard");
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "a nontarget creature leaving should not trigger the delayed sacrifice"
+    );
+    assert!(
+        zone_contains_named(&game, Zone::Battlefield, "Kjeldoran Elite Guard"),
+        "Kjeldoran Elite Guard should remain after the decoy leaves"
+    );
+
+    game.move_object(
+        target_id,
+        Zone::Graveyard,
+        crate::events::cause::EventCause::effect(),
+    )
+    .expect("target should move to graveyard");
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "the targeted creature leaving should trigger the delayed sacrifice"
+    );
+
+    let mut trigger_dm = SelectFirstDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut trigger_dm)
+        .expect("delayed sacrifice trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("delayed sacrifice trigger should resolve");
+
+    assert!(
+        zone_contains_named(&game, Zone::Graveyard, "Kjeldoran Elite Guard"),
+        "Kjeldoran Elite Guard should be sacrificed when the targeted creature leaves"
     );
 }
 
@@ -21773,6 +22251,111 @@ fn clown_car_etb_applies_odd_even_result_branches_per_die_for_x_rolls() {
         game.counter_count(clown_car_id, crate::object::CounterType::PlusOnePlusOne),
         1,
         "even die result (2) should add one +1/+1 counter"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn complaints_clerk_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Complaints Clerk")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Beast])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "When this creature enters, open an Attraction. (Put the top card of your Attraction deck onto the battlefield.)\nWhenever you roll a 1, create a 1/1 white Clown Robot artifact creature token.",
+        )
+        .expect("Complaints Clerk should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_complaints_clerk_roll(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    clerk_id: ObjectId,
+    controller: PlayerId,
+    roll: u32,
+) {
+    game.force_next_die_roll(roll);
+    let mut ctx = crate::effects::ExecutionContext::new_default(clerk_id, controller);
+    let outcome = crate::effects::execute_effect(
+        game,
+        &Effect::roll_die(6, PlayerFilter::Specific(controller)),
+        &mut ctx,
+    )
+    .expect("die roll should resolve");
+    for event in outcome.events {
+        queue_triggers_from_event(game, trigger_queue, event, false);
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn complaints_clerk_roll_one_trigger_creates_clown_robot_token() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let clerk = complaints_clerk_definition();
+    let clerk_id = game.create_object_from_definition(&clerk, alice, Zone::Battlefield);
+
+    resolve_complaints_clerk_roll(&mut game, &mut trigger_queue, clerk_id, alice, 1);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Complaints Clerk should trigger when its controller rolls a 1"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Complaints Clerk roll trigger should go on stack");
+    resolve_stack_entry(&mut game).expect("Complaints Clerk roll trigger should resolve");
+
+    let clown_robots = game
+        .battlefield
+        .iter()
+        .filter(|&&id| {
+            game.object(id).is_some_and(|obj| {
+                matches!(obj.kind, ObjectKind::Token)
+                    && game.controller_of(obj) == alice
+                    && obj.card_types.contains(&CardType::Artifact)
+                    && obj.card_types.contains(&CardType::Creature)
+                    && obj.subtypes.contains(&Subtype::Clown)
+                    && obj.subtypes.contains(&Subtype::Robot)
+                    && game.current_power(id) == Some(1)
+                    && game.current_toughness(id) == Some(1)
+            })
+        })
+        .count();
+    assert_eq!(clown_robots, 1, "rolling 1 should create one Clown Robot");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn complaints_clerk_non_one_roll_does_not_trigger() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let clerk = complaints_clerk_definition();
+    let clerk_id = game.create_object_from_definition(&clerk, alice, Zone::Battlefield);
+
+    resolve_complaints_clerk_roll(&mut game, &mut trigger_queue, clerk_id, alice, 2);
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Complaints Clerk should not trigger for a non-1 die result"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn complaints_clerk_opponent_roll_one_does_not_trigger() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let clerk = complaints_clerk_definition();
+    let clerk_id = game.create_object_from_definition(&clerk, alice, Zone::Battlefield);
+
+    resolve_complaints_clerk_roll(&mut game, &mut trigger_queue, clerk_id, bob, 1);
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Complaints Clerk should not trigger when another player rolls a 1"
     );
 }
 
@@ -28355,6 +28938,286 @@ fn test_split_the_spoils_opponent_can_take_the_other_pile_into_hand() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn unesh_criosphinx_sovereign_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(91_130), "Unesh, Criosphinx Sovereign")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Sphinx])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Flying\n\
+             Sphinx spells you cast cost {2} less to cast.\n\
+             Whenever Unesh or another Sphinx you control enters, reveal the top four cards of your library. An opponent separates those cards into two piles. Put one pile into your hand and the other into your graveyard.",
+        )
+        .expect("Unesh, Criosphinx Sovereign should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn unesh_library_card(id: u32, name: &str) -> crate::card::Card {
+    CardBuilder::new(CardId::from_raw(id), name)
+        .card_types(vec![CardType::Sorcery])
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct UneshPileDecisionMaker {
+    opponent: PlayerId,
+    split_names: &'static [&'static str],
+    choose_split_pile: bool,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for UneshPileDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        self.choose_split_pile
+    }
+
+    fn decide_objects(
+        &mut self,
+        game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        assert_eq!(
+            ctx.player, self.opponent,
+            "only the opponent should separate Unesh's revealed cards into a pile"
+        );
+        let legal = ctx
+            .candidates
+            .iter()
+            .filter(|candidate| candidate.legal)
+            .collect::<Vec<_>>();
+        self.split_names
+            .iter()
+            .map(|wanted_name| {
+                legal
+                    .iter()
+                    .find(|candidate| {
+                        game.object(candidate.id)
+                            .is_some_and(|object| object.name == *wanted_name)
+                    })
+                    .map(|candidate| candidate.id)
+                    .unwrap_or_else(|| panic!("expected to find {wanted_name} in Unesh's pile"))
+            })
+            .collect()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn execute_unesh_trigger_with_pile_choice(
+    choose_split_pile: bool,
+) -> (GameState, Vec<&'static str>, Vec<&'static str>) {
+    use crate::effects::{ExecutionContext, execute_effect};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let unesh = unesh_criosphinx_sovereign_definition();
+    let source_id = game.create_object_from_definition(&unesh, alice, Zone::Battlefield);
+    let triggered = unesh
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Unesh should have an enters trigger");
+
+    game.create_object_from_card(
+        &unesh_library_card(91_131, "Unesh Bottom Card"),
+        alice,
+        Zone::Library,
+    );
+    for (id, name) in [
+        (91_132, "Unesh Gamma"),
+        (91_133, "Unesh Delta"),
+        (91_134, "Unesh Beta"),
+        (91_135, "Unesh Alpha"),
+    ] {
+        game.create_object_from_card(&unesh_library_card(id, name), alice, Zone::Library);
+    }
+
+    let mut dm = UneshPileDecisionMaker {
+        opponent: bob,
+        split_names: &["Unesh Alpha", "Unesh Beta"],
+        choose_split_pile,
+    };
+    let entering_event = TriggerEvent::new_with_provenance(
+        EnterBattlefieldEvent::new(source_id, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut ctx = ExecutionContext::new(source_id, alice, &mut dm)
+        .with_triggering_event(entering_event);
+    for effect in &triggered.effects {
+        execute_effect(&mut game, effect, &mut ctx).expect("Unesh trigger effect should resolve");
+    }
+
+    if choose_split_pile {
+        (game, vec!["Unesh Gamma", "Unesh Delta"], vec!["Unesh Alpha", "Unesh Beta"])
+    } else {
+        (game, vec!["Unesh Alpha", "Unesh Beta"], vec!["Unesh Gamma", "Unesh Delta"])
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn unesh_criosphinx_sovereign_reduces_only_sphinx_spell_costs() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let unesh = unesh_criosphinx_sovereign_definition();
+    game.create_object_from_definition(&unesh, alice, Zone::Battlefield);
+
+    let sphinx_spell = CardDefinitionBuilder::new(CardId::from_raw(91_136), "Runtime Sphinx")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Sphinx])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let bear_spell = CardDefinitionBuilder::new(CardId::from_raw(91_137), "Runtime Bear")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Bear])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let sphinx_id = game.create_object_from_definition(&sphinx_spell, alice, Zone::Hand);
+    let bear_id = game.create_object_from_definition(&bear_spell, alice, Zone::Hand);
+
+    let sphinx = game.object(sphinx_id).expect("sphinx spell exists");
+    let sphinx_cost = crate::decision::calculate_effective_mana_cost(
+        &game,
+        alice,
+        sphinx,
+        sphinx.mana_cost.as_ref().expect("sphinx mana cost"),
+    );
+    assert_eq!(sphinx_cost.to_oracle(), "{2}");
+
+    let bear = game.object(bear_id).expect("bear spell exists");
+    let bear_cost = crate::decision::calculate_effective_mana_cost(
+        &game,
+        alice,
+        bear,
+        bear.mana_cost.as_ref().expect("bear mana cost"),
+    );
+    assert_eq!(bear_cost.to_oracle(), "{4}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn unesh_criosphinx_sovereign_trigger_matches_self_and_other_sphinx_only() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let unesh = unesh_criosphinx_sovereign_definition();
+    let unesh_id = game.create_object_from_definition(&unesh, alice, Zone::Battlefield);
+    let other_sphinx = CardDefinitionBuilder::new(CardId::from_raw(91_138), "Other Runtime Sphinx")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Sphinx])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let other_sphinx_id = game.create_object_from_definition(&other_sphinx, alice, Zone::Battlefield);
+    let bear = CardDefinitionBuilder::new(CardId::from_raw(91_139), "Other Runtime Bear")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Bear])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let bear_id = game.create_object_from_definition(&bear, alice, Zone::Battlefield);
+
+    let entering_event = |object_id| {
+        crate::events::RawEvent::new(
+            crate::events::ZoneChangeEvent::with_cause(
+                object_id,
+                Zone::Stack,
+                Zone::Battlefield,
+                crate::events::cause::EventCause::from_game_rule(),
+                None,
+            ),
+            crate::provenance::ProvNodeId::default(),
+        )
+    };
+
+    let self_triggers = crate::triggers::check_triggers(&game, &entering_event(unesh_id));
+    assert!(
+        self_triggers.iter().any(|trigger| trigger.source == unesh_id),
+        "Unesh should trigger when it enters"
+    );
+    let sphinx_triggers = crate::triggers::check_triggers(&game, &entering_event(other_sphinx_id));
+    assert!(
+        sphinx_triggers.iter().any(|trigger| trigger.source == unesh_id),
+        "Unesh should trigger when another Sphinx you control enters"
+    );
+    let bear_triggers = crate::triggers::check_triggers(&game, &entering_event(bear_id));
+    assert!(
+        !bear_triggers.iter().any(|trigger| trigger.source == unesh_id),
+        "Unesh should not trigger for a non-Sphinx entering"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn unesh_criosphinx_sovereign_puts_opponent_split_pile_into_hand() {
+    let (game, expected_hand, expected_graveyard) = execute_unesh_trigger_with_pile_choice(false);
+    let alice = PlayerId::from_index(0);
+    let hand = game.player(alice).expect("alice exists").hand.clone();
+    let graveyard = game.player(alice).expect("alice exists").graveyard.clone();
+
+    for name in expected_hand {
+        assert!(
+            hand.iter()
+                .any(|&id| game.object(id).is_some_and(|object| object.name == name)),
+            "{name} should be in hand when the caster chooses the opponent-created pile"
+        );
+    }
+    for name in expected_graveyard {
+        assert!(
+            graveyard
+                .iter()
+                .any(|&id| game.object(id).is_some_and(|object| object.name == name)),
+            "{name} should be in graveyard as part of the other pile"
+        );
+    }
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .library
+            .iter()
+            .any(|&id| game.object(id).is_some_and(|object| object.name == "Unesh Bottom Card")),
+        "Unesh should reveal only the top four cards"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn unesh_criosphinx_sovereign_can_choose_the_other_pile_for_hand() {
+    let (game, expected_hand, expected_graveyard) = execute_unesh_trigger_with_pile_choice(true);
+    let alice = PlayerId::from_index(0);
+    let hand = game.player(alice).expect("alice exists").hand.clone();
+    let graveyard = game.player(alice).expect("alice exists").graveyard.clone();
+
+    for name in expected_hand {
+        assert!(
+            hand.iter()
+                .any(|&id| game.object(id).is_some_and(|object| object.name == name)),
+            "{name} should be in hand when the caster chooses the other pile"
+        );
+    }
+    for name in expected_graveyard {
+        assert!(
+            graveyard
+                .iter()
+                .any(|&id| game.object(id).is_some_and(|object| object.name == name)),
+            "{name} should be in graveyard when the caster declines the opponent-created pile"
+        );
+    }
+}
+
 #[test]
 fn test_dash_grants_haste_and_returns_to_hand_at_next_end_step() {
     use crate::cards::CardDefinitionBuilder;
@@ -29702,6 +30565,186 @@ fn test_next_matching_spell_cost_reduction_is_consumed_by_first_match_only() {
         full_cost.to_oracle(),
         "{4}",
         "temporary reduction should be consumed by the first matching spell"
+    );
+}
+
+fn defiler_of_instinct_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(466_119), "Defiler of Instinct")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Phyrexian, Subtype::Kavu])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "First strike\n\
+             As an additional cost to cast red permanent spells, you may pay 2 life. Those spells cost {R} less to cast if you paid life this way. This effect reduces only the amount of red mana you pay.\n\
+             Whenever you cast a red permanent spell, this creature deals 1 damage to any target.",
+        )
+        .expect("Defiler of Instinct should parse for runtime tests")
+}
+
+fn one_red_creature_definition(name: &str) -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build()
+}
+
+fn start_defiler_red_creature_cast(
+    game: &mut GameState,
+    creature_id: ObjectId,
+) -> (
+    TriggerQueue,
+    PriorityLoopState,
+    crate::decisions::context::SelectOptionsContext,
+) {
+    let alice = PlayerId::from_index(0);
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    let progress = apply_priority_response_with_dm(
+        game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(crate::decision::LegalAction::CastSpell {
+            spell_id: creature_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+        &mut dm,
+    )
+    .expect("red creature cast should start");
+
+    let ctx = match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectOptions(ctx),
+        ) => ctx,
+        other => panic!("expected Defiler optional-cost prompt, got {other:?}"),
+    };
+    assert_eq!(ctx.player, alice);
+    (trigger_queue, state, ctx)
+}
+
+#[test]
+fn defiler_of_instinct_optional_life_cost_reduces_red_permanent_spell_cost() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let defiler = defiler_of_instinct_definition();
+    game.create_object_from_definition(&defiler, alice, Zone::Battlefield);
+    let red_creature = one_red_creature_definition("Defiler of Instinct Red Creature Probe");
+    let red_creature_id = game.create_object_from_definition(&red_creature, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    let (mut trigger_queue, mut state, optional_ctx) =
+        start_defiler_red_creature_cast(&mut game, red_creature_id);
+    assert!(
+        optional_ctx.options.iter().any(|option| {
+            option.description.to_ascii_lowercase().contains(
+                "as an additional cost to cast red permanent spells, you may pay 2 life",
+            )
+        }),
+        "Defiler should offer its optional life additional cost, got {:?}",
+        optional_ctx.options
+    );
+
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::OptionalCosts(vec![(0, 1)]),
+        &mut dm,
+    )
+    .expect("paying Defiler optional life cost should continue casting");
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        18,
+        "paying the Defiler additional cost should cost 2 life"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").mana_pool.total(),
+        1,
+        "paying life should reduce the red pip and leave the red mana unspent"
+    );
+}
+
+#[test]
+fn defiler_of_instinct_declining_life_cost_does_not_reduce_red_permanent_spell_cost() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let defiler = defiler_of_instinct_definition();
+    game.create_object_from_definition(&defiler, alice, Zone::Battlefield);
+    let red_creature = one_red_creature_definition("Defiler of Instinct Decline Probe");
+    let red_creature_id = game.create_object_from_definition(&red_creature, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    let (mut trigger_queue, mut state, _optional_ctx) =
+        start_defiler_red_creature_cast(&mut game, red_creature_id);
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::OptionalCosts(vec![]),
+        &mut dm,
+    )
+    .expect("declining Defiler optional life cost should continue casting");
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        20,
+        "declining the Defiler additional cost should not cost life"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").mana_pool.total(),
+        0,
+        "declining life should leave the red pip unreduced and spend the red mana"
+    );
+}
+
+#[test]
+fn defiler_of_instinct_life_cost_makes_red_permanent_spell_legal_without_red_mana() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let defiler = defiler_of_instinct_definition();
+    game.create_object_from_definition(&defiler, alice, Zone::Battlefield);
+    let red_creature = one_red_creature_definition("Defiler of Instinct Legal Action Probe");
+    let red_creature_id = game.create_object_from_definition(&red_creature, alice, Zone::Hand);
+
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            crate::decision::LegalAction::CastSpell { spell_id, from_zone: Zone::Hand, .. }
+                if *spell_id == red_creature_id
+        )),
+        "Defiler's optional life additional cost should make a one-red permanent spell castable with no red mana, got {actions:?}"
     );
 }
 
@@ -33253,6 +34296,159 @@ fn test_cipher_copy_cast_prompts_for_targets_before_resolving() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn prototype_portal_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(90_401), "Prototype Portal")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Imprint — When this artifact enters, you may exile an artifact card from your hand.\n\
+             {X}, {T}: Create a token that's a copy of the exiled card. X is the mana value of that card.",
+        )
+        .expect("Prototype Portal should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_prototype_portal_imprint(
+    game: &mut GameState,
+    portal_id: ObjectId,
+    controller: PlayerId,
+) {
+    let triggered_effects = game
+        .object(portal_id)
+        .expect("Prototype Portal should exist")
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered.effects.clone()),
+            _ => None,
+        })
+        .expect("Prototype Portal should have an imprint trigger");
+    game.stack.push(
+        StackEntry::ability(portal_id, controller, triggered_effects).with_triggering_event(
+            TriggerEvent::new_with_provenance(
+                EnterBattlefieldEvent::new(portal_id, Zone::Hand),
+                crate::provenance::ProvNodeId::default(),
+            ),
+        ),
+    );
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_stack_entry_with(game, &mut dm)
+        .expect("Prototype Portal imprint trigger should resolve");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn prototype_portal_imprints_artifact_and_copies_it_for_exact_dynamic_x_cost() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let portal = prototype_portal_definition();
+    let fuel_card = CardBuilder::new(CardId::from_raw(90_402), "Portal Fuel")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let fuel_id = game.create_object_from_card(&fuel_card, alice, Zone::Hand);
+    let portal_id = game.create_object_from_definition(&portal, alice, Zone::Battlefield);
+
+    assert!(
+        !crate::decision::compute_legal_actions(&game, alice)
+            .into_iter()
+            .any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, .. }
+                    if source == portal_id
+            )),
+        "Prototype Portal should not be activatable before a card is imprinted"
+    );
+
+    resolve_prototype_portal_imprint(&mut game, portal_id, alice);
+
+    assert!(
+        game.object(fuel_id).is_none(),
+        "the imprinted card should receive a fresh object id after moving to exile"
+    );
+    let imprinted = game.get_imprinted_cards(portal_id);
+    assert_eq!(
+        imprinted.len(),
+        1,
+        "Prototype Portal should source-link the exiled artifact card"
+    );
+    let imprinted_id = imprinted[0];
+    let imprinted_object = game
+        .object(imprinted_id)
+        .expect("imprinted card should exist in exile");
+    assert_eq!(imprinted_object.zone, Zone::Exile);
+    assert_eq!(imprinted_object.name, "Portal Fuel");
+
+    let activated = game
+        .object(portal_id)
+        .expect("Prototype Portal should exist")
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated.clone()),
+            _ => None,
+        })
+        .expect("Prototype Portal should have an activated ability");
+
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 2);
+    let mut dm = SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(portal_id, alice, &mut dm);
+    assert!(
+        crate::special_actions::pay_total_cost_with_choice_in_context(
+            &mut game,
+            alice,
+            portal_id,
+            &activated.mana_cost,
+            crate::costs::PaymentReason::ActivateAbility,
+            &mut ctx,
+        )
+        .is_err(),
+        "Prototype Portal activation should not accept less mana than the imprinted card's mana value"
+    );
+    assert!(
+        !game.is_tapped(portal_id),
+        "failed dynamic mana payment should not pay the tap cost"
+    );
+
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+    crate::special_actions::pay_total_cost_with_choice_in_context(
+        &mut game,
+        alice,
+        portal_id,
+        &activated.mana_cost,
+        crate::costs::PaymentReason::ActivateAbility,
+        &mut ctx,
+    )
+    .expect("Prototype Portal activation should accept mana equal to imprinted card's mana value");
+    assert!(game.is_tapped(portal_id), "Prototype Portal should tap as a cost");
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").mana_pool.total(),
+        0,
+        "Prototype Portal should spend exactly three mana for the imprinted mana value"
+    );
+
+    execute_resolution_program(&mut game, &mut ctx, alice, portal_id, &activated.effects, None, &[])
+        .expect("Prototype Portal activation should resolve");
+
+    let copied_tokens = game
+        .battlefield
+        .iter()
+        .filter_map(|id| game.object(*id))
+        .filter(|object| object.name == "Portal Fuel" && object.kind == ObjectKind::Token)
+        .count();
+    assert_eq!(
+        copied_tokens, 1,
+        "Prototype Portal should create one token copy of the imprinted artifact card"
+    );
+}
+
 #[test]
 fn test_rebound_exiles_on_resolution_and_schedules_next_upkeep_cast() {
     use crate::ability::Ability;
@@ -34820,6 +36016,32 @@ fn test_choose_casting_method_flow() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn brain_in_a_jar_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(93_000), "Brain in a Jar")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "{1}, {T}: Put a charge counter on this artifact, then you may cast an instant or sorcery spell with mana value equal to the number of charge counters on this artifact from your hand without paying its mana cost.\n{3}, {T}, Remove X charge counters from this artifact: Scry X.",
+        )
+        .expect("Brain in a Jar should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn brain_in_a_jar_ability_index(game: &GameState, brain_id: ObjectId, needle: &str) -> usize {
+    game.object(brain_id)
+        .expect("Brain in a Jar should exist")
+        .abilities
+        .iter()
+        .position(|ability| {
+            if let AbilityKind::Activated(activated) = &ability.kind {
+                format!("{:?}", activated.effects).contains(needle)
+            } else {
+                false
+            }
+        })
+        .unwrap_or_else(|| panic!("Brain in a Jar should have activated ability containing {needle}"))
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_omniscience_grants_free_cast_from_hand_without_mana() {
     use crate::cards::definitions::lightning_bolt;
@@ -34975,6 +36197,316 @@ fn test_omniscience_does_not_bypass_sorcery_timing_restrictions() {
         free_cast.is_none(),
         "Omniscience should not let sorceries ignore normal timing restrictions"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_brain_in_a_jar_first_ability_casts_matching_mana_value_spell_for_free() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let brain = brain_in_a_jar_definition();
+    let brain_id = game.create_object_from_definition(&brain, alice, Zone::Battlefield);
+    let matching_spell = CardBuilder::new(CardId::from_raw(93_001), "One-Mana Instant")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)]))
+        .build();
+    let nonmatching_spell = CardBuilder::new(CardId::from_raw(93_002), "Two-Mana Instant")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]))
+        .build();
+    game.create_object_from_card(&matching_spell, alice, Zone::Hand);
+    let nonmatching_id = game.create_object_from_card(&nonmatching_spell, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    let ability_index = brain_in_a_jar_ability_index(
+        &game,
+        brain_id,
+        "MayCastMatchingSpellWithoutPayingManaCostEffect",
+    );
+    let activate_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == brain_id && *idx == ability_index
+            )
+        })
+        .expect("Brain in a Jar first ability should be legal with one mana and untapped source");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Brain in a Jar activation should be put on the stack");
+
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Brain in a Jar first ability should resolve");
+
+    assert_eq!(
+        game.counter_count(brain_id, crate::object::CounterType::Charge),
+        1,
+        "Brain in a Jar should put a charge counter on itself before checking the free-cast gate"
+    );
+    assert!(
+        game.stack.iter().any(|entry| {
+            game.object(entry.object_id)
+                .is_some_and(|object| object.name == "One-Mana Instant")
+        }),
+        "the one-mana instant should be cast onto the stack without paying its mana cost"
+    );
+    assert_eq!(
+        game.object(nonmatching_id)
+            .expect("nonmatching spell should remain in hand")
+            .zone,
+        Zone::Hand,
+        "the two-mana instant should not match one charge counter"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_brain_in_a_jar_first_ability_casts_nothing_without_matching_mana_value() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let brain = brain_in_a_jar_definition();
+    let brain_id = game.create_object_from_definition(&brain, alice, Zone::Battlefield);
+    let nonmatching_spell = CardBuilder::new(CardId::from_raw(93_003), "Two-Mana Sorcery")
+        .card_types(vec![CardType::Sorcery])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]))
+        .build();
+    let nonmatching_type = CardBuilder::new(CardId::from_raw(93_004), "One-Mana Creature")
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)]))
+        .build();
+    let opponent_spell = CardBuilder::new(CardId::from_raw(93_005), "Opponent One-Mana Instant")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)]))
+        .build();
+    let nonmatching_id = game.create_object_from_card(&nonmatching_spell, alice, Zone::Hand);
+    let nonmatching_type_id = game.create_object_from_card(&nonmatching_type, alice, Zone::Hand);
+    let opponent_spell_id = game.create_object_from_card(&opponent_spell, bob, Zone::Hand);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    let ability_index = brain_in_a_jar_ability_index(
+        &game,
+        brain_id,
+        "MayCastMatchingSpellWithoutPayingManaCostEffect",
+    );
+    let activate_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == brain_id && *idx == ability_index
+            )
+        })
+        .expect("Brain in a Jar first ability should be legal");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Brain in a Jar activation should be put on the stack");
+
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Brain in a Jar first ability should resolve without a matching spell");
+
+    assert_eq!(
+        game.counter_count(brain_id, crate::object::CounterType::Charge),
+        1,
+        "Brain in a Jar should still get its charge counter"
+    );
+    assert_eq!(
+        game.object(nonmatching_id)
+            .expect("nonmatching spell should remain in hand")
+            .zone,
+        Zone::Hand,
+        "a spell with the wrong mana value should not be cast"
+    );
+    assert_eq!(
+        game.object(nonmatching_type_id)
+            .expect("nonmatching card type should remain in hand")
+            .zone,
+        Zone::Hand,
+        "a non-instant, non-sorcery card with matching mana value should not be cast"
+    );
+    assert_eq!(
+        game.object(opponent_spell_id)
+            .expect("opponent's matching spell should remain in hand")
+            .zone,
+        Zone::Hand,
+        "a matching instant in another player's hand should not be cast"
+    );
+    assert!(
+        game.stack.iter().all(|entry| match game.object(entry.object_id) {
+            Some(object) => !matches!(
+                object.name.as_str(),
+                "Two-Mana Sorcery" | "One-Mana Creature" | "Opponent One-Mana Instant"
+            ),
+            None => true,
+        }),
+        "nonmatching or non-owned cards should not be on the stack"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_brain_in_a_jar_second_ability_removes_x_charge_counters_for_scry() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let brain = brain_in_a_jar_definition();
+    let brain_id = game.create_object_from_definition(&brain, alice, Zone::Battlefield);
+    game.add_counters(brain_id, crate::object::CounterType::Charge, 2)
+        .expect("charge counters should be addable to Brain in a Jar");
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 3);
+
+    let ability_index = brain_in_a_jar_ability_index(&game, brain_id, "ScryEffect");
+    let activate_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == brain_id && *idx == ability_index
+            )
+        })
+        .expect("Brain in a Jar scry ability should be legal with three mana and counters");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Brain in a Jar scry activation should ask for X");
+
+    match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::Number(ctx),
+        ) => {
+            assert_eq!(ctx.player, alice);
+            assert_eq!(ctx.source, Some(brain_id));
+        }
+        other => panic!("expected X choice for Brain in a Jar scry activation, got {other:?}"),
+    }
+
+    let mut progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::XValue(2),
+        &mut dm,
+    )
+    .expect("choosing X should finish paying Brain in a Jar activation costs");
+
+    for _ in 0..8 {
+        progress = match progress {
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectOptions(ctx),
+            ) if ctx.description.starts_with("Choose the next cost to pay") => {
+                let option = ctx
+                    .options
+                    .iter()
+                    .find(|option| {
+                        let description = option.description.to_ascii_lowercase();
+                        option.legal && description.contains("remove")
+                    })
+                    .or_else(|| {
+                        ctx.options.iter().find(|option| {
+                            let description = option.description.to_ascii_lowercase();
+                            option.legal && description.contains("tap")
+                        })
+                    })
+                    .or_else(|| ctx.options.iter().find(|option| option.legal))
+                    .expect("Brain in a Jar should have a legal cost option");
+                apply_priority_response_with_dm(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::NextCostChoice(option.index),
+                    &mut dm,
+                )
+                .expect("chosen Brain in a Jar cost should be payable")
+            }
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectOptions(ctx),
+            ) => {
+                let option = ctx
+                    .options
+                    .iter()
+                    .find(|option| option.legal)
+                    .expect("Brain in a Jar mana payment should have a legal option");
+                apply_priority_response_with_dm(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::ManaPayment(option.index),
+                    &mut dm,
+                )
+                .expect("Brain in a Jar mana payment should succeed")
+            }
+            crate::decision::GameProgress::Continue => break,
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Priority(_),
+            ) => break,
+            other => panic!("unexpected Brain in a Jar activation progress: {other:?}"),
+        };
+    }
+
+    assert_eq!(
+        game.counter_count(brain_id, crate::object::CounterType::Charge),
+        0,
+        "the X charge counters should be removed as an activation cost"
+    );
+
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Brain in a Jar scry ability should resolve");
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -39798,6 +41330,95 @@ fn voices_from_the_void_discards_one_card_per_basic_land_type() {
         game.player(bob).expect("bob exists").graveyard.len(),
         3,
         "the discard count should match the three basic land types on Alice's battlefield"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn careful_consideration_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Careful Consideration")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Target player draws four cards, then discards three cards. If you cast this spell during your main phase, instead that player draws four cards, then discards two cards.",
+        )
+        .expect("Careful Consideration should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_careful_consideration_targeting_bob(main_phase: bool) -> GameState {
+    use crate::cost::OptionalCostsPaid;
+    use crate::game_loop::resolve_stack_entry_with_dm_and_triggers;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let def = careful_consideration_definition();
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+
+    put_test_cards_in_zone(&mut game, bob, Zone::Library, 4);
+    put_test_cards_in_zone(&mut game, bob, Zone::Hand, 3);
+
+    let mut entry = StackEntry::new(spell_id, alice).with_targets(vec![Target::Player(bob)]);
+    if main_phase {
+        let mut paid = OptionalCostsPaid::default();
+        paid.mark_label_paid("CastDuringYourMainPhase");
+        game.object_mut(spell_id)
+            .expect("Careful Consideration spell should exist")
+            .optional_costs_paid = paid.clone();
+        entry = entry.with_optional_costs_paid(paid);
+    }
+    game.push_to_stack(entry);
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("Careful Consideration should resolve");
+    game
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn careful_consideration_non_main_phase_target_draws_four_discards_three() {
+    let game = resolve_careful_consideration_targeting_bob(false);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    assert_eq!(
+        game.player(bob).expect("bob exists").hand.len(),
+        4,
+        "Bob should net one card after drawing four and discarding three"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").graveyard.len(),
+        3,
+        "Bob should discard three cards outside Alice's main phase"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").hand.len(),
+        0,
+        "Careful Consideration should affect the targeted player, not its controller"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn careful_consideration_main_phase_replacement_discards_two_instead() {
+    let game = resolve_careful_consideration_targeting_bob(true);
+    let bob = PlayerId::from_index(1);
+
+    assert_eq!(
+        game.player(bob).expect("bob exists").hand.len(),
+        5,
+        "Bob should net two cards when the main-phase replacement applies"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").graveyard.len(),
+        2,
+        "the main-phase branch should discard two cards instead of three"
     );
 }
 

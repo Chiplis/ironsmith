@@ -177,6 +177,7 @@ pub enum StaticAbilityId {
     PreventAllDamageDealtToCreatures,
     PreventAllDamageToSelf,
     PreventAllCombatDamageToSelf,
+    PreventAllCombatDamageToPermanentsMatching,
     PreventAllDamageToSelfByCreatures,
     PreventDamageToYouFromSourceFilter,
     PreventDamageToSelfRemoveCounter,
@@ -221,6 +222,7 @@ pub enum StaticAbilityId {
     OpponentSearchExileFoundCards,
     CastThisCardFromLibraryWhileSearching,
     EffectDiscardToLibraryReplacement,
+    OpponentEffectDiscardThisToBattlefieldReplacement,
     DrawReplacementExileTopFaceDown,
     DrawReplacementExileTopAndPlay,
     DrawReplacementDouble,
@@ -248,6 +250,7 @@ pub enum StaticAbilityId {
     DiscardOrRedirectReplacement,
     PayLifeOrEnterTappedReplacement,
     PregameAction,
+    DeckConstructionRuleText,
     DraftRuleText,
     KeywordText,
     KeywordMarker,
@@ -433,6 +436,7 @@ impl StaticAbilityId {
             | PreventAllDamageDealtToCreatures
             | PreventAllDamageToSelf
             | PreventAllCombatDamageToSelf
+            | PreventAllCombatDamageToPermanentsMatching
             | PreventAllDamageToSelfByCreatures
             | PreventDamageToYouFromSourceFilter
             | PreventDamageToSelfRemoveCounter
@@ -477,6 +481,7 @@ impl StaticAbilityId {
             | OpponentSearchExileFoundCards
             | CastThisCardFromLibraryWhileSearching
             | EffectDiscardToLibraryReplacement
+            | OpponentEffectDiscardThisToBattlefieldReplacement
             | DrawReplacementExileTopFaceDown
             | DrawReplacementExileTopAndPlay
             | DrawReplacementDouble
@@ -504,6 +509,7 @@ impl StaticAbilityId {
             | DiscardOrRedirectReplacement
             | PayLifeOrEnterTappedReplacement
             | PregameAction
+            | DeckConstructionRuleText
             | DraftRuleText
             | KeywordText
             | KeywordMarker

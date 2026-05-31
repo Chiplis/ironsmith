@@ -1230,6 +1230,15 @@ fn lower_rewrite_static_to_chunk_impl(
             chosen_option_label,
         );
     }
+    if is_any_number_named_deck_construction_line(raw) {
+        return wrap_chosen_option_static_chunk(
+            LineAst::StaticAbility(
+                StaticAbility::deck_construction_rule_text(raw.trim_end_matches('.').to_string())
+                    .into(),
+            ),
+            chosen_option_label,
+        );
+    }
     if is_first_equip_cost_alternative_lowering_line(&line.text) {
         let display = capitalize_first_equip_cost_alternative_display(&line.text);
         return wrap_chosen_option_static_chunk(
@@ -1371,6 +1380,13 @@ fn is_draft_rule_static_line(parse_tokens: &[OwnedLexToken]) -> bool {
     DRAFT_RULE_LINE_PATTERN.matches_words(&words)
         || DRAFT_RULE_PREFIX_PATTERN.matches_words(&words)
         || DRAFT_BOOSTER_PASS_PATTERN.matches_words(&words)
+}
+
+fn is_any_number_named_deck_construction_line(raw: &str) -> bool {
+    let trimmed = raw.trim().trim_end_matches('.');
+    let lower = trimmed.to_ascii_lowercase();
+    let prefix = "a deck can have any number of cards named ";
+    lower.starts_with(prefix) && trimmed.len() > prefix.len()
 }
 
 fn parse_additional_land_play_static_count_from_text(text: &str) -> Option<u32> {

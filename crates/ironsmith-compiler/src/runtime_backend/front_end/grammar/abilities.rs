@@ -18,7 +18,8 @@ use super::super::lexer::{
     LexStream, LexToken, OwnedLexToken, TokenKind, TokenWordView, contains_token_any_word,
     contains_token_word, contains_token_word_sequence, find_token_any_word, find_token_kind,
     find_token_word, token_slice_first_is, token_slice_first_is_any, token_slice_starts_with,
-    trim_lexed_commas, word_slice_strip_any_prefix,
+    trim_lexed_commas, word_slice_contains_any_word, word_slice_eq, word_slice_starts_with,
+    word_slice_strip_any_prefix,
 };
 use super::super::token_primitives::{slice_contains, str_strip_suffix};
 use super::filters::{
@@ -1695,6 +1696,43 @@ pub(crate) fn is_effect_discard_to_library_replacement_line_lexed(
         && contains_token_word(tokens, "graveyard")
 }
 
+pub(crate) fn is_opponent_effect_discard_this_to_battlefield_replacement_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    let words = TokenWordView::new(tokens).word_refs();
+    word_slice_eq(
+        &words,
+        &[
+            "if",
+            "a",
+            "spell",
+            "or",
+            "ability",
+            "an",
+            "opponent",
+            "controls",
+            "causes",
+            "you",
+            "to",
+            "discard",
+            "this",
+            "card",
+            "put",
+            "it",
+            "onto",
+            "the",
+            "battlefield",
+            "instead",
+            "of",
+            "putting",
+            "it",
+            "into",
+            "your",
+            "graveyard",
+        ],
+    )
+}
+
 pub(crate) fn is_shuffle_into_library_from_graveyard_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     contains_token_word_sequence(tokens, &["would", "be", "put"])
         && contains_token_word(tokens, "graveyard")
@@ -2737,6 +2775,21 @@ pub(crate) fn is_prevent_all_noncombat_damage_to_other_creatures_you_control_lin
             "control",
         ],
     )
+}
+
+pub(crate) fn is_prevent_all_combat_damage_to_matching_permanents_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    let words = TokenWordView::new(tokens).to_word_refs();
+    let prefix = [
+        "prevent", "all", "combat", "damage", "that", "would", "be", "dealt", "to",
+    ];
+    word_slice_starts_with(&words, &prefix)
+        && words.len() > prefix.len()
+        && !word_slice_eq(&words[prefix.len()..], &["this", "creature"])
+        && !word_slice_eq(&words[prefix.len()..], &["this", "permanent"])
+        && !word_slice_eq(&words[prefix.len()..], &["it"])
+        && !word_slice_contains_any_word(&words, &["turn"])
 }
 
 pub(crate) fn is_prevent_all_damage_to_source_by_creatures_line_lexed(

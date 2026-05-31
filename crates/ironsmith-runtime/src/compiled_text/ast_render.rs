@@ -474,6 +474,13 @@ fn describe_single_self_replacement_segment(
     ) {
         return Some(count_override_text);
     }
+    if let Some(draw_discard_text) = describe_target_player_draw_discard_self_replacement(
+        &segment.default_effects,
+        &branch.replacement_effects,
+        &condition_text,
+    ) {
+        return Some(draw_discard_text);
+    }
     if let Some(damage_text) =
         describe_rendered_damage_self_replacement(&default_text, &replacement_text, &condition_text)
     {
@@ -749,6 +756,67 @@ fn describe_rendered_count_override_self_replacement(
     ))
 }
 
+fn target_player_draw_discard_counts(effects: &[Effect]) -> Option<(&Value, &Value)> {
+    let [target_effect, draw_effect, discard_effect] = effects else {
+        return None;
+    };
+    let target = target_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    if target.target != target_any_player_spec() {
+        return None;
+    }
+
+    let draw = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    let discard = discard_effect.downcast_ref::<crate::effects::DiscardEffect>()?;
+    if draw.player != target_any_player_filter()
+        || discard.player != target_any_player_filter()
+        || discard.random
+        || discard.any_number
+        || discard.card_filter.is_some()
+    {
+        return None;
+    }
+    Some((&draw.count, &discard.count))
+}
+
+fn card_count_noun(count: &Value) -> &'static str {
+    if matches!(count.unhinted(), Value::Fixed(1)) {
+        "card"
+    } else {
+        "cards"
+    }
+}
+
+fn card_count_text(count: &Value) -> String {
+    match count.unhinted() {
+        Value::Fixed(n) => number_word(*n).unwrap_or_else(|| n.to_string()),
+        _ => describe_value(count),
+    }
+}
+
+fn describe_target_player_draw_discard_self_replacement(
+    default_effects: &[Effect],
+    replacement_effects: &[Effect],
+    condition_text: &str,
+) -> Option<String> {
+    let (default_draw, default_discard) = target_player_draw_discard_counts(default_effects)?;
+    let (replacement_draw, replacement_discard) =
+        target_player_draw_discard_counts(replacement_effects)?;
+    if default_draw != replacement_draw {
+        return None;
+    }
+
+    let draw_count = card_count_text(default_draw);
+    let default_discard_count = card_count_text(default_discard);
+    let replacement_discard_count = card_count_text(replacement_discard);
+    Some(format!(
+        "Target player draws {draw_count} {}, then discards {default_discard_count} {}. If {condition_text}, instead that player draws {draw_count} {}, then discards {replacement_discard_count} {}",
+        card_count_noun(default_draw),
+        card_count_noun(default_discard),
+        card_count_noun(replacement_draw),
+        card_count_noun(replacement_discard),
+    ))
+}
+
 fn describe_rendered_damage_self_replacement(
     default_text: &str,
     replacement_text: &str,
@@ -823,8 +891,30 @@ fn rewrite_spell_resolution_damage_source(def: &CardDefinition, rendered: &str) 
     if !(def.card.is_instant() || def.card.is_sorcery()) || def.card.name.contains(" // ") {
         return rendered.to_string();
     }
-    rewrite_damage_phrases_for_permanent_abilities(rendered, &def.card.name, false)
-        .replace("Exile this source", &format!("Exile {}", def.card.name))
+    let rendered = rewrite_damage_phrases_for_permanent_abilities(rendered, &def.card.name, false)
+        .replace("Exile this source", &format!("Exile {}", def.card.name));
+    rewrite_standalone_spell_self_exile(&rendered, &def.card.name)
+}
+
+fn rewrite_standalone_spell_self_exile(rendered: &str, card_name: &str) -> String {
+    let needle = "Exile this";
+    let replacement = format!("Exile {card_name}");
+    let mut out = String::with_capacity(rendered.len() + card_name.len());
+    let mut rest = rendered;
+
+    while let Some(idx) = rest.find(needle) {
+        out.push_str(&rest[..idx]);
+        let after = &rest[idx + needle.len()..];
+        if matches!(after.chars().next(), None | Some('.') | Some(',') | Some(';')) {
+            out.push_str(&replacement);
+        } else {
+            out.push_str(needle);
+        }
+        rest = after;
+    }
+
+    out.push_str(rest);
+    out
 }
 
 fn ability_has_begin_on_battlefield_pregame(ability: &Ability) -> bool {
@@ -874,6 +964,7 @@ pub(super) fn substitute_legendary_source_reference(
         || conditional_static_self_surface
         || lower.contains("if this land has ")
         || lower.starts_with("whenever this creature deals combat damage to a player")
+        || lower.starts_with("whenever this creature or another ")
         || lower.contains(": this creature gets ")
         || lower.contains(": whenever this creature deals combat damage to a player");
     if !card.supertypes.contains(&Supertype::Legendary) || !uses_named_source_surface {

@@ -138,11 +138,13 @@ pub enum DelayedTriggerSpec {
     BeginningOfEndStep(PlayerFilter),
     EndOfCombat,
     ThisDies,
+    ThisLeavesBattlefield,
     ThisAttacksAndIsntBlocked,
     Attacks(ObjectFilter),
     AttacksAndIsntBlocked(ObjectFilter),
     AttacksOneOrMore(ObjectFilter),
     Blocks(ObjectFilter),
+    LeavesBattlefield(ObjectFilter),
     Dies(ObjectFilter),
     DealsCombatDamageToPlayer {
         source: ObjectFilter,

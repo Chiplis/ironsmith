@@ -11,6 +11,7 @@ use crate::effects::{
     MoveToZoneEffect, ReturnFromGraveyardToHandEffect, TagTriggeringObjectEffect, TaggedEffect,
     TargetOnlyEffect, UntapEffect,
 };
+use crate::filter::ObjectFilterExt;
 use crate::object::AuraAttachmentFilter;
 use crate::static_abilities::StaticAbilityId;
 use crate::target::{ChooseSpec, ObjectRef, PlayerFilter, SourceReferenceSurface};
@@ -163,6 +164,153 @@ fn commander_liara_portyr_strict_parser_and_compiled_text_regression() {
         rendered,
         "Whenever you attack, spells you cast from exile this turn cost {X} less to cast, where X is the number of players being attacked. Exile the top X cards of your library. Until end of turn, you may cast spells from among those exiled cards."
     );
+}
+
+#[test]
+fn templar_knight_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Templar Knight");
+    let rendered = unprocessed_compiled_lines(&def);
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert_eq!(
+        rendered,
+        vec![
+            "Vigilance".to_string(),
+            "{W}, Tap five untapped attacking creatures you control named Templar Knight: Search your library for a legendary artifact card, put it onto the battlefield, then shuffle.".to_string(),
+            "A deck can have any number of cards named Templar Knight.".to_string(),
+        ],
+        "Templar Knight should parse strictly and preserve its activation and deck-construction text"
+    );
+    assert!(
+        def.abilities.iter().any(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => {
+                static_ability.id() == StaticAbilityId::DeckConstructionRuleText
+            }
+            _ => false,
+        }),
+        "Templar Knight should lower its any-number deck rule to typed deck-construction text, got {ability_debug}"
+    );
+    assert!(
+        ability_debug.contains("untapped: true")
+            && ability_debug.contains("attacking: true")
+            && ability_debug.contains("name: Some(")
+            && ability_debug.contains("\"templar knight\"")
+            && !ability_debug.contains("RuleFallbackText")
+            && !ability_debug.contains("UnsupportedParserLine"),
+        "Templar Knight should structurally model the named untapped attacking creature cost without parser fallbacks, got {ability_debug}"
+    );
+}
+
+#[test]
+fn templar_knight_deck_construction_rule_has_no_game_runtime_effects() {
+    let def = parse_oracle_card_definition("Templar Knight");
+    let static_ability = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => {
+                if static_ability.id() == StaticAbilityId::DeckConstructionRuleText {
+                    Some(static_ability)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        })
+        .expect("Templar Knight should have a typed deck-construction static ability");
+
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    assert!(static_ability.generate_effects(source, alice, &game).is_empty());
+    assert!(static_ability
+        .generate_replacement_effect(source, alice)
+        .is_none());
+    assert!(static_ability.pregame_action_kind().is_none());
+}
+
+#[test]
+fn templar_knight_activation_cost_filter_requires_untapped_attacking_named_creatures_you_control() {
+    let def = parse_oracle_card_definition("Templar Knight");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Templar Knight should have an activated ability");
+    let choose_cost = activated
+        .mana_cost
+        .costs()
+        .iter()
+        .filter_map(|cost| cost.effect_ref())
+        .find_map(|effect| effect.downcast_ref::<ChooseObjectsEffect>())
+        .expect("Templar Knight activation should choose creatures to tap as a cost");
+
+    assert_eq!(choose_cost.count.min, 5);
+    assert_eq!(choose_cost.count.max, Some(5));
+    assert!(choose_cost.filter.untapped);
+    assert!(choose_cost.filter.attacking);
+    assert_eq!(choose_cost.filter.controller, Some(PlayerFilter::You));
+    assert_eq!(choose_cost.filter.name.as_deref(), Some("templar knight"));
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let matching = (0..5)
+        .map(|_| game.create_object_from_definition(&def, alice, Zone::Battlefield))
+        .collect::<Vec<_>>();
+    let nonattacking = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let tapped_attacker = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.tap(tapped_attacker);
+    let bob_attacker = game.create_object_from_definition(&def, bob, Zone::Battlefield);
+    let decoy_def = CardDefinitionBuilder::new(CardId::new(), "Templar Decoy")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let wrong_name_attacker =
+        game.create_object_from_definition(&decoy_def, alice, Zone::Battlefield);
+
+    let mut attackers = matching
+        .iter()
+        .chain([&tapped_attacker, &bob_attacker, &wrong_name_attacker])
+        .map(|creature| crate::combat_state::AttackerInfo {
+            creature: *creature,
+            target: crate::combat_state::AttackTarget::Player(bob),
+        })
+        .collect::<Vec<_>>();
+    attackers.push(crate::combat_state::AttackerInfo {
+        creature: source,
+        target: crate::combat_state::AttackTarget::Player(bob),
+    });
+    game.combat = Some(crate::combat_state::CombatState {
+        attackers,
+        ..Default::default()
+    });
+    let ctx = game.filter_context_for(alice, Some(source));
+
+    for creature in matching {
+        let object = game.object(creature).expect("matching Templar should exist");
+        assert!(
+            choose_cost.filter.matches(object, &ctx, &game),
+            "untapped attacking Templars you control should satisfy the activation cost filter"
+        );
+    }
+    for (creature, reason) in [
+        (nonattacking, "nonattacking"),
+        (tapped_attacker, "tapped"),
+        (bob_attacker, "opponent-controlled"),
+        (wrong_name_attacker, "wrong-name"),
+    ] {
+        let object = game.object(creature).expect("negative branch object should exist");
+        assert!(
+            !choose_cost.filter.matches(object, &ctx, &game),
+            "{reason} creatures should not satisfy the Templar Knight activation cost filter"
+        );
+    }
 }
 
 #[test]
@@ -1136,6 +1284,174 @@ fn kin_tree_nurturer_endure_effect(def: &CardDefinition) -> &Effect {
         panic!("Kin-Tree Nurturer should have exactly one endure effect, got {effects:#?}");
     };
     effect
+}
+
+fn pious_kitsune_upkeep_effects(def: &CardDefinition) -> &[Effect] {
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Pious Kitsune should compile an upkeep trigger");
+    triggered.effects.flattened_default_effects()
+}
+
+fn pious_kitsune_life_activated_ability(
+    def: &CardDefinition,
+) -> &crate::ability::ActivatedAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Pious Kitsune should compile a life-gain activated ability")
+}
+
+#[test]
+fn pious_kitsune_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Pious Kitsune");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let compiled = unprocessed_compiled_lines(&def);
+    let rendered = compiled.join("\n");
+    let oracle = oracle_text_by_name()
+        .get("Pious Kitsune")
+        .expect("Pious Kitsune oracle text")
+        .clone();
+    let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+        crate::semantic_compare::compare_semantics_scored(
+            &oracle,
+            &compiled,
+            crate::semantic_compare::report_embedding_config(),
+        );
+
+    assert!(
+        ability_debug.contains("ValueComparison")
+            && ability_debug.contains("eight-and-a-half-tails")
+            && ability_debug.contains("CountersOnSource")
+            && ability_debug.contains("\"devotion\"")
+            && ability_debug.contains("RemoveCountersEffect"),
+        "Pious Kitsune should structurally keep the named-creature condition, devotion-counter life scaling, and activated counter cost, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains("if a creature named eight-and-a-half-tails is on the battlefield")
+            && rendered.contains("gain 1 life for each devotion counter on this creature")
+            && rendered.contains("Remove a devotion counter from this creature"),
+        "expected Pious Kitsune compiled text to preserve named-creature condition and devotion counter clauses, got {rendered}"
+    );
+    assert!(
+        similarity >= 0.99 && !mismatch,
+        "expected Pious Kitsune semantic comparison to clear target, score={similarity}, mismatch={mismatch}, compiled={compiled:?}"
+    );
+}
+
+#[test]
+fn pious_kitsune_upkeep_gains_life_when_named_creature_is_on_battlefield() {
+    let def = parse_oracle_card_definition("Pious Kitsune");
+    let effects = pious_kitsune_upkeep_effects(&def);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.add_counters(source, CounterType::Named("devotion"), 1)
+        .expect("Pious Kitsune should accept devotion counters");
+    let named_creature = CardDefinitionBuilder::new(CardId::new(), "Eight-and-a-Half-Tails")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    game.create_object_from_definition(&named_creature, bob, Zone::Battlefield);
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
+    for effect in effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Pious Kitsune upkeep effect should resolve");
+    }
+
+    assert_eq!(
+        game.counter_count(source, CounterType::Named("devotion")),
+        2,
+        "upkeep trigger should put a devotion counter on Pious Kitsune first"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        22,
+        "named creature on any battlefield should enable life gain equal to devotion counters"
+    );
+}
+
+#[test]
+fn pious_kitsune_upkeep_skips_life_gain_without_named_creature() {
+    let def = parse_oracle_card_definition("Pious Kitsune");
+    let effects = pious_kitsune_upkeep_effects(&def);
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.add_counters(source, CounterType::Named("devotion"), 1)
+        .expect("Pious Kitsune should accept devotion counters");
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
+    for effect in effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Pious Kitsune upkeep effect should resolve");
+    }
+
+    assert_eq!(
+        game.counter_count(source, CounterType::Named("devotion")),
+        2,
+        "upkeep trigger should put a devotion counter even when condition is false"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        20,
+        "life-gain branch should not happen without Eight-and-a-Half-Tails on the battlefield"
+    );
+}
+
+#[test]
+fn pious_kitsune_activated_ability_removes_devotion_counter_and_gains_life() {
+    let def = parse_oracle_card_definition("Pious Kitsune");
+    let activated = pious_kitsune_life_activated_ability(&def);
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(source);
+    game.add_counters(source, CounterType::Named("devotion"), 1)
+        .expect("Pious Kitsune should accept devotion counters");
+
+    crate::cost::can_pay_cost(&game, source, alice, &activated.mana_cost)
+        .expect("Pious Kitsune activation should be payable with an untapped source and a devotion counter");
+    let mut dm = crate::decision::AutoPassDecisionMaker::default();
+    crate::special_actions::pay_total_cost_with_choice(
+        &mut game,
+        alice,
+        source,
+        &activated.mana_cost,
+        crate::costs::PaymentReason::ActivateAbility,
+        &mut dm,
+    )
+    .expect("Pious Kitsune activation cost should be paid");
+
+    assert!(game.is_tapped(source), "activation cost should tap Pious Kitsune");
+    assert_eq!(
+        game.counter_count(source, CounterType::Named("devotion")),
+        0,
+        "activation cost should remove one devotion counter"
+    );
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
+    for effect in activated.effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Pious Kitsune activated ability effect should resolve");
+    }
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        21,
+        "activated ability should gain 1 life after its counter-removal cost is paid"
+    );
 }
 
 #[test]
@@ -4090,6 +4406,42 @@ fn vexing_shusher_strict_parser_and_compiled_text_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn loxodon_smiter_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Loxodon Smiter");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("This spell can't be countered."),
+        "expected Loxodon Smiter to render its uncounterable spell line, got {rendered}"
+    );
+    assert!(
+        rendered.contains("If a spell or ability an opponent controls causes you to discard this card, put it onto the battlefield instead of putting it into your graveyard"),
+        "expected Loxodon Smiter to render its opponent-caused discard replacement, got {rendered}"
+    );
+
+    assert!(
+        def.abilities.iter().any(|ability| matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::CantBeCountered
+                    && ability.functions_in(&Zone::Stack)
+        )),
+        "Loxodon Smiter's uncounterable ability should function on the stack"
+    );
+    assert!(
+        def.abilities.iter().any(|ability| matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.id()
+                    == StaticAbilityId::OpponentEffectDiscardThisToBattlefieldReplacement
+                    && ability.functions_in(&Zone::Hand)
+        )),
+        "Loxodon Smiter's discard replacement should function from hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_spells_cant_be_countered_as_rule_restriction() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Global No Counter")
         .parse_text("Spells can't be countered.")
@@ -5952,6 +6304,39 @@ fn test_parse_clown_car_compiled_text_keeps_odd_even_branches_and_token_identity
     assert!(
         rendered.contains("+1/+1 counter") && rendered.contains("this vehicle"),
         "expected even-result +1/+1 counter branch in compiled text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_parse_complaints_clerk_roll_one_trigger_creates_clown_robot() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Complaints Clerk")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Beast])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "When this creature enters, open an Attraction. (Put the top card of your Attraction deck onto the battlefield.)\nWhenever you roll a 1, create a 1/1 white Clown Robot artifact creature token.",
+        )
+        .expect("Complaints Clerk should parse strictly");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("PlayerRollsResult") && debug.contains("result: 1"),
+        "expected exact roll-one trigger, got {debug}"
+    );
+    assert!(
+        debug.contains("CreateToken") && debug.contains("Clown") && debug.contains("Robot"),
+        "expected Clown Robot token creation payload, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Whenever you roll a 1"),
+        "expected roll-one trigger wording, got {rendered}"
+    );
+    assert!(
+        rendered.contains("1/1 white Clown Robot artifact creature token"),
+        "expected Clown Robot token wording, got {rendered}"
     );
 }
 
@@ -21174,6 +21559,35 @@ fn parse_omniscience_static_free_cast_permission() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_brain_in_a_jar_strictly_and_renders_counter_gated_free_cast() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Brain in a Jar")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "{1}, {T}: Put a charge counter on this artifact, then you may cast an instant or sorcery spell with mana value equal to the number of charge counters on this artifact from your hand without paying its mana cost.\n{3}, {T}, Remove X charge counters from this artifact: Scry X.",
+        )
+        .expect("Brain in a Jar should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains(
+            "you may cast an instant or sorcery spell from your hand with mana value equal to the number of charge counters on this artifact without paying its mana cost"
+        ) || rendered_lower.contains(
+            "you may cast an instant or sorcery spell with mana value equal to the number of charge counters on this artifact from your hand without paying its mana cost"
+        ),
+        "expected counter-gated free-cast clause in compiled output, got {rendered}"
+    );
+
+    let ability_debug = format!("{:?}", def.abilities);
+    assert!(
+        ability_debug.contains("MayCastMatchingSpellWithoutPayingManaCostEffect")
+            && ability_debug.contains("mana_value_eq_counters_on_source: Some(Charge)"),
+        "expected Brain in a Jar to lower to a charge-counter-gated free-cast effect, got {ability_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_kentaro_static_mana_value_permission() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Kentaro Variant")
         .card_types(vec![CardType::Creature])
@@ -22856,6 +23270,40 @@ fn parse_terrapact_intimidator_preserves_have_you_create_branch() {
     assert!(
         joined.contains("if they don't, put two +1/+1 counters on this creature"),
         "expected pronoun-based decline branch, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_covenant_of_minds_preserves_opponent_choice_and_decline_branch() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(416_862), "Covenant of Minds")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Reveal the top three cards of your library. Target opponent may choose to put those cards into your hand. If they don't, put those cards into your graveyard and draw five cards.",
+        )
+        .expect("Covenant of Minds oracle text should parse strictly");
+
+    let expected = concat!(
+        "Reveal the top three cards of your library. ",
+        "Target opponent may choose to put those cards into your hand. ",
+        "If they don't, put those cards into your graveyard and draw five cards."
+    );
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec![expected.to_string()],
+        "expected exact Covenant of Minds compiled text"
+    );
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("LookAtTopCardsEffect")
+            && debug.contains("MayEffect")
+            && debug.contains("IfEffect"),
+        "expected reveal, optional opponent choice, and decline conditional effects, got {debug}"
     );
 }
 
@@ -27423,6 +27871,48 @@ fn parse_semblance_anvil_keeps_shared_exiled_card_type_cost_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn prototype_portal_strict_parser_keeps_imprint_copy_and_x_definition() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(90_401), "Prototype Portal")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Imprint — When this artifact enters, you may exile an artifact card from your hand.\n\
+             {X}, {T}: Create a token that's a copy of the exiled card. X is the mana value of that card.",
+        )
+        .expect("Prototype Portal should parse strictly");
+
+    assert_eq!(
+        crate::compiled_text::compiled_text_lines(&def),
+        vec![
+            "Imprint — When this artifact enters, you may exile an artifact card from your hand."
+                .to_string(),
+            "{X}, {T}: Create a token that's a copy of the exiled card. X is the mana value of that card."
+                .to_string(),
+        ],
+    );
+
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Prototype Portal should have an activated ability");
+    assert!(
+        activated.mana_cost.dynamic_mana_cost().is_some(),
+        "Prototype Portal's {{X}} cost should lower to a dynamic mana cost"
+    );
+    let ability_debug = format!("{:?}", activated);
+    assert!(
+        ability_debug.contains("CreateTokenCopyEffect")
+            && ability_debug.contains(crate::tag::SOURCE_EXILED_TAG),
+        "activated ability should create a token copy of the source-exiled card, got {ability_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_spells_cost_modifier_keeps_noncreature_qualifier() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Glowrider Variant")
         .card_types(vec![CardType::Creature])
@@ -27465,6 +27955,49 @@ fn parse_spells_cost_modifier_supports_colored_mana_increase() {
     assert!(
         joined.contains("black spells you cast cost {b} more to cast"),
         "expected colored cost increase to render, got {joined}"
+    );
+}
+
+#[test]
+fn parse_oracle_defiler_of_instinct_optional_life_cost_reduction_regression() {
+    let def = parse_oracle_card_definition("Defiler of Instinct");
+    let raw = format!("{def:#?}");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    let reduction = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => static_ability.cost_reduction_mana_cost(),
+            _ => None,
+        })
+        .expect("Defiler of Instinct should have a mana-symbol cost reduction");
+
+    assert_eq!(reduction.filter.cast_by, Some(PlayerFilter::You));
+    assert!(
+        reduction.filter.card_types.contains(&CardType::Creature)
+            && reduction.filter.card_types.contains(&CardType::Artifact)
+            && reduction.filter.card_types.contains(&CardType::Enchantment)
+            && reduction.filter.card_types.contains(&CardType::Planeswalker)
+            && reduction.filter.card_types.contains(&CardType::Battle),
+        "Defiler cost reduction should apply to red permanent spells, got {:?}",
+        reduction.filter
+    );
+    assert!(
+        reduction.optional_life_additional_cost.is_some(),
+        "Defiler cost reduction should be gated by its optional life additional cost, got {raw}"
+    );
+    assert!(
+        rendered_lower.contains("as an additional cost to cast red permanent spells, you may pay 2 life")
+            && rendered_lower.contains("those spells cost {r} less to cast if you paid life this way")
+            && rendered_lower.contains("this effect reduces only the amount of red mana you pay"),
+        "Defiler compiled text should preserve the optional additional cost and gated colored reduction, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("whenever you cast a red permanent spell")
+            && rendered_lower.contains("deals 1 damage to any target"),
+        "Defiler compiled text should preserve its red-permanent cast trigger, got {rendered}"
     );
 }
 
@@ -35516,6 +36049,43 @@ fn parse_split_the_spoils_divvy_uses_splitter_then_opponent_choice() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_unesh_criosphinx_sovereign_reveal_top_opponent_split_piles() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(91_102), "Unesh, Criosphinx Sovereign")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Sphinx])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Flying\n\
+             Sphinx spells you cast cost {2} less to cast.\n\
+             Whenever Unesh or another Sphinx you control enters, reveal the top four cards of your library. An opponent separates those cards into two piles. Put one pile into your hand and the other into your graveyard.",
+        )
+        .expect("Unesh, Criosphinx Sovereign should parse strictly");
+
+    let rendered = compiled_text_lines(&def).join("\n");
+    assert_eq!(
+        rendered,
+        "Flying\nSphinx spells you cast cost {2} less to cast.\nWhenever Unesh or another Sphinx you control enters, reveal the top four cards of your library. An opponent separates those cards into two piles. Put one pile into your hand and the other into your graveyard."
+    );
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("LookAtTopCardsEffect")
+            && abilities_debug.contains("divvy_source")
+            && abilities_debug.contains("divvy_pile")
+            && abilities_debug.contains("chooser: Opponent")
+            && abilities_debug.contains("player: You"),
+        "expected Unesh's reveal-and-piles trigger to preserve the opponent split and caster pile choice structurally, got {abilities_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn render_make_an_example_preserves_choose_then_sacrifice_surface() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Make an Example")
         .mana_cost(ManaCost::from_pips(vec![
@@ -40351,6 +40921,305 @@ fn assert_oracle_card_fails_strict(name: &str) {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn losheel_clockwork_scholar_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition("Losheel, Clockwork Scholar");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+
+    assert!(
+        rendered.contains(
+            "Prevent all combat damage that would be dealt to attacking artifact creatures you control."
+        ),
+        "expected Losheel's filtered combat prevention clause to render, got {rendered}"
+    );
+    assert!(
+        rendered.contains("This ability triggers only once each turn"),
+        "expected Losheel's once-each-turn trigger text to render, got {rendered}"
+    );
+
+    let ability_debug = format!("{:#?}", def.abilities);
+    assert!(
+        ability_debug.contains("PreventAllCombatDamageToPermanentsMatching")
+            && ability_debug.contains("attacking: true")
+            && ability_debug.contains("Artifact")
+            && ability_debug.contains("Creature")
+            && ability_debug.contains("controller: Some(You)"),
+        "expected Losheel to lower prevention to a filtered static replacement ability, got {ability_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn losheel_test_creature(
+    game: &mut crate::game_state::GameState,
+    name: &str,
+    controller: PlayerId,
+    card_types: Vec<CardType>,
+    power: i32,
+    toughness: i32,
+) -> ObjectId {
+    let card = crate::card::CardBuilder::new(CardId::new(), name)
+        .card_types(card_types)
+        .power_toughness(PowerToughness::fixed(power, toughness))
+        .build();
+    game.create_object_from_card(&card, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn losheel_clockwork_scholar_prevents_only_attacking_artifact_creature_combat_damage() {
+    let losheel = parse_oracle_card_definition("Losheel, Clockwork Scholar");
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.create_object_from_definition(&losheel, alice, Zone::Battlefield);
+    let protected_attacker = losheel_test_creature(
+        &mut game,
+        "Attacking Artifact Creature",
+        alice,
+        vec![CardType::Artifact, CardType::Creature],
+        2,
+        4,
+    );
+    let unprotected_attacker = losheel_test_creature(
+        &mut game,
+        "Attacking Nonartifact Creature",
+        alice,
+        vec![CardType::Creature],
+        2,
+        4,
+    );
+    let artifact_blocker = losheel_test_creature(
+        &mut game,
+        "Artifact Blocker",
+        bob,
+        vec![CardType::Creature],
+        3,
+        4,
+    );
+    let nonartifact_blocker = losheel_test_creature(
+        &mut game,
+        "Nonartifact Blocker",
+        bob,
+        vec![CardType::Creature],
+        3,
+        4,
+    );
+
+    let mut combat = crate::combat_state::CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: protected_attacker,
+        target: crate::combat_state::AttackTarget::Player(bob),
+    });
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: unprotected_attacker,
+        target: crate::combat_state::AttackTarget::Player(bob),
+    });
+    combat
+        .blockers
+        .insert(protected_attacker, vec![artifact_blocker]);
+    combat
+        .blockers
+        .insert(unprotected_attacker, vec![nonartifact_blocker]);
+    game.combat = Some(combat.clone());
+    game.refresh_continuous_state();
+
+    crate::game_loop::execute_combat_damage_step(&mut game, &combat, false);
+
+    assert_eq!(
+        game.damage_on(protected_attacker),
+        0,
+        "Losheel should prevent combat damage to an attacking artifact creature Alice controls"
+    );
+    assert_eq!(
+        game.damage_on(unprotected_attacker),
+        3,
+        "Losheel should not prevent combat damage to a nonartifact attacking creature"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn losheel_clockwork_scholar_prevention_rejects_nonattacking_and_opponent_artifacts() {
+    let losheel = parse_oracle_card_definition("Losheel, Clockwork Scholar");
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let losheel_id = game.create_object_from_definition(&losheel, alice, Zone::Battlefield);
+    let alice_attacking_artifact = losheel_test_creature(
+        &mut game,
+        "Alice Attacking Artifact",
+        alice,
+        vec![CardType::Artifact, CardType::Creature],
+        2,
+        2,
+    );
+    let alice_nonattacking_artifact = losheel_test_creature(
+        &mut game,
+        "Alice Nonattacking Artifact",
+        alice,
+        vec![CardType::Artifact, CardType::Creature],
+        2,
+        2,
+    );
+    let bob_attacking_artifact = losheel_test_creature(
+        &mut game,
+        "Bob Attacking Artifact",
+        bob,
+        vec![CardType::Artifact, CardType::Creature],
+        2,
+        2,
+    );
+    let damage_source = losheel_test_creature(
+        &mut game,
+        "Damage Source",
+        bob,
+        vec![CardType::Creature],
+        3,
+        3,
+    );
+
+    let mut combat = crate::combat_state::CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: alice_attacking_artifact,
+        target: crate::combat_state::AttackTarget::Player(bob),
+    });
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: bob_attacking_artifact,
+        target: crate::combat_state::AttackTarget::Player(alice),
+    });
+    game.combat = Some(combat);
+    game.refresh_continuous_state();
+
+    let replacement = game
+        .effect_store
+        .replacement_effects
+        .effects()
+        .iter()
+        .find(|effect| effect.source == losheel_id)
+        .expect("Losheel should generate a static replacement effect");
+    let matcher = replacement
+        .matcher
+        .as_ref()
+        .expect("Losheel replacement should have a matcher");
+    let ctx = crate::events::context::EventContext::for_replacement_effect(
+        alice, losheel_id, &game,
+    );
+
+    let protected = crate::events::damage::DamageEvent::with_cause(
+        damage_source,
+        crate::events::DamageTarget::Object(alice_attacking_artifact),
+        3,
+        true,
+        crate::events::cause::EventCause::combat_damage(damage_source),
+    );
+    assert!(matcher.matches_event(&protected, &ctx));
+
+    let nonattacking = crate::events::damage::DamageEvent::with_cause(
+        damage_source,
+        crate::events::DamageTarget::Object(alice_nonattacking_artifact),
+        3,
+        true,
+        crate::events::cause::EventCause::combat_damage(damage_source),
+    );
+    assert!(!matcher.matches_event(&nonattacking, &ctx));
+
+    let opponent_controlled = crate::events::damage::DamageEvent::with_cause(
+        damage_source,
+        crate::events::DamageTarget::Object(bob_attacking_artifact),
+        3,
+        true,
+        crate::events::cause::EventCause::combat_damage(damage_source),
+    );
+    assert!(!matcher.matches_event(&opponent_controlled, &ctx));
+
+    let noncombat = crate::events::damage::DamageEvent::with_cause(
+        damage_source,
+        crate::events::DamageTarget::Object(alice_attacking_artifact),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert!(!matcher.matches_event(&noncombat, &ctx));
+
+    let unpreventable = crate::events::damage::DamageEvent::unpreventable_with_cause(
+        damage_source,
+        crate::events::DamageTarget::Object(alice_attacking_artifact),
+        3,
+        true,
+        crate::events::cause::EventCause::combat_damage(damage_source),
+    );
+    assert!(!matcher.matches_event(&unpreventable, &ctx));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn losheel_clockwork_scholar_artifact_creature_enter_trigger_is_once_each_turn() {
+    let losheel = parse_oracle_card_definition("Losheel, Clockwork Scholar");
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+
+    let losheel_id = game.create_object_from_definition(&losheel, alice, Zone::Battlefield);
+    let artifact = losheel_test_creature(
+        &mut game,
+        "Entering Artifact Creature",
+        alice,
+        vec![CardType::Artifact, CardType::Creature],
+        1,
+        1,
+    );
+    let etb_event = crate::events::RawEvent::new(
+        crate::events::ZoneChangeEvent::with_cause(
+            artifact,
+            Zone::Hand,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &etb_event) {
+        if trigger.source == losheel_id {
+            trigger_queue.add(trigger);
+        }
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Losheel should trigger when an artifact creature Alice controls enters"
+    );
+    let trigger_debug = format!("{:#?}", trigger_queue.entries[0]);
+    assert!(
+        trigger_debug.contains("DrawCardsEffect") || trigger_debug.contains("Draw"),
+        "Losheel's trigger should draw a card, got {trigger_debug}"
+    );
+
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Losheel trigger should move to the stack");
+
+    let second_trigger_count = crate::triggers::check_triggers(&game, &etb_event)
+        .iter()
+        .filter(|entry| entry.source == losheel_id)
+        .count();
+    assert_eq!(
+        second_trigger_count, 0,
+        "Losheel's artifact-creature-enter trigger should trigger only once each turn"
+    );
+}
+
 #[test]
 fn alena_kessig_trapper_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("Alena, Kessig Trapper");
@@ -40374,6 +41243,38 @@ fn alena_kessig_trapper_strict_parser_and_text_regression() {
             && ability_debug.contains("GreatestPower")
             && ability_debug.contains("entered_battlefield_this_turn: true"),
         "expected Alena to lower to scaled red mana from entered-this-turn greatest power, got {ability_debug}"
+    );
+}
+
+#[test]
+fn kjeldoran_elite_guard_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition("Kjeldoran Elite Guard");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains("target creature gets +2/+2 until end of turn"),
+        "expected Kjeldoran Elite Guard to render the target pump, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("when that creature leaves the battlefield this turn, sacrifice this creature"),
+        "expected the delayed target leaves-battlefield clause to render, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("activate only during combat"),
+        "expected the combat-only activation restriction to render, got {rendered}"
+    );
+
+    let ability_debug = format!("{:#?}", def.abilities);
+    assert!(
+        ability_debug.contains("ScheduleDelayedTriggerEffect")
+            && ability_debug.contains("target_tag: Some")
+            && ability_debug.contains("targeted_0")
+            && ability_debug.contains("from: Specific(")
+            && ability_debug.contains("Battlefield")
+            && ability_debug.contains("to: Any")
+            && ability_debug.contains("this_object: true"),
+        "expected delayed trigger to watch the targeted creature leaving, got {ability_debug}"
     );
 }
 
@@ -45303,6 +46204,7 @@ fn strict_parse_vote_regression_cards() {
         "Brago's Representative",
         "Tivit, Seller of Secrets",
         "Elrond of the White Council",
+        "Travel Through Caradhras",
     ] {
         assert_oracle_card_parses_strict(name);
     }
@@ -45445,6 +46347,231 @@ fn vote_regression_elrond_preserves_voter_choice_branch_and_owner_attack_restric
 }
 
 #[test]
+fn travel_through_caradhras_regression_renders_council_dilemma_vote_branches() {
+    let def = parse_oracle_card_definition("Travel Through Caradhras");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let lower = rendered.to_ascii_lowercase();
+    assert!(
+        lower.contains("council's dilemma")
+            && rendered.contains("Starting with you, each player votes for Redhorn Pass or Mines of Moria")
+            && rendered.contains("For each Redhorn Pass vote, search your library for a basic land card and put it onto the battlefield tapped")
+            && rendered.contains("If you search your library this way, shuffle")
+            && rendered.contains("For each Mines of Moria vote, return a card from your graveyard to your hand")
+            && rendered.contains("Exile Travel Through Caradhras"),
+        "expected Travel Through Caradhras to render its council dilemma branches, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("VoteCount")
+            && debug.contains("\"redhorn pass\"")
+            && debug.contains("ChooseObjectsEffect")
+            && debug.contains("PutOntoBattlefieldEffect")
+            && debug.contains("ShuffleLibraryEffect")
+            && debug.contains("\"mines of moria\"")
+            && debug.contains("ReturnFromGraveyardToHandEffect"),
+        "expected Travel Through Caradhras to keep both vote-count branches structurally, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct TravelVoteDecisionMaker {
+    votes: Vec<usize>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl crate::decision::DecisionMaker for TravelVoteDecisionMaker {
+    fn decide_options(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        if !self.votes.is_empty() {
+            vec![self.votes.remove(0)]
+        } else {
+            ctx.options
+                .iter()
+                .filter(|option| option.legal)
+                .map(|option| option.index)
+                .take(ctx.min)
+                .collect()
+        }
+    }
+
+    fn decide_objects(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        let max = ctx.max.unwrap_or(ctx.candidates.len()).max(ctx.min);
+        ctx.candidates
+            .iter()
+            .filter(|candidate| candidate.legal)
+            .map(|candidate| candidate.id)
+            .take(max)
+            .collect()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn basic_land_for_travel_test(id: u32, name: &str) -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(id), name)
+        .supertypes(vec![Supertype::Basic])
+        .card_types(vec![CardType::Land])
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn graveyard_card_for_travel_test(id: u32, name: &str) -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(id), name)
+        .card_types(vec![CardType::Creature])
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_travel_through_caradhras_with_votes(
+    votes: Vec<usize>,
+) -> (
+    crate::game_state::GameState,
+    Vec<crate::triggers::TriggerEvent>,
+    ObjectId,
+    Vec<ObjectId>,
+    Vec<ObjectId>,
+) {
+    let def = parse_oracle_card_definition("Travel Through Caradhras");
+    let program = def
+        .spell_effect
+        .as_ref()
+        .expect("Travel Through Caradhras should compile to spell effects");
+    let alice = PlayerId::from_index(0);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+
+    let forest = basic_land_for_travel_test(91_201, "Travel Forest");
+    let island = basic_land_for_travel_test(91_202, "Travel Island");
+    let grave_one = graveyard_card_for_travel_test(91_203, "Travel Grave One");
+    let grave_two = graveyard_card_for_travel_test(91_204, "Travel Grave Two");
+    let land_ids = vec![
+        game.create_object_from_definition(&forest, alice, Zone::Library),
+        game.create_object_from_definition(&island, alice, Zone::Library),
+    ];
+    let graveyard_ids = vec![
+        game.create_object_from_definition(&grave_one, alice, Zone::Graveyard),
+        game.create_object_from_definition(&grave_two, alice, Zone::Graveyard),
+    ];
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut dm = TravelVoteDecisionMaker { votes };
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+    let events = crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        program,
+        None,
+        &[],
+    )
+    .expect("Travel Through Caradhras should resolve");
+    (game, events, source, land_ids, graveyard_ids)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn travel_search_event_count(events: &[crate::triggers::TriggerEvent]) -> usize {
+    events
+        .iter()
+        .filter_map(|event| event.downcast::<crate::events::SearchLibraryEvent>())
+        .count()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn travel_shuffle_event_count(events: &[crate::triggers::TriggerEvent]) -> usize {
+    events
+        .iter()
+        .filter_map(|event| event.downcast::<crate::events::ShuffleLibraryEvent>())
+        .count()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn travel_zone_names(game: &crate::game_state::GameState, zone: Zone) -> Vec<String> {
+    game.objects_in_zone(zone)
+        .into_iter()
+        .filter_map(|id| game.object(id).map(|object| object.name.clone()))
+        .collect()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn travel_through_caradhras_runtime_redhorn_pass_votes_search_lands_and_exile_source() {
+    let (game, events, _source, _land_ids, _graveyard_ids) =
+        resolve_travel_through_caradhras_with_votes(vec![0, 0]);
+
+    let battlefield_lands = game
+        .objects_in_zone(Zone::Battlefield)
+        .into_iter()
+        .filter(|&id| {
+            game.object(id)
+                .is_some_and(|object| object.name.starts_with("Travel ") && object.is_land())
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        battlefield_lands.len(),
+        2,
+        "two Redhorn Pass votes should put two basic lands onto the battlefield; battlefield={:?} library={:?} searches={} shuffles={}",
+        travel_zone_names(&game, Zone::Battlefield),
+        travel_zone_names(&game, Zone::Library),
+        travel_search_event_count(&events),
+        travel_shuffle_event_count(&events)
+    );
+    assert!(
+        battlefield_lands.iter().all(|&id| game.is_tapped(id)),
+        "Redhorn Pass lands should enter tapped"
+    );
+    let graveyard_names = travel_zone_names(&game, Zone::Graveyard);
+    assert!(
+        graveyard_names.contains(&"Travel Grave One".to_string())
+            && graveyard_names.contains(&"Travel Grave Two".to_string()),
+        "Mines of Moria branch should not run for Redhorn Pass votes"
+    );
+    assert_eq!(travel_search_event_count(&events), 2, "two Redhorn Pass votes should search twice");
+    assert!(
+        travel_shuffle_event_count(&events) >= 1,
+        "searching this way should shuffle the library"
+    );
+    assert_eq!(
+        travel_zone_names(&game, Zone::Exile),
+        vec!["Travel Through Caradhras".to_string()],
+        "Travel Through Caradhras should exile itself after resolving"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn travel_through_caradhras_runtime_mines_votes_return_graveyard_cards_without_searching() {
+    let (game, events, _source, _land_ids, _graveyard_ids) =
+        resolve_travel_through_caradhras_with_votes(vec![1, 1]);
+
+    let hand_names = travel_zone_names(&game, Zone::Hand);
+    assert!(
+        hand_names.contains(&"Travel Grave One".to_string())
+            && hand_names.contains(&"Travel Grave Two".to_string()),
+        "Mines of Moria votes should return both graveyard cards to hand"
+    );
+    let library_names = travel_zone_names(&game, Zone::Library);
+    assert!(
+        library_names.contains(&"Travel Forest".to_string())
+            && library_names.contains(&"Travel Island".to_string()),
+        "Redhorn Pass branch should not search lands for Mines of Moria votes"
+    );
+    assert_eq!(travel_search_event_count(&events), 0, "Mines-only votes should not search");
+    assert_eq!(travel_shuffle_event_count(&events), 0, "Mines-only votes should not shuffle");
+    assert_eq!(
+        travel_zone_names(&game, Zone::Exile),
+        vec!["Travel Through Caradhras".to_string()],
+        "Travel Through Caradhras should exile itself after resolving"
+    );
+}
+
+#[test]
 fn dungeon_regression_cards_render_key_mechanics() {
     let crawler = parse_oracle_card_definition("Dungeon Crawler");
     let crawler_lines = unprocessed_compiled_lines(&crawler).join(" ");
@@ -45549,6 +46676,40 @@ fn return_to_dust_main_phase_paid_label_condition_branches() {
     assert!(
         with_label,
         "expected Return to Dust branch condition to be true when spell is marked as cast in your main phase"
+    );
+}
+
+#[test]
+fn parse_oracle_careful_consideration_strictly_parses_and_renders_main_phase_replacement() {
+    let def = parse_oracle_card_definition("Careful Consideration");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        !lower.contains("unsupported") && !lower.contains("unimplemented"),
+        "expected Careful Consideration to parse without unsupported placeholders, got {rendered}"
+    );
+    assert!(
+        lower.contains("target player draws four cards, then discards three cards"),
+        "expected default draw/discard clause to render, got {rendered}"
+    );
+    assert!(
+        lower.contains(
+            "if you cast this spell during your main phase, instead that player draws four cards, then discards two cards"
+        ),
+        "expected main-phase replacement clause to render with that-player binding, got {rendered}"
+    );
+
+    let raw = format!("{:#?}", def.spell_effect);
+    let compact_raw: String = raw.chars().filter(|ch| !ch.is_whitespace()).collect();
+    assert!(
+        raw.contains("SelfReplacementBranch")
+            && raw.contains("CastDuringYourMainPhase")
+            && raw.contains("DiscardEffect")
+            && compact_raw.contains("Fixed(3,")
+            && compact_raw.contains("Fixed(2,")
+            && !raw.contains("IteratedPlayer"),
+        "expected Careful Consideration to lower as a target-player self-replacement without unbound that-player refs, got {raw}"
     );
 }
 

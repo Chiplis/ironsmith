@@ -149,6 +149,12 @@ impl StaticAbility {
             Some(StaticAbilityId::PreventAllCombatDamageToSelf) => {
                 Self::prevent_all_combat_damage_to_self()
             }
+            Some(StaticAbilityId::PreventAllCombatDamageToPermanentsMatching) => {
+                return Err(StaticAbilityModelConversionError {
+                    detail: "filtered combat-damage prevention needs its object-filter payload"
+                        .to_string(),
+                });
+            }
             Some(StaticAbilityId::PreventAllDamageToSelfByCreatures) => {
                 Self::prevent_all_damage_to_self_by_creatures()
             }
@@ -209,6 +215,9 @@ impl StaticAbility {
             Some(StaticAbilityId::EffectDiscardToLibraryReplacement) => {
                 Self::effect_discard_to_library_replacement()
             }
+            Some(StaticAbilityId::OpponentEffectDiscardThisToBattlefieldReplacement) => {
+                Self::opponent_effect_discard_this_to_battlefield_replacement()
+            }
             Some(StaticAbilityId::DrawReplacementExileTopFaceDown) => {
                 Self::draw_replacement_exile_top_face_down()
             }
@@ -254,6 +263,9 @@ impl StaticAbility {
                 Self::enters_tapped_unless_two_or_more_opponents()
             }
             Some(StaticAbilityId::CanBeCommander) => Self::can_be_commander(),
+            Some(StaticAbilityId::DeckConstructionRuleText) => {
+                Self::deck_construction_rule_text(label)
+            }
             Some(StaticAbilityId::DraftRuleText) => Self::draft_rule_text(label),
             Some(StaticAbilityId::KeywordText) => Self::keyword_text(label),
             Some(StaticAbilityId::KeywordMarker) => Self::keyword_marker(label),

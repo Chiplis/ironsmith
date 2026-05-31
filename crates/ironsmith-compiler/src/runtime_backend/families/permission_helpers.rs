@@ -1491,6 +1491,115 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
         })
     }
 
+    fn parse_cast_with_prefixed_mana_value_limit(
+        rest_tokens: &[OwnedLexToken],
+        normalized_words: &[String],
+        player: PlayerAst,
+        from_idx: usize,
+        parse_simple_spell_type_list_filter: fn(&[OwnedLexToken]) -> Option<ObjectFilter>,
+    ) -> Result<Option<EffectAst>, CardTextError> {
+        let Some(without_idx) = normalized_words
+            .iter()
+            .position(|word| word.as_str() == "without")
+        else {
+            return Ok(None);
+        };
+        if from_idx + 3 != without_idx
+            || !normalized_words
+                .get(from_idx + 1)
+                .is_some_and(|word| word == "your")
+            || !normalized_words
+                .get(from_idx + 2)
+                .is_some_and(|word| matches!(word.as_str(), "graveyard" | "hand"))
+        {
+            return Ok(None);
+        }
+
+        let without_tail = normalized_words[without_idx..]
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        if !word_slice_eq(&without_tail, &["without", "paying", "its", "mana", "cost"]) {
+            return Ok(None);
+        }
+
+        let Some(with_idx) = normalized_words[..from_idx]
+            .windows(3)
+            .position(|window| window == ["with", "mana", "value"])
+        else {
+            return Ok(None);
+        };
+        if with_idx == 0 {
+            return Ok(None);
+        }
+
+        let Some(comparison_tokens_start) = token_index_for_word_index(rest_tokens, with_idx + 3)
+        else {
+            return Ok(None);
+        };
+        let Some(comparison_tokens_end) = token_index_for_word_index(rest_tokens, from_idx) else {
+            return Ok(None);
+        };
+        let comparison_tokens = &rest_tokens[comparison_tokens_start..comparison_tokens_end];
+        let Some((operator, rhs_tokens)) = parse_value_comparison_tokens(comparison_tokens) else {
+            return Ok(None);
+        };
+
+        let Some(filter_end) = token_index_for_word_index(rest_tokens, with_idx) else {
+            return Ok(None);
+        };
+        let filter_tokens = trim_lexed_commas(&rest_tokens[..filter_end]);
+        let Some(mut filter) = parse_simple_spell_type_list_filter(filter_tokens)
+            .or(parse_permission_subject_filter_tokens_lexed(filter_tokens)?)
+        else {
+            return Ok(None);
+        };
+        filter.owner = Some(crate::target::PlayerFilter::You);
+
+        let Some((rhs_value, used)) = parse_value_from_lexed(rhs_tokens) else {
+            return Ok(None);
+        };
+        if used != rhs_tokens.len() {
+            return Ok(None);
+        }
+        if let (ValueComparisonOperator::Equal, Value::CountersOnSource(counter_type)) =
+            (&operator, &rhs_value)
+        {
+            filter.mana_value_eq_counters_on_source = Some(*counter_type);
+        } else {
+            filter.mana_value = Some(match operator {
+                ValueComparisonOperator::Equal => {
+                    crate::filter::Comparison::EqualExpr(Box::new(rhs_value))
+                }
+                ValueComparisonOperator::NotEqual => {
+                    crate::filter::Comparison::NotEqualExpr(Box::new(rhs_value))
+                }
+                ValueComparisonOperator::LessThan => {
+                    crate::filter::Comparison::LessThanExpr(Box::new(rhs_value))
+                }
+                ValueComparisonOperator::LessThanOrEqual => {
+                    crate::filter::Comparison::LessThanOrEqualExpr(Box::new(rhs_value))
+                }
+                ValueComparisonOperator::GreaterThan => {
+                    crate::filter::Comparison::GreaterThanExpr(Box::new(rhs_value))
+                }
+                ValueComparisonOperator::GreaterThanOrEqual => {
+                    crate::filter::Comparison::GreaterThanOrEqualExpr(Box::new(rhs_value))
+                }
+            });
+        }
+
+        let zone = if normalized_words[from_idx + 2] == "hand" {
+            Zone::Hand
+        } else {
+            Zone::Graveyard
+        };
+
+        Ok(Some(
+            EffectAst::may_cast_matching_spell_without_paying_mana_cost(player, filter, zone),
+        ))
+    }
+
     let Some((lead, rest_tokens)) = parse_permission_lead_tokens(tokens) else {
         return Ok(None);
     };
@@ -1514,6 +1623,16 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
     };
     if from_idx == 0 {
         return Ok(None);
+    }
+
+    if let Some(effect) = parse_cast_with_prefixed_mana_value_limit(
+        rest_tokens,
+        &normalized_words,
+        lead.player,
+        from_idx,
+        parse_simple_spell_type_list_filter,
+    )? {
+        return Ok(Some(effect));
     }
 
     let normalized_tail = &normalized_words[from_idx..];
@@ -1584,26 +1703,32 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
         if used != rhs_tokens.len() {
             return Ok(None);
         }
-        filter.mana_value = Some(match operator {
-            ValueComparisonOperator::Equal => {
-                crate::filter::Comparison::EqualExpr(Box::new(rhs_value))
-            }
-            ValueComparisonOperator::NotEqual => {
-                crate::filter::Comparison::NotEqualExpr(Box::new(rhs_value))
-            }
-            ValueComparisonOperator::LessThan => {
-                crate::filter::Comparison::LessThanExpr(Box::new(rhs_value))
-            }
-            ValueComparisonOperator::LessThanOrEqual => {
-                crate::filter::Comparison::LessThanOrEqualExpr(Box::new(rhs_value))
-            }
-            ValueComparisonOperator::GreaterThan => {
-                crate::filter::Comparison::GreaterThanExpr(Box::new(rhs_value))
-            }
-            ValueComparisonOperator::GreaterThanOrEqual => {
-                crate::filter::Comparison::GreaterThanOrEqualExpr(Box::new(rhs_value))
-            }
-        });
+        if let (ValueComparisonOperator::Equal, Value::CountersOnSource(counter_type)) =
+            (&operator, &rhs_value)
+        {
+            filter.mana_value_eq_counters_on_source = Some(*counter_type);
+        } else {
+            filter.mana_value = Some(match operator {
+                ValueComparisonOperator::Equal => {
+                    crate::filter::Comparison::EqualExpr(Box::new(rhs_value))
+                }
+                ValueComparisonOperator::NotEqual => {
+                    crate::filter::Comparison::NotEqualExpr(Box::new(rhs_value))
+                }
+                ValueComparisonOperator::LessThan => {
+                    crate::filter::Comparison::LessThanExpr(Box::new(rhs_value))
+                }
+                ValueComparisonOperator::LessThanOrEqual => {
+                    crate::filter::Comparison::LessThanOrEqualExpr(Box::new(rhs_value))
+                }
+                ValueComparisonOperator::GreaterThan => {
+                    crate::filter::Comparison::GreaterThanExpr(Box::new(rhs_value))
+                }
+                ValueComparisonOperator::GreaterThanOrEqual => {
+                    crate::filter::Comparison::GreaterThanOrEqualExpr(Box::new(rhs_value))
+                }
+            });
+        }
     }
 
     let zone = if HAND_WORD_PATTERN.matches_word(normalized_tail[2].as_str()) {

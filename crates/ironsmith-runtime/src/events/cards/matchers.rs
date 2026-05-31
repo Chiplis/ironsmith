@@ -3,8 +3,8 @@
 use crate::events::cause::{CauseFilter, CauseFilterRuntimeExt as _};
 use crate::events::context::EventContext;
 use crate::events::traits::{EventKind, GameEventType, ReplacementMatcher, downcast_event};
-use crate::filter::PlayerFilterExt;
-use crate::target::PlayerFilter;
+use crate::filter::{ObjectFilterExt as _, PlayerFilterExt};
+use crate::target::{ObjectFilter, PlayerFilter};
 
 use super::{DiscardEvent, DrawEvent};
 
@@ -158,6 +158,8 @@ pub struct WouldDiscardMatcher {
     pub player_filter: PlayerFilter,
     /// Filter on what caused the discard.
     pub cause_filter: CauseFilter,
+    /// Optional filter for the card being discarded.
+    pub card_filter: Option<ObjectFilter>,
 }
 
 impl WouldDiscardMatcher {
@@ -166,6 +168,7 @@ impl WouldDiscardMatcher {
         Self {
             player_filter,
             cause_filter,
+            card_filter: None,
         }
     }
 
@@ -178,6 +181,16 @@ impl WouldDiscardMatcher {
     /// This is what Library of Leng uses.
     pub fn you_from_effect() -> Self {
         Self::new(PlayerFilter::You, CauseFilter::effect_like())
+    }
+
+    /// Matches when you would discard this replacement source from an opponent's effect.
+    pub fn source_from_opponent_effect() -> Self {
+        Self::new(
+            PlayerFilter::You,
+            CauseFilter::effect_like()
+                .with_controller(crate::events::cause::ControllerFilter::Opponent),
+        )
+        .with_card_filter(ObjectFilter::source())
     }
 
     /// Matches when any player would discard a card.
@@ -193,6 +206,12 @@ impl WouldDiscardMatcher {
     /// Add a cause filter to this matcher.
     pub fn with_cause_filter(mut self, cause_filter: CauseFilter) -> Self {
         self.cause_filter = cause_filter;
+        self
+    }
+
+    /// Add a filter for the card being discarded.
+    pub fn with_card_filter(mut self, card_filter: ObjectFilter) -> Self {
+        self.card_filter = Some(card_filter);
         self
     }
 }
@@ -223,10 +242,33 @@ impl ReplacementMatcher for WouldDiscardMatcher {
             return false;
         }
 
+        if let Some(card_filter) = &self.card_filter {
+            let Some(card) = ctx.game.object(discard.card) else {
+                return false;
+            };
+            if !card_filter.matches(card, &ctx.filter_ctx, ctx.game) {
+                return false;
+            }
+        }
+
         true
     }
 
     fn display(&self) -> String {
+        if self.card_filter.as_ref().is_some_and(|filter| filter.source)
+            && matches!(self.player_filter, PlayerFilter::You)
+            && matches!(
+                self.cause_filter.cause_type,
+                Some(crate::events::cause::CauseTypeFilter::EffectLike)
+            )
+            && matches!(
+                self.cause_filter.controller_filter,
+                Some(crate::events::cause::ControllerFilter::Opponent)
+            )
+        {
+            return "When a spell or ability an opponent controls causes you to discard this card"
+                .to_string();
+        }
         match (&self.player_filter, &self.cause_filter.cause_type) {
             (PlayerFilter::You, Some(crate::events::cause::CauseTypeFilter::EffectLike)) => {
                 "When an effect causes you to discard a card".to_string()

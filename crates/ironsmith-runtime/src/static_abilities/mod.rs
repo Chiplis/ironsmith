@@ -2384,6 +2384,12 @@ impl StaticAbility {
         Self::new(PreventAllCombatDamageToSelf)
     }
 
+    pub fn prevent_all_combat_damage_to_permanents_matching(
+        filter: crate::target::ObjectFilter,
+    ) -> Self {
+        Self::new(PreventAllCombatDamageToPermanentsMatching::new(filter))
+    }
+
     pub fn prevent_all_damage_to_self() -> Self {
         Self::new(PreventAllDamageToSelf)
     }
@@ -2882,6 +2888,10 @@ impl StaticAbility {
         Self::new(EffectDiscardToLibraryReplacement)
     }
 
+    pub fn opponent_effect_discard_this_to_battlefield_replacement() -> Self {
+        Self::new(OpponentEffectDiscardThisToBattlefieldReplacement)
+    }
+
     pub fn duplicate_matching_triggered_abilities(
         source_filter: Option<crate::target::ObjectFilter>,
         event_matcher: Option<crate::triggers::Trigger>,
@@ -3106,6 +3116,10 @@ impl StaticAbility {
 
     pub fn draft_rule_text(text: impl Into<String>) -> Self {
         Self::new(DraftRuleText::new(text))
+    }
+
+    pub fn deck_construction_rule_text(text: impl Into<String>) -> Self {
+        Self::new(DeckConstructionRuleText::new(text))
     }
 
     pub fn rule_fallback_text(text: impl Into<String>) -> Self {

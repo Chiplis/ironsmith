@@ -245,6 +245,9 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::PlayerTapsForMana { player, filter } => {
             crate::triggers::Trigger::player_taps_for_mana(player, filter)
         }
+        TriggerKind::PlayerRollsResult { player, result } => {
+            crate::triggers::Trigger::player_rolls_result(player, result)
+        }
         TriggerKind::AbilityActivatedQualified {
             activator,
             filter,
@@ -492,6 +495,9 @@ impl super::Trigger {
             }
             ironsmith_core::DelayedTriggerSpec::EndOfCombat => Self::end_of_combat(),
             ironsmith_core::DelayedTriggerSpec::ThisDies => Self::this_dies(),
+            ironsmith_core::DelayedTriggerSpec::ThisLeavesBattlefield => {
+                Self::this_leaves_battlefield()
+            }
             ironsmith_core::DelayedTriggerSpec::ThisAttacksAndIsntBlocked => {
                 Self::this_attacks_and_isnt_blocked()
             }
@@ -503,6 +509,9 @@ impl super::Trigger {
                 Self::attacks_one_or_more(filter)
             }
             ironsmith_core::DelayedTriggerSpec::Blocks(filter) => Self::blocks(filter),
+            ironsmith_core::DelayedTriggerSpec::LeavesBattlefield(filter) => {
+                Self::leaves_battlefield(filter)
+            }
             ironsmith_core::DelayedTriggerSpec::Dies(filter) => Self::dies(filter),
             ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayer { source, player } => {
                 Self::deals_combat_damage_to_player(source, player)

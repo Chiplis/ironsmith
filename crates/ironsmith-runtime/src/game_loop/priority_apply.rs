@@ -806,6 +806,28 @@ pub fn apply_priority_response_with_dm(
 
             append_activation_cost_steps_from_components(cost.costs(), &mut remaining_cost_steps);
             for cost_component in cost.costs() {
+                if let Some(dynamic_mana) = cost_component.dynamic_mana_cost_ref() {
+                    let mut execution_ctx =
+                        ExecutionContext::new(*source, player, &mut *decision_maker)
+                            .with_provenance(activation_provenance);
+                    let resolved = crate::special_actions::resolve_dynamic_mana_cost(
+                        game,
+                        dynamic_mana,
+                        &mut execution_ctx,
+                    )
+                    .map_err(|err| {
+                        GameLoopError::InvalidState(format!(
+                            "failed to resolve dynamic activation mana cost: {err:?}"
+                        ))
+                    })?;
+                    mana_cost_to_pay = Some(game.adjust_mana_cost_for_payment_reason(
+                        player,
+                        Some(*source),
+                        &resolved,
+                        crate::costs::PaymentReason::ActivateAbility,
+                    ));
+                    continue;
+                }
                 match cost_component.processing_mode() {
                     crate::costs::CostProcessingMode::ManaPayment { cost } => {
                         mana_cost_to_pay = Some(cost);

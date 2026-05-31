@@ -754,6 +754,100 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         return Ok(Some(effects));
     }
 
+    if first_sentence_has_prefix(&sentence_words, &["reveal", "the", "top"])
+        && sentence_has_phrase(&sentence_words, &["cards", "of", "your", "library"])
+        && sentence_has_phrase(
+            &sentence_words,
+            &[
+                "an",
+                "opponent",
+                "separates",
+                "those",
+                "cards",
+                "into",
+                "two",
+                "piles",
+            ],
+        )
+        && sentence_has_phrase(
+            &sentence_words,
+            &["put", "one", "pile", "into", "your", "hand"],
+        )
+        && sentence_has_phrase(&sentence_words, &["the", "other", "into", "your", "graveyard"])
+    {
+        let mut effects = parse_effect_sentence_sequence(sentences[0].lowered())?;
+        effects.extend(vec![
+            EffectAst::subject_verb_tag_matching_objects(
+                ObjectFilter::tagged(TagKey::from(IT_TAG)),
+                vec![Zone::Library],
+                TagKey::from("divvy_source"),
+            ),
+            EffectAst::ChooseObjectsAcrossZones {
+                filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
+                count: ChoiceCount::any_number(),
+                count_value: None,
+                player: PlayerAst::Opponent,
+                tag: TagKey::from("divvy_pile"),
+                zones: vec![Zone::Library],
+                search_mode: None,
+            },
+            EffectAst::UnlessAction {
+                player: PlayerAst::You,
+                effects: vec![
+                    EffectAst::subject_verb_move_to_zone(
+                        TargetAst::Tagged(TagKey::from("divvy_pile"), None),
+                        Zone::Hand,
+                        false,
+                        ReturnControllerAst::Preserve,
+                        false,
+                        None,
+                    ),
+                    EffectAst::ForEachTagged {
+                        tag: TagKey::from("divvy_source"),
+                        effects: vec![EffectAst::Conditional {
+                            predicate: membership_predicate_for_iterated_object("divvy_pile"),
+                            if_true: Vec::new(),
+                            if_false: vec![EffectAst::subject_verb_move_to_zone(
+                                TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                                Zone::Graveyard,
+                                false,
+                                ReturnControllerAst::Preserve,
+                                false,
+                                None,
+                            )],
+                        }],
+                    },
+                ],
+                alternative: vec![
+                    EffectAst::subject_verb_move_to_zone(
+                        TargetAst::Tagged(TagKey::from("divvy_pile"), None),
+                        Zone::Graveyard,
+                        false,
+                        ReturnControllerAst::Preserve,
+                        false,
+                        None,
+                    ),
+                    EffectAst::ForEachTagged {
+                        tag: TagKey::from("divvy_source"),
+                        effects: vec![EffectAst::Conditional {
+                            predicate: membership_predicate_for_iterated_object("divvy_pile"),
+                            if_true: Vec::new(),
+                            if_false: vec![EffectAst::subject_verb_move_to_zone(
+                                TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                                Zone::Hand,
+                                false,
+                                ReturnControllerAst::Preserve,
+                                false,
+                                None,
+                            )],
+                        }],
+                    },
+                ],
+            },
+        ]);
+        return Ok(Some(effects));
+    }
+
     if matches_sentence_sequence(
         &sentence_words,
         &[

@@ -12,6 +12,11 @@ pub(super) fn infer_static_ability_functional_zones(normalized_line: &str) -> Op
     if text_contains_any_word_phrase(normalized_line, CAST_OR_PLAY_SELF_FROM_EXILE_PHRASES) {
         return Some(vec![Zone::Exile]);
     }
+    if str_contains(normalized.as_str(), "causes you to discard this card")
+        && str_contains(normalized.as_str(), "instead of putting it into your graveyard")
+    {
+        return Some(vec![Zone::Hand]);
+    }
 
     let mut zones = Vec::new();
     for (phrase, zone) in STATIC_ZONE_HINT_PHRASES {

@@ -27,7 +27,7 @@ use crate::events::damage::matchers::{
     DamageFromSelfCombatMatcher, DamageFromSelfMatcher, DamageFromSourceToObjectMatcher,
     DamageFromSourceToPlayerMatcher, DamageToObjectMatcher, DamageToOtherCreatureYouControlMatcher,
     DamageToPlayerOrObjectMatcher, DamageToSelfCombatMatcher, DamageToSelfConstraintMatcher,
-    DamageToSelfFromSourceFilterMatcher,
+    DamageToSelfFromSourceFilterMatcher, PreventableCombatDamageToObjectMatcher,
 };
 use crate::events::permanents::matchers::AttachedPermanentWouldBeDestroyedMatcher;
 use crate::events::traits::{
@@ -62,6 +62,27 @@ fn pluralize(word: &str) -> String {
     } else {
         format!("{word}s")
     }
+}
+
+fn pluralize_filter_description(description: &str) -> String {
+    let base = description
+        .trim()
+        .strip_prefix("a ")
+        .or_else(|| description.trim().strip_prefix("an "))
+        .unwrap_or_else(|| description.trim());
+    for suffix in [
+        " you control",
+        " you own",
+        " an opponent controls",
+        " an opponent owns",
+        " that player controls",
+        " that player owns",
+    ] {
+        if let Some(head) = base.strip_suffix(suffix) {
+            return format!("{}{}", pluralize(head.trim_end()), suffix);
+        }
+    }
+    pluralize(base)
 }
 
 fn indefinite_article(text: &str) -> &'static str {
@@ -1830,6 +1851,44 @@ impl StaticAbilityKind for PreventAllCombatDamageToSelf {
             source,
             controller,
             DamageToSelfCombatMatcher::new(),
+            ReplacementAction::Prevent,
+        ))
+    }
+}
+
+/// "Prevent all combat damage that would be dealt to [matching permanents]."
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreventAllCombatDamageToPermanentsMatching {
+    pub filter: ObjectFilter,
+}
+
+impl PreventAllCombatDamageToPermanentsMatching {
+    pub fn new(filter: ObjectFilter) -> Self {
+        Self { filter }
+    }
+}
+
+impl StaticAbilityKind for PreventAllCombatDamageToPermanentsMatching {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PreventAllCombatDamageToPermanentsMatching
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "Prevent all combat damage that would be dealt to {}.",
+            pluralize_filter_description(&self.filter.description())
+        )
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            PreventableCombatDamageToObjectMatcher::new(self.filter.clone()),
             ReplacementAction::Prevent,
         ))
     }
@@ -4080,6 +4139,38 @@ impl StaticAbilityKind for EffectDiscardToLibraryReplacement {
     }
 }
 
+/// Replacement for opponent-controlled effects causing this card to be discarded.
+///
+/// "If a spell or ability an opponent controls causes you to discard this card,
+/// put it onto the battlefield instead of putting it into your graveyard."
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct OpponentEffectDiscardThisToBattlefieldReplacement;
+
+impl StaticAbilityKind for OpponentEffectDiscardThisToBattlefieldReplacement {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::OpponentEffectDiscardThisToBattlefieldReplacement
+    }
+
+    fn display(&self) -> String {
+        "If a spell or ability an opponent controls causes you to discard this card, put it onto \
+         the battlefield instead of putting it into your graveyard"
+            .to_string()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            WouldDiscardMatcher::source_from_opponent_effect(),
+            ReplacementAction::ChangeDestination(Zone::Battlefield),
+        ))
+    }
+}
+
 /// "If you would draw a card, exile the top card of your library face down instead."
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct DrawReplacementExileTopFaceDown;
@@ -4971,6 +5062,28 @@ impl DraftRuleText {
 impl StaticAbilityKind for DraftRuleText {
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::DraftRuleText
+    }
+
+    fn display(&self) -> String {
+        self.text.clone()
+    }
+}
+
+/// Deck-construction rule text with no in-game rules impact.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeckConstructionRuleText {
+    pub text: String,
+}
+
+impl DeckConstructionRuleText {
+    pub fn new(text: impl Into<String>) -> Self {
+        Self { text: text.into() }
+    }
+}
+
+impl StaticAbilityKind for DeckConstructionRuleText {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::DeckConstructionRuleText
     }
 
     fn display(&self) -> String {
