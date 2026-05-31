@@ -2179,6 +2179,23 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
         Ok(())
     }
 
+    fn replace_in_target(
+        target: &mut TargetAst,
+        replacement: &Value,
+        clause: &str,
+    ) -> Result<(), CardTextError> {
+        match target {
+            TargetAst::Object(filter, _, _) => replace_in_filter(filter, replacement, clause)?,
+            TargetAst::WithCount(inner, _) => replace_in_target(inner, replacement, clause)?,
+            TargetAst::WithCountValue(inner, _, value) => {
+                replace_in_target(inner, replacement, clause)?;
+                replace_value(value, replacement, clause)?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     fn replace_value(
         value: &mut Value,
         replacement: &Value,
@@ -2492,7 +2509,6 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::ReturnToBattlefield { .. }
             | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
             | SubjectVerbActionAst::ExileUntilSourceLeaves { .. }
-            | SubjectVerbActionAst::MoveToZone { .. }
             | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { .. }
             | SubjectVerbActionAst::TargetOnly { .. }
             | SubjectVerbActionAst::TagMatchingObjects { .. }
@@ -2535,6 +2551,16 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
                 }
                 if let Some(position) = library_position_from_top.as_mut() {
                     replace_value(position, replacement, clause)?;
+                }
+            }
+            SubjectVerbActionAst::MoveToZone {
+                target,
+                attached_to,
+                ..
+            } => {
+                replace_in_target(target, replacement, clause)?;
+                if let Some(attached_to) = attached_to {
+                    replace_in_target(attached_to, replacement, clause)?;
                 }
             }
             SubjectVerbActionAst::CreateTokenCopy { count, .. }

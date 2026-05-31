@@ -430,6 +430,16 @@ impl Trigger {
         Self::new(ThisAttacksWithNOthersTrigger::new(other_count))
     }
 
+    pub fn this_attacks_with_n_others_display_subject(
+        other_count: usize,
+        display_subject: Option<String>,
+    ) -> Self {
+        Self::new(ThisAttacksWithNOthersTrigger::with_display_subject(
+            other_count,
+            display_subject,
+        ))
+    }
+
     /// Create a "when this creature and exactly N other creatures attack" trigger.
     pub fn this_attacks_with_exact_n_others(other_count: usize) -> Self {
         Self::new(ThisAttacksWithNOthersTrigger::exact(other_count))

@@ -2275,6 +2275,7 @@ fn compile_subject_verb_effect(
             to_top,
             battlefield_controller,
             battlefield_tapped,
+            battlefield_attacking,
             attached_to,
         } => {
             let (mut spec, mut choices) =
@@ -2335,6 +2336,11 @@ fn compile_subject_verb_effect(
                 } else {
                     move_effect
                 };
+                let move_effect = if *zone == Zone::Battlefield && *battlefield_attacking {
+                    move_effect.attacking()
+                } else {
+                    move_effect
+                };
                 let move_effect = match battlefield_controller {
                     ReturnControllerAst::Preserve => move_effect,
                     ReturnControllerAst::Owner => move_effect.under_owner_control(),
@@ -2386,6 +2392,11 @@ fn compile_subject_verb_effect(
             let move_effect = crate::effects::MoveToZoneEffect::new(spec.clone(), *zone, *to_top);
             let move_effect = if *zone == Zone::Battlefield && *battlefield_tapped {
                 move_effect.tapped()
+            } else {
+                move_effect
+            };
+            let move_effect = if *zone == Zone::Battlefield && *battlefield_attacking {
+                move_effect.attacking()
             } else {
                 move_effect
             };

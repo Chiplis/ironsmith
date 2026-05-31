@@ -12,6 +12,13 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
     match trigger {
         TriggerSpec::StateBased { display, .. } => Trigger::state_based(display),
         TriggerSpec::ThisAttacks => Trigger::this_attacks(),
+        TriggerSpec::ThisAttacksWithNOthers {
+            other_count,
+            display_subject,
+        } => Trigger::this_attacks_with_n_others_display_subject(
+            other_count as usize,
+            display_subject,
+        ),
         TriggerSpec::ThisAttacksWithExactlyNOthers(other_count) => {
             Trigger::this_attacks_with_exact_n_others(other_count as usize)
         }

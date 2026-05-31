@@ -256,6 +256,14 @@ impl TriggerMatcher for AttacksTrigger {
 
         if self.one_or_more {
             if self.min_total_attackers > 1 {
+                if display_filter.source {
+                    let other_count = self.min_total_attackers.saturating_sub(1) as u32;
+                    let other_text = ironsmith_core::cardinal_word(other_count)
+                        .unwrap_or_else(|| other_count.to_string());
+                    return format!(
+                        "Whenever this creature and at least {other_text} other creatures attack{target_tail}"
+                    );
+                }
                 let min_total = ironsmith_core::cardinal_word(self.min_total_attackers as u32)
                     .unwrap_or_else(|| self.min_total_attackers.to_string());
                 if let Some(controlled_subject) = subject.strip_suffix(" you control") {
