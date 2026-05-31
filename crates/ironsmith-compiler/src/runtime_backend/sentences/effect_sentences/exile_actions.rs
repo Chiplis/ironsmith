@@ -37,6 +37,24 @@ pub(crate) fn parse_exile(
     )? {
         return Ok(effect);
     }
+    if word_slice_starts_with_any(&clause_words, &[&["their", "hand"], &["your", "hand"]])
+        && clause_words.len() == 2
+    {
+        let mut filter = ObjectFilter::default().in_zone(Zone::Hand);
+        filter.owner = if clause_words[0] == "your" {
+            Some(PlayerFilter::You)
+        } else {
+            exile_subject_owner_filter(subject).or(Some(PlayerFilter::IteratedPlayer))
+        };
+        return Ok(if until_source_leaves {
+            EffectAst::subject_verb_exile_until_source_leaves(
+                TargetAst::Object(filter, None, None),
+                face_down,
+            )
+        } else {
+            EffectAst::subject_verb_exile_all(filter, face_down)
+        });
+    }
     if word_slice_first_is_any(&clause_words, &["all", "each"]) {
         let filter_tokens = &tokens[1..];
         let mut filter = parse_object_filter_lexed(filter_tokens, false)?;

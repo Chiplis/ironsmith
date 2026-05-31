@@ -807,6 +807,24 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if filtered.len() >= 2 && filtered[0] == "it" && filtered[1] == "s" {
         filtered.remove(1);
     }
+    if filtered.len() >= 6
+        && filtered[1] == "or"
+        && filtered[2] == "more"
+        && word_slice_ends_with(&filtered, &["was", "paid", "this", "way"])
+        && let Some(amount) = filtered[0]
+            .parse::<i32>()
+            .ok()
+            .or_else(|| parse_named_number(filtered[0]).map(|n| n as i32))
+    {
+        return Ok(PredicateAst::ValueComparison {
+            left: Value::PendingEffectMetric {
+                source: ironsmith_core::EffectMetricSource::Outcome,
+                metric: ironsmith_core::EffectMetric::Count,
+            },
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(amount),
+        });
+    }
     if let Some(instead_idx) = word_slice_find_word(&filtered, "instead")
         && instead_idx > 0
     {

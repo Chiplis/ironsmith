@@ -743,7 +743,9 @@ pub(crate) fn compile_effects_in_iterated_player_context(
     let saved_frame = ctx.lowering_frame();
     let mut iterated_frame = saved_frame.clone();
     iterated_frame.iterated_player = true;
-    iterated_frame.last_effect_id = None;
+    if !effects_reference_prior_effect_result(effects) {
+        iterated_frame.last_effect_id = None;
+    }
     iterated_frame.last_player_filter = Some(PlayerFilter::IteratedPlayer);
     if tagged_object.is_some() {
         iterated_frame.last_object_tag = Some(IT_TAG.to_string());
@@ -768,6 +770,50 @@ pub(crate) fn compile_effects_in_iterated_player_context(
         ctx.last_object_tag = Some(tag);
     }
     Ok((compiled, choices))
+}
+
+fn effects_reference_prior_effect_result(effects: &[EffectAst]) -> bool {
+    effects.iter().any(effect_references_prior_effect_result)
+}
+
+fn effect_references_prior_effect_result(effect: &EffectAst) -> bool {
+    match effect {
+        EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
+            SubjectVerbActionAst::Draw { count } => value_references_prior_effect_result(count),
+            _ => false,
+        },
+        EffectAst::Sequence { effects }
+        | EffectAst::May { effects }
+        | EffectAst::MayByPlayer { effects, .. }
+        | EffectAst::ForEachPlayer { effects }
+        | EffectAst::ForEachOpponent { effects }
+        | EffectAst::ForEachPlayersFiltered { effects, .. }
+        | EffectAst::ForEachTargetPlayers { effects, .. } => {
+            effects_reference_prior_effect_result(effects)
+        }
+        _ => false,
+    }
+}
+
+fn value_references_prior_effect_result(value: &Value) -> bool {
+    match value {
+        Value::EventValue(_)
+        | Value::EventValueOffset(_, _)
+        | Value::EffectValue(_)
+        | Value::EffectValueOffset(_, _)
+        | Value::EffectMetric { .. }
+        | Value::EffectMetricOffset { .. }
+        | Value::PendingEffectMetric { .. }
+        | Value::PendingEffectMetricOffset { .. } => true,
+        Value::Add(left, right) | Value::Min(left, right) => {
+            value_references_prior_effect_result(left) || value_references_prior_effect_result(right)
+        }
+        Value::Scaled(inner, _) | Value::HalfRoundedDown(inner) => {
+            value_references_prior_effect_result(inner)
+        }
+        Value::SurfaceHinted { value, .. } => value_references_prior_effect_result(value),
+        _ => false,
+    }
 }
 
 pub(crate) fn compile_effects_in_iterated_object_context(

@@ -1049,6 +1049,7 @@ pub(crate) enum SubjectVerbActionAst {
         without_paying_mana_cost: bool,
         allow_any_color_for_cast: bool,
         while_on_top_of_library: bool,
+        object_filter: Option<ObjectFilter>,
     },
     GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
         tag: TagKey,
@@ -1059,18 +1060,21 @@ pub(crate) enum SubjectVerbActionAst {
         player: PlayerAst,
         allow_land: bool,
         allow_any_color_for_cast: bool,
+        object_filter: Option<ObjectFilter>,
     },
     GrantPlayTaggedForAsLongAsExiled {
         tag: TagKey,
         player: PlayerAst,
         allow_land: bool,
         allow_any_color_for_cast: bool,
+        object_filter: Option<ObjectFilter>,
     },
     GrantPlayTaggedForAsLongAsYouControlSource {
         tag: TagKey,
         player: PlayerAst,
         allow_land: bool,
         allow_any_color_for_cast: bool,
+        object_filter: Option<ObjectFilter>,
     },
     ReturnToBattlefield {
         target: TargetAst,
@@ -2248,6 +2252,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 without_paying_mana_cost,
                 allow_any_color_for_cast,
                 while_on_top_of_library,
+                object_filter,
             } => f
                 .debug_struct("GrantPlayTaggedUntilEndOfTurn")
                 .field("tag", tag)
@@ -2256,6 +2261,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("without_paying_mana_cost", without_paying_mana_cost)
                 .field("allow_any_color_for_cast", allow_any_color_for_cast)
                 .field("while_on_top_of_library", while_on_top_of_library)
+                .field("object_filter", object_filter)
                 .finish(),
             Self::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
                 tag,
@@ -2270,36 +2276,42 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 player,
                 allow_land,
                 allow_any_color_for_cast,
+                object_filter,
             } => f
                 .debug_struct("GrantPlayTaggedUntilYourNextTurn")
                 .field("tag", tag)
                 .field("player", player)
                 .field("allow_land", allow_land)
                 .field("allow_any_color_for_cast", allow_any_color_for_cast)
+                .field("object_filter", object_filter)
                 .finish(),
             Self::GrantPlayTaggedForAsLongAsExiled {
                 tag,
                 player,
                 allow_land,
                 allow_any_color_for_cast,
+                object_filter,
             } => f
                 .debug_struct("GrantPlayTaggedForAsLongAsExiled")
                 .field("tag", tag)
                 .field("player", player)
                 .field("allow_land", allow_land)
                 .field("allow_any_color_for_cast", allow_any_color_for_cast)
+                .field("object_filter", object_filter)
                 .finish(),
             Self::GrantPlayTaggedForAsLongAsYouControlSource {
                 tag,
                 player,
                 allow_land,
                 allow_any_color_for_cast,
+                object_filter,
             } => f
                 .debug_struct("GrantPlayTaggedForAsLongAsYouControlSource")
                 .field("tag", tag)
                 .field("player", player)
                 .field("allow_land", allow_land)
                 .field("allow_any_color_for_cast", allow_any_color_for_cast)
+                .field("object_filter", object_filter)
                 .finish(),
             Self::ReturnToBattlefield {
                 target,
@@ -3750,6 +3762,27 @@ impl EffectAst {
                 without_paying_mana_cost,
                 allow_any_color_for_cast,
                 while_on_top_of_library: false,
+                object_filter: None,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_grant_play_tagged_until_your_next_turn_matching(
+        tag: TagKey,
+        player: PlayerAst,
+        allow_land: bool,
+        allow_any_color_for_cast: bool,
+        object_filter: ObjectFilter,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn {
+                tag,
+                player,
+                allow_land,
+                allow_any_color_for_cast,
+                object_filter: Some(object_filter),
             },
         )
     }
@@ -3771,6 +3804,7 @@ impl EffectAst {
                 without_paying_mana_cost,
                 allow_any_color_for_cast,
                 while_on_top_of_library: true,
+                object_filter: None,
             },
         )
     }
@@ -3803,6 +3837,7 @@ impl EffectAst {
                 player,
                 allow_land,
                 allow_any_color_for_cast,
+                object_filter: None,
             },
         )
     }
@@ -3821,6 +3856,7 @@ impl EffectAst {
                 player,
                 allow_land,
                 allow_any_color_for_cast,
+                object_filter: None,
             },
         )
     }
@@ -3839,6 +3875,7 @@ impl EffectAst {
                 player,
                 allow_land,
                 allow_any_color_for_cast,
+                object_filter: None,
             },
         )
     }

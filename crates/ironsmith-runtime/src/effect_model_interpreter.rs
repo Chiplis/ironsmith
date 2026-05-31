@@ -1040,14 +1040,18 @@ where
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::GrantPlayTaggedEffect>(&effect) {
-        return Ok(Effect::new(crate::effects::GrantPlayTaggedEffect::new(
+        let mut grant_play = crate::effects::GrantPlayTaggedEffect::new(
             payload.tag.clone(),
             payload.player.clone(),
             payload.duration,
             payload.allow_land,
             payload.allow_any_color_for_cast,
         )
-        .while_on_top_of_library_if(payload.while_on_top_of_library)));
+        .while_on_top_of_library_if(payload.while_on_top_of_library);
+        if let Some(filter) = &payload.object_filter {
+            grant_play = grant_play.matching(filter.clone());
+        }
+        return Ok(Effect::new(grant_play));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::LocalRewriteEffect<M::Effect>>(&effect)
     {

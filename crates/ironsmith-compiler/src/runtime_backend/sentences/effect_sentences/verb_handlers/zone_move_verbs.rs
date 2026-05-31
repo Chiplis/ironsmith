@@ -89,6 +89,19 @@ pub(crate) fn parse_draw(
         } else if let Some(value) = parse_draw_as_many_cards_value(tokens) {
             consumed_embedded_card_keyword = true;
             (value, tokens.len())
+        } else if word_slice_starts_with(
+            &clause_words,
+            &["a", "number", "of", "cards", "equal", "to"],
+        ) {
+            let value_tokens = &tokens[token_index_for_word_index(tokens, 4).unwrap_or(tokens.len())..];
+            let value = parse_draw_equal_to_value(value_tokens)?.ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported draw count (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
+            consumed_embedded_card_keyword = true;
+            (value, tokens.len())
         } else if token_slice_first_is(tokens, "another")
             && token_slice_at_is_any(tokens, 1, &["card", "cards"])
         {
@@ -615,6 +628,14 @@ pub(crate) fn parse_draw_equal_to_value(
         .or_else(|| parse_equal_to_number_of_filter_value(tokens))
     {
         return Ok(Some(value));
+    }
+    if word_slice_starts_with(&token_words, &["equal", "to", "the", "amount", "of"])
+        && word_slice_contains_phrase(&token_words, &["paid", "this", "way"])
+    {
+        return Ok(Some(Value::PendingEffectMetric {
+            source: ironsmith_core::EffectMetricSource::Outcome,
+            metric: ironsmith_core::EffectMetric::Count,
+        }));
     }
     if grammar::words_find_phrase(tokens, &["this", "way"]).is_some() {
         return Ok(Some(Value::EventValue(EventValueSpec::Amount)));

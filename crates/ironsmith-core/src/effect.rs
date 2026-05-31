@@ -3504,6 +3504,7 @@ pub struct GrantPlayTaggedEffect {
     pub allow_land: bool,
     pub allow_any_color_for_cast: bool,
     pub while_on_top_of_library: bool,
+    pub object_filter: Option<ObjectFilter>,
 }
 
 impl GrantPlayTaggedEffect {
@@ -3521,7 +3522,13 @@ impl GrantPlayTaggedEffect {
             allow_land,
             allow_any_color_for_cast,
             while_on_top_of_library: false,
+            object_filter: None,
         }
+    }
+
+    pub fn matching(mut self, filter: ObjectFilter) -> Self {
+        self.object_filter = Some(filter);
+        self
     }
 
     pub fn while_on_top_of_library(mut self) -> Self {

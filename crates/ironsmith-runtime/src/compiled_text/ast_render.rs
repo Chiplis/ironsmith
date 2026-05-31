@@ -349,6 +349,14 @@ pub(super) fn describe_resolution_program(
     if let Some(rendered) = describe_spell_mastery_reanimation_program(program) {
         return rendered;
     }
+    if program.segments.len() == 2 {
+        let rendered = describe_effect_list(program.flattened_default_effects());
+        if rendered.contains("Each player may exile their hand")
+            && rendered.contains("seven or more {E} was paid this way")
+        {
+            return rendered;
+        }
+    }
 
     let mut rendered_segments = Vec::new();
     for segment in &program.segments {

@@ -376,6 +376,21 @@ pub(crate) fn parse_effect_chain_lexed(
     let starts_with_each_player =
         grammar::words_match_any_prefix(tokens, EACH_PLAYER_PREFIXES).is_some();
 
+    if starts_with_each_player
+        && let Some(stripped) = grammar::strip_lexed_prefix_phrase(tokens, &["each", "player", "may"])
+            .or_else(|| grammar::strip_lexed_prefix_phrase(tokens, &["each", "players", "may"]))
+    {
+        let mut subject_tokens = vec![synthetic_lexed_word("they")];
+        subject_tokens.extend_from_slice(stripped);
+        let effects = parse_effect_chain_lexed(&subject_tokens)?;
+        return Ok(vec![EffectAst::ForEachPlayer {
+            effects: vec![EffectAst::MayByPlayer {
+                player: PlayerAst::That,
+                effects,
+            }],
+        }]);
+    }
+
     if let Some(player) = parse_leading_player_may_lexed(tokens) {
         let mut stripped = remove_through_first_word(tokens, "may");
         if stripped

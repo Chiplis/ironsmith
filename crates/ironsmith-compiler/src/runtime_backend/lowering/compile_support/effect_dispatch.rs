@@ -1963,6 +1963,7 @@ fn compile_subject_verb_effect(
             without_paying_mana_cost,
             allow_any_color_for_cast,
             while_on_top_of_library,
+            object_filter,
         } => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
@@ -1995,6 +1996,9 @@ fn compile_subject_verb_effect(
                 *allow_land,
                 *allow_any_color_for_cast,
             );
+            if let Some(filter) = object_filter {
+                grant_play = grant_play.matching(resolve_it_tag(filter, &current_reference_env(ctx))?);
+            }
             if *while_on_top_of_library {
                 grant_play = grant_play.while_on_top_of_library();
             }
@@ -2051,6 +2055,7 @@ fn compile_subject_verb_effect(
             player,
             allow_land,
             allow_any_color_for_cast,
+            object_filter,
         } => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
@@ -2070,22 +2075,24 @@ fn compile_subject_verb_effect(
             } else {
                 tag.clone()
             };
-            Ok((
-                vec![Effect::new(crate::effects::GrantPlayTaggedEffect::new(
-                    resolved_tag,
-                    player_filter,
-                    crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd,
-                    *allow_land,
-                    *allow_any_color_for_cast,
-                ))],
-                Vec::new(),
-            ))
+            let mut grant_play = crate::effects::GrantPlayTaggedEffect::new(
+                resolved_tag,
+                player_filter,
+                crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd,
+                *allow_land,
+                *allow_any_color_for_cast,
+            );
+            if let Some(filter) = object_filter {
+                grant_play = grant_play.matching(resolve_it_tag(filter, &current_reference_env(ctx))?);
+            }
+            Ok((vec![Effect::new(grant_play)], Vec::new()))
         }
         SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
             tag,
             player,
             allow_land,
             allow_any_color_for_cast,
+            object_filter,
         } => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
@@ -2105,22 +2112,24 @@ fn compile_subject_verb_effect(
             } else {
                 tag.clone()
             };
-            Ok((
-                vec![Effect::new(crate::effects::GrantPlayTaggedEffect::new(
-                    resolved_tag,
-                    player_filter,
-                    crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled,
-                    *allow_land,
-                    *allow_any_color_for_cast,
-                ))],
-                Vec::new(),
-            ))
+            let mut grant_play = crate::effects::GrantPlayTaggedEffect::new(
+                resolved_tag,
+                player_filter,
+                crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled,
+                *allow_land,
+                *allow_any_color_for_cast,
+            );
+            if let Some(filter) = object_filter {
+                grant_play = grant_play.matching(resolve_it_tag(filter, &current_reference_env(ctx))?);
+            }
+            Ok((vec![Effect::new(grant_play)], Vec::new()))
         }
         SubjectVerbActionAst::GrantPlayTaggedForAsLongAsYouControlSource {
             tag,
             player,
             allow_land,
             allow_any_color_for_cast,
+            object_filter,
         } => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
@@ -2140,16 +2149,17 @@ fn compile_subject_verb_effect(
             } else {
                 tag.clone()
             };
-            Ok((
-                vec![Effect::new(crate::effects::GrantPlayTaggedEffect::new(
-                    resolved_tag,
-                    player_filter,
-                    crate::effects::GrantPlayTaggedDuration::ForAsLongAsYouControlSource,
-                    *allow_land,
-                    *allow_any_color_for_cast,
-                ))],
-                Vec::new(),
-            ))
+            let mut grant_play = crate::effects::GrantPlayTaggedEffect::new(
+                resolved_tag,
+                player_filter,
+                crate::effects::GrantPlayTaggedDuration::ForAsLongAsYouControlSource,
+                *allow_land,
+                *allow_any_color_for_cast,
+            );
+            if let Some(filter) = object_filter {
+                grant_play = grant_play.matching(resolve_it_tag(filter, &current_reference_env(ctx))?);
+            }
+            Ok((vec![Effect::new(grant_play)], Vec::new()))
         }
         SubjectVerbActionAst::ExileUntilSourceLeaves { target, face_down } => {
             let (spec, choices) =

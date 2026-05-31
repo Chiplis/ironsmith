@@ -312,7 +312,13 @@ pub(crate) fn classify_statement_line_family_lexed(
 
     let starts_with_each_player_statement =
         word_slice_strip_prefix(&word_refs, &["each", "player"])
-            .and_then(|rest| rest.first())
+            .and_then(|rest| {
+                if rest.first().copied() == Some("may") {
+                    rest.get(1)
+                } else {
+                    rest.first()
+                }
+            })
             .is_some_and(|word| is_statement_verb_word(word));
     let starts_with_each_other_player_statement =
         word_slice_strip_prefix(&word_refs, &["each", "other", "player"])
@@ -538,6 +544,19 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
             .and_then(|value| i32::try_from(value).ok())
     {
         return Some(IfResultPredicate::Value(Comparison::Equal(value)));
+    }
+    if words.len() >= 6
+        && words[1] == "or"
+        && words[2] == "more"
+        && words[words.len() - 2] == "this"
+        && words[words.len() - 1] == "way"
+        && words.iter().any(|word| matches!(*word, "paid" | "spent"))
+        && let Some(value) = ironsmith_core::parse_cardinal_word(words[0])
+            .and_then(|value| i32::try_from(value).ok())
+    {
+        return Some(IfResultPredicate::Value(Comparison::GreaterThanOrEqual(
+            value,
+        )));
     }
     if words.len() >= 3
         && words[0] == "you"

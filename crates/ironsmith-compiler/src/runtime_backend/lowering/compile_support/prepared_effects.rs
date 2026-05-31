@@ -1,7 +1,7 @@
 use crate::cards::builders::{
     CardTextError, EffectAst, EffectLoweringContext, IT_TAG, PredicateAst, TagKey,
 };
-use crate::effect::{Condition, Effect, EffectPredicate};
+use crate::effect::{Condition, Effect, EffectId, EffectPredicate};
 use crate::target::{ChooseSpec, ObjectFilter};
 
 use super::{
@@ -48,6 +48,11 @@ pub(crate) fn materialize_prepared_statement_effects(
     let compiled = normalize_random_destroy_across_target_groups(compiled);
     let compiled = fold_local_zone_rewrite_self_replacements(compiled);
     let final_env = ctx.reference_env();
+    let compiled = materialize_exported_last_effect_id(
+        compiled,
+        prepared.initial_env.known_last_effect_id(),
+        final_env.known_last_effect_id(),
+    );
     Ok(LoweredEffects {
         effects: crate::resolution::ResolutionProgram::from_effects(prepend_effect_prelude(
             compiled,
@@ -74,6 +79,11 @@ pub(crate) fn materialize_prepared_effects_with_trigger_context(
     let compiled = normalize_random_destroy_across_target_groups(compiled);
     let compiled = fold_local_zone_rewrite_self_replacements(compiled);
     let final_env = ctx.reference_env();
+    let compiled = materialize_exported_last_effect_id(
+        compiled,
+        prepared.initial_env.known_last_effect_id(),
+        final_env.known_last_effect_id(),
+    );
     Ok(LoweredEffects {
         effects: crate::resolution::ResolutionProgram::from_effects(prepend_effect_prelude(
             compiled,
@@ -82,6 +92,30 @@ pub(crate) fn materialize_prepared_effects_with_trigger_context(
         choices,
         exports: ReferenceExports::from_env(&final_env),
     })
+}
+
+fn effect_contains_id(effect: &Effect, id: EffectId) -> bool {
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return with_id.id == id || effect_contains_id(&with_id.effect, id);
+    }
+    false
+}
+
+fn materialize_exported_last_effect_id(
+    mut effects: Vec<Effect>,
+    initial_id: Option<EffectId>,
+    final_id: Option<EffectId>,
+) -> Vec<Effect> {
+    let Some(id) = final_id else {
+        return effects;
+    };
+    if initial_id == Some(id) || effects.iter().any(|effect| effect_contains_id(effect, id)) {
+        return effects;
+    }
+    if let Some(last) = effects.pop() {
+        effects.push(Effect::with_id(id.0, last));
+    }
+    effects
 }
 
 fn materialize_trailing_self_replacement(

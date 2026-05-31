@@ -167,6 +167,72 @@ pub(crate) use trigger_support::{
     trigger_binds_player_reference_context, trigger_supports_event_value,
 };
 
+fn resolve_condition_result_value_refs(
+    value: &Value,
+    ctx: &EffectLoweringContext,
+) -> Result<Value, CardTextError> {
+    let mut resolved = value.clone();
+    match &mut resolved {
+        Value::Add(left, right) | Value::Min(left, right) => {
+            *left = Box::new(resolve_condition_result_value_refs(left, ctx)?);
+            *right = Box::new(resolve_condition_result_value_refs(right, ctx)?);
+        }
+        Value::Scaled(inner, _) | Value::HalfRoundedDown(inner) => {
+            *inner = Box::new(resolve_condition_result_value_refs(inner, ctx)?);
+        }
+        Value::SurfaceHinted { value, .. } => {
+            *value = Box::new(resolve_condition_result_value_refs(value, ctx)?);
+        }
+        Value::PendingEffectMetric { source, metric } => {
+            let id = ctx.last_effect_id.ok_or_else(|| {
+                CardTextError::ParseError(
+                    "pending predicate metric requires a prior memory-producing effect".to_string(),
+                )
+            })?;
+            resolved = Value::EffectMetric {
+                effect_id: id,
+                source: *source,
+                metric: *metric,
+            };
+        }
+        Value::PendingEffectMetricOffset {
+            source,
+            metric,
+            offset,
+        } => {
+            let id = ctx.last_effect_id.ok_or_else(|| {
+                CardTextError::ParseError(
+                    "pending predicate metric requires a prior memory-producing effect".to_string(),
+                )
+            })?;
+            resolved = Value::EffectMetricOffset {
+                effect_id: id,
+                source: *source,
+                metric: *metric,
+                offset: *offset,
+            };
+        }
+        Value::EventValue(EventValueSpec::Amount) => {
+            let id = ctx.last_effect_id.ok_or_else(|| {
+                CardTextError::ParseError(
+                    "event predicate amount requires a prior memory-producing effect".to_string(),
+                )
+            })?;
+            resolved = Value::EffectValue(id);
+        }
+        Value::EventValueOffset(EventValueSpec::Amount, offset) => {
+            let id = ctx.last_effect_id.ok_or_else(|| {
+                CardTextError::ParseError(
+                    "event predicate amount requires a prior memory-producing effect".to_string(),
+                )
+            })?;
+            resolved = Value::EffectValueOffset(id, *offset);
+        }
+        _ => {}
+    }
+    Ok(resolved)
+}
+
 pub(crate) fn compile_condition_from_predicate_ast(
     predicate: &PredicateAst,
     ctx: &mut EffectLoweringContext,
@@ -647,10 +713,12 @@ pub(crate) fn compile_condition_from_predicate_ast(
             {
                 Condition::XValueAtLeast(*amount as u32)
             } else {
+                let left = resolve_condition_result_value_refs(left, ctx)?;
+                let right = resolve_condition_result_value_refs(right, ctx)?;
                 Condition::ValueComparison {
-                    left: resolve_value_it_tag(left, &refs)?,
+                    left: resolve_value_it_tag(&left, &refs)?,
                     operator: *operator,
-                    right: resolve_value_it_tag(right, &refs)?,
+                    right: resolve_value_it_tag(&right, &refs)?,
                 }
             }
         }

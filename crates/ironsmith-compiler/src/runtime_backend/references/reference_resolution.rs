@@ -346,6 +346,19 @@ fn advance_reference_frames(
     Ok(())
 }
 
+fn optional_payment_effects_produce_memory(effects: &[EffectAst]) -> bool {
+    matches!(
+        effects,
+        [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::PayAnyEnergy { .. }
+                | SubjectVerbActionAst::PayEnergy { .. }
+                | SubjectVerbActionAst::PayMana { .. },
+            ..
+        })]
+    )
+}
+
 fn advance_reference_frame_for_effect(
     effect: &EffectAst,
     id_gen: &mut IdGenContext,
@@ -1033,8 +1046,14 @@ fn advance_reference_frame_for_effect(
             frame.last_object_tag = Some(chosen_tag);
         }
         EffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. } => {}
-        EffectAst::May { effects }
-        | EffectAst::DelayedUntilNextEndStep { effects, .. }
+        EffectAst::May { effects } => {
+            advance_effects_preserving_last_effect(&effects, id_gen, frame)?;
+            if optional_payment_effects_produce_memory(effects) {
+                frame.last_effect_id = Some(EffectId(id_gen.next_effect_id));
+                id_gen.next_effect_id += 1;
+            }
+        }
+        EffectAst::DelayedUntilNextEndStep { effects, .. }
         | EffectAst::DelayedUntilEndOfCombat { effects }
         | EffectAst::DelayedTriggerThisTurn { effects, .. }
         | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. } => {
@@ -1042,6 +1061,10 @@ fn advance_reference_frame_for_effect(
         }
         EffectAst::MayByPlayer { player, effects } => {
             advance_effects_preserving_last_effect(&effects, id_gen, frame)?;
+            if optional_payment_effects_produce_memory(effects) {
+                frame.last_effect_id = Some(EffectId(id_gen.next_effect_id));
+                id_gen.next_effect_id += 1;
+            }
             track_effect_player(player.clone(), frame, true, true)?;
         }
         EffectAst::DelayedUntilNextUpkeep { player, effects }
@@ -1196,8 +1219,13 @@ fn annotate_effect_sequence_with_env_internal(
                 || effects_reference_its_controller(remaining)
                 || effects_reference_tag(remaining, "damaged_0")
         };
-        let assigned_effect_id =
-            maybe_assign_effect_result_id(effects, idx, id_gen, in_env.allow_life_event_value);
+        let assigned_effect_id = maybe_assign_effect_result_id(
+            effects,
+            idx,
+            id_gen,
+            in_env.allow_life_event_value,
+            in_env.known_last_effect_id(),
+        );
 
         let mut out_env = advance_reference_env_for_effect(
             &effect,
@@ -1271,6 +1299,7 @@ fn maybe_assign_effect_result_id(
     idx: usize,
     id_gen: &mut IdGenContext,
     _allow_life_event_value: bool,
+    current_last_effect_id: Option<EffectId>,
 ) -> Option<EffectId> {
     let next_is_result_gate = idx + 1 < effects.len()
         && matches!(
@@ -1309,6 +1338,15 @@ fn maybe_assign_effect_result_id(
                 )
         );
 
+    if idx + 1 < effects.len()
+        && effect_can_supply_prior_effect_memory(&effects[idx])
+        && let Some(id) = first_explicit_effect_result_reference(&effects[idx + 1])
+        && Some(id) != current_last_effect_id
+        && id == EffectId(id_gen.next_effect_id)
+    {
+        return Some(id);
+    }
+
     if !(next_is_if_result_with_opponent_doesnt
         || next_is_if_result_with_player_doesnt
         || next_is_if_result_with_opponent_did
@@ -1324,6 +1362,23 @@ fn maybe_assign_effect_result_id(
     let id = EffectId(id_gen.next_effect_id);
     id_gen.next_effect_id += 1;
     Some(id)
+}
+
+fn first_explicit_effect_result_reference(effect: &EffectAst) -> Option<EffectId> {
+    let mut found = None;
+    visit_effect_values(effect, &mut |value| {
+        if found.is_some() {
+            return;
+        }
+        found = match value {
+            Value::EffectValue(id)
+            | Value::EffectValueOffset(id, _)
+            | Value::EffectMetric { effect_id: id, .. }
+            | Value::EffectMetricOffset { effect_id: id, .. } => Some(*id),
+            _ => None,
+        };
+    });
+    found
 }
 
 fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
@@ -1680,8 +1735,13 @@ fn resolve_effect_sequence_references_with_state(
             &[]
         };
         let _ = effects_reference_it_tag(remaining) || effects_reference_its_controller(remaining);
-        let assigned_effect_id =
-            maybe_assign_effect_result_id(effects, idx, id_gen, state.allow_life_event_value);
+        let assigned_effect_id = maybe_assign_effect_result_id(
+            effects,
+            idx,
+            id_gen,
+            state.allow_life_event_value,
+            state.last_effect_id,
+        );
         state.last_effect_id = if matches!(
             effect,
             EffectAst::ResolvedIfResult { .. }

@@ -3999,6 +3999,105 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
 
+    fn describe_energy_pay_each_player_hand_exile_draw_permission(
+        effects: &[&Effect],
+    ) -> Option<String> {
+        let [energy_effect, may_effect, for_players_effect, conditional_effect] = effects else {
+            return None;
+        };
+        let energy = unwrap_wrapped_effect(energy_effect)
+            .downcast_ref::<crate::effects::EnergyCountersEffect>()?;
+        if energy.player != PlayerFilter::You {
+            return None;
+        }
+        let may_with_id = may_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+        let may = may_with_id
+            .effect
+            .downcast_ref::<crate::effects::MayEffect>()?;
+        if !matches!(may.decider, None | Some(PlayerFilter::You)) || may.effects.len() != 1 {
+            return None;
+        }
+        let pay_any = unwrap_wrapped_effect(&may.effects[0])
+            .downcast_ref::<crate::effects::PayAnyEnergyEffect>()?;
+        if !matches!(pay_any.player, ChooseSpec::Player(PlayerFilter::You)) {
+            return None;
+        }
+
+        let for_players = for_players_effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
+        if for_players.filter != PlayerFilter::Any || for_players.effects.len() != 1 {
+            return None;
+        }
+        let per_player_may = for_players.effects[0].downcast_ref::<crate::effects::MayEffect>()?;
+        if per_player_may.decider != Some(PlayerFilter::IteratedPlayer)
+            || per_player_may.effects.len() != 2
+        {
+            return None;
+        }
+        let tagged = per_player_may.effects[0].downcast_ref::<crate::effects::TaggedEffect>()?;
+        let exile = tagged
+            .effect
+            .downcast_ref::<crate::effects::ExileEffect>()?;
+        let ChooseSpec::All(hand_filter) = &exile.spec else {
+            return None;
+        };
+        if hand_filter.zone != Some(Zone::Hand)
+            || hand_filter.owner != Some(PlayerFilter::IteratedPlayer)
+        {
+            return None;
+        }
+        let draw = per_player_may.effects[1].downcast_ref::<crate::effects::DrawCardsEffect>()?;
+        if draw.player != PlayerFilter::IteratedPlayer
+            || !matches!(
+                &draw.count,
+                Value::EffectMetric {
+                    effect_id,
+                    source: crate::effect::EffectMetricSource::Outcome,
+                    metric: crate::effect::EffectMetric::Count,
+                } if *effect_id == may_with_id.id
+            )
+        {
+            return None;
+        }
+
+        let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+        let Condition::ValueComparison {
+            left,
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(7),
+        } = &conditional.condition
+        else {
+            return None;
+        };
+        if !matches!(
+            left,
+            Value::EffectMetric {
+                effect_id,
+                source: crate::effect::EffectMetricSource::Outcome,
+                metric: crate::effect::EffectMetric::Count,
+            } if *effect_id == may_with_id.id
+        ) || !conditional.if_false.is_empty() || conditional.if_true.len() != 1
+        {
+            return None;
+        }
+        let grant = conditional.if_true[0].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+        if grant.tag != tagged.tag
+            || grant.player != PlayerFilter::You
+            || grant.duration != crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd
+            || !grant.allow_land
+        {
+            return None;
+        }
+        let payment = describe_pay_any_energy_amount(pay_any)?;
+        Some(format!(
+            "{}, then you may pay {payment}. Each player may exile their hand and draw a number of cards equal to the amount of {{E}} paid this way. If seven or more {{E}} was paid this way, you may play cards you own exiled this way until the end of your next turn",
+            describe_effect(energy_effect)
+        ))
+    }
+
+    if let Some(compact) = describe_energy_pay_each_player_hand_exile_draw_permission(&raw_effects) {
+        return compact;
+    }
+
     fn describe_energy_then_pay_any_then_put_paid_counters(effects: &[&Effect]) -> Option<String> {
         let [energy_effect, may_effect, if_effect] = effects else {
             return None;
@@ -33181,7 +33280,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "looked")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "chosen")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "searched");
-        let object_text = if grant_play_tagged.tag.as_str().starts_with("targeted_")
+        let object_text = if grant_play_tagged
+            .object_filter
+            .as_ref()
+            .is_some_and(|filter| filter.owner == Some(PlayerFilter::You))
+            && helper_tag
+        {
+            "cards you own exiled this way".to_string()
+        } else if grant_play_tagged.tag.as_str().starts_with("targeted_")
             || grant_play_tagged.tag.as_str().starts_with("__source_")
             || grant_play_tagged.tag.as_str() == "__it__"
             || matches!(

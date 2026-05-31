@@ -4,11 +4,12 @@ use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::filter::ObjectFilterExt;
 use crate::game_state::GameState;
 use crate::grant::Grantable;
 use crate::grant_registry::GrantSource;
 use crate::tag::TagKey;
-use crate::target::PlayerFilter;
+use crate::target::{ObjectFilter, PlayerFilter};
 pub use ironsmith_core::GrantPlayTaggedDuration;
 
 /// Grant temporary permission to cast or play cards tagged in the current context.
@@ -20,6 +21,7 @@ pub struct GrantPlayTaggedEffect {
     pub allow_land: bool,
     pub allow_any_color_for_cast: bool,
     pub while_on_top_of_library: bool,
+    pub object_filter: Option<ObjectFilter>,
 }
 
 impl GrantPlayTaggedEffect {
@@ -37,7 +39,13 @@ impl GrantPlayTaggedEffect {
             allow_land,
             allow_any_color_for_cast,
             while_on_top_of_library: false,
+            object_filter: None,
         }
+    }
+
+    pub fn matching(mut self, filter: ObjectFilter) -> Self {
+        self.object_filter = Some(filter);
+        self
     }
 
     pub fn while_on_top_of_library(mut self) -> Self {
@@ -183,6 +191,12 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             let Some(object) = game.object(object_id) else {
                 continue;
             };
+            if let Some(filter) = &self.object_filter {
+                let filter_ctx = game.filter_context_for(player_id, Some(ctx.source));
+                if !filter.matches(object, &filter_ctx, game) {
+                    continue;
+                }
+            }
             if (!self.allow_land && object.is_land()) || !seen.insert(object_id) {
                 continue;
             }

@@ -52,6 +52,7 @@ pub(crate) enum PermissionClauseSpec {
         as_copy: bool,
         without_paying_mana_cost: bool,
         lifetime: PermissionLifetime,
+        object_filter: Option<ObjectFilter>,
     },
     GrantBySpec {
         player: PlayerAst,
@@ -861,6 +862,32 @@ pub(crate) fn parse_permission_clause_spec_lexed(
     let player = lead.player;
     let allow_land = lead.allow_land;
 
+    let rest_words = token_word_refs(rest_tokens);
+    if word_slice_starts_with(
+        &rest_words,
+        &["cards", "you", "own", "exiled", "this", "way"],
+    ) {
+        let tail_start = token_index_for_word_index(rest_tokens, 6).unwrap_or(rest_tokens.len());
+        let tail_tokens = &rest_tokens[tail_start..];
+        let default_lifetime = prefixed_lifetime.unwrap_or(PermissionLifetime::Immediate);
+        let Some((lifetime, without_paying_mana_cost)) =
+            parse_permission_tail_tokens(tail_tokens, default_lifetime)
+        else {
+            return Ok(None);
+        };
+        let mut object_filter = ObjectFilter::default();
+        object_filter.owner = Some(crate::target::PlayerFilter::You);
+        return Ok(Some(PermissionClauseSpec::Tagged {
+            tag: TagKey::from(IT_TAG),
+            player,
+            allow_land,
+            as_copy: false,
+            without_paying_mana_cost,
+            lifetime,
+            object_filter: Some(object_filter),
+        }));
+    }
+
     if let Some((target_ref, tagged_tail_tokens)) =
         parse_tagged_cast_or_play_target_tokens(rest_tokens)
     {
@@ -960,6 +987,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             as_copy: target_ref.as_copy,
             without_paying_mana_cost,
             lifetime,
+            object_filter: None,
         }));
     }
 
@@ -1276,14 +1304,31 @@ pub(crate) fn parse_until_end_of_turn_may_play_tagged_clause(
             as_copy: false,
             without_paying_mana_cost,
             lifetime: PermissionLifetime::UntilEndOfTurn,
+            object_filter,
         }) if player == PlayerAst::You => Ok(Some(
-            EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-                tag,
-                player,
-                allow_land,
-                without_paying_mana_cost,
-                false,
-            ),
+            if let Some(object_filter) = object_filter {
+                EffectAst::subject_verb(
+                    crate::cards::builders::SubjectVerbRoleAst::Actor,
+                    PlayerAst::Implicit,
+                    crate::cards::builders::SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+                        tag,
+                        player,
+                        allow_land,
+                        without_paying_mana_cost,
+                        allow_any_color_for_cast: false,
+                        while_on_top_of_library: false,
+                        object_filter: Some(object_filter),
+                    },
+                )
+            } else {
+                EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
+                    tag,
+                    player,
+                    allow_land,
+                    without_paying_mana_cost,
+                    false,
+                )
+            },
         )),
         _ => Ok(None),
     }
@@ -1292,6 +1337,39 @@ pub(crate) fn parse_until_end_of_turn_may_play_tagged_clause(
 pub(crate) fn parse_until_your_next_turn_may_play_tagged_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    let trimmed = trim_lexed_commas(tokens);
+    if let Some((lead, rest_tokens)) = parse_permission_lead_tokens(trimmed) {
+        let rest_words = token_word_refs(rest_tokens);
+        let cards_you_own_exiled_this_way = rest_words.len() >= 6
+            && matches!(rest_words[0], "card" | "cards")
+            && rest_words[1] == "you"
+            && rest_words[2] == "own"
+            && rest_words[3].starts_with("exil")
+            && rest_words[4] == "this"
+            && rest_words[5] == "way";
+        if matches!(lead.player, PlayerAst::Implicit | PlayerAst::You)
+            && lead.allow_land
+            && cards_you_own_exiled_this_way
+        {
+            let tail_start = token_index_for_word_index(rest_tokens, 6).unwrap_or(rest_tokens.len());
+            let tail_tokens = &rest_tokens[tail_start..];
+            if let Some((PermissionLifetime::UntilYourNextTurn, false)) =
+                parse_permission_tail_tokens(tail_tokens, PermissionLifetime::Immediate)
+            {
+                let mut object_filter = ObjectFilter::default();
+                object_filter.owner = Some(crate::target::PlayerFilter::You);
+                return Ok(Some(
+                    EffectAst::subject_verb_grant_play_tagged_until_your_next_turn_matching(
+                        TagKey::from(IT_TAG),
+                        PlayerAst::You,
+                        true,
+                        false,
+                        object_filter,
+                    ),
+                ));
+            }
+        }
+    }
     match parse_permission_clause_spec(tokens)? {
         Some(PermissionClauseSpec::Tagged {
             tag,
@@ -1300,13 +1378,24 @@ pub(crate) fn parse_until_your_next_turn_may_play_tagged_clause(
             as_copy: false,
             without_paying_mana_cost: false,
             lifetime: PermissionLifetime::UntilYourNextTurn,
+            object_filter,
         }) if matches!(player, PlayerAst::You | PlayerAst::Implicit) => Ok(Some(
-            EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
-                tag,
-                PlayerAst::You,
-                true,
-                false,
-            ),
+            if let Some(object_filter) = object_filter {
+                EffectAst::subject_verb_grant_play_tagged_until_your_next_turn_matching(
+                    tag,
+                    PlayerAst::You,
+                    true,
+                    false,
+                    object_filter,
+                )
+            } else {
+                EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
+                    tag,
+                    PlayerAst::You,
+                    true,
+                    false,
+                )
+            },
         )),
         _ => Ok(None),
     }
@@ -1611,6 +1700,38 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
         return Ok(Some(effect));
     }
 
+    if let Some((lead, rest_tokens)) = parse_permission_lead_tokens(&trimmed) {
+        let rest_words = token_word_refs(rest_tokens);
+        let cards_you_own_exiled_this_way = rest_words.len() >= 6
+            && matches!(rest_words[0], "card" | "cards")
+            && rest_words[1] == "you"
+            && rest_words[2] == "own"
+            && rest_words[3].starts_with("exil")
+            && rest_words[4] == "this"
+            && rest_words[5] == "way";
+        if matches!(lead.player, PlayerAst::Implicit | PlayerAst::You)
+            && cards_you_own_exiled_this_way
+        {
+            let tail_start = token_index_for_word_index(rest_tokens, 6).unwrap_or(rest_tokens.len());
+            let tail_tokens = &rest_tokens[tail_start..];
+            if let Some((PermissionLifetime::UntilYourNextTurn, false)) =
+                parse_permission_tail_tokens(tail_tokens, PermissionLifetime::Immediate)
+            {
+                let mut object_filter = ObjectFilter::default();
+                object_filter.owner = Some(crate::target::PlayerFilter::You);
+                return Ok(Some(
+                    EffectAst::subject_verb_grant_play_tagged_until_your_next_turn_matching(
+                        TagKey::from(IT_TAG),
+                        PlayerAst::Implicit,
+                        lead.allow_land,
+                        allow_any_color_for_cast,
+                        object_filter,
+                    ),
+                ));
+            }
+        }
+    }
+
     let conditional_tagged_permission = parse_permission_lead_tokens(&trimmed)
         .filter(|(lead, _)| lead.player == PlayerAst::Implicit)
         .and_then(|(lead, rest_tokens)| {
@@ -1680,6 +1801,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             as_copy,
             without_paying_mana_cost,
             lifetime: PermissionLifetime::Immediate,
+            object_filter: _,
         }) => {
             let cast = EffectAst::subject_verb_cast_tagged(
                 tag,
@@ -1705,6 +1827,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             as_copy: false,
             without_paying_mana_cost,
             lifetime: PermissionLifetime::ThisTurn | PermissionLifetime::UntilEndOfTurn,
+            object_filter: _,
         }) if player == PlayerAst::Implicit || player == PlayerAst::You => Ok(Some(
             EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
                 tag,
@@ -1721,13 +1844,24 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             as_copy: false,
             without_paying_mana_cost: false,
             lifetime: PermissionLifetime::UntilYourNextTurn,
+            object_filter,
         }) if player == PlayerAst::Implicit || player == PlayerAst::You => Ok(Some(
-            EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
-                tag,
-                PlayerAst::Implicit,
-                allow_land,
-                allow_any_color_for_cast,
-            ),
+            if let Some(object_filter) = object_filter {
+                EffectAst::subject_verb_grant_play_tagged_until_your_next_turn_matching(
+                    tag,
+                    PlayerAst::Implicit,
+                    allow_land,
+                    allow_any_color_for_cast,
+                    object_filter,
+                )
+            } else {
+                EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
+                    tag,
+                    PlayerAst::Implicit,
+                    allow_land,
+                    allow_any_color_for_cast,
+                )
+            },
         )),
         Some(PermissionClauseSpec::GrantBySpec {
             player,
@@ -1769,6 +1903,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             as_copy: false,
             without_paying_mana_cost: false,
             lifetime: PermissionLifetime::ForAsLongAsExiled,
+            object_filter: _,
         }) if player == PlayerAst::Implicit || player == PlayerAst::You => Ok(Some(
             EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
                 tag,
@@ -1784,6 +1919,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             as_copy: false,
             without_paying_mana_cost: false,
             lifetime: PermissionLifetime::ForAsLongAsYouControlSource,
+            object_filter: _,
         }) if player == PlayerAst::Implicit || player == PlayerAst::You => Ok(Some(
             EffectAst::subject_verb_grant_play_tagged_for_as_long_as_you_control_source(
                 tag,

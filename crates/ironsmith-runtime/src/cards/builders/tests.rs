@@ -142,6 +142,94 @@ fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn wheel_of_potential_strict_parser_text_and_paid_energy_regression() {
+    let def = parse_oracle_card_definition("Wheel of Potential");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let effects = def
+        .spell_effect
+        .as_ref()
+        .expect("Wheel of Potential should have a spell effect")
+        .flattened_default_effects();
+
+    assert_eq!(
+        rendered,
+        "You get {E}{E}{E}, then you may pay any amount of {E}. Each player may exile their hand and draw a number of cards equal to the amount of {E} paid this way. If seven or more {E} was paid this way, you may play cards you own exiled this way until the end of your next turn."
+    );
+    assert_eq!(effects.len(), 4, "expected two Wheel resolution segments flattened to four effects, got {effects:#?}");
+
+    let pay_with_id = effects[1]
+        .downcast_ref::<crate::effects::WithIdEffect>()
+        .expect("optional energy payment should be materialized with an effect id");
+    let may_pay = pay_with_id
+        .effect
+        .downcast_ref::<crate::effects::MayEffect>()
+        .expect("payment id should wrap the optional payment");
+    assert!(
+        may_pay.effects[0]
+            .downcast_ref::<crate::effects::PayAnyEnergyEffect>()
+            .is_some(),
+        "expected optional pay-any-energy effect, got {may_pay:#?}"
+    );
+
+    let for_players = effects[2]
+        .downcast_ref::<crate::effects::ForPlayersEffect>()
+        .expect("second segment should iterate each player");
+    let per_player_may = for_players.effects[0]
+        .downcast_ref::<crate::effects::MayEffect>()
+        .expect("each player should choose whether to exile their hand");
+    let draw = per_player_may.effects[1]
+        .downcast_ref::<crate::effects::DrawCardsEffect>()
+        .expect("hand exile should be followed by a draw");
+    assert!(
+        matches!(
+            &draw.count,
+            Value::EffectMetric {
+                effect_id,
+                source: crate::effect::EffectMetricSource::Outcome,
+                metric: crate::effect::EffectMetric::Count,
+            } if *effect_id == pay_with_id.id
+        ),
+        "draw count should use the amount of energy paid, not cards exiled, got {:?}",
+        draw.count
+    );
+
+    let conditional = effects[3]
+        .downcast_ref::<crate::effects::ConditionalEffect>()
+        .expect("seven-or-more branch should be a value comparison conditional");
+    assert!(
+        matches!(
+            &conditional.condition,
+            Condition::ValueComparison {
+                left: Value::EffectMetric {
+                    effect_id,
+                    source: crate::effect::EffectMetricSource::Outcome,
+                    metric: crate::effect::EffectMetric::Count,
+                },
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(7),
+            } if *effect_id == pay_with_id.id
+        ),
+        "seven-or-more branch should check the paid energy amount, got {:?}",
+        conditional.condition
+    );
+    assert!(
+        conditional.if_false.is_empty(),
+        "below seven energy paid should not grant play permission"
+    );
+    let grant = conditional.if_true[0]
+        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+        .expect("seven or more energy paid should grant play permission");
+    assert_eq!(
+        grant
+            .object_filter
+            .as_ref()
+            .and_then(|filter| filter.owner.clone()),
+        Some(PlayerFilter::You),
+        "play permission should be restricted to cards you own exiled this way"
+    );
+}
+
+#[test]
 fn thundermane_dragon_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Thundermane Dragon");
     let rendered = unprocessed_compiled_lines(&def).join(" ");
