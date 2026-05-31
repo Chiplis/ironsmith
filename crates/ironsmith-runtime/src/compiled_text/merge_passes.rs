@@ -870,6 +870,115 @@ pub(super) fn merge_blockability_lines(lines: Vec<String>) -> Vec<String> {
     merged
 }
 
+pub(super) fn merge_attached_transform_keyword_loss_lines(lines: Vec<String>) -> Vec<String> {
+    let mut merged = Vec::with_capacity(lines.len());
+    let mut idx = 0usize;
+
+    while idx < lines.len() {
+        let mut consumed = 0usize;
+        let mut subject: Option<String> = None;
+        let mut base_pt: Option<String> = None;
+        let mut replacement_subtypes: Option<String> = None;
+        let mut granted_keywords: Vec<String> = Vec::new();
+        let mut loses_all_abilities = false;
+
+        while idx + consumed < lines.len() && consumed < 5 {
+            let line = lines[idx + consumed].trim().trim_end_matches('.');
+            let candidate_subject =
+                if let Some(loss_subject) = split_lose_all_abilities_clause(line) {
+                    loses_all_abilities = true;
+                    Some(loss_subject)
+                } else if let Some((have_subject, keyword)) = split_have_clause(line) {
+                    granted_keywords.push(normalize_keyword_predicate_case(&keyword));
+                    Some(have_subject)
+                } else if let Some((predicate_subject, verb, predicate)) =
+                    split_subject_predicate_clause(line)
+                {
+                    match verb {
+                        "has" | "have" => {
+                            if let Some(pt) = predicate.strip_prefix("base power and toughness ") {
+                                base_pt = Some(pt.trim().to_string());
+                                Some(predicate_subject.to_string())
+                            } else {
+                                break;
+                            }
+                        }
+                        "is" | "are" => {
+                            let lower = predicate.to_ascii_lowercase();
+                            if lower.contains("in addition to")
+                                || matches!(
+                                    lower.as_str(),
+                                    "creature"
+                                        | "artifact"
+                                        | "enchantment"
+                                        | "land"
+                                        | "planeswalker"
+                                        | "battle"
+                                        | "colorless"
+                                        | "white"
+                                        | "blue"
+                                        | "black"
+                                        | "red"
+                                        | "green"
+                                )
+                            {
+                                break;
+                            }
+                            replacement_subtypes = Some(lower);
+                            Some(predicate_subject.to_string())
+                        }
+                        _ => break,
+                    }
+                } else {
+                    break;
+                };
+
+            let Some(candidate_subject) = candidate_subject else {
+                break;
+            };
+            if let Some(subject) = &subject {
+                if !conditioned_subjects_equivalent(subject, &candidate_subject) {
+                    break;
+                }
+            } else {
+                subject = Some(candidate_subject);
+            }
+            consumed += 1;
+        }
+
+        if consumed >= 4
+            && loses_all_abilities
+            && base_pt.is_some()
+            && replacement_subtypes.is_some()
+            && !granted_keywords.is_empty()
+            && subject
+                .as_deref()
+                .is_some_and(|subject| !subject_is_plural(subject))
+        {
+            let subject = subject.expect("merged transform group has a subject");
+            let replacement_subtypes = replacement_subtypes.expect("checked replacement subtype");
+            let base_pt = base_pt.expect("checked base pt");
+            let subtype_phrase = capitalize_first(&replacement_subtypes);
+            let article = indefinite_article_for_phrase(&replacement_subtypes);
+
+            merged.push(format!(
+                "{subject} is {article} {subtype_phrase} with base power and toughness {base_pt}."
+            ));
+            merged.push(format!(
+                "It has {} and loses all other abilities.",
+                join_with_and(&granted_keywords)
+            ));
+            idx += consumed;
+            continue;
+        }
+
+        merged.push(lines[idx].clone());
+        idx += 1;
+    }
+
+    merged
+}
+
 pub(super) fn merge_lose_all_transform_lines(lines: Vec<String>) -> Vec<String> {
     let mut merged = Vec::with_capacity(lines.len());
     let mut idx = 0usize;

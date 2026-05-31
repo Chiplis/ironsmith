@@ -433,6 +433,43 @@ pub(super) fn run_graveyard_cast_control_condition_line_family(
     )))
 }
 
+pub(super) fn run_graveyard_or_exile_cast_line_family(
+    ctx: &LineDispatchContext<'_>,
+) -> Result<Option<LineDispatchResult>, CardTextError> {
+    let raw = ctx.line.info.raw_line.trim();
+    let raw_no_period = raw.trim_end_matches('.');
+    if raw_no_period.to_ascii_lowercase()
+        != "you may cast this card from your graveyard or from exile"
+    {
+        return Ok(None);
+    }
+
+    let graveyard_line =
+        rewrite_line_normalized(ctx.line, "You may cast this card from your graveyard.")?;
+    let exile_line = rewrite_line_normalized(ctx.line, "You may cast this card from exile.")?;
+
+    let Some(graveyard_static) = parse_static_line_cst(&graveyard_line)? else {
+        return Err(CardTextError::ParseError(format!(
+            "parser could not lower graveyard-or-exile cast line graveyard half: '{}'",
+            ctx.line.info.raw_line
+        )));
+    };
+    let Some(exile_static) = parse_static_line_cst(&exile_line)? else {
+        return Err(CardTextError::ParseError(format!(
+            "parser could not lower graveyard-or-exile cast line exile half: '{}'",
+            ctx.line.info.raw_line
+        )));
+    };
+
+    Ok(Some(LineDispatchResult {
+        lines: vec![
+            RewriteLineCst::Static(graveyard_static),
+            RewriteLineCst::Static(exile_static),
+        ],
+        next_idx: ctx.idx + 1,
+    }))
+}
+
 pub(super) fn run_champion_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {

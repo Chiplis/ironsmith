@@ -74,6 +74,7 @@ pub enum AlternativeCastKind {
     Escape,
     Madness,
     Miracle,
+    Suspend,
 }
 
 /// Counter-state qualifier for object filters.
@@ -415,6 +416,7 @@ pub struct ObjectFilter {
     pub entered_battlefield_controller: Option<PlayerFilter>,
     pub entered_graveyard_this_turn: bool,
     pub entered_graveyard_from_battlefield_this_turn: bool,
+    pub surveilled_this_turn: bool,
     pub was_dealt_damage_this_turn: bool,
     pub drawn_this_turn: bool,
     pub power: Option<Comparison>,
@@ -496,6 +498,7 @@ impl ObjectFilter {
             || self.modified
             || self.enlist_eligible
             || self.attached_to_player.is_some()
+            || self.surveilled_this_turn
             || self.drawn_this_turn
             || self.mana_value.is_some()
             || self.mana_value_parity.is_some()
@@ -1988,6 +1991,9 @@ impl ObjectFilter {
         } else if self.entered_graveyard_this_turn && self.zone == Some(Zone::Graveyard) {
             parts.push("that was put there from anywhere this turn".to_string());
         }
+        if self.surveilled_this_turn {
+            parts.push("you've surveilled this turn".to_string());
+        }
 
         if self.was_dealt_damage_this_turn {
             parts.push("that was dealt damage this turn".to_string());
@@ -2397,6 +2403,7 @@ fn describe_alternative_cast_kind(kind: AlternativeCastKind) -> &'static str {
         AlternativeCastKind::Escape => "escape",
         AlternativeCastKind::Madness => "madness",
         AlternativeCastKind::Miracle => "miracle",
+        AlternativeCastKind::Suspend => "suspend",
     }
 }
 

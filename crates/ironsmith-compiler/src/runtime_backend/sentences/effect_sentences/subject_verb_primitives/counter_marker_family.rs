@@ -92,6 +92,18 @@ pub(crate) const IF_ENTERS_WITH_ADDITIONAL_COUNTER_PATTERN_ATOMS: &[LexPatternAt
         LexCaptureKind::OneOrMoreWords,
     ),
 ];
+const TAGGED_ENTERS_WITH_ADDITIONAL_COUNTER_PREFIXES: &[&[&str]] = &[
+    &["that", "card", "enters", "with"],
+    &["that", "creature", "enters", "with"],
+    &["that", "object", "enters", "with"],
+    &["that", "permanent", "enters", "with"],
+    &["it", "enters", "with"],
+];
+pub(crate) const TAGGED_ENTERS_WITH_ADDITIONAL_COUNTER_PATTERN_ATOMS: &[LexPatternAtom<'static>] =
+    &[
+        LexPattern::any_phrase(TAGGED_ENTERS_WITH_ADDITIONAL_COUNTER_PREFIXES),
+        LexPattern::role_capture("counter", LexCaptureRole::Amount, LexCaptureKind::Rest),
+    ];
 pub(crate) const PUT_ONTO_BATTLEFIELD_WITH_ADDITIONAL_COUNTERS_PATTERN_ATOMS: &[LexPatternAtom<
     'static,
 >] = &[
@@ -209,10 +221,97 @@ fn subject_verb_put_counters_target(effect: &EffectAst) -> Option<TargetAst> {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
             SubjectVerbActionAst::PutCounters { target, .. } => Some(target.clone()),
+            SubjectVerbActionAst::PutCounterChoice { target, .. } => Some(target.clone()),
             _ => None,
         },
         _ => None,
     }
+}
+
+fn counter_type_from_choice_segment(
+    segment: SubjectVerbPrimitiveClause<'_>,
+) -> Option<crate::object::CounterType> {
+    let mut words = segment.word_refs();
+    while words
+        .first()
+        .is_some_and(|word| matches!(*word, "and" | "or" | "a" | "an" | "one"))
+    {
+        words.remove(0);
+    }
+    while words
+        .last()
+        .is_some_and(|word| matches!(*word, "counter" | "counters"))
+    {
+        words.pop();
+    }
+
+    match words.as_slice() {
+        ["first", "strike"] => Some(crate::object::CounterType::FirstStrike),
+        ["double", "strike"] => Some(crate::object::CounterType::DoubleStrike),
+        [word] => crate::runtime_backend::util::parse_counter_type_word(word),
+        _ => None,
+    }
+}
+
+fn parse_put_counter_choice_sequence(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((descriptor_clause, target_clause)) = clause.split_once_on_word("on") else {
+        return Ok(None);
+    };
+    let descriptor_clause = descriptor_clause.from(1).trimmed();
+    let target_clause = target_clause.trimmed();
+    if descriptor_clause.is_empty()
+        || target_clause.is_empty()
+        || !descriptor_clause.contains_phrase(&["your", "choice", "of"])
+        || descriptor_clause.contains_no_words(&["counter", "counters"])
+    {
+        return Ok(None);
+    }
+
+    let Some(choice_clause) = descriptor_clause.strip_prefix_clause(&["your", "choice", "of"])
+    else {
+        return Ok(None);
+    };
+
+    let mut counter_types = Vec::new();
+    for segment in choice_clause.trimmed_comma_segments() {
+        let segment = segment.trimmed();
+        if segment.is_empty() {
+            continue;
+        }
+        let Some(counter_type) = counter_type_from_choice_segment(segment) else {
+            return Ok(None);
+        };
+        counter_types.push(counter_type);
+    }
+
+    if counter_types.len() < 2 {
+        return Ok(None);
+    }
+
+    let target = parse_target_phrase(target_clause.tokens())?;
+    let target_phrase = target_clause.word_refs().join(" ");
+    let mode_texts = counter_types
+        .iter()
+        .map(|counter_type| {
+            format!(
+                "Put {} on {target_phrase}",
+                super::super::zone_counter_helpers::describe_counter_phrase_for_mode(
+                    1,
+                    *counter_type,
+                )
+            )
+        })
+        .collect();
+
+    Ok(Some(vec![EffectAst::subject_verb_put_counter_choice(
+        counter_types,
+        Value::Fixed(1),
+        mode_texts,
+        target,
+        None,
+    )]))
 }
 
 pub(crate) fn parse_sentence_sacrifice_at_end_of_combat(
@@ -395,6 +494,10 @@ pub(crate) fn parse_sentence_put_counter_sequence_matched(
     }
 
     if let Some(effects) = parse_put_counter_ladder_segments(clause)? {
+        return Ok(Some(effects));
+    }
+
+    if let Some(effects) = parse_put_counter_choice_sequence(clause)? {
         return Ok(Some(effects));
     }
 
@@ -1099,6 +1202,40 @@ pub(crate) fn parse_if_enters_with_additional_counter_sentence_matched(
         predicate: IfResultPredicate::Did,
         effects: vec![apply_only_if_creature],
     }]))
+}
+
+pub(crate) fn parse_tagged_enters_with_additional_counter_sentence(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let pattern = LexPattern::new(TAGGED_ENTERS_WITH_ADDITIONAL_COUNTER_PATTERN_ATOMS);
+    let Some(matched) = clause.match_pattern(pattern) else {
+        return Ok(None);
+    };
+    parse_tagged_enters_with_additional_counter_sentence_matched(clause, &matched)
+}
+
+pub(crate) fn parse_tagged_enters_with_additional_counter_sentence_matched(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    _matched: &LexPatternMatch<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((_, counter_clause)) =
+        clause.strip_any_prefix_clause(TAGGED_ENTERS_WITH_ADDITIONAL_COUNTER_PREFIXES)
+    else {
+        return Ok(None);
+    };
+    let Some((count, counter_type)) =
+        parse_additional_counter_descriptor_on_target(counter_clause, &[&["it"]])?
+    else {
+        return Ok(None);
+    };
+
+    Ok(Some(vec![EffectAst::subject_verb_put_counters(
+        counter_type,
+        Value::Fixed(count as i32),
+        TargetAst::Tagged(TagKey::from(IT_TAG), clause.span()),
+        None,
+        false,
+    )]))
 }
 
 pub(crate) fn parse_put_onto_battlefield_with_additional_counters_sentence(

@@ -5,13 +5,14 @@ use super::line_family_handlers::{
     run_colon_nonactivation_statement_line_family, run_combined_static_line_family,
     run_draft_rule_line_family, run_escape_enters_with_counter_line_family,
     run_freerunning_line_family, run_graveyard_cast_control_condition_line_family,
-    run_keyword_line_family, run_labeled_line_family, run_learn_line_family,
-    run_max_speed_labeled_line_family, run_non_turn_conditional_untap_line_family,
-    run_partner_variant_keyword_line_family, run_partner_with_keyword_line_family,
-    run_split_top_and_face_down_look_line_family, run_split_top_look_and_top_land_play_line_family,
-    run_start_your_engines_line_family, run_statement_line_family, run_statement_probe_line_family,
-    run_static_line_family, run_station_line_family, run_station_threshold_line_family,
-    run_surge_line_family, run_trailing_keyword_activation_line_family, run_triggered_line_family,
+    run_graveyard_or_exile_cast_line_family, run_keyword_line_family, run_labeled_line_family,
+    run_learn_line_family, run_max_speed_labeled_line_family,
+    run_non_turn_conditional_untap_line_family, run_partner_variant_keyword_line_family,
+    run_partner_with_keyword_line_family, run_split_top_and_face_down_look_line_family,
+    run_split_top_look_and_top_land_play_line_family, run_start_your_engines_line_family,
+    run_statement_line_family, run_statement_probe_line_family, run_static_line_family,
+    run_station_line_family, run_station_threshold_line_family, run_surge_line_family,
+    run_trailing_keyword_activation_line_family, run_triggered_line_family,
     run_unsupported_line_family, run_ward_or_echo_static_prefix_line_family,
 };
 use super::*;
@@ -49,7 +50,7 @@ struct LineFamilyRuleDef {
     run: LineFamilyRuleFn,
 }
 
-const LINE_FAMILY_RULES: [LineFamilyRuleDef; 30] = [
+const LINE_FAMILY_RULES: [LineFamilyRuleDef; 31] = [
     LineFamilyRuleDef {
         id: "trailing-keyword-activation",
         priority: 10,
@@ -199,6 +200,12 @@ const LINE_FAMILY_RULES: [LineFamilyRuleDef; 30] = [
         priority: 76,
         heads: &["you"],
         run: run_graveyard_cast_control_condition_line_family,
+    },
+    LineFamilyRuleDef {
+        id: "graveyard-or-exile-cast",
+        priority: 76,
+        heads: &["you"],
+        run: run_graveyard_or_exile_cast_line_family,
     },
     LineFamilyRuleDef {
         id: "additional-combat-after-this-phase",

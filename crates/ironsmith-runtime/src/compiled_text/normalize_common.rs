@@ -602,10 +602,22 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
     let mut keyword_texts = Vec::new();
     let mut extra_ability_texts = Vec::new();
     let has_non_toxic_poison_trigger = token_has_non_toxic_poison_trigger(token);
+    let has_decayed_marker = token_has_decayed_marker(token);
     for ability in &token.abilities {
         match &ability.kind {
             AbilityKind::Static(static_ability) => {
                 if static_ability.id() == crate::static_abilities::StaticAbilityId::MakeColorless {
+                    continue;
+                }
+                if static_ability.id() == crate::static_abilities::StaticAbilityId::KeywordMarker
+                    && static_ability.display().eq_ignore_ascii_case("decayed")
+                {
+                    keyword_texts.push("decayed".to_string());
+                    continue;
+                }
+                if has_decayed_marker
+                    && static_ability.id() == crate::static_abilities::StaticAbilityId::CantBlock
+                {
                     continue;
                 }
                 if static_ability.is_keyword() {
@@ -624,6 +636,9 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
                 ));
             }
             AbilityKind::Triggered(triggered) => {
+                if has_decayed_marker && is_decayed_sacrifice_trigger(triggered) {
+                    continue;
+                }
                 if !has_non_toxic_poison_trigger
                     && let Some(keyword) = describe_structural_toxic_keyword(triggered)
                 {
@@ -669,10 +684,62 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
     text
 }
 
+fn token_has_decayed_marker(token: &CardDefinition) -> bool {
+    token.abilities.iter().any(|ability| {
+        matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == crate::static_abilities::StaticAbilityId::KeywordMarker
+                    && static_ability.display().eq_ignore_ascii_case("decayed")
+        )
+    })
+}
+
+fn is_decayed_sacrifice_trigger(triggered: &crate::ability::TriggeredAbility) -> bool {
+    if triggered.intervening_if.is_some()
+        || !triggered.choices.is_empty()
+        || triggered
+            .trigger
+            .downcast_ref::<crate::triggers::combat::ThisAttacksTrigger>()
+            .is_none()
+    {
+        return false;
+    }
+
+    let effects = triggered.effects.flattened_default_effects();
+    if effects.len() != 1 {
+        return false;
+    }
+    let effect = &effects[0];
+    let Some(schedule) = effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+    else {
+        return false;
+    };
+    if !schedule.one_shot
+        || schedule
+            .trigger
+            .downcast_ref::<crate::triggers::EndOfCombatTrigger>()
+            .is_none()
+    {
+        return false;
+    }
+
+    if schedule.effects.len() != 1 {
+        return false;
+    }
+    let delayed_effect = &schedule.effects[0];
+    delayed_effect
+        .downcast_ref::<crate::effects::SacrificeTargetEffect>()
+        .is_some_and(|sacrifice| sacrifice.target == ChooseSpec::Source)
+}
+
 fn token_extra_abilities_prefer_with_clause(abilities: &[String]) -> bool {
     match abilities {
         [ability] => {
             if ability == "\"This token can't block.\"" {
+                return true;
+            }
+            if ability.starts_with("\"{") {
                 return true;
             }
             ability.to_ascii_lowercase().starts_with(
@@ -708,7 +775,10 @@ pub(super) fn quote_token_granted_ability_text(text: &str) -> String {
     } else {
         trimmed
     };
-    let normalized = normalize_quoted_token_ability_surface(unquoted);
+    let mut normalized = normalize_quoted_token_ability_surface(unquoted);
+    if token_quoted_ability_needs_terminal_period(&normalized) {
+        normalized.push('.');
+    }
     format!("\"{normalized}\"")
 }
 
@@ -776,7 +846,8 @@ fn token_quoted_ability_needs_terminal_period(text: &str) -> bool {
     !trimmed.ends_with('.')
         && !trimmed.ends_with('!')
         && !trimmed.ends_with('?')
-        && (trimmed.contains("Sacrifice this token:")
+        && (trimmed.starts_with('{')
+            || trimmed.contains("Sacrifice this token:")
             || trimmed.starts_with("When this token ")
             || trimmed.starts_with("Whenever this token "))
 }
@@ -6009,6 +6080,27 @@ pub(super) fn describe_discard_count(value: &Value, filter: Option<&ObjectFilter
         };
     }
 
+    if filter_is_only_same_mana_value_as_triggering_spell(filter) {
+        return match value {
+            Value::Fixed(1) => "a card with that spell's mana value".to_string(),
+            Value::Fixed(n) if *n >= 0 => {
+                let plural = "cards with that spell's mana value";
+                small_number_word(*n as u32)
+                    .map(|word| format!("{word} {plural}"))
+                    .unwrap_or_else(|| format!("{n} {plural}"))
+            }
+            Value::Count(count_filter)
+                if filter_is_only_same_mana_value_as_triggering_spell(count_filter) =>
+            {
+                "all cards with that spell's mana value".to_string()
+            }
+            _ => format!(
+                "{} cards with that spell's mana value",
+                describe_value(value)
+            ),
+        };
+    }
+
     if !filter.tagged_constraints.is_empty() {
         return match value {
             Value::Fixed(1) => "that card".to_string(),
@@ -6042,6 +6134,21 @@ pub(super) fn describe_discard_count(value: &Value, filter: Option<&ObjectFilter
             }
         }
     }
+}
+
+fn filter_is_only_same_mana_value_as_triggering_spell(filter: &ObjectFilter) -> bool {
+    let mut bare = filter.clone();
+    bare.zone = None;
+    bare.owner = None;
+    bare.controller = None;
+
+    let tagged_constraints_before = bare.tagged_constraints.len();
+    bare.tagged_constraints.retain(|constraint| {
+        !(constraint.tag.as_str() == "triggering"
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::SameManaValueAsTagged)
+    });
+
+    tagged_constraints_before != bare.tagged_constraints.len() && bare == ObjectFilter::default()
 }
 
 pub(super) fn describe_discard_card_phrase(filter: &ObjectFilter) -> String {
@@ -7116,11 +7223,18 @@ pub(super) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
                     }
                 };
                 if let Some(stripped) = text.strip_suffix(&suffix) {
-                    return ensure_indefinite_article(stripped);
+                    return ensure_indefinite_article(&render_artifact_non_aura_enchantment_text(
+                        filter, stripped,
+                    ));
                 }
-                return ensure_indefinite_article(&text);
+                return ensure_indefinite_article(&render_artifact_non_aura_enchantment_text(
+                    filter, &text,
+                ));
             }
-            ensure_indefinite_article(&filter.description())
+            ensure_indefinite_article(&render_artifact_non_aura_enchantment_text(
+                filter,
+                &filter.description(),
+            ))
         }
         ChooseSpec::PlayerOrPlaneswalker(filter) => match filter {
             PlayerFilter::Opponent => "target opponent or planeswalker".to_string(),
@@ -7164,7 +7278,10 @@ pub(super) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
                 if let ChooseSpec::Target(target_inner) = inner.as_ref() {
                     let target_desc = describe_choose_spec_without_graveyard_zone(target_inner);
                     let base = strip_leading_article(&target_desc);
-                    let plural = pluralize_noun_phrase(base);
+                    let plural = render_counted_artifact_non_aura_enchantment_text(
+                        target_inner,
+                        &pluralize_noun_phrase(base),
+                    );
                     let count_text =
                         |n: usize| number_word(n as i32).unwrap_or_else(|| n.to_string());
                     if count.is_up_to_dynamic_x() {
@@ -7242,6 +7359,58 @@ pub(super) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
         }
         _ => describe_choose_spec(spec),
     }
+}
+
+fn is_artifact_non_aura_enchantment_mana_value_filter(filter: &ObjectFilter) -> bool {
+    let has_artifact_enchantment_types = filter.card_types.len() == 2
+        && filter.card_types.contains(&CardType::Artifact)
+        && filter.card_types.contains(&CardType::Enchantment);
+    if !has_artifact_enchantment_types
+        || filter.excluded_subtypes != [Subtype::Aura]
+        || filter.mana_value.is_none()
+    {
+        return false;
+    }
+
+    let mut remaining = filter.clone();
+    remaining.zone = None;
+    remaining.owner = None;
+    remaining.single_graveyard = false;
+    remaining.card_types.clear();
+    remaining.excluded_subtypes.clear();
+    remaining.mana_value = None;
+    remaining == ObjectFilter::default()
+}
+
+fn render_artifact_non_aura_enchantment_text(filter: &ObjectFilter, text: &str) -> String {
+    if !is_artifact_non_aura_enchantment_mana_value_filter(filter) {
+        return text.to_string();
+    }
+
+    let Some((_, mana_value_text)) = text.split_once(" with mana value ") else {
+        return text.to_string();
+    };
+    let mana_value_text = mana_value_text.trim();
+    if text.contains("artifacts or enchantment cards with mana value") {
+        format!("artifact and/or non-Aura enchantment cards each with mana value {mana_value_text}")
+    } else if text.contains("artifact or enchantment card with mana value") {
+        format!("artifact and/or non-Aura enchantment card with mana value {mana_value_text}")
+    } else {
+        text.to_string()
+    }
+}
+
+fn render_counted_artifact_non_aura_enchantment_text(spec: &ChooseSpec, text: &str) -> String {
+    let ChooseSpec::Object(filter) = spec else {
+        return text.to_string();
+    };
+    if !is_artifact_non_aura_enchantment_mana_value_filter(filter) {
+        return text.to_string();
+    }
+    text.replace(
+        "artifact and/or non-Aura enchantment cards with mana value",
+        "artifact and/or non-Aura enchantment cards each with mana value",
+    )
 }
 
 pub(super) fn describe_choice_count(count: &ChoiceCount) -> String {
@@ -7322,6 +7491,12 @@ pub(super) fn describe_search_selection_with_cards(selection: &str) -> String {
     }
     if let Some(subtype) = selection.strip_prefix("basic land card ") {
         return format!("a basic {} card", subtype.trim());
+    }
+    if let Some(subtype) = selection.strip_prefix("a land card ") {
+        return format!("{} card", with_indefinite_article(subtype.trim()));
+    }
+    if let Some(subtype) = selection.strip_prefix("land card ") {
+        return format!("{} card", with_indefinite_article(subtype.trim()));
     }
     if selection == "permanent" || selection == "permanent card" {
         return "a card".to_string();
@@ -7955,6 +8130,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the number of creatures that died under {} control this turn",
             describe_possessive_player_filter(filter)
         ),
+        Value::PlayersBeingAttacked => "the number of players being attacked".to_string(),
         Value::CountPlayers(filter) => match filter {
             PlayerFilter::Any => "the number of players".to_string(),
             PlayerFilter::Opponent => "the number of opponents".to_string(),
@@ -8073,6 +8249,19 @@ pub(crate) fn describe_value(value: &Value) -> String {
             PlayerFilter::Any => "the number of cards discarded this turn".to_string(),
             _ => format!(
                 "the number of cards {} discarded this turn",
+                describe_player_filter(filter)
+            ),
+        },
+        Value::DamageDealtToPlayersThisTurn(filter) => match filter {
+            PlayerFilter::You => "the damage already dealt to you this turn".to_string(),
+            PlayerFilter::Opponent => {
+                "the damage already dealt to your opponents this turn".to_string()
+            }
+            PlayerFilter::Target(_) => {
+                "the damage already dealt to that player this turn".to_string()
+            }
+            _ => format!(
+                "the damage already dealt to {} this turn",
                 describe_player_filter(filter)
             ),
         },
@@ -8440,6 +8629,10 @@ pub(super) fn describe_dynamic_runtime_pt_with_where_x(
     let power_is_variable = !matches!(power, Value::Fixed(_));
     let toughness_is_variable = !matches!(toughness, Value::Fixed(_));
 
+    if let Some(for_each_text) = describe_basic_land_type_pt_for_each(power, toughness) {
+        return Some(format!("{target} {gets} {for_each_text} {until_text}"));
+    }
+
     if matches!((power, toughness), (Value::X, Value::X)) {
         return Some(format!("{target} {gets} +X/+X {until_text}"));
     }
@@ -8476,6 +8669,38 @@ pub(super) fn describe_dynamic_runtime_pt_with_where_x(
     }
 
     None
+}
+
+pub(super) fn describe_basic_land_type_pt_for_each(
+    power: &Value,
+    toughness: &Value,
+) -> Option<String> {
+    let power_multiplier = basic_land_types_multiplier(power);
+    let toughness_multiplier = basic_land_types_multiplier(toughness);
+
+    let (power_per, toughness_per, filter) = match (power_multiplier, toughness_multiplier) {
+        (Some((power_filter, power_per)), Some((toughness_filter, toughness_per))) => {
+            if power_filter != toughness_filter {
+                return None;
+            }
+            (power_per, toughness_per, power_filter)
+        }
+        (Some((filter, power_per)), None) if matches!(toughness, Value::Fixed(0)) => {
+            (power_per, 0, filter)
+        }
+        (None, Some((filter, toughness_per))) if matches!(power, Value::Fixed(0)) => {
+            (0, toughness_per, filter)
+        }
+        _ => return None,
+    };
+
+    let each_text =
+        describe_basic_land_types_among(filter).replace("basic land types", "basic land type");
+    Some(format!(
+        "{}/{} for each {each_text}",
+        describe_signed_i32(power_per),
+        describe_signed_i32(toughness_per)
+    ))
 }
 
 pub(super) fn describe_signed_i32(value: i32) -> String {
@@ -8805,11 +9030,16 @@ pub(super) fn describe_apply_continuous_clauses(
                 power,
                 toughness,
             } => {
-                clauses.push(format!(
-                    "{gets} {}/{}",
-                    describe_signed_value(power),
-                    describe_toughness_delta_with_power_context(power, toughness)
-                ));
+                if let Some(for_each_text) = describe_basic_land_type_pt_for_each(power, toughness)
+                {
+                    clauses.push(format!("{gets} {for_each_text}"));
+                } else {
+                    clauses.push(format!(
+                        "{gets} {}/{}",
+                        describe_signed_value(power),
+                        describe_toughness_delta_with_power_context(power, toughness)
+                    ));
+                }
             }
             crate::effects::continuous::RuntimeModification::ModifyPower { value } => {
                 clauses.push(format!("{gets} {} power", describe_signed_value(value)));
@@ -8835,6 +9065,20 @@ pub(super) fn describe_apply_continuous_clauses(
             crate::effects::continuous::RuntimeModification::SetAuraAttachmentFilter(_) => {
                 clauses.push("has enchant restriction".to_string());
             }
+        }
+    }
+
+    if clauses.len() > 1 {
+        let shared_gain_prefix = if plural_target { "gain " } else { "gains " };
+        if clauses
+            .iter()
+            .all(|clause| clause.starts_with(shared_gain_prefix))
+        {
+            let gained = clauses
+                .iter()
+                .map(|clause| clause[shared_gain_prefix.len()..].to_string())
+                .collect::<Vec<_>>();
+            return vec![format!("{shared_gain_prefix}{}", join_with_and(&gained))];
         }
     }
 
@@ -9037,6 +9281,11 @@ pub(super) fn describe_apply_continuous_animation_effect(
         }
     }
 
+    let returned_permanent_animation = effect.until == Until::Forever
+        && matches!(
+            effect.target_spec.as_ref(),
+            Some(ChooseSpec::Tagged(tag)) if tag.as_str().starts_with("returned_")
+        );
     let preserves_land_types = effect
         .target_spec
         .as_ref()
@@ -9045,6 +9294,8 @@ pub(super) fn describe_apply_continuous_animation_effect(
     let (target_text, plural_target) =
         if let Some(target_text) = plural_non_target_land_animation_target(effect) {
             (target_text, true)
+        } else if returned_permanent_animation {
+            ("those permanents".to_string(), true)
         } else {
             (target.to_string(), plural_target)
         };
@@ -9084,10 +9335,27 @@ pub(super) fn describe_apply_continuous_animation_effect(
         .filter(|part| !part.is_empty())
         .collect::<Vec<_>>()
         .join(" ");
+    let dynamic_equal_pt = if let (Some(power), Some(toughness)) = (power, toughness) {
+        power == toughness && !matches!(power, Value::Fixed(_))
+    } else {
+        false
+    };
+    let pt_where_clause = if let (Some(power), _) = (power, toughness) {
+        (dynamic_equal_pt && !matches!(power, Value::X)).then(|| describe_value(power))
+    } else {
+        None
+    };
+
     let mut text = if let (Some(power), Some(toughness)) = (power, toughness) {
-        let pt = format!("{}/{}", describe_value(power), describe_value(toughness));
+        let pt = if dynamic_equal_pt {
+            "X/X".to_string()
+        } else {
+            format!("{}/{}", describe_value(power), describe_value(toughness))
+        };
         let pt_noun_phrase = format!("{pt} {noun_phrase}");
-        if plural_target {
+        if returned_permanent_animation {
+            format!("{target_text} are {pt_noun_phrase}")
+        } else if plural_target {
             format!("{target_text} become {pt_noun_phrase}")
         } else {
             format!(
@@ -9119,14 +9387,14 @@ pub(super) fn describe_apply_continuous_animation_effect(
         .as_ref()
         .is_some_and(choose_spec_guarantees_artifact);
     let artifact_type_is_redundant = target_is_guaranteed_artifact && adds_artifact_type;
-    let render_as_addition_to_other_types =
-        (!preserves_land_types && !ability_text.is_empty() && !has_generic_ability)
-            || (preserves_land_types
-                && adds_named_types
-                && effect
-                    .target_spec
-                    .as_ref()
-                    .is_some_and(is_up_to_land_subtype_target));
+    let render_as_addition_to_other_types = returned_permanent_animation
+        || (!preserves_land_types && !ability_text.is_empty() && !has_generic_ability)
+        || (preserves_land_types
+            && adds_named_types
+            && effect
+                .target_spec
+                .as_ref()
+                .is_some_and(is_up_to_land_subtype_target));
     if render_as_addition_to_other_types && !artifact_type_is_redundant {
         if plural_target {
             text.push_str(" in addition to their other types");
@@ -9153,6 +9421,10 @@ pub(super) fn describe_apply_continuous_animation_effect(
             text.push_str(" that's still a land");
         }
         None => {}
+    }
+    if let Some(where_clause) = pt_where_clause {
+        text.push_str(", where X is ");
+        text.push_str(&where_clause);
     }
     if preserves_land_types && !render_as_addition_to_other_types && !inline_still_land {
         if plural_target {
@@ -10137,6 +10409,10 @@ fn describe_hexproof_from_filter(filter: &ObjectFilter) -> String {
             .join(" or ");
     }
 
+    if is_exactly_all_magic_colors_filter(filter) {
+        return "each color".to_string();
+    }
+
     let description = filter.description();
     description
         .strip_suffix(" permanent")
@@ -10144,6 +10420,20 @@ fn describe_hexproof_from_filter(filter: &ObjectFilter) -> String {
         .or_else(|| description.strip_suffix(" source"))
         .unwrap_or(description.as_str())
         .to_string()
+}
+
+fn is_exactly_all_magic_colors_filter(filter: &ObjectFilter) -> bool {
+    let mut expected = ObjectFilter::default();
+    expected.colors = Some(all_magic_colors());
+    filter == &expected
+}
+
+fn all_magic_colors() -> crate::color::ColorSet {
+    crate::color::ColorSet::WHITE
+        .union(crate::color::ColorSet::BLUE)
+        .union(crate::color::ColorSet::BLACK)
+        .union(crate::color::ColorSet::RED)
+        .union(crate::color::ColorSet::GREEN)
 }
 
 pub(super) fn describe_comparison(cmp: &Comparison) -> String {
@@ -11065,9 +11355,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             )
         }
         Condition::AttackedThisTurn => "you attacked this turn".to_string(),
-        Condition::OpponentLostLifeThisTurn => {
-            "an opponent was dealt damage this turn".to_string()
-        }
+        Condition::OpponentLostLifeThisTurn => "an opponent lost life this turn".to_string(),
         Condition::PermanentLeftBattlefieldThisTurn => {
             "a permanent left the battlefield this turn".to_string()
         }
@@ -11538,6 +11826,21 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                     };
                     return format!("{possessive} power {comparison}");
                 }
+                let mut without_mana_value = filter.clone();
+                without_mana_value.mana_value = None;
+                if card_context
+                    && without_mana_value == ObjectFilter::permanent_card()
+                    && let Some((_, rest)) = stripped.split_once(" with mana value ")
+                {
+                    return if subject == "it" {
+                        format!("it's a permanent card with mana value {}", rest.trim())
+                    } else {
+                        format!(
+                            "{subject} is a permanent card with mana value {}",
+                            rest.trim()
+                        )
+                    };
+                }
                 if let Some((_, rest)) = stripped.split_once(" with mana value ") {
                     let possessive = if subject == "it" {
                         "its"
@@ -11602,6 +11905,19 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 }
                 format!("the tagged object '{}' matches {desc}", tag.as_str())
             }
+        Condition::TaggedObjectIsTopOfLibrary { tag, .. } => {
+            if is_implicit_reference_tag(tag.as_str()) {
+                "it remains on top of its owner's library".to_string()
+            } else {
+                format!(
+                    "the tagged object '{}' remains on top of its owner's library",
+                    tag.as_str()
+                )
+            }
+        }
+        Condition::StableObjectIsTopOfLibrary { .. } => {
+            "that card remains on top of its owner's library".to_string()
+        }
         Condition::TaggedObjectWasCast(tag) => {
             if is_implicit_reference_tag(tag.as_str()) {
                 "it was cast".to_string()
@@ -11840,6 +12156,26 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 );
             }
             if let (
+                Value::MaxCardsDrawnThisTurn(player),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(count),
+            ) = (left, operator, right)
+                && *count >= 0
+            {
+                let count_text =
+                    small_number_word(*count as u32).unwrap_or_else(|| count.to_string());
+                let subject = match player {
+                    PlayerFilter::You => "you've".to_string(),
+                    PlayerFilter::Opponent | PlayerFilter::NotYou => "an opponent has".to_string(),
+                    PlayerFilter::Any => "a player has".to_string(),
+                    _ => {
+                        let described = describe_player_filter(player);
+                        format!("{} {}", described, player_verb(&described, "have", "has"))
+                    }
+                };
+                return format!("{subject} drawn {count_text} or more cards this turn");
+            }
+            if let (
                 Value::Count(filter),
                 crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                 Value::Fixed(count),
@@ -11979,6 +12315,8 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                     // "You control no other permanents" is substantially closer to oracle text than
                     // the ungrammatical "You control no another permanent".
                     object_text = format!("other {}", pluralize_noun_phrase(rest));
+                } else {
+                    object_text = pluralize_noun_phrase(&object_text);
                 }
                 let references_tagged_object =
                     described_filter.tagged_constraints.iter().any(|constraint| {
@@ -12433,11 +12771,11 @@ mod tests {
     fn quoted_token_abilities_use_token_self_reference_for_activation_costs() {
         assert_eq!(
             quote_token_granted_ability_text("Sacrifice this creature, add {c}"),
-            "\"Sacrifice this token: Add {C}\""
+            "\"Sacrifice this token: Add {C}.\""
         );
         assert_eq!(
             quote_token_granted_ability_text("{t}, Sacrifice this artifact, add {r} or {g}"),
-            "\"{T}, Sacrifice this token: Add {R} or {G}\""
+            "\"{T}, Sacrifice this token: Add {R} or {G}.\""
         );
         assert_eq!(
             normalize_common_semantic_phrasing(

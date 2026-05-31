@@ -64,6 +64,13 @@ impl SaddleCostEffect {
             .unwrap_or(0)
     }
 
+    fn object_toughness(game: &GameState, object_id: ObjectId) -> i32 {
+        game.calculated_characteristics(object_id)
+            .and_then(|calc| calc.toughness)
+            .or_else(|| game.object(object_id).and_then(|obj| obj.toughness()))
+            .unwrap_or(0)
+    }
+
     fn keyword_marker_texts(game: &GameState, object_id: ObjectId) -> Vec<String> {
         let abilities = game.current_abilities(object_id).unwrap_or_else(|| {
             game.object(object_id)
@@ -97,8 +104,18 @@ impl SaddleCostEffect {
     }
 
     fn saddle_value(game: &GameState, object_id: ObjectId) -> i32 {
-        let base = Self::object_power(game, object_id);
-        let bonus: i32 = Self::keyword_marker_texts(game, object_id)
+        let markers = Self::keyword_marker_texts(game, object_id);
+        let use_toughness = markers.iter().any(|marker| {
+            let marker = marker.trim_end_matches('.');
+            marker
+                == "this creature saddles mounts and crews vehicles using its toughness rather than its power"
+        });
+        let base = if use_toughness {
+            Self::object_toughness(game, object_id)
+        } else {
+            Self::object_power(game, object_id)
+        };
+        let bonus: i32 = markers
             .iter()
             .filter_map(|marker| Self::saddle_power_bonus_from_marker(marker))
             .sum();
@@ -128,8 +145,8 @@ impl EffectExecutor for SaddleCostEffect {
         let min = if self.required_power == 0 { 0 } else { 1 };
         let max = Some(candidates.len());
         let chosen = {
-            // Prefer higher-power candidates in fallback selection.
-            candidates.sort_by_key(|id| -Self::object_power(game, *id));
+            // Prefer the actual saddle contribution, including marker-based modifications.
+            candidates.sort_by_key(|id| -Self::saddle_value(game, *id));
             let spec = ChooseObjectsSpec::new(
                 source,
                 "Choose other creatures to saddle",

@@ -98,6 +98,7 @@ fn retarget_bare_it_effect_targets_to_source(effect: &mut EffectAst) {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
             SubjectVerbActionAst::PutCounters { target, .. }
+            | SubjectVerbActionAst::PutCounterChoice { target, .. }
             | SubjectVerbActionAst::PutOrRemoveCounters { target, .. }
             | SubjectVerbActionAst::RemoveUpToAnyCounters { target, .. }
             | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target } => {

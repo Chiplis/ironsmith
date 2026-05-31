@@ -346,6 +346,10 @@ fn join_english_list(items: &[String]) -> String {
 pub(super) fn describe_resolution_program(
     program: &crate::resolution::ResolutionProgram,
 ) -> String {
+    if let Some(rendered) = describe_spell_mastery_reanimation_program(program) {
+        return rendered;
+    }
+
     let mut rendered_segments = Vec::new();
     for segment in &program.segments {
         if segment.self_replacements.len() == 1 {
@@ -483,10 +487,120 @@ fn describe_single_self_replacement_segment(
     ) {
         return Some(counter_unless_text);
     }
+    if let Some(token_life_text) = describe_token_life_self_replacement(
+        &segment.default_effects,
+        &branch.replacement_effects,
+        &condition_text,
+    ) {
+        return Some(token_life_text);
+    }
     Some(format!(
         "{default_text}. If {condition_text}, {} instead",
         rewrite_self_replacement_referent_phrase(&default_text, &replacement_text)
     ))
+}
+
+fn describe_token_life_self_replacement(
+    default_effects: &[Effect],
+    replacement_effects: &[Effect],
+    condition_text: &str,
+) -> Option<String> {
+    let default_create = token_life_create_effect(default_effects)?;
+    let replacement_create = token_life_create_effect(replacement_effects)?;
+    if !same_token_life_replacement_token(default_create, replacement_create) {
+        return None;
+    }
+
+    let default_clause = describe_token_life_clause(default_effects, false)?;
+    let replacement_clause = describe_token_life_clause(replacement_effects, true)?;
+    Some(format!(
+        "{default_clause}. If {condition_text}, instead {replacement_clause}"
+    ))
+}
+
+fn token_life_create_effect(effects: &[Effect]) -> Option<&crate::effects::CreateTokenEffect> {
+    let [create_effect, gain_effect] = effects else {
+        return None;
+    };
+    let create =
+        unwrap_tagged_effect(create_effect).downcast_ref::<crate::effects::CreateTokenEffect>()?;
+    let gain =
+        unwrap_tagged_effect(gain_effect).downcast_ref::<crate::effects::GainLifeEffect>()?;
+    if create.controller != PlayerFilter::You
+        || create.controller_target.is_some()
+        || create.enters_attacking
+        || create.exile_at_end_of_combat
+        || create.sacrifice_at_end_of_combat
+        || create.sacrifice_at_next_end_step
+        || create.exile_at_next_end_step
+        || gain.player != ChooseSpec::Player(PlayerFilter::You)
+    {
+        return None;
+    }
+    Some(create)
+}
+
+fn same_token_life_replacement_token(
+    default_create: &crate::effects::CreateTokenEffect,
+    replacement_create: &crate::effects::CreateTokenEffect,
+) -> bool {
+    describe_token_blueprint(&default_create.token)
+        == describe_token_blueprint(&replacement_create.token)
+        && default_create.enters_tapped == replacement_create.enters_tapped
+}
+
+fn describe_token_life_clause(effects: &[Effect], refer_to_prior_token: bool) -> Option<String> {
+    let [create_effect, gain_effect] = effects else {
+        return None;
+    };
+    let create =
+        unwrap_tagged_effect(create_effect).downcast_ref::<crate::effects::CreateTokenEffect>()?;
+    let gain =
+        unwrap_tagged_effect(gain_effect).downcast_ref::<crate::effects::GainLifeEffect>()?;
+    let created = if refer_to_prior_token {
+        format!("{} of those tokens", describe_value(&create.count))
+    } else {
+        describe_create_token_amount(create)
+    };
+    Some(format!(
+        "create {created} and you gain {} life",
+        describe_value(&gain.amount)
+    ))
+}
+
+fn describe_create_token_amount(create: &crate::effects::CreateTokenEffect) -> String {
+    let mut token = describe_token_blueprint(&create.token);
+    if create.enters_tapped {
+        token = format!("tapped {token}");
+    }
+    match create.count.unhinted() {
+        Value::Fixed(1) => format!("a {}", singular_token_phrase(&token)),
+        Value::Fixed(n) => {
+            let count = number_word(*n).unwrap_or_else(|| n.to_string());
+            format!("{count} {}", plural_token_phrase(&token))
+        }
+        _ => format!(
+            "{} {}",
+            describe_value(&create.count),
+            plural_token_phrase(&token)
+        ),
+    }
+}
+
+fn singular_token_phrase(token: &str) -> String {
+    if token.ends_with(" token") {
+        token.to_string()
+    } else {
+        format!("{token} token")
+    }
+}
+
+fn plural_token_phrase(token: &str) -> String {
+    if let Some(stem) = token.strip_suffix(" token") {
+        format!("{stem} tokens")
+    } else {
+        format!("{token} tokens")
+    }
 }
 
 fn unwrap_tagged_effect(mut effect: &Effect) -> &Effect {
@@ -1345,6 +1459,28 @@ fn describe_structural_rampage_pair(first: &Ability, second: &Ability) -> Option
     Some(format!("Rampage {amount}"))
 }
 
+fn describe_structural_graveyard_or_exile_cast_pair(
+    first: &Ability,
+    second: &Ability,
+) -> Option<String> {
+    fn play_from_source_zone(ability: &Ability) -> Option<Zone> {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return None;
+        };
+        let spec = static_ability.grant_spec()?;
+        (matches!(spec.grantable, crate::grant::Grantable::PlayFrom)
+            && spec.filter == crate::target::ObjectFilter::source())
+        .then_some(spec.zone)
+    }
+
+    match (play_from_source_zone(first), play_from_source_zone(second)) {
+        (Some(Zone::Graveyard), Some(Zone::Exile)) | (Some(Zone::Exile), Some(Zone::Graveyard)) => {
+            Some("You may cast this card from your graveyard or from exile".to_string())
+        }
+        _ => None,
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CounterKeywordAmount {
     Fixed(u32),
@@ -2169,6 +2305,16 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                     describe_structural_rampage_pair(ability, &def.abilities[ability_idx + 1])
             {
                 output.push(format!("Keyword ability {}: {keyword}", ability_idx + 1));
+                ability_idx += 2;
+                continue;
+            }
+            if ability_idx + 1 < def.abilities.len()
+                && let Some(permission) = describe_structural_graveyard_or_exile_cast_pair(
+                    ability,
+                    &def.abilities[ability_idx + 1],
+                )
+            {
+                output.push(format!("Static ability {}: {permission}", ability_idx + 1));
                 ability_idx += 2;
                 continue;
             }

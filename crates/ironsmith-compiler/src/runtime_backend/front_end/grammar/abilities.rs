@@ -164,6 +164,15 @@ const YOUR_COMMANDER_USAGE_PATTERN: ClauseShape<'static> = clause_shape!(
             &["your", "commander", "spells"]
         ]
 );
+const MONOCOLORED_OF_CHOSEN_COLOR_USAGE_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["monocolored", "spell", "of", "that", "color"],
+            &["monocolored", "spells", "of", "that", "color"],
+            &["monocolored", "spell", "of", "the", "chosen", "color"],
+            &["monocolored", "spells", "of", "the", "chosen", "color"],
+        ]
+);
 const SPELL_FROM_YOUR_GRAVEYARD_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -753,6 +762,7 @@ pub(crate) fn is_opening_hand_begin_game_static_line_lexed(tokens: &[OwnedLexTok
 const ACTIVATE_ONLY_RESTRICTION_PREFIXES: &[&[&str]] =
     &[&["activate", "only"], &["activate", "no", "more", "than"]];
 const SPEND_MANA_RESTRICTION_PREFIXES: &[&[&str]] = &[
+    &["spend", "only", "mana"],
     &["spend", "this", "mana", "only"],
     &["spend", "that", "mana", "only"],
     &["this", "mana", "cant", "be", "spent", "to", "cast"],
@@ -1000,6 +1010,10 @@ fn parse_special_mana_usage_spell_filter_words(words: &[&str]) -> Option<ObjectF
     let words = strip_leading_article_word_refs(words);
     if words.is_empty() {
         return None;
+    }
+
+    if MONOCOLORED_OF_CHOSEN_COLOR_USAGE_PATTERN.matches_words(words) {
+        return Some(ObjectFilter::default().monocolored().of_chosen_color());
     }
 
     if YOUR_COMMANDER_USAGE_PATTERN.matches_words(words) {

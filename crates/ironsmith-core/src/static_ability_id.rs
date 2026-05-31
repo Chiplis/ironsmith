@@ -75,8 +75,10 @@ pub enum StaticAbilityId {
     CantBeBlockedExceptByNOrMore,
     CanAttackAsThoughNoDefender,
     MustAttack,
+    GoadedBySourceController,
     MustAttackAttachedController,
     AllCreaturesAttackAttachedControllerEachCombatIfAble,
+    AttachedGoadedBySourceController,
     ExertAttack,
     MustBlock,
     CantAttack,
@@ -176,6 +178,7 @@ pub enum StaticAbilityId {
     PreventAllDamageToSelf,
     PreventAllCombatDamageToSelf,
     PreventAllDamageToSelfByCreatures,
+    PreventDamageToYouFromSourceFilter,
     PreventDamageToSelfRemoveCounter,
     PreventDamageToSelfPutCountersInstead,
     PreventConstrainedDamageToSelfPutCountersInstead,
@@ -328,8 +331,10 @@ impl StaticAbilityId {
             | CantBeBlockedExceptByNOrMore
             | CanAttackAsThoughNoDefender
             | MustAttack
+            | GoadedBySourceController
             | MustAttackAttachedController
             | AllCreaturesAttackAttachedControllerEachCombatIfAble
+            | AttachedGoadedBySourceController
             | ExertAttack
             | MustBlock
             | CantAttack
@@ -429,6 +434,7 @@ impl StaticAbilityId {
             | PreventAllDamageToSelf
             | PreventAllCombatDamageToSelf
             | PreventAllDamageToSelfByCreatures
+            | PreventDamageToYouFromSourceFilter
             | PreventDamageToSelfRemoveCounter
             | PreventDamageToSelfPutCountersInstead
             | PreventConstrainedDamageToSelfPutCountersInstead

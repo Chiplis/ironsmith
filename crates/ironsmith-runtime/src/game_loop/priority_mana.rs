@@ -2170,52 +2170,15 @@ pub(super) fn apply_mana_payment_response_activation(
         // Pay the mana and finalize
         let mut pending = pending;
         if let Some(ref cost) = pending.mana_cost_to_pay {
-            let allow_any_color =
-                game.can_spend_mana_as_any_color(pending.activator, Some(pending.source));
-            let allow_black_life = game.player_can_pay_black_with_life_for_reason(
+            if !game.try_pay_mana_cost_with_reason(
                 pending.activator,
                 Some(pending.source),
+                cost,
+                x_value,
                 crate::costs::PaymentReason::ActivateAbility,
-            );
-            let life_to_pay_preview = {
-                let Some(player) = game.player(pending.activator) else {
-                    return Err(GameLoopError::InvalidState(
-                        "Cannot pay mana cost - payer not found".to_string(),
-                    ));
-                };
-                let mut preview_pool = player.mana_pool.clone();
-                let (_, life_to_pay) = preview_pool
-                    .try_pay_tracking_life_with_any_color_and_black_life(
-                        cost,
-                        x_value,
-                        allow_any_color,
-                        allow_black_life,
-                    );
-                life_to_pay
-            };
-            if life_to_pay_preview > 0 && !game.can_pay_life(pending.activator, life_to_pay_preview)
-            {
+            ) {
                 return Err(GameLoopError::InvalidState(
-                    "Cannot pay mana cost - insufficient life for life payment".to_string(),
-                ));
-            }
-            let mut life_to_pay = 0u32;
-            if let Some(player) = game.player_mut(pending.activator) {
-                // Pay mana and track life for Phyrexian/K'rrik-style costs.
-                let (_, paid_life) = player
-                    .mana_pool
-                    .try_pay_tracking_life_with_any_color_and_black_life(
-                        cost,
-                        x_value,
-                        allow_any_color,
-                        allow_black_life,
-                    );
-                life_to_pay = paid_life;
-            }
-            // Deduct life for mana pips paid with life.
-            if life_to_pay > 0 && !game.pay_life(pending.activator, life_to_pay) {
-                return Err(GameLoopError::InvalidState(
-                    "Cannot pay mana cost - insufficient life for life payment".to_string(),
+                    "Cannot pay mana cost - insufficient mana".to_string(),
                 ));
             }
         }
@@ -3449,7 +3412,52 @@ pub(crate) fn propose_spell_cast(
         game.set_face_down(new_id);
     }
 
+    apply_play_from_cast_this_way_grants(game, new_id, caster, casting_method);
+
     Ok(new_id)
+}
+
+fn apply_play_from_cast_this_way_grants(
+    game: &mut GameState,
+    stack_id: ObjectId,
+    caster: PlayerId,
+    casting_method: &CastingMethod,
+) {
+    let (source_id, zone) = match casting_method {
+        CastingMethod::PlayFrom { source, zone, .. }
+        | CastingMethod::SplitOtherHalfPlayFrom { source, zone, .. } => (*source, *zone),
+        _ => return,
+    };
+    let Some(source) = game.object(source_id) else {
+        return;
+    };
+    let Some(mut spell_as_cast) = game.object(stack_id).cloned() else {
+        return;
+    };
+    spell_as_cast.zone = zone;
+    let ctx = game.filter_context_for(caster, Some(source_id));
+    let mut granted = Vec::new();
+    for ability in &source.abilities {
+        let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+            continue;
+        };
+        if !static_ability.is_active(game, source_id) {
+            continue;
+        }
+        let Some(spec) = static_ability.grant_spec() else {
+            continue;
+        };
+        if spec.zone == zone
+            && matches!(spec.grantable, crate::grant::Grantable::PlayFrom)
+            && !spec.cast_this_way_grants.is_empty()
+            && spec.filter.matches(&spell_as_cast, &ctx, game)
+        {
+            granted.extend(spec.cast_this_way_grants.iter().cloned());
+        }
+    }
+    for ability in granted {
+        game.grant_temporary_static_ability_to_object_until_end_of_turn(stack_id, ability.id());
+    }
 }
 
 /// Revert a spell cast that failed during the casting process.
@@ -3928,6 +3936,7 @@ pub(super) fn finalize_spell_cast(
                 .temporary_spell_cost_reductions
                 .get_mut(idx)
                 && effect.remaining_uses > 0
+                && !effect.applies_to_all_matching_this_turn
             {
                 effect.remaining_uses -= 1;
             }

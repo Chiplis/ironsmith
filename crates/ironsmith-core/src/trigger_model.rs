@@ -24,6 +24,10 @@ pub enum TriggerKind {
     ThisAttacks,
     ThisAttacksPlayerWithMostLife,
     ThisAttacksWithGreaterPower,
+    ThisAttacksWithNOthers {
+        count: usize,
+        display_subject: Option<String>,
+    },
     ThisAttacksWithExactNOthers {
         count: usize,
     },
@@ -40,6 +44,9 @@ pub enum TriggerKind {
     },
     AttacksOneOrMore {
         filter: ObjectFilter,
+    },
+    PlayersAttackedOneOrMore {
+        player_filter: PlayerFilter,
     },
     AttacksOneOrMoreWithMinTotal {
         filter: ObjectFilter,
@@ -360,6 +367,18 @@ impl Trigger {
             TriggerKind::ThisAttacksWithGreaterPower,
         )
     }
+    pub fn this_attacks_with_n_others_display_subject(
+        count: usize,
+        display_subject: Option<String>,
+    ) -> Self {
+        Self::typed(
+            "this_attacks_with_n_others",
+            TriggerKind::ThisAttacksWithNOthers {
+                count,
+                display_subject,
+            },
+        )
+    }
     pub fn this_attacks_with_exact_n_others(count: usize) -> Self {
         Self::typed(
             "this_attacks_with_exact_n_others",
@@ -397,6 +416,12 @@ impl Trigger {
         Self::typed(
             "attacks_one_or_more",
             TriggerKind::AttacksOneOrMore { filter },
+        )
+    }
+    pub fn players_attacked_one_or_more(player_filter: PlayerFilter) -> Self {
+        Self::typed(
+            "players_attacked_one_or_more",
+            TriggerKind::PlayersAttackedOneOrMore { player_filter },
         )
     }
     pub fn attacks_one_or_more_with_min_total(

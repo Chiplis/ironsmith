@@ -12,6 +12,13 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
     match trigger {
         TriggerSpec::StateBased { display, .. } => Trigger::state_based(display),
         TriggerSpec::ThisAttacks => Trigger::this_attacks(),
+        TriggerSpec::ThisAttacksWithNOthers {
+            other_count,
+            display_subject,
+        } => Trigger::this_attacks_with_n_others_display_subject(
+            other_count as usize,
+            display_subject,
+        ),
         TriggerSpec::ThisAttacksWithExactlyNOthers(other_count) => {
             Trigger::this_attacks_with_exact_n_others(other_count as usize)
         }
@@ -21,6 +28,9 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::AttacksAndIsntBlocked(filter) => Trigger::attacks_and_isnt_blocked(filter),
         TriggerSpec::AttacksWhileSaddled(filter) => Trigger::attacks_while_saddled(filter),
         TriggerSpec::AttacksOneOrMore(filter) => Trigger::attacks_one_or_more(filter),
+        TriggerSpec::PlayersAttackedOneOrMore(player_filter) => {
+            Trigger::players_attacked_one_or_more(player_filter)
+        }
         TriggerSpec::AttacksOneOrMoreWithMinTotal {
             filter,
             min_total_attackers,
@@ -459,6 +469,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::PlayerTapsForMana { .. }
         | TriggerSpec::PlayerSacrifices { .. }
         | TriggerSpec::ThisDealsDamageToPlayer { .. }
+        | TriggerSpec::DealsDamageToPlayer { .. }
         | TriggerSpec::DealsNoncombatDamageToPlayer { .. }
         | TriggerSpec::ThisDealsCombatDamageToPlayer
         | TriggerSpec::DealsCombatDamageToPlayer { .. }
@@ -527,6 +538,7 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         TriggerSpec::AbilityActivated { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerSacrifices { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::ThisDealsDamageToPlayer { .. }
+        | TriggerSpec::DealsDamageToPlayer { .. }
         | TriggerSpec::DealsNoncombatDamageToPlayer { .. }
         | TriggerSpec::ThisDealsCombatDamageToPlayer
         | TriggerSpec::DealsCombatDamageToPlayer { .. } => Some(PlayerFilter::DamagedPlayer),

@@ -30,6 +30,11 @@ pub enum DerivedAlternativeCast<C> {
     LifeEqualManaValueFromHand {
         usage_limit: Option<GrantUsageLimit>,
     },
+    /// Cast from a specified zone by paying life equal to the card's mana value.
+    LifeEqualManaValueFromZone {
+        zone: Zone,
+        usage_limit: Option<GrantUsageLimit>,
+    },
     /// Cast from the graveyard using the card's mana cost plus optional extra cost components.
     GraveyardCastFromCardManaCost {
         additional_costs: Vec<C>,
@@ -50,6 +55,7 @@ impl<C> DerivedAlternativeCast<C> {
             Self::EscapeFromCardManaCost { .. } => "Escape",
             Self::ManaValueAsGenericFromHand => "Pay mana value",
             Self::LifeEqualManaValueFromHand { .. } => "Pay life equal to mana value",
+            Self::LifeEqualManaValueFromZone { .. } => "Pay life equal to mana value",
             Self::GraveyardCastFromCardManaCost { .. } => "Cast from graveyard",
         }
     }
@@ -57,6 +63,7 @@ impl<C> DerivedAlternativeCast<C> {
     pub fn usage_limit(&self) -> Option<GrantUsageLimit> {
         match self {
             Self::LifeEqualManaValueFromHand { usage_limit } => *usage_limit,
+            Self::LifeEqualManaValueFromZone { usage_limit, .. } => *usage_limit,
             Self::GraveyardCastFromCardManaCost { usage_limit, .. } => *usage_limit,
             _ => None,
         }
@@ -96,16 +103,33 @@ impl<C: CostComponent> DerivedAlternativeCast<C> {
     }
 
     pub fn once_each_turn_graveyard_cast_from_cards_mana_cost(additional_costs: Vec<C>) -> Self {
+        Self::once_each_turn_graveyard_cast_from_cards_mana_cost_exiles_after_resolution(
+            additional_costs,
+            false,
+        )
+    }
+
+    pub fn once_each_turn_graveyard_cast_from_cards_mana_cost_exiles_after_resolution(
+        additional_costs: Vec<C>,
+        exiles_after_resolution: bool,
+    ) -> Self {
         Self::GraveyardCastFromCardManaCost {
             additional_costs,
             usage_limit: Some(GrantUsageLimit::OnceDuringEachOfYourTurns),
             condition: None,
-            exiles_after_resolution: false,
+            exiles_after_resolution,
         }
     }
 
     pub fn life_equal_mana_value_from_hand(usage_limit: Option<GrantUsageLimit>) -> Self {
         Self::LifeEqualManaValueFromHand { usage_limit }
+    }
+
+    pub fn life_equal_mana_value_from_zone(
+        zone: Zone,
+        usage_limit: Option<GrantUsageLimit>,
+    ) -> Self {
+        Self::LifeEqualManaValueFromZone { zone, usage_limit }
     }
 
     pub fn graveyard_cast_from_cards_mana_cost_with_condition(
@@ -209,10 +233,32 @@ where
         ))
     }
 
+    pub fn life_equal_mana_value_from_zone(
+        zone: Zone,
+        usage_limit: Option<GrantUsageLimit>,
+    ) -> Self {
+        Self::DerivedAlternativeCast(DerivedAlternativeCast::life_equal_mana_value_from_zone(
+            zone,
+            usage_limit,
+        ))
+    }
+
     pub fn once_each_turn_graveyard_cast_from_cards_mana_cost(additional_costs: Vec<C>) -> Self {
         Self::DerivedAlternativeCast(
             DerivedAlternativeCast::once_each_turn_graveyard_cast_from_cards_mana_cost(
                 additional_costs,
+            ),
+        )
+    }
+
+    pub fn once_each_turn_graveyard_cast_from_cards_mana_cost_exiles_after_resolution(
+        additional_costs: Vec<C>,
+        exiles_after_resolution: bool,
+    ) -> Self {
+        Self::DerivedAlternativeCast(
+            DerivedAlternativeCast::once_each_turn_graveyard_cast_from_cards_mana_cost_exiles_after_resolution(
+                additional_costs,
+                exiles_after_resolution,
             ),
         )
     }
@@ -259,6 +305,8 @@ pub struct GrantSpec<SA, E, C, Cond> {
     pub zone: Zone,
     /// Which player may use the grant when rendered or applied statically.
     pub beneficiary: PlayerFilter,
+    /// Static abilities granted to a spell as it is cast using this permission.
+    pub cast_this_way_grants: Vec<SA>,
 }
 
 impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
@@ -269,12 +317,18 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
             filter,
             zone,
             beneficiary: PlayerFilter::You,
+            cast_this_way_grants: Vec::new(),
         }
     }
 
     /// Return a copy of this grant specification with an explicit beneficiary.
     pub fn with_beneficiary(mut self, beneficiary: PlayerFilter) -> Self {
         self.beneficiary = beneficiary;
+        self
+    }
+
+    pub fn with_cast_this_way_grant(mut self, ability: SA) -> Self {
+        self.cast_this_way_grants.push(ability);
         self
     }
 
@@ -313,6 +367,7 @@ where
             filter,
             zone: Zone::Hand,
             beneficiary: PlayerFilter::You,
+            cast_this_way_grants: Vec::new(),
         }
     }
 
@@ -369,6 +424,7 @@ where
             filter: ObjectFilter::nonland(),
             zone: Zone::Graveyard,
             beneficiary: PlayerFilter::You,
+            cast_this_way_grants: Vec::new(),
         }
     }
 }
@@ -395,7 +451,70 @@ where
             }
         }
 
+        fn list_card_types(types: &[CardType]) -> String {
+            let names = types
+                .iter()
+                .map(|card_type| card_type.to_string().to_ascii_lowercase())
+                .collect::<Vec<_>>();
+            match names.as_slice() {
+                [] => String::new(),
+                [one] => one.clone(),
+                [left, right] => format!("{left} or {right}"),
+                _ => {
+                    let Some((last, rest)) = names.split_last() else {
+                        return String::new();
+                    };
+                    format!("{}, or {last}", rest.join(", "))
+                }
+            }
+        }
+
+        fn is_simple_card_type_filter(filter: &ObjectFilter) -> bool {
+            if filter.card_types.is_empty() {
+                return false;
+            }
+            let mut normalized = filter.clone();
+            normalized.card_types.clear();
+            normalized.zone = None;
+            normalized == ObjectFilter::default()
+        }
+
+        fn article_for(phrase: &str) -> &'static str {
+            match phrase.chars().next().map(|c| c.to_ascii_lowercase()) {
+                Some('a' | 'e' | 'i' | 'o' | 'u') => "an",
+                _ => "a",
+            }
+        }
+
+        fn merged_simple_any_of_card_type_filter(filter: &ObjectFilter) -> Option<ObjectFilter> {
+            if filter.any_of.is_empty() {
+                return None;
+            }
+            let mut merged = ObjectFilter::default();
+            for branch in &filter.any_of {
+                if !is_simple_card_type_filter(branch) || branch.card_types.len() != 1 {
+                    return None;
+                }
+                merged.card_types.push(branch.card_types[0]);
+            }
+            Some(merged)
+        }
+
         fn castable_filter_description(filter: &ObjectFilter) -> String {
+            if filter.card_types.as_slice() == [CardType::Creature]
+                && let Some(crate::filter_model::Comparison::GreaterThanOrEqual(power)) =
+                    filter.power
+            {
+                let mut normalized = filter.clone();
+                normalized.card_types.clear();
+                normalized.power = None;
+                if normalized == ObjectFilter::default() {
+                    return format!("creature spells with power {power} or greater");
+                }
+            }
+            if let Some(merged) = merged_simple_any_of_card_type_filter(filter) {
+                return castable_filter_description(&merged);
+            }
             if !filter.any_of.is_empty() {
                 return filter
                     .any_of
@@ -407,13 +526,100 @@ where
             if *filter == ObjectFilter::noncreature_spell() {
                 return "noncreature spells".to_string();
             }
+            if is_simple_card_type_filter(filter) {
+                let permanent_types = [
+                    CardType::Artifact,
+                    CardType::Creature,
+                    CardType::Enchantment,
+                    CardType::Planeswalker,
+                    CardType::Battle,
+                ];
+                if filter.card_types == permanent_types {
+                    return "a permanent spell".to_string();
+                }
+                let type_text = list_card_types(&filter.card_types);
+                return format!("{} {type_text} spell", article_for(type_text.as_str()));
+            }
             let description = filter.description();
             if description.contains("permanent") {
                 description.replace("permanent", "spell")
-            } else if description.contains("spell") || description.contains("card") {
+            } else if description.contains("spell") {
                 description
+            } else if description.contains(" card") {
+                description.replace(" card", " spell")
             } else {
                 format!("{description} spells")
+            }
+        }
+
+        fn filter_can_include_lands(filter: &ObjectFilter) -> bool {
+            if !filter.any_of.is_empty() {
+                return filter.any_of.iter().any(filter_can_include_lands);
+            }
+            if filter.excluded_card_types.contains(&CardType::Land) {
+                return false;
+            }
+            if !filter.card_types.is_empty() && !filter.card_types.contains(&CardType::Land) {
+                return false;
+            }
+            if !filter.all_card_types.is_empty() && !filter.all_card_types.contains(&CardType::Land)
+            {
+                return false;
+            }
+            true
+        }
+
+        fn cast_this_way_spell_subject(filter: &ObjectFilter) -> String {
+            let cast_desc = castable_filter_description(filter);
+            if let Some(base) = cast_desc.strip_suffix(" spells") {
+                return format!("a {base} spell");
+            }
+            for pt_clause in [" spells with power ", " spells with toughness "] {
+                if let Some((base, _)) = cast_desc.split_once(pt_clause) {
+                    return format!("a {base} spell");
+                }
+            }
+            if let Some((base, tail)) = cast_desc.split_once(" spells ") {
+                return format!("a {base} spell {tail}");
+            }
+            if cast_desc.starts_with("a ") || cast_desc.starts_with("an ") {
+                return cast_desc;
+            }
+            "a spell".to_string()
+        }
+
+        fn sacrifice_cost_filter_description(filter: &ObjectFilter) -> Option<String> {
+            let mut normalized = filter.clone();
+            normalized.controller = None;
+            normalized.zone = None;
+            if !matches!(filter.controller, None | Some(PlayerFilter::You))
+                || !is_simple_card_type_filter(&normalized)
+            {
+                return None;
+            }
+            let type_text = list_card_types(&normalized.card_types);
+            Some(format!("{} {type_text}", article_for(type_text.as_str())))
+        }
+
+        fn graveyard_cast_cost_text<C: CostComponent>(additional_costs: &[C]) -> String {
+            if let [cost] = additional_costs
+                && let Some(filter) = cost.sacrifice_filter()
+                && let Some(filter_text) = sacrifice_cost_filter_description(filter)
+            {
+                return format!("sacrificing {filter_text} in addition to paying its other costs");
+            }
+
+            if additional_costs.is_empty() {
+                "paying its mana cost".to_string()
+            } else {
+                format!(
+                    "paying its mana cost plus {}",
+                    additional_costs
+                        .iter()
+                        .map(CostComponent::display)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
             }
         }
 
@@ -487,12 +693,35 @@ where
         filter.zone.get_or_insert(self.zone);
         let filter_desc = filter.description();
         let may_prefix = beneficiary_may_prefix(&self.beneficiary);
+        let cast_this_way_suffix = || {
+            if self.cast_this_way_grants.is_empty() {
+                return String::new();
+            }
+            let grants = self
+                .cast_this_way_grants
+                .iter()
+                .map(GrantStaticAbility::grant_display)
+                .collect::<Vec<_>>();
+            if grants.len() == 1 && grants[0].eq_ignore_ascii_case("haste") {
+                let spell_text = cast_this_way_spell_subject(&self.filter);
+                return format!(
+                    ". If you cast {spell_text} this way, it gains haste until end of turn"
+                );
+            }
+            format!(". Spells cast this way gain {}", grants.join(" and "))
+        };
 
         if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Graveyard
             && self.filter == ObjectFilter::source()
         {
             return format!("{may_prefix} cast this card from your graveyard");
+        }
+        if matches!(self.grantable, Grantable::PlayFrom)
+            && self.zone == Zone::Exile
+            && self.filter == ObjectFilter::source()
+        {
+            return format!("{may_prefix} cast this card from exile");
         }
         if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Graveyard
@@ -505,6 +734,14 @@ where
             && self.filter == ObjectFilter::default()
         {
             return format!("{may_prefix} play lands and cast spells from your graveyard");
+        }
+        if matches!(self.grantable, Grantable::PlayFrom)
+            && self.zone == Zone::Graveyard
+            && self.filter.surveilled_this_turn
+        {
+            return format!(
+                "{may_prefix} play lands and cast spells from among cards in your graveyard you've surveilled this turn"
+            );
         }
         if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Library
@@ -542,10 +779,16 @@ where
             }
         }
         if matches!(self.grantable, Grantable::PlayFrom) && self.zone == Zone::Library {
+            if filter_can_include_lands(&self.filter) {
+                return format!(
+                    "{may_prefix} play {} from the top of your library",
+                    filter_desc
+                ) + &cast_this_way_suffix();
+            }
             return format!(
-                "{may_prefix} play {} from the top of your library",
-                filter_desc
-            );
+                "{may_prefix} cast {} from the top of your library",
+                castable_filter_description(&self.filter)
+            ) + &cast_this_way_suffix();
         }
         if let Grantable::AlternativeCast(method) = &self.grantable
             && self.zone == Zone::Hand
@@ -693,6 +936,30 @@ where
             );
         }
         if let Grantable::DerivedAlternativeCast(
+            DerivedAlternativeCast::LifeEqualManaValueFromZone { zone, usage_limit },
+        ) = &self.grantable
+            && self.zone == *zone
+        {
+            let prefix = if matches!(
+                usage_limit,
+                Some(GrantUsageLimit::OnceDuringEachOfYourTurns)
+            ) {
+                "Once during each of your turns, "
+            } else {
+                ""
+            };
+            if *zone == Zone::Graveyard && self.filter.surveilled_this_turn {
+                return format!(
+                    "{prefix}If you cast a spell this way, you pay life equal to its mana value rather than paying its mana cost"
+                );
+            }
+            let filter_desc = castable_filter_description(&self.filter);
+            return format!(
+                "{prefix}{} cast {filter_desc} by paying life equal to its mana value rather than paying its mana cost",
+                may_prefix.to_ascii_lowercase()
+            );
+        }
+        if let Grantable::DerivedAlternativeCast(
             DerivedAlternativeCast::GraveyardCastFromCardManaCost {
                 additional_costs,
                 usage_limit,
@@ -702,19 +969,10 @@ where
         ) = &self.grantable
             && self.zone == Zone::Graveyard
         {
-            let filter_desc = castable_filter_description(&filter);
-            let cost_text = if additional_costs.is_empty() {
-                "paying its mana cost".to_string()
-            } else {
-                format!(
-                    "paying its mana cost plus {}",
-                    additional_costs
-                        .iter()
-                        .map(CostComponent::display)
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            };
+            let mut cast_filter = self.filter.clone();
+            cast_filter.zone = None;
+            let filter_desc = castable_filter_description(&cast_filter);
+            let cost_text = graveyard_cast_cost_text(additional_costs);
             if self.filter == ObjectFilter::source() {
                 let mut line = format!("{may_prefix} cast this card from your graveyard");
                 if let Some(condition) = condition
@@ -736,12 +994,18 @@ where
             } else {
                 ""
             };
-            return format!(
+            let mut line = format!(
                 "{prefix}{} cast {} from your graveyard by {}",
                 may_prefix.to_ascii_lowercase(),
                 filter_desc,
                 cost_text
             );
+            if *exiles_after_resolution {
+                line.push_str(
+                    ". If a spell cast this way would be put into your graveyard, exile it instead",
+                );
+            }
+            return line;
         }
         if let Grantable::Ability(ability) = &self.grantable
             && ability.grant_has_flash()

@@ -3764,6 +3764,13 @@ pub(crate) fn parse_trigger_clause_lexed(
         .copied()
         .ok_or_else(|| CardTextError::ParseError("empty trigger clause".to_string()))?;
 
+    if word_slice_ends_with(&words, &["are", "attacked"]) && words.len() > 2 {
+        let attacked_player_words = &words[..words.len() - 2];
+        if let Some(player_filter) = parse_trigger_subject_player_filter(attacked_player_words) {
+            return Ok(TriggerSpec::PlayersAttackedOneOrMore(player_filter));
+        }
+    }
+
     match last {
         "attack" | "attacks" => {
             let attack_word_idx = words.len().saturating_sub(1);
@@ -3771,6 +3778,35 @@ pub(crate) fn parse_trigger_clause_lexed(
                 .token_index_for_word_index(attack_word_idx)
                 .unwrap_or(tokens.len());
             let subject_tokens = &tokens[..attack_token_idx];
+            if let Some(and_idx) = find_index(subject_tokens, |token| token.is_word("and")) {
+                let left = trim_edge_punctuation(&subject_tokens[..and_idx]);
+                let right = trim_edge_punctuation(&subject_tokens[and_idx + 1..]);
+                if !left.is_empty()
+                    && token_slice_at_is(&right, 0, "at")
+                    && token_slice_at_is(&right, 1, "least")
+                    && let Some((other_count, used)) = parse_number(&right[2..])
+                    && right
+                        .get(2 + used)
+                        .is_some_and(|token| token.is_word("other"))
+                    && right.get(3 + used).is_some_and(|token| {
+                        token.is_word("creature") || token.is_word("creatures")
+                    })
+                {
+                    let rendered_subject = crate::runtime_backend::lexer::render_token_slice(&left)
+                        .trim()
+                        .to_string();
+                    let display_subject = if rendered_subject == "this" {
+                        current_source_reference_name()
+                    } else {
+                        Some(rendered_subject)
+                    }
+                    .filter(|subject| !subject.is_empty());
+                    return Ok(TriggerSpec::ThisAttacksWithNOthers {
+                        other_count,
+                        display_subject,
+                    });
+                }
+            }
             let player_subject = trigger_subject_player_selector_lexed(subject_tokens).is_some();
             let subject_words = ActivationRestrictionCompatWords::new(subject_tokens);
             let one_or_more = ONE_OR_MORE_PREFIX_PATTERN

@@ -13,6 +13,8 @@ const MANA_OF_CHOSEN_COLOR_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(suffix_any & [&["mana", "of", "the"], &["mana", "of"]]);
 const ADD_MANA_THAT_COLOR_AMOUNT_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["an", "amount", "of", "mana", "of", "that", "color"]);
+const ADD_MANA_ONE_THAT_COLOR_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["one", "mana", "of", "that", "color"]);
 const ANY_ONE_COLOR_OR_TYPE_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_any_phrases & [&[&["any", "one", "color"], &["any", "one", "type"]]]);
 const ANY_COLOR_PATTERN: ClauseShape<'static> =
@@ -182,6 +184,28 @@ pub(crate) fn parse_add_mana(
                 ));
             }
         }
+    }
+    if ADD_MANA_ONE_THAT_COLOR_PATTERN.matches_words(&clause_words) {
+        let tail_tokens =
+            grammar::words_match_prefix(tokens, &["one", "mana", "of", "that", "color"])
+                .unwrap_or(&[]);
+        let tail_tokens = trim_leading_commas(tail_tokens);
+        if tail_tokens.is_empty() || is_mana_pool_tail_tokens(tail_tokens) {
+            return Ok(EffectAst::subject_verb_add_mana_chosen_color(
+                player,
+                Value::Fixed(1),
+                None,
+            ));
+        }
+        if let Some(amount) = parse_dynamic_cost_modifier_value(tail_tokens)? {
+            return Ok(EffectAst::subject_verb_add_mana_chosen_color(
+                player, amount, None,
+            ));
+        }
+        return Err(CardTextError::ParseError(format!(
+            "unsupported dynamic chosen-color mana amount (clause: '{}')",
+            clause_words.join(" ")
+        )));
     }
     if ADD_MANA_THAT_COLOR_AMOUNT_PATTERN.matches_words(&clause_words) {
         let amount = parse_devotion_value_from_add_clause(tokens)?

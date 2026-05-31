@@ -173,7 +173,7 @@ pub(super) fn strip_base_power_toughness_subject_tokens<'a>(
 
 pub(super) fn parse_become_base_pt_tail<'a>(
     become_words: &'a [&'a str],
-) -> Result<Option<(&'a [&'a str], i32, i32)>, CardTextError> {
+) -> Result<Option<(&'a [&'a str], Value, Value)>, CardTextError> {
     let Some(with_idx) = become_words
         .iter()
         .position(|word| WITH_WORD_PATTERN.matches_words(&[*word]))
@@ -184,7 +184,7 @@ pub(super) fn parse_become_base_pt_tail<'a>(
     if tail.len() != 5 || !BASE_POWER_TOUGHNESS_PATTERN.matches_words(&tail[..4]) {
         return Ok(None);
     }
-    let (power, toughness) = parse_pt_modifier(tail[4])?;
+    let (power, toughness) = parse_pt_modifier_values(tail[4])?;
     Ok(Some((&become_words[..with_idx], power, toughness)))
 }
 

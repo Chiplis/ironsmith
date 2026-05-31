@@ -105,13 +105,14 @@ pub use model::{
     LineAst, LoweredEffects, ObjectRefAst, ParsedAbility, ParsedCardItem, ParsedCardItemKind,
     ParsedLevelAbilityAst, ParsedLevelAbilityItemAst, ParsedLineAst, ParsedModalActivatedHeader,
     ParsedModalAst, ParsedModalGate, ParsedModalHeader, ParsedModalModeAst, ParsedRestrictions,
-    PlayerAst, PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, RefState,
-    ReferenceEnv, ReferenceExports, ReferenceFrame, ReferenceImports, RestrictionBucket,
-    RetargetModeAst, ReturnControllerAst, RewriteActivatedLine, RewriteKeywordLine,
-    RewriteLevelHeader, RewriteLevelItem, RewriteLevelItemKind, RewriteModalBlock,
-    RewriteModalMode, RewriteSagaChapterLine, RewriteSemanticDocument, RewriteSemanticItem,
-    RewriteStatementLine, RewriteStaticLine, RewriteTriggeredLine, RewriteUnsupportedLine,
-    SearchLibrarySlotAst, SharedTypeConstraintAst, TargetAst, ZoneReplacementDurationAst,
+    PlayerAst, PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst,
+    RedirectNextTimeDamageDestinationAst, RefState, ReferenceEnv, ReferenceExports, ReferenceFrame,
+    ReferenceImports, RestrictionBucket, RetargetModeAst, ReturnControllerAst,
+    RewriteActivatedLine, RewriteKeywordLine, RewriteLevelHeader, RewriteLevelItem,
+    RewriteLevelItemKind, RewriteModalBlock, RewriteModalMode, RewriteSagaChapterLine,
+    RewriteSemanticDocument, RewriteSemanticItem, RewriteStatementLine, RewriteStaticLine,
+    RewriteTriggeredLine, RewriteUnsupportedLine, SearchLibrarySlotAst, SharedTypeConstraintAst,
+    TargetAst, ZoneReplacementDurationAst,
 };
 pub use object::{AuraAttachmentFilter, CounterType};
 pub use oracle_grammar::{

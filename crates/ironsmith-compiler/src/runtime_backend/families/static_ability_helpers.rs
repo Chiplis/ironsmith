@@ -260,6 +260,7 @@ pub(crate) fn decayed_triggered_ability() -> Ability {
 
 pub(crate) fn decayed_object_abilities() -> Vec<Ability> {
     vec![
+        Ability::static_ability(StaticAbility::keyword_marker("decayed")),
         Ability::static_ability(StaticAbility::cant_block()),
         decayed_triggered_ability(),
     ]

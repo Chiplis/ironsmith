@@ -4,6 +4,7 @@ use crate::color::ColorSet;
 use crate::cost::TotalCost;
 use crate::effect::{ChoiceCount, EffectId, Until, Value};
 use crate::mana::{ManaCost, ManaSymbol};
+use crate::model::RedirectNextTimeDamageDestinationAst;
 use crate::object::{AuraAttachmentFilter, CounterType};
 use crate::static_abilities::StaticAbility;
 use crate::tag::TagKey;
@@ -102,6 +103,10 @@ pub(crate) enum TriggerSpec {
         display: String,
     },
     ThisAttacks,
+    ThisAttacksWithNOthers {
+        other_count: u32,
+        display_subject: Option<String>,
+    },
     ThisAttacksWithExactlyNOthers(u32),
     ThisAttacksAndIsntBlocked,
     ThisAttacksWhileSaddled,
@@ -109,6 +114,7 @@ pub(crate) enum TriggerSpec {
     AttacksAndIsntBlocked(ObjectFilter),
     AttacksWhileSaddled(ObjectFilter),
     AttacksOneOrMore(ObjectFilter),
+    PlayersAttackedOneOrMore(PlayerFilter),
     AttacksOneOrMoreWithMinTotal {
         filter: ObjectFilter,
         min_total_attackers: u32,
@@ -727,6 +733,10 @@ pub(crate) enum SubjectVerbActionAst {
     Explore {
         target: TargetAst,
     },
+    Endure {
+        target: TargetAst,
+        amount: Value,
+    },
     Exploit,
     Connive {
         target: TargetAst,
@@ -1039,6 +1049,7 @@ pub(crate) enum SubjectVerbActionAst {
         allow_land: bool,
         without_paying_mana_cost: bool,
         allow_any_color_for_cast: bool,
+        while_on_top_of_library: bool,
     },
     GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
         tag: TagKey,
@@ -1086,6 +1097,7 @@ pub(crate) enum SubjectVerbActionAst {
         to_top: bool,
         battlefield_controller: ReturnControllerAst,
         battlefield_tapped: bool,
+        battlefield_attacking: bool,
         attached_to: Option<TargetAst>,
     },
     MoveToLibraryTopOrBottomChoice {
@@ -1162,6 +1174,9 @@ pub(crate) enum SubjectVerbActionAst {
         subtypes: Vec<Subtype>,
         duration: Until,
     },
+    BecomeSaddledUntilEndOfTurn {
+        target: TargetAst,
+    },
     AddColors {
         target: TargetAst,
         colors: ColorSet,
@@ -1234,6 +1249,7 @@ pub(crate) enum SubjectVerbActionAst {
         target: TargetAst,
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
+        condition: Option<crate::ConditionExpr>,
     },
     GrantToTarget {
         target: TargetAst,
@@ -1344,6 +1360,7 @@ pub(crate) enum SubjectVerbActionAst {
     RedirectNextTimeDamageToSource {
         source: PreventNextTimeDamageSourceAst,
         target: TargetAst,
+        destination: RedirectNextTimeDamageDestinationAst,
         all_this_turn: bool,
     },
     RedirectAllDamageThisTurnToTarget {
@@ -1498,6 +1515,13 @@ pub(crate) enum SubjectVerbActionAst {
         target_count: Option<ChoiceCount>,
         distributed: bool,
     },
+    PutCounterChoice {
+        counter_types: Vec<CounterType>,
+        count: Value,
+        mode_texts: Vec<String>,
+        target: TargetAst,
+        target_count: Option<ChoiceCount>,
+    },
     PutOrRemoveCounters {
         put_counter_type: CounterType,
         put_count: Value,
@@ -1617,6 +1641,10 @@ pub(crate) enum SubjectVerbActionAst {
         filter: ObjectFilter,
         reduction: ManaCost,
     },
+    ReduceMatchingSpellCostThisTurn {
+        filter: ObjectFilter,
+        reduction: Value,
+    },
     GrantNextSpellAbilityThisTurn {
         filter: ObjectFilter,
         ability: GrantedAbilityAst,
@@ -1735,6 +1763,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::Fateseal { count } => f.debug_tuple("Fateseal").field(count).finish(),
             Self::Populate { count, .. } => f.debug_tuple("Populate").field(count).finish(),
             Self::Explore { target } => f.debug_tuple("Explore").field(target).finish(),
+            Self::Endure { target, amount } => f
+                .debug_struct("Endure")
+                .field("target", target)
+                .field("amount", amount)
+                .finish(),
             Self::Exploit => f.write_str("Exploit"),
             Self::Connive { target, count } => f
                 .debug_struct("Connive")
@@ -2223,6 +2256,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 allow_land,
                 without_paying_mana_cost,
                 allow_any_color_for_cast,
+                while_on_top_of_library,
             } => f
                 .debug_struct("GrantPlayTaggedUntilEndOfTurn")
                 .field("tag", tag)
@@ -2230,6 +2264,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("allow_land", allow_land)
                 .field("without_paying_mana_cost", without_paying_mana_cost)
                 .field("allow_any_color_for_cast", allow_any_color_for_cast)
+                .field("while_on_top_of_library", while_on_top_of_library)
                 .finish(),
             Self::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
                 tag,
@@ -2314,6 +2349,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 to_top,
                 battlefield_controller,
                 battlefield_tapped,
+                battlefield_attacking,
                 attached_to,
             } => f
                 .debug_struct("MoveToZone")
@@ -2322,6 +2358,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("to_top", to_top)
                 .field("battlefield_controller", battlefield_controller)
                 .field("battlefield_tapped", battlefield_tapped)
+                .field("battlefield_attacking", battlefield_attacking)
                 .field("attached_to", attached_to)
                 .finish(),
             Self::MoveToLibraryTopOrBottomChoice { target } => f
@@ -2461,6 +2498,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("subtypes", subtypes)
                 .field("duration", duration)
                 .finish(),
+            Self::BecomeSaddledUntilEndOfTurn { target } => f
+                .debug_struct("BecomeSaddledUntilEndOfTurn")
+                .field("target", target)
+                .finish(),
             Self::AddColors {
                 target,
                 colors,
@@ -2592,11 +2633,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 target,
                 abilities,
                 duration,
+                condition,
             } => f
                 .debug_struct("GrantAbilitiesToTarget")
                 .field("target", target)
                 .field("abilities", abilities)
                 .field("duration", duration)
+                .field("condition", condition)
                 .finish(),
             Self::GrantToTarget {
                 target,
@@ -2706,11 +2749,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::RedirectNextTimeDamageToSource {
                 source,
                 target,
+                destination,
                 all_this_turn,
             } => f
                 .debug_struct("RedirectNextTimeDamageToSource")
                 .field("source", source)
                 .field("target", target)
+                .field("destination", destination)
                 .field("all_this_turn", all_this_turn)
                 .finish(),
             Self::RedirectAllDamageThisTurnToTarget {
@@ -2918,6 +2963,20 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("target_count", target_count)
                 .field("distributed", distributed)
                 .finish(),
+            Self::PutCounterChoice {
+                counter_types,
+                count,
+                mode_texts,
+                target,
+                target_count,
+            } => f
+                .debug_struct("PutCounterChoice")
+                .field("counter_types", counter_types)
+                .field("count", count)
+                .field("mode_texts", mode_texts)
+                .field("target", target)
+                .field("target_count", target_count)
+                .finish(),
             Self::PutOrRemoveCounters {
                 put_counter_type,
                 put_count,
@@ -3083,6 +3142,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("filter", filter)
                 .field("reduction", reduction)
                 .finish(),
+            Self::ReduceMatchingSpellCostThisTurn { filter, reduction } => f
+                .debug_struct("ReduceMatchingSpellCostThisTurn")
+                .field("filter", filter)
+                .field("reduction", reduction)
+                .finish(),
             Self::GrantNextSpellAbilityThisTurn { filter, ability } => f
                 .debug_struct("GrantNextSpellAbilityThisTurn")
                 .field("filter", filter)
@@ -3178,6 +3242,7 @@ pub(crate) enum EffectAst {
     DelayedTriggerThisTurn {
         trigger: TriggerSpec,
         effects: Vec<EffectAst>,
+        one_shot: bool,
     },
     DelayedWhenLastObjectDiesThisTurn {
         filter: Option<ObjectFilter>,
@@ -3215,8 +3280,10 @@ pub(crate) enum EffectAst {
     },
     MayCastMatchingSpellWithoutPayingManaCost {
         player: PlayerAst,
+        zone_owner: PlayerAst,
         filter: ObjectFilter,
         zone: Zone,
+        payment: ironsmith_core::MayCastMatchingSpellPayment,
     },
     RepeatThisProcess,
     RepeatThisProcessMay,
@@ -3667,8 +3734,40 @@ impl EffectAst {
     ) -> Self {
         Self::MayCastMatchingSpellWithoutPayingManaCost {
             player,
+            zone_owner: player,
             filter,
             zone,
+            payment: ironsmith_core::MayCastMatchingSpellPayment::WithoutPayingManaCost,
+        }
+    }
+
+    pub(crate) fn may_cast_matching_spell_without_paying_mana_cost_from_zone_owner(
+        player: PlayerAst,
+        zone_owner: PlayerAst,
+        filter: ObjectFilter,
+        zone: Zone,
+    ) -> Self {
+        Self::MayCastMatchingSpellWithoutPayingManaCost {
+            player,
+            zone_owner,
+            filter,
+            zone,
+            payment: ironsmith_core::MayCastMatchingSpellPayment::WithoutPayingManaCost,
+        }
+    }
+
+    pub(crate) fn may_cast_matching_spell_with_alternative_cost(
+        player: PlayerAst,
+        filter: ObjectFilter,
+        zone: Zone,
+        kind: crate::filter::AlternativeCastKind,
+    ) -> Self {
+        Self::MayCastMatchingSpellWithoutPayingManaCost {
+            player,
+            zone_owner: player,
+            filter,
+            zone,
+            payment: ironsmith_core::MayCastMatchingSpellPayment::AlternativeCost(kind),
         }
     }
 
@@ -3688,6 +3787,28 @@ impl EffectAst {
                 allow_land,
                 without_paying_mana_cost,
                 allow_any_color_for_cast,
+                while_on_top_of_library: false,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_grant_play_tagged_until_end_of_turn_while_on_top_of_library(
+        tag: TagKey,
+        player: PlayerAst,
+        allow_land: bool,
+        without_paying_mana_cost: bool,
+        allow_any_color_for_cast: bool,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+                tag,
+                player,
+                allow_land,
+                without_paying_mana_cost,
+                allow_any_color_for_cast,
+                while_on_top_of_library: true,
             },
         )
     }
@@ -3818,6 +3939,26 @@ impl EffectAst {
         battlefield_tapped: bool,
         attached_to: Option<TargetAst>,
     ) -> Self {
+        Self::subject_verb_move_to_zone_with_attacking(
+            target,
+            zone,
+            to_top,
+            battlefield_controller,
+            battlefield_tapped,
+            false,
+            attached_to,
+        )
+    }
+
+    pub(crate) fn subject_verb_move_to_zone_with_attacking(
+        target: TargetAst,
+        zone: Zone,
+        to_top: bool,
+        battlefield_controller: ReturnControllerAst,
+        battlefield_tapped: bool,
+        battlefield_attacking: bool,
+        attached_to: Option<TargetAst>,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3827,6 +3968,7 @@ impl EffectAst {
                 to_top,
                 battlefield_controller,
                 battlefield_tapped,
+                battlefield_attacking,
                 attached_to,
             },
         )
@@ -4047,6 +4189,14 @@ impl EffectAst {
         )
     }
 
+    pub(crate) fn subject_verb_become_saddled_until_end_of_turn(target: TargetAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::BecomeSaddledUntilEndOfTurn { target },
+        )
+    }
+
     pub(crate) fn subject_verb_add_colors(
         target: TargetAst,
         colors: ColorSet,
@@ -4264,6 +4414,25 @@ impl EffectAst {
                 target,
                 abilities,
                 duration,
+                condition: None,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_grant_abilities_to_target_with_condition(
+        target: TargetAst,
+        abilities: Vec<GrantedAbilityAst>,
+        duration: Until,
+        condition: crate::ConditionExpr,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::GrantAbilitiesToTarget {
+                target,
+                abilities,
+                duration,
+                condition: Some(condition),
             },
         )
     }
@@ -4417,6 +4586,7 @@ impl EffectAst {
     pub(crate) fn subject_verb_redirect_next_time_damage_to_source(
         source: PreventNextTimeDamageSourceAst,
         target: TargetAst,
+        destination: RedirectNextTimeDamageDestinationAst,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -4424,6 +4594,7 @@ impl EffectAst {
             SubjectVerbActionAst::RedirectNextTimeDamageToSource {
                 source,
                 target,
+                destination,
                 all_this_turn: false,
             },
         )
@@ -4432,6 +4603,7 @@ impl EffectAst {
     pub(crate) fn subject_verb_redirect_all_damage_this_turn_to_source(
         source: PreventNextTimeDamageSourceAst,
         target: TargetAst,
+        destination: RedirectNextTimeDamageDestinationAst,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -4439,6 +4611,7 @@ impl EffectAst {
             SubjectVerbActionAst::RedirectNextTimeDamageToSource {
                 source,
                 target,
+                destination,
                 all_this_turn: true,
             },
         )
@@ -4961,6 +5134,14 @@ impl EffectAst {
         )
     }
 
+    pub(crate) fn subject_verb_endure(target: TargetAst, amount: Value) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Endure { target, amount },
+        )
+    }
+
     pub(crate) fn subject_verb_exploit() -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -5264,6 +5445,18 @@ impl EffectAst {
             SubjectVerbRoleAst::AffectedPlayer,
             player,
             SubjectVerbActionAst::ReduceNextSpellCostThisTurn { filter, reduction },
+        )
+    }
+
+    pub(crate) fn subject_verb_reduce_matching_spell_cost_this_turn(
+        player: PlayerAst,
+        filter: ObjectFilter,
+        reduction: Value,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::ReduceMatchingSpellCostThisTurn { filter, reduction },
         )
     }
 
@@ -5775,6 +5968,26 @@ impl EffectAst {
                 target,
                 target_count,
                 distributed,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_put_counter_choice(
+        counter_types: Vec<CounterType>,
+        count: Value,
+        mode_texts: Vec<String>,
+        target: TargetAst,
+        target_count: Option<ChoiceCount>,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::PutCounterChoice {
+                counter_types,
+                count,
+                mode_texts,
+                target,
+                target_count,
             },
         )
     }

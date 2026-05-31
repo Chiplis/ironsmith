@@ -623,6 +623,41 @@ fn should_prefer_statement_before_static_for_nonpermanent_spell(
                 && contains_token_word_sequence(tokens, &["instead"])))
 }
 
+fn should_parse_next_cast_trigger_line_as_spell_effect(
+    preprocessed: &PreprocessedDocument,
+    tokens: &[OwnedLexToken],
+) -> bool {
+    let builder_has_nonpermanent_spell_type = preprocessed
+        .builder
+        .card_builder
+        .card_types_ref()
+        .iter()
+        .any(|card_type| {
+            matches!(
+                card_type,
+                crate::types::CardType::Instant | crate::types::CardType::Sorcery
+            )
+        });
+    let metadata_has_nonpermanent_spell_type = preprocessed.items.iter().any(|item| {
+        matches!(
+            item,
+            PreprocessedItem::Metadata(metadata)
+                if matches!(
+                    metadata.value,
+                    crate::cards::builders::MetadataLine::TypeLine(ref raw)
+                        if raw
+                            .split(|ch: char| !ch.is_alphabetic())
+                            .any(|part| matches!(part, "Instant" | "Sorcery"))
+                )
+        )
+    });
+
+    (builder_has_nonpermanent_spell_type || metadata_has_nonpermanent_spell_type)
+        && token_slice_starts_with_any(tokens, &[&["when"], &["whenever"]])
+        && contains_token_word_sequence(tokens, &["next", "cast"])
+        && contains_token_word_sequence(tokens, &["this", "turn"])
+}
+
 fn looks_like_activation_cost_prefix(raw: &str) -> bool {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -1240,6 +1275,9 @@ fn source_name_aliases_for_builder(builder: &CardDefinitionBuilder) -> Vec<Strin
         if let Some(stripped) = strip_leading_digital_variant_marker(full_name.as_str()) {
             push_unique_source_name_alias(&mut full_names, stripped);
         }
+        if let Some(stripped) = strip_trailing_roman_numeral(full_name.as_str()) {
+            push_unique_source_name_alias(&mut full_names, stripped);
+        }
     }
 
     for full_name in &full_names {
@@ -1278,6 +1316,24 @@ fn strip_leading_digital_variant_marker(name: &str) -> Option<&str> {
         }
     }
     None
+}
+
+fn strip_trailing_roman_numeral(name: &str) -> Option<&str> {
+    let trimmed = name.trim();
+    let (prefix, suffix) = trimmed.rsplit_once(char::is_whitespace)?;
+    let suffix = suffix.trim_matches(|ch: char| !ch.is_ascii_alphabetic());
+    if suffix.len() < 2
+        || !suffix.bytes().all(|byte| {
+            matches!(
+                byte.to_ascii_uppercase(),
+                b'I' | b'V' | b'X' | b'L' | b'C' | b'D' | b'M'
+            )
+        })
+    {
+        return None;
+    }
+    let prefix = prefix.trim();
+    (!prefix.is_empty()).then_some(prefix)
 }
 
 fn strip_non_keyword_label_prefix(text: &str) -> &str {
@@ -2798,6 +2854,15 @@ fn try_parse_triggered_line_dispatch(
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     if !line_starts_with_trigger_intro_tokens(&line.tokens) {
         return Ok(None);
+    }
+
+    if should_parse_next_cast_trigger_line_as_spell_effect(preprocessed, &line.tokens)
+        && let Some(statement_line) = parse_statement_line_cst(line)?
+    {
+        return Ok(Some(LineDispatchResult::single(
+            RewriteLineCst::Statement(statement_line),
+            idx + 1,
+        )));
     }
 
     let trigger_chunks = split_trigger_sentence_chunks_rewrite_lexed(&line.tokens);

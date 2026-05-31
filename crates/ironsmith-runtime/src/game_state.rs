@@ -18,6 +18,7 @@ use crate::continuous::{
 };
 use crate::cost::OptionalCostsPaid;
 use crate::decision::KeywordPaymentContribution;
+use crate::derived_view::DerivedGameView;
 use crate::dungeon::ActiveDungeonProgress;
 use crate::effect::Until;
 use crate::events::{Event, EventKind, KeywordActionKind};
@@ -285,6 +286,8 @@ pub struct EffectStore {
     pub pending_replacement_choice: Option<PendingReplacementChoice>,
     /// Registry for tracking granted alternative casts and abilities.
     pub grant_registry: crate::grant_registry::GrantRegistry,
+    /// Monotonic per-library revision for one-shot "while this remains on top" effects.
+    pub library_top_revisions: HashMap<PlayerId, u64>,
     /// Temporary mana abilities granted to players (e.g., Channel), expiring at end of turn.
     pub granted_mana_abilities: Vec<GrantedManaAbility>,
     /// Temporary spell-cost reductions waiting for the next matching spell this turn.
@@ -311,6 +314,7 @@ impl Default for EffectStore {
             active_state_trigger_conditions: HashSet::new(),
             pending_replacement_choice: None,
             grant_registry: crate::grant_registry::GrantRegistry::new(),
+            library_top_revisions: HashMap::new(),
             granted_mana_abilities: Vec::new(),
             temporary_spell_cost_reductions: Vec::new(),
             temporary_spell_ability_grants: Vec::new(),
@@ -783,6 +787,8 @@ pub struct TemporarySpellCostReductionEffectInstance {
     pub source: ObjectId,
     pub filter: crate::target::ObjectFilter,
     pub reduction: crate::mana::ManaCost,
+    pub generic_reduction: Option<crate::effect::Value>,
+    pub applies_to_all_matching_this_turn: bool,
     pub remaining_uses: u32,
     pub expires_end_of_turn: u32,
 }
@@ -2510,6 +2516,9 @@ impl GameState {
             self.players[index].library.shuffle(&mut rng);
         }
         let after_order = self.players[index].library.clone();
+        if before_order.last() != after_order.last() {
+            self.bump_library_top_revision(player_id);
+        }
         self.push_hidden_info_operation(HiddenInfoOperation::LibraryShuffle {
             player: player_id,
             before_order,
@@ -2571,6 +2580,9 @@ impl GameState {
         }
         if let Some(player_state) = self.player_mut(player) {
             player_state.library = after_order.clone();
+        }
+        if before_order.last() != after_order.last() {
+            self.bump_library_top_revision(player);
         }
         self.record_library_reorder(player, before_order, after_order, reason);
         true
@@ -2677,6 +2689,9 @@ impl GameState {
         } else {
             return false;
         };
+        if before_order.last() != after_order.last() {
+            self.bump_library_top_revision(player);
+        }
         self.record_library_reorder(player, before_order, after_order, reason);
         true
     }
@@ -2768,7 +2783,30 @@ impl GameState {
                 source,
                 filter,
                 reduction,
+                generic_reduction: None,
+                applies_to_all_matching_this_turn: false,
                 remaining_uses,
+                expires_end_of_turn: self.turn.turn_number,
+            },
+        );
+    }
+
+    pub fn add_temporary_matching_spell_cost_reduction_this_turn(
+        &mut self,
+        player: PlayerId,
+        source: ObjectId,
+        filter: crate::target::ObjectFilter,
+        generic_reduction: crate::effect::Value,
+    ) {
+        self.effect_store.temporary_spell_cost_reductions.push(
+            TemporarySpellCostReductionEffectInstance {
+                player,
+                source,
+                filter,
+                reduction: crate::mana::ManaCost::new(),
+                generic_reduction: Some(generic_reduction),
+                applies_to_all_matching_this_turn: true,
+                remaining_uses: u32::MAX,
                 expires_end_of_turn: self.turn.turn_number,
             },
         );
@@ -2921,12 +2959,42 @@ impl GameState {
 
     pub fn active_goaders_for(&self, creature: ObjectId) -> HashSet<PlayerId> {
         let current_turn = self.turn.turn_number;
-        self.effect_store
+        let mut goaders: HashSet<PlayerId> = self
+            .effect_store
             .goad_effects
             .iter()
             .filter(|effect| effect.creature == creature && effect.is_active(self, current_turn))
             .map(|effect| effect.goaded_by)
-            .collect()
+            .collect();
+
+        let view = DerivedGameView::new(self);
+        let static_abilities = view
+            .calculated_characteristics(creature)
+            .map(|chars| chars.static_abilities)
+            .or_else(|| {
+                self.object(creature).map(|object| {
+                    object
+                        .abilities
+                        .iter()
+                        .filter_map(|ability| match &ability.kind {
+                            AbilityKind::Static(static_ability) => Some(static_ability.clone()),
+                            _ => None,
+                        })
+                        .collect()
+                })
+            })
+            .unwrap_or_default();
+
+        if let Some(object) = self.object(creature) {
+            let controller = self.controller_of(object);
+            for ability in static_abilities {
+                if let Some(player) = ability.goaded_by_player(self, creature, controller) {
+                    goaders.insert(player);
+                }
+            }
+        }
+
+        goaders
     }
 
     pub fn is_goaded(&self, creature: ObjectId) -> bool {
@@ -3335,6 +3403,7 @@ impl GameState {
                 if let Some(player) = self.player_mut(owner) {
                     player.library.push(id);
                 }
+                self.bump_library_top_revision(owner);
             }
             Zone::Hand => {
                 if let Some(player) = self.player_mut(owner) {
@@ -4728,8 +4797,15 @@ impl GameState {
             Zone::Command => self.command_zone.retain(|&x| x != id),
             Zone::Exile => self.exile.retain(|&x| x != id),
             Zone::Library => {
+                let was_top = self
+                    .player(owner)
+                    .and_then(|player| player.library.last().copied())
+                    == Some(id);
                 if let Some(player) = self.player_mut(owner) {
                     player.library.retain(|&x| x != id);
+                }
+                if was_top {
+                    self.bump_library_top_revision(owner);
                 }
             }
             Zone::Hand => {
@@ -6064,6 +6140,24 @@ impl GameState {
         }
     }
 
+    pub fn library_top_revision(&self, player: PlayerId) -> u64 {
+        self.effect_store
+            .library_top_revisions
+            .get(&player)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    fn bump_library_top_revision(&mut self, player: PlayerId) {
+        let revision = self
+            .effect_store
+            .library_top_revisions
+            .entry(player)
+            .or_insert(0);
+        *revision = revision.saturating_add(1);
+        self.mark_continuous_state_dirty();
+    }
+
     /// Check if a player may spend mana as though it were mana of any color.
     ///
     /// If `source` is provided, this also checks for source-specific activation permissions.
@@ -6346,7 +6440,13 @@ impl GameState {
         let allow_any_color = self.can_spend_mana_as_any_color(payer, source);
         let allow_black_life =
             self.player_can_pay_black_with_life_for_reason(payer, source, reason);
-        let mut preview_pool = player.mana_pool.clone();
+        let mut preview_pool = if let Some(symbol) = source
+            .and_then(|source| self.chosen_color_activation_mana_restriction(source, cost, reason))
+        {
+            self.mana_pool_restricted_to_symbol(&player.mana_pool, symbol)
+        } else {
+            player.mana_pool.clone()
+        };
         let (can_pay, life_to_pay) = preview_pool
             .try_pay_tracking_life_with_any_color_and_black_life(
                 cost,
@@ -6387,6 +6487,42 @@ impl GameState {
         let allow_black_life =
             self.player_can_pay_black_with_life_for_reason(payer, source, reason);
         let original_pool = self.player(payer).map(|player| player.mana_pool.clone());
+        if let Some(symbol) = source
+            .and_then(|source| self.chosen_color_activation_mana_restriction(source, cost, reason))
+        {
+            let Some(original_pool) = original_pool else {
+                return false;
+            };
+            let mut restricted_pool = self.mana_pool_restricted_to_symbol(&original_pool, symbol);
+            let (paid, life_to_pay) = restricted_pool
+                .try_pay_tracking_life_with_any_color_and_black_life(
+                    cost,
+                    x_value,
+                    allow_any_color,
+                    allow_black_life,
+                );
+            if !paid || !self.can_pay_life_with_reason(payer, life_to_pay, reason) {
+                return false;
+            }
+
+            let spent = original_pool
+                .amount(symbol)
+                .saturating_sub(restricted_pool.amount(symbol));
+            if let Some(player) = self.player_mut(payer) {
+                if spent > 0 && !player.mana_pool.remove(symbol, spent) {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+            if life_to_pay > 0 && !self.pay_life(payer, life_to_pay) {
+                if let Some(player) = self.player_mut(payer) {
+                    player.mana_pool = original_pool;
+                }
+                return false;
+            }
+            return true;
+        }
         let (paid, life_to_pay) = {
             let Some(player) = self.player_mut(payer) else {
                 return false;
@@ -6416,6 +6552,48 @@ impl GameState {
             return false;
         }
         true
+    }
+
+    fn chosen_color_activation_mana_restriction(
+        &self,
+        source: ObjectId,
+        cost: &crate::mana::ManaCost,
+        reason: crate::costs::PaymentReason,
+    ) -> Option<crate::mana::ManaSymbol> {
+        if reason != crate::costs::PaymentReason::ActivateAbility {
+            return None;
+        }
+
+        let object = self.object(source)?;
+        let has_restricted_activation = object.abilities.iter().any(|ability| {
+            let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {
+                return false;
+            };
+            activated.mana_cost.costs().iter().any(|component| {
+                component
+                    .mana_cost_ref()
+                    .is_some_and(|activation_cost| activation_cost == cost)
+            }) && activated.additional_restrictions.iter().any(|restriction| {
+                restriction.eq_ignore_ascii_case(
+                    "spend only mana of the chosen color to activate this ability",
+                )
+            })
+        });
+
+        has_restricted_activation.then(|| {
+            self.chosen_color(source)
+                .map(crate::mana::ManaSymbol::from_color)
+        })?
+    }
+
+    fn mana_pool_restricted_to_symbol(
+        &self,
+        pool: &crate::player::ManaPool,
+        symbol: crate::mana::ManaSymbol,
+    ) -> crate::player::ManaPool {
+        let mut restricted = crate::player::ManaPool::new();
+        restricted.add(symbol, pool.amount(symbol));
+        restricted
     }
 
     /// Gets a reference to a player by ID.
@@ -7787,22 +7965,27 @@ impl GameState {
             && let Some(source_obj) = self.object(source_id)
         {
             tagged_objects.extend(source_obj.cast_tagged_objects.clone());
+            let source_is_aura = source_obj.subtypes.contains(&crate::types::Subtype::Aura)
+                || (source_obj
+                    .card_types
+                    .contains(&crate::types::CardType::Enchantment)
+                    && source_obj.aura_attach_filter.is_some());
+            let source_is_equipment = source_obj
+                .subtypes
+                .contains(&crate::types::Subtype::Equipment);
             if let Some(attached_target) = source_obj.attached_to {
                 match attached_target {
                     AttachmentTarget::Object(attached_id) => {
                         if let Some(attached_obj) = self.object(attached_id) {
                             let attached_snapshot =
                                 crate::snapshot::ObjectSnapshot::from_object(attached_obj, self);
-                            if source_obj.subtypes.contains(&crate::types::Subtype::Aura) {
+                            if source_is_aura {
                                 tagged_objects.insert(
                                     crate::tag::TagKey::from("enchanted"),
                                     vec![attached_snapshot.clone()],
                                 );
                             }
-                            if source_obj
-                                .subtypes
-                                .contains(&crate::types::Subtype::Equipment)
-                            {
+                            if source_is_equipment {
                                 tagged_objects.insert(
                                     crate::tag::TagKey::from("equipped"),
                                     vec![attached_snapshot],
@@ -7811,7 +7994,7 @@ impl GameState {
                         }
                     }
                     AttachmentTarget::Player(attached_player) => {
-                        if source_obj.subtypes.contains(&crate::types::Subtype::Aura) {
+                        if source_is_aura {
                             tagged_players.insert(
                                 crate::tag::TagKey::from("enchanted"),
                                 vec![attached_player],
@@ -8682,8 +8865,11 @@ impl GameState {
                 .options
                 .iter()
                 .enumerate()
-                .map(|(idx, (power, toughness))| {
-                    crate::decisions::spec::DisplayOption::new(idx, format!("{power}/{toughness}"))
+                .map(|(idx, option)| {
+                    crate::decisions::spec::DisplayOption::new(
+                        idx,
+                        format!("{}/{}", option.power, option.toughness),
+                    )
                 })
                 .collect::<Vec<_>>();
             let choice_spec =
@@ -8696,10 +8882,16 @@ impl GameState {
                 choice_spec,
             );
             if let Some(chosen_idx) = chosen.pop().filter(|idx| *idx < spec.options.len()) {
-                let (power, toughness) = spec.options[chosen_idx];
+                let option = &spec.options[chosen_idx];
                 if let Some(object) = self.object_mut(permanent_id) {
-                    object.base_power = Some(crate::card::PtValue::Fixed(power));
-                    object.base_toughness = Some(crate::card::PtValue::Fixed(toughness));
+                    object.base_power = Some(crate::card::PtValue::Fixed(option.power));
+                    object.base_toughness = Some(crate::card::PtValue::Fixed(option.toughness));
+                    for granted in &option.abilities {
+                        let ability = crate::ability::Ability::static_ability(granted.clone());
+                        if !object.abilities.contains(&ability) {
+                            object.abilities.push(ability);
+                        }
+                    }
                     self.mark_continuous_state_dirty();
                 }
             }

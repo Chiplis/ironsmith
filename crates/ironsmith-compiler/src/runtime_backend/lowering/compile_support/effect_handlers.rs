@@ -268,7 +268,11 @@ pub(super) fn try_compile_timing_and_control_effect(
             ));
             (vec![effect], choices)
         }
-        EffectAst::DelayedTriggerThisTurn { trigger, effects } => {
+        EffectAst::DelayedTriggerThisTurn {
+            trigger,
+            effects,
+            one_shot,
+        } => {
             let (delayed_effects, _delayed_choices) =
                 compile_trigger_effects(Some(trigger), effects)?;
             let choices = Vec::new();
@@ -280,7 +284,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                             watched_tag.clone().into(),
                             ironsmith_core::DelayedTriggerSpec::IsDealtDamage(ChooseSpec::Source),
                             delayed_effects,
-                            false,
+                            *one_shot,
                             Vec::new(),
                             PlayerFilter::You,
                         );
@@ -295,7 +299,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                                     ChooseSpec::Object(resolved_filter),
                                 ),
                                 delayed_effects,
-                                false,
+                                *one_shot,
                                 Vec::new(),
                                 PlayerFilter::You,
                             )
@@ -321,7 +325,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                             watched_tag.clone().into(),
                             ironsmith_core::DelayedTriggerSpec::ThisDies,
                             delayed_effects,
-                            false,
+                            *one_shot,
                             Vec::new(),
                             PlayerFilter::You,
                         );
@@ -336,7 +340,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                                     resolved_filter,
                                 ),
                                 delayed_effects,
-                                false,
+                                *one_shot,
                                 Vec::new(),
                                 PlayerFilter::You,
                             )
@@ -361,7 +365,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                             watched_tag.clone().into(),
                             ironsmith_core::DelayedTriggerSpec::ThisDies,
                             delayed_effects,
-                            false,
+                            *one_shot,
                             Vec::new(),
                             PlayerFilter::You,
                         );
@@ -374,7 +378,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                             crate::effects::ScheduleDelayedTriggerEffect::new(
                                 ironsmith_core::DelayedTriggerSpec::Dies(resolved_filter),
                                 delayed_effects,
-                                false,
+                                *one_shot,
                                 Vec::new(),
                                 PlayerFilter::You,
                             )
@@ -397,7 +401,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                                 one_or_more: *one_or_more,
                             },
                             delayed_effects,
-                            false,
+                            *one_shot,
                             Vec::new(),
                             PlayerFilter::You,
                         )
@@ -411,7 +415,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                             target_tag.clone().into(),
                             ironsmith_core::DelayedTriggerSpec::ThisAttacksAndIsntBlocked,
                             delayed_effects,
-                            false,
+                            *one_shot,
                             Vec::new(),
                             PlayerFilter::You,
                         )
@@ -422,7 +426,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                             crate::effects::ScheduleDelayedTriggerEffect::new(
                                 ironsmith_core::DelayedTriggerSpec::ThisAttacksAndIsntBlocked,
                                 delayed_effects,
-                                false,
+                                *one_shot,
                                 Vec::new(),
                                 PlayerFilter::You,
                             )
@@ -438,7 +442,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                             watched_tag.clone().into(),
                             ironsmith_core::DelayedTriggerSpec::ThisAttacksAndIsntBlocked,
                             delayed_effects,
-                            false,
+                            *one_shot,
                             Vec::new(),
                             PlayerFilter::You,
                         )
@@ -452,7 +456,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                                     resolved_filter,
                                 ),
                                 delayed_effects,
-                                false,
+                                *one_shot,
                                 Vec::new(),
                                 PlayerFilter::You,
                             )
@@ -466,7 +470,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                         crate::effects::ScheduleDelayedTriggerEffect::new(
                             compile_delayed_trigger_spec(trigger)?,
                             delayed_effects,
-                            false,
+                            *one_shot,
                             Vec::new(),
                             PlayerFilter::You,
                         )

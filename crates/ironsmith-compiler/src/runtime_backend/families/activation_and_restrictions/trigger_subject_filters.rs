@@ -13,6 +13,8 @@ const EACH_WITH_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["each", "
 const YOU_TRIGGER_SUBJECT_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["you"]);
 const CHOSEN_PLAYER_TRIGGER_SUBJECT_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["the", "chosen", "player"], &["chosen", "player"]]);
+const ENCHANTED_PLAYER_TRIGGER_SUBJECT_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["enchanted", "player"], &["the", "enchanted", "player"]]);
 const EFFECT_CONTROLLER_TRIGGER_SUBJECT_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
         & [
@@ -588,6 +590,11 @@ pub(crate) fn parse_trigger_subject_player_filter(subject: &[&str]) -> Option<Pl
     }
     if CHOSEN_PLAYER_TRIGGER_SUBJECT_PATTERN.matches_words(subject) {
         return Some(PlayerFilter::ChosenPlayer);
+    }
+    if ENCHANTED_PLAYER_TRIGGER_SUBJECT_PATTERN.matches_words(subject) {
+        return Some(PlayerFilter::TaggedPlayer(crate::tag::TagKey::from(
+            "enchanted",
+        )));
     }
     if EFFECT_CONTROLLER_TRIGGER_SUBJECT_PATTERN.matches_words(subject) {
         return Some(PlayerFilter::EffectController);

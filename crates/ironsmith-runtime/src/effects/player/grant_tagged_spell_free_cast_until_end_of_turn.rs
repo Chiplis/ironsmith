@@ -1,4 +1,4 @@
-//! Grant temporary "cast this tagged exiled spell without paying its mana cost"
+//! Grant temporary "cast this tagged spell without paying its mana cost"
 //! permissions.
 
 use crate::alternative_cast::AlternativeCastingMethod;
@@ -8,9 +8,8 @@ use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::grant_registry::GrantSource;
-use crate::zone::Zone;
 
-/// Grants a temporary zero-mana alternative casting method to tagged exiled spells.
+/// Grants a temporary zero-mana alternative casting method to tagged spells.
 pub type GrantTaggedSpellFreeCastUntilEndOfTurnEffect =
     ironsmith_core::GrantTaggedSpellFreeCastUntilEndOfTurnEffect;
 
@@ -42,9 +41,27 @@ impl EffectExecutor for GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
             let Some(object) = game.object(object_id) else {
                 continue;
             };
-            if object.zone != Zone::Exile || object.is_land() || !seen.insert(object_id) {
+            if object.is_land() || !seen.insert(object_id) {
                 continue;
             }
+            let zone = object.zone;
+            if self.zone.is_some_and(|required_zone| required_zone != zone) {
+                continue;
+            }
+            let source = if self.while_on_top_of_library {
+                GrantSource::EffectWhileStableCardOnTopOfLibrary {
+                    source_id: ctx.source,
+                    expires_end_of_turn,
+                    stable_id: object.stable_id,
+                    player: object.owner,
+                    library_top_revision: game.library_top_revision(object.owner),
+                }
+            } else {
+                GrantSource::Effect {
+                    source_id: ctx.source,
+                    expires_end_of_turn,
+                }
+            };
 
             let method = AlternativeCastingMethod::alternative_cost(
                 "Without paying its mana cost",
@@ -53,16 +70,7 @@ impl EffectExecutor for GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
             );
             game.effect_store
                 .grant_registry
-                .grant_alternative_cast_to_card(
-                    object_id,
-                    Zone::Exile,
-                    player_id,
-                    method,
-                    GrantSource::Effect {
-                        source_id: ctx.source,
-                        expires_end_of_turn,
-                    },
-                );
+                .grant_alternative_cast_to_card(object_id, zone, player_id, method, source);
             granted += 1;
         }
 

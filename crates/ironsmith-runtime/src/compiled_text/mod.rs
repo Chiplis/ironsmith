@@ -43,6 +43,7 @@ pub fn compiled_text_lines(def: &CardDefinition) -> Vec<String> {
     normalize_ast_surface_lines(debug_compiled_lines(def))
         .into_iter()
         .map(|line| substitute_legendary_source_reference(&line, &def.card, ""))
+        .map(|line| substitute_kicked_draw_source_reference(&line, def))
         .map(normalize_scored_compiled_line)
         .collect()
 }
@@ -86,6 +87,42 @@ fn normalize_scored_compiled_line(line: String) -> String {
         );
     }
     line
+}
+
+fn substitute_kicked_draw_source_reference(line: &str, def: &CardDefinition) -> String {
+    let has_repeatable_kicker = def.optional_costs.iter().any(|cost| {
+        cost.repeatable
+            && (cost.label.eq_ignore_ascii_case("kicker")
+                || cost.label.eq_ignore_ascii_case("multikicker"))
+    });
+    if !has_repeatable_kicker
+        || def.card.name.contains(" // ")
+        || !line
+            .to_ascii_lowercase()
+            .contains("draw a card for each time this spell was kicked")
+    {
+        return line.to_string();
+    }
+
+    let source_name = def
+        .card
+        .name
+        .split(',')
+        .next()
+        .unwrap_or(&def.card.name)
+        .trim();
+    if source_name.is_empty() {
+        return line.to_string();
+    }
+
+    line.replace(
+        "this spell was kicked",
+        &format!("{source_name} was kicked"),
+    )
+    .replace(
+        "This spell was kicked",
+        &format!("{source_name} was kicked"),
+    )
 }
 
 fn normalize_unprocessed_compiled_line(line: String) -> String {
@@ -814,9 +851,11 @@ fn merge_ast_surface_lines(mut lines: Vec<String>) -> Vec<String> {
         let merged = merge_conditioned_spell_and_activation_tax_lines(
             merge_adjacent_simple_mana_add_lines(drop_redundant_spell_cost_lines(
                 merge_specific_adjacent_surface_lines(merge_lose_all_transform_lines(
-                    merge_blockability_lines(annotate_color_choice_exclusions(
-                        merge_same_true_type_addition_lines(merge_same_true_keyword_grant_lines(
-                            merge_subject_predicate_surface_lines(previous.clone()),
+                    merge_attached_transform_keyword_loss_lines(merge_blockability_lines(
+                        annotate_color_choice_exclusions(merge_same_true_type_addition_lines(
+                            merge_same_true_keyword_grant_lines(
+                                merge_subject_predicate_surface_lines(previous.clone()),
+                            ),
                         )),
                     )),
                 )),

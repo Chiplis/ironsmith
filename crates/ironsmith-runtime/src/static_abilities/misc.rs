@@ -7,9 +7,9 @@ use super::{
     ChooseColorAsEntersSpec, ChooseCreatureTypeAsEntersSpec, ChooseLandTypeAsEntersSpec,
     ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec,
     ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec, ConditionalSpellKeywordKind,
-    ConditionalSpellKeywordSpec, EnterAsCopyAsEntersSpec, GraveyardCountMetric, StaticAbilityId,
-    StaticAbilityKind, ThisSpellCastRestrictionKind, TriggerDuplicationSpec,
-    TriggerSuppressionSpec,
+    ConditionalSpellKeywordSpec, EnterAsCopyAsEntersSpec, GraveyardCountMetric,
+    PowerToughnessChoiceOption, StaticAbility, StaticAbilityId, StaticAbilityKind,
+    ThisSpellCastRestrictionKind, TriggerDuplicationSpec, TriggerSuppressionSpec,
     text_utils::{capitalize_first, join_with_and, number_word_u32},
 };
 use crate::ability::{Ability, AbilityKind, LevelAbility};
@@ -25,8 +25,9 @@ use crate::events::context::EventContext;
 use crate::events::damage::DamageEvent;
 use crate::events::damage::matchers::{
     DamageFromSelfCombatMatcher, DamageFromSelfMatcher, DamageFromSourceToObjectMatcher,
-    DamageToObjectMatcher, DamageToOtherCreatureYouControlMatcher, DamageToPlayerOrObjectMatcher,
-    DamageToSelfCombatMatcher, DamageToSelfConstraintMatcher, DamageToSelfFromSourceFilterMatcher,
+    DamageFromSourceToPlayerMatcher, DamageToObjectMatcher, DamageToOtherCreatureYouControlMatcher,
+    DamageToPlayerOrObjectMatcher, DamageToSelfCombatMatcher, DamageToSelfConstraintMatcher,
+    DamageToSelfFromSourceFilterMatcher,
 };
 use crate::events::permanents::matchers::AttachedPermanentWouldBeDestroyedMatcher;
 use crate::events::traits::{
@@ -1616,12 +1617,20 @@ impl StaticAbilityKind for ChooseNamedOptionAsEnters {
 /// "As this enters or is turned face up, choose a power/toughness."
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChoosePowerToughnessAsEntersOrTurnsFaceUp {
-    pub options: Vec<(i32, i32)>,
+    pub options: Vec<PowerToughnessChoiceOption>,
     pub display: String,
 }
 
 impl ChoosePowerToughnessAsEntersOrTurnsFaceUp {
     pub fn new(options: Vec<(i32, i32)>, display: String) -> Self {
+        let options = options
+            .into_iter()
+            .map(|(power, toughness)| PowerToughnessChoiceOption::new(power, toughness))
+            .collect();
+        Self { options, display }
+    }
+
+    pub fn new_with_options(options: Vec<PowerToughnessChoiceOption>, display: String) -> Self {
         Self { options, display }
     }
 }
@@ -1876,6 +1885,47 @@ impl StaticAbilityKind for PreventAllDamageToSelfByCreatures {
             controller,
             DamageToSelfFromSourceFilterMatcher::from_creature(),
             ReplacementAction::Prevent,
+        ))
+    }
+}
+
+/// "If a matching source would deal damage to you, prevent N of that damage."
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreventDamageToYouFromSourceFilter {
+    pub amount: u32,
+    pub source_filter: ObjectFilter,
+    pub display: String,
+}
+
+impl PreventDamageToYouFromSourceFilter {
+    pub fn new(amount: u32, source_filter: ObjectFilter, display: impl Into<String>) -> Self {
+        Self {
+            amount,
+            source_filter,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for PreventDamageToYouFromSourceFilter {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PreventDamageToYouFromSourceFilter
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            DamageFromSourceToPlayerMatcher::to_you(self.source_filter.clone()),
+            ReplacementAction::Modify(EventModification::Subtract(self.amount)),
         ))
     }
 }
@@ -2363,6 +2413,7 @@ pub struct EnterWithCountersForFilter {
     pub counter_type: CounterType,
     pub count: Value,
     pub added_subtypes: Vec<Subtype>,
+    pub condition: Option<crate::ConditionExpr>,
 }
 
 impl EnterWithCountersForFilter {
@@ -2372,11 +2423,17 @@ impl EnterWithCountersForFilter {
             counter_type,
             count,
             added_subtypes: Vec::new(),
+            condition: None,
         }
     }
 
     pub fn with_added_subtypes(mut self, subtypes: Vec<Subtype>) -> Self {
         self.added_subtypes = subtypes;
+        self
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
         self
     }
 }
@@ -2447,7 +2504,24 @@ impl StaticAbilityKind for EnterWithCountersForFilter {
             )
         };
 
-        format!("{subject} {enters} {counter_clause}{subtype_clause}")
+        let text = format!("{subject} {enters} {counter_clause}{subtype_clause}");
+        let Some(condition) = &self.condition else {
+            return text;
+        };
+        let condition = super::describe_static_condition(condition);
+        if let Some(rest) = condition.strip_prefix("as long as ") {
+            let mut chars = text.chars();
+            let lowered = match chars.next() {
+                Some(first) => format!("{}{}", first.to_ascii_lowercase(), chars.as_str()),
+                None => String::new(),
+            };
+            return format!("As long as {rest}, {lowered}");
+        }
+        format!("{text} {condition}")
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
     }
 
     fn generate_replacement_effect(
@@ -2458,7 +2532,10 @@ impl StaticAbilityKind for EnterWithCountersForFilter {
         Some(ReplacementEffect::with_matcher(
             source,
             controller,
-            WouldEnterBattlefieldMatcher::new(self.filter.clone()),
+            ConditionalWouldEnterBattlefieldMatcher {
+                enter_matcher: WouldEnterBattlefieldMatcher::new(self.filter.clone()),
+                condition: self.condition.clone(),
+            },
             ReplacementAction::EnterWithCounters {
                 counter_type: self.counter_type,
                 count: self.count.clone(),
@@ -2466,6 +2543,49 @@ impl StaticAbilityKind for EnterWithCountersForFilter {
                 added_abilities: Vec::new(),
             },
         ))
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ConditionalWouldEnterBattlefieldMatcher {
+    enter_matcher: WouldEnterBattlefieldMatcher,
+    condition: Option<crate::ConditionExpr>,
+}
+
+impl ConditionalWouldEnterBattlefieldMatcher {
+    fn condition_matches(&self, ctx: &crate::events::context::EventContext<'_>) -> bool {
+        let Some(condition) = &self.condition else {
+            return true;
+        };
+        let Some(source) = ctx.source else {
+            return false;
+        };
+        let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
+            controller: ctx.controller,
+            source,
+            defending_player: None,
+            attacking_player: None,
+            filter_source: Some(source),
+            triggering_event: None,
+            trigger_identity: None,
+            ability_index: None,
+            options: Default::default(),
+        };
+        crate::condition_eval::evaluate_condition_external(ctx.game, condition, &eval_ctx)
+    }
+}
+
+impl ReplacementMatcher for ConditionalWouldEnterBattlefieldMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        self.enter_matcher.matches_event(event, ctx) && self.condition_matches(ctx)
+    }
+
+    fn priority(&self) -> ReplacementPriority {
+        self.enter_matcher.priority()
+    }
+
+    fn display(&self) -> String {
+        self.enter_matcher.display()
     }
 }
 

@@ -13,9 +13,9 @@ pub use crate::model::{
     AdditionalCostChoiceOptionAst, ClashOpponentAst, ControlDurationAst, DamageBySpec,
     ExchangeValueAst, ExchangeValueKindAst, ExtraTurnAnchorAst, LibraryBottomOrderAst,
     LibraryConsultModeAst, LibraryConsultStopRuleAst, ObjectRefAst, PlayerAst,
-    PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, RetargetModeAst,
-    ReturnControllerAst, SearchLibrarySlotAst, SharedTypeConstraintAst, TargetAst,
-    ZoneReplacementDurationAst,
+    PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst,
+    RedirectNextTimeDamageDestinationAst, RetargetModeAst, ReturnControllerAst,
+    SearchLibrarySlotAst, SharedTypeConstraintAst, TargetAst, ZoneReplacementDurationAst,
 };
 use crate::object::AuraAttachmentFilter;
 pub use crate::payload::{IfResultPredicate, KeywordAction};
@@ -548,6 +548,9 @@ impl CardDefinitionBuilder {
 
     pub fn decayed(self) -> Self {
         self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::keyword_marker("decayed"),
+        ))
+        .with_ability(crate::ability::Ability::static_ability(
             crate::static_abilities::StaticAbility::cant_block(),
         ))
         .with_ability(crate::runtime_backend::static_ability_helpers::decayed_triggered_ability())

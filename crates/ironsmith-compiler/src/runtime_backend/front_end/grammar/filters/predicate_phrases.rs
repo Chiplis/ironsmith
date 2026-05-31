@@ -236,6 +236,22 @@ const OPPONENT_WOULD_BEGIN_EXTRA_TURN_PATTERN: ClauseShape<'static> = clause_sha
 );
 const CREATURE_DIED_COUNT_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["or", "more", "creatures", "died", "this", "turn"]);
+const OPPONENT_LOST_LIFE_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["opponent", "lost", "life", "this", "turn"],
+            &[
+                "one",
+                "or",
+                "more",
+                "opponents",
+                "lost",
+                "life",
+                "this",
+                "turn",
+            ],
+        ]
+);
 const CREATURE_CARD_PUT_INTO_YOUR_GRAVEYARD_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -597,6 +613,41 @@ const YOU_DIDNT_PUT_TAGGED_INTO_HAND_PATTERN: ClauseShape<'static> = clause_shap
             &["you", "dont", "put", "it", "into", "your", "hand"],
             &["you", "didnt", "put", "it", "into", "your", "hand"],
             &["you", "did", "not", "put", "it", "into", "your", "hand"],
+        ]
+);
+const YOU_DIDNT_PUT_TAGGED_ONTO_BATTLEFIELD_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["you", "dont", "put", "the", "card", "onto", "battlefield"],
+            &["you", "didnt", "put", "the", "card", "onto", "battlefield"],
+            &[
+                "you",
+                "did",
+                "not",
+                "put",
+                "the",
+                "card",
+                "onto",
+                "battlefield"
+            ],
+            &["you", "dont", "put", "card", "onto", "battlefield"],
+            &["you", "didnt", "put", "card", "onto", "battlefield"],
+            &["you", "did", "not", "put", "card", "onto", "battlefield"],
+            &["you", "dont", "put", "that", "card", "onto", "battlefield"],
+            &["you", "didnt", "put", "that", "card", "onto", "battlefield",],
+            &[
+                "you",
+                "did",
+                "not",
+                "put",
+                "that",
+                "card",
+                "onto",
+                "battlefield",
+            ],
+            &["you", "dont", "put", "it", "onto", "battlefield"],
+            &["you", "didnt", "put", "it", "onto", "battlefield"],
+            &["you", "did", "not", "put", "it", "onto", "battlefield"],
         ]
 );
 const TAGGED_WASNT_BLOCKING_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -2213,7 +2264,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::ItMatches(filter));
     }
 
-    if filtered.len() >= 3 && OPPONENT_CONTROLS_PREFIX_PATTERN.matches_words(&filtered) {
+    if filtered.len() >= 3
+        && OPPONENT_CONTROLS_PREFIX_PATTERN.matches_words(&filtered)
+        && !(filtered[2] == "more" && word_slice_contains_word(&filtered[3..], "than"))
+    {
         let control_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&filtered[2..]);
         let other = control_tokens
             .first()
@@ -2227,7 +2281,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
-    if raw_words.len() >= 4 && AN_OPPONENT_CONTROLS_PREFIX_PATTERN.matches_words(&raw_words) {
+    if raw_words.len() >= 4
+        && AN_OPPONENT_CONTROLS_PREFIX_PATTERN.matches_words(&raw_words)
+        && !(raw_words[3] == "more" && word_slice_contains_word(&raw_words[4..], "than"))
+    {
         let control_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&raw_words[3..]);
         let other = control_tokens
             .first()
@@ -3156,6 +3213,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::CreatureDiedThisTurn);
     }
 
+    if OPPONENT_LOST_LIFE_THIS_TURN_PATTERN.matches_words(&filtered) {
+        return Ok(PredicateAst::OpponentLostLifeThisTurn);
+    }
+
     if let Some((count, used)) = predicate_number_prefix(&filtered)
         && CREATURE_DIED_COUNT_TAIL_PATTERN.matches_words(&filtered[used..])
     {
@@ -4056,6 +4117,16 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                 player: PlayerAst::You,
                 tag: TagKey::from(IT_TAG),
                 filter: ObjectFilter::default().in_zone(Zone::Hand),
+            },
+        )));
+    }
+
+    if YOU_DIDNT_PUT_TAGGED_ONTO_BATTLEFIELD_PATTERN.matches_words(&filtered) {
+        return Ok(PredicateAst::Not(Box::new(
+            PredicateAst::PlayerTaggedObjectMatches {
+                player: PlayerAst::You,
+                tag: TagKey::from(IT_TAG),
+                filter: ObjectFilter::default().in_zone(Zone::Battlefield),
             },
         )));
     }

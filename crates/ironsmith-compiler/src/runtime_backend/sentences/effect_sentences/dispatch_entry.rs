@@ -1034,6 +1034,17 @@ pub(super) fn parse_if_you_dont_sentence(
 fn parse_effect_sentences_from_sentence_inputs(
     sentences: Vec<SentenceInput>,
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    fn where_x_value_from_tokens(tokens: &[OwnedLexToken]) -> Option<Value> {
+        let word_view = TokenWordView::new(tokens);
+        let words = word_view.word_refs();
+        let where_idx = words
+            .windows(3)
+            .position(|window| window == ["where", "x", "is"])?;
+        let where_token_idx = token_index_for_word_index(tokens, where_idx)?;
+        parse_value_binding_clause(&tokens[where_token_idx..])
+            .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs))
+    }
+
     if let Some(effects) = try_parse_divvy_sentence_sequence(&sentences)? {
         return Ok(effects);
     }
@@ -1041,6 +1052,7 @@ fn parse_effect_sentences_from_sentence_inputs(
     let mut effects = Vec::new();
     let mut sentence_idx = 0usize;
     let mut carried_context: Option<CarryContext> = None;
+    let mut carried_where_x: Option<Value> = None;
 
     while sentence_idx < sentences.len() {
         let sentence = sentences[sentence_idx].lowered();
@@ -1162,6 +1174,7 @@ fn parse_effect_sentences_from_sentence_inputs(
             }
         };
         parser_trace("parse_effect_sentences:sentence", &parse_plan.tokens);
+        let sentence_where_x = where_x_value_from_tokens(&parse_plan.tokens);
 
         let mut sentence_effects = if let Some(direct_effects) = parse_plan.direct_effects.take() {
             parse_trace::event(format!(
@@ -1180,6 +1193,15 @@ fn parse_effect_sentences_from_sentence_inputs(
                 effects: sentence_effects,
             }];
             carried_context = None;
+        }
+        if sentence_where_x.is_none()
+            && let Some(where_value) = carried_where_x.as_ref()
+        {
+            replace_unbound_x_in_effects_anywhere(
+                &mut sentence_effects,
+                where_value,
+                &crate::runtime_backend::token_word_refs(&parse_plan.tokens).join(" "),
+            )?;
         }
         maybe_append_trailing_that_much_life_loss(&mut sentence_effects, &parse_plan.tokens);
         let previous_damage_target = effects.last().and_then(primary_damage_target_from_effect);
@@ -1264,6 +1286,9 @@ fn parse_effect_sentences_from_sentence_inputs(
         }
 
         parse_trace::event(format!("effects: {}", summarize_effects(&sentence_effects)));
+        if let Some(where_value) = sentence_where_x {
+            carried_where_x = Some(where_value);
+        }
         effects.extend(sentence_effects);
         sentence_idx += parse_plan.consumed_sentences;
     }
@@ -2013,6 +2038,7 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
             | SubjectVerbActionAst::Counter { target }
             | SubjectVerbActionAst::CounterUnlessPays { target, .. }
             | SubjectVerbActionAst::PutCounters { target, .. }
+            | SubjectVerbActionAst::PutCounterChoice { target, .. }
             | SubjectVerbActionAst::ReturnToHand { target, .. }
             | SubjectVerbActionAst::Detain { target }
             | SubjectVerbActionAst::Goad { target }
@@ -2026,6 +2052,7 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
             | SubjectVerbActionAst::Transform { target }
             | SubjectVerbActionAst::Convert { target }
             | SubjectVerbActionAst::Explore { target }
+            | SubjectVerbActionAst::Endure { target, .. }
             | SubjectVerbActionAst::Connive { target, .. }
             | SubjectVerbActionAst::MoveToLibraryNthFromTop { target, .. }
             | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target }
@@ -2227,6 +2254,23 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
         Ok(())
     }
 
+    fn replace_in_target(
+        target: &mut TargetAst,
+        replacement: &Value,
+        clause: &str,
+    ) -> Result<(), CardTextError> {
+        match target {
+            TargetAst::Object(filter, _, _) => replace_in_filter(filter, replacement, clause)?,
+            TargetAst::WithCount(inner, _) => replace_in_target(inner, replacement, clause)?,
+            TargetAst::WithCountValue(inner, _, value) => {
+                replace_in_target(inner, replacement, clause)?;
+                replace_value(value, replacement, clause)?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     fn replace_value(
         value: &mut Value,
         replacement: &Value,
@@ -2313,6 +2357,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::PreventDamageEach { amount, .. }
             | SubjectVerbActionAst::CopySpell { count: amount, .. }
             | SubjectVerbActionAst::PutCounters { count: amount, .. }
+            | SubjectVerbActionAst::PutCounterChoice { count: amount, .. }
             | SubjectVerbActionAst::PutCountersAll { count: amount, .. }
             | SubjectVerbActionAst::RemoveUpToAnyCounters { amount, .. }
             | SubjectVerbActionAst::RemoveCountersAll { amount, .. }
@@ -2363,6 +2408,9 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::SetBasePowerToughness {
                 power, toughness, ..
             }
+            | SubjectVerbActionAst::BecomeBasePtCreature {
+                power, toughness, ..
+            }
             | SubjectVerbActionAst::PumpAll {
                 power, toughness, ..
             } => {
@@ -2371,6 +2419,9 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             }
             SubjectVerbActionAst::SetBasePower { power, .. } => {
                 replace_value(power, replacement, clause)?;
+            }
+            SubjectVerbActionAst::ReduceMatchingSpellCostThisTurn { reduction, .. } => {
+                replace_value(reduction, replacement, clause)?;
             }
             SubjectVerbActionAst::PumpForEach { count, .. } => {
                 replace_value(count, replacement, clause)?;
@@ -2388,6 +2439,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Support { .. }
             | SubjectVerbActionAst::Adapt { .. }
             | SubjectVerbActionAst::Explore { .. }
+            | SubjectVerbActionAst::Endure { .. }
             | SubjectVerbActionAst::Exploit
             | SubjectVerbActionAst::ConniveIterated
             | SubjectVerbActionAst::OpenAttraction
@@ -2536,15 +2588,14 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::ReturnToBattlefield { .. }
             | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
             | SubjectVerbActionAst::ExileUntilSourceLeaves { .. }
-            | SubjectVerbActionAst::MoveToZone { .. }
             | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { .. }
             | SubjectVerbActionAst::TargetOnly { .. }
             | SubjectVerbActionAst::TagMatchingObjects { .. }
-            | SubjectVerbActionAst::BecomeBasePtCreature { .. }
             | SubjectVerbActionAst::PumpByLastEffect { .. }
             | SubjectVerbActionAst::AddCardTypes { .. }
             | SubjectVerbActionAst::RemoveCardTypes { .. }
             | SubjectVerbActionAst::AddSubtypes { .. }
+            | SubjectVerbActionAst::BecomeSaddledUntilEndOfTurn { .. }
             | SubjectVerbActionAst::AddColors { .. }
             | SubjectVerbActionAst::AddAllSubtypesOfFamily { .. }
             | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { .. }
@@ -2580,6 +2631,16 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
                 }
                 if let Some(position) = library_position_from_top.as_mut() {
                     replace_value(position, replacement, clause)?;
+                }
+            }
+            SubjectVerbActionAst::MoveToZone {
+                target,
+                attached_to,
+                ..
+            } => {
+                replace_in_target(target, replacement, clause)?;
+                if let Some(attached_to) = attached_to {
+                    replace_in_target(attached_to, replacement, clause)?;
                 }
             }
             SubjectVerbActionAst::CreateTokenCopy { count, .. }
@@ -2707,6 +2768,10 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
                 target: effect_target,
                 ..
             }
+            | SubjectVerbActionAst::PutCounterChoice {
+                target: effect_target,
+                ..
+            }
             | SubjectVerbActionAst::ReturnToHand {
                 target: effect_target,
                 ..
@@ -2746,6 +2811,10 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
             }
             | SubjectVerbActionAst::Explore {
                 target: effect_target,
+            }
+            | SubjectVerbActionAst::Endure {
+                target: effect_target,
+                ..
             }
             | SubjectVerbActionAst::GainControl {
                 target: effect_target,

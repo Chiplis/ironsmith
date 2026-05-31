@@ -102,6 +102,13 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::ThisAttacksWithGreaterPower => {
             crate::triggers::Trigger::this_attacks_with_greater_power()
         }
+        TriggerKind::ThisAttacksWithNOthers {
+            count,
+            display_subject,
+        } => crate::triggers::Trigger::this_attacks_with_n_others_display_subject(
+            count,
+            display_subject,
+        ),
         TriggerKind::ThisAttacksWithExactNOthers { count } => {
             crate::triggers::Trigger::this_attacks_with_exact_n_others(count)
         }
@@ -120,6 +127,9 @@ pub(crate) fn interpret_trigger_model(
         }
         TriggerKind::AttacksOneOrMore { filter } => {
             crate::triggers::Trigger::attacks_one_or_more(filter)
+        }
+        TriggerKind::PlayersAttackedOneOrMore { player_filter } => {
+            crate::triggers::Trigger::players_attacked_one_or_more(player_filter)
         }
         TriggerKind::AttacksOneOrMoreWithMinTotal {
             filter,

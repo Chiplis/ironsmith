@@ -946,6 +946,10 @@ pub(crate) fn check_triggers_with_view(
                 continue;
             }
 
+            if !class_level_trigger_is_active(obj, trigger_ability) {
+                continue;
+            }
+
             if trigger_ability.trigger.matches(trigger_event, &ctx) {
                 let trigger_count = trigger_ability
                     .trigger
@@ -1394,6 +1398,26 @@ pub(crate) fn check_triggers_with_view(
     append_additional_trigger_copies(game, view, &mut triggered);
 
     triggered
+}
+
+fn class_level_trigger_is_active(
+    source: &crate::object::Object,
+    triggered: &crate::ability::TriggeredAbility,
+) -> bool {
+    let Some(level) = triggered
+        .presentation_label
+        .as_deref()
+        .and_then(|label| label.strip_prefix("__ironsmith_class_level:"))
+        .and_then(|level| level.parse::<u32>().ok())
+    else {
+        return true;
+    };
+    source
+        .counters
+        .get(&crate::CounterType::Level)
+        .copied()
+        .unwrap_or(0)
+        >= level.saturating_sub(1)
 }
 
 fn collect_attached_source_lki_triggers(

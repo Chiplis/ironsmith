@@ -247,6 +247,16 @@ mod tests {
     }
 
     #[test]
+    fn parse_object_filter_lexed_handles_with_decayed_keyword_marker() {
+        let tokens = lex_line("creatures with decayed", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.ability_markers, vec!["decayed".to_string()]);
+        assert!(filter.static_abilities.is_empty(), "{filter:?}");
+    }
+
+    #[test]
     fn parse_object_filter_lexed_handles_without_keyword_clause() {
         let tokens = lex_line("creatures without flying", 0).unwrap();
 

@@ -19,7 +19,9 @@ use super::super::keyword_static::{
     parse_pt_modifier_values,
 };
 use super::super::lexer::{
-    LexedClause, OwnedLexToken, contains_token_word, token_slice_first_is, token_slice_first_is_any,
+    LexedClause, OwnedLexToken, contains_token_word, token_slice_first_is,
+    token_slice_first_is_any, word_slice_contains_phrase, word_slice_eq, word_slice_eq_any,
+    word_slice_first_is_any, word_slice_starts_with,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::permission_helpers::parse_cast_or_play_tagged_clause;
@@ -122,6 +124,24 @@ const DEMONSTRATIVE_SUBJECT_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["that"], &["those"]]);
 const TARGET_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["target"]);
 const YOU_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["you"]);
+const TAGGED_OBJECT_REFERENCE_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["it"],
+            &["they"],
+            &["them"],
+            &["that"],
+            &["that", "card"],
+            &["that", "creature"],
+            &["that", "permanent"],
+            &["that", "object"],
+            &["those"],
+            &["those", "cards"],
+            &["those", "creatures"],
+            &["those", "permanents"],
+            &["those", "objects"],
+        ]
+);
 const OF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["of"]);
 const HAVE_OR_HAS_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["have"], &["has"]]);
@@ -253,6 +273,47 @@ struct PlayerAmountClause<'a> {
 fn rest_starts_all_abilities_shared_gain(tokens: &[OwnedLexToken]) -> bool {
     let clause = LexedClause::new(tokens);
     ALL_ABILITIES_AND_GAIN_PREFIX_PATTERN.matches(clause)
+}
+
+fn is_tagged_object_reference(words: &[&str]) -> bool {
+    TAGGED_OBJECT_REFERENCE_PATTERN.matches_words(words)
+}
+
+fn parse_copular_base_pt_animation_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let clause = LexedClause::new(tokens).trimmed();
+    let words = clause.word_refs();
+    let Some(copula_idx) = words.iter().position(|word| matches!(*word, "is" | "are")) else {
+        return Ok(None);
+    };
+    if copula_idx == 0 || copula_idx + 1 >= words.len() {
+        return Ok(None);
+    }
+
+    let rest_words = &words[copula_idx + 1..];
+    if parse_pt_modifier(rest_words[0]).is_err()
+        || !rest_words
+            .iter()
+            .any(|word| matches!(*word, "creature" | "creatures"))
+        || !word_slice_contains_phrase(rest_words, &["in", "addition", "to"])
+    {
+        return Ok(None);
+    }
+
+    let Some(subject_clause) = clause.before_word(copula_idx) else {
+        return Ok(None);
+    };
+    let Some(rest_clause) = clause.from_word(copula_idx + 1) else {
+        return Ok(None);
+    };
+    let subject_tokens = subject_clause.trimmed_tokens();
+    let rest_tokens = rest_clause.trimmed_tokens();
+    if subject_tokens.is_empty() || rest_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    parse_become_clause(subject_tokens, rest_tokens).map(Some)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -644,6 +705,44 @@ fn parse_cast_any_number_from_among_tagged_clause(tokens: &[OwnedLexToken]) -> O
     })
 }
 
+fn parse_cast_single_spell_from_among_hand_cards_clause(
+    tokens: &[OwnedLexToken],
+) -> Option<EffectAst> {
+    let clause_word_view = ClauseDispatchCompatWords::new(tokens);
+    let clause_words = clause_word_view.to_word_refs();
+    let mut words = clause_words.as_slice();
+    if word_slice_starts_with(words, &["if", "you", "do"]) {
+        words = &words[3..];
+        if word_slice_first_is_any(words, &["then", "and"]) {
+            words = &words[1..];
+        }
+    }
+    let words = if word_slice_starts_with(words, &["you", "may"]) {
+        &words[2..]
+    } else {
+        words
+    };
+
+    if !word_slice_eq(
+        words,
+        &[
+            "cast", "a", "spell", "from", "among", "those", "cards", "without", "paying", "its",
+            "mana", "cost",
+        ],
+    ) {
+        return None;
+    }
+
+    Some(
+        EffectAst::may_cast_matching_spell_without_paying_mana_cost_from_zone_owner(
+            PlayerAst::You,
+            PlayerAst::That,
+            ObjectFilter::nonland().in_zone(Zone::Hand),
+            Zone::Hand,
+        ),
+    )
+}
+
 pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if tokens.is_empty() {
         return Err(CardTextError::ParseError("empty effect clause".to_string()));
@@ -662,6 +761,10 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         }
 
         if let Some(effect) = parse_cast_any_number_from_among_tagged_clause(tokens) {
+            return Ok(effect);
+        }
+
+        if let Some(effect) = parse_cast_single_spell_from_among_hand_cards_clause(tokens) {
             return Ok(effect);
         }
     }
@@ -880,6 +983,10 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(effect);
     }
 
+    if let Some(effect) = parse_copular_base_pt_animation_clause(tokens)? {
+        return Ok(effect);
+    }
+
     let choice_words = if YOU_WORD_PATTERN.matches_word_at(&clause_words, 0) {
         &clause_words[1..]
     } else {
@@ -1034,6 +1141,22 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(
             EffectAst::subject_verb_prevent_all_combat_damage_from_source(source, Until::EndOfTurn),
         );
+    }
+
+    if token_slice_first_is(tokens, "target")
+        && find_negation_span(tokens).is_some()
+        && let (duration, clause_tokens) =
+            parse_restriction_duration(tokens)?.unwrap_or((Until::Forever, tokens.to_vec()))
+        && let Some(restrictions) = parse_cant_restrictions(&clause_tokens)?
+        && let [parsed] = restrictions.as_slice()
+        && let Some(target) = parsed.target.clone()
+    {
+        return Ok(EffectAst::Sequence {
+            effects: vec![
+                EffectAst::subject_verb_target_only(target),
+                EffectAst::subject_verb_cant(parsed.restriction.clone(), duration, None),
+            ],
+        });
     }
 
     if token_slice_first_is(tokens, "target") && find_verb(tokens).is_none() {

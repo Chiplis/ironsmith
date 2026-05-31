@@ -15,6 +15,9 @@ pub const EXPLOITED_TAG: &str = "exploited";
 /// Runtime tag for the object whose exploit action sacrificed another object.
 pub const EXPLOITER_TAG: &str = "exploiter";
 
+/// Runtime tag for cards seen by a surveil action this turn.
+pub const SURVEILLED_THIS_TURN_TAG: &str = "__surveilled_this_turn__";
+
 /// Dynamic tag key used by the tagging system.
 ///
 /// Using an owned key instead of `&'static str` enables tags built at runtime

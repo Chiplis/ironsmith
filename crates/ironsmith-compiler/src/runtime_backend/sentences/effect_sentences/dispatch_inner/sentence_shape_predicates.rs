@@ -847,6 +847,7 @@ fn parse_effect_sentence_with_where_x_lexed(
         };
         match action {
             SubjectVerbActionAst::Explore { target }
+            | SubjectVerbActionAst::Endure { target, .. }
             | SubjectVerbActionAst::Connive { target, .. }
             | SubjectVerbActionAst::ExchangeTextBoxes { target }
             | SubjectVerbActionAst::Attach { target, .. }
@@ -930,8 +931,21 @@ fn parse_effect_sentence_with_where_x_lexed(
     };
     let where_tokens = &tokens[where_token_idx..];
     let where_segments = split_lexed_slices_on_commas_or_semicolons(where_tokens);
-    let primary_where_tokens = where_segments.first().copied().unwrap_or(where_tokens);
-    let trailing_after_where = if where_segments.len() > 1 {
+    let comma_tail_has_effect_clause = where_segments.iter().skip(1).any(|segment| {
+        let words = crate::runtime_backend::token_word_refs(segment);
+        words.iter().any(|word| *word == "then") || super::find_verb(segment).is_some()
+    });
+    let full_where_is_count_value = !comma_tail_has_effect_clause
+        && crate::runtime_backend::families::keyword_static::parse_where_x_is_number_of_filter_value(
+            where_tokens,
+        )
+        .is_some();
+    let primary_where_tokens = if full_where_is_count_value {
+        where_tokens
+    } else {
+        where_segments.first().copied().unwrap_or(where_tokens)
+    };
+    let trailing_after_where = if !full_where_is_count_value && where_segments.len() > 1 {
         let mut tail = Vec::new();
         for (idx, segment) in where_segments.iter().enumerate().skip(1) {
             if idx > 1 {

@@ -430,6 +430,16 @@ impl Trigger {
         Self::new(ThisAttacksWithNOthersTrigger::new(other_count))
     }
 
+    pub fn this_attacks_with_n_others_display_subject(
+        other_count: usize,
+        display_subject: Option<String>,
+    ) -> Self {
+        Self::new(ThisAttacksWithNOthersTrigger::with_display_subject(
+            other_count,
+            display_subject,
+        ))
+    }
+
     /// Create a "when this creature and exactly N other creatures attack" trigger.
     pub fn this_attacks_with_exact_n_others(other_count: usize) -> Self {
         Self::new(ThisAttacksWithNOthersTrigger::exact(other_count))
@@ -453,6 +463,11 @@ impl Trigger {
     /// Create a "when one or more [filter] attack" trigger.
     pub fn attacks_one_or_more(filter: ObjectFilter) -> Self {
         Self::new(AttacksTrigger::one_or_more(filter))
+    }
+
+    /// Create a "when one or more [players] are attacked" trigger.
+    pub fn players_attacked_one_or_more(player_filter: PlayerFilter) -> Self {
+        Self::new(PlayersAttackedTrigger::one_or_more(player_filter))
     }
 
     /// Create a "when N or more [filter] attack" trigger that fires once per declaration.

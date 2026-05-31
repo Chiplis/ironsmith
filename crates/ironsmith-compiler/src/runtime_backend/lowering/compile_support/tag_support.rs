@@ -60,6 +60,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::Counter { target }
             | SubjectVerbActionAst::CounterUnlessPays { target, .. }
             | SubjectVerbActionAst::PutCounters { target, .. }
+            | SubjectVerbActionAst::PutCounterChoice { target, .. }
             | SubjectVerbActionAst::PutOrRemoveCounters { target, .. }
             | SubjectVerbActionAst::CopySpell { target, .. }
             | SubjectVerbActionAst::CopySpellForEachTarget { target, .. }
@@ -78,6 +79,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::Transform { target }
             | SubjectVerbActionAst::Convert { target }
             | SubjectVerbActionAst::Explore { target }
+            | SubjectVerbActionAst::Endure { target, .. }
             | SubjectVerbActionAst::Connive { target, .. }
             | SubjectVerbActionAst::ExchangeControlHeterogeneous {
                 permanent1: target, ..
@@ -151,6 +153,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::AddCardTypes { target, .. }
             | SubjectVerbActionAst::RemoveCardTypes { target, .. }
             | SubjectVerbActionAst::AddSubtypes { target, .. }
+            | SubjectVerbActionAst::BecomeSaddledUntilEndOfTurn { target }
             | SubjectVerbActionAst::AddColors { target, .. }
             | SubjectVerbActionAst::AddAllSubtypesOfFamily { target, .. }
             | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { target, .. }
@@ -528,6 +531,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::PreventDamageEach { amount, .. }
         | SubjectVerbActionAst::CopySpell { count: amount, .. }
         | SubjectVerbActionAst::PutCounters { count: amount, .. }
+        | SubjectVerbActionAst::PutCounterChoice { count: amount, .. }
         | SubjectVerbActionAst::PutCountersAll { count: amount, .. }
         | SubjectVerbActionAst::RemoveUpToAnyCounters { amount, .. }
         | SubjectVerbActionAst::RemoveCountersAll { amount, .. }
@@ -564,6 +568,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Support { .. }
         | SubjectVerbActionAst::Adapt { .. }
         | SubjectVerbActionAst::Explore { .. }
+        | SubjectVerbActionAst::Endure { .. }
         | SubjectVerbActionAst::Exploit
         | SubjectVerbActionAst::ConniveIterated
         | SubjectVerbActionAst::OpenAttraction
@@ -612,6 +617,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::PlayFromGraveyardUntilEot
         | SubjectVerbActionAst::ControlPlayer { .. }
         | SubjectVerbActionAst::ReduceNextSpellCostThisTurn { .. }
+        | SubjectVerbActionAst::ReduceMatchingSpellCostThisTurn { .. }
         | SubjectVerbActionAst::GrantNextSpellAbilityThisTurn { .. }
         | SubjectVerbActionAst::RingTemptsYou
         | SubjectVerbActionAst::VentureIntoDungeon { .. }
@@ -703,6 +709,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::AddCardTypes { .. }
         | SubjectVerbActionAst::RemoveCardTypes { .. }
         | SubjectVerbActionAst::AddSubtypes { .. }
+        | SubjectVerbActionAst::BecomeSaddledUntilEndOfTurn { .. }
         | SubjectVerbActionAst::AddColors { .. }
         | SubjectVerbActionAst::AddAllSubtypesOfFamily { .. }
         | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { .. }
@@ -872,9 +879,14 @@ pub(crate) fn effect_references_its_controller(effect: &EffectAst) -> bool {
             )
         }
         EffectAst::ChooseObjects { player, .. }
-        | EffectAst::ChooseObjectsAcrossZones { player, .. }
-        | EffectAst::MayCastMatchingSpellWithoutPayingManaCost { player, .. } => {
+        | EffectAst::ChooseObjectsAcrossZones { player, .. } => {
             matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
+        }
+        EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+            player, zone_owner, ..
+        } => {
+            matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
+                || matches!(zone_owner, PlayerAst::ItsController | PlayerAst::ItsOwner)
         }
         EffectAst::MayByPlayer { player, effects } => {
             matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
@@ -984,7 +996,8 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
             } => value_references_tag(count, IT_TAG) || filter_references_tag(filter, IT_TAG),
             SubjectVerbActionAst::RearrangeLookedCardsInLibrary { tag, .. }
             | SubjectVerbActionAst::ReorderTopOfLibrary { tag } => tag.as_str() == IT_TAG,
-            SubjectVerbActionAst::ReduceNextSpellCostThisTurn { filter, .. } => {
+            SubjectVerbActionAst::ReduceNextSpellCostThisTurn { filter, .. }
+            | SubjectVerbActionAst::ReduceMatchingSpellCostThisTurn { filter, .. } => {
                 filter_references_tag(filter, IT_TAG)
             }
             SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { .. }
@@ -1002,6 +1015,9 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
                 remove_count,
                 ..
             } => value_references_tag(put_count, IT_TAG) || value_references_tag(remove_count, IT_TAG),
+            SubjectVerbActionAst::PutCounterChoice { count, .. } => {
+                value_references_tag(count, IT_TAG)
+            }
             SubjectVerbActionAst::CopySpellForEachTarget { object_filter, .. } => object_filter
                 .as_ref()
                 .is_some_and(|filter| filter_references_tag(filter, IT_TAG)),

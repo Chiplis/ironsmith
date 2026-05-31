@@ -384,6 +384,43 @@ fn is_controller_change_cost(effect: &ApplyContinuousEffect) -> bool {
         && runtime_are_controller_changes
 }
 
+fn materialize_runtime_condition(
+    condition: &crate::ConditionExpr,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Result<crate::ConditionExpr, ExecutionError> {
+    match condition {
+        crate::ConditionExpr::TaggedObjectIsTopOfLibrary { tag, player } => {
+            let player_id = resolve_player_filter(game, player, ctx)?;
+            let Some(snapshot) = ctx
+                .get_tagged_all(tag.as_str())
+                .and_then(|items| items.first())
+            else {
+                return Ok(crate::ConditionExpr::Custom(
+                    "unresolved tagged top-library condition",
+                ));
+            };
+            Ok(crate::ConditionExpr::StableObjectIsTopOfLibrary {
+                stable_id: snapshot.stable_id,
+                player: player_id,
+                library_top_revision: game.library_top_revision(player_id),
+            })
+        }
+        crate::ConditionExpr::Not(inner) => Ok(crate::ConditionExpr::Not(Box::new(
+            materialize_runtime_condition(inner, game, ctx)?,
+        ))),
+        crate::ConditionExpr::And(left, right) => Ok(crate::ConditionExpr::And(
+            Box::new(materialize_runtime_condition(left, game, ctx)?),
+            Box::new(materialize_runtime_condition(right, game, ctx)?),
+        )),
+        crate::ConditionExpr::Or(left, right) => Ok(crate::ConditionExpr::Or(
+            Box::new(materialize_runtime_condition(left, game, ctx)?),
+            Box::new(materialize_runtime_condition(right, game, ctx)?),
+        )),
+        _ => Ok(condition.clone()),
+    }
+}
+
 impl EffectExecutor for ApplyContinuousEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         is_controller_change_cost(self).then_some(self)
@@ -488,7 +525,8 @@ impl EffectExecutor for ApplyContinuousEffect {
                 effect = effect.with_source_type(source_type.clone());
             }
             if let Some(condition) = &self.condition {
-                effect = effect.with_condition(condition.clone());
+                effect =
+                    effect.with_condition(materialize_runtime_condition(condition, game, ctx)?);
             }
             if let Some(group) = effect_group {
                 effect = effect.with_group(group);

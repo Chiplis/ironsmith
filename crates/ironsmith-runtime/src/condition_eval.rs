@@ -996,6 +996,8 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::ColorsOfManaSpentToCastThisSpellOrMore(..) => {}
         Condition::YouControlCommander => {}
         Condition::TaggedObjectMatches(..) => {}
+        Condition::TaggedObjectIsTopOfLibrary { .. } => {}
+        Condition::StableObjectIsTopOfLibrary { .. } => {}
         Condition::TaggedObjectWasCast(..) => {}
         Condition::TaggedObjectIsSoulbondPaired(..) => {}
         Condition::EnchantedPermanentAttackedThisTurn => {}
@@ -1800,9 +1802,20 @@ pub fn evaluate_condition_external(
             .as_ref()
             .is_some_and(|combat| crate::combat_state::is_blocking(combat, ctx.source)),
         Condition::SourceIsSoulbondPaired => game.is_soulbond_paired(ctx.source),
+        Condition::StableObjectIsTopOfLibrary {
+            stable_id,
+            player,
+            library_top_revision,
+        } => crate::grant_registry::stable_card_is_top_of_library_at_revision(
+            game,
+            *stable_id,
+            *player,
+            *library_top_revision,
+        ),
 
         // Conditions requiring targets / effect execution context are not evaluable here.
         Condition::TaggedObjectMatches(_, _)
+        | Condition::TaggedObjectIsTopOfLibrary { .. }
         | Condition::TaggedObjectWasCast(_)
         | Condition::TaggedObjectIsSoulbondPaired(_)
         | Condition::EnchantedPermanentAttackedThisTurn
@@ -2502,7 +2515,19 @@ fn evaluate_condition_simple(
         | Condition::VoteOptionGetsMoreVotes(_)
         | Condition::VoteOptionGetsMoreVotesOrTied(_)
         | Condition::XValueAtLeast(_) => false,
-        Condition::TaggedObjectMatches(_, _) | Condition::TaggedObjectWasCast(_) => false,
+        Condition::TaggedObjectMatches(_, _)
+        | Condition::TaggedObjectIsTopOfLibrary { .. }
+        | Condition::TaggedObjectWasCast(_) => false,
+        Condition::StableObjectIsTopOfLibrary {
+            stable_id,
+            player,
+            library_top_revision,
+        } => crate::grant_registry::stable_card_is_top_of_library_at_revision(
+            game,
+            *stable_id,
+            *player,
+            *library_top_revision,
+        ),
         Condition::TaggedObjectIsSoulbondPaired(_) => false,
         Condition::EnchantedPermanentAttackedThisTurn => false,
         Condition::TargetMatches(_) => false,
@@ -3363,6 +3388,31 @@ fn evaluate_condition(
             }
             Ok(false)
         }
+        Condition::TaggedObjectIsTopOfLibrary { tag, player } => {
+            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            let Some(tagged) = ctx.get_tagged_all(tag.as_str()) else {
+                return Ok(false);
+            };
+            Ok(tagged.iter().any(|snapshot| {
+                crate::grant_registry::stable_card_is_top_of_library(
+                    game,
+                    snapshot.stable_id,
+                    player_id,
+                )
+            }))
+        }
+        Condition::StableObjectIsTopOfLibrary {
+            stable_id,
+            player,
+            library_top_revision,
+        } => Ok(
+            crate::grant_registry::stable_card_is_top_of_library_at_revision(
+                game,
+                *stable_id,
+                *player,
+                *library_top_revision,
+            ),
+        ),
         Condition::TaggedObjectWasCast(tag) => Ok(tagged_object_was_cast(game, tag, ctx)),
         Condition::TaggedObjectIsSoulbondPaired(tag) => {
             let tagged_id = ctx

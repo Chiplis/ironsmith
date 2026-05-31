@@ -443,6 +443,7 @@ pub(crate) fn alternative_cast_method_matches_kind(
         (AlternativeCastKind::Escape, AlternativeCastingMethod::Escape { .. }) => true,
         (AlternativeCastKind::Madness, AlternativeCastingMethod::Madness { .. }) => true,
         (AlternativeCastKind::Miracle, AlternativeCastingMethod::Miracle { .. }) => true,
+        (AlternativeCastKind::Suspend, AlternativeCastingMethod::Suspend { .. }) => true,
         _ => false,
     }
 }
@@ -2242,7 +2243,7 @@ fn tagged_dependency_satisfied_by_prior_cost(
         })
 }
 
-fn can_pay_non_mana_cost_sequence_for_cast(
+pub(crate) fn can_pay_non_mana_cost_sequence_for_cast(
     game: &GameState,
     player: PlayerId,
     source: ObjectId,
@@ -2977,6 +2978,12 @@ pub(crate) fn apply_spell_cost_modifiers(
             continue;
         }
         if spell_matches_filter(game, spell, player, &effect.filter, &ctx, casting_method) {
+            if let Some(generic_reduction) = &effect.generic_reduction {
+                let amount = resolve_cost_modifier_value(game, player, spell, generic_reduction);
+                if amount > 0 {
+                    total_reduction = total_reduction.saturating_add(amount);
+                }
+            }
             reduction_pips.extend(effect.reduction.pips().iter().cloned());
         }
     }

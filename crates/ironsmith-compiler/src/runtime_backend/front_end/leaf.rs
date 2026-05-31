@@ -29,7 +29,9 @@ use super::token_primitives::{
     find_index as find_token_index, str_ends_with, str_starts_with, str_strip_prefix,
     str_strip_suffix,
 };
-use super::util::{parse_card_type, parse_counter_type_from_tokens, parse_number};
+use super::util::{
+    is_source_reference_words, parse_card_type, parse_counter_type_from_tokens, parse_number,
+};
 
 const NAMED_ARTIFACTS_YOU_CONTROL_MARKERS: &[&[&str]] = &[
     &["and", "artifacts", "you", "control", "named"],
@@ -739,6 +741,9 @@ fn parse_sacrifice_segment_tokens(
     let tail = lowered.get(1..).unwrap_or_default();
 
     if LEAF_SOURCE_SELF_PATTERN.matches_words(tail) {
+        return Ok(ActivationCostSegmentCst::SacrificeSelf);
+    }
+    if is_source_reference_words(tail) {
         return Ok(ActivationCostSegmentCst::SacrificeSelf);
     }
     if LEAF_A_CREATURE_PATTERN.matches_words(tail) {

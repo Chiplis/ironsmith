@@ -104,6 +104,7 @@ fn describe_alternative_cast_kind(kind: AlternativeCastKind) -> &'static str {
         AlternativeCastKind::Escape => "escape",
         AlternativeCastKind::Madness => "madness",
         AlternativeCastKind::Miracle => "miracle",
+        AlternativeCastKind::Suspend => "suspend",
     }
 }
 
@@ -299,6 +300,22 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
                 }
                 _ => format!(
                     "the total amount of noncombat damage dealt to {} this turn",
+                    describe_player_filter_for_spell_target(player)
+                ),
+            };
+            ("{X}".to_string(), Some(format!("where X is {phrase}")))
+        }
+        Value::DamageDealtToPlayersThisTurn(player) => {
+            let phrase = match player {
+                PlayerFilter::You => "the damage already dealt to you this turn".to_string(),
+                PlayerFilter::Opponent => {
+                    "the damage already dealt to your opponents this turn".to_string()
+                }
+                PlayerFilter::Target(_) => {
+                    "the damage already dealt to that player this turn".to_string()
+                }
+                _ => format!(
+                    "the damage already dealt to {} this turn",
                     describe_player_filter_for_spell_target(player)
                 ),
             };
@@ -598,6 +615,7 @@ fn describe_alternative_cost_subject(filter: &ObjectFilter) -> Option<String> {
             | AlternativeCastKind::Escape
             | AlternativeCastKind::Madness
             | AlternativeCastKind::Miracle
+            | AlternativeCastKind::Suspend
     ) || !filter.card_types.is_empty()
         || !filter.excluded_card_types.is_empty()
         || !filter.subtypes.is_empty()
@@ -619,6 +637,7 @@ fn describe_alternative_cost_subject(filter: &ObjectFilter) -> Option<String> {
         AlternativeCastKind::Escape => "Escape",
         AlternativeCastKind::Madness => "Madness",
         AlternativeCastKind::Miracle => "Miracle",
+        AlternativeCastKind::Suspend => "Suspend",
     };
 
     match filter.cast_by.as_ref() {

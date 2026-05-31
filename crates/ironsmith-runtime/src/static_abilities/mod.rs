@@ -403,6 +403,16 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Player currently goading this creature through a static ability.
+    fn goaded_by_player(
+        &self,
+        _game: &GameState,
+        _source: ObjectId,
+        _controller: PlayerId,
+    ) -> Option<PlayerId> {
+        None
+    }
+
     /// Attacking-group legality hook for "can't attack unless ... also attacks" style clauses.
     ///
     /// Return:
@@ -965,10 +975,36 @@ pub struct ChooseNamedOptionAsEntersSpec {
     pub options: Vec<String>,
 }
 
-/// Spec for "as this enters or is turned face up, choose a P/T" abilities.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// One option for "as this enters or is turned face up, choose characteristics" abilities.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PowerToughnessChoiceOption {
+    pub power: i32,
+    pub toughness: i32,
+    pub abilities: Vec<StaticAbility>,
+}
+
+impl PowerToughnessChoiceOption {
+    pub fn new(power: i32, toughness: i32) -> Self {
+        Self {
+            power,
+            toughness,
+            abilities: Vec::new(),
+        }
+    }
+
+    pub fn with_abilities(power: i32, toughness: i32, abilities: Vec<StaticAbility>) -> Self {
+        Self {
+            power,
+            toughness,
+            abilities,
+        }
+    }
+}
+
+/// Spec for "as this enters or is turned face up, choose characteristics" abilities.
+#[derive(Debug, Clone, PartialEq)]
 pub struct ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec {
-    pub options: Vec<(i32, i32)>,
+    pub options: Vec<PowerToughnessChoiceOption>,
 }
 
 /// Spec for "you may have this enter as a copy ..." abilities.
@@ -1214,6 +1250,15 @@ impl StaticAbility {
         controller: PlayerId,
     ) -> Option<PlayerId> {
         self.0.required_attack_player(game, source, controller)
+    }
+
+    pub fn goaded_by_player(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<PlayerId> {
+        self.0.goaded_by_player(game, source, controller)
     }
 
     pub fn can_attack_with_attacking_group(
@@ -1749,8 +1794,16 @@ impl StaticAbility {
         Self::new(MustAttack)
     }
 
+    pub fn goaded_by_source_controller(source: ObjectId) -> Self {
+        Self::new(GoadedBySourceController::new(source))
+    }
+
     pub fn must_attack_attached_controller(attachment_source: ObjectId) -> Self {
         Self::new(MustAttackAttachedController::new(attachment_source))
+    }
+
+    pub fn attached_goaded_by_source_controller(display: impl Into<String>) -> Self {
+        Self::new(AttachedGoadedBySourceController::new(display))
     }
 
     pub fn all_creatures_attack_attached_controller_each_combat_if_able() -> Self {
@@ -2339,6 +2392,18 @@ impl StaticAbility {
         Self::new(PreventAllDamageToSelfByCreatures)
     }
 
+    pub fn prevent_damage_to_you_from_source_filter(
+        amount: u32,
+        source_filter: crate::target::ObjectFilter,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(PreventDamageToYouFromSourceFilter::new(
+            amount,
+            source_filter,
+            display,
+        ))
+    }
+
     pub fn prevent_damage_to_self_remove_counter(
         counter_type: crate::object::CounterType,
         amount: u32,
@@ -2604,6 +2669,15 @@ impl StaticAbility {
         display: String,
     ) -> Self {
         Self::new(ChoosePowerToughnessAsEntersOrTurnsFaceUp::new(
+            options, display,
+        ))
+    }
+
+    pub fn choose_power_toughness_options_as_enters_or_turns_face_up(
+        options: Vec<PowerToughnessChoiceOption>,
+        display: String,
+    ) -> Self {
+        Self::new(ChoosePowerToughnessAsEntersOrTurnsFaceUp::new_with_options(
             options, display,
         ))
     }

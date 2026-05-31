@@ -3,7 +3,7 @@
 //! These types describe effect identity and selection cardinality without
 //! pulling in the runtime execution engine.
 
-use crate::filter_model::{ObjectFilter, ObjectRef, PlayerFilter};
+use crate::filter_model::{AlternativeCastKind, ObjectFilter, ObjectRef, PlayerFilter};
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::tag::TagKey;
 use crate::target_model::ChooseSpec;
@@ -117,6 +117,12 @@ pub enum PreventNextTimeDamageTarget {
 pub enum RedirectNextTimeDamageSource {
     Choice,
     Filter(crate::filter_model::ObjectFilter),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RedirectNextTimeDamageDestination {
+    SourceObject,
+    Controller,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1194,6 +1200,15 @@ impl CrewCostEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct BecomeSaddledUntilEotEffect;
+
+impl BecomeSaddledUntilEotEffect {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct MillEffect {
     pub count: Value,
     pub player: PlayerFilter,
@@ -1353,6 +1368,7 @@ pub struct MoveToZoneEffect {
     pub to_top: bool,
     pub battlefield_controller: BattlefieldController,
     pub enters_tapped: bool,
+    pub enters_attacking: bool,
     pub transfer_exiled_with_source_links: bool,
 }
 
@@ -1364,6 +1380,7 @@ impl MoveToZoneEffect {
             to_top,
             battlefield_controller: BattlefieldController::Preserve,
             enters_tapped: false,
+            enters_attacking: false,
             transfer_exiled_with_source_links: false,
         }
     }
@@ -1401,6 +1418,11 @@ impl MoveToZoneEffect {
 
     pub fn tapped(mut self) -> Self {
         self.enters_tapped = true;
+        self
+    }
+
+    pub fn attacking(mut self) -> Self {
+        self.enters_attacking = true;
         self
     }
 }
@@ -1814,6 +1836,8 @@ pub struct GrantNextSpellCostReductionEffect {
     pub player: PlayerFilter,
     pub filter: ObjectFilter,
     pub reduction: crate::mana::ManaCost,
+    pub generic_reduction: Option<Value>,
+    pub applies_to_all_matching_this_turn: bool,
 }
 
 impl GrantNextSpellCostReductionEffect {
@@ -1826,6 +1850,22 @@ impl GrantNextSpellCostReductionEffect {
             player,
             filter,
             reduction,
+            generic_reduction: None,
+            applies_to_all_matching_this_turn: false,
+        }
+    }
+
+    pub fn all_matching_this_turn(
+        player: PlayerFilter,
+        filter: ObjectFilter,
+        generic_reduction: impl Into<Value>,
+    ) -> Self {
+        Self {
+            player,
+            filter,
+            reduction: crate::mana::ManaCost::new(),
+            generic_reduction: Some(generic_reduction.into()),
+            applies_to_all_matching_this_turn: true,
         }
     }
 }
@@ -2963,6 +3003,8 @@ impl<E> VoteEffect<E> {
 pub struct GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
     pub tag: crate::tag::TagKey,
     pub player: PlayerFilter,
+    pub while_on_top_of_library: bool,
+    pub zone: Option<crate::zone::Zone>,
 }
 
 impl GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
@@ -2970,7 +3012,19 @@ impl GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
         Self {
             tag: tag.into(),
             player,
+            while_on_top_of_library: false,
+            zone: Some(crate::zone::Zone::Exile),
         }
+    }
+
+    pub fn while_on_top_of_library(mut self) -> Self {
+        self.while_on_top_of_library = true;
+        self
+    }
+
+    pub fn from_current_zone(mut self) -> Self {
+        self.zone = None;
+        self
     }
 }
 
@@ -2990,19 +3044,39 @@ impl GrantTaggedSpellLifeCostByManaValueEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum MayCastMatchingSpellPayment {
+    WithoutPayingManaCost,
+    AlternativeCost(AlternativeCastKind),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct MayCastMatchingSpellWithoutPayingManaCostEffect {
     pub player: PlayerFilter,
+    pub zone_owner: PlayerFilter,
     pub filter: ObjectFilter,
     pub zone: crate::Zone,
+    pub payment: MayCastMatchingSpellPayment,
 }
 
 impl MayCastMatchingSpellWithoutPayingManaCostEffect {
     pub fn new(player: PlayerFilter, filter: ObjectFilter, zone: crate::Zone) -> Self {
         Self {
+            zone_owner: player.clone(),
             player,
             filter,
             zone,
+            payment: MayCastMatchingSpellPayment::WithoutPayingManaCost,
         }
+    }
+
+    pub fn with_zone_owner(mut self, owner: PlayerFilter) -> Self {
+        self.zone_owner = owner;
+        self
+    }
+
+    pub fn with_alternative_cost(mut self, kind: AlternativeCastKind) -> Self {
+        self.payment = MayCastMatchingSpellPayment::AlternativeCost(kind);
+        self
     }
 }
 
@@ -3423,6 +3497,7 @@ impl RedirectNextDamageToTargetEffect {
 pub struct RedirectNextTimeDamageToSourceEffect {
     pub source: RedirectNextTimeDamageSource,
     pub target: Option<ChooseSpec>,
+    pub destination: RedirectNextTimeDamageDestination,
     pub all_this_turn: bool,
 }
 
@@ -3431,8 +3506,14 @@ impl RedirectNextTimeDamageToSourceEffect {
         Self {
             source,
             target: Some(target),
+            destination: RedirectNextTimeDamageDestination::SourceObject,
             all_this_turn: false,
         }
+    }
+
+    pub fn to_controller(mut self) -> Self {
+        self.destination = RedirectNextTimeDamageDestination::Controller;
+        self
     }
 
     pub fn all_this_turn(mut self) -> Self {
@@ -3469,6 +3550,7 @@ pub struct GrantPlayTaggedEffect {
     pub duration: GrantPlayTaggedDuration,
     pub allow_land: bool,
     pub allow_any_color_for_cast: bool,
+    pub while_on_top_of_library: bool,
 }
 
 impl GrantPlayTaggedEffect {
@@ -3485,7 +3567,13 @@ impl GrantPlayTaggedEffect {
             duration,
             allow_land,
             allow_any_color_for_cast,
+            while_on_top_of_library: false,
         }
+    }
+
+    pub fn while_on_top_of_library(mut self) -> Self {
+        self.while_on_top_of_library = true;
+        self
     }
 }
 

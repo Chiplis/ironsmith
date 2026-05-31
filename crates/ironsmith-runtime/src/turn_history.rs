@@ -280,6 +280,13 @@ impl TurnHistory {
             .sum()
     }
 
+    pub fn total_damage_to_players(&self, players: &[PlayerId]) -> u32 {
+        players
+            .iter()
+            .map(|player| self.total_damage_to_player(*player))
+            .sum()
+    }
+
     pub fn total_creature_damage_to_player(&self, player: PlayerId) -> u32 {
         self.projected_records()
             .filter_map(|record| {
@@ -459,6 +466,22 @@ impl TurnHistory {
                             .is_some_and(|snapshot| snapshot.stable_id == stable_id)
                 })
         })
+    }
+
+    pub fn object_was_surveilled_this_turn(&self, stable_id: StableId) -> bool {
+        self.projected_records()
+            .filter_map(|record| record.event.downcast::<KeywordActionEvent>())
+            .filter(|event| event.action == KeywordActionKind::Surveil)
+            .any(|event| {
+                event
+                    .object_tags
+                    .get(crate::tag::SURVEILLED_THIS_TURN_TAG)
+                    .is_some_and(|snapshots| {
+                        snapshots
+                            .iter()
+                            .any(|snapshot| snapshot.stable_id == stable_id)
+                    })
+            })
     }
 
     pub fn player_was_dealt_damage_by_creature_this_turn(&self, player: PlayerId) -> bool {

@@ -329,6 +329,9 @@ fn source_reference_aliases_for_name(name: &str) -> Vec<SourceReferenceAlias> {
         if let Some(stripped) = strip_leading_digital_variant_marker(full_name.as_str()) {
             push_unique_source_name_alias(&mut full_names, stripped);
         }
+        if let Some(stripped) = strip_trailing_roman_numeral(full_name.as_str()) {
+            push_unique_source_name_alias(&mut full_names, stripped);
+        }
     }
 
     for full_name in &full_names {
@@ -399,6 +402,24 @@ fn strip_leading_digital_variant_marker(name: &str) -> Option<&str> {
         }
     }
     None
+}
+
+fn strip_trailing_roman_numeral(name: &str) -> Option<&str> {
+    let trimmed = name.trim();
+    let (prefix, suffix) = trimmed.rsplit_once(char::is_whitespace)?;
+    let suffix = suffix.trim_matches(|ch: char| !ch.is_ascii_alphabetic());
+    if suffix.len() < 2
+        || !suffix.bytes().all(|byte| {
+            matches!(
+                byte.to_ascii_uppercase(),
+                b'I' | b'V' | b'X' | b'L' | b'C' | b'D' | b'M'
+            )
+        })
+    {
+        return None;
+    }
+    let prefix = prefix.trim();
+    (!prefix.is_empty()).then_some(prefix)
 }
 
 fn source_reference_words_from_text(text: &str) -> Vec<String> {
@@ -2190,6 +2211,7 @@ const ALTERNATIVE_CAST_KIND_PREFIXES: &[(&[&str], AlternativeCastKind)] = &[
     (&["escape"], AlternativeCastKind::Escape),
     (&["madness"], AlternativeCastKind::Madness),
     (&["miracle"], AlternativeCastKind::Miracle),
+    (&["suspend"], AlternativeCastKind::Suspend),
 ];
 
 pub(crate) fn parse_alternative_cast_words(words: &[&str]) -> Option<(AlternativeCastKind, usize)> {
@@ -2322,6 +2344,10 @@ pub(crate) enum FilterKeywordConstraint {
 
 fn keyword_action_to_filter_constraint(action: KeywordAction) -> Option<FilterKeywordConstraint> {
     use FilterKeywordConstraint::{Marker, Static};
+
+    if matches!(action, KeywordAction::Decayed) {
+        return Some(Marker("decayed"));
+    }
 
     if let KeywordAction::Landwalk(kind) = action {
         let constraint = match kind {

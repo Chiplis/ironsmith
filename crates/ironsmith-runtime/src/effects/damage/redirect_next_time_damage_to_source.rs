@@ -58,12 +58,19 @@ pub enum RedirectNextTimeDamageSource {
     Filter(ObjectFilter),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RedirectNextTimeDamageDestination {
+    SourceObject,
+    Controller,
+}
+
 /// "The next time a source of your choice would deal damage to target creature this turn,
 /// that damage is dealt to this creature instead."
 #[derive(Debug, Clone, PartialEq)]
 pub struct RedirectNextTimeDamageToSourceEffect {
     pub source: RedirectNextTimeDamageSource,
     pub target: ChooseSpec,
+    pub destination: RedirectNextTimeDamageDestination,
     pub all_this_turn: bool,
 }
 
@@ -132,8 +139,14 @@ impl RedirectNextTimeDamageToSourceEffect {
         Self {
             source,
             target,
+            destination: RedirectNextTimeDamageDestination::SourceObject,
             all_this_turn: false,
         }
+    }
+
+    pub fn to_controller(mut self) -> Self {
+        self.destination = RedirectNextTimeDamageDestination::Controller;
+        self
     }
 
     pub fn all_this_turn(mut self) -> Self {
@@ -202,12 +215,19 @@ impl EffectExecutor for RedirectNextTimeDamageToSourceEffect {
             }
         };
 
+        let redirect_target = match self.destination {
+            RedirectNextTimeDamageDestination::SourceObject => RedirectTarget::ToObject(ctx.source),
+            RedirectNextTimeDamageDestination::Controller => {
+                RedirectTarget::ToPlayer(ctx.controller)
+            }
+        };
+
         let replacement = ReplacementEffect::with_matcher(
             ctx.source,
             ctx.controller,
             DamageSourceToSpecificObjectMatcher::new(source_constraint, protected_target),
             ReplacementAction::Redirect {
-                target: RedirectTarget::ToObject(ctx.source),
+                target: redirect_target,
                 which: RedirectWhich::First,
             },
         );
@@ -366,6 +386,131 @@ mod tests {
             0,
             "next-time redirect should not register until end of turn"
         );
+    }
+
+    #[test]
+    fn jade_monolith_redirects_chosen_source_damage_to_controller_once() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+
+        let chosen_source = create_creature(&mut game, "Chosen Source", alice, 80_030);
+        let monolith_card = CardBuilder::new(CardId::from_raw(80_031), "Jade Monolith")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let monolith = game.create_object_from_card(&monolith_card, alice, Zone::Battlefield);
+        let protected = create_creature(&mut game, "Protected Creature", alice, 80_032);
+
+        let mut decision_maker = ChooseNamedSourceDecisionMaker {
+            source_name: "Chosen Source",
+        };
+        let mut ctx = ExecutionContext::new(monolith, alice, &mut decision_maker)
+            .with_targets(vec![ResolvedTarget::Object(protected)]);
+        RedirectNextTimeDamageToSourceEffect::new(
+            RedirectNextTimeDamageSource::Choice,
+            ChooseSpec::target_creature(),
+        )
+        .to_controller()
+        .execute(&mut game, &mut ctx)
+        .expect("Jade Monolith replacement should register");
+
+        let processed = crate::events::processing::process_damage_assignments_with_event(
+            &mut game,
+            chosen_source,
+            DamageTarget::Object(protected),
+            3,
+            false,
+            EventCause::effect(),
+        );
+        let protected_damage: u32 = processed
+            .assignments
+            .iter()
+            .filter(|assignment| assignment.target == DamageTarget::Object(protected))
+            .map(|assignment| assignment.amount)
+            .sum();
+        let controller_damage: u32 = processed
+            .assignments
+            .iter()
+            .filter(|assignment| assignment.target == DamageTarget::Player(alice))
+            .map(|assignment| assignment.amount)
+            .sum();
+        assert_eq!(protected_damage, 0);
+        assert_eq!(controller_damage, 3);
+        assert!(!processed.replacement_prevented);
+
+        let second = crate::events::processing::process_damage_assignments_with_event(
+            &mut game,
+            chosen_source,
+            DamageTarget::Object(protected),
+            2,
+            false,
+            EventCause::effect(),
+        );
+        let second_protected_damage: u32 = second
+            .assignments
+            .iter()
+            .filter(|assignment| assignment.target == DamageTarget::Object(protected))
+            .map(|assignment| assignment.amount)
+            .sum();
+        let second_controller_damage: u32 = second
+            .assignments
+            .iter()
+            .filter(|assignment| assignment.target == DamageTarget::Player(alice))
+            .map(|assignment| assignment.amount)
+            .sum();
+        assert_eq!(second_protected_damage, 2);
+        assert_eq!(second_controller_damage, 0);
+    }
+
+    #[test]
+    fn jade_monolith_does_not_redirect_nonchosen_source_damage() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+
+        let _chosen_source = create_creature(&mut game, "Chosen Source", alice, 80_040);
+        let other_source = create_creature(&mut game, "Other Source", alice, 80_041);
+        let monolith_card = CardBuilder::new(CardId::from_raw(80_042), "Jade Monolith")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let monolith = game.create_object_from_card(&monolith_card, alice, Zone::Battlefield);
+        let protected = create_creature(&mut game, "Protected Creature", alice, 80_043);
+
+        let mut decision_maker = ChooseNamedSourceDecisionMaker {
+            source_name: "Chosen Source",
+        };
+        let mut ctx = ExecutionContext::new(monolith, alice, &mut decision_maker)
+            .with_targets(vec![ResolvedTarget::Object(protected)]);
+        RedirectNextTimeDamageToSourceEffect::new(
+            RedirectNextTimeDamageSource::Choice,
+            ChooseSpec::target_creature(),
+        )
+        .to_controller()
+        .execute(&mut game, &mut ctx)
+        .expect("Jade Monolith replacement should register");
+
+        let processed = crate::events::processing::process_damage_assignments_with_event(
+            &mut game,
+            other_source,
+            DamageTarget::Object(protected),
+            4,
+            false,
+            EventCause::effect(),
+        );
+        let protected_damage: u32 = processed
+            .assignments
+            .iter()
+            .filter(|assignment| assignment.target == DamageTarget::Object(protected))
+            .map(|assignment| assignment.amount)
+            .sum();
+        let controller_damage: u32 = processed
+            .assignments
+            .iter()
+            .filter(|assignment| assignment.target == DamageTarget::Player(alice))
+            .map(|assignment| assignment.amount)
+            .sum();
+
+        assert_eq!(protected_damage, 4);
+        assert_eq!(controller_damage, 0);
+        assert!(!processed.replacement_prevented);
     }
 
     #[test]

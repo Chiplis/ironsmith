@@ -748,6 +748,81 @@ impl StaticAbilityKind for MustAttack {
     // by checking if creatures have this ability, rather than using a tracker.
 }
 
+/// Goaded by the controller of another permanent, usually an Aura.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GoadedBySourceController {
+    source: ObjectId,
+}
+
+impl GoadedBySourceController {
+    pub const fn new(source: ObjectId) -> Self {
+        Self { source }
+    }
+}
+
+impl StaticAbilityKind for GoadedBySourceController {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::GoadedBySourceController
+    }
+
+    fn display(&self) -> String {
+        "Goaded".to_string()
+    }
+
+    fn goaded_by_player(
+        &self,
+        game: &GameState,
+        _source: ObjectId,
+        _controller: PlayerId,
+    ) -> Option<PlayerId> {
+        game.object(self.source)
+            .map(|object| game.controller_of(object))
+    }
+}
+
+/// The object enchanted/equipped by this permanent is goaded by this permanent's controller.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttachedGoadedBySourceController {
+    display: String,
+}
+
+impl AttachedGoadedBySourceController {
+    pub fn new(display: impl Into<String>) -> Self {
+        Self {
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for AttachedGoadedBySourceController {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::AttachedGoadedBySourceController
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        _game: &GameState,
+    ) -> Vec<crate::continuous::ContinuousEffect> {
+        vec![
+            crate::continuous::ContinuousEffect::new(
+                source,
+                controller,
+                crate::continuous::EffectTarget::AttachedTo(source),
+                crate::continuous::Modification::AddAbility(
+                    crate::static_abilities::StaticAbility::goaded_by_source_controller(source),
+                ),
+            )
+            .with_source_type(crate::continuous::EffectSourceType::StaticAbility),
+        ]
+    }
+}
+
 /// Must attack the controller of the object enchanted/equipped by another source if able.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MustAttackAttachedController {

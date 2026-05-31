@@ -235,6 +235,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::PreventDamageEach { amount, .. }
             | SubjectVerbActionAst::CopySpell { count: amount, .. }
             | SubjectVerbActionAst::PutCounters { count: amount, .. }
+            | SubjectVerbActionAst::PutCounterChoice { count: amount, .. }
             | SubjectVerbActionAst::PutCountersAll { count: amount, .. }
             | SubjectVerbActionAst::RemoveUpToAnyCounters { amount, .. }
             | SubjectVerbActionAst::RemoveCountersAll { amount, .. }
@@ -309,6 +310,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::Support { .. }
             | SubjectVerbActionAst::Adapt { .. }
             | SubjectVerbActionAst::Explore { .. }
+            | SubjectVerbActionAst::Endure { .. }
             | SubjectVerbActionAst::Exploit
             | SubjectVerbActionAst::ConniveIterated
             | SubjectVerbActionAst::OpenAttraction
@@ -356,6 +358,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::PlayFromGraveyardUntilEot
             | SubjectVerbActionAst::ControlPlayer { .. }
             | SubjectVerbActionAst::ReduceNextSpellCostThisTurn { .. }
+            | SubjectVerbActionAst::ReduceMatchingSpellCostThisTurn { .. }
             | SubjectVerbActionAst::GrantNextSpellAbilityThisTurn { .. }
             | SubjectVerbActionAst::RingTemptsYou
             | SubjectVerbActionAst::VentureIntoDungeon { .. }
@@ -467,6 +470,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::AddCardTypes { .. }
             | SubjectVerbActionAst::RemoveCardTypes { .. }
             | SubjectVerbActionAst::AddSubtypes { .. }
+            | SubjectVerbActionAst::BecomeSaddledUntilEndOfTurn { .. }
             | SubjectVerbActionAst::AddColors { .. }
             | SubjectVerbActionAst::AddAllSubtypesOfFamily { .. }
             | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { .. }

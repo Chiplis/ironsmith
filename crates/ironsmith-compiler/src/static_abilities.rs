@@ -29,6 +29,12 @@ pub type StaticAbilityPayload = ironsmith_core::StaticAbilityPayload<
     crate::costs::Cost,
     ThisSpellCostCondition,
 >;
+pub type PowerToughnessChoiceOption = ironsmith_core::PowerToughnessChoiceOption<
+    crate::triggers::Trigger,
+    crate::effect::Effect,
+    crate::costs::Cost,
+    ThisSpellCostCondition,
+>;
 pub type AttachedAbilityGrant = ironsmith_core::AttachedAbilityGrant<
     crate::triggers::Trigger,
     crate::effect::Effect,

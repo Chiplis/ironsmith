@@ -825,6 +825,12 @@ pub fn resolve_value(
             }
             Ok(total)
         }
+        Value::PlayersBeingAttacked => Ok(game
+            .combat
+            .as_ref()
+            .map(crate::combat_state::defending_players)
+            .map(|players| players.len() as i32)
+            .unwrap_or(0)),
 
         Value::CountPlayers(player_filter) => {
             let filter_ctx = ctx.filter_context(game);
@@ -1179,6 +1185,16 @@ pub fn resolve_value(
                 .turn_store
                 .turn_history
                 .total_cards_discarded_for_players(&player_ids);
+            Ok(total as i32)
+        }
+
+        Value::DamageDealtToPlayersThisTurn(player_spec) => {
+            let player_ids =
+                resolve_player_filter_to_list(game, player_spec, &ctx.filter_context(game), ctx)?;
+            let total = game
+                .turn_store
+                .turn_history
+                .total_damage_to_players(&player_ids);
             Ok(total as i32)
         }
 

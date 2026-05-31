@@ -209,7 +209,14 @@ fn predicate_bound_player_filter(predicate: &PredicateAst) -> Option<PlayerFilte
 fn track_target_player(target: &TargetAst, frame: &mut ReferenceFrame) {
     match target {
         TargetAst::Player(filter, _) | TargetAst::PlayerOrPlaneswalker(filter, _) => {
-            frame.last_player_filter = Some(PlayerFilter::Target(Box::new(filter.clone())));
+            frame.last_player_filter = Some(if matches!(filter, PlayerFilter::IteratedPlayer) {
+                frame
+                    .last_player_filter
+                    .clone()
+                    .unwrap_or(PlayerFilter::IteratedPlayer)
+            } else {
+                PlayerFilter::Target(Box::new(filter.clone()))
+            });
         }
         TargetAst::Object(filter, _, _) => track_player_from_object_filter(filter, frame),
         _ => {}
@@ -374,6 +381,9 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::Explore { target } => {
                     maybe_tag_target(target, frame, id_gen, "explored")?;
                 }
+                SubjectVerbActionAst::Endure { target, .. } => {
+                    maybe_tag_target(target, frame, id_gen, "endured")?;
+                }
                 SubjectVerbActionAst::Connive { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "connived")?;
                 }
@@ -508,7 +518,8 @@ fn advance_reference_frame_for_effect(
                 | SubjectVerbActionAst::CounterUnlessPays { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "countered")?;
                 }
-                SubjectVerbActionAst::PutCounters { target, .. } => {
+                SubjectVerbActionAst::PutCounters { target, .. }
+                | SubjectVerbActionAst::PutCounterChoice { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "counters")?;
                 }
                 SubjectVerbActionAst::RemoveUpToAnyCounters { target, .. }
@@ -1472,6 +1483,7 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
         | SubjectVerbActionAst::PreventDamageEach { amount: count, .. }
         | SubjectVerbActionAst::CopySpell { count, .. }
         | SubjectVerbActionAst::PutCounters { count, .. }
+        | SubjectVerbActionAst::PutCounterChoice { count, .. }
         | SubjectVerbActionAst::PutCountersAll { count, .. }
         | SubjectVerbActionAst::RemoveUpToAnyCounters { amount: count, .. }
         | SubjectVerbActionAst::RemoveCountersAll { amount: count, .. }
@@ -1637,7 +1649,10 @@ fn resolve_effect_references_in_effect(
         ));
     }
 
-    if let EffectAst::DelayedTriggerThisTurn { trigger, effects } = &mut effect {
+    if let EffectAst::DelayedTriggerThisTurn {
+        trigger, effects, ..
+    } = &mut effect
+    {
         let nested_state = EffectReferenceResolutionState {
             last_effect_id: state.last_effect_id,
             allow_life_event_value: trigger_supports_event_amount(trigger),
@@ -1811,6 +1826,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::PreventDamageEach { amount, .. }
             | SubjectVerbActionAst::CopySpell { count: amount, .. }
             | SubjectVerbActionAst::PutCounters { count: amount, .. }
+            | SubjectVerbActionAst::PutCounterChoice { count: amount, .. }
             | SubjectVerbActionAst::PutCountersAll { count: amount, .. }
             | SubjectVerbActionAst::RemoveUpToAnyCounters { amount, .. }
             | SubjectVerbActionAst::RemoveCountersAll { amount, .. }
@@ -1859,6 +1875,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Support { .. }
             | SubjectVerbActionAst::Adapt { .. }
             | SubjectVerbActionAst::Explore { .. }
+            | SubjectVerbActionAst::Endure { .. }
             | SubjectVerbActionAst::Exploit
             | SubjectVerbActionAst::ConniveIterated
             | SubjectVerbActionAst::OpenAttraction
@@ -1909,6 +1926,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::PlayFromGraveyardUntilEot
             | SubjectVerbActionAst::ControlPlayer { .. }
             | SubjectVerbActionAst::ReduceNextSpellCostThisTurn { .. }
+            | SubjectVerbActionAst::ReduceMatchingSpellCostThisTurn { .. }
             | SubjectVerbActionAst::GrantNextSpellAbilityThisTurn { .. }
             | SubjectVerbActionAst::RingTemptsYou
             | SubjectVerbActionAst::VentureIntoDungeon { .. }
@@ -2114,6 +2132,7 @@ fn resolve_effect_result_values_in_fields(
                 resolve_effect_result_value(count, state)?;
             }
             SubjectVerbActionAst::Learn
+            | SubjectVerbActionAst::BecomeSaddledUntilEndOfTurn { .. }
             | SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. } => {}
             SubjectVerbActionAst::AdditionalPhases { .. } => {}
         },
@@ -2500,6 +2519,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::Transform { target }
             | SubjectVerbActionAst::Convert { target }
             | SubjectVerbActionAst::Explore { target }
+            | SubjectVerbActionAst::Endure { target, .. }
             | SubjectVerbActionAst::Connive { target, .. }
             | SubjectVerbActionAst::FightIterated { creature2: target }
             | SubjectVerbActionAst::Exile { target, .. }
@@ -2533,7 +2553,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::ReorderTopOfLibrary { tag } => {
                 bind_unresolved_it_in_tag(tag, seed_tag)
             }
-            SubjectVerbActionAst::PutCounters { count, target, .. } => {
+            SubjectVerbActionAst::PutCounters { count, target, .. }
+            | SubjectVerbActionAst::PutCounterChoice { count, target, .. } => {
                 bind_unresolved_it_in_value(count, seed_tag)
                     + bind_unresolved_it_in_target(target, seed_tag)
             }
@@ -2644,7 +2665,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::ControlPlayer { player, .. } => {
                 bind_unresolved_it_in_player_filter(player, seed_tag)
             }
-            SubjectVerbActionAst::ReduceNextSpellCostThisTurn { filter, .. } => {
+            SubjectVerbActionAst::ReduceNextSpellCostThisTurn { filter, .. }
+            | SubjectVerbActionAst::ReduceMatchingSpellCostThisTurn { filter, .. } => {
                 bind_unresolved_it_in_filter(filter, seed_tag)
             }
             SubjectVerbActionAst::GrantNextSpellAbilityThisTurn { filter, .. } => {
@@ -2869,6 +2891,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::AddCardTypes { target, .. }
             | SubjectVerbActionAst::RemoveCardTypes { target, .. }
             | SubjectVerbActionAst::AddSubtypes { target, .. }
+            | SubjectVerbActionAst::BecomeSaddledUntilEndOfTurn { target }
             | SubjectVerbActionAst::AddColors { target, .. }
             | SubjectVerbActionAst::AddAllSubtypesOfFamily { target, .. }
             | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { target, .. }

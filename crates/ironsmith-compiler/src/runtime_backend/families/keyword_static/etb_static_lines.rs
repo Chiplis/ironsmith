@@ -1264,6 +1264,10 @@ pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Val
         | Some(["number", "of", "opponents"]) => {
             return Some(Value::CountPlayers(PlayerFilter::Opponent));
         }
+        Some(["the", "number", "of", "players", "being", "attacked"])
+        | Some(["number", "of", "players", "being", "attacked"]) => {
+            return Some(Value::PlayersBeingAttacked);
+        }
         Some(["target", "players", "life", "total"])
         | Some(["target", "player", "life", "total"]) => {
             return Some(Value::LifeTotal(PlayerFilter::target_player()));
@@ -2856,6 +2860,20 @@ pub(crate) fn parse_enters_with_additional_counter_for_filter_line(
         return parse_enters_with_additional_counter_for_filter_line(&tokens[comma_idx + 1..]);
     }
 
+    if clause_words.len() > 6
+        && word_slice_starts_with(&clause_words, &["as", "long", "as"])
+        && let Some(comma_idx) = find_token_kind(tokens, TokenKind::Comma)
+    {
+        let condition_tokens = trim_edge_punctuation(&tokens[3..comma_idx]);
+        let condition = parse_static_condition_clause(&condition_tokens)?;
+        let Some(ability) =
+            parse_enters_with_additional_counter_for_filter_line(&tokens[comma_idx + 1..])?
+        else {
+            return Ok(None);
+        };
+        return Ok(Some(ability.with_condition(condition)));
+    }
+
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let enter_word_idx = ETB_ENTER_OR_ENTERS_WORD_PATTERN.find_word(&clause_words);
     let Some(enter_word_idx) = enter_word_idx else {
@@ -3090,6 +3108,23 @@ pub(crate) fn parse_as_enters_or_turns_face_up_pt_choice_line(
     }
 
     let after_enter = clause_words.get(enter_word_idx + 1..).unwrap_or_default();
+    if word_slice_starts_with(after_enter, &["it", "becomes", "your", "choice", "of"]) {
+        let options = parse_pt_choice_characteristic_options(&after_enter[5..], &clause_words)?;
+        if options.is_empty() {
+            return Ok(None);
+        }
+        let subject = subject_words.join(" ");
+        let display = format!(
+            "As {subject} enters, it becomes your choice of {}",
+            render_pt_choice_characteristic_options(&options)
+        );
+        return Ok(Some(
+            StaticAbility::choose_power_toughness_options_as_enters_or_turns_face_up(
+                options, display,
+            ),
+        ));
+    }
+
     if after_enter.len() != 13
         || !ETB_FACE_UP_CHOICE_TAIL_PATTERN.matches_words(after_enter)
         || after_enter.get(11).copied() != Some("or")
@@ -3123,4 +3158,130 @@ pub(crate) fn parse_as_enters_or_turns_face_up_pt_choice_line(
             display,
         ),
     ))
+}
+
+fn parse_pt_choice_characteristic_options(
+    words: &[&str],
+    clause_words: &[&str],
+) -> Result<Vec<PowerToughnessChoiceOption>, CardTextError> {
+    let mut options = Vec::new();
+    let mut idx = 0usize;
+    while idx < words.len() {
+        if words[idx] == "or" {
+            idx += 1;
+        }
+        if matches!(words.get(idx).copied(), Some("a" | "an")) {
+            idx += 1;
+        }
+        let Some(pt_word) = words.get(idx).copied() else {
+            break;
+        };
+        let (power, toughness) = match parse_pt_modifier(pt_word) {
+            Ok(pt) => pt,
+            Err(_) if options.is_empty() => return Ok(Vec::new()),
+            Err(_) => {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported power/toughness choice '{}' (clause: '{}')",
+                    pt_word,
+                    clause_words.join(" ")
+                )));
+            }
+        };
+        idx += 1;
+
+        if !matches!(
+            words.get(idx).copied(),
+            Some("creature" | "permanent" | "object")
+        ) {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported power/toughness choice descriptor after '{}' (clause: '{}')",
+                pt_word,
+                clause_words.join(" ")
+            )));
+        }
+        idx += 1;
+
+        let mut abilities = Vec::new();
+        if words.get(idx).copied() == Some("with") {
+            idx += 1;
+            let ability_start = idx;
+            while idx < words.len()
+                && words[idx] != "or"
+                && !(matches!(words[idx], "a" | "an")
+                    && words
+                        .get(idx + 1)
+                        .is_some_and(|next| parse_pt_modifier(next).is_ok()))
+            {
+                idx += 1;
+            }
+            abilities =
+                parse_pt_choice_keyword_abilities(&words[ability_start..idx], clause_words)?;
+        }
+
+        options.push(PowerToughnessChoiceOption::with_abilities(
+            power, toughness, abilities,
+        ));
+    }
+
+    Ok(options)
+}
+
+fn parse_pt_choice_keyword_abilities(
+    words: &[&str],
+    clause_words: &[&str],
+) -> Result<Vec<StaticAbility>, CardTextError> {
+    if words.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing keyword ability in power/toughness choice (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    let action = match words {
+        [word] => parse_single_word_keyword_action(word),
+        ["first", "strike"] => Some(KeywordAction::FirstStrike),
+        ["double", "strike"] => Some(KeywordAction::DoubleStrike),
+        _ => None,
+    };
+    let Some(static_ability) = action.and_then(static_ability_for_keyword_action) else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported keyword ability '{}' in power/toughness choice (clause: '{}')",
+            words.join(" "),
+            clause_words.join(" ")
+        )));
+    };
+
+    Ok(vec![static_ability])
+}
+
+fn render_pt_choice_characteristic_options(options: &[PowerToughnessChoiceOption]) -> String {
+    let rendered = options
+        .iter()
+        .map(|option| {
+            let mut text = format!("a {}/{} creature", option.power, option.toughness);
+            if !option.abilities.is_empty() {
+                let abilities = option
+                    .abilities
+                    .iter()
+                    .map(|ability| ability.display().to_ascii_lowercase())
+                    .collect::<Vec<_>>()
+                    .join(" and ");
+                text.push_str(" with ");
+                text.push_str(&abilities);
+            }
+            text
+        })
+        .collect::<Vec<_>>();
+
+    match rendered.as_slice() {
+        [] => String::new(),
+        [only] => only.clone(),
+        [first, second] => format!("{first} or {second}"),
+        _ => {
+            let mut text = rendered[..rendered.len() - 1].join(", ");
+            text.push_str(", or ");
+            text.push_str(rendered.last().expect("nonempty options"));
+            text
+        }
+    }
 }

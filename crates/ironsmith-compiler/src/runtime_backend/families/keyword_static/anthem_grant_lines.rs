@@ -414,6 +414,40 @@ const NO_CARDS_IN_YOUR_LIBRARY_CONDITION_PATTERN: ClauseShape<'static> = clause_
             &["your", "library", "has", "no", "cards", "in", "it"],
         ]
 );
+const OPPONENT_LOST_LIFE_THIS_TURN_CONDITION_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["an", "opponent", "lost", "life", "this", "turn"],
+            &[
+                "one",
+                "or",
+                "more",
+                "opponents",
+                "lost",
+                "life",
+                "this",
+                "turn",
+            ],
+        ]
+);
+const YOU_NOT_CAST_SPELL_THIS_TURN_CONDITION_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["you", "havent", "cast", "a", "spell", "this", "turn"],
+            &["you", "have", "not", "cast", "a", "spell", "this", "turn"],
+            &["you", "didnt", "cast", "a", "spell", "this", "turn"],
+            &["you", "did", "not", "cast", "a", "spell", "this", "turn"],
+        ]
+);
+const YOU_CAST_SPELL_THIS_TURN_CONDITION_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["youve", "cast", "a", "spell", "this", "turn"],
+            &["you", "ve", "cast", "a", "spell", "this", "turn"],
+            &["you", "have", "cast", "a", "spell", "this", "turn"],
+            &["you", "cast", "a", "spell", "this", "turn"],
+        ]
+);
 const SOURCE_IS_EQUIPPED_CONDITION_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -2710,6 +2744,26 @@ pub(crate) fn parse_static_condition_clause(
         return Ok(condition);
     }
 
+    if OPPONENT_LOST_LIFE_THIS_TURN_CONDITION_PATTERN.matches_words(&clause_words) {
+        return Ok(crate::ConditionExpr::OpponentLostLifeThisTurn);
+    }
+
+    if YOU_NOT_CAST_SPELL_THIS_TURN_CONDITION_PATTERN.matches_words(&clause_words) {
+        return Ok(crate::ConditionExpr::Not(Box::new(
+            crate::ConditionExpr::PlayerCastSpellsThisTurnOrMore {
+                player: PlayerFilter::You,
+                count: 1,
+            },
+        )));
+    }
+
+    if YOU_CAST_SPELL_THIS_TURN_CONDITION_PATTERN.matches_words(&clause_words) {
+        return Ok(crate::ConditionExpr::PlayerCastSpellsThisTurnOrMore {
+            player: PlayerFilter::You,
+            count: 1,
+        });
+    }
+
     if NO_CARDS_IN_YOUR_LIBRARY_CONDITION_PATTERN.matches_words(&clause_words) {
         return Ok(crate::ConditionExpr::CountComparison {
             count: AnthemCountExpression::MatchingFilter(
@@ -2924,6 +2978,9 @@ pub(crate) fn parse_static_condition_clause(
             player: PlayerFilter::You,
             dungeon_name: Some(clause_words[name_start..].join(" ")),
         });
+    }
+    if let Some(condition) = parse_cards_drawn_this_turn_static_condition(&tokens) {
+        return Ok(condition);
     }
     if YOUR_LIFE_HALF_STARTING_CONDITION_PATTERN.matches_words(&clause_words) {
         return Ok(
@@ -3362,6 +3419,48 @@ fn player_has_quantity_prefix(words: &[&str], allow_any_player: bool) -> Option<
     } else {
         None
     }
+}
+
+fn parse_cards_drawn_this_turn_static_condition(
+    tokens: &[OwnedLexToken],
+) -> Option<crate::ConditionExpr> {
+    let clause_word_view = AnthemNormalizedWords::new(tokens);
+    let clause_words = clause_word_view.word_refs();
+    let (player, count_start_word_idx) = match clause_words.as_slice() {
+        ["youve", "drawn", ..] => (PlayerFilter::You, 2usize),
+        ["you", "have", "drawn", ..] | ["you", "ve", "drawn", ..] => {
+            (PlayerFilter::You, 3usize)
+        }
+        ["an", "opponent", "has", "drawn", ..] => (PlayerFilter::Opponent, 4usize),
+        ["opponent", "has", "drawn", ..] => (PlayerFilter::Opponent, 3usize),
+        ["opponents", "have", "drawn", ..] => (PlayerFilter::Opponent, 3usize),
+        ["a", "player", "has", "drawn", ..] => (PlayerFilter::Any, 4usize),
+        ["player", "has", "drawn", ..] => (PlayerFilter::Any, 3usize),
+        ["players", "have", "drawn", ..] => (PlayerFilter::Any, 3usize),
+        _ => return None,
+    };
+
+    let count_start_idx = clause_word_view.token_index_for_word_index(count_start_word_idx)?;
+    let count_tokens = tokens.get(count_start_idx..)?;
+    let (count, used) = parse_number(count_tokens)?;
+    let tail_tokens = count_tokens.get(used..)?;
+    let tail_word_view = AnthemNormalizedWords::new(tail_tokens);
+    let tail_words = tail_word_view.word_refs();
+    if !word_slice_eq_any(
+        &tail_words,
+        &[
+            &["or", "more", "cards", "this", "turn"],
+            &["or", "more", "card", "this", "turn"],
+        ],
+    ) {
+        return None;
+    }
+
+    Some(crate::ConditionExpr::ValueComparison {
+        left: crate::effect::Value::MaxCardsDrawnThisTurn(player),
+        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+        right: crate::effect::Value::Fixed(count as i32),
+    })
 }
 
 fn parse_cards_in_hand_static_condition(tokens: &[OwnedLexToken]) -> Option<crate::ConditionExpr> {
@@ -4705,6 +4804,79 @@ pub(crate) fn parse_anthem_and_keyword_line(
     }
 
     Ok(Some(result))
+}
+
+pub(crate) fn parse_anthem_and_goaded_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    let Some(get_idx) = anthem_token_offset(tokens, |token| {
+        token.is_word("get") || token.is_word("gets")
+    }) else {
+        return Ok(None);
+    };
+
+    let Some(and_idx) = anthem_token_offset_from(tokens, get_idx + 1, |token| token.is_word("and"))
+    else {
+        return Ok(None);
+    };
+
+    let tail_tokens = trim_edge_punctuation(&tokens[and_idx + 1..]);
+    let tail_words = crate::runtime_backend::token_word_refs(&tail_tokens);
+    if !matches!(tail_words.as_slice(), ["is", "goaded"] | ["are", "goaded"]) {
+        return Ok(None);
+    }
+
+    let clause = parse_anthem_clause(tokens, get_idx, and_idx)?;
+    let display_subject = attached_goaded_display_subject(&clause.subject).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "unsupported goaded anthem subject (clause: '{}')",
+            clause_words.join(" ")
+        ))
+    })?;
+
+    Ok(Some(vec![
+        build_anthem_static_ability(&clause).into(),
+        crate::static_abilities::StaticAbility::attached_goaded_by_source_controller(format!(
+            "{} is goaded",
+            capitalize_display_subject(&display_subject)
+        ))
+        .into(),
+    ]))
+}
+
+fn attached_goaded_display_subject(subject: &AnthemSubjectAst) -> Option<String> {
+    let AnthemSubjectAst::Filter(filter) = subject else {
+        return None;
+    };
+    let attachment = filter.tagged_constraints.iter().find_map(|constraint| {
+        if !matches!(
+            constraint.relation,
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        ) {
+            return None;
+        }
+        match constraint.tag.as_str() {
+            "enchanted" => Some("enchanted"),
+            "equipped" => Some("equipped"),
+            _ => None,
+        }
+    })?;
+
+    let noun = if filter.card_types.contains(&CardType::Creature) {
+        "creature"
+    } else {
+        "permanent"
+    };
+    Some(format!("{attachment} {noun}"))
+}
+
+fn capitalize_display_subject(subject: &str) -> String {
+    let mut chars = subject.chars();
+    match chars.next() {
+        Some(first) => first.to_ascii_uppercase().to_string() + chars.as_str(),
+        None => String::new(),
+    }
 }
 
 fn push_type_color_additions_for_anthem_subject(

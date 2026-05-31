@@ -417,6 +417,10 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
     chosen_option_label: Option<&str>,
     presentation_label: Option<&str>,
 ) -> Result<LineAst, CardTextError> {
+    let during_your_turn_condition = full_text
+        .to_ascii_lowercase()
+        .contains("becomes tapped during your turn")
+        .then_some(crate::ConditionExpr::YourTurn);
     let max_condition =
         crate::runtime_backend::trigger_frequency_condition(Some(full_text), max_triggers_per_turn);
     let combined_condition = match (chosen_option_label, max_condition.clone()) {
@@ -452,6 +456,14 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
                 (None, Some(max)) => Some(max),
                 (None, None) => None,
             };
+            let merged_condition = match (during_your_turn_condition.clone(), merged_condition) {
+                (Some(condition), Some(existing)) => Some(crate::ConditionExpr::And(
+                    Box::new(condition),
+                    Box::new(existing),
+                )),
+                (Some(condition), None) => Some(condition),
+                (None, existing) => existing,
+            };
             Ok(LineAst::Ability(rewrite_parsed_triggered_ability(
                 trigger.clone(),
                 effects,
@@ -472,6 +484,16 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
                 triggered.intervening_if = Some(match triggered.intervening_if.take() {
                     Some(existing) => {
                         crate::ConditionExpr::And(Box::new(existing), Box::new(condition))
+                    }
+                    None => condition,
+                });
+            }
+            if let AbilityKind::Triggered(triggered) = parsed.kind_mut()
+                && let Some(condition) = during_your_turn_condition
+            {
+                triggered.intervening_if = Some(match triggered.intervening_if.take() {
+                    Some(existing) => {
+                        crate::ConditionExpr::And(Box::new(condition), Box::new(existing))
                     }
                     None => condition,
                 });

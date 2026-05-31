@@ -1,6 +1,8 @@
 use super::super::effect_ast_traversal::for_each_nested_effects_mut;
 use super::super::ir::RewriteActivatedLine;
 use super::*;
+use crate::effect::Effect;
+use crate::object::CounterType;
 use ironsmith_core::TotalCostKind;
 
 fn activated_effect_may_be_mana_ability_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -235,7 +237,9 @@ fn finalize_rewrite_activated_effect_sentences(
     for tokens in sentence_tokens {
         let sentence = render_token_slice(&tokens).trim().to_string();
         let sentence_words = token_word_refs(&tokens);
-        if parse_mana_usage_restriction_sentence_lexed(&tokens).is_some()
+        if is_activation_mana_source_restriction_sentence(sentence_words.as_slice()) {
+            restrictions.activation.push(sentence);
+        } else if parse_mana_usage_restriction_sentence_lexed(&tokens).is_some()
             || parse_mana_spend_bonus_sentence_lexed(&tokens).is_some()
             || word_slice_starts_with(
                 sentence_words.as_slice(),
@@ -351,7 +355,9 @@ fn split_rewrite_activated_effect_text_fallback(
             continue;
         };
         let sentence_words = token_word_refs(&tokens);
-        if parse_mana_usage_restriction_sentence_lexed(&tokens).is_some()
+        if is_activation_mana_source_restriction_sentence(sentence_words.as_slice()) {
+            restrictions.activation.push(sentence);
+        } else if parse_mana_usage_restriction_sentence_lexed(&tokens).is_some()
             || parse_mana_spend_bonus_sentence_lexed(&tokens).is_some()
             || word_slice_starts_with(
                 sentence_words.as_slice(),
@@ -376,6 +382,11 @@ fn split_rewrite_activated_effect_text_fallback(
         restrictions,
         mana_restrictions,
     }
+}
+
+fn is_activation_mana_source_restriction_sentence(words: &[&str]) -> bool {
+    word_slice_starts_with(words, &["spend", "only", "mana"])
+        && word_slice_ends_with(words, &["to", "activate", "this", "ability"])
 }
 
 fn parse_activated_effects_lexed(
@@ -533,6 +544,40 @@ fn lower_rewrite_activated_to_chunk_impl(
         return Err(CardTextError::ParseError(
             "unresolved X in mana ability".to_string(),
         ));
+    }
+
+    if let Some(level_text) = normalized_effect_text.strip_prefix("level ")
+        && let Ok(level) = level_text.parse::<u32>()
+    {
+        let parsed = ParsedAbility {
+            ability: Ability {
+                kind: AbilityKind::Activated(ActivatedAbility {
+                    mana_cost: normalized_cost,
+                    effects: ResolutionProgram::from_effects(vec![Effect::put_counters_on_source(
+                        CounterType::Level,
+                        1,
+                    )]),
+                    choices: vec![],
+                    timing: ActivationTiming::SorcerySpeed,
+                    is_loyalty_ability: line.is_loyalty_ability,
+                    additional_restrictions: vec![format!("__ironsmith_class_level:{level}")],
+                    activation_restrictions: vec![],
+                    mana_output: None,
+                    activation_condition: None,
+                    mana_usage_restrictions: vec![],
+                }),
+                functional_zones: vec![Zone::Battlefield],
+            }
+            .into(),
+            text: Some(line.info.raw_line.trim().to_string()),
+            effects_ast: None,
+            reference_imports: ReferenceImports::default(),
+            trigger_spec: None,
+        };
+        return Ok(LoweredRewriteActivatedLine {
+            chunk: LineAst::Ability(parsed),
+            restrictions,
+        });
     }
 
     if let Some(mana_output) = extract_fixed_mana_output_lexed(&effect_parse_tokens) {

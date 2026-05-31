@@ -1,5 +1,5 @@
 use super::super::super::keyword_static::{
-    keyword_action_to_static_ability, parse_ability_line, parse_pt_modifier,
+    keyword_action_to_static_ability, parse_ability_line, parse_pt_modifier_values,
 };
 use super::super::super::lexer::{LexedClause, OwnedLexToken, word_slice_strip_any_suffix};
 use super::super::super::util::{
@@ -61,6 +61,7 @@ const AURA_ENCHANTMENT_WITH_ENCHANT_CREATURE_PREFIX_PATTERN: ClauseShape<'static
     clause_shape!(prefix & ["aura", "enchantment", "with", "enchant", "creature"]);
 const AURA_WITH_ENCHANT_CREATURE_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["aura", "with", "enchant", "creature"]);
+const SADDLED_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["saddled"]);
 const YOU_CONTROL_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["you", "control"]);
 const EQUAL_TO_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["equal", "to"]);
 const SOURCE_POWER_TOUGHNESS_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -187,6 +188,7 @@ pub(crate) fn parse_become_clause(
 
     let mut target = if target_subject_words.is_empty()
         || IT_THEY_THEM_PATTERN.matches_words(&target_subject_words)
+        || super::is_tagged_object_reference(&target_subject_words)
     {
         TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(subject_tokens))
     } else if THIS_SOURCE_SUBJECT_PATTERN.matches_words(&target_subject_words) {
@@ -266,6 +268,11 @@ pub(crate) fn parse_become_clause(
         } else {
             None
         };
+    if SADDLED_PATTERN.matches_words(become_words) && duration == Until::EndOfTurn {
+        return Ok(EffectAst::subject_verb_become_saddled_until_end_of_turn(
+            target,
+        ));
+    }
     if let Some(aura_tail_words) = aura_with_enchant_creature_words {
         if matches!(
             target_subject_words.as_slice(),
@@ -299,14 +306,11 @@ pub(crate) fn parse_become_clause(
     }
 
     if let Some(pt_word) = become_words.first().copied()
-        && let Ok((power, toughness)) = parse_pt_modifier(pt_word)
+        && let Ok((power, toughness)) = parse_pt_modifier_values(pt_word)
     {
         if subject_targets_base_pt || become_words.len() == 1 {
             return Ok(EffectAst::subject_verb_set_base_power_toughness(
-                Value::Fixed(power),
-                Value::Fixed(toughness),
-                target,
-                duration,
+                power, toughness, target, duration,
             ));
         }
         if let Some(creature_idx) = become_words
@@ -389,8 +393,8 @@ pub(crate) fn parse_become_clause(
             };
             if !all_prefix_words_supported || !suffix_supported {
                 return Ok(EffectAst::subject_verb_become_base_pt_creature(
-                    Value::Fixed(power),
-                    Value::Fixed(toughness),
+                    power,
+                    toughness,
                     target,
                     vec![CardType::Creature],
                     Vec::new(),
@@ -401,8 +405,8 @@ pub(crate) fn parse_become_clause(
                 ));
             }
             return Ok(EffectAst::subject_verb_become_base_pt_creature(
-                Value::Fixed(power),
-                Value::Fixed(toughness),
+                power,
+                toughness,
                 target,
                 card_types,
                 subtypes,
@@ -419,8 +423,8 @@ pub(crate) fn parse_become_clause(
             parse_become_creature_descriptor_words(descriptor_words)
     {
         return Ok(EffectAst::subject_verb_become_base_pt_creature(
-            Value::Fixed(power),
-            Value::Fixed(toughness),
+            power,
+            toughness,
             target,
             card_types,
             subtypes,

@@ -1,6 +1,7 @@
 use crate::{
     ActivationTiming, AnthemCountExpression, Comparison, CounterType, EffectId, EventValueSpec,
-    ManaSymbol, ObjectFilter, PlayerFilter, StableId, TagKey, ValueComparisonOperator, Zone,
+    ManaSymbol, ObjectFilter, PlayerFilter, PlayerId, StableId, TagKey, ValueComparisonOperator,
+    Zone,
 };
 use crate::{ChooseSpec, Color, ColorSet};
 
@@ -72,6 +73,7 @@ pub enum Value {
     DistinctPowers(ObjectFilter),
     CreaturesDiedThisTurn,
     CreaturesDiedThisTurnControlledBy(PlayerFilter),
+    PlayersBeingAttacked,
     CountPlayers(PlayerFilter),
     PlayersWhoControlMoreThanYou(ObjectFilter),
     PartySize(PlayerFilter),
@@ -94,6 +96,7 @@ pub enum Value {
     LifeGainedThisTurn(PlayerFilter),
     LifeLostThisTurn(PlayerFilter),
     CardsDiscardedThisTurn(PlayerFilter),
+    DamageDealtToPlayersThisTurn(PlayerFilter),
     NoncombatDamageDealtToPlayersThisTurn(PlayerFilter),
     NoncombatDamageDealtBySourcesControlledThisTurn {
         player: PlayerFilter,
@@ -764,6 +767,15 @@ pub enum Condition {
     ColorsOfManaSpentToCastThisSpellOrMore(u32),
     YouControlCommander,
     TaggedObjectMatches(TagKey, ObjectFilter),
+    TaggedObjectIsTopOfLibrary {
+        tag: TagKey,
+        player: PlayerFilter,
+    },
+    StableObjectIsTopOfLibrary {
+        stable_id: StableId,
+        player: PlayerId,
+        library_top_revision: u64,
+    },
     TaggedObjectWasCast(TagKey),
     TaggedObjectIsSoulbondPaired(TagKey),
     EnchantedPermanentAttackedThisTurn,

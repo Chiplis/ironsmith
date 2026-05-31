@@ -964,6 +964,60 @@ fn post_rule_delayed_trigger_result_followup(
     }))
 }
 
+fn effects_are_copy_retarget_followup(effects: &[EffectAst]) -> bool {
+    fn contains_retarget(effect: &EffectAst) -> bool {
+        match effect {
+            EffectAst::SubjectVerb(subject_verb) => matches!(
+                subject_verb.action,
+                SubjectVerbActionAst::RetargetStackObject { .. }
+            ),
+            EffectAst::May { effects } | EffectAst::MayByPlayer { effects, .. } => {
+                effects.iter().any(contains_retarget)
+            }
+            _ => false,
+        }
+    }
+
+    effects.iter().any(contains_retarget)
+}
+
+fn trailing_delayed_trigger_effects_mut(effect: &mut EffectAst) -> Option<&mut Vec<EffectAst>> {
+    match effect {
+        EffectAst::DelayedTriggerThisTurn { effects, .. } => Some(effects),
+        EffectAst::Conditional { if_true, .. } => if_true.iter_mut().rev().find_map(|effect| {
+            if let EffectAst::DelayedTriggerThisTurn { effects, .. } = effect {
+                Some(effects)
+            } else {
+                None
+            }
+        }),
+        _ => None,
+    }
+}
+
+fn post_rule_delayed_trigger_copy_retarget_followup(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    _sentence_tokens: &[OwnedLexToken],
+    sentence_effects: &mut Vec<EffectAst>,
+) -> Result<Option<PostParseFollowupResult>, CardTextError> {
+    if !effects_are_copy_retarget_followup(sentence_effects) {
+        return Ok(None);
+    }
+    let Some(previous) = state.effects.last_mut() else {
+        return Ok(None);
+    };
+    let Some(delayed_effects) = trailing_delayed_trigger_effects_mut(previous) else {
+        return Ok(None);
+    };
+
+    delayed_effects.extend(sentence_effects.drain(..));
+    Ok(Some(PostParseFollowupResult::Handled {
+        consumed_sentences: 1,
+    }))
+}
+
 const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
     SubjectVerbFollowupRuleDef {
         id: "library-shuffle",
@@ -1063,5 +1117,11 @@ const POST_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbPostParseRuleDef] = &
         priority: 30,
         heads: &["if", "when"],
         run: post_rule_delayed_trigger_result_followup,
+    },
+    SubjectVerbPostParseRuleDef {
+        id: "delayed-trigger-copy-retarget-followup",
+        priority: 31,
+        heads: &["you"],
+        run: post_rule_delayed_trigger_copy_retarget_followup,
     },
 ];

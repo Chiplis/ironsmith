@@ -1,7 +1,7 @@
 use crate::cards::builders::{
     CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, IfResultPredicate, OwnedLexToken,
-    PlayerAst, PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, SubjectAst, TagKey,
-    TargetAst, TextSpan, Verb,
+    PlayerAst, PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst,
+    RedirectNextTimeDamageDestinationAst, SubjectAst, TagKey, TargetAst, TextSpan, Verb,
 };
 use crate::effect::{EventValueSpec, Until, Value};
 use crate::static_abilities::StaticAbilityId;
@@ -503,6 +503,8 @@ const CLAUSE_PREVENT_THAT_DAMAGE_IF_PREVENTED_PREFIX_PATTERN: ClauseShape<'stati
 );
 const CLAUSE_THAT_DAMAGE_IS_DEALT_TO_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["that", "damage", "is", "dealt", "to"]);
+const CLAUSE_THAT_SOURCE_DEALS_THAT_DAMAGE_TO_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["that", "source", "deals", "that", "damage", "to"]);
 const CLAUSE_IS_DEALT_TO_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["is", "dealt", "to"]);
 const CLAUSE_INSTEAD_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(suffix & ["instead"]);
@@ -1915,23 +1917,30 @@ pub(crate) fn parse_redirect_next_damage_sentence(
             .after_words(is_dealt_idx + 3)
             .unwrap_or_else(|| clause.from(clause.len()))
             .trimmed();
-        let redirects_to_source = redirect_clause.matches_any_words(&[
+        let destination = if redirect_clause.matches_any_words(&[
             &["this", "creature", "instead"],
             &["this", "permanent", "instead"],
             &["this", "instead"],
             &["it", "instead"],
-        ]);
-        if !redirects_to_source {
+        ]) {
+            RedirectNextTimeDamageDestinationAst::SourceObject
+        } else if redirect_clause.matches_any_words(&[&["you", "instead"]]) {
+            RedirectNextTimeDamageDestinationAst::Controller
+        } else {
             return Err(CardTextError::ParseError(format!(
                 "unsupported redirected-all-damage protected destination (clause: '{}')",
                 clause_text
             )));
-        }
+        };
 
         let target = parse_target_phrase(target_clause.tokens())?;
 
         return Ok(Some(vec![
-            EffectAst::subject_verb_redirect_all_damage_this_turn_to_source(source, target),
+            EffectAst::subject_verb_redirect_all_damage_this_turn_to_source(
+                source,
+                target,
+                destination,
+            ),
         ]));
     }
 
@@ -2015,28 +2024,41 @@ pub(crate) fn parse_redirect_next_damage_sentence(
             .after_words(this_turn_idx + 2)
             .unwrap_or_else(|| clause.from(clause.len()))
             .trimmed();
-        if tail_clause.word_len() < 7
-            || !CLAUSE_THAT_DAMAGE_IS_DEALT_TO_PREFIX_PATTERN.matches(tail_clause)
-            || !CLAUSE_INSTEAD_SUFFIX_PATTERN.matches(tail_clause)
+        let destination_clause = if tail_clause.word_len() >= 7
+            && CLAUSE_THAT_DAMAGE_IS_DEALT_TO_PREFIX_PATTERN.matches(tail_clause)
+            && CLAUSE_INSTEAD_SUFFIX_PATTERN.matches(tail_clause)
         {
+            tail_clause.between_words_trimmed(5, tail_clause.word_len() - 1)
+        } else if tail_clause.word_len() >= 8
+            && CLAUSE_THAT_SOURCE_DEALS_THAT_DAMAGE_TO_PREFIX_PATTERN.matches(tail_clause)
+            && CLAUSE_INSTEAD_SUFFIX_PATTERN.matches(tail_clause)
+        {
+            tail_clause.between_words_trimmed(6, tail_clause.word_len() - 1)
+        } else {
             return Ok(None);
-        }
-        let redirect_clause = tail_clause.between_words_trimmed(5, tail_clause.word_len() - 1);
-        let redirects_to_source = redirect_clause.matches_any_words(&[
+        };
+        let destination = if destination_clause.matches_any_words(&[
             &["this"],
             &["it"],
             &["this", "creature"],
             &["this", "permanent"],
-        ]);
-        if !redirects_to_source {
+        ]) {
+            RedirectNextTimeDamageDestinationAst::SourceObject
+        } else if destination_clause.matches_any_words(&[&["you"]]) {
+            RedirectNextTimeDamageDestinationAst::Controller
+        } else {
             return Err(CardTextError::ParseError(format!(
                 "unsupported redirected-next-time damage destination (clause: '{}')",
                 clause_text
             )));
-        }
+        };
 
         return Ok(Some(vec![
-            EffectAst::subject_verb_redirect_next_time_damage_to_source(source, target),
+            EffectAst::subject_verb_redirect_next_time_damage_to_source(
+                source,
+                target,
+                destination,
+            ),
         ]));
     }
 
@@ -2288,6 +2310,58 @@ fn parse_choose_target_prelude_targets(
     ]))
 }
 
+fn parse_kicked_additional_targets_prelude(
+    target_tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    fn canonical_target_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
+        LexedClause::new(tokens)
+            .word_refs()
+            .into_iter()
+            .filter(|word| !matches!(*word, "another" | "other" | "target" | "a" | "an" | "the"))
+            .collect()
+    }
+
+    let Some(then_choose_idx) = find_token_word_sequence(target_tokens, &["then", "choose"]) else {
+        return Ok(None);
+    };
+
+    let first_target_tokens = trim_commas(&target_tokens[..then_choose_idx]);
+    let after_choose = trim_commas(&target_tokens[then_choose_idx + 2..]);
+    if first_target_tokens.is_empty() || after_choose.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(for_each_idx) = find_token_word_sequence(
+        &after_choose,
+        &["for", "each", "time", "this", "spell", "was", "kicked"],
+    ) else {
+        return Ok(None);
+    };
+
+    let additional_target_tokens = trim_commas(&after_choose[..for_each_idx]);
+    let suffix_words = LexedClause::new(&after_choose[for_each_idx..]).word_refs();
+    if additional_target_tokens.is_empty()
+        || !word_slice_eq(
+            &suffix_words,
+            &["for", "each", "time", "this", "spell", "was", "kicked"],
+        )
+    {
+        return Ok(None);
+    }
+
+    if canonical_target_words(&first_target_tokens)
+        != canonical_target_words(&additional_target_tokens)
+    {
+        return Ok(None);
+    }
+
+    let first_target = parse_target_phrase(&first_target_tokens)?;
+    let count = Value::Add(Box::new(Value::Fixed(1)), Box::new(Value::KickCount));
+    Ok(Some(vec![EffectAst::subject_verb_target_only(
+        TargetAst::WithCountValue(Box::new(first_target), ChoiceCount::dynamic_x(), count),
+    )]))
+}
+
 pub(crate) fn parse_choose_target_prelude_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -2303,6 +2377,10 @@ pub(crate) fn parse_choose_target_prelude_sentence(
     }
     if find_verb(target_tokens).is_some() {
         return Ok(None);
+    }
+
+    if let Some(effects) = parse_kicked_additional_targets_prelude(target_tokens)? {
+        return Ok(Some(effects));
     }
 
     if let Some(targets) = parse_choose_target_prelude_targets(target_tokens)? {
@@ -2870,6 +2948,44 @@ pub(crate) fn parse_keyword_mechanic_clause(
             }));
         }
         return Ok(Some(explore));
+    }
+
+    if let Some(endure_idx) = clause_words
+        .iter()
+        .position(|word| matches!(*word, "endure" | "endures"))
+    {
+        let amount_tokens = trim_commas(&clause_tokens[endure_idx + 1..]);
+        let (amount, used) = parse_value(&amount_tokens).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing endure count (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
+        if used != amount_tokens.len() {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported endure count tail (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+
+        let subject_tokens = &clause_tokens[..endure_idx];
+        let subject_word_view = ClausePatternCompatWords::new(subject_tokens);
+        let subject_words = subject_word_view.to_word_refs();
+        let target = if subject_words.is_empty()
+            || word_slice_eq_any(
+                &subject_words,
+                &[
+                    &["it"],
+                    &["this"],
+                    &["this", "creature"],
+                    &["this", "permanent"],
+                ],
+            ) {
+            TargetAst::Source(span_from_tokens(subject_tokens))
+        } else {
+            parse_target_phrase(subject_tokens)?
+        };
+        return Ok(Some(EffectAst::subject_verb_endure(target, amount)));
     }
 
     Ok(None)

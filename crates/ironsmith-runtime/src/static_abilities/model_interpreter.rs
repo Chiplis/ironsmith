@@ -405,6 +405,12 @@ impl StaticAbilityModelInterpreter {
             filter: spec.filter.clone(),
             zone: spec.zone,
             beneficiary: spec.beneficiary.clone(),
+            cast_this_way_grants: spec
+                .cast_this_way_grants
+                .iter()
+                .cloned()
+                .map(StaticAbility::from_model)
+                .collect(),
         }
     }
 
@@ -1170,8 +1176,22 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::ChoosePowerToughnessAsEntersOrTurnsFaceUp {
                 options,
                 display,
-            } => StaticAbility::choose_power_toughness_as_enters_or_turns_face_up(
-                options.clone(),
+            } => StaticAbility::choose_power_toughness_options_as_enters_or_turns_face_up(
+                options
+                    .iter()
+                    .map(|option| {
+                        super::PowerToughnessChoiceOption::with_abilities(
+                            option.power,
+                            option.toughness,
+                            option
+                                .abilities
+                                .iter()
+                                .cloned()
+                                .map(StaticAbility::from_model)
+                                .collect(),
+                        )
+                    })
+                    .collect(),
                 display.clone(),
             ),
             ironsmith_core::StaticAbilityPayload::EnterAsCopyAsEnters { spec, display } => {
@@ -1400,6 +1420,15 @@ impl StaticAbilityModelInterpreter {
                 display.clone(),
                 source_filter.clone(),
                 *combat_only,
+            ),
+            ironsmith_core::StaticAbilityPayload::PreventDamageToYouFromSourceFilter {
+                amount,
+                source_filter,
+                display,
+            } => StaticAbility::prevent_damage_to_you_from_source_filter(
+                *amount,
+                source_filter.clone(),
+                display.clone(),
             ),
             ironsmith_core::StaticAbilityPayload::ReplaceDamageWithCountersInstead {
                 counter_type,
@@ -1870,7 +1899,21 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
                 options,
                 ..
             } => Some(super::ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec {
-                options: options.clone(),
+                options: options
+                    .iter()
+                    .map(|option| {
+                        super::PowerToughnessChoiceOption::with_abilities(
+                            option.power,
+                            option.toughness,
+                            option
+                                .abilities
+                                .iter()
+                                .cloned()
+                                .map(StaticAbility::from_model)
+                                .collect(),
+                        )
+                    })
+                    .collect(),
             }),
             _ => None,
         }

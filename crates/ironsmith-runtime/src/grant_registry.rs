@@ -34,6 +34,15 @@ pub enum GrantSource {
         source_id: ObjectId,
         controller: PlayerId,
     },
+    /// From a resolving effect that lasts until end of turn only while a
+    /// particular physical card remains on top of a player's library.
+    EffectWhileStableCardOnTopOfLibrary {
+        source_id: ObjectId,
+        expires_end_of_turn: u32,
+        stable_id: StableId,
+        player: PlayerId,
+        library_top_revision: u64,
+    },
     /// From a static ability on a permanent.
     /// The grant exists only while the source is on the battlefield.
     StaticAbility {
@@ -56,6 +65,7 @@ impl GrantSource {
         match self {
             GrantSource::Effect { source_id, .. } => *source_id,
             GrantSource::EffectWhileControlled { source_id, .. } => *source_id,
+            GrantSource::EffectWhileStableCardOnTopOfLibrary { source_id, .. } => *source_id,
             GrantSource::StaticAbility { source_id } => *source_id,
         }
     }
@@ -80,6 +90,21 @@ impl GrantSource {
             } => game.object(*source_id).is_some_and(|source| {
                 source.zone == Zone::Battlefield && game.controller_of(source) == *controller
             }),
+            GrantSource::EffectWhileStableCardOnTopOfLibrary {
+                expires_end_of_turn,
+                stable_id,
+                player,
+                library_top_revision,
+                ..
+            } => {
+                game.turn.turn_number <= *expires_end_of_turn
+                    && stable_card_is_top_of_library_at_revision(
+                        game,
+                        *stable_id,
+                        *player,
+                        *library_top_revision,
+                    )
+            }
         }
     }
 
@@ -98,6 +123,10 @@ impl GrantSource {
                 battlefield.contains(source_id)
             }
             GrantSource::EffectWhileControlled { source_id, .. } => battlefield.contains(source_id),
+            GrantSource::EffectWhileStableCardOnTopOfLibrary {
+                expires_end_of_turn,
+                ..
+            } => turn_number <= *expires_end_of_turn,
         }
     }
 }
@@ -113,6 +142,13 @@ pub enum GrantLifetime {
         source_id: ObjectId,
         controller: PlayerId,
     },
+    WhileStableCardOnTopOfLibrary {
+        source_id: ObjectId,
+        stable_id: StableId,
+        player: PlayerId,
+        turn: u32,
+        library_top_revision: u64,
+    },
 }
 
 impl GrantLifetime {
@@ -121,6 +157,7 @@ impl GrantLifetime {
             GrantLifetime::UntilEndOfTurn { source_id, .. } => *source_id,
             GrantLifetime::WhileSourceOnBattlefield(source_id) => *source_id,
             GrantLifetime::WhileSourceControlledBy { source_id, .. } => *source_id,
+            GrantLifetime::WhileStableCardOnTopOfLibrary { source_id, .. } => *source_id,
         }
     }
 }
@@ -145,8 +182,46 @@ impl GrantSource {
                 source_id: *source_id,
                 controller: *controller,
             },
+            GrantSource::EffectWhileStableCardOnTopOfLibrary {
+                source_id,
+                stable_id,
+                player,
+                expires_end_of_turn,
+                library_top_revision,
+            } => GrantLifetime::WhileStableCardOnTopOfLibrary {
+                source_id: *source_id,
+                stable_id: *stable_id,
+                player: *player,
+                turn: *expires_end_of_turn,
+                library_top_revision: *library_top_revision,
+            },
         }
     }
+}
+
+pub(crate) fn stable_card_is_top_of_library_at_revision(
+    game: &crate::game_state::GameState,
+    stable_id: StableId,
+    player: PlayerId,
+    library_top_revision: u64,
+) -> bool {
+    game.library_top_revision(player) == library_top_revision
+        && stable_card_is_top_of_library(game, stable_id, player)
+}
+
+pub(crate) fn stable_card_is_top_of_library(
+    game: &crate::game_state::GameState,
+    stable_id: StableId,
+    player: PlayerId,
+) -> bool {
+    let Some(player_state) = game.player(player) else {
+        return false;
+    };
+    let Some(top_id) = player_state.library.last().copied() else {
+        return false;
+    };
+    game.object(top_id)
+        .is_some_and(|object| object.stable_id == stable_id)
 }
 
 /// A granted alternative casting method for a specific card.
@@ -509,6 +584,7 @@ impl GrantRegistry {
             !matches!(&grant.source,
                 GrantSource::Effect { source_id: sid, .. } |
                 GrantSource::EffectWhileControlled { source_id: sid, .. } |
+                GrantSource::EffectWhileStableCardOnTopOfLibrary { source_id: sid, .. } |
                 GrantSource::StaticAbility { source_id: sid }
                 if *sid == source_id
             )
@@ -666,10 +742,15 @@ mod tests {
     use crate::ability::Ability;
     use crate::alternative_cast::AlternativeCastingMethod;
     use crate::card::CardBuilder;
+    use crate::events::{KeywordActionEvent, KeywordActionKind, RawEvent};
     use crate::ids::{ObjectId, PlayerId};
     use crate::mana::ManaCost;
+    use crate::provenance::ProvNodeId;
+    use crate::snapshot::ObjectSnapshot;
+    use crate::tag::{SURVEILLED_THIS_TURN_TAG, TagKey};
     use crate::target::PlayerFilter;
     use crate::types::CardType;
+    use std::collections::HashMap;
 
     #[test]
     fn test_grant_registry_creation() {
@@ -878,5 +959,109 @@ mod tests {
             bob,
             &flash,
         ));
+    }
+
+    #[test]
+    fn surveilled_graveyard_static_grants_apply_only_to_surveilled_cards() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+
+        let mut filter = ObjectFilter {
+            zone: Some(Zone::Graveyard),
+            owner: Some(PlayerFilter::You),
+            surveilled_this_turn: true,
+            ..Default::default()
+        };
+        let play_grant = StaticAbility::grants(
+            crate::grant::GrantSpec::new(Grantable::play_from(), filter.clone(), Zone::Graveyard)
+                .with_beneficiary(PlayerFilter::You),
+        );
+        filter.excluded_card_types.push(CardType::Land);
+        let life_grant = StaticAbility::grants(
+            crate::grant::GrantSpec::new(
+                Grantable::life_equal_mana_value_from_zone(Zone::Graveyard, None),
+                filter,
+                Zone::Graveyard,
+            )
+            .with_beneficiary(PlayerFilter::You),
+        );
+        let source_card = CardBuilder::new(crate::ids::CardId::from_raw(91_510), "Eye Stand-In")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let source_id = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        game.object_mut(source_id)
+            .expect("source should exist")
+            .abilities
+            .extend([
+                Ability::static_ability(play_grant),
+                Ability::static_ability(life_grant),
+            ]);
+
+        let spell_card = CardBuilder::new(crate::ids::CardId::from_raw(91_511), "Seen Spell")
+            .card_types(vec![CardType::Sorcery])
+            .mana_cost(ManaCost::new())
+            .build();
+        let seen_spell = game.create_object_from_card(&spell_card, alice, Zone::Graveyard);
+        let unseen_spell = game.create_object_from_card(&spell_card, alice, Zone::Graveyard);
+        let land_card = CardBuilder::new(crate::ids::CardId::from_raw(91_512), "Seen Land")
+            .card_types(vec![CardType::Land])
+            .build();
+        let seen_land = game.create_object_from_card(&land_card, alice, Zone::Graveyard);
+
+        let mut object_tags = HashMap::new();
+        object_tags.insert(
+            TagKey::from(SURVEILLED_THIS_TURN_TAG),
+            vec![
+                ObjectSnapshot::from_object(game.object(seen_spell).unwrap(), &game),
+                ObjectSnapshot::from_object(game.object(seen_land).unwrap(), &game),
+            ],
+        );
+        let event = RawEvent::new(
+            KeywordActionEvent::new(KeywordActionKind::Surveil, alice, source_id, 2)
+                .with_object_tags(object_tags),
+            ProvNodeId::default(),
+        );
+        game.turn_store
+            .turn_history
+            .record_event(&event, None, None);
+
+        assert_eq!(
+            game.effect_store
+                .grant_registry
+                .granted_play_from_for_card(&game, seen_spell, Zone::Graveyard, alice)
+                .len(),
+            1,
+            "surveilled graveyard spell should be playable"
+        );
+        assert_eq!(
+            game.effect_store
+                .grant_registry
+                .granted_alternative_casts_for_card(&game, seen_spell, Zone::Graveyard, alice)
+                .len(),
+            1,
+            "surveilled graveyard spell should get the life-cost cast"
+        );
+        assert!(
+            game.effect_store
+                .grant_registry
+                .granted_play_from_for_card(&game, unseen_spell, Zone::Graveyard, alice)
+                .is_empty(),
+            "non-surveilled graveyard spell should not be playable"
+        );
+        assert_eq!(
+            game.effect_store
+                .grant_registry
+                .granted_play_from_for_card(&game, seen_land, Zone::Graveyard, alice)
+                .len(),
+            1,
+            "surveilled graveyard land should be playable"
+        );
+        assert!(
+            game.effect_store
+                .grant_registry
+                .granted_alternative_casts_for_card(&game, seen_land, Zone::Graveyard, alice)
+                .is_empty(),
+            "surveilled graveyard land should not get a spell life-cost alternative"
+        );
     }
 }

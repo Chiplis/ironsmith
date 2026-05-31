@@ -1709,6 +1709,15 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
 
+        if self.surveilled_this_turn
+            && !game
+                .turn_store
+                .turn_history
+                .object_was_surveilled_this_turn(object.stable_id)
+        {
+            return false;
+        }
+
         if self.was_dealt_damage_this_turn && !game.creature_was_damaged_this_turn(object.id) {
             return false;
         }
@@ -4347,6 +4356,7 @@ fn alternative_cast_matches_kind(
         (AlternativeCastKind::Escape, AlternativeCastingMethod::Escape { .. }) => true,
         (AlternativeCastKind::Madness, AlternativeCastingMethod::Madness { .. }) => true,
         (AlternativeCastKind::Miracle, AlternativeCastingMethod::Miracle { .. }) => true,
+        (AlternativeCastKind::Suspend, AlternativeCastingMethod::Suspend { .. }) => true,
         _ => false,
     }
 }
@@ -4654,6 +4664,7 @@ fn describe_alternative_cast_kind(kind: AlternativeCastKind) -> &'static str {
         AlternativeCastKind::Escape => "escape",
         AlternativeCastKind::Madness => "madness",
         AlternativeCastKind::Miracle => "miracle",
+        AlternativeCastKind::Suspend => "suspend",
     }
 }
 

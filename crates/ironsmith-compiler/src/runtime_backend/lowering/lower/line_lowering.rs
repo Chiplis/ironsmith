@@ -4,7 +4,9 @@ use crate::cards::builders::{
     PlayerAst, StaticAbilityAst, TriggerSpec,
 };
 use crate::runtime_backend::activation_and_restrictions::last_created_token_info;
-use crate::runtime_backend::effect_ast_traversal::for_each_nested_effects_mut;
+use crate::runtime_backend::effect_ast_traversal::{
+    for_each_nested_effects, for_each_nested_effects_mut,
+};
 use crate::runtime_backend::lexer::{word_slice_contains_any_word, word_slice_contains_phrase};
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::zone::Zone;
@@ -108,6 +110,136 @@ fn rewrite_prior_token_placeholders(effects: &mut [EffectAst], token_info: &(Str
             }
         });
     }
+}
+
+fn rewrite_prior_token_placeholder_effect_from_template(
+    effect: &mut EffectAst,
+    template: &(SubjectVerbActionAst, PlayerAst),
+) {
+    let (template_action, template_player) = template;
+    let SubjectVerbActionAst::CreateTokenWithMods {
+        name: template_name,
+        dynamic_power_toughness: template_dynamic_power_toughness,
+        player: template_action_player,
+        attached_to: template_attached_to,
+        tapped: template_tapped,
+        attacking: template_attacking,
+        exile_at_end_of_combat: template_exile_at_end_of_combat,
+        sacrifice_at_end_of_combat: template_sacrifice_at_end_of_combat,
+        sacrifice_at_next_end_step: template_sacrifice_at_next_end_step,
+        exile_at_next_end_step: template_exile_at_next_end_step,
+        granted_abilities: template_granted_abilities,
+        ..
+    } = template_action
+    else {
+        return;
+    };
+    if let EffectAst::SubjectVerb(subject_verb) = effect
+        && let SubjectVerbActionAst::CreateTokenWithMods {
+            name,
+            dynamic_power_toughness,
+            player,
+            attached_to,
+            tapped,
+            attacking,
+            exile_at_end_of_combat,
+            sacrifice_at_end_of_combat,
+            sacrifice_at_next_end_step,
+            exile_at_next_end_step,
+            granted_abilities,
+            ..
+        } = &mut subject_verb.action
+        && matches!(name.as_str(), "of those" | "those")
+    {
+        *name = template_name.clone();
+        *dynamic_power_toughness = template_dynamic_power_toughness.clone();
+        *player = *template_action_player;
+        *attached_to = template_attached_to.clone();
+        *tapped = *template_tapped;
+        *attacking = *template_attacking;
+        *exile_at_end_of_combat = *template_exile_at_end_of_combat;
+        *sacrifice_at_end_of_combat = *template_sacrifice_at_end_of_combat;
+        *sacrifice_at_next_end_step = *template_sacrifice_at_next_end_step;
+        *exile_at_next_end_step = *template_exile_at_next_end_step;
+        *granted_abilities = template_granted_abilities.clone();
+        subject_verb.subject.player = *template_player;
+    }
+}
+
+fn rewrite_prior_token_placeholders_from_template(
+    effects: &mut [EffectAst],
+    template: &(SubjectVerbActionAst, PlayerAst),
+) {
+    for effect in effects {
+        rewrite_prior_token_placeholder_effect_from_template(effect, template);
+        for_each_nested_effects_mut(effect, true, |nested| {
+            for nested_effect in nested {
+                rewrite_prior_token_placeholder_effect_from_template(nested_effect, template);
+            }
+        });
+    }
+}
+
+fn effect_references_prior_token_placeholder(effect: &EffectAst) -> bool {
+    if let EffectAst::SubjectVerb(subject_verb) = effect
+        && let SubjectVerbActionAst::CreateTokenWithMods { name, .. } = &subject_verb.action
+        && matches!(name.as_str(), "of those" | "those")
+    {
+        return true;
+    }
+
+    let mut found = false;
+    for_each_nested_effects(effect, true, |nested| {
+        if !found {
+            found = nested.iter().any(effect_references_prior_token_placeholder);
+        }
+    });
+    found
+}
+
+fn created_token_template_from_effect(
+    effect: &EffectAst,
+) -> Option<(SubjectVerbActionAst, PlayerAst)> {
+    match effect {
+        EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
+            SubjectVerbActionAst::CreateTokenWithMods { .. } => {
+                Some((subject_verb.action.clone(), subject_verb.subject.player))
+            }
+            _ => {
+                let mut found = None;
+                for_each_nested_effects(effect, true, |nested| {
+                    if found.is_none() {
+                        found = token_template_before_prior_token_placeholder(nested);
+                    }
+                });
+                found
+            }
+        },
+        _ => {
+            let mut found = None;
+            for_each_nested_effects(effect, true, |nested| {
+                if found.is_none() {
+                    found = token_template_before_prior_token_placeholder(nested);
+                }
+            });
+            found
+        }
+    }
+}
+
+fn token_template_before_prior_token_placeholder(
+    effects: &[EffectAst],
+) -> Option<(SubjectVerbActionAst, PlayerAst)> {
+    let mut latest_token_template = None;
+    for effect in effects {
+        if effect_references_prior_token_placeholder(effect) {
+            return latest_token_template;
+        }
+        if let Some(token_template) = created_token_template_from_effect(effect) {
+            latest_token_template = Some(token_template);
+        }
+    }
+    None
 }
 
 fn compile_trailing_instead_if_condition(
@@ -935,7 +1067,13 @@ fn lower_statement_chunk(
     }) {
         builder.aura_attach_filter = Some(enchant_filter);
     }
-    if let Some(token_info) = state.latest_created_token.clone() {
+    if let Some(token_template) = token_template_before_prior_token_placeholder(&prepared.effects) {
+        rewrite_prior_token_placeholders_from_template(&mut prepared.effects, &token_template);
+        prepared = super::rewrite_prepare_effects_for_lowering(
+            &prepared.effects,
+            prepared.imports.clone(),
+        )?;
+    } else if let Some(token_info) = state.latest_created_token.clone() {
         rewrite_prior_token_placeholders(&mut prepared.effects, &token_info);
         prepared = super::rewrite_prepare_effects_for_lowering(
             &prepared.effects,
@@ -1605,15 +1743,26 @@ fn lower_triggered_chunk(
         &trigger,
         info.normalized.normalized.as_str(),
     );
+    let mut intervening_if = crate::runtime_backend::trigger_frequency_condition(
+        Some(info.raw_line.as_str()),
+        max_triggers_per_turn,
+    );
+    let lower_source =
+        format!("{} {}", info.raw_line, info.normalized.original).to_ascii_lowercase();
+    if lower_source.contains("becomes tapped during your turn") {
+        let condition = crate::ConditionExpr::YourTurn;
+        intervening_if = Some(match intervening_if {
+            Some(existing) => crate::ConditionExpr::And(Box::new(condition), Box::new(existing)),
+            None => condition,
+        });
+    }
+
     let parsed = super::rewrite_parsed_triggered_ability(
         trigger.clone(),
         prepared.prepared.effects.clone(),
         functional_zones,
         Some(info.raw_line.clone()),
-        crate::runtime_backend::trigger_frequency_condition(
-            Some(info.raw_line.as_str()),
-            max_triggers_per_turn,
-        ),
+        intervening_if,
         None,
         prepared.prepared.imports.clone(),
     );

@@ -1064,6 +1064,16 @@ fn bind_relative_iterated_player_in_value_to_player_filter(
                 *player = player_filter.clone();
             }
         }
+        Value::HalfLifeTotalRoundedUp(player)
+        | Value::HalfLifeTotalRoundedDown(player)
+        | Value::HalfStartingLifeTotalRoundedUp(player)
+        | Value::HalfStartingLifeTotalRoundedDown(player) => {
+            if matches!(player, PlayerFilter::IteratedPlayer)
+                && !matches!(player_filter, PlayerFilter::IteratedPlayer)
+            {
+                *player = player_filter.clone();
+            }
+        }
         Value::PowerOf(spec)
         | Value::ToughnessOf(spec)
         | Value::ManaValueOf(spec)
@@ -1737,6 +1747,9 @@ fn lower_granted_ability_grant_modifications(
                 ));
             }
             GrantedAbilityAst::KeywordAction(crate::KeywordAction::Decayed) => {
+                modifications.push(crate::continuous::Modification::AddAbility(
+                    StaticAbility::keyword_marker("decayed"),
+                ));
                 modifications.push(crate::continuous::Modification::AddAbility(
                     StaticAbility::cant_block(),
                 ));

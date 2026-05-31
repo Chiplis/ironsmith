@@ -36,36 +36,8 @@ pub(crate) fn compile_statement_effects_with_imports(
 pub(crate) fn materialize_prepared_statement_effects(
     prepared: &PreparedEffectsForLowering,
 ) -> Result<LoweredEffects, CardTextError> {
-    if let [
-        EffectAst::SelfReplacement {
-            predicate,
-            if_true,
-            if_false,
-        },
-    ] = prepared.effects.as_slice()
-    {
-        let default_effects =
-            compile_statement_effects_with_imports(if_false, &prepared.imports)?.effects;
-        let replacement_effects =
-            compile_statement_effects_with_imports(if_true, &prepared.imports)?.effects;
-        let condition = compile_condition_from_predicate_ast_with_env(
-            predicate,
-            &prepared.initial_env,
-            prepared.imports.last_object_tag.as_ref(),
-        )?;
-        return Ok(LoweredEffects {
-            effects: crate::resolution::ResolutionProgram::new(vec![
-                crate::resolution::ResolutionSegment {
-                    default_effects: default_effects.flattened_default_effects().to_vec(),
-                    self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
-                        condition,
-                        replacement_effects.flattened_default_effects().to_vec(),
-                    )],
-                },
-            ]),
-            choices: Vec::new(),
-            exports: prepared.exports.clone(),
-        });
+    if let Some(lowered) = materialize_trailing_self_replacement(prepared)? {
+        return Ok(lowered);
     }
 
     let mut ctx = EffectLoweringContext::new();
@@ -89,6 +61,32 @@ pub(crate) fn materialize_prepared_statement_effects(
 pub(crate) fn materialize_prepared_effects_with_trigger_context(
     prepared: &PreparedEffectsForLowering,
 ) -> Result<LoweredEffects, CardTextError> {
+    if let Some(lowered) = materialize_trailing_self_replacement(prepared)? {
+        return Ok(lowered);
+    }
+
+    let mut ctx = EffectLoweringContext::new();
+    ctx.force_auto_tag_object_targets = prepared.force_auto_tag_object_targets;
+    ctx.apply_reference_env(&prepared.initial_env);
+    let (compiled, choices) =
+        compile_annotated_effects_with_context(&prepared.annotated, &mut ctx)?;
+    let compiled = normalize_two_target_counter_then_fight(compiled);
+    let compiled = normalize_random_destroy_across_target_groups(compiled);
+    let compiled = fold_local_zone_rewrite_self_replacements(compiled);
+    let final_env = ctx.reference_env();
+    Ok(LoweredEffects {
+        effects: crate::resolution::ResolutionProgram::from_effects(prepend_effect_prelude(
+            compiled,
+            compile_effect_prelude_tags(&prepared.prelude),
+        )),
+        choices,
+        exports: ReferenceExports::from_env(&final_env),
+    })
+}
+
+fn materialize_trailing_self_replacement(
+    prepared: &PreparedEffectsForLowering,
+) -> Result<Option<LoweredEffects>, CardTextError> {
     if let Some((
         EffectAst::SelfReplacement {
             predicate,
@@ -137,7 +135,7 @@ pub(crate) fn materialize_prepared_effects_with_trigger_context(
         let mut choices = prefix_lowered.choices;
         choices.extend(default_lowered.choices);
         choices.extend(replacement_lowered.choices);
-        return Ok(LoweredEffects {
+        return Ok(Some(LoweredEffects {
             effects: crate::resolution::ResolutionProgram::new(vec![
                 crate::resolution::ResolutionSegment {
                     default_effects,
@@ -149,26 +147,9 @@ pub(crate) fn materialize_prepared_effects_with_trigger_context(
             ]),
             choices,
             exports: prepared.exports.clone(),
-        });
+        }));
     }
-
-    let mut ctx = EffectLoweringContext::new();
-    ctx.force_auto_tag_object_targets = prepared.force_auto_tag_object_targets;
-    ctx.apply_reference_env(&prepared.initial_env);
-    let (compiled, choices) =
-        compile_annotated_effects_with_context(&prepared.annotated, &mut ctx)?;
-    let compiled = normalize_two_target_counter_then_fight(compiled);
-    let compiled = normalize_random_destroy_across_target_groups(compiled);
-    let compiled = fold_local_zone_rewrite_self_replacements(compiled);
-    let final_env = ctx.reference_env();
-    Ok(LoweredEffects {
-        effects: crate::resolution::ResolutionProgram::from_effects(prepend_effect_prelude(
-            compiled,
-            compile_effect_prelude_tags(&prepared.prelude),
-        )),
-        choices,
-        exports: ReferenceExports::from_env(&final_env),
-    })
+    Ok(None)
 }
 
 pub(crate) fn materialize_prepared_triggered_effects(

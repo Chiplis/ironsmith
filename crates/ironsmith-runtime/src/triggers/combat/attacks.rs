@@ -21,6 +21,49 @@ pub struct AttacksTrigger {
     pub min_total_attackers: usize,
 }
 
+/// Trigger that fires once when one or more matching players are attacked.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlayersAttackedTrigger {
+    pub player_filter: PlayerFilter,
+}
+
+impl PlayersAttackedTrigger {
+    pub fn one_or_more(player_filter: PlayerFilter) -> Self {
+        Self { player_filter }
+    }
+
+    fn target_matches(
+        &self,
+        target: &crate::combat_state::AttackTarget,
+        ctx: &TriggerContext,
+    ) -> bool {
+        let crate::combat_state::AttackTarget::Player(player) = target else {
+            return false;
+        };
+        self.player_filter.matches_player(*player, &ctx.filter_ctx)
+    }
+
+    fn is_first_matching_attacker_this_combat(
+        &self,
+        attacker: ObjectId,
+        attack_target: &crate::combat_state::AttackTarget,
+        ctx: &TriggerContext,
+    ) -> bool {
+        let Some(combat) = ctx.game.combat.as_ref() else {
+            return true;
+        };
+        if !self.target_matches(attack_target, ctx) {
+            return false;
+        }
+        for info in &combat.attackers {
+            if self.target_matches(&info.target, ctx) {
+                return info.creature == attacker;
+            }
+        }
+        true
+    }
+}
+
 impl AttacksTrigger {
     /// Create a new attacks trigger with the given filter.
     pub fn new(filter: ObjectFilter) -> Self {
@@ -213,6 +256,14 @@ impl TriggerMatcher for AttacksTrigger {
 
         if self.one_or_more {
             if self.min_total_attackers > 1 {
+                if display_filter.source {
+                    let other_count = self.min_total_attackers.saturating_sub(1) as u32;
+                    let other_text = ironsmith_core::cardinal_word(other_count)
+                        .unwrap_or_else(|| other_count.to_string());
+                    return format!(
+                        "Whenever this creature and at least {other_text} other creatures attack{target_tail}"
+                    );
+                }
                 let min_total = ironsmith_core::cardinal_word(self.min_total_attackers as u32)
                     .unwrap_or_else(|| self.min_total_attackers.to_string());
                 if let Some(controlled_subject) = subject.strip_suffix(" you control") {
@@ -222,6 +273,9 @@ impl TriggerMatcher for AttacksTrigger {
                     );
                 }
                 return format!("Whenever {min_total} or more {subject} attack{target_tail}");
+            }
+            if subject == "creature you control" && target_tail.is_empty() {
+                return "Whenever you attack".to_string();
             }
             return format!("Whenever one or more {subject} attack{target_tail}");
         }
@@ -242,6 +296,37 @@ impl TriggerMatcher for AttacksTrigger {
             return None;
         }
         self.matching_attacker_count_this_combat(ctx)
+    }
+}
+
+impl TriggerMatcher for PlayersAttackedTrigger {
+    fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
+        if event.kind() != EventKind::CreatureAttacked {
+            return false;
+        }
+        let Some(e) = event.downcast::<CreatureAttackedEvent>() else {
+            return false;
+        };
+        let attack_target = match e.target {
+            crate::events::combat::AttackEventTarget::Player(player) => {
+                crate::combat_state::AttackTarget::Player(player)
+            }
+            crate::events::combat::AttackEventTarget::Planeswalker(planeswalker) => {
+                crate::combat_state::AttackTarget::Planeswalker(planeswalker)
+            }
+        };
+        self.is_first_matching_attacker_this_combat(e.attacker, &attack_target, ctx)
+    }
+
+    fn display(&self) -> String {
+        match &self.player_filter {
+            PlayerFilter::Opponent => {
+                "Whenever one or more of your opponents are attacked".to_string()
+            }
+            PlayerFilter::You => "Whenever you are attacked".to_string(),
+            PlayerFilter::Any => "Whenever one or more players are attacked".to_string(),
+            _ => "Whenever one or more matching players are attacked".to_string(),
+        }
     }
 }
 
@@ -452,6 +537,72 @@ mod tests {
             crate::provenance::ProvNodeId::default(),
         );
         assert!(trigger.matches(&charlie_event, &ctx));
+    }
+
+    #[test]
+    fn players_attacked_one_or_more_matches_first_attacker_across_all_opponents() {
+        let mut game = GameState::new(
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+            ],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        let source_id = ObjectId::from_raw(100);
+        let bob_attacker = create_creature(&mut game, "A", bob);
+        let charlie_attacker = create_creature(&mut game, "B", charlie);
+
+        let mut combat = CombatState::default();
+        combat.attackers.push(AttackerInfo {
+            creature: bob_attacker,
+            target: AttackTarget::Player(charlie),
+        });
+        combat.attackers.push(AttackerInfo {
+            creature: charlie_attacker,
+            target: AttackTarget::Player(bob),
+        });
+        game.combat = Some(combat);
+
+        let trigger = PlayersAttackedTrigger::one_or_more(PlayerFilter::Opponent);
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        assert_eq!(
+            trigger.display(),
+            "Whenever one or more of your opponents are attacked"
+        );
+
+        let first_event = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::with_total_attackers(
+                bob_attacker,
+                AttackEventTarget::Player(charlie),
+                2,
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(trigger.matches(&first_event, &ctx));
+
+        let second_event = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::with_total_attackers(
+                charlie_attacker,
+                AttackEventTarget::Player(bob),
+                2,
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(!trigger.matches(&second_event, &ctx));
+
+        let controller_attacked_event = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::with_total_attackers(
+                bob_attacker,
+                AttackEventTarget::Player(alice),
+                1,
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(!trigger.matches(&controller_attacked_event, &ctx));
     }
 
     #[test]
