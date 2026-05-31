@@ -1836,6 +1836,8 @@ pub struct GrantNextSpellCostReductionEffect {
     pub player: PlayerFilter,
     pub filter: ObjectFilter,
     pub reduction: crate::mana::ManaCost,
+    pub generic_reduction: Option<Value>,
+    pub applies_to_all_matching_this_turn: bool,
 }
 
 impl GrantNextSpellCostReductionEffect {
@@ -1848,6 +1850,22 @@ impl GrantNextSpellCostReductionEffect {
             player,
             filter,
             reduction,
+            generic_reduction: None,
+            applies_to_all_matching_this_turn: false,
+        }
+    }
+
+    pub fn all_matching_this_turn(
+        player: PlayerFilter,
+        filter: ObjectFilter,
+        generic_reduction: impl Into<Value>,
+    ) -> Self {
+        Self {
+            player,
+            filter,
+            reduction: crate::mana::ManaCost::new(),
+            generic_reduction: Some(generic_reduction.into()),
+            applies_to_all_matching_this_turn: true,
         }
     }
 }
