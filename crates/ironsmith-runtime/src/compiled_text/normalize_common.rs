@@ -12227,6 +12227,26 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 return format!("there are {} or more {} on the battlefield", count_text, noun);
             }
             if let (
+                Value::Count(filter),
+                crate::effect::ValueComparisonOperator::GreaterThan,
+                Value::Fixed(0),
+            ) = (left, operator, right)
+                && filter.zone == Some(Zone::Battlefield)
+            {
+                let mut described_filter = filter.clone();
+                described_filter.zone = None;
+                let object_text = described_filter.description();
+                let object_text = if object_text.starts_with("a ")
+                    || object_text.starts_with("an ")
+                    || object_text.starts_with("the ")
+                {
+                    object_text
+                } else {
+                    with_indefinite_article(&object_text)
+                };
+                return format!("{object_text} is on the battlefield");
+            }
+            if let (
                 Value::SpellsCastThisTurnMatching {
                     player,
                     filter,

@@ -1138,6 +1138,174 @@ fn kin_tree_nurturer_endure_effect(def: &CardDefinition) -> &Effect {
     effect
 }
 
+fn pious_kitsune_upkeep_effects(def: &CardDefinition) -> &[Effect] {
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Pious Kitsune should compile an upkeep trigger");
+    triggered.effects.flattened_default_effects()
+}
+
+fn pious_kitsune_life_activated_ability(
+    def: &CardDefinition,
+) -> &crate::ability::ActivatedAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Pious Kitsune should compile a life-gain activated ability")
+}
+
+#[test]
+fn pious_kitsune_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Pious Kitsune");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let compiled = unprocessed_compiled_lines(&def);
+    let rendered = compiled.join("\n");
+    let oracle = oracle_text_by_name()
+        .get("Pious Kitsune")
+        .expect("Pious Kitsune oracle text")
+        .clone();
+    let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+        crate::semantic_compare::compare_semantics_scored(
+            &oracle,
+            &compiled,
+            crate::semantic_compare::report_embedding_config(),
+        );
+
+    assert!(
+        ability_debug.contains("ValueComparison")
+            && ability_debug.contains("eight-and-a-half-tails")
+            && ability_debug.contains("CountersOnSource")
+            && ability_debug.contains("\"devotion\"")
+            && ability_debug.contains("RemoveCountersEffect"),
+        "Pious Kitsune should structurally keep the named-creature condition, devotion-counter life scaling, and activated counter cost, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains("if a creature named eight-and-a-half-tails is on the battlefield")
+            && rendered.contains("gain 1 life for each devotion counter on this creature")
+            && rendered.contains("Remove a devotion counter from this creature"),
+        "expected Pious Kitsune compiled text to preserve named-creature condition and devotion counter clauses, got {rendered}"
+    );
+    assert!(
+        similarity >= 0.99 && !mismatch,
+        "expected Pious Kitsune semantic comparison to clear target, score={similarity}, mismatch={mismatch}, compiled={compiled:?}"
+    );
+}
+
+#[test]
+fn pious_kitsune_upkeep_gains_life_when_named_creature_is_on_battlefield() {
+    let def = parse_oracle_card_definition("Pious Kitsune");
+    let effects = pious_kitsune_upkeep_effects(&def);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.add_counters(source, CounterType::Named("devotion"), 1)
+        .expect("Pious Kitsune should accept devotion counters");
+    let named_creature = CardDefinitionBuilder::new(CardId::new(), "Eight-and-a-Half-Tails")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    game.create_object_from_definition(&named_creature, bob, Zone::Battlefield);
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
+    for effect in effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Pious Kitsune upkeep effect should resolve");
+    }
+
+    assert_eq!(
+        game.counter_count(source, CounterType::Named("devotion")),
+        2,
+        "upkeep trigger should put a devotion counter on Pious Kitsune first"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        22,
+        "named creature on any battlefield should enable life gain equal to devotion counters"
+    );
+}
+
+#[test]
+fn pious_kitsune_upkeep_skips_life_gain_without_named_creature() {
+    let def = parse_oracle_card_definition("Pious Kitsune");
+    let effects = pious_kitsune_upkeep_effects(&def);
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.add_counters(source, CounterType::Named("devotion"), 1)
+        .expect("Pious Kitsune should accept devotion counters");
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
+    for effect in effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Pious Kitsune upkeep effect should resolve");
+    }
+
+    assert_eq!(
+        game.counter_count(source, CounterType::Named("devotion")),
+        2,
+        "upkeep trigger should put a devotion counter even when condition is false"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        20,
+        "life-gain branch should not happen without Eight-and-a-Half-Tails on the battlefield"
+    );
+}
+
+#[test]
+fn pious_kitsune_activated_ability_removes_devotion_counter_and_gains_life() {
+    let def = parse_oracle_card_definition("Pious Kitsune");
+    let activated = pious_kitsune_life_activated_ability(&def);
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(source);
+    game.add_counters(source, CounterType::Named("devotion"), 1)
+        .expect("Pious Kitsune should accept devotion counters");
+
+    crate::cost::can_pay_cost(&game, source, alice, &activated.mana_cost)
+        .expect("Pious Kitsune activation should be payable with an untapped source and a devotion counter");
+    let mut dm = crate::decision::AutoPassDecisionMaker::default();
+    crate::special_actions::pay_total_cost_with_choice(
+        &mut game,
+        alice,
+        source,
+        &activated.mana_cost,
+        crate::costs::PaymentReason::ActivateAbility,
+        &mut dm,
+    )
+    .expect("Pious Kitsune activation cost should be paid");
+
+    assert!(game.is_tapped(source), "activation cost should tap Pious Kitsune");
+    assert_eq!(
+        game.counter_count(source, CounterType::Named("devotion")),
+        0,
+        "activation cost should remove one devotion counter"
+    );
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
+    for effect in activated.effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Pious Kitsune activated ability effect should resolve");
+    }
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        21,
+        "activated ability should gain 1 life after its counter-removal cost is paid"
+    );
+}
+
 #[test]
 fn tromp_the_domains_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Tromp the Domains");
