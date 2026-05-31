@@ -2148,6 +2148,25 @@ pub(crate) fn parse_static_condition_clause(
     if word_slice_eq_any(
         &clause_words,
         &[
+            &["an", "opponent", "lost", "life", "this", "turn"],
+            &[
+                "one",
+                "or",
+                "more",
+                "opponents",
+                "lost",
+                "life",
+                "this",
+                "turn",
+            ],
+        ],
+    ) {
+        return Ok(crate::ConditionExpr::OpponentLostLifeThisTurn);
+    }
+
+    if word_slice_eq_any(
+        &clause_words,
+        &[
             &["there", "are", "no", "cards", "in", "your", "library"],
             &["your", "library", "has", "no", "cards", "in", "it"],
         ],

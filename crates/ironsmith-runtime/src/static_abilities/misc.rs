@@ -8,7 +8,7 @@ use super::{
     ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec,
     ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec, ConditionalSpellKeywordKind,
     ConditionalSpellKeywordSpec, EnterAsCopyAsEntersSpec, GraveyardCountMetric, StaticAbilityId,
-    StaticAbilityKind, ThisSpellCastRestrictionKind, TriggerDuplicationSpec,
+    StaticAbility, StaticAbilityKind, ThisSpellCastRestrictionKind, TriggerDuplicationSpec,
     TriggerSuppressionSpec,
     text_utils::{capitalize_first, join_with_and, number_word_u32},
 };
@@ -2405,6 +2405,7 @@ pub struct EnterWithCountersForFilter {
     pub counter_type: CounterType,
     pub count: Value,
     pub added_subtypes: Vec<Subtype>,
+    pub condition: Option<crate::ConditionExpr>,
 }
 
 impl EnterWithCountersForFilter {
@@ -2414,11 +2415,17 @@ impl EnterWithCountersForFilter {
             counter_type,
             count,
             added_subtypes: Vec::new(),
+            condition: None,
         }
     }
 
     pub fn with_added_subtypes(mut self, subtypes: Vec<Subtype>) -> Self {
         self.added_subtypes = subtypes;
+        self
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
         self
     }
 }
@@ -2489,7 +2496,24 @@ impl StaticAbilityKind for EnterWithCountersForFilter {
             )
         };
 
-        format!("{subject} {enters} {counter_clause}{subtype_clause}")
+        let text = format!("{subject} {enters} {counter_clause}{subtype_clause}");
+        let Some(condition) = &self.condition else {
+            return text;
+        };
+        let condition = super::describe_static_condition(condition);
+        if let Some(rest) = condition.strip_prefix("as long as ") {
+            let mut chars = text.chars();
+            let lowered = match chars.next() {
+                Some(first) => format!("{}{}", first.to_ascii_lowercase(), chars.as_str()),
+                None => String::new(),
+            };
+            return format!("As long as {rest}, {lowered}");
+        }
+        format!("{text} {condition}")
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
     }
 
     fn generate_replacement_effect(
@@ -2500,7 +2524,10 @@ impl StaticAbilityKind for EnterWithCountersForFilter {
         Some(ReplacementEffect::with_matcher(
             source,
             controller,
-            WouldEnterBattlefieldMatcher::new(self.filter.clone()),
+            ConditionalWouldEnterBattlefieldMatcher {
+                enter_matcher: WouldEnterBattlefieldMatcher::new(self.filter.clone()),
+                condition: self.condition.clone(),
+            },
             ReplacementAction::EnterWithCounters {
                 counter_type: self.counter_type,
                 count: self.count.clone(),
@@ -2508,6 +2535,49 @@ impl StaticAbilityKind for EnterWithCountersForFilter {
                 added_abilities: Vec::new(),
             },
         ))
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ConditionalWouldEnterBattlefieldMatcher {
+    enter_matcher: WouldEnterBattlefieldMatcher,
+    condition: Option<crate::ConditionExpr>,
+}
+
+impl ConditionalWouldEnterBattlefieldMatcher {
+    fn condition_matches(&self, ctx: &crate::events::context::EventContext<'_>) -> bool {
+        let Some(condition) = &self.condition else {
+            return true;
+        };
+        let Some(source) = ctx.source else {
+            return false;
+        };
+        let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
+            controller: ctx.controller,
+            source,
+            defending_player: None,
+            attacking_player: None,
+            filter_source: Some(source),
+            triggering_event: None,
+            trigger_identity: None,
+            ability_index: None,
+            options: Default::default(),
+        };
+        crate::condition_eval::evaluate_condition_external(ctx.game, condition, &eval_ctx)
+    }
+}
+
+impl ReplacementMatcher for ConditionalWouldEnterBattlefieldMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        self.enter_matcher.matches_event(event, ctx) && self.condition_matches(ctx)
+    }
+
+    fn priority(&self) -> ReplacementPriority {
+        self.enter_matcher.priority()
+    }
+
+    fn display(&self) -> String {
+        self.enter_matcher.display()
     }
 }
 

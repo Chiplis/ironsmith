@@ -11270,9 +11270,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             )
         }
         Condition::AttackedThisTurn => "you attacked this turn".to_string(),
-        Condition::OpponentLostLifeThisTurn => {
-            "an opponent was dealt damage this turn".to_string()
-        }
+        Condition::OpponentLostLifeThisTurn => "an opponent lost life this turn".to_string(),
         Condition::PermanentLeftBattlefieldThisTurn => {
             "a permanent left the battlefield this turn".to_string()
         }
