@@ -36,34 +36,44 @@ pub(crate) fn compile_statement_effects_with_imports(
 pub(crate) fn materialize_prepared_statement_effects(
     prepared: &PreparedEffectsForLowering,
 ) -> Result<LoweredEffects, CardTextError> {
-    if let [
+    if let Some((
         EffectAst::SelfReplacement {
             predicate,
             if_true,
             if_false,
         },
-    ] = prepared.effects.as_slice()
+        prefix_effects,
+    )) = prepared.effects.split_last()
+        && prefix_effects
+            .iter()
+            .all(|effect| !matches!(effect, EffectAst::SelfReplacement { .. }))
     {
-        let default_effects =
-            compile_statement_effects_with_imports(if_false, &prepared.imports)?.effects;
-        let replacement_effects =
-            compile_statement_effects_with_imports(if_true, &prepared.imports)?.effects;
+        let prefix_lowered =
+            compile_statement_effects_with_imports(prefix_effects, &prepared.imports)?;
+        let default_lowered = compile_statement_effects_with_imports(if_false, &prepared.imports)?;
+        let replacement_lowered =
+            compile_statement_effects_with_imports(if_true, &prepared.imports)?;
         let condition = compile_condition_from_predicate_ast_with_env(
             predicate,
             &prepared.initial_env,
             prepared.imports.last_object_tag.as_ref(),
         )?;
+        let mut default_effects = prefix_lowered.effects.flattened_default_effects().to_vec();
+        default_effects.extend(default_lowered.effects.flattened_default_effects().to_vec());
+        let mut choices = prefix_lowered.choices;
+        choices.extend(default_lowered.choices);
+        choices.extend(replacement_lowered.choices);
         return Ok(LoweredEffects {
             effects: crate::resolution::ResolutionProgram::new(vec![
                 crate::resolution::ResolutionSegment {
-                    default_effects: default_effects.flattened_default_effects().to_vec(),
+                    default_effects,
                     self_replacements: vec![crate::resolution::SelfReplacementBranch::new(
                         condition,
-                        replacement_effects.flattened_default_effects().to_vec(),
+                        replacement_lowered.effects.flattened_default_effects().to_vec(),
                     )],
                 },
             ]),
-            choices: Vec::new(),
+            choices,
             exports: prepared.exports.clone(),
         });
     }
