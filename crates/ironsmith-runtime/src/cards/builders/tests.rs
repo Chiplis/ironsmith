@@ -31756,6 +31756,39 @@ fn parse_dinrova_horror_strict_oracle_text() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_infernal_kirin_strict_oracle_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(74_377), "Infernal Kirin")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Black],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Kirin, Subtype::Spirit])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "Flying\nWhenever you cast a Spirit or Arcane spell, target player reveals their hand and discards all cards with that spell's mana value.",
+        )
+        .expect("Infernal Kirin should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let debug = format!("{def:#?}");
+    assert!(rendered.contains("Flying"), "expected Flying, got {rendered}");
+    assert!(
+        rendered.contains(
+            "Whenever you cast a Spirit or Arcane spell, target player reveals their hand and discards all cards with that spell's mana value."
+        ),
+        "expected Infernal Kirin trigger text to preserve the mana-value discard clause, got {rendered}"
+    );
+    assert!(debug.contains("LookAtHandEffect"), "{debug}");
+    assert!(debug.contains("DiscardEffect"), "{debug}");
+    assert!(debug.contains("SameManaValueAsTagged"), "{debug}");
+    assert!(debug.contains("triggering"), "{debug}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_comma_then_return_source_to_hand_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Cyclopean Variant")
         .card_types(vec![CardType::Artifact])

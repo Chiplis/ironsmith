@@ -245,6 +245,20 @@ fn indefinite_article_for(text: &str) -> &'static str {
     }
 }
 
+fn join_with_or(parts: &[String]) -> String {
+    match parts.len() {
+        0 => String::new(),
+        1 => parts[0].clone(),
+        2 => format!("{} or {}", parts[0], parts[1]),
+        _ => {
+            let mut text = parts[..parts.len() - 1].join(", ");
+            text.push_str(", or ");
+            text.push_str(parts.last().map(String::as_str).unwrap_or_default());
+            text
+        }
+    }
+}
+
 fn describe_spell_filter(filter: &ObjectFilter) -> String {
     if filter.targets_player.is_some() || filter.targets_object.is_some() {
         let mut base_filter = filter.clone();
@@ -357,6 +371,19 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
             .contains(&crate::types::CardType::Land)
     {
         return "a noncreature spell".to_string();
+    }
+    let mut subtype_only_spell_filter = ObjectFilter::default();
+    subtype_only_spell_filter.zone = Some(Zone::Stack);
+    subtype_only_spell_filter.subtypes = filter.subtypes.clone();
+    subtype_only_spell_filter.has_mana_cost = filter.has_mana_cost;
+    if !filter.subtypes.is_empty() && *filter == subtype_only_spell_filter {
+        let subtypes = filter
+            .subtypes
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+        let subtype_text = join_with_or(&subtypes);
+        return format!("{} {subtype_text} spell", indefinite_article_for(&subtype_text));
     }
 
     let fallback = filter.description();

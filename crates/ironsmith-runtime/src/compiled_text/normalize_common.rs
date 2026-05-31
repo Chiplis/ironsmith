@@ -6016,6 +6016,27 @@ pub(super) fn describe_discard_count(value: &Value, filter: Option<&ObjectFilter
         };
     }
 
+    if filter_is_only_same_mana_value_as_triggering_spell(filter) {
+        return match value {
+            Value::Fixed(1) => "a card with that spell's mana value".to_string(),
+            Value::Fixed(n) if *n >= 0 => {
+                let plural = "cards with that spell's mana value";
+                small_number_word(*n as u32)
+                    .map(|word| format!("{word} {plural}"))
+                    .unwrap_or_else(|| format!("{n} {plural}"))
+            }
+            Value::Count(count_filter)
+                if filter_is_only_same_mana_value_as_triggering_spell(count_filter) =>
+            {
+                "all cards with that spell's mana value".to_string()
+            }
+            _ => format!(
+                "{} cards with that spell's mana value",
+                describe_value(value)
+            ),
+        };
+    }
+
     if !filter.tagged_constraints.is_empty() {
         return match value {
             Value::Fixed(1) => "that card".to_string(),
@@ -6049,6 +6070,21 @@ pub(super) fn describe_discard_count(value: &Value, filter: Option<&ObjectFilter
             }
         }
     }
+}
+
+fn filter_is_only_same_mana_value_as_triggering_spell(filter: &ObjectFilter) -> bool {
+    let mut bare = filter.clone();
+    bare.zone = None;
+    bare.owner = None;
+    bare.controller = None;
+
+    let tagged_constraints_before = bare.tagged_constraints.len();
+    bare.tagged_constraints.retain(|constraint| {
+        !(constraint.tag.as_str() == "triggering"
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::SameManaValueAsTagged)
+    });
+
+    tagged_constraints_before != bare.tagged_constraints.len() && bare == ObjectFilter::default()
 }
 
 pub(super) fn describe_discard_card_phrase(filter: &ObjectFilter) -> String {
