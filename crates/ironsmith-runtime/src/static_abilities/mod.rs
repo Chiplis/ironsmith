@@ -975,10 +975,36 @@ pub struct ChooseNamedOptionAsEntersSpec {
     pub options: Vec<String>,
 }
 
-/// Spec for "as this enters or is turned face up, choose a P/T" abilities.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// One option for "as this enters or is turned face up, choose characteristics" abilities.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PowerToughnessChoiceOption {
+    pub power: i32,
+    pub toughness: i32,
+    pub abilities: Vec<StaticAbility>,
+}
+
+impl PowerToughnessChoiceOption {
+    pub fn new(power: i32, toughness: i32) -> Self {
+        Self {
+            power,
+            toughness,
+            abilities: Vec::new(),
+        }
+    }
+
+    pub fn with_abilities(power: i32, toughness: i32, abilities: Vec<StaticAbility>) -> Self {
+        Self {
+            power,
+            toughness,
+            abilities,
+        }
+    }
+}
+
+/// Spec for "as this enters or is turned face up, choose characteristics" abilities.
+#[derive(Debug, Clone, PartialEq)]
 pub struct ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec {
-    pub options: Vec<(i32, i32)>,
+    pub options: Vec<PowerToughnessChoiceOption>,
 }
 
 /// Spec for "you may have this enter as a copy ..." abilities.
@@ -2643,6 +2669,15 @@ impl StaticAbility {
         display: String,
     ) -> Self {
         Self::new(ChoosePowerToughnessAsEntersOrTurnsFaceUp::new(
+            options, display,
+        ))
+    }
+
+    pub fn choose_power_toughness_options_as_enters_or_turns_face_up(
+        options: Vec<PowerToughnessChoiceOption>,
+        display: String,
+    ) -> Self {
+        Self::new(ChoosePowerToughnessAsEntersOrTurnsFaceUp::new_with_options(
             options, display,
         ))
     }

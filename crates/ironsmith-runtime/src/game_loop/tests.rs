@@ -29706,6 +29706,93 @@ fn aquamorph_entity_turns_face_up_with_chosen_power_toughness() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn primal_plasma_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(509445), "Primal Plasma")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elemental, Subtype::Shapeshifter])
+        .power_toughness(PowerToughness::new(PtValue::Star, PtValue::Star))
+        .parse_text(
+            "As this creature enters, it becomes your choice of a 3/3 creature, a 2/2 creature with flying, or a 1/6 creature with defender.",
+        )
+        .expect("Primal Plasma should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct ChoosePrimalPlasmaCharacteristics {
+    option_index: usize,
+    choices_seen: usize,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for ChoosePrimalPlasmaCharacteristics {
+    fn decide_options(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        if ctx.options.iter().any(|option| option.description == "3/3")
+            && ctx.options.iter().any(|option| option.description == "2/2")
+            && ctx.options.iter().any(|option| option.description == "1/6")
+        {
+            self.choices_seen += 1;
+            return vec![self.option_index];
+        }
+        ctx.options
+            .iter()
+            .filter(|option| option.legal)
+            .map(|option| option.index)
+            .take(ctx.min)
+            .collect()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn primal_plasma_enters_with_each_chosen_characteristic_set() {
+    let cases = [
+        (0, 3, 3, false, false),
+        (1, 2, 2, true, false),
+        (2, 1, 6, false, true),
+    ];
+
+    for (option_index, expected_power, expected_toughness, has_flying, has_defender) in cases {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let primal_plasma = primal_plasma_definition();
+        let hand_id = game.create_object_from_definition(&primal_plasma, alice, Zone::Hand);
+
+        let mut dm = ChoosePrimalPlasmaCharacteristics {
+            option_index,
+            choices_seen: 0,
+        };
+        let result = game
+            .move_object_with_etb_processing_with_dm(hand_id, Zone::Battlefield, &mut dm)
+            .expect("Primal Plasma should enter the battlefield");
+        let object = game
+            .object(result.new_id)
+            .expect("Primal Plasma should exist on the battlefield");
+
+        assert_eq!(object.power(), Some(expected_power));
+        assert_eq!(object.toughness(), Some(expected_toughness));
+        assert_eq!(
+            game.object_has_ability(result.new_id, &StaticAbility::flying()),
+            has_flying,
+            "flying grant should match option {option_index}"
+        );
+        assert_eq!(
+            game.object_has_ability(result.new_id, &StaticAbility::defender()),
+            has_defender,
+            "defender grant should match option {option_index}"
+        );
+        assert_eq!(dm.choices_seen, 1);
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_bestow_cast_enters_as_aura_and_reverts_when_unattached() {
     use crate::cards::CardDefinitionBuilder;

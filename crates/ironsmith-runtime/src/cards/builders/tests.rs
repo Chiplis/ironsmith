@@ -14579,6 +14579,32 @@ fn aquamorph_entity_strict_parser_and_compiled_text_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn primal_plasma_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Primal Plasma");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("ChoosePowerToughnessAsEntersOrTurnsFaceUp"),
+        "expected structured P/T-choice static ability, got {debug}"
+    );
+    assert!(
+        debug.contains("Flying") && debug.contains("Defender"),
+        "expected keyword-granting P/T choices, got {debug}"
+    );
+
+    let compiled = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        compiled.contains(
+            "as this creature enters, it becomes your choice of a 3/3 creature, a 2/2 creature with flying, or a 1/6 creature with defender"
+        ),
+        "expected Primal Plasma choice clause in compiled output, got {compiled}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_trigger_this_creature_enters_from_your_graveyard() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Phyrexian Dragon Engine")
         .card_types(vec![CardType::Creature])
