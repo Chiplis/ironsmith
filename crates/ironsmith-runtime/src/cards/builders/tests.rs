@@ -49128,6 +49128,39 @@ fn parse_enchant_player_upkeep_trigger_uses_attached_player_filter() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_grievous_wound_oracle_tracks_enchanted_player_damage_trigger() {
+    let def = parse_oracle_card_definition("Grievous Wound");
+
+    assert_eq!(
+        def.aura_attach_filter,
+        Some(AuraAttachmentFilter::Player(PlayerFilter::Any))
+    );
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("DealsDamageTrigger")
+            && abilities_debug.contains("TaggedPlayer")
+            && abilities_debug.contains("enchanted")
+            && abilities_debug.contains("DamagedPlayer")
+            && abilities_debug.contains("HalfLifeTotalRoundedUp"),
+        "expected Grievous Wound to bind enchanted-player damage to the damaged player, got {abilities_debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("enchant player")
+            && rendered.contains("enchanted player can't gain life")
+            && rendered.contains(
+                "whenever enchanted player is dealt damage, that player loses half their life, rounded up"
+            ),
+        "expected Grievous Wound compiled text to preserve the enchant-player damage trigger, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_megatron_life_lost_turn_mana_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Megatron Variant")
         .card_types(vec![CardType::Creature])

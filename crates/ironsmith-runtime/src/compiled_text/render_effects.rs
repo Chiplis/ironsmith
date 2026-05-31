@@ -1871,6 +1871,43 @@ fn describe_life_amount_phrase(amount: &Value) -> String {
     format!("{} life", describe_value(amount))
 }
 
+fn describe_half_life_amount_for_same_player(
+    amount: &Value,
+    player_filter: &PlayerFilter,
+) -> Option<&'static str> {
+    match amount {
+        Value::HalfLifeTotalRoundedUp(filter) if filter == player_filter => {
+            Some(if matches!(player_filter, PlayerFilter::You) {
+                "half your life, rounded up"
+            } else {
+                "half their life, rounded up"
+            })
+        }
+        Value::HalfLifeTotalRoundedDown(filter) if filter == player_filter => {
+            Some(if matches!(player_filter, PlayerFilter::You) {
+                "half your life, rounded down"
+            } else {
+                "half their life, rounded down"
+            })
+        }
+        Value::HalfStartingLifeTotalRoundedUp(filter) if filter == player_filter => {
+            Some(if matches!(player_filter, PlayerFilter::You) {
+                "half your starting life total, rounded up"
+            } else {
+                "half their starting life total, rounded up"
+            })
+        }
+        Value::HalfStartingLifeTotalRoundedDown(filter) if filter == player_filter => {
+            Some(if matches!(player_filter, PlayerFilter::You) {
+                "half your starting life total, rounded down"
+            } else {
+                "half their starting life total, rounded down"
+            })
+        }
+        _ => None,
+    }
+}
+
 fn describe_for_players_simple_iterated_action(
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {
@@ -14878,7 +14915,7 @@ fn describe_triggered_resolution_text(
     }
 
     let effects = super::ast_render::describe_resolution_program(&triggered.effects);
-    let effects = rewrite_damaged_player_reference_for_combat_damage_trigger(triggered, effects);
+    let effects = rewrite_damaged_player_reference_for_damage_trigger(triggered, effects);
     Some(rewrite_damage_phrases_for_permanent_abilities(
         &effects,
         subject,
@@ -14886,15 +14923,20 @@ fn describe_triggered_resolution_text(
     ))
 }
 
-fn rewrite_damaged_player_reference_for_combat_damage_trigger(
+fn rewrite_damaged_player_reference_for_damage_trigger(
     triggered: &crate::ability::TriggeredAbility,
     effects: String,
 ) -> String {
-    if triggered
+    let references_damaged_player = triggered
         .trigger
         .downcast_ref::<crate::triggers::ThisDealsCombatDamageToPlayerTrigger>()
-        .is_none()
-    {
+        .is_some()
+        || triggered
+            .trigger
+            .downcast_ref::<crate::triggers::combat::DealsDamageTrigger>()
+            .is_some_and(|trigger| trigger.damaged_player.is_some());
+
+    if !references_damaged_player {
         return effects;
     }
     effects
@@ -29249,6 +29291,16 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(lose) = effect.downcast_ref::<crate::effects::LoseLifeEffect>() {
         let player = describe_choose_spec(&lose.player);
+        if let ChooseSpec::Player(player_filter) = &lose.player
+            && let Some(amount) =
+                describe_half_life_amount_for_same_player(&lose.amount, player_filter)
+        {
+            return format!(
+                "{} {} {amount}",
+                player,
+                player_verb(&player, "lose", "loses")
+            );
+        }
         if let Value::CountersOn(spec, Some(counter_type)) = &lose.amount {
             return format!(
                 "{} {} 1 life for each {} counter on {}",
