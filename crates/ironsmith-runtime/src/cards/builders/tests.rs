@@ -38707,6 +38707,305 @@ fn assert_oracle_card_fails_strict(name: &str) {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn losheel_clockwork_scholar_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition("Losheel, Clockwork Scholar");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+
+    assert!(
+        rendered.contains(
+            "Prevent all combat damage that would be dealt to attacking artifact creatures you control."
+        ),
+        "expected Losheel's filtered combat prevention clause to render, got {rendered}"
+    );
+    assert!(
+        rendered.contains("This ability triggers only once each turn"),
+        "expected Losheel's once-each-turn trigger text to render, got {rendered}"
+    );
+
+    let ability_debug = format!("{:#?}", def.abilities);
+    assert!(
+        ability_debug.contains("PreventAllCombatDamageToPermanentsMatching")
+            && ability_debug.contains("attacking: true")
+            && ability_debug.contains("Artifact")
+            && ability_debug.contains("Creature")
+            && ability_debug.contains("controller: Some(You)"),
+        "expected Losheel to lower prevention to a filtered static replacement ability, got {ability_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn losheel_test_creature(
+    game: &mut crate::game_state::GameState,
+    name: &str,
+    controller: PlayerId,
+    card_types: Vec<CardType>,
+    power: i32,
+    toughness: i32,
+) -> ObjectId {
+    let card = crate::card::CardBuilder::new(CardId::new(), name)
+        .card_types(card_types)
+        .power_toughness(PowerToughness::fixed(power, toughness))
+        .build();
+    game.create_object_from_card(&card, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn losheel_clockwork_scholar_prevents_only_attacking_artifact_creature_combat_damage() {
+    let losheel = parse_oracle_card_definition("Losheel, Clockwork Scholar");
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.create_object_from_definition(&losheel, alice, Zone::Battlefield);
+    let protected_attacker = losheel_test_creature(
+        &mut game,
+        "Attacking Artifact Creature",
+        alice,
+        vec![CardType::Artifact, CardType::Creature],
+        2,
+        4,
+    );
+    let unprotected_attacker = losheel_test_creature(
+        &mut game,
+        "Attacking Nonartifact Creature",
+        alice,
+        vec![CardType::Creature],
+        2,
+        4,
+    );
+    let artifact_blocker = losheel_test_creature(
+        &mut game,
+        "Artifact Blocker",
+        bob,
+        vec![CardType::Creature],
+        3,
+        4,
+    );
+    let nonartifact_blocker = losheel_test_creature(
+        &mut game,
+        "Nonartifact Blocker",
+        bob,
+        vec![CardType::Creature],
+        3,
+        4,
+    );
+
+    let mut combat = crate::combat_state::CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: protected_attacker,
+        target: crate::combat_state::AttackTarget::Player(bob),
+    });
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: unprotected_attacker,
+        target: crate::combat_state::AttackTarget::Player(bob),
+    });
+    combat
+        .blockers
+        .insert(protected_attacker, vec![artifact_blocker]);
+    combat
+        .blockers
+        .insert(unprotected_attacker, vec![nonartifact_blocker]);
+    game.combat = Some(combat.clone());
+    game.refresh_continuous_state();
+
+    crate::game_loop::execute_combat_damage_step(&mut game, &combat, false);
+
+    assert_eq!(
+        game.damage_on(protected_attacker),
+        0,
+        "Losheel should prevent combat damage to an attacking artifact creature Alice controls"
+    );
+    assert_eq!(
+        game.damage_on(unprotected_attacker),
+        3,
+        "Losheel should not prevent combat damage to a nonartifact attacking creature"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn losheel_clockwork_scholar_prevention_rejects_nonattacking_and_opponent_artifacts() {
+    let losheel = parse_oracle_card_definition("Losheel, Clockwork Scholar");
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let losheel_id = game.create_object_from_definition(&losheel, alice, Zone::Battlefield);
+    let alice_attacking_artifact = losheel_test_creature(
+        &mut game,
+        "Alice Attacking Artifact",
+        alice,
+        vec![CardType::Artifact, CardType::Creature],
+        2,
+        2,
+    );
+    let alice_nonattacking_artifact = losheel_test_creature(
+        &mut game,
+        "Alice Nonattacking Artifact",
+        alice,
+        vec![CardType::Artifact, CardType::Creature],
+        2,
+        2,
+    );
+    let bob_attacking_artifact = losheel_test_creature(
+        &mut game,
+        "Bob Attacking Artifact",
+        bob,
+        vec![CardType::Artifact, CardType::Creature],
+        2,
+        2,
+    );
+    let damage_source = losheel_test_creature(
+        &mut game,
+        "Damage Source",
+        bob,
+        vec![CardType::Creature],
+        3,
+        3,
+    );
+
+    let mut combat = crate::combat_state::CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: alice_attacking_artifact,
+        target: crate::combat_state::AttackTarget::Player(bob),
+    });
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: bob_attacking_artifact,
+        target: crate::combat_state::AttackTarget::Player(alice),
+    });
+    game.combat = Some(combat);
+    game.refresh_continuous_state();
+
+    let replacement = game
+        .effect_store
+        .replacement_effects
+        .effects()
+        .iter()
+        .find(|effect| effect.source == losheel_id)
+        .expect("Losheel should generate a static replacement effect");
+    let matcher = replacement
+        .matcher
+        .as_ref()
+        .expect("Losheel replacement should have a matcher");
+    let ctx = crate::events::context::EventContext::for_replacement_effect(
+        alice, losheel_id, &game,
+    );
+
+    let protected = crate::events::damage::DamageEvent::with_cause(
+        damage_source,
+        crate::events::DamageTarget::Object(alice_attacking_artifact),
+        3,
+        true,
+        crate::events::cause::EventCause::combat_damage(damage_source),
+    );
+    assert!(matcher.matches_event(&protected, &ctx));
+
+    let nonattacking = crate::events::damage::DamageEvent::with_cause(
+        damage_source,
+        crate::events::DamageTarget::Object(alice_nonattacking_artifact),
+        3,
+        true,
+        crate::events::cause::EventCause::combat_damage(damage_source),
+    );
+    assert!(!matcher.matches_event(&nonattacking, &ctx));
+
+    let opponent_controlled = crate::events::damage::DamageEvent::with_cause(
+        damage_source,
+        crate::events::DamageTarget::Object(bob_attacking_artifact),
+        3,
+        true,
+        crate::events::cause::EventCause::combat_damage(damage_source),
+    );
+    assert!(!matcher.matches_event(&opponent_controlled, &ctx));
+
+    let noncombat = crate::events::damage::DamageEvent::with_cause(
+        damage_source,
+        crate::events::DamageTarget::Object(alice_attacking_artifact),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert!(!matcher.matches_event(&noncombat, &ctx));
+
+    let unpreventable = crate::events::damage::DamageEvent::unpreventable_with_cause(
+        damage_source,
+        crate::events::DamageTarget::Object(alice_attacking_artifact),
+        3,
+        true,
+        crate::events::cause::EventCause::combat_damage(damage_source),
+    );
+    assert!(!matcher.matches_event(&unpreventable, &ctx));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn losheel_clockwork_scholar_artifact_creature_enter_trigger_is_once_each_turn() {
+    let losheel = parse_oracle_card_definition("Losheel, Clockwork Scholar");
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+
+    let losheel_id = game.create_object_from_definition(&losheel, alice, Zone::Battlefield);
+    let artifact = losheel_test_creature(
+        &mut game,
+        "Entering Artifact Creature",
+        alice,
+        vec![CardType::Artifact, CardType::Creature],
+        1,
+        1,
+    );
+    let etb_event = crate::events::RawEvent::new(
+        crate::events::ZoneChangeEvent::with_cause(
+            artifact,
+            Zone::Hand,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &etb_event) {
+        if trigger.source == losheel_id {
+            trigger_queue.add(trigger);
+        }
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Losheel should trigger when an artifact creature Alice controls enters"
+    );
+    let trigger_debug = format!("{:#?}", trigger_queue.entries[0]);
+    assert!(
+        trigger_debug.contains("DrawCardsEffect") || trigger_debug.contains("Draw"),
+        "Losheel's trigger should draw a card, got {trigger_debug}"
+    );
+
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Losheel trigger should move to the stack");
+
+    let second_trigger_count = crate::triggers::check_triggers(&game, &etb_event)
+        .iter()
+        .filter(|entry| entry.source == losheel_id)
+        .count();
+    assert_eq!(
+        second_trigger_count, 0,
+        "Losheel's artifact-creature-enter trigger should trigger only once each turn"
+    );
+}
+
 #[test]
 fn alena_kessig_trapper_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("Alena, Kessig Trapper");

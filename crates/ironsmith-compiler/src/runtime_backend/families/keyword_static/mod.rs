@@ -31,6 +31,7 @@ use super::grammar::abilities::{
     is_play_top_card_your_library_revealed_line_lexed, is_players_cant_cycle_line_lexed,
     is_players_cant_pay_life_or_sacrifice_line_lexed,
     is_players_play_top_card_libraries_revealed_line_lexed, is_players_skip_upkeep_line_lexed,
+    is_prevent_all_combat_damage_to_matching_permanents_line_lexed,
     is_prevent_all_combat_damage_to_source_line_lexed,
     is_prevent_all_damage_dealt_to_creatures_line_lexed,
     is_prevent_all_damage_to_source_by_creatures_line_lexed,
@@ -775,6 +776,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_cast_this_spell_as_though_it_had_flash_line),
         single_static_ability_ast_rule!(parse_during_your_turn_prevent_all_damage_to_source_line),
         single_static_ability_ast_rule!(parse_prevent_all_combat_damage_to_source_line),
+        single_static_ability_ast_rule!(
+            parse_prevent_all_combat_damage_to_matching_permanents_line
+        ),
         single_static_ability_ast_rule!(
             parse_prevent_all_noncombat_damage_to_other_creatures_you_control_line
         ),
@@ -7349,6 +7353,33 @@ pub(crate) fn parse_prevent_all_combat_damage_to_source_line(
     }
 
     Ok(None)
+}
+
+pub(crate) fn parse_prevent_all_combat_damage_to_matching_permanents_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    if !is_prevent_all_combat_damage_to_matching_permanents_line_lexed(tokens) {
+        return Ok(None);
+    }
+    let Some((_phrase_idx, phrase_end)) = find_token_word_sequence_span(
+        tokens,
+        &[
+            "prevent", "all", "combat", "damage", "that", "would", "be", "dealt", "to",
+        ],
+    ) else {
+        return Ok(None);
+    };
+    let target_tokens = trim_commas(&tokens[phrase_end..]);
+    if target_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "prevent-all combat damage static line missing target filter (clause: '{}')",
+            render_token_slice(tokens)
+        )));
+    }
+    let filter = parse_object_filter_lexed(&target_tokens, false)?;
+    Ok(Some(
+        StaticAbility::prevent_all_combat_damage_to_permanents_matching(filter),
+    ))
 }
 
 pub(crate) fn parse_during_your_turn_prevent_all_damage_to_source_line(

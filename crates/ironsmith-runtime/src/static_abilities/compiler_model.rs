@@ -149,6 +149,12 @@ impl StaticAbility {
             Some(StaticAbilityId::PreventAllCombatDamageToSelf) => {
                 Self::prevent_all_combat_damage_to_self()
             }
+            Some(StaticAbilityId::PreventAllCombatDamageToPermanentsMatching) => {
+                return Err(StaticAbilityModelConversionError {
+                    detail: "filtered combat-damage prevention needs its object-filter payload"
+                        .to_string(),
+                });
+            }
             Some(StaticAbilityId::PreventAllDamageToSelfByCreatures) => {
                 Self::prevent_all_damage_to_self_by_creatures()
             }

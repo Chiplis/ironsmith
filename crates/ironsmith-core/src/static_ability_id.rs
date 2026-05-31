@@ -177,6 +177,7 @@ pub enum StaticAbilityId {
     PreventAllDamageDealtToCreatures,
     PreventAllDamageToSelf,
     PreventAllCombatDamageToSelf,
+    PreventAllCombatDamageToPermanentsMatching,
     PreventAllDamageToSelfByCreatures,
     PreventDamageToYouFromSourceFilter,
     PreventDamageToSelfRemoveCounter,
@@ -433,6 +434,7 @@ impl StaticAbilityId {
             | PreventAllDamageDealtToCreatures
             | PreventAllDamageToSelf
             | PreventAllCombatDamageToSelf
+            | PreventAllCombatDamageToPermanentsMatching
             | PreventAllDamageToSelfByCreatures
             | PreventDamageToYouFromSourceFilter
             | PreventDamageToSelfRemoveCounter

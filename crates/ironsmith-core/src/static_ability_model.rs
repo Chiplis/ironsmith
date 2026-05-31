@@ -186,6 +186,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     LevelAbility(Box<LevelAbilityModel<T, E, C, Cond>>),
     HexproofFrom(ObjectFilter),
     Protection(ProtectionFrom),
+    PreventAllCombatDamageToPermanentsMatching(ObjectFilter),
     RuleRestriction {
         restriction: Restriction,
         display: String,
@@ -865,6 +866,9 @@ where
             }
             StaticAbilityPayload::HexproofFrom(filter) => StaticAbilityPayload::HexproofFrom(filter),
             StaticAbilityPayload::Protection(from) => StaticAbilityPayload::Protection(from),
+            StaticAbilityPayload::PreventAllCombatDamageToPermanentsMatching(filter) => {
+                StaticAbilityPayload::PreventAllCombatDamageToPermanentsMatching(filter)
+            }
             StaticAbilityPayload::RuleRestriction {
                 restriction,
                 display,
@@ -3263,6 +3267,13 @@ impl<
             id: Some(StaticAbilityId::PreventAllCombatDamageToSelf),
             label: "prevent all combat damage to self".into(),
             payload: StaticAbilityPayload::None,
+        }
+    }
+    pub fn prevent_all_combat_damage_to_permanents_matching(filter: ObjectFilter) -> Self {
+        Self {
+            id: Some(StaticAbilityId::PreventAllCombatDamageToPermanentsMatching),
+            label: "prevent all combat damage to permanents matching filter".into(),
+            payload: StaticAbilityPayload::PreventAllCombatDamageToPermanentsMatching(filter),
         }
     }
     pub fn prevent_all_damage_to_self() -> Self {

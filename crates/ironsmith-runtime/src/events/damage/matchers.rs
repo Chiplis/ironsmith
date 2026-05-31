@@ -183,6 +183,53 @@ impl ReplacementMatcher for CombatDamageMatcher {
     }
 }
 
+/// Matches preventable combat damage events dealt to an object matching a filter.
+#[derive(Debug, Clone)]
+pub struct PreventableCombatDamageToObjectMatcher {
+    pub filter: ObjectFilter,
+}
+
+impl PreventableCombatDamageToObjectMatcher {
+    pub fn new(filter: ObjectFilter) -> Self {
+        Self { filter }
+    }
+}
+
+impl ReplacementMatcher for PreventableCombatDamageToObjectMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        if event.event_kind() != EventKind::Damage {
+            return false;
+        }
+
+        let Some(damage) = downcast_event::<DamageEvent>(event) else {
+            return false;
+        };
+
+        if damage.is_unpreventable || !damage.is_combat {
+            return false;
+        }
+
+        let DamageTarget::Object(object_id) = damage.target else {
+            return false;
+        };
+
+        ctx.game
+            .object(object_id)
+            .is_some_and(|object| self.filter.matches(object, &ctx.filter_ctx, ctx.game))
+    }
+
+    fn priority(&self) -> ReplacementPriority {
+        ReplacementPriority::Other
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "When preventable combat damage would be dealt to {}",
+            self.filter.description()
+        )
+    }
+}
+
 /// Matches noncombat damage events.
 #[derive(Debug, Clone)]
 pub struct NoncombatDamageMatcher;
