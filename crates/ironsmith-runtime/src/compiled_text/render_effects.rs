@@ -14689,12 +14689,18 @@ fn describe_triggered_inline_ability(
         .as_ref()
         .map(split_trigger_intervening_if)
         .unwrap_or((None, None));
-    let intervening_condition = if trigger_is_state_based(&triggered.trigger) {
+    let mut intervening_condition = if trigger_is_state_based(&triggered.trigger) {
         None
     } else {
         intervening_condition
     };
     let mut line = describe_trigger_surface_with_frequency(triggered, trigger_frequency);
+    if matches!(intervening_condition, Some(Condition::YourTurn))
+        && line.to_ascii_lowercase().ends_with("becomes tapped")
+    {
+        line.push_str(" during your turn");
+        intervening_condition = None;
+    }
     if let Some(condition) = intervening_condition {
         line.push_str(", if ");
         line.push_str(&describe_trigger_intervening_condition(
@@ -36628,15 +36634,23 @@ pub(super) fn describe_ability(
                 .as_ref()
                 .map(split_trigger_intervening_if)
                 .unwrap_or((None, None));
-            let intervening_condition = if trigger_is_state_based(&triggered.trigger) {
+            let mut intervening_condition = if trigger_is_state_based(&triggered.trigger) {
                 None
             } else {
                 intervening_condition
             };
-            let trigger_surface = apply_triggered_presentation_label(
+            let mut trigger_surface = apply_triggered_presentation_label(
                 triggered,
                 describe_trigger_surface_with_frequency(triggered, trigger_frequency),
             );
+            if matches!(intervening_condition, Some(Condition::YourTurn))
+                && trigger_surface
+                    .to_ascii_lowercase()
+                    .ends_with("becomes tapped")
+            {
+                trigger_surface.push_str(" during your turn");
+                intervening_condition = None;
+            }
             let mut line = format!("Triggered ability {index}: {trigger_surface}");
             if let Some(condition) = intervening_condition {
                 line.push_str(", if ");

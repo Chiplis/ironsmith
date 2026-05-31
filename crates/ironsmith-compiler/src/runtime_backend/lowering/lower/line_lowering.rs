@@ -1743,15 +1743,26 @@ fn lower_triggered_chunk(
         &trigger,
         info.normalized.normalized.as_str(),
     );
+    let mut intervening_if = crate::runtime_backend::trigger_frequency_condition(
+        Some(info.raw_line.as_str()),
+        max_triggers_per_turn,
+    );
+    let lower_source =
+        format!("{} {}", info.raw_line, info.normalized.original).to_ascii_lowercase();
+    if lower_source.contains("becomes tapped during your turn") {
+        let condition = crate::ConditionExpr::YourTurn;
+        intervening_if = Some(match intervening_if {
+            Some(existing) => crate::ConditionExpr::And(Box::new(condition), Box::new(existing)),
+            None => condition,
+        });
+    }
+
     let parsed = super::rewrite_parsed_triggered_ability(
         trigger.clone(),
         prepared.prepared.effects.clone(),
         functional_zones,
         Some(info.raw_line.clone()),
-        crate::runtime_backend::trigger_frequency_condition(
-            Some(info.raw_line.as_str()),
-            max_triggers_per_turn,
-        ),
+        intervening_if,
         None,
         prepared.prepared.imports.clone(),
     );

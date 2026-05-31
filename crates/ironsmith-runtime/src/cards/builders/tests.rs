@@ -41075,6 +41075,106 @@ fn wild_roads_pilot_token_power_bonus_applies_to_saddle_and_crew_costs() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_interface_ace_strict_regression() {
+    assert_oracle_card_parses_strict("Interface Ace");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn interface_ace_compiled_text_keeps_saddle_and_crew_toughness_clause() {
+    let def = parse_oracle_card_definition("Interface Ace");
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(
+        rendered.contains(
+            "saddles mounts and crews vehicles using its toughness rather than its power"
+        ),
+        "expected Interface Ace compiled text to preserve toughness-based saddle/crew clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("whenever this creature becomes tapped during your turn")
+            && rendered.contains("untap it")
+            && rendered.contains("this ability triggers only once each turn"),
+        "expected Interface Ace compiled text to preserve tap trigger and once-per-turn cap, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn interface_ace_uses_toughness_for_saddle_and_crew_costs() {
+    let alice = PlayerId::from_index(0);
+    let def = CardDefinitionBuilder::new(CardId::new(), "Interface Ace")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Robot, Subtype::Pilot])
+        .power_toughness(PowerToughness::fixed(0, 4))
+        .parse_text(
+            "This creature saddles Mounts and crews Vehicles using its toughness rather than its power.\n\
+             Whenever this creature becomes tapped during your turn, untap it. This ability triggers only once each turn.",
+        )
+        .expect("Interface Ace should parse for runtime cost test");
+
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let vehicle = CardDefinitionBuilder::new(CardId::new(), "Vehicle Probe")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Vehicle])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    let vehicle_id = game.create_object_from_definition(&vehicle, alice, Zone::Battlefield);
+    let crew_cost = crate::effects::CrewCostEffect { required_power: 4 };
+    crate::effects::CostExecutableEffect::can_execute_as_cost(&crew_cost, &game, vehicle_id, alice)
+        .expect("Interface Ace should crew 4 using its toughness rather than 0 power");
+
+    let mount = CardDefinitionBuilder::new(CardId::new(), "Mount Probe")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Mount])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    let mount_id = game.create_object_from_definition(&mount, alice, Zone::Battlefield);
+    let saddle_cost = crate::effects::SaddleCostEffect::new(4);
+    crate::effects::CostExecutableEffect::can_execute_as_cost(&saddle_cost, &game, mount_id, alice)
+        .expect("Interface Ace should saddle 4 using its toughness rather than 0 power");
+
+    let vanilla = CardDefinitionBuilder::new(CardId::new(), "Vanilla 0/4")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(0, 4))
+        .build();
+    let mut baseline_crew = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    baseline_crew.create_object_from_definition(&vanilla, alice, Zone::Battlefield);
+    let baseline_vehicle =
+        baseline_crew.create_object_from_definition(&vehicle, alice, Zone::Battlefield);
+    assert!(
+        crate::effects::CostExecutableEffect::can_execute_as_cost(
+            &crew_cost,
+            &baseline_crew,
+            baseline_vehicle,
+            alice,
+        )
+        .is_err(),
+        "baseline 0/4 without Interface Ace marker should not satisfy crew 4"
+    );
+
+    let mut baseline_saddle = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    baseline_saddle.create_object_from_definition(&vanilla, alice, Zone::Battlefield);
+    let baseline_mount =
+        baseline_saddle.create_object_from_definition(&mount, alice, Zone::Battlefield);
+    assert!(
+        crate::effects::CostExecutableEffect::can_execute_as_cost(
+            &saddle_cost,
+            &baseline_saddle,
+            baseline_mount,
+            alice,
+        )
+        .is_err(),
+        "baseline 0/4 without Interface Ace marker should not satisfy saddle 4"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_brambleback_brute_strict_regression() {
     assert_oracle_card_parses_strict("Brambleback Brute");
 }
