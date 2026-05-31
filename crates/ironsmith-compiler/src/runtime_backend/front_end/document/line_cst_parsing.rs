@@ -247,6 +247,7 @@ pub(super) fn parse_static_line_cst(
     ) || is_first_equip_cost_alternative_line(normalized)
         || is_additional_land_play_static_line(normalized)
         || is_can_block_additional_creatures_static_line(normalized)
+        || is_any_number_named_deck_construction_line(normalized)
     {
         return Ok(Some(make_static(None)));
     }
@@ -304,6 +305,12 @@ pub(super) fn parse_static_line_cst(
     }
 
     Ok(None)
+}
+
+fn is_any_number_named_deck_construction_line(text: &str) -> bool {
+    let trimmed = text.trim().trim_end_matches('.');
+    trimmed.starts_with("a deck can have any number of cards named ")
+        && trimmed.len() > "a deck can have any number of cards named ".len()
 }
 
 /// Recognizes "you may pay {COST} rather than pay the equip cost of the first

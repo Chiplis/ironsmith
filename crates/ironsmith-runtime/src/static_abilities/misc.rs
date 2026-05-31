@@ -5069,6 +5069,28 @@ impl StaticAbilityKind for DraftRuleText {
     }
 }
 
+/// Deck-construction rule text with no in-game rules impact.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeckConstructionRuleText {
+    pub text: String,
+}
+
+impl DeckConstructionRuleText {
+    pub fn new(text: impl Into<String>) -> Self {
+        Self { text: text.into() }
+    }
+}
+
+impl StaticAbilityKind for DeckConstructionRuleText {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::DeckConstructionRuleText
+    }
+
+    fn display(&self) -> String {
+        self.text.clone()
+    }
+}
+
 // =============================================================================
 // Placeholder / Marker Abilities
 // =============================================================================

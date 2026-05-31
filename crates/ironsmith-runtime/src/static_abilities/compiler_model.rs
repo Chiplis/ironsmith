@@ -263,6 +263,9 @@ impl StaticAbility {
                 Self::enters_tapped_unless_two_or_more_opponents()
             }
             Some(StaticAbilityId::CanBeCommander) => Self::can_be_commander(),
+            Some(StaticAbilityId::DeckConstructionRuleText) => {
+                Self::deck_construction_rule_text(label)
+            }
             Some(StaticAbilityId::DraftRuleText) => Self::draft_rule_text(label),
             Some(StaticAbilityId::KeywordText) => Self::keyword_text(label),
             Some(StaticAbilityId::KeywordMarker) => Self::keyword_marker(label),

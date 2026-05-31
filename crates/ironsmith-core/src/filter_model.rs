@@ -1556,6 +1556,13 @@ impl ObjectFilter {
             };
             post_noun_qualifiers.push(format!("blocked by {blocker_text} this turn"));
         }
+        if self.tapped && self.untapped {
+            parts.push("tapped/untapped".to_string());
+        } else if self.tapped {
+            parts.push("tapped".to_string());
+        } else if self.untapped {
+            parts.push("untapped".to_string());
+        }
         if self.attacking && self.blocking {
             parts.push("attacking/blocking".to_string());
         } else {
@@ -1590,13 +1597,6 @@ impl ObjectFilter {
             if self.nonblocking {
                 parts.push("nonblocking".to_string());
             }
-        }
-        if self.tapped && self.untapped {
-            parts.push("tapped/untapped".to_string());
-        } else if self.tapped {
-            parts.push("tapped".to_string());
-        } else if self.untapped {
-            parts.push("untapped".to_string());
         }
         if self.entered_since_your_last_turn_ended {
             post_noun_qualifiers.push("that entered since your last turn ended".to_string());
@@ -1795,6 +1795,23 @@ impl ObjectFilter {
         }
 
         if let Some(ref name) = self.name {
+            match (&controller_suffix, &owner_suffix) {
+                (Some(controller), Some(owner)) => {
+                    if controller == "you control" && owner == "you own" {
+                        parts.push("you both own and control".to_string());
+                    } else if controller == "you control" && owner == "you don't own" {
+                        parts.push("you control but don't own".to_string());
+                    } else if controller == "that player controls" && owner == "that player owns" {
+                        parts.push("that player both owns and controls".to_string());
+                    } else {
+                        parts.push(controller.clone());
+                        parts.push(owner.clone());
+                    }
+                }
+                (Some(controller), None) => parts.push(controller.clone()),
+                (None, Some(owner)) => parts.push(owner.clone()),
+                (None, None) => {}
+            }
             return format!("a {} named {}", parts.join(" "), name);
         }
         if let Some(ref name) = self.excluded_name {

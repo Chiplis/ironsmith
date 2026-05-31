@@ -1771,6 +1771,10 @@ impl<
         Self::identified(StaticAbilityId::DraftRuleText, text)
     }
 
+    pub fn deck_construction_rule_text(text: impl Into<String>) -> Self {
+        Self::identified(StaticAbilityId::DeckConstructionRuleText, text)
+    }
+
     pub fn rule_fallback_text(text: impl Into<String>) -> Self {
         Self::identified(StaticAbilityId::RuleFallbackText, text)
     }
