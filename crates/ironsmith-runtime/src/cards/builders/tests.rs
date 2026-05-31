@@ -159,6 +159,219 @@ fn thundermane_dragon_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn king_darien_xlviii_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("King Darien XLVIII");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert_eq!(
+        def.abilities.len(),
+        3,
+        "King Darien XLVIII should parse its static ability and two activated abilities, got {ability_debug}"
+    );
+    assert!(
+        ability_debug.contains("Anthem")
+            && ability_debug.contains("PutCountersEffect")
+            && ability_debug.contains("SourceReference")
+            && ability_debug.contains("CreateTokenEffect")
+            && ability_debug.contains("SacrificeTargetEffect")
+            && ability_debug.contains("Hexproof")
+            && ability_debug.contains("Indestructible"),
+        "King Darien XLVIII should structurally model all three abilities, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains("Other creatures you control get +1/+1."),
+        "expected anthem text, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "{3}{G}{W}: Put a +1/+1 counter on King Darien and create a 1/1 white Soldier creature token."
+        ),
+        "expected self-counter plus Soldier creation text, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Sacrifice this creature: Creature tokens you control gain hexproof and indestructible until end of turn."
+        ),
+        "expected token keyword grant text, got {rendered}"
+    );
+}
+
+#[test]
+fn king_darien_xlviii_anthem_buffs_only_your_other_creatures_runtime() {
+    let def = parse_oracle_card_definition("King Darien XLVIII");
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let alice_creature = CardDefinitionBuilder::new(CardId::from_raw(92_010), "Alice Recruit")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let bob_creature = CardDefinitionBuilder::new(CardId::from_raw(92_011), "Bob Recruit")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let alice_id = game.create_object_from_definition(&alice_creature, alice, Zone::Battlefield);
+    let bob_id = game.create_object_from_definition(&bob_creature, bob, Zone::Battlefield);
+
+    let alice_chars = game
+        .calculated_characteristics(alice_id)
+        .expect("Alice creature should have characteristics");
+    assert_eq!(
+        (alice_chars.power, alice_chars.toughness),
+        (Some(2), Some(2)),
+        "King Darien XLVIII should give other creatures you control +1/+1"
+    );
+
+    let bob_chars = game
+        .calculated_characteristics(bob_id)
+        .expect("Bob creature should have characteristics");
+    assert_eq!(
+        (bob_chars.power, bob_chars.toughness),
+        (Some(1), Some(1)),
+        "King Darien XLVIII should not buff opponents' creatures"
+    );
+}
+
+#[test]
+fn king_darien_xlviii_mana_ability_puts_counter_on_self_and_creates_soldier_runtime() {
+    let def = parse_oracle_card_definition("King Darien XLVIII");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Activated(activated) = &ability.kind else {
+                return None;
+            };
+            format!("{:?}", activated.effects)
+                .contains("CreateTokenEffect")
+                .then_some(activated)
+        })
+        .expect("King Darien XLVIII should have its mana activated ability");
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let king_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(king_id, alice, &mut dm);
+    for effect in activated.effects.flattened_default_effects() {
+        effect
+            .0
+            .execute(&mut game, &mut ctx)
+            .expect("King Darien XLVIII mana ability effect should resolve");
+    }
+
+    assert_eq!(
+        game.object(king_id).and_then(|object| object
+            .counters
+            .get(&crate::object::CounterType::PlusOnePlusOne)
+            .copied()),
+        Some(1),
+        "the mana ability should put a +1/+1 counter on King Darien XLVIII"
+    );
+    assert!(
+        game.battlefield.iter().any(|id| {
+            game.object(*id).is_some_and(|object| {
+                object.name == "Soldier" && object.kind == crate::object::ObjectKind::Token
+            })
+        }),
+        "the mana ability should create a Soldier creature token"
+    );
+}
+
+#[test]
+fn king_darien_xlviii_sacrifice_ability_grants_keywords_only_to_your_tokens_runtime() {
+    let def = parse_oracle_card_definition("King Darien XLVIII");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Activated(activated) = &ability.kind else {
+                return None;
+            };
+            format!("{:?}", activated.effects)
+                .contains("ApplyContinuousEffect")
+                .then_some(activated)
+        })
+        .expect("King Darien XLVIII should have its sacrifice activated ability");
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let king_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let token_def = CardDefinitionBuilder::new(CardId::from_raw(92_012), "Alice Token")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let alice_token = game.create_object_from_definition(&token_def, alice, Zone::Battlefield);
+    game.object_mut(alice_token)
+        .expect("Alice token should exist")
+        .kind = crate::object::ObjectKind::Token;
+    let bob_token = game.create_object_from_definition(&token_def, bob, Zone::Battlefield);
+    game.object_mut(bob_token)
+        .expect("Bob token should exist")
+        .kind = crate::object::ObjectKind::Token;
+    let nontoken_def = CardDefinitionBuilder::new(CardId::from_raw(92_013), "Alice Nontoken")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let alice_nontoken =
+        game.create_object_from_definition(&nontoken_def, alice, Zone::Battlefield);
+
+    let sacrifice_cost = activated
+        .mana_cost
+        .costs()
+        .first()
+        .expect("sacrifice ability should have a sacrifice cost");
+    let mut cost_dm = crate::decision::AutoPassDecisionMaker;
+    let mut cost_ctx = crate::costs::CostContext::new(king_id, alice, &mut cost_dm);
+    sacrifice_cost
+        .pay(&mut game, &mut cost_ctx)
+        .expect("King Darien XLVIII sacrifice cost should be payable");
+    assert!(
+        !game.battlefield.contains(&king_id)
+            && game.player(alice).is_some_and(|player| {
+                player.graveyard.iter().any(|id| {
+                    game.object(*id)
+                        .is_some_and(|object| object.name == "King Darien XLVIII")
+                })
+            }),
+        "paying the sacrifice cost should move King Darien XLVIII from the battlefield to the graveyard"
+    );
+
+    let mut effect_dm = crate::decision::AutoPassDecisionMaker;
+    let mut effect_ctx = crate::effects::ExecutionContext::new(king_id, alice, &mut effect_dm);
+    for effect in activated.effects.flattened_default_effects() {
+        effect
+            .0
+            .execute(&mut game, &mut effect_ctx)
+            .expect("King Darien XLVIII sacrifice ability effect should resolve");
+    }
+
+    assert!(
+        game.object_has_static_ability_id(alice_token, StaticAbilityId::Hexproof)
+            && game.object_has_static_ability_id(alice_token, StaticAbilityId::Indestructible),
+        "your creature token should gain hexproof and indestructible"
+    );
+    assert!(
+        !game.object_has_static_ability_id(alice_nontoken, StaticAbilityId::Hexproof)
+            && !game.object_has_static_ability_id(alice_nontoken, StaticAbilityId::Indestructible),
+        "your nontoken creature should not gain the token-only keywords"
+    );
+    assert!(
+        !game.object_has_static_ability_id(bob_token, StaticAbilityId::Hexproof)
+            && !game.object_has_static_ability_id(bob_token, StaticAbilityId::Indestructible),
+        "opponents' creature tokens should not gain the keywords"
+    );
+}
+
+#[test]
 fn vampire_socialite_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Vampire Socialite");
     let rendered = unprocessed_compiled_lines(&def).join("\n");

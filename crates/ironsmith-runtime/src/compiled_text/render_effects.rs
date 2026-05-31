@@ -4674,6 +4674,34 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         })
         .collect::<Vec<_>>();
 
+    fn describe_source_counter_and_create(effects: &[&Effect]) -> Option<String> {
+        let [counter_effect, create_effect] = effects else {
+            return None;
+        };
+        let put = counter_effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
+        if put.counter_type != CounterType::PlusOnePlusOne
+            || put.amount != Value::Fixed(1)
+            || !matches!(put.target.base(), ChooseSpec::Source)
+            || put.target_count.is_some()
+            || put.distributed
+        {
+            return None;
+        }
+        create_effect.downcast_ref::<crate::effects::CreateTokenEffect>()?;
+
+        let counter_text = describe_effect(counter_effect);
+        let create_text = lowercase_first(&describe_effect(create_effect));
+        Some(format!(
+            "{} and {}",
+            counter_text.trim_end_matches('.'),
+            create_text.trim_end_matches('.')
+        ))
+    }
+
+    if let Some(compact) = describe_source_counter_and_create(&filtered) {
+        return compact;
+    }
+
     if let Some(compact) = describe_reveal_hand_choose_move(&filtered) {
         return compact;
     }
