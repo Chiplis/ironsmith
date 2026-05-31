@@ -248,6 +248,123 @@ fn ox_tokens_controlled_by(game: &GameState, player: PlayerId) -> Vec<ObjectId> 
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn from_under_the_floorboards_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(74_210), "From Under the Floorboards")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Madness {X}{B}{B}\n\
+             Create three tapped 2/2 black Zombie creature tokens and you gain 3 life. If this spell's madness cost was paid, instead create X of those tokens and you gain X life.",
+        )
+        .expect("From Under the Floorboards should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn zombie_tokens_controlled_by(game: &GameState, player: PlayerId) -> Vec<ObjectId> {
+    game.battlefield
+        .iter()
+        .copied()
+        .filter(|&id| {
+            game.object(id).is_some_and(|object| {
+                game.controller_of(object) == player
+                    && object.kind == ObjectKind::Token
+                    && object.name == "Zombie"
+                    && object.card_types.contains(&CardType::Creature)
+                    && object.subtypes.contains(&Subtype::Zombie)
+                    && game.current_power(id) == Some(2)
+                    && game.current_toughness(id) == Some(2)
+                    && game.current_colors(id) == Some(crate::color::ColorSet::BLACK)
+            })
+        })
+        .collect()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_from_under_the_floorboards_on_stack(
+    game: &mut GameState,
+    player: PlayerId,
+    paid_madness: bool,
+    x_value: Option<u32>,
+) {
+    let def = from_under_the_floorboards_definition();
+    assert!(
+        def.alternative_casts.iter().any(|method| matches!(
+            method,
+            crate::alternative_cast::AlternativeCastingMethod::Madness { cost }
+                if cost.to_oracle() == "{X}{B}{B}"
+        )),
+        "From Under the Floorboards should expose its madness alternative cost"
+    );
+    let spell_id = game.create_object_from_definition(&def, player, Zone::Stack);
+    if let Some(spell) = game.object_mut(spell_id) {
+        spell.x_value = x_value;
+        if paid_madness {
+            spell.optional_costs_paid.mark_label_paid("Madness");
+        }
+    }
+    let stable_id = game.object(spell_id).expect("spell on stack").stable_id;
+    let mut entry = StackEntry::new(spell_id, player)
+        .with_source_info(stable_id, "From Under the Floorboards".to_string());
+    if let Some(x) = x_value {
+        entry = entry.with_x(x);
+    }
+    game.push_to_stack(entry);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn from_under_the_floorboards_without_madness_uses_default_token_and_life_branch() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    put_from_under_the_floorboards_on_stack(&mut game, alice, false, Some(2));
+    resolve_stack_entry(&mut game).expect("From Under the Floorboards should resolve normally");
+
+    let zombies = zombie_tokens_controlled_by(&game, alice);
+    assert_eq!(zombies.len(), 3, "normal branch should create three Zombies");
+    assert!(
+        zombies.iter().all(|id| game.is_tapped(*id)),
+        "normal branch Zombies should enter tapped"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        23,
+        "normal branch should gain 3 life"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn from_under_the_floorboards_paid_madness_uses_x_token_and_life_branch() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    put_from_under_the_floorboards_on_stack(&mut game, alice, true, Some(2));
+    resolve_stack_entry(&mut game)
+        .expect("From Under the Floorboards should resolve with madness paid");
+
+    let zombies = zombie_tokens_controlled_by(&game, alice);
+    assert_eq!(
+        zombies.len(),
+        2,
+        "paid madness branch should replace the default with X Zombies"
+    );
+    assert!(
+        zombies.iter().all(|id| game.is_tapped(*id)),
+        "paid madness branch Zombies should also enter tapped"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        22,
+        "paid madness branch should gain X life"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn put_test_cards_in_zone(game: &mut GameState, player: PlayerId, zone: Zone, count: u32) {
     for index in 0..count {
         let card = CardBuilder::new(

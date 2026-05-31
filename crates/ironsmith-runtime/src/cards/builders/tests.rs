@@ -44725,6 +44725,31 @@ fn parse_aangs_journey_kicked_search_slots_as_self_replacement() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_from_under_the_floorboards_madness_self_replacement() {
+    let def = parse_oracle_card_definition("From Under the Floorboards");
+    let debug = format!("{:#?}", def.spell_effect);
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        debug.contains("SelfReplacementBranch")
+            && debug.contains("ThisSpellPaidLabel")
+            && debug.contains("Madness")
+            && debug.contains("CreateTokenEffect")
+            && debug.contains("enters_tapped: true")
+            && debug.contains("GainLifeEffect"),
+        "expected From Under the Floorboards to lower madness as a tapped-token/life self-replacement, got {debug}"
+    );
+    assert!(
+        rendered.contains("Create three tapped 2/2 black Zombie creature tokens and you gain 3 life")
+            && rendered.contains("If this spell's madness cost was paid, instead create X of those tokens and you gain X life")
+            && rendered.contains("Madness {X}{B}{B}")
+            && !rendered.contains("token tokens"),
+        "expected From Under the Floorboards compiled text to preserve the madness replacement clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_kicked_multi_zone_search_to_battlefield_as_self_replacement() {
     let def = CardDefinitionBuilder::new(CardId::new(), "The Five Doctors Variant")
         .card_types(vec![CardType::Sorcery])
