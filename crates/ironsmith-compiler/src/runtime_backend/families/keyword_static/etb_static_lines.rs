@@ -866,6 +866,10 @@ pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Val
         | Some(["number", "of", "opponents"]) => {
             return Some(Value::CountPlayers(PlayerFilter::Opponent));
         }
+        Some(["the", "number", "of", "players", "being", "attacked"])
+        | Some(["number", "of", "players", "being", "attacked"]) => {
+            return Some(Value::PlayersBeingAttacked);
+        }
         Some(["target", "players", "life", "total"])
         | Some(["target", "player", "life", "total"]) => {
             return Some(Value::LifeTotal(PlayerFilter::target_player()));
