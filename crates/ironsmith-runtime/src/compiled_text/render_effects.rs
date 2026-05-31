@@ -12106,6 +12106,33 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             && let Some(reveal) =
                 filtered[idx + 1].downcast_ref::<crate::effects::RevealTaggedEffect>()
             && reveal.tag == choose.tag
+            && let Some(battlefield_conditional) =
+                filtered[idx + 2].downcast_ref::<crate::effects::ConditionalEffect>()
+            && let Some(hand_conditional) = filtered
+                .get(idx + 3)
+                .and_then(|effect| effect.downcast_ref::<crate::effects::ConditionalEffect>())
+            && let Some(shuffle) = filtered
+                .get(idx + 4)
+                .and_then(|effect| effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>())
+            && let Some(compact) =
+                describe_search_reveal_conditional_may_battlefield_else_hand_then_shuffle(
+                    choose,
+                    reveal,
+                    battlefield_conditional,
+                    hand_conditional,
+                    shuffle,
+                )
+        {
+            parts.push(compact);
+            idx += 5;
+            continue;
+        }
+        if idx + 2 < filtered.len()
+            && let Some(choose) =
+                filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(reveal) =
+                filtered[idx + 1].downcast_ref::<crate::effects::RevealTaggedEffect>()
+            && reveal.tag == choose.tag
             && let Some(conditional) =
                 filtered[idx + 2].downcast_ref::<crate::effects::ConditionalEffect>()
             && let Some(shuffle) = filtered
@@ -24287,6 +24314,92 @@ pub(super) fn describe_search_reveal_conditional_move_then_shuffle(
 
     Some(format!(
         "Search {search_origin} for {selection} and reveal it. If {condition}, {true_clause}. Otherwise, {false_clause}. Then shuffle"
+    ))
+}
+
+pub(super) fn describe_search_reveal_conditional_may_battlefield_else_hand_then_shuffle(
+    choose: &crate::effects::ChooseObjectsEffect,
+    reveal: &crate::effects::RevealTaggedEffect,
+    battlefield_conditional: &crate::effects::ConditionalEffect,
+    hand_conditional: &crate::effects::ConditionalEffect,
+    shuffle: &crate::effects::ShuffleLibraryEffect,
+) -> Option<String> {
+    if !choose.is_search
+        || choose_primary_zone(choose) != Some(Zone::Library)
+        || choose.count.max != Some(1)
+        || choose.count.dynamic_x
+        || reveal.tag != choose.tag
+        || !battlefield_conditional.if_false.is_empty()
+    {
+        return None;
+    }
+
+    let [may_effect] = battlefield_conditional.if_true.as_slice() else {
+        return None;
+    };
+    let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+    if may.decider.as_ref().is_some_and(|decider| *decider != PlayerFilter::You) {
+        return None;
+    }
+    let battlefield_move =
+        conditional_search_branch_move(&may.effects, Zone::Battlefield, choose.tag.as_str())?;
+
+    let Condition::Not(not_condition) = &hand_conditional.condition else {
+        return None;
+    };
+    let Condition::PlayerTaggedObjectMatches {
+        player,
+        tag,
+        filter,
+    } = not_condition.as_ref()
+    else {
+        return None;
+    };
+    let battlefield_filter = ObjectFilter::default().in_zone(Zone::Battlefield);
+    if *player != PlayerFilter::You || tag != &choose.tag || filter != &battlefield_filter {
+        return None;
+    }
+    let hand_move = conditional_search_branch_move(
+        &hand_conditional.if_true,
+        Zone::Hand,
+        choose.tag.as_str(),
+    )?;
+    if !hand_conditional.if_false.is_empty() || hand_move.to_top {
+        return None;
+    }
+
+    let search_owner_filter = choose.filter.owner.as_ref().unwrap_or(&choose.chooser);
+    if shuffle.player != *search_owner_filter {
+        return None;
+    }
+
+    let search_origin = describe_search_origin_zones(choose)?;
+    let searched_library =
+        choose_search_zones(choose).is_some_and(|zones| zones.contains(&Zone::Library));
+    let mut display_filter = choose.filter.clone();
+    display_filter.owner = None;
+    if searched_library && display_filter.zone == Some(Zone::Library) {
+        display_filter.zone = None;
+    }
+    let raw_filter_text = if display_filter == ObjectFilter::default() {
+        "card".to_string()
+    } else {
+        normalize_search_descriptor_for_origin(&display_filter.description(), searched_library)
+    };
+    let selection = describe_search_selection_with_cards_preserving_where(
+        &describe_search_selection_from_filter_text(choose, &raw_filter_text),
+    );
+    let condition = describe_condition(&battlefield_conditional.condition);
+    let tapped = if battlefield_move.enters_tapped {
+        " tapped"
+    } else {
+        ""
+    };
+    let owner_possessive = describe_possessive_player_filter(search_owner_filter);
+    let hand_clause = describe_conditional_search_move_clause(hand_move, "it", &owner_possessive)?;
+
+    Some(format!(
+        "Search {search_origin} for {selection} and reveal it. If {condition}, you may put that card onto the battlefield{tapped}. If you don't put the card onto the battlefield, {hand_clause}. Then shuffle"
     ))
 }
 

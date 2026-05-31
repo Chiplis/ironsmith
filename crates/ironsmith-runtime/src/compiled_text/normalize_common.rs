@@ -7428,6 +7428,12 @@ pub(super) fn describe_search_selection_with_cards(selection: &str) -> String {
     if let Some(subtype) = selection.strip_prefix("basic land card ") {
         return format!("a basic {} card", subtype.trim());
     }
+    if let Some(subtype) = selection.strip_prefix("a land card ") {
+        return format!("{} card", with_indefinite_article(subtype.trim()));
+    }
+    if let Some(subtype) = selection.strip_prefix("land card ") {
+        return format!("{} card", with_indefinite_article(subtype.trim()));
+    }
     if selection == "permanent" || selection == "permanent card" {
         return "a card".to_string();
     }
