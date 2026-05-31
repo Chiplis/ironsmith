@@ -11,6 +11,7 @@ use crate::effects::{
     MoveToZoneEffect, ReturnFromGraveyardToHandEffect, TagTriggeringObjectEffect, TaggedEffect,
     TargetOnlyEffect, UntapEffect,
 };
+use crate::filter::ObjectFilterExt;
 use crate::object::AuraAttachmentFilter;
 use crate::static_abilities::StaticAbilityId;
 use crate::target::{ChooseSpec, ObjectRef, PlayerFilter, SourceReferenceSurface};
@@ -163,6 +164,153 @@ fn commander_liara_portyr_strict_parser_and_compiled_text_regression() {
         rendered,
         "Whenever you attack, spells you cast from exile this turn cost {X} less to cast, where X is the number of players being attacked. Exile the top X cards of your library. Until end of turn, you may cast spells from among those exiled cards."
     );
+}
+
+#[test]
+fn templar_knight_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Templar Knight");
+    let rendered = unprocessed_compiled_lines(&def);
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert_eq!(
+        rendered,
+        vec![
+            "Vigilance".to_string(),
+            "{W}, Tap five untapped attacking creatures you control named Templar Knight: Search your library for a legendary artifact card, put it onto the battlefield, then shuffle.".to_string(),
+            "A deck can have any number of cards named Templar Knight.".to_string(),
+        ],
+        "Templar Knight should parse strictly and preserve its activation and deck-construction text"
+    );
+    assert!(
+        def.abilities.iter().any(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => {
+                static_ability.id() == StaticAbilityId::DeckConstructionRuleText
+            }
+            _ => false,
+        }),
+        "Templar Knight should lower its any-number deck rule to typed deck-construction text, got {ability_debug}"
+    );
+    assert!(
+        ability_debug.contains("untapped: true")
+            && ability_debug.contains("attacking: true")
+            && ability_debug.contains("name: Some(")
+            && ability_debug.contains("\"templar knight\"")
+            && !ability_debug.contains("RuleFallbackText")
+            && !ability_debug.contains("UnsupportedParserLine"),
+        "Templar Knight should structurally model the named untapped attacking creature cost without parser fallbacks, got {ability_debug}"
+    );
+}
+
+#[test]
+fn templar_knight_deck_construction_rule_has_no_game_runtime_effects() {
+    let def = parse_oracle_card_definition("Templar Knight");
+    let static_ability = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => {
+                if static_ability.id() == StaticAbilityId::DeckConstructionRuleText {
+                    Some(static_ability)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        })
+        .expect("Templar Knight should have a typed deck-construction static ability");
+
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    assert!(static_ability.generate_effects(source, alice, &game).is_empty());
+    assert!(static_ability
+        .generate_replacement_effect(source, alice)
+        .is_none());
+    assert!(static_ability.pregame_action_kind().is_none());
+}
+
+#[test]
+fn templar_knight_activation_cost_filter_requires_untapped_attacking_named_creatures_you_control() {
+    let def = parse_oracle_card_definition("Templar Knight");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Templar Knight should have an activated ability");
+    let choose_cost = activated
+        .mana_cost
+        .costs()
+        .iter()
+        .filter_map(|cost| cost.effect_ref())
+        .find_map(|effect| effect.downcast_ref::<ChooseObjectsEffect>())
+        .expect("Templar Knight activation should choose creatures to tap as a cost");
+
+    assert_eq!(choose_cost.count.min, 5);
+    assert_eq!(choose_cost.count.max, Some(5));
+    assert!(choose_cost.filter.untapped);
+    assert!(choose_cost.filter.attacking);
+    assert_eq!(choose_cost.filter.controller, Some(PlayerFilter::You));
+    assert_eq!(choose_cost.filter.name.as_deref(), Some("templar knight"));
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let matching = (0..5)
+        .map(|_| game.create_object_from_definition(&def, alice, Zone::Battlefield))
+        .collect::<Vec<_>>();
+    let nonattacking = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let tapped_attacker = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.tap(tapped_attacker);
+    let bob_attacker = game.create_object_from_definition(&def, bob, Zone::Battlefield);
+    let decoy_def = CardDefinitionBuilder::new(CardId::new(), "Templar Decoy")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let wrong_name_attacker =
+        game.create_object_from_definition(&decoy_def, alice, Zone::Battlefield);
+
+    let mut attackers = matching
+        .iter()
+        .chain([&tapped_attacker, &bob_attacker, &wrong_name_attacker])
+        .map(|creature| crate::combat_state::AttackerInfo {
+            creature: *creature,
+            target: crate::combat_state::AttackTarget::Player(bob),
+        })
+        .collect::<Vec<_>>();
+    attackers.push(crate::combat_state::AttackerInfo {
+        creature: source,
+        target: crate::combat_state::AttackTarget::Player(bob),
+    });
+    game.combat = Some(crate::combat_state::CombatState {
+        attackers,
+        ..Default::default()
+    });
+    let ctx = game.filter_context_for(alice, Some(source));
+
+    for creature in matching {
+        let object = game.object(creature).expect("matching Templar should exist");
+        assert!(
+            choose_cost.filter.matches(object, &ctx, &game),
+            "untapped attacking Templars you control should satisfy the activation cost filter"
+        );
+    }
+    for (creature, reason) in [
+        (nonattacking, "nonattacking"),
+        (tapped_attacker, "tapped"),
+        (bob_attacker, "opponent-controlled"),
+        (wrong_name_attacker, "wrong-name"),
+    ] {
+        let object = game.object(creature).expect("negative branch object should exist");
+        assert!(
+            !choose_cost.filter.matches(object, &ctx, &game),
+            "{reason} creatures should not satisfy the Templar Knight activation cost filter"
+        );
+    }
 }
 
 #[test]

@@ -248,6 +248,7 @@ pub enum StaticAbilityId {
     DiscardOrRedirectReplacement,
     PayLifeOrEnterTappedReplacement,
     PregameAction,
+    DeckConstructionRuleText,
     DraftRuleText,
     KeywordText,
     KeywordMarker,
@@ -504,6 +505,7 @@ impl StaticAbilityId {
             | DiscardOrRedirectReplacement
             | PayLifeOrEnterTappedReplacement
             | PregameAction
+            | DeckConstructionRuleText
             | DraftRuleText
             | KeywordText
             | KeywordMarker
