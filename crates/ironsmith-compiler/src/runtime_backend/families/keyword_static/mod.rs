@@ -1036,6 +1036,24 @@ fn parse_static_ability_ast_line_early_lexed(
         [
             "this",
             "creature",
+            "saddles",
+            "mounts",
+            "and",
+            "crews",
+            "vehicles",
+            "as",
+            "though",
+            "its",
+            "power",
+            "were",
+            _,
+            "greater"
+        ]
+    ) || matches!(
+        words.as_slice(),
+        [
+            "this",
+            "creature",
             "crews",
             "vehicles",
             "as",
