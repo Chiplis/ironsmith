@@ -76,6 +76,7 @@ pub enum ControlDurationAst {
     UntilYourNextTurnEnd,
     DuringNextTurn,
     AsLongAsYouControlSource,
+    AsLongAsSourceRemainsTapped,
     Forever,
 }
 

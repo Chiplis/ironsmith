@@ -1205,6 +1205,161 @@ fn create_test_land(game: &mut GameState, name: &str, controller: PlayerId) -> O
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn create_test_island(game: &mut GameState, name: &str, controller: PlayerId) -> ObjectId {
+    let card = CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Island])
+        .build();
+    game.create_object_from_card(&card, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn vedalken_shackles_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(425_824), "Vedalken Shackles")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "You may choose not to untap this artifact during your untap step.\n{2}, {T}: Gain control of target creature with power less than or equal to the number of Islands you control for as long as this artifact remains tapped.",
+        )
+        .expect("Vedalken Shackles should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn vedalken_shackles_targets_by_island_count_and_control_expires_when_untapped() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let shackles_def = vedalken_shackles_definition();
+    let shackles_id = game.create_object_from_definition(&shackles_def, alice, Zone::Battlefield);
+    let target_id = create_vanilla_creature(&mut game, "Bob's Hill Giant", bob, 3, 3);
+    let too_large_id = create_vanilla_creature(&mut game, "Bob's Baloth", bob, 4, 4);
+    create_test_island(&mut game, "Alice's First Island", alice);
+    create_test_island(&mut game, "Alice's Second Island", alice);
+
+    let activated = shackles_def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Vedalken Shackles should have an activated ability");
+    let target_spec = activated
+        .choices
+        .first()
+        .expect("Vedalken Shackles should declare a target choice");
+    let legal_targets = super::targeting::compute_legal_targets(
+        &game,
+        target_spec,
+        alice,
+        Some(shackles_id),
+    );
+    assert!(
+        !legal_targets.contains(&Target::Object(target_id)),
+        "a 3-power creature should not be legal with only two Islands"
+    );
+
+    create_test_island(&mut game, "Alice's Third Island", alice);
+    let legal_targets = super::targeting::compute_legal_targets(
+        &game,
+        target_spec,
+        alice,
+        Some(shackles_id),
+    );
+    assert!(
+        legal_targets.contains(&Target::Object(target_id)),
+        "a 3-power creature should be legal with three Islands"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Object(too_large_id)),
+        "a 4-power creature should remain illegal with three Islands"
+    );
+
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+    let ability_index = game
+        .object(shackles_id)
+        .expect("Vedalken Shackles should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Vedalken Shackles should have an activated ability");
+    let activate_action = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == shackles_id && *idx == ability_index
+            )
+        })
+        .expect("Vedalken Shackles activation should be legal with mana and a valid target");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Vedalken Shackles activation should start and pay costs");
+    match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::Targets(_),
+        ) => {}
+        other => panic!("expected target selection for Vedalken Shackles, got {other:?}"),
+    }
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Object(target_id)]),
+        &mut dm,
+    )
+    .expect("choosing the legal creature should complete Shackles activation");
+    assert!(
+        game.is_tapped(shackles_id),
+        "activation should tap Vedalken Shackles"
+    );
+    resolve_stack_entry(&mut game).expect("Vedalken Shackles ability should resolve");
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        game.current_controller(target_id),
+        Some(alice),
+        "Alice should control the targeted creature while Shackles remains tapped"
+    );
+
+    game.untap(shackles_id);
+    game.refresh_continuous_state();
+    assert_eq!(
+        game.current_controller(target_id),
+        Some(bob),
+        "control effect should stop when Vedalken Shackles becomes untapped"
+    );
+
+    game.tap(shackles_id);
+    game.refresh_continuous_state();
+    assert_eq!(
+        game.current_controller(target_id),
+        Some(bob),
+        "the old control effect must not resume if Vedalken Shackles is tapped again later"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn vastwood_animist_activation_animates_only_your_land_using_ally_count_until_end_of_turn() {
     let mut game = setup_game();

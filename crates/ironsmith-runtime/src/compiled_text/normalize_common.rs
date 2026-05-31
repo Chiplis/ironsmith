@@ -9457,7 +9457,10 @@ pub(super) fn describe_apply_continuous_effect(
         )
     {
         let mut text = format!("Gain control of {target}");
-        if !matches!(effect.until, Until::Forever) {
+        if let Some(duration) = describe_apply_continuous_duration(effect) {
+            text.push(' ');
+            text.push_str(&duration);
+        } else if !matches!(effect.until, Until::Forever) {
             text.push(' ');
             text.push_str(&describe_until(&effect.until));
         }
@@ -9483,8 +9486,13 @@ pub(super) fn describe_apply_continuous_effect(
             return Some(text);
         }
         if !matches!(effect.until, Until::Forever) {
-            text.push(' ');
-            text.push_str(&describe_until(&effect.until));
+            if let Some(duration) = describe_apply_continuous_duration(effect) {
+                text.push(' ');
+                text.push_str(&duration);
+            } else {
+                text.push(' ');
+                text.push_str(&describe_until(&effect.until));
+            }
         }
         return Some(text);
     }
@@ -9497,14 +9505,20 @@ pub(super) fn describe_apply_continuous_effect(
         && ability.id() == crate::static_abilities::StaticAbilityId::Haste
     {
         let mut text = format!("Gain control of {target}");
-        if !matches!(effect.until, Until::Forever) {
+        if let Some(duration) = describe_apply_continuous_duration(effect) {
+            text.push(' ');
+            text.push_str(&duration);
+        } else if !matches!(effect.until, Until::Forever) {
             text.push(' ');
             text.push_str(&describe_until(&effect.until));
         }
         text.push_str(". ");
         text.push_str(&capitalize_first(&target));
         text.push_str(" gains haste");
-        if !matches!(effect.until, Until::Forever) {
+        if let Some(duration) = describe_apply_continuous_duration(effect) {
+            text.push(' ');
+            text.push_str(&duration);
+        } else if !matches!(effect.until, Until::Forever) {
             text.push(' ');
             text.push_str(&describe_until(&effect.until));
         }
@@ -9545,6 +9559,16 @@ pub(super) fn describe_apply_continuous_effect(
         text.push_str(&tail);
     }
     Some(text)
+}
+
+fn describe_apply_continuous_duration(
+    effect: &crate::effects::ApplyContinuousEffect,
+) -> Option<&'static str> {
+    if effect.until == Until::SourceRemainsTapped {
+        Some("for as long as this source remains tapped")
+    } else {
+        None
+    }
 }
 
 fn describe_dies_return_counter_grant(
@@ -10066,6 +10090,7 @@ pub(super) fn describe_until(until: &Until) -> String {
             "for as long as this source remains on the battlefield".to_string()
         }
         Until::YouStopControllingThis => "while you control this source".to_string(),
+        Until::SourceRemainsTapped => "for as long as this source remains tapped".to_string(),
         Until::TurnsPass(turns) => format!("for {} turn(s)", describe_value(turns)),
     }
 }

@@ -1028,8 +1028,10 @@ pub(crate) enum ZoneReplacementDurationAst {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ControlDurationAst {
     UntilEndOfTurn,
+    UntilYourNextTurnEnd,
     DuringNextTurn,
     AsLongAsYouControlSource,
+    AsLongAsSourceRemainsTapped,
     Forever,
 }
 

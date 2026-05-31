@@ -190,16 +190,6 @@ pub(crate) fn parse_gain_control(
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let has_dynamic_power_bound = grammar::contains_word(tokens, "power")
-        && grammar::contains_word(tokens, "number")
-        && grammar::words_find_phrase(tokens, &["you", "control"]).is_some();
-    if has_dynamic_power_bound {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported dynamic power-bound control clause (clause: '{}')",
-            clause_words.join(" ")
-        )));
-    }
-
     let mut idx = 0;
     if token_slice_at_is(tokens, idx, "control") {
         idx += 1;
@@ -252,6 +242,8 @@ pub(crate) fn parse_gain_control(
             )
         } else if crate::runtime_backend::lexer::contains_token_word(target_tokens, "unless") {
             return Err(invalid_conditional_error());
+        } else if let Some(target) = parse_dynamic_power_bound_control_target(target_tokens)? {
+            (target, None, false)
         } else {
             (parse_target_phrase(target_tokens)?, None, false)
         };
@@ -262,9 +254,13 @@ pub(crate) fn parse_gain_control(
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
     let base_effect = match target_ast {
         TargetAst::Player(filter, _) => {
-            if matches!(duration, ControlDurationAst::UntilYourNextTurnEnd) {
+            if matches!(
+                duration,
+                ControlDurationAst::UntilYourNextTurnEnd
+                    | ControlDurationAst::AsLongAsSourceRemainsTapped
+            ) {
                 return Err(CardTextError::ParseError(
-                    "unsupported player-control duration until the end of your next turn"
+                    "unsupported player-control duration for gain-control clause"
                         .to_string(),
                 ));
             }
@@ -280,6 +276,7 @@ pub(crate) fn parse_gain_control(
                 ControlDurationAst::UntilYourNextTurnEnd => Until::YourNextTurnEnd,
                 ControlDurationAst::Forever => Until::Forever,
                 ControlDurationAst::AsLongAsYouControlSource => Until::YouStopControllingThis,
+                ControlDurationAst::AsLongAsSourceRemainsTapped => Until::SourceRemainsTapped,
                 ControlDurationAst::DuringNextTurn => {
                     return Err(CardTextError::ParseError(
                         "unsupported control duration for permanents".to_string(),
@@ -309,6 +306,79 @@ pub(crate) fn parse_gain_control(
     Ok(base_effect)
 }
 
+fn parse_dynamic_power_bound_control_target(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<TargetAst>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let Some(with_idx) = words
+        .windows(2)
+        .position(|window| window == ["with", "power"])
+    else {
+        return Ok(None);
+    };
+    let value_idx = with_idx + 2;
+    if !word_slice_at_is(&words, value_idx, "less")
+        || !word_slice_at_is(&words, value_idx + 1, "than")
+        || !word_slice_at_is(&words, value_idx + 2, "or")
+        || !word_slice_at_is(&words, value_idx + 3, "equal")
+        || !word_slice_at_is(&words, value_idx + 4, "to")
+    {
+        return Ok(None);
+    }
+
+    let Some(leading_end) = token_index_for_word_index(tokens, with_idx) else {
+        return Ok(None);
+    };
+    let leading = trim_commas(&tokens[..leading_end]);
+    if leading.is_empty() {
+        return Ok(None);
+    }
+    let mut target = parse_target_phrase(&leading)?;
+    let value_words = &words[value_idx + 5..];
+    let Some((value, used)) = parse_value_expr_words(value_words) else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported dynamic power-bound control operand (clause: '{}')",
+            words.join(" ")
+        )));
+    };
+    if used == 0 || used != value_words.len() {
+        return Ok(None);
+    }
+
+    fn apply(target: &mut TargetAst, value: Value) -> bool {
+        match target {
+            TargetAst::Object(filter, _, _) => {
+                filter.power = Some(crate::filter::Comparison::LessThanOrEqualExpr(Box::new(
+                    value,
+                )));
+                true
+            }
+            TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+                apply(inner, value)
+            }
+            _ => false,
+        }
+    }
+
+    if apply(&mut target, value) {
+        Ok(Some(target))
+    } else {
+        Ok(None)
+    }
+}
+
+fn control_duration_source_remains_tapped(tokens: &[OwnedLexToken]) -> bool {
+    grammar::words_find_phrase(tokens, &["for", "as", "long", "as"]).is_some()
+        && grammar::contains_word(tokens, "remains")
+        && grammar::contains_word(tokens, "tapped")
+        && (grammar::contains_word(tokens, "this")
+            || grammar::contains_word(tokens, "thiss")
+            || grammar::contains_word(tokens, "source")
+            || grammar::contains_word(tokens, "artifact")
+            || grammar::contains_word(tokens, "creature")
+            || grammar::contains_word(tokens, "permanent"))
+}
+
 pub(crate) fn parse_control_duration(
     tokens: &[OwnedLexToken],
 ) -> Result<ControlDurationAst, CardTextError> {
@@ -318,6 +388,9 @@ pub(crate) fn parse_control_duration(
 
     let has_for_as_long_as =
         grammar::words_find_phrase(tokens, &["for", "as", "long", "as"]).is_some();
+    if control_duration_source_remains_tapped(tokens) {
+        return Ok(ControlDurationAst::AsLongAsSourceRemainsTapped);
+    }
     if has_for_as_long_as
         && grammar::contains_word(tokens, "you")
         && grammar::contains_word(tokens, "control")

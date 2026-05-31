@@ -444,6 +444,9 @@ impl EffectExecutor for ApplyContinuousEffect {
         if target_invalid {
             return Ok(EffectOutcome::target_invalid());
         }
+        if self.until == Until::SourceRemainsTapped && !game.is_tapped(ctx.source) {
+            return Ok(EffectOutcome::resolved());
+        }
         let mut source_type = self.source_type.clone();
 
         let filter_locked_targets = if let EffectTarget::Filter(filter) = &target {

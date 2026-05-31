@@ -6303,6 +6303,53 @@ fn test_parse_gain_control_each_noncommander_creature_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn vedalken_shackles_parses_dynamic_power_bound_control_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(425_824), "Vedalken Shackles")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "You may choose not to untap this artifact during your untap step.\n{2}, {T}: Gain control of target creature with power less than or equal to the number of Islands you control for as long as this artifact remains tapped.",
+        )
+        .expect("Vedalken Shackles should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Gain control of target creature with power less than or equal to the number of Islands you control for as long as this artifact remains tapped"),
+        "expected compiled text to preserve the dynamic Island-count control clause, got {rendered}"
+    );
+
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Vedalken Shackles should have an activated ability");
+    let debug = format!("{:#?}", activated.effects);
+    assert!(
+        debug.contains("ChangeControllerToEffectController")
+            && debug.contains("LessThanOrEqualExpr")
+            && debug.contains("Count")
+            && debug.contains("Island")
+            && debug.contains("SourceRemainsTapped"),
+        "expected gain-control effect to carry dynamic Island-count bound and source-tapped duration, got {debug}"
+    );
+    let target_spec = activated
+        .choices
+        .first()
+        .expect("Vedalken Shackles should declare one target choice");
+    let ChooseSpec::Object(filter) = target_spec.base() else {
+        panic!("expected an object target for Vedalken Shackles, got {target_spec:?}");
+    };
+    assert!(
+        filter.subtypes.is_empty(),
+        "Island count must not be parsed as a target creature subtype, got {filter:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_create_token_for_each_creature_that_died_this_turn() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Mahadi Variant")
         .card_types(vec![CardType::Creature])

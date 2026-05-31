@@ -2449,7 +2449,7 @@ fn describe_comparison(cmp: &Comparison) -> String {
             Value::SurfaceHinted { value, .. } => describe_value_expr(value),
             Value::Fixed(v) => v.to_string(),
             Value::X => "X".to_string(),
-            Value::Count(filter) => format!("the number of {}", filter.description()),
+            Value::Count(filter) => format!("the number of {}", describe_count_filter(filter)),
             Value::CountScaled(filter, factor) => {
                 format!("{factor} times the number of {}", filter.description())
             }
@@ -2557,7 +2557,7 @@ fn describe_comparison(cmp: &Comparison) -> String {
         }
         Comparison::LessThanExpr(value) => format!("less than {}", describe_value_expr(value)),
         Comparison::LessThanOrEqualExpr(value) => {
-            format!("{} or less", describe_value_expr(value))
+            format!("less than or equal to {}", describe_value_expr(value))
         }
         Comparison::GreaterThanExpr(value) => {
             format!("greater than {}", describe_value_expr(value))
@@ -2566,6 +2566,23 @@ fn describe_comparison(cmp: &Comparison) -> String {
             format!("{} or greater", describe_value_expr(value))
         }
     }
+}
+
+fn describe_count_filter(filter: &ObjectFilter) -> String {
+    let description = filter.description();
+    for (singular, plural) in [
+        ("a Plains", "Plains"),
+        ("a Island", "Islands"),
+        ("an Island", "Islands"),
+        ("a Swamp", "Swamps"),
+        ("a Mountain", "Mountains"),
+        ("a Forest", "Forests"),
+    ] {
+        if let Some(rest) = description.strip_prefix(singular) {
+            return format!("{plural}{rest}");
+        }
+    }
+    description
 }
 
 fn describe_value_choose_spec_possessive(spec: &ChooseSpec) -> String {

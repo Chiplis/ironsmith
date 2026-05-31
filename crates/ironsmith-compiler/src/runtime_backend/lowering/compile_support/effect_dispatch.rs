@@ -1204,16 +1204,13 @@ fn compile_subject_verb_effect(
                     controller,
                 )
             };
-            let effect = tag_object_target_effect(
-                Effect::new(crate::effects::ApplyContinuousEffect::with_spec_runtime(
-                    spec.clone(),
-                    runtime_modification,
-                    duration.clone(),
-                )),
-                &spec,
-                ctx,
-                "controlled",
+            let apply = crate::effects::ApplyContinuousEffect::with_spec_runtime(
+                spec.clone(),
+                runtime_modification,
+                duration.clone(),
             );
+            let effect =
+                tag_object_target_effect(Effect::new(apply), &spec, ctx, "controlled");
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::RevealTop => {
@@ -5363,6 +5360,12 @@ fn compile_subject_verb_effect(
                     crate::game_state::PlayerControlStart::Immediate,
                     crate::game_state::PlayerControlDuration::UntilSourceLeaves,
                 ),
+                ControlDurationAst::AsLongAsSourceRemainsTapped => {
+                    return Err(CardTextError::ParseError(
+                        "unsupported player-control duration while source remains tapped"
+                            .to_string(),
+                    ));
+                }
             };
 
             let mut choices = Vec::new();

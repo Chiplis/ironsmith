@@ -71,6 +71,7 @@ pub enum Until {
     EndOfCombat,
     ThisLeavesTheBattlefield,
     YouStopControllingThis,
+    SourceRemainsTapped,
     TurnsPass(crate::value_model::Value),
 }
 
