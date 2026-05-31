@@ -81,18 +81,26 @@ fn append_granted_play_from_actions_for_card(
             }
         }
 
-        let base_alt_idx = card.alternative_casts.len();
-        for (offset, granted_alt) in granted_alternatives.iter().enumerate() {
-            if can_cast_with_alternative_with_view(game, player, card, &granted_alt.method, view) {
-                actions.push(LegalAction::CastSpell {
-                    spell_id: card_id,
-                    from_zone,
-                    casting_method: CastingMethod::PlayFrom {
-                        source: granted_alt.source_id,
-                        zone: from_zone,
-                        use_alternative: Some(base_alt_idx + offset),
-                    },
-                });
+        if source_zone != Zone::Graveyard {
+            let base_alt_idx = card.alternative_casts.len();
+            for (offset, granted_alt) in granted_alternatives.iter().enumerate() {
+                if can_cast_with_alternative_with_view(
+                    game,
+                    player,
+                    card,
+                    &granted_alt.method,
+                    view,
+                ) {
+                    actions.push(LegalAction::CastSpell {
+                        spell_id: card_id,
+                        from_zone,
+                        casting_method: CastingMethod::PlayFrom {
+                            source: granted_alt.source_id,
+                            zone: from_zone,
+                            use_alternative: Some(base_alt_idx + offset),
+                        },
+                    });
+                }
             }
         }
     }

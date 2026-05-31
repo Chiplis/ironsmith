@@ -8,9 +8,12 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
+use crate::snapshot::ObjectSnapshot;
+use crate::tag::{SURVEILLED_THIS_TURN_TAG, TagKey};
 use crate::target::PlayerFilter;
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
+use std::collections::HashMap;
 
 fn normalize_order_response(response: Vec<ObjectId>, original: &[ObjectId]) -> Vec<ObjectId> {
     let mut remaining = original.to_vec();
@@ -124,6 +127,13 @@ impl EffectExecutor for SurveilEffect {
         }
 
         let surveil_count = top_cards_top_to_bottom.len();
+        let surveilled_snapshots = top_cards_top_to_bottom
+            .iter()
+            .filter_map(|card_id| {
+                game.object(*card_id)
+                    .map(|object| ObjectSnapshot::from_object(object, game))
+            })
+            .collect::<Vec<_>>();
 
         let view_ctx = ViewCardsContext::new(
             player_id,
@@ -184,6 +194,12 @@ impl EffectExecutor for SurveilEffect {
             );
         }
 
+        let mut object_tags = HashMap::new();
+        object_tags.insert(
+            TagKey::from(SURVEILLED_THIS_TURN_TAG),
+            surveilled_snapshots,
+        );
+
         Ok(EffectOutcome::count(surveil_count as i32).with_event(
             TriggerEvent::new_with_provenance(
                 KeywordActionEvent::new(
@@ -191,7 +207,8 @@ impl EffectExecutor for SurveilEffect {
                     player_id,
                     ctx.source,
                     surveil_count as u32,
-                ),
+                )
+                .with_object_tags(object_tags),
                 ctx.provenance,
             ),
         ))
@@ -203,6 +220,7 @@ mod tests {
     use super::*;
     use crate::decision::DecisionMaker;
     use crate::effects::ExecutionContext;
+    use crate::filter::ObjectFilterExt as _;
     use crate::ids::CardId;
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::Object;
@@ -321,6 +339,71 @@ mod tests {
             graveyard_names_top_to_bottom(&game, alice),
             vec!["C".to_string()]
         );
+    }
+
+    #[test]
+    fn surveil_event_marks_all_seen_cards_for_this_turn_filters() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let a = add_library_card(&mut game, alice, "A");
+        let b = add_library_card(&mut game, alice, "B");
+        let c = add_library_card(&mut game, alice, "C");
+        let source = game.new_object_id();
+        let mut decision_maker = ScriptedSurveilDecisionMaker {
+            partition: vec![c],
+            top_order: vec![b],
+        };
+
+        let outcome = {
+            let mut ctx = ExecutionContext::new(source, alice, &mut decision_maker);
+            SurveilEffect::you(2)
+                .execute(&mut game, &mut ctx)
+                .expect("surveil should resolve")
+        };
+        game.turn_store
+            .turn_history
+            .record_event(&outcome.events[0], None, None);
+
+        let graveyard_card = game
+            .player(alice)
+            .expect("alice")
+            .graveyard
+            .last()
+            .copied()
+            .expect("surveilled card should be in graveyard");
+        let graveyard_filter = crate::target::ObjectFilter {
+            zone: Some(Zone::Graveyard),
+            surveilled_this_turn: true,
+            ..Default::default()
+        };
+        assert!(graveyard_filter.matches(
+            game.object(graveyard_card).unwrap(),
+            &game.filter_context_for(alice, None),
+            &game
+        ));
+
+        let library_filter = crate::target::ObjectFilter {
+            zone: Some(Zone::Library),
+            surveilled_this_turn: true,
+            ..Default::default()
+        };
+        assert!(library_filter.matches(
+            game.object(b).unwrap(),
+            &game.filter_context_for(alice, None),
+            &game
+        ));
+        assert!(!library_filter.matches(
+            game.object(a).unwrap(),
+            &game.filter_context_for(alice, None),
+            &game
+        ));
+
+        game.turn_store.turn_history.clear_for_new_turn();
+        assert!(!graveyard_filter.matches(
+            game.object(graveyard_card).unwrap(),
+            &game.filter_context_for(alice, None),
+            &game
+        ));
     }
 
     #[test]

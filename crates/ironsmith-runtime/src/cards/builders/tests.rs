@@ -20265,6 +20265,69 @@ fn parse_oracle_demon_of_fates_design_life_cost_and_sacrifice_pump_regression() 
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_eye_of_duskmantle_surveilled_graveyard_permission() {
+    let def = parse_oracle_card_definition("Eye of Duskmantle");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "you may play lands and cast spells from among cards in your graveyard you've surveilled this turn"
+        ),
+        "expected Eye of Duskmantle surveilled graveyard play permission, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "if you cast a spell this way, you pay life equal to its mana value rather than paying its mana cost"
+        ),
+        "expected Eye of Duskmantle life-cost replacement wording, got {rendered}"
+    );
+
+    let mut has_play_grant = false;
+    let mut has_life_cost_grant = false;
+    for ability in &def.abilities {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            continue;
+        };
+        let Some(spec) = static_ability.grant_spec() else {
+            continue;
+        };
+        if matches!(spec.grantable, crate::grant::Grantable::PlayFrom)
+            && spec.zone == Zone::Graveyard
+            && spec.filter.surveilled_this_turn
+            && spec.filter.owner == Some(PlayerFilter::You)
+        {
+            has_play_grant = true;
+        }
+        if matches!(
+            spec.grantable,
+            crate::grant::Grantable::DerivedAlternativeCast(
+                crate::grant::DerivedAlternativeCast::LifeEqualManaValueFromZone {
+                    zone: Zone::Graveyard,
+                    usage_limit: None
+                }
+            )
+        ) && spec.zone == Zone::Graveyard
+            && spec.filter.surveilled_this_turn
+            && spec.filter.excluded_card_types.contains(&CardType::Land)
+        {
+            has_life_cost_grant = true;
+        }
+    }
+
+    assert!(
+        has_play_grant,
+        "expected Eye of Duskmantle to grant play-from-graveyard permission for surveilled cards"
+    );
+    assert!(
+        has_life_cost_grant,
+        "expected Eye of Duskmantle to grant a graveyard life-cost alternative cast"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_creature_spell_emerge_grant_uses_hand_derived_alternative_cast() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Herigast Probe")
         .card_types(vec![CardType::Creature])

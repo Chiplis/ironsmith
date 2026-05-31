@@ -30,6 +30,11 @@ pub enum DerivedAlternativeCast<C> {
     LifeEqualManaValueFromHand {
         usage_limit: Option<GrantUsageLimit>,
     },
+    /// Cast from a specified zone by paying life equal to the card's mana value.
+    LifeEqualManaValueFromZone {
+        zone: Zone,
+        usage_limit: Option<GrantUsageLimit>,
+    },
     /// Cast from the graveyard using the card's mana cost plus optional extra cost components.
     GraveyardCastFromCardManaCost {
         additional_costs: Vec<C>,
@@ -50,6 +55,7 @@ impl<C> DerivedAlternativeCast<C> {
             Self::EscapeFromCardManaCost { .. } => "Escape",
             Self::ManaValueAsGenericFromHand => "Pay mana value",
             Self::LifeEqualManaValueFromHand { .. } => "Pay life equal to mana value",
+            Self::LifeEqualManaValueFromZone { .. } => "Pay life equal to mana value",
             Self::GraveyardCastFromCardManaCost { .. } => "Cast from graveyard",
         }
     }
@@ -57,6 +63,7 @@ impl<C> DerivedAlternativeCast<C> {
     pub fn usage_limit(&self) -> Option<GrantUsageLimit> {
         match self {
             Self::LifeEqualManaValueFromHand { usage_limit } => *usage_limit,
+            Self::LifeEqualManaValueFromZone { usage_limit, .. } => *usage_limit,
             Self::GraveyardCastFromCardManaCost { usage_limit, .. } => *usage_limit,
             _ => None,
         }
@@ -116,6 +123,13 @@ impl<C: CostComponent> DerivedAlternativeCast<C> {
 
     pub fn life_equal_mana_value_from_hand(usage_limit: Option<GrantUsageLimit>) -> Self {
         Self::LifeEqualManaValueFromHand { usage_limit }
+    }
+
+    pub fn life_equal_mana_value_from_zone(
+        zone: Zone,
+        usage_limit: Option<GrantUsageLimit>,
+    ) -> Self {
+        Self::LifeEqualManaValueFromZone { zone, usage_limit }
     }
 
     pub fn graveyard_cast_from_cards_mana_cost_with_condition(
@@ -215,6 +229,16 @@ where
     /// the granted card's mana value.
     pub fn life_equal_mana_value_from_hand(usage_limit: Option<GrantUsageLimit>) -> Self {
         Self::DerivedAlternativeCast(DerivedAlternativeCast::life_equal_mana_value_from_hand(
+            usage_limit,
+        ))
+    }
+
+    pub fn life_equal_mana_value_from_zone(
+        zone: Zone,
+        usage_limit: Option<GrantUsageLimit>,
+    ) -> Self {
+        Self::DerivedAlternativeCast(DerivedAlternativeCast::life_equal_mana_value_from_zone(
+            zone,
             usage_limit,
         ))
     }
@@ -638,6 +662,14 @@ where
             return format!("{may_prefix} play lands and cast spells from your graveyard");
         }
         if matches!(self.grantable, Grantable::PlayFrom)
+            && self.zone == Zone::Graveyard
+            && self.filter.surveilled_this_turn
+        {
+            return format!(
+                "{may_prefix} play lands and cast spells from among cards in your graveyard you've surveilled this turn"
+            );
+        }
+        if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Library
             && self.filter == ObjectFilter::default()
         {
@@ -820,6 +852,30 @@ where
                 .unwrap_or(filter_desc);
             return format!(
                 "{prefix}{} cast {singular_filter_desc} by paying life equal to its mana value rather than paying its mana cost",
+                may_prefix.to_ascii_lowercase()
+            );
+        }
+        if let Grantable::DerivedAlternativeCast(
+            DerivedAlternativeCast::LifeEqualManaValueFromZone { zone, usage_limit },
+        ) = &self.grantable
+            && self.zone == *zone
+        {
+            let prefix = if matches!(
+                usage_limit,
+                Some(GrantUsageLimit::OnceDuringEachOfYourTurns)
+            ) {
+                "Once during each of your turns, "
+            } else {
+                ""
+            };
+            if *zone == Zone::Graveyard && self.filter.surveilled_this_turn {
+                return format!(
+                    "{prefix}If you cast a spell this way, you pay life equal to its mana value rather than paying its mana cost"
+                );
+            }
+            let filter_desc = castable_filter_description(&self.filter);
+            return format!(
+                "{prefix}{} cast {filter_desc} by paying life equal to its mana value rather than paying its mana cost",
                 may_prefix.to_ascii_lowercase()
             );
         }
