@@ -2472,6 +2472,25 @@ fn resolve_primary_object_from_value_spec(
         .ok_or(ExecutionError::InvalidTarget)
 }
 
+fn tagged_snapshots_for_spec<'a>(
+    ctx: &'a ExecutionContext,
+    tag: &crate::tag::TagKey,
+) -> Vec<&'a crate::snapshot::ObjectSnapshot> {
+    let mut snapshots = ctx
+        .get_tagged_all(tag)
+        .map(|snapshots| snapshots.iter().collect::<Vec<_>>())
+        .unwrap_or_default();
+    if snapshots.is_empty() && tag.as_str() == crate::tag::SOURCE_EXILED_TAG {
+        snapshots.extend(
+            ctx.tagged_objects
+                .iter()
+                .filter(|(tag, _)| tag.as_str().starts_with("__sentence_helper_exiled"))
+                .flat_map(|(_, snapshots)| snapshots.iter()),
+        );
+    }
+    snapshots
+}
+
 /// Result shaping policy for applying operations to selected objects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ObjectApplyResultPolicy {
@@ -2818,11 +2837,12 @@ pub fn resolve_objects_from_spec(
                         .ok_or(ExecutionError::InvalidTarget);
                 }
                 ChooseSpec::Tagged(tag) => {
-                    let tagged = ctx
-                        .get_tagged_all(tag)
-                        .ok_or_else(|| ExecutionError::TagNotFound(tag.to_string()))?;
+                    let tagged = tagged_snapshots_for_spec(ctx, tag);
+                    if tagged.is_empty() {
+                        return Err(ExecutionError::TagNotFound(tag.to_string()));
+                    }
                     let objects: Vec<ObjectId> = tagged
-                        .iter()
+                        .into_iter()
                         .filter_map(|snapshot| resolve_tagged_object_id(game, snapshot))
                         .collect();
                     if objects.is_empty() {
@@ -2971,11 +2991,9 @@ pub fn resolve_objects_from_spec(
 
         // Tagged objects
         ChooseSpec::Tagged(tag) => {
-            let Some(tagged) = ctx.get_tagged_all(tag) else {
-                return Ok(Vec::new());
-            };
+            let tagged = tagged_snapshots_for_spec(ctx, tag);
             Ok(tagged
-                .iter()
+                .into_iter()
                 .filter_map(|snapshot| resolve_tagged_object_id(game, snapshot))
                 .collect())
         }

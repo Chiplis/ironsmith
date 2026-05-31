@@ -221,6 +221,7 @@ fn parse_tagged_permission_mana_value_condition_prefix_inner<'a>(
 ) -> Result<(), ErrMode<ContextError>> {
     alt((
         grammar::phrase(&["if", "it's", "a", "spell", "with", "mana", "value"]),
+        grammar::phrase(&["if", "its", "a", "spell", "with", "mana", "value"]),
         grammar::phrase(&["if", "it", "is", "a", "spell", "with", "mana", "value"]),
         grammar::phrase(&["if", "the", "spell's", "mana", "value"]),
         grammar::phrase(&["if", "the", "spells", "mana", "value"]),
@@ -440,9 +441,15 @@ fn parse_tagged_permission_mana_value_condition_tokens(
         parse_tagged_permission_mana_value_condition_prefix_inner,
     )?;
     let (operator, operand_tokens) = parse_value_comparison_tokens(after_prefix)?;
-    let (value, trailing) = parse_lexed_prefix(operand_tokens, parse_i32_word_token)?;
-    if trailing.is_empty() {
+    if let Some((value, trailing)) = parse_lexed_prefix(operand_tokens, parse_i32_word_token)
+        && trailing.is_empty()
+    {
         return Some((operator, Value::Fixed(value)));
+    }
+
+    let (value, used) = parse_value_from_lexed(operand_tokens)?;
+    if used == operand_tokens.len() {
+        return Some((operator, value));
     }
 
     None
@@ -1612,7 +1619,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
     }
 
     let conditional_tagged_permission = parse_permission_lead_tokens(&trimmed)
-        .filter(|(lead, _)| lead.player == PlayerAst::Implicit)
+        .filter(|(lead, _)| matches!(lead.player, PlayerAst::Implicit | PlayerAst::You))
         .and_then(|(lead, rest_tokens)| {
             parse_tagged_cast_or_play_target_tokens(rest_tokens).and_then(
                 |(target_ref, tail_tokens)| {

@@ -459,6 +459,8 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
                 | "discarded"
                 | "exile"
                 | "exiled"
+                | "cast"
+                | "casted"
                 | "mill"
                 | "milled"
         )

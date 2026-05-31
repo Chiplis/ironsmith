@@ -2352,6 +2352,10 @@ pub(crate) fn maybe_apply_carried_player(effect: &mut EffectAst, carried_context
                         *player = carried_player;
                     }
                 }
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::CreateTokenWithMods { .. },
+                    ..
+                }) if matches!(carried_player, PlayerAst::ItsOwner | PlayerAst::ItsController) => {}
                 EffectAst::SubjectVerb(_) => {
                     if let Some(player) = subject_verb_player_action_player_mut(effect)
                         && *player == PlayerAst::Implicit

@@ -273,8 +273,17 @@ pub(crate) fn resolve_it_tag(
     refs: &ReferenceEnv,
 ) -> Result<ObjectFilter, CardTextError> {
     let mut resolved = resolve_object_filter_player_refs(filter, refs)?;
+    if let Some(tag) = refs.known_last_exiled_collection_tag() {
+        for constraint in &mut resolved.tagged_constraints {
+            if constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG {
+                constraint.tag = tag.clone();
+            }
+        }
+    }
     if let Some(tag) = refs.known_last_object_tag()
         && tag.as_str() != crate::tag::SOURCE_EXILED_TAG
+        && (tag.as_str().starts_with("exiled_")
+            || tag.as_str().starts_with("__sentence_helper_exiled"))
     {
         for constraint in &mut resolved.tagged_constraints {
             if constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG {
@@ -547,6 +556,13 @@ pub(crate) fn resolve_choose_spec_it_tag(
                 return Ok(ChooseSpec::Object(filter));
             }
             Ok(ChooseSpec::Source)
+        }
+        ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::SOURCE_EXILED_TAG => {
+            if let Some(resolved) = refs.known_last_exiled_collection_tag() {
+                Ok(ChooseSpec::Tagged(resolved.clone()))
+            } else {
+                Ok(ChooseSpec::Tagged(tag.clone()))
+            }
         }
         ChooseSpec::Tagged(tag) => Ok(ChooseSpec::Tagged(tag.clone())),
         ChooseSpec::Object(filter) => {

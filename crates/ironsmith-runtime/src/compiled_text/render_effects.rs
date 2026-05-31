@@ -25,6 +25,127 @@ fn describe_pay_any_energy_amount(
     }
 }
 
+fn describe_simple_count_value(value: &Value) -> String {
+    if let Value::Count(filter) = value
+        && filter.zone == Some(Zone::Battlefield)
+        && filter.controller == Some(PlayerFilter::You)
+        && filter.card_types.len() == 1
+        && filter.card_types[0] == CardType::Artifact
+        && filter.subtypes.is_empty()
+    {
+        return "the number of artifacts you control".to_string();
+    }
+    describe_value(value)
+}
+
+fn describe_may_conditional_cast_tagged(may: &crate::effects::MayEffect) -> Option<String> {
+    let [conditional_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if !conditional.if_false.is_empty() || conditional.if_true.len() != 1 {
+        return None;
+    }
+    let cast = conditional.if_true[0].downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    let (operator_text, right) = match &conditional.condition {
+        Condition::ValueComparison {
+            left: Value::ManaValueOf(spec),
+            operator,
+            right,
+        } => {
+            if !matches!(spec.as_ref(), ChooseSpec::Tagged(tag) if tag == &cast.tag) {
+                return None;
+            }
+            let operator_text = match operator {
+                crate::effect::ValueComparisonOperator::LessThan => "less than",
+                crate::effect::ValueComparisonOperator::LessThanOrEqual => "less than or equal to",
+                crate::effect::ValueComparisonOperator::Equal => "equal to",
+                crate::effect::ValueComparisonOperator::GreaterThan => "greater than",
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual => {
+                    "greater than or equal to"
+                }
+                crate::effect::ValueComparisonOperator::NotEqual => "not equal to",
+            };
+            (operator_text, right)
+        }
+        Condition::TaggedObjectMatches(tag, filter) if tag == &cast.tag => {
+            let comparison = filter.mana_value.as_ref()?;
+            match comparison {
+                crate::filter::Comparison::LessThanExpr(value) => ("less than", value.as_ref()),
+                crate::filter::Comparison::LessThanOrEqualExpr(value) => {
+                    ("less than or equal to", value.as_ref())
+                }
+                crate::filter::Comparison::EqualExpr(value) => ("equal to", value.as_ref()),
+                crate::filter::Comparison::GreaterThanExpr(value) => ("greater than", value.as_ref()),
+                crate::filter::Comparison::GreaterThanOrEqualExpr(value) => {
+                    ("greater than or equal to", value.as_ref())
+                }
+                crate::filter::Comparison::NotEqualExpr(value) => ("not equal to", value.as_ref()),
+                _ => return None,
+            }
+        }
+        _ => return None,
+    };
+
+    let target = if cast.tag.as_str().starts_with("__sentence_helper_exiled")
+        || cast.tag.as_str().starts_with("exiled_")
+    {
+        "the exiled card".to_string()
+    } else {
+        describe_choose_spec(&ChooseSpec::Tagged(cast.tag.clone()))
+    };
+    let mut text = format!(
+        "You may cast {target} if it's a spell with mana value {operator_text} {}",
+        describe_simple_count_value(right)
+    );
+    if cast.without_paying_mana_cost {
+        text = format!(
+            "You may cast {target} without paying its mana cost if it's a spell with mana value {operator_text} {}",
+            describe_simple_count_value(right)
+        );
+    }
+    Some(text)
+}
+
+fn describe_target_opponent_top_exile_treasure_sequence(effects: &[Effect]) -> Option<String> {
+    if effects.len() < 5 {
+        return None;
+    }
+    effects[0].downcast_ref::<crate::effects::TagTriggeringObjectEffect>()?;
+    let target = effects[1].downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    if !matches!(&target.target, ChooseSpec::Target(inner) if matches!(inner.as_ref(), ChooseSpec::Player(PlayerFilter::Opponent))) {
+        return None;
+    }
+    let choose = effects[2].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if choose.filter.zone != Some(Zone::Library)
+        || choose.filter.owner != Some(PlayerFilter::Target(Box::new(PlayerFilter::Opponent)))
+        || !choose.top_only
+        || choose.count.min != 1
+        || choose.count.max != Some(1)
+    {
+        return None;
+    }
+    let exile = effects[3].downcast_ref::<crate::effects::ExileEffect>()?;
+    if !matches!(&exile.spec, ChooseSpec::Tagged(tag) if tag == &choose.tag) {
+        return None;
+    }
+    let create = effects[4].downcast_ref::<crate::effects::TaggedEffect>()?;
+    let create = create.effect.downcast_ref::<crate::effects::CreateTokenEffect>()?;
+    if create.token.card.name != "Treasure" || create.controller != PlayerFilter::You {
+        return None;
+    }
+
+    let mut text = "Exile the top card of target opponent's library and create a Treasure token".to_string();
+    if effects.len() > 5 {
+        let rest = describe_effect_list(&effects[5..]);
+        if !rest.trim().is_empty() {
+            text.push_str(". Then ");
+            text.push_str(&lowercase_first(rest.trim()));
+        }
+    }
+    Some(text)
+}
+
 fn describe_discard_hand_add_mana_draw_sequence(effects: &[&Effect]) -> Option<String> {
     let [discard_effect, mana_effect, draw_effect] = effects else {
         return None;
@@ -3426,6 +3547,9 @@ fn describe_choose_color_then_chosen_color_mana(effects: &[&Effect]) -> Option<S
 }
 
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
+    if let Some(compact) = describe_target_opponent_top_exile_treasure_sequence(effects) {
+        return compact;
+    }
     if let Some(compact) = describe_structural_multisentence_effect_list(effects) {
         return compact;
     }
@@ -25022,6 +25146,21 @@ fn describe_with_id_if_clause(
     let then_text = describe_effect_list(&if_effect.then);
     let else_text = describe_effect_list(&if_effect.else_);
 
+    if with_id
+        .effect
+        .downcast_ref::<crate::effects::MayEffect>()
+        .is_some()
+        && if_effect.predicate == EffectPredicate::DidNotHappen
+        && if_effect.else_.is_empty()
+        && if_effect.then.len() == 1
+        && let Some(grant) = if_effect.then[0].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+        && grant.player == PlayerFilter::You
+        && matches!(grant.duration, crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn)
+        && !grant.allow_land
+    {
+        return Some("If you don't cast it this way, you may cast it this turn".to_string());
+    }
+
     let condition = if with_id
         .effect
         .downcast_ref::<crate::effects::ForPlayersEffect>()
@@ -30607,6 +30746,21 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(if_effect) = effect.downcast_ref::<crate::effects::IfEffect>() {
+        if if_effect.predicate == EffectPredicate::DidNotHappen
+            && if_effect.else_.is_empty()
+            && if_effect.then.len() == 1
+            && let Some(grant) = if_effect.then[0]
+                .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+            && grant.player == PlayerFilter::You
+            && matches!(grant.duration, crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn)
+            && !grant.allow_land
+            && !grant.allow_any_color_for_cast
+            && (grant.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                || grant.tag.as_str().starts_with("__sentence_helper_exiled")
+                || grant.tag.as_str().starts_with("exiled_"))
+        {
+            return "If you don't cast it this way, you may cast it this turn".to_string();
+        }
         let then_text = describe_effect_list(&if_effect.then);
         let else_text = describe_effect_list(&if_effect.else_);
         if then_text.trim().is_empty() && else_text.trim().is_empty() {
@@ -30704,6 +30858,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return compact;
         }
         if let Some(compact) = describe_may_search_library_and_or_nonlibrary(may) {
+            return compact;
+        }
+        if let Some(compact) = describe_may_conditional_cast_tagged(may) {
             return compact;
         }
         if may.effects.len() == 1

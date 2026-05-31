@@ -530,8 +530,18 @@ pub(super) fn try_compile_stack_and_condition_effect(
             predicate,
             effects,
         } => {
-            let (inner_effects, inner_choices) =
-                with_preserved_lowering_context(ctx, |_| {}, |ctx| compile_effects(effects, ctx))?;
+            let exiled_tag = ctx.last_exiled_collection_tag.clone();
+            let (inner_effects, inner_choices) = with_preserved_lowering_context(
+                ctx,
+                |ctx| {
+                    if matches!(predicate, IfResultPredicate::DidNot)
+                        && let Some(tag) = exiled_tag
+                    {
+                        ctx.last_object_tag = Some(tag);
+                    }
+                },
+                |ctx| compile_effects(effects, ctx),
+            )?;
             let predicate = effect_predicate_from_if_result(*predicate);
             let effect = Effect::if_then(*condition, predicate, inner_effects);
             (vec![effect], inner_choices)
@@ -600,7 +610,15 @@ pub(super) fn try_compile_stack_and_condition_effect(
                 None
             };
 
-            let mut condition_reference_tag = saved_last_tag.clone();
+            let conditional_cast_tag = if let [EffectAst::SubjectVerb(subject_verb)] = if_true.as_slice()
+                && let SubjectVerbActionAst::CastTagged { tag, .. } = &subject_verb.action
+                && tag.as_str() != IT_TAG
+            {
+                Some(tag.as_str().to_string())
+            } else {
+                None
+            };
+            let mut condition_reference_tag = conditional_cast_tag.or(saved_last_tag.clone());
             let mut prelude = Vec::new();
             if condition_reference_tag.is_none()
                 && let Some(choice) = antecedent_choice.clone()

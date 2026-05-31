@@ -16,6 +16,7 @@ pub(crate) enum RefState<T> {
 pub(crate) struct ReferenceFrame {
     pub(crate) last_effect_id: Option<EffectId>,
     pub(crate) last_object_tag: Option<String>,
+    pub(crate) last_exiled_collection_tag: Option<String>,
     pub(crate) last_it_choice_is_set: bool,
     pub(crate) last_player_filter: Option<PlayerFilter>,
     pub(crate) source_object_antecedent: bool,
@@ -32,6 +33,7 @@ impl ReferenceFrame {
         Self {
             last_effect_id: frame.last_effect_id,
             last_object_tag: frame.last_object_tag.clone(),
+            last_exiled_collection_tag: frame.last_exiled_collection_tag.clone(),
             last_it_choice_is_set: frame.last_it_choice_is_set,
             last_player_filter: frame.last_player_filter.clone(),
             source_object_antecedent: frame.source_object_antecedent,
@@ -48,9 +50,9 @@ impl ReferenceFrame {
         LoweringFrame {
             last_effect_id: self.last_effect_id,
             last_object_tag: self.last_object_tag.clone(),
+            last_exiled_collection_tag: self.last_exiled_collection_tag.clone(),
             last_it_choice_is_set: self.last_it_choice_is_set,
             last_revealed_tag: None,
-            last_exiled_collection_tag: None,
             last_player_filter: self.last_player_filter.clone(),
             source_object_antecedent: self.source_object_antecedent,
             recent_player_choice_tags: self.recent_player_choice_tags.clone(),
@@ -92,6 +94,7 @@ impl<T: Clone + PartialEq> RefState<T> {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct ReferenceImports {
     pub(crate) last_object_tag: Option<TagKey>,
+    pub(crate) last_exiled_collection_tag: Option<TagKey>,
     pub(crate) last_it_choice_is_set: bool,
     pub(crate) last_player_filter: Option<PlayerFilter>,
     pub(crate) source_object_antecedent: bool,
@@ -101,6 +104,7 @@ pub(crate) struct ReferenceImports {
 impl ReferenceImports {
     pub(crate) fn is_empty(&self) -> bool {
         self.last_object_tag.is_none()
+            && self.last_exiled_collection_tag.is_none()
             && !self.last_it_choice_is_set
             && self.last_player_filter.is_none()
             && !self.source_object_antecedent
@@ -110,6 +114,7 @@ impl ReferenceImports {
     pub(crate) fn with_last_object_tag(tag: impl Into<TagKey>) -> Self {
         Self {
             last_object_tag: Some(tag.into()),
+            last_exiled_collection_tag: None,
             last_it_choice_is_set: false,
             ..Default::default()
         }
@@ -118,6 +123,7 @@ impl ReferenceImports {
     pub(crate) fn from_frame(frame: &ReferenceFrame) -> Self {
         Self {
             last_object_tag: frame.last_object_tag.as_ref().map(TagKey::from),
+            last_exiled_collection_tag: frame.last_exiled_collection_tag.as_ref().map(TagKey::from),
             last_it_choice_is_set: frame.last_it_choice_is_set,
             last_player_filter: frame.last_player_filter.clone(),
             source_object_antecedent: frame.source_object_antecedent,
@@ -133,6 +139,7 @@ impl ReferenceImports {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ReferenceEnv {
     pub(crate) last_object_tag: RefState<TagKey>,
+    pub(crate) last_exiled_collection_tag: RefState<TagKey>,
     pub(crate) last_it_choice_is_set: bool,
     pub(crate) last_player_filter: RefState<PlayerFilter>,
     pub(crate) source_object_antecedent: bool,
@@ -146,6 +153,7 @@ impl Default for ReferenceEnv {
     fn default() -> Self {
         Self {
             last_object_tag: RefState::Unknown,
+            last_exiled_collection_tag: RefState::Unknown,
             last_it_choice_is_set: false,
             last_player_filter: RefState::Unknown,
             source_object_antecedent: false,
@@ -167,6 +175,9 @@ impl ReferenceEnv {
     ) -> Self {
         Self {
             last_object_tag: RefState::from_option(imports.last_object_tag.clone()),
+            last_exiled_collection_tag: RefState::from_option(
+                imports.last_exiled_collection_tag.clone(),
+            ),
             last_it_choice_is_set: imports.last_it_choice_is_set,
             last_player_filter: RefState::from_option(imports.last_player_filter.clone()),
             source_object_antecedent: imports.source_object_antecedent,
@@ -183,6 +194,9 @@ impl ReferenceEnv {
         Self {
             last_object_tag: RefState::from_option(
                 frame.last_object_tag.as_ref().map(TagKey::from),
+            ),
+            last_exiled_collection_tag: RefState::from_option(
+                frame.last_exiled_collection_tag.as_ref().map(TagKey::from),
             ),
             last_it_choice_is_set: frame.last_it_choice_is_set,
             last_player_filter: RefState::from_option(frame.last_player_filter.clone()),
@@ -207,6 +221,11 @@ impl ReferenceEnv {
             last_effect_id: self.last_effect_id.clone().into_option(),
             last_object_tag: self
                 .last_object_tag
+                .clone()
+                .into_option()
+                .map(|tag| tag.as_str().to_string()),
+            last_exiled_collection_tag: self
+                .last_exiled_collection_tag
                 .clone()
                 .into_option()
                 .map(|tag| tag.as_str().to_string()),
@@ -238,6 +257,13 @@ impl ReferenceEnv {
         }
     }
 
+    pub(crate) fn known_last_exiled_collection_tag(&self) -> Option<&TagKey> {
+        match &self.last_exiled_collection_tag {
+            RefState::Known(tag) => Some(tag),
+            RefState::Unknown | RefState::Ambiguous => None,
+        }
+    }
+
     pub(crate) fn known_last_player_filter(&self) -> Option<&PlayerFilter> {
         match &self.last_player_filter {
             RefState::Known(filter) => Some(filter),
@@ -260,6 +286,7 @@ impl ReferenceEnv {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ReferenceExports {
     pub(crate) last_object_tag: RefState<TagKey>,
+    pub(crate) last_exiled_collection_tag: RefState<TagKey>,
     pub(crate) last_it_choice_is_set: bool,
     pub(crate) last_player_filter: RefState<PlayerFilter>,
     pub(crate) source_object_antecedent: bool,
@@ -271,6 +298,7 @@ impl Default for ReferenceExports {
     fn default() -> Self {
         Self {
             last_object_tag: RefState::Unknown,
+            last_exiled_collection_tag: RefState::Unknown,
             last_it_choice_is_set: false,
             last_player_filter: RefState::Unknown,
             source_object_antecedent: false,
@@ -284,6 +312,7 @@ impl ReferenceExports {
     pub(crate) fn from_env(env: &ReferenceEnv) -> Self {
         Self {
             last_object_tag: env.last_object_tag.clone(),
+            last_exiled_collection_tag: env.last_exiled_collection_tag.clone(),
             last_it_choice_is_set: env.last_it_choice_is_set,
             last_player_filter: env.last_player_filter.clone(),
             source_object_antecedent: env.source_object_antecedent,
@@ -295,6 +324,10 @@ impl ReferenceExports {
     pub(crate) fn join(left: &Self, right: &Self) -> Self {
         Self {
             last_object_tag: RefState::join(&left.last_object_tag, &right.last_object_tag),
+            last_exiled_collection_tag: RefState::join(
+                &left.last_exiled_collection_tag,
+                &right.last_exiled_collection_tag,
+            ),
             last_it_choice_is_set: left.last_it_choice_is_set && right.last_it_choice_is_set,
             last_player_filter: RefState::join(&left.last_player_filter, &right.last_player_filter),
             source_object_antecedent: left.source_object_antecedent
@@ -307,6 +340,7 @@ impl ReferenceExports {
     pub(crate) fn to_imports(&self) -> ReferenceImports {
         ReferenceImports {
             last_object_tag: self.last_object_tag.clone().into_option(),
+            last_exiled_collection_tag: self.last_exiled_collection_tag.clone().into_option(),
             last_it_choice_is_set: self.last_it_choice_is_set,
             last_player_filter: self.last_player_filter.clone().into_option(),
             source_object_antecedent: self.source_object_antecedent,

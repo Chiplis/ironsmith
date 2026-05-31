@@ -171,6 +171,9 @@ impl TriggerMatcher for SpellCastTrigger {
                 ironsmith_core::ordinal_word(exact_spells).unwrap_or_else(|| "nth".to_string());
             if spell_text == "a spell" || spell_text == "spell" {
                 spell_text = match &self.caster {
+                    PlayerFilter::You if self.during_turn == Some(PlayerFilter::You) => {
+                        format!("your {ordinal} spell during each of your turns")
+                    }
                     PlayerFilter::You => format!("your {ordinal} spell each turn"),
                     PlayerFilter::Any => format!("their {ordinal} spell each turn"),
                     PlayerFilter::Active => format!("their {ordinal} spell each turn"),
@@ -183,6 +186,9 @@ impl TriggerMatcher for SpellCastTrigger {
             } else {
                 let base_spell_text = strip_leading_spell_article(&spell_text);
                 spell_text = match &self.caster {
+                    PlayerFilter::You if self.during_turn == Some(PlayerFilter::You) => {
+                        format!("your {ordinal} {base_spell_text} during each of your turns")
+                    }
                     PlayerFilter::You => format!("your {ordinal} {base_spell_text} each turn"),
                     PlayerFilter::Any | PlayerFilter::Active => {
                         format!("their {ordinal} {base_spell_text} each turn")
@@ -222,7 +228,11 @@ impl TriggerMatcher for SpellCastTrigger {
                 PlayerFilter::Specific(_) => " during that player's turn",
                 _ => "",
             };
-            if !suppress_turn_suffix {
+            if !suppress_turn_suffix
+                && !(self.exact_spells_this_turn.is_some()
+                    && self.caster == PlayerFilter::You
+                    && *turn_filter == PlayerFilter::You)
+            {
                 suffix.push_str(turn_text);
             }
         }

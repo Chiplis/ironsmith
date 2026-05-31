@@ -1,6 +1,6 @@
 use crate::cards::builders::{
-    CardTextError, EffectAst, IT_TAG, IdGenContext, PlayerAst, PredicateAst, SubjectVerbActionAst,
-    SubjectVerbEffectAst, SubjectVerbRoleAst, TargetAst, TriggerSpec,
+    CardTextError, EffectAst, IT_TAG, IdGenContext, IfResultPredicate, PlayerAst, PredicateAst,
+    SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TargetAst, TriggerSpec,
 };
 use crate::effect::{EffectId, EventValueSpec};
 use crate::filter::{Comparison, TaggedOpbjectRelation};
@@ -123,6 +123,12 @@ fn next_reference_tag(id_gen: &mut IdGenContext, prefix: &str) -> String {
     };
     id_gen.next_tag_id += 1;
     tag
+}
+
+fn tag_is_exiled_collection(tag: &str) -> bool {
+    tag == crate::tag::SOURCE_EXILED_TAG
+        || tag.starts_with("exiled_")
+        || tag.starts_with("__sentence_helper_exiled")
 }
 
 fn generated_object_result_tag_prefix(effect: &EffectAst) -> Option<&'static str> {
@@ -481,15 +487,20 @@ fn advance_reference_frame_for_effect(
                     if matches!(spec.base(), ChooseSpec::Source) {
                         frame.source_object_antecedent = true;
                     }
+                    if let ChooseSpec::Tagged(tag) = spec.base() {
+                        frame.last_exiled_collection_tag = Some(tag.as_str().to_string());
+                    }
                     if frame.auto_tag_object_targets {
                         if spec.is_target() {
                             if let Some(tag) =
                                 propagated_or_generated_object_tag(&spec, id_gen, "exiled")
                             {
                                 frame.last_object_tag = Some(tag);
+                                frame.last_exiled_collection_tag = frame.last_object_tag.clone();
                             }
                         } else if choose_spec_targets_object(&spec) {
                             frame.last_object_tag = Some(crate::tag::SOURCE_EXILED_TAG.to_string());
+                            frame.last_exiled_collection_tag = frame.last_object_tag.clone();
                         }
                     }
                     track_target_player(target, frame);
@@ -501,6 +512,7 @@ fn advance_reference_frame_for_effect(
                         });
                     if frame.auto_tag_object_targets && !keep_last_object_tag {
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "exiled"));
+                        frame.last_exiled_collection_tag = frame.last_object_tag.clone();
                     }
                     track_player_from_object_filter(filter, frame);
                 }
@@ -775,6 +787,7 @@ fn advance_reference_frame_for_effect(
                         } else {
                             tag.as_str().to_string()
                         });
+                        frame.last_exiled_collection_tag = frame.last_object_tag.clone();
                     }
                 }
                 SubjectVerbActionAst::RevealCardsFromHand { tag, .. } => {
@@ -975,6 +988,9 @@ fn advance_reference_frame_for_effect(
                 )));
             }
             frame.last_object_tag = Some(chosen_tag);
+            if tag_is_exiled_collection(tag.as_str()) {
+                frame.last_exiled_collection_tag = frame.last_object_tag.clone();
+            }
         }
         EffectAst::ChooseObjectsAcrossZones {
             filter,
@@ -1031,6 +1047,9 @@ fn advance_reference_frame_for_effect(
                 )));
             }
             frame.last_object_tag = Some(chosen_tag);
+            if tag_is_exiled_collection(tag.as_str()) {
+                frame.last_exiled_collection_tag = frame.last_object_tag.clone();
+            }
         }
         EffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. } => {}
         EffectAst::May { effects }
@@ -1081,13 +1100,25 @@ fn advance_reference_frame_for_effect(
             }
         }
         EffectAst::ResolvedIfResult {
-            condition, effects, ..
+            condition,
+            predicate,
+            effects,
         } => {
             let saved_last_effect = frame.last_effect_id;
             let saved_bind = frame.bind_unbound_x_to_last_effect;
             frame.last_effect_id = Some(*condition);
             frame.bind_unbound_x_to_last_effect = true;
+            let saved_last_object = frame.last_object_tag.clone();
+            if matches!(predicate, IfResultPredicate::DidNot)
+                && let Some(tag) = frame.last_exiled_collection_tag.clone()
+            {
+                frame.last_object_tag = Some(tag);
+            }
             advance_reference_frames(&effects, id_gen, frame)?;
+            if matches!(predicate, IfResultPredicate::DidNot) && frame.last_object_tag == saved_last_object
+            {
+                frame.last_object_tag = saved_last_object;
+            }
             frame.last_effect_id = saved_last_effect;
             frame.bind_unbound_x_to_last_effect = saved_bind;
         }
@@ -1740,6 +1771,10 @@ fn advance_reference_env_for_effect(
                 last_object_tag: RefState::join(
                     &true_sequence.final_env.last_object_tag,
                     &false_sequence.final_env.last_object_tag,
+                ),
+                last_exiled_collection_tag: RefState::join(
+                    &true_sequence.final_env.last_exiled_collection_tag,
+                    &false_sequence.final_env.last_exiled_collection_tag,
                 ),
                 last_it_choice_is_set: true_sequence.final_env.last_it_choice_is_set
                     && false_sequence.final_env.last_it_choice_is_set,

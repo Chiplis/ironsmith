@@ -866,6 +866,8 @@ pub(crate) fn has_first_spell_each_turn_pattern(words: &[&str]) -> bool {
             &["during", "each", "opponents", "turn"],
             &["during", "each", "opponent's", "turn"],
             &["during", "each", "opponent", "s", "turn"],
+            &["during", "each", "of", "your", "turns"],
+            &["during", "each", "your", "turns"],
         ],
     );
     if !has_turn_context {
@@ -936,7 +938,15 @@ pub(crate) fn parse_spell_activity_trigger(
         ],
     );
     let mut during_turn =
-        if word_slice_contains_phrase_or_empty(&clause_words, &["during", "your", "turn"]) {
+        if word_slice_contains_phrase_or_empty(&clause_words, &["during", "your", "turn"])
+            || word_slice_contains_any_phrase_or_empty(
+                &clause_words,
+                &[
+                    &["during", "each", "of", "your", "turns"],
+                    &["during", "each", "your", "turns"],
+                ],
+            )
+        {
             Some(PlayerFilter::You)
         } else if word_slice_contains_any_phrase_or_empty(
             &clause_words,

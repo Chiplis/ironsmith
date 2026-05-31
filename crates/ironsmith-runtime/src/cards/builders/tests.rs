@@ -33293,6 +33293,288 @@ fn parse_trigger_with_and_or_subtype_list_keeps_effect_split_on_trigger_delimite
     );
 }
 
+#[test]
+fn rashmi_and_ragavan_parses_and_preserves_cast_fallback_branch() {
+    let def = parse_oracle_card_definition("Rashmi and Ragavan");
+    let compiled = unprocessed_compiled_lines(&def);
+    let rendered = compiled.join(" ");
+    let oracle = oracle_text_by_name()
+        .get("Rashmi and Ragavan")
+        .expect("Rashmi and Ragavan oracle text")
+        .clone();
+    assert!(
+        rendered.contains("Whenever you cast your first spell during each of your turns"),
+        "expected Rashmi and Ragavan's first-spell trigger to parse, got {rendered}"
+    );
+    assert!(
+        rendered.contains("without paying its mana cost")
+            && rendered.contains("If you don't cast it this way, you may cast it this turn"),
+        "expected Rashmi and Ragavan to render the free-cast condition and fallback cast permission, got {rendered}"
+    );
+    assert_eq!(rendered, oracle);
+}
+
+#[test]
+fn rashmi_and_ragavan_lowers_trigger_treasure_and_cast_branches() {
+    let def = parse_oracle_card_definition("Rashmi and Ragavan");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Rashmi and Ragavan should have a triggered ability");
+
+    assert_eq!(
+        triggered.trigger.display(),
+        "Whenever you cast your first spell during each of your turns"
+    );
+    assert_eq!(triggered.choices.len(), 1, "expected target opponent choice");
+    assert!(
+        matches!(&triggered.choices[0], ChooseSpec::Target(inner) if matches!(inner.as_ref(), ChooseSpec::Player(PlayerFilter::Opponent))),
+        "expected target opponent choice, got {:?}",
+        triggered.choices
+    );
+
+    let effects = triggered.effects.flattened_default_effects();
+    let choose = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<ChooseObjectsEffect>())
+        .expect("Rashmi and Ragavan should choose the top library card");
+    assert_eq!(choose.filter.zone, Some(Zone::Library));
+    assert!(choose.top_only, "expected top-card library choice");
+    assert_eq!(choose.filter.owner, Some(PlayerFilter::Target(Box::new(PlayerFilter::Opponent))));
+
+    let exile = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ExileEffect>())
+        .expect("Rashmi and Ragavan should exile the chosen card");
+    assert!(
+        matches!(&exile.spec, ChooseSpec::Tagged(tag) if tag == &choose.tag),
+        "expected exile to use the chosen top-card tag, got {:?}",
+        exile.spec
+    );
+
+    let create = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<TaggedEffect>())
+        .and_then(|tagged| tagged.effect.downcast_ref::<CreateTokenEffect>())
+        .expect("Rashmi and Ragavan should create a Treasure token");
+    assert_eq!(create.token.card.name, "Treasure");
+    assert_eq!(create.controller, PlayerFilter::You);
+
+    let may = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::WithIdEffect>())
+        .and_then(|with_id| with_id.effect.downcast_ref::<crate::effects::MayEffect>())
+        .expect("Rashmi and Ragavan should make the immediate free cast optional");
+    let conditional = may.effects[0]
+        .downcast_ref::<crate::effects::ConditionalEffect>()
+        .expect("free cast should be gated by the exiled card's mana value");
+    assert!(
+        matches!(conditional.condition, crate::effect::Condition::ValueComparison { .. }),
+        "free-cast gate should compare the exiled card's mana value to the artifact count, got {:#?}",
+        conditional.condition,
+    );
+    let cast = conditional.if_true[0]
+        .downcast_ref::<crate::effects::CastTaggedEffect>()
+        .expect("true branch should cast the exiled card");
+    assert!(cast.without_paying_mana_cost);
+    assert!(!cast.allow_land);
+    assert!(
+        cast.tag == choose.tag || cast.tag.as_str() == crate::tag::SOURCE_EXILED_TAG,
+        "free-cast branch should reference the exiled card tag, got {:?} for chosen tag {:?}",
+        cast.tag,
+        choose.tag,
+    );
+
+    let fallback = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::IfEffect>())
+        .expect("Rashmi and Ragavan should branch when the free cast was not taken");
+    assert_eq!(fallback.predicate, crate::effect::EffectPredicate::DidNotHappen);
+    assert!(fallback.else_.is_empty());
+    let grant = fallback.then[0]
+        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+        .expect("fallback should grant a this-turn cast permission for the exiled card");
+    assert!(
+        grant.tag == choose.tag || grant.tag.as_str() == crate::tag::SOURCE_EXILED_TAG,
+        "fallback branch should reference the exiled card tag, got {:?} for chosen tag {:?}",
+        grant.tag,
+        choose.tag,
+    );
+}
+
+fn resolve_rashmi_and_ragavan_runtime(
+    accept_free_cast: bool,
+    starting_artifacts: usize,
+) -> (crate::game_state::GameState, PlayerId, crate::ids::StableId) {
+    use crate::card::CardBuilder;
+    use crate::decision::DecisionMaker;
+    use crate::mana::{ManaCost, ManaSymbol};
+
+    struct MayDecision(bool);
+    impl DecisionMaker for MayDecision {
+        fn decide_boolean(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            self.0
+        }
+    }
+
+    let def = parse_oracle_card_definition("Rashmi and Ragavan");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Rashmi and Ragavan should have a triggered ability");
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let triggering_spell = CardBuilder::new(CardId::new(), "Triggering Spell")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let triggering_spell_id = game.create_object_from_card(&triggering_spell, alice, Zone::Stack);
+    let triggering_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(triggering_spell_id)
+            .expect("triggering spell should exist"),
+        &game,
+    );
+    let triggering_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::spells::SpellCastEvent::new_with_snapshot(
+            triggering_spell_id,
+            alice,
+            Zone::Hand,
+            triggering_snapshot,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    for index in 0..starting_artifacts {
+        let artifact = CardBuilder::new(CardId::new(), &format!("Alice Artifact {index}"))
+            .card_types(vec![CardType::Artifact])
+            .build();
+        game.create_object_from_card(&artifact, alice, Zone::Battlefield);
+    }
+
+    let borrowed_spell = CardBuilder::new(CardId::new(), "Borrowed Spell")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let borrowed_id = game.create_object_from_card(&borrowed_spell, bob, Zone::Library);
+    let borrowed_stable_id = game
+        .object(borrowed_id)
+        .expect("borrowed spell should exist")
+        .stable_id;
+
+    let mut dm = MayDecision(accept_free_cast);
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_triggering_event(triggering_event)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)]);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &triggered.effects,
+        None,
+        &[],
+    )
+    .expect("Rashmi and Ragavan trigger should resolve");
+
+    (game, alice, borrowed_stable_id)
+}
+
+#[test]
+fn rashmi_and_ragavan_runtime_cast_gate_and_fallback_permission() {
+    let (accepted_game, alice, borrowed_stable_id) = resolve_rashmi_and_ragavan_runtime(true, 1);
+    let borrowed_id = accepted_game
+        .find_object_by_stable_id(borrowed_stable_id)
+        .expect("accepted free-cast branch should preserve the borrowed spell object");
+    assert!(
+        accepted_game
+            .stack
+            .iter()
+            .any(|entry| entry.object_id == borrowed_id),
+        "accepted free-cast branch should put the exiled spell on the stack; borrowed zone={:?}, stack={:?}",
+        accepted_game.object(borrowed_id).map(|object| object.zone),
+        accepted_game.stack,
+    );
+    assert!(
+        !accepted_game.effect_store.grant_registry.card_can_play_from_zone(
+            &accepted_game,
+            borrowed_id,
+            Zone::Exile,
+            alice,
+        ),
+        "accepted free-cast branch should not also grant the this-turn fallback permission"
+    );
+    assert!(
+        accepted_game
+            .objects_in_zone(Zone::Battlefield)
+            .into_iter()
+            .filter_map(|id| accepted_game.object(id))
+            .any(|object| object.name == "Treasure" && accepted_game.controller_of(object) == alice),
+        "Rashmi and Ragavan should create a Treasure token for you before the cast gate"
+    );
+
+    let (declined_game, alice, borrowed_stable_id) = resolve_rashmi_and_ragavan_runtime(false, 1);
+    let borrowed_id = declined_game
+        .find_object_by_stable_id(borrowed_stable_id)
+        .expect("declined free-cast branch should preserve the borrowed spell object");
+    assert!(
+        declined_game
+            .object(borrowed_id)
+            .is_some_and(|object| object.zone == Zone::Exile),
+        "declined free-cast branch should leave the exiled spell in exile"
+    );
+    assert!(
+        declined_game.effect_store.grant_registry.card_can_play_from_zone(
+            &declined_game,
+            borrowed_id,
+            Zone::Exile,
+            alice,
+        ),
+        "declining the immediate cast should grant this-turn cast permission for the exiled card"
+    );
+    assert!(
+        declined_game
+            .effect_store
+            .grant_registry
+            .granted_alternative_casts_for_card(&declined_game, borrowed_id, Zone::Exile, alice)
+            .is_empty(),
+        "the fallback permission should not also be a free-cast permission"
+    );
+
+    let (failed_gate_game, alice, borrowed_stable_id) = resolve_rashmi_and_ragavan_runtime(true, 0);
+    let borrowed_id = failed_gate_game
+        .find_object_by_stable_id(borrowed_stable_id)
+        .expect("failed gate branch should preserve the borrowed spell object");
+    assert!(
+        failed_gate_game
+            .object(borrowed_id)
+            .is_some_and(|object| object.zone == Zone::Exile),
+        "mana-value gate should prevent the free cast when the exiled spell is not cheap enough"
+    );
+    assert!(
+        failed_gate_game.effect_store.grant_registry.card_can_play_from_zone(
+            &failed_gate_game,
+            borrowed_id,
+            Zone::Exile,
+            alice,
+        ),
+        "failing the free-cast gate should still grant this-turn cast permission"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_other_mice_anthem_renders_irregular_plural() {

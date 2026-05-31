@@ -177,6 +177,21 @@ fn choose_and_pay_optional_costs_for_cast_tagged_spell(
     Ok(Some(paid))
 }
 
+fn tagged_snapshot_for_cast_tagged(
+    ctx: &ExecutionContext,
+    tag: &crate::tag::TagKey,
+) -> Option<crate::snapshot::ObjectSnapshot> {
+    ctx.get_tagged(tag.as_str()).cloned().or_else(|| {
+        (tag.as_str() == crate::tag::SOURCE_EXILED_TAG).then(|| {
+            ctx.tagged_objects
+                .iter()
+                .filter(|(tag, _)| tag.as_str().starts_with("__sentence_helper_exiled"))
+                .flat_map(|(_, snapshots)| snapshots.iter().cloned())
+                .next()
+        })?
+    })
+}
+
 fn pay_total_cost_for_cast_tagged_spell(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
@@ -331,7 +346,7 @@ impl EffectExecutor for CastTaggedEffect {
         use crate::alternative_cast::CastingMethod;
         use crate::effects::helpers::resolve_player_filter;
 
-        let Some(snapshot) = ctx.get_tagged(self.tag.as_str()) else {
+        let Some(snapshot) = tagged_snapshot_for_cast_tagged(ctx, &self.tag) else {
             return Ok(EffectOutcome::target_invalid());
         };
 

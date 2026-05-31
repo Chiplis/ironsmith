@@ -1112,6 +1112,8 @@ fn rewrite_structure_if_result_predicate_parser_preserves_contractions() {
     let didnt_tokens = lex_line("you don't", 0).expect("rewrite lexer should classify predicate");
     let dies_tokens = lex_line("that creature dies this way", 0)
         .expect("rewrite lexer should classify dies-this-way predicate");
+    let cast_tokens = lex_line("you don't cast it this way", 0)
+        .expect("rewrite lexer should classify cast-this-way predicate");
 
     assert_eq!(
         super::grammar::structure::parse_if_result_predicate(&didnt_tokens),
@@ -1120,6 +1122,10 @@ fn rewrite_structure_if_result_predicate_parser_preserves_contractions() {
     assert_eq!(
         super::grammar::structure::parse_if_result_predicate(&dies_tokens),
         Some(crate::cards::builders::IfResultPredicate::DiesThisWay)
+    );
+    assert_eq!(
+        super::grammar::structure::parse_if_result_predicate(&cast_tokens),
+        Some(crate::cards::builders::IfResultPredicate::DidNot)
     );
 }
 

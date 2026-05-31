@@ -3356,7 +3356,8 @@ fn evaluate_condition(
         }
         Condition::TaggedObjectMatches(tag, filter) => {
             let filter_ctx = ctx.filter_context(game);
-            if let Some(tagged) = ctx.get_tagged_all(tag.as_str()) {
+            let tagged = ctx.get_tagged_all(tag.as_str());
+            if let Some(tagged) = tagged {
                 return Ok(tagged.iter().any(|snapshot| {
                     let current_id = game
                         .object(snapshot.object_id)
@@ -3369,6 +3370,25 @@ fn evaluate_condition(
                     }
                     filter.matches_snapshot(snapshot, &filter_ctx, game)
                 }));
+            }
+            if tag.as_str() == crate::tag::SOURCE_EXILED_TAG {
+                return Ok(ctx
+                    .tagged_objects
+                    .iter()
+                    .filter(|(tag, _)| tag.as_str().starts_with("__sentence_helper_exiled"))
+                    .flat_map(|(_, snapshots)| snapshots)
+                    .any(|snapshot| {
+                        let current_id = game
+                            .object(snapshot.object_id)
+                            .map(|object| object.id)
+                            .or_else(|| game.find_object_by_stable_id(snapshot.stable_id));
+                        if let Some(current_id) = current_id
+                            && let Some(object) = game.object(current_id)
+                        {
+                            return filter.matches(object, &filter_ctx, game);
+                        }
+                        filter.matches_snapshot(snapshot, &filter_ctx, game)
+                    }));
             }
 
             // Some compile-time conditional lowering paths synthesize a branch-local tag
