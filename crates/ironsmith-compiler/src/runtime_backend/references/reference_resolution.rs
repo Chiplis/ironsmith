@@ -1642,7 +1642,10 @@ fn resolve_effect_references_in_effect(
         ));
     }
 
-    if let EffectAst::DelayedTriggerThisTurn { trigger, effects } = &mut effect {
+    if let EffectAst::DelayedTriggerThisTurn {
+        trigger, effects, ..
+    } = &mut effect
+    {
         let nested_state = EffectReferenceResolutionState {
             last_effect_id: state.last_effect_id,
             allow_life_event_value: trigger_supports_event_amount(trigger),

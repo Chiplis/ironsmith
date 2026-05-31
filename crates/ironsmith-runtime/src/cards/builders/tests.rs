@@ -10656,6 +10656,60 @@ fn test_parse_raid_conditional_with_attacked_this_turn_without_fallback() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+const HOWL_OF_THE_HORDE_TEXT: &str = "When you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\nRaid — If you attacked this turn, when you next cast an instant or sorcery spell this turn, copy that spell an additional time. You may choose new targets for the copy.";
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn howl_of_the_horde_parses_as_spell_effect_delayed_triggers() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Howl of the Horde")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(HOWL_OF_THE_HORDE_TEXT)
+        .expect("Howl of the Horde should parse strictly");
+
+    assert!(
+        def.abilities.is_empty(),
+        "Howl's next-cast clauses should be spell effects, not battlefield triggers: {:?}",
+        def.abilities
+    );
+    let spell_debug = format!("{:#?}", def.spell_effect.as_ref().expect("spell effects"));
+    assert!(
+        spell_debug.matches("ScheduleDelayedTriggerEffect").count() >= 2
+            && spell_debug.contains("one_shot: true")
+            && spell_debug.contains("until_end_of_turn: true")
+            && spell_debug.contains("AttackedThisTurn")
+            && spell_debug.contains("CopySpellEffect")
+            && spell_debug.contains("RetargetStackObjectEffect"),
+        "expected unconditional and raid-gated one-shot delayed copy triggers, got {spell_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn howl_of_the_horde_compiled_text_preserves_raid_next_cast_copy_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Howl of the Horde")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(HOWL_OF_THE_HORDE_TEXT)
+        .expect("Howl of the Horde should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("When you next cast an instant or sorcery spell this turn, copy that spell")
+            && rendered.contains("Raid — If you attacked this turn")
+            && rendered.contains("copy that spell an additional time")
+            && rendered.contains("You may choose new targets for the copy"),
+        "expected Howl's next-cast raid copy text to render structurally, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_parse_x_target_lands_clause_without_fallback() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "X Untap Probe")

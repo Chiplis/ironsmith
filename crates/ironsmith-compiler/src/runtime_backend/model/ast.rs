@@ -3222,6 +3222,7 @@ pub(crate) enum EffectAst {
     DelayedTriggerThisTurn {
         trigger: TriggerSpec,
         effects: Vec<EffectAst>,
+        one_shot: bool,
     },
     DelayedWhenLastObjectDiesThisTurn {
         filter: Option<ObjectFilter>,

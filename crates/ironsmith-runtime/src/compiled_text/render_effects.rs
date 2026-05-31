@@ -14917,6 +14917,42 @@ fn describe_delayed_coin_flip_result(
     ))
 }
 
+fn describe_next_spell_delayed_trigger(
+    schedule: &crate::effects::ScheduleDelayedTriggerEffect,
+    additional: bool,
+) -> Option<String> {
+    if !schedule.one_shot || !schedule.until_end_of_turn || schedule.start_next_turn {
+        return None;
+    }
+    let trigger_display = cleanup_decompiled_text(
+        schedule
+            .trigger
+            .display()
+            .trim()
+            .trim_end_matches('.'),
+    );
+    let trigger_lower = trigger_display.to_ascii_lowercase();
+    let spell_tail = trigger_lower.strip_prefix("whenever you cast ")?;
+    let spell_text = spell_tail
+        .strip_suffix(" this turn")
+        .unwrap_or(spell_tail)
+        .to_string();
+    let mut delayed_text = lowercase_first(&describe_effect_list(&schedule.effects));
+    if let Some(rest) = delayed_text.strip_prefix("copy it") {
+        delayed_text = format!("copy that spell{rest}");
+    }
+    if additional {
+        delayed_text = delayed_text.replacen(
+            "copy that spell",
+            "copy that spell an additional time",
+            1,
+        );
+    }
+    Some(format!(
+        "When you next cast {spell_text} this turn, {delayed_text}"
+    ))
+}
+
 fn normalize_modal_named_source_etb_surface(
     line: String,
     triggered: &crate::ability::TriggeredAbility,
@@ -30244,6 +30280,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if let Some(compact) = describe_no_more_counters_move_then_each_player_return(conditional) {
             return compact;
         }
+        if conditional.if_false.is_empty()
+            && matches!(conditional.condition, crate::effect::Condition::AttackedThisTurn)
+            && let [single] = conditional.if_true.as_slice()
+            && let Some(schedule) = single.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+            && let Some(compact) = describe_next_spell_delayed_trigger(schedule, true)
+        {
+            return format!("Raid — If you attacked this turn, {}", lowercase_first(&compact));
+        }
         let true_branch = describe_effect_clause_list(&conditional.if_true)
             .unwrap_or_else(|| describe_effect_list(&conditional.if_true));
         let false_branch = describe_effect_clause_list(&conditional.if_false)
@@ -32260,6 +32304,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(schedule) = effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>() {
         if let Some(text) = describe_delayed_coin_flip_result(schedule) {
+            return text;
+        }
+        if let Some(text) = describe_next_spell_delayed_trigger(schedule, false) {
             return text;
         }
         let trigger_display = schedule.trigger.display();
