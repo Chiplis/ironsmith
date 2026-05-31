@@ -2354,6 +2354,22 @@ fn describe_choose_each_basic_land_type_then_destroy(effects: &[&Effect]) -> Opt
 
 fn describe_distributed_damage_target(target: &ChooseSpec) -> String {
     match target {
+        ChooseSpec::WithCount(inner, count) if matches!(inner.as_ref(), ChooseSpec::AnyTarget) => {
+            if count.max.is_none() && count.min == 0 {
+                "any number of targets".to_string()
+            } else {
+                format!("{} targets", describe_choice_count(count))
+            }
+        }
+        ChooseSpec::WithCount(inner, count)
+            if matches!(inner.as_ref(), ChooseSpec::AnyOtherTarget) =>
+        {
+            if count.max.is_none() && count.min == 0 {
+                "any number of other targets".to_string()
+            } else {
+                format!("{} other targets", describe_choice_count(count))
+            }
+        }
         ChooseSpec::WithCount(inner, count) if !inner.is_target() => {
             describe_choose_spec(&ChooseSpec::target(inner.as_ref().clone()).with_count(*count))
         }
@@ -31664,6 +31680,19 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             describe_choose_spec(&prevent_damage.target),
             timing,
             source_text
+        );
+    }
+    if let Some(prevent_damage) = effect.downcast_ref::<crate::effects::PreventDistributedDamageEffect>() {
+        let timing = if matches!(prevent_damage.duration, Until::EndOfTurn) {
+            "this turn".to_string()
+        } else {
+            describe_until(&prevent_damage.duration)
+        };
+        return format!(
+            "Prevent the next {} damage that would be dealt {} to {}, divided as you choose",
+            describe_value(&prevent_damage.amount),
+            timing,
+            describe_distributed_damage_target(&prevent_damage.target)
         );
     }
     if let Some(prevent_all_target) =

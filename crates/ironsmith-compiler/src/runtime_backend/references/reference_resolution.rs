@@ -716,6 +716,7 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget { target, .. }
                 | SubjectVerbActionAst::RedirectNextTimeDamageToSource { target, .. }
                 | SubjectVerbActionAst::PreventDamage { target, .. }
+                | SubjectVerbActionAst::PreventDistributedDamage { target, .. }
                 | SubjectVerbActionAst::PreventAllDamageToTarget { target, .. }
                 | SubjectVerbActionAst::PreventDamageToTargetPutCounters { target, .. }
                 | SubjectVerbActionAst::PutOrRemoveCounters { target, .. } => {
@@ -1472,6 +1473,7 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
         | SubjectVerbActionAst::DealDistributedDamage { amount: count, .. }
         | SubjectVerbActionAst::DealDamageEach { amount: count, .. }
         | SubjectVerbActionAst::PreventDamage { amount: count, .. }
+        | SubjectVerbActionAst::PreventDistributedDamage { amount: count, .. }
         | SubjectVerbActionAst::PreventDamageEach { amount: count, .. }
         | SubjectVerbActionAst::CopySpell { count, .. }
         | SubjectVerbActionAst::PutCounters { count, .. }
@@ -1811,6 +1813,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::DealDistributedDamage { amount, .. }
             | SubjectVerbActionAst::DealDamageEach { amount, .. }
             | SubjectVerbActionAst::PreventDamage { amount, .. }
+            | SubjectVerbActionAst::PreventDistributedDamage { amount, .. }
             | SubjectVerbActionAst::PreventDamageEach { amount, .. }
             | SubjectVerbActionAst::CopySpell { count: amount, .. }
             | SubjectVerbActionAst::PutCounters { count: amount, .. }
@@ -2757,6 +2760,12 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             } => bind_unresolved_it_in_filter(object_filter, seed_tag)
                 + bind_unresolved_it_in_target(target, seed_tag),
             SubjectVerbActionAst::PreventDamage {
+                amount, target, ..
+            } => {
+                bind_unresolved_it_in_value(amount, seed_tag)
+                    + bind_unresolved_it_in_target(target, seed_tag)
+            }
+            SubjectVerbActionAst::PreventDistributedDamage {
                 amount, target, ..
             } => {
                 bind_unresolved_it_in_value(amount, seed_tag)

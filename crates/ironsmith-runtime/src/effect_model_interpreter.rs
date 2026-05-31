@@ -589,6 +589,16 @@ where
         prevent.source_of_your_choice = payload.source_of_your_choice;
         return Ok(Effect::new(prevent));
     }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::PreventDistributedDamageEffect>(&effect)
+    {
+        return Ok(Effect::new(
+            crate::effects::PreventDistributedDamageEffect::new(
+                payload.amount.clone(),
+                payload.target.clone(),
+                payload.until.clone(),
+            ),
+        ));
+    }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::LoseTheGameEffect>(&effect) {
         return Ok(converted);
     }

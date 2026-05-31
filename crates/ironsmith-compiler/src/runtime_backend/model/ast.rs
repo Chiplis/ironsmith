@@ -990,6 +990,11 @@ pub(crate) enum SubjectVerbActionAst {
         duration: Until,
         source_of_your_choice: bool,
     },
+    PreventDistributedDamage {
+        amount: Value,
+        target: TargetAst,
+        duration: Until,
+    },
     PreventAllDamageToTarget {
         target: TargetAst,
         duration: Until,
@@ -2130,6 +2135,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 ..
             } => f
                 .debug_struct("PreventDamage")
+                .field("amount", amount)
+                .field("target", target)
+                .field("duration", duration)
+                .finish(),
+            Self::PreventDistributedDamage {
+                amount,
+                target,
+                duration,
+            } => f
+                .debug_struct("PreventDistributedDamage")
                 .field("amount", amount)
                 .field("target", target)
                 .field("duration", duration)
@@ -3526,6 +3541,22 @@ impl EffectAst {
                 target,
                 duration,
                 source_of_your_choice,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_prevent_distributed_damage(
+        amount: Value,
+        target: TargetAst,
+        duration: Until,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::PreventDistributedDamage {
+                amount,
+                target,
+                duration,
             },
         )
     }

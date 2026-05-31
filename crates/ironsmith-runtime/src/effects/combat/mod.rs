@@ -42,6 +42,6 @@ pub use prevent_all_combat_damage::{CombatDamagePreventionTarget, PreventAllComb
 pub use prevent_all_combat_damage_from::PreventAllCombatDamageFromEffect;
 pub use prevent_all_damage::PreventAllDamageEffect;
 pub use prevent_all_damage_to_target::PreventAllDamageToTargetEffect;
-pub use prevent_damage::PreventDamageEffect;
+pub use prevent_damage::{PreventDamageEffect, PreventDistributedDamageEffect};
 pub use remove_from_combat::RemoveFromCombatEffect;
 pub use set_base_power_toughness::SetBasePowerToughnessEffect;

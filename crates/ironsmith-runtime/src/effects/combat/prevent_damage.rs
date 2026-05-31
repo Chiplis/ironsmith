@@ -1,11 +1,13 @@
 //! Prevent damage effect implementation.
 
 use super::prevention_helpers::{register_prevention_shield, resolve_prevention_target_from_spec};
-use crate::effect::{Effect, EffectOutcome, Until, Value};
+use crate::decision::FallbackStrategy;
+use crate::decisions::{DistributeSpec, make_decision_with_fallback};
+use crate::effect::{ChoiceCount, Effect, EffectOutcome, Until, Value};
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_value;
+use crate::effects::helpers::{resolve_objects_from_spec, resolve_players_from_spec, resolve_value};
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::game_state::GameState;
+use crate::game_state::{GameState, Target};
 use crate::prevention::DamageFilter;
 use crate::target::ChooseSpec;
 
@@ -160,6 +162,145 @@ impl EffectExecutor for PreventDamageEffect {
 
     fn target_description(&self) -> &'static str {
         "target to protect"
+    }
+}
+
+/// Effect that divides a finite prevention shield among multiple targets.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreventDistributedDamageEffect {
+    /// Total amount of damage prevention to divide.
+    pub amount: Value,
+    /// What targets may receive prevention shields.
+    pub target: ChooseSpec,
+    /// Duration for the prevention shields.
+    pub duration: Until,
+    /// Filter for what damage these shields apply to.
+    pub damage_filter: DamageFilter,
+}
+
+impl PreventDistributedDamageEffect {
+    /// Create a new distributed prevention effect.
+    pub fn new(amount: impl Into<Value>, target: ChooseSpec, duration: Until) -> Self {
+        Self {
+            amount: amount.into(),
+            target,
+            duration,
+            damage_filter: DamageFilter::all(),
+        }
+    }
+
+    /// Set a damage filter for this prevention effect.
+    pub fn with_filter(mut self, filter: DamageFilter) -> Self {
+        self.damage_filter = filter;
+        self
+    }
+}
+
+impl EffectExecutor for PreventDistributedDamageEffect {
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let total = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
+        if total == 0 {
+            return Ok(EffectOutcome::count(0));
+        }
+
+        let mut available_targets = Vec::new();
+        for player_id in resolve_players_from_spec(game, &self.target, ctx).unwrap_or_default() {
+            available_targets.push(Target::Player(player_id));
+        }
+        for object_id in resolve_objects_from_spec(game, &self.target, ctx).unwrap_or_default() {
+            available_targets.push(Target::Object(object_id));
+        }
+        available_targets.sort_by_key(|target| match target {
+            Target::Player(player_id) => (0, player_id.index() as u64),
+            Target::Object(object_id) => (1, object_id.0),
+        });
+        available_targets.dedup();
+
+        if available_targets.is_empty() {
+            return Ok(EffectOutcome::target_invalid());
+        }
+
+        let distribution = make_decision_with_fallback(
+            game,
+            &mut ctx.decision_maker,
+            ctx.controller,
+            Some(ctx.source),
+            DistributeSpec::damage(ctx.source, total, available_targets.clone()),
+            FallbackStrategy::Maximum,
+        );
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+
+        let mut distributed_total = 0;
+        let mut shield_count = 0;
+        for (target, amount) in distribution {
+            if amount == 0 || !available_targets.contains(&target) {
+                continue;
+            }
+            if distributed_total + amount > total {
+                return Ok(EffectOutcome::impossible());
+            }
+            distributed_total += amount;
+            let protected = match target {
+                Target::Player(player_id) => crate::prevention::PreventionTarget::Player(player_id),
+                Target::Object(object_id) => crate::prevention::PreventionTarget::Permanent(object_id),
+            };
+            register_prevention_shield(
+                game,
+                ctx,
+                protected,
+                Some(amount),
+                self.duration.clone(),
+                self.damage_filter.clone(),
+                Vec::new(),
+            );
+            shield_count += 1;
+        }
+
+        if distributed_total < total {
+            let remaining = total - distributed_total;
+            let protected = match available_targets[0] {
+                Target::Player(player_id) => crate::prevention::PreventionTarget::Player(player_id),
+                Target::Object(object_id) => crate::prevention::PreventionTarget::Permanent(object_id),
+            };
+            register_prevention_shield(
+                game,
+                ctx,
+                protected,
+                Some(remaining),
+                self.duration.clone(),
+                self.damage_filter.clone(),
+                Vec::new(),
+            );
+            shield_count += 1;
+        }
+
+        if shield_count == 0 {
+            Ok(EffectOutcome::target_invalid())
+        } else {
+            Ok(EffectOutcome::count(shield_count))
+        }
+    }
+
+    fn get_target_spec(&self) -> Option<&ChooseSpec> {
+        if self.target.is_target() {
+            Some(&self.target)
+        } else {
+            None
+        }
+    }
+
+    fn get_target_count(&self) -> Option<ChoiceCount> {
+        Some(self.target.count())
+    }
+
+    fn target_description(&self) -> &'static str {
+        "targets to protect"
     }
 }
 

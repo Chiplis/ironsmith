@@ -16392,6 +16392,164 @@ fn parse_prevent_next_damage_rejects_trailing_tail_strictly() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn remedy_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Remedy");
+    let def = parse_oracle_card_definition("Remedy");
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
+    let debug = format!("{:#?}", def.spell_effect);
+
+    assert!(
+        rendered.contains(
+            "Prevent the next 5 damage that would be dealt this turn to any number of targets, divided as you choose"
+        ),
+        "expected Remedy distributed-prevention wording, got {rendered}"
+    );
+    assert!(
+        debug.contains("PreventDistributedDamageEffect")
+            && debug.contains("ChoiceCount")
+            && debug.contains("max: None"),
+        "expected Remedy to compile to distributed prevention over any number of targets, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn remedy_runtime_divides_prevention_among_targets_only() {
+    struct DivideRemedyPrevention {
+        player_target: PlayerId,
+        creature_target: ObjectId,
+    }
+
+    impl crate::decision::DecisionMaker for DivideRemedyPrevention {
+        fn decide_distribute(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::DistributeContext,
+        ) -> Vec<(crate::game_state::Target, u32)> {
+            let mut distribution = Vec::new();
+            for target in &ctx.targets {
+                match target.target {
+                    crate::game_state::Target::Player(player) if player == self.player_target => {
+                        distribution.push((target.target, 3));
+                    }
+                    crate::game_state::Target::Object(object) if object == self.creature_target => {
+                        distribution.push((target.target, 2));
+                    }
+                    _ => {}
+                }
+            }
+            distribution
+        }
+    }
+
+    let def = parse_oracle_card_definition("Remedy");
+    let spell = def
+        .spell_effect
+        .as_ref()
+        .expect("Remedy should produce spell effects")
+        .clone();
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let spell_source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let protected_creature = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_110), "Protected Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let damage_source = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_111), "Damage Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    let target_spec = ChooseSpec::AnyTarget.with_count(crate::effect::ChoiceCount::any_number());
+    let mut dm = DivideRemedyPrevention {
+        player_target: bob,
+        creature_target: protected_creature,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(spell_source, alice, &mut dm)
+        .with_targets(vec![
+            crate::effects::ResolvedTarget::Player(bob),
+            crate::effects::ResolvedTarget::Object(protected_creature),
+        ])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: target_spec,
+            range: 0..2,
+        }]);
+
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        spell_source,
+        &spell,
+        None,
+        &[],
+    )
+    .expect("Remedy should resolve");
+
+    let shields = game.effect_store.prevention_effects.shields();
+    assert_eq!(shields.len(), 2, "Remedy should create one shield per assigned target");
+    assert!(
+        shields.iter().any(|shield| {
+            matches!(shield.protected, crate::prevention::PreventionTarget::Player(player) if player == bob)
+                && shield.amount_remaining == Some(3)
+        }),
+        "expected 3 prevention assigned to Bob, got {shields:?}"
+    );
+    assert!(
+        shields.iter().any(|shield| {
+            matches!(shield.protected, crate::prevention::PreventionTarget::Permanent(object) if object == protected_creature)
+                && shield.amount_remaining == Some(2)
+        }),
+        "expected 2 prevention assigned to protected creature, got {shields:?}"
+    );
+
+    let (bob_damage, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        damage_source,
+        crate::events::DamageTarget::Player(bob),
+        4,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(bob_damage, 1, "Bob's assigned shield should prevent 3 damage");
+
+    let (creature_damage, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        damage_source,
+        crate::events::DamageTarget::Object(protected_creature),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        creature_damage, 1,
+        "protected creature's assigned shield should prevent 2 damage"
+    );
+
+    let (alice_damage, alice_prevented) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        damage_source,
+        crate::events::DamageTarget::Player(alice),
+        2,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(alice_damage, 2, "untargeted player should not be protected");
+    assert!(!alice_prevented, "untargeted player damage should not be prevented");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_oracle_healing_grace_strict_and_keeps_source_choice_clause() {
     let def = parse_oracle_card_definition("Healing Grace");
     let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join("\n");

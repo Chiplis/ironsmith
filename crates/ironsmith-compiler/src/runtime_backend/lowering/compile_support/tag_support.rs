@@ -95,6 +95,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { target, .. }
             | SubjectVerbActionAst::CreateTokenCopyFromSource { source: target, .. }
             | SubjectVerbActionAst::PreventDamage { target, .. }
+            | SubjectVerbActionAst::PreventDistributedDamage { target, .. }
             | SubjectVerbActionAst::PreventAllDamageToTarget { target, .. }
             | SubjectVerbActionAst::PreventDamageToTargetPutCounters { target, .. }
             | SubjectVerbActionAst::MoveToLibraryNthFromTop { target, .. }
@@ -526,6 +527,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::DealDistributedDamage { amount, .. }
         | SubjectVerbActionAst::DealDamageEach { amount, .. }
         | SubjectVerbActionAst::PreventDamage { amount, .. }
+        | SubjectVerbActionAst::PreventDistributedDamage { amount, .. }
         | SubjectVerbActionAst::PreventDamageEach { amount, .. }
         | SubjectVerbActionAst::CopySpell { count: amount, .. }
         | SubjectVerbActionAst::PutCounters { count: amount, .. }

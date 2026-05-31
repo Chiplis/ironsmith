@@ -1585,6 +1585,16 @@ fn compile_subject_verb_effect(
                 })
             }
         }
+        SubjectVerbActionAst::PreventDistributedDamage {
+            amount,
+            target,
+            duration,
+        } => {
+            let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
+            compile_effect_for_target(target, ctx, |spec| {
+                Effect::prevent_distributed_damage(amount.clone(), spec, duration.clone())
+            })
+        }
         SubjectVerbActionAst::PreventAllDamageToTarget { target, duration } => {
             if let TargetAst::Object(filter, explicit_target_span, _) = target
                 && explicit_target_span.is_none()

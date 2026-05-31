@@ -1992,6 +1992,7 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
             | SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget { target, .. }
             | SubjectVerbActionAst::RedirectNextTimeDamageToSource { target, .. }
             | SubjectVerbActionAst::PreventDamage { target, .. }
+            | SubjectVerbActionAst::PreventDistributedDamage { target, .. }
             | SubjectVerbActionAst::PreventAllDamageToTarget { target, .. }
             | SubjectVerbActionAst::PreventDamageToTargetPutCounters { target, .. }
             | SubjectVerbActionAst::PutOrRemoveCounters { target, .. }
@@ -2262,6 +2263,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::DealDistributedDamage { amount, .. }
             | SubjectVerbActionAst::DealDamageEach { amount, .. }
             | SubjectVerbActionAst::PreventDamage { amount, .. }
+            | SubjectVerbActionAst::PreventDistributedDamage { amount, .. }
             | SubjectVerbActionAst::PreventDamageEach { amount, .. }
             | SubjectVerbActionAst::CopySpell { count: amount, .. }
             | SubjectVerbActionAst::PutCounters { count: amount, .. }
@@ -2730,6 +2732,10 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
                 ..
             }
             | SubjectVerbActionAst::PreventDamage {
+                target: effect_target,
+                ..
+            }
+            | SubjectVerbActionAst::PreventDistributedDamage {
                 target: effect_target,
                 ..
             }

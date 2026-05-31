@@ -232,6 +232,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::DealDistributedDamage { amount, .. }
             | SubjectVerbActionAst::DealDamageEach { amount, .. }
             | SubjectVerbActionAst::PreventDamage { amount, .. }
+            | SubjectVerbActionAst::PreventDistributedDamage { amount, .. }
             | SubjectVerbActionAst::PreventDamageEach { amount, .. }
             | SubjectVerbActionAst::CopySpell { count: amount, .. }
             | SubjectVerbActionAst::PutCounters { count: amount, .. }

@@ -1133,6 +1133,16 @@ impl Effect {
         ))
     }
 
+    pub fn prevent_distributed_damage(
+        amount: Value,
+        target: crate::target::ChooseSpec,
+        until: Until,
+    ) -> Self {
+        Self::new(crate::effects::PreventDistributedDamageEffect::new(
+            amount, target, until,
+        ))
+    }
+
     pub fn prevent_damage_with_source_choice(
         amount: Value,
         target: crate::target::ChooseSpec,

@@ -3367,6 +3367,23 @@ impl<E> PreventDamageEffect<E> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct PreventDistributedDamageEffect {
+    pub amount: Value,
+    pub target: ChooseSpec,
+    pub until: Until,
+}
+
+impl PreventDistributedDamageEffect {
+    pub fn new(amount: Value, target: ChooseSpec, until: Until) -> Self {
+        Self {
+            amount,
+            target,
+            until,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct PreventAllDamageToTargetEffect<E> {
     pub target: ChooseSpec,
     pub until: Until,

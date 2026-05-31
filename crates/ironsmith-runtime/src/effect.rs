@@ -2352,6 +2352,18 @@ impl Effect {
         Self::new(PreventDamageEffect::new(amount, target, duration))
     }
 
+    /// Create a distributed "prevent damage" effect with explicit duration.
+    pub fn prevent_distributed_damage(
+        amount: impl Into<Value>,
+        target: ChooseSpec,
+        duration: Until,
+    ) -> Self {
+        use crate::effects::PreventDistributedDamageEffect;
+        Self::new(PreventDistributedDamageEffect::new(
+            amount, target, duration,
+        ))
+    }
+
     /// Create a "prevent all damage" effect.
     pub fn prevent_all_damage(until: Until) -> Self {
         use crate::effects::PreventAllDamageEffect;

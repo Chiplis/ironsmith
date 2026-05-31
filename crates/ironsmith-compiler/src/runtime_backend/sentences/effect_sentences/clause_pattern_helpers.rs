@@ -115,37 +115,63 @@ pub(crate) fn parse_prevent_next_damage_clause(
     }
     idx += 4;
 
-    if !word_slice_at_is(&clause_words, idx, "to") {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported prevent-next damage target scope (clause: '{}')",
-            clause_text
-        )));
-    }
-    idx += 1;
-
-    let this_turn_rel = word_slice_find_phrase_start(&clause_words[idx..], &["this", "turn"])
-        .ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "unsupported prevent-next damage duration (clause: '{}')",
-                clause_text
-            ))
-        })?;
-    let this_turn_idx = idx + this_turn_rel;
-    let source_of_your_choice = if this_turn_idx + 2 == clause_words.len() {
-        false
-    } else if word_slice_eq(
-        &clause_words[this_turn_idx + 2..],
-        &["by", "a", "source", "of", "your", "choice"],
-    ) {
-        true
+    let divided_as_you_choose = word_slice_ends_with(
+        &clause_words,
+        &["divided", "as", "you", "choose"],
+    );
+    let effective_end = if divided_as_you_choose {
+        clause_words.len().saturating_sub(4)
     } else {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported trailing prevent-next damage clause (clause: '{}')",
-            clause_text
-        )));
+        clause_words.len()
     };
 
-    let target_clause = clause.between_words_trimmed(idx, this_turn_idx);
+    let (target_start, target_end, source_of_your_choice) =
+        if word_slice_starts_with_at(&clause_words, idx, &["this", "turn"]) {
+            idx += 2;
+            if !word_slice_at_is(&clause_words, idx, "to") {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported prevent-next damage target scope (clause: '{}')",
+                    clause_text
+                )));
+            }
+            (idx + 1, effective_end, false)
+        } else {
+            if !word_slice_at_is(&clause_words, idx, "to") {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported prevent-next damage target scope (clause: '{}')",
+                    clause_text
+                )));
+            }
+            idx += 1;
+
+            let this_turn_rel = word_slice_find_phrase_start(
+                &clause_words[idx..effective_end],
+                &["this", "turn"],
+            )
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported prevent-next damage duration (clause: '{}')",
+                    clause_text
+                ))
+            })?;
+            let this_turn_idx = idx + this_turn_rel;
+            let source_of_your_choice = if this_turn_idx + 2 == effective_end {
+                false
+            } else if word_slice_eq(
+                &clause_words[this_turn_idx + 2..effective_end],
+                &["by", "a", "source", "of", "your", "choice"],
+            ) {
+                true
+            } else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported trailing prevent-next damage clause (clause: '{}')",
+                    clause_text
+                )));
+            };
+            (idx, this_turn_idx, source_of_your_choice)
+        };
+
+    let target_clause = clause.between_words_trimmed(target_start, target_end);
     if target_clause.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing prevent-next damage target (clause: '{}')",
@@ -154,14 +180,22 @@ pub(crate) fn parse_prevent_next_damage_clause(
     }
     let target = parse_target_phrase(target_clause.tokens())?;
 
-    Ok(Some(
-        EffectAst::subject_verb_prevent_damage_with_source_choice(
+    if divided_as_you_choose {
+        Ok(Some(EffectAst::subject_verb_prevent_distributed_damage(
             amount,
             target,
             Until::EndOfTurn,
-            source_of_your_choice,
-        ),
-    ))
+        )))
+    } else {
+        Ok(Some(
+            EffectAst::subject_verb_prevent_damage_with_source_choice(
+                amount,
+                target,
+                Until::EndOfTurn,
+                source_of_your_choice,
+            ),
+        ))
+    }
 }
 
 pub(crate) fn parse_double_counters_clause(
