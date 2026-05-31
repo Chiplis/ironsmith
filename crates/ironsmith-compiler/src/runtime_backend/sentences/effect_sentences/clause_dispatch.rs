@@ -534,6 +534,42 @@ fn parse_cast_any_number_from_among_tagged_clause(tokens: &[OwnedLexToken]) -> O
     })
 }
 
+fn parse_cast_single_spell_from_among_hand_cards_clause(
+    tokens: &[OwnedLexToken],
+) -> Option<EffectAst> {
+    let clause_word_view = ClauseDispatchCompatWords::new(tokens);
+    let clause_words = clause_word_view.to_word_refs();
+    let mut words = clause_words.as_slice();
+    if word_slice_starts_with(words, &["if", "you", "do"]) {
+        words = &words[3..];
+        if word_slice_first_is_any(words, &["then", "and"]) {
+            words = &words[1..];
+        }
+    }
+    let words = if word_slice_starts_with(words, &["you", "may"]) {
+        &words[2..]
+    } else {
+        words
+    };
+
+    if !word_slice_eq(
+        words,
+        &[
+            "cast", "a", "spell", "from", "among", "those", "cards", "without", "paying",
+            "its", "mana", "cost",
+        ],
+    ) {
+        return None;
+    }
+
+    Some(EffectAst::may_cast_matching_spell_without_paying_mana_cost_from_zone_owner(
+        PlayerAst::You,
+        PlayerAst::That,
+        ObjectFilter::nonland().in_zone(Zone::Hand),
+        Zone::Hand,
+    ))
+}
+
 pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if tokens.is_empty() {
         return Err(CardTextError::ParseError("empty effect clause".to_string()));
@@ -552,6 +588,10 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         }
 
         if let Some(effect) = parse_cast_any_number_from_among_tagged_clause(tokens) {
+            return Ok(effect);
+        }
+
+        if let Some(effect) = parse_cast_single_spell_from_among_hand_cards_clause(tokens) {
             return Ok(effect);
         }
     }

@@ -51312,6 +51312,30 @@ fn villainous_wealth_strict_parser_and_compiled_text_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn mindleech_mass_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Mindleech Mass");
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("LookAtHandEffect")
+            && abilities_debug.contains("IfEffect")
+            && abilities_debug.contains("MayCastMatchingSpellWithoutPayingManaCostEffect")
+            && abilities_debug.contains("zone_owner: DamagedPlayer"),
+        "expected Mindleech Mass to lower to look-at-hand followed by a free cast from that player's hand, got {abilities_debug}"
+    );
+
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert_eq!(def.card.name, "Mindleech Mass");
+    assert!(
+        rendered.contains("you may cast a spell from among those cards without paying its mana cost"),
+        "expected Mindleech Mass compiled text to preserve the hand free-cast clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn villainous_wealth_runtime_casts_only_exiled_nonland_spells_with_mana_value_at_most_x() {
     let def = parse_oracle_card_definition("Villainous Wealth");
     let spell = def

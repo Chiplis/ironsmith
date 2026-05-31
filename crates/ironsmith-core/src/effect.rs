@@ -3034,6 +3034,7 @@ pub enum MayCastMatchingSpellPayment {
 #[derive(Debug, Clone, PartialEq)]
 pub struct MayCastMatchingSpellWithoutPayingManaCostEffect {
     pub player: PlayerFilter,
+    pub zone_owner: PlayerFilter,
     pub filter: ObjectFilter,
     pub zone: crate::Zone,
     pub payment: MayCastMatchingSpellPayment,
@@ -3042,11 +3043,17 @@ pub struct MayCastMatchingSpellWithoutPayingManaCostEffect {
 impl MayCastMatchingSpellWithoutPayingManaCostEffect {
     pub fn new(player: PlayerFilter, filter: ObjectFilter, zone: crate::Zone) -> Self {
         Self {
+            zone_owner: player.clone(),
             player,
             filter,
             zone,
             payment: MayCastMatchingSpellPayment::WithoutPayingManaCost,
         }
+    }
+
+    pub fn with_zone_owner(mut self, owner: PlayerFilter) -> Self {
+        self.zone_owner = owner;
+        self
     }
 
     pub fn with_alternative_cost(mut self, kind: AlternativeCastKind) -> Self {

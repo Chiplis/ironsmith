@@ -878,9 +878,16 @@ pub(crate) fn effect_references_its_controller(effect: &EffectAst) -> bool {
             )
         }
         EffectAst::ChooseObjects { player, .. }
-        | EffectAst::ChooseObjectsAcrossZones { player, .. }
-        | EffectAst::MayCastMatchingSpellWithoutPayingManaCost { player, .. } => {
+        | EffectAst::ChooseObjectsAcrossZones { player, .. } => {
             matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
+        }
+        EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+            player,
+            zone_owner,
+            ..
+        } => {
+            matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
+                || matches!(zone_owner, PlayerAst::ItsController | PlayerAst::ItsOwner)
         }
         EffectAst::MayByPlayer { player, effects } => {
             matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)

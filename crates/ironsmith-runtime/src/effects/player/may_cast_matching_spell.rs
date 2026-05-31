@@ -54,7 +54,8 @@ impl EffectExecutor for MayCastMatchingSpellWithoutPayingManaCostEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
-        let object_ids = object_ids_in_zone(game, player_id, self.zone);
+        let zone_owner_id = resolve_player_filter(game, &self.zone_owner, ctx)?;
+        let object_ids = object_ids_in_zone(game, zone_owner_id, self.zone);
         let mut options = Vec::<EffectDrivenCastOption>::new();
         let payment = runtime_payment(&self.payment);
         for object_id in object_ids {

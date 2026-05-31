@@ -209,7 +209,14 @@ fn predicate_bound_player_filter(predicate: &PredicateAst) -> Option<PlayerFilte
 fn track_target_player(target: &TargetAst, frame: &mut ReferenceFrame) {
     match target {
         TargetAst::Player(filter, _) | TargetAst::PlayerOrPlaneswalker(filter, _) => {
-            frame.last_player_filter = Some(PlayerFilter::Target(Box::new(filter.clone())));
+            frame.last_player_filter = Some(if matches!(filter, PlayerFilter::IteratedPlayer) {
+                frame
+                    .last_player_filter
+                    .clone()
+                    .unwrap_or(PlayerFilter::IteratedPlayer)
+            } else {
+                PlayerFilter::Target(Box::new(filter.clone()))
+            });
         }
         TargetAst::Object(filter, _, _) => track_player_from_object_filter(filter, frame),
         _ => {}

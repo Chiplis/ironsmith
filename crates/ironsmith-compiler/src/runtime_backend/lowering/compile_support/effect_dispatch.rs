@@ -180,6 +180,7 @@ fn compile_effect_inner(
     }
     if let EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
         player,
+        zone_owner,
         filter,
         zone,
         payment,
@@ -187,6 +188,10 @@ fn compile_effect_inner(
     {
         let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
         let player = resolve_non_target_player_filter(player.clone(), &current_reference_env(ctx))?;
+        let zone_owner = resolve_non_target_player_filter(
+            zone_owner.clone(),
+            &current_reference_env(ctx),
+        )?;
         return Ok((
             vec![Effect::new({
                 let mut effect =
@@ -194,7 +199,8 @@ fn compile_effect_inner(
                         player,
                         resolved_filter,
                         *zone,
-                    );
+                    )
+                    .with_zone_owner(zone_owner);
                 effect.payment = payment.clone();
                 effect
             })],
@@ -4724,15 +4730,29 @@ fn compile_subject_verb_effect(
             Ok((prelude, choices))
         }
         SubjectVerbActionAst::LookAtHand { target } => {
-            let (effects, choices) = compile_effect_for_target(target, ctx, |spec| {
-                Effect::new(crate::effects::LookAtHandEffect::new(spec))
-            })?;
-            if let TargetAst::Player(filter, _) | TargetAst::PlayerOrPlaneswalker(filter, _) =
-                target
-            {
-                ctx.last_player_filter = Some(PlayerFilter::Target(Box::new(filter.clone())));
+            let refs = current_reference_env(ctx);
+            let (spec, choices) = resolve_target_spec_with_choices(target, &refs)?;
+            let effect = tag_object_target_effect(
+                Effect::new(crate::effects::LookAtHandEffect::new(spec.clone())),
+                &spec,
+                ctx,
+                "targeted",
+            );
+            match spec.unhinted() {
+                ChooseSpec::Player(filter) | ChooseSpec::PlayerOrPlaneswalker(filter) => {
+                    ctx.last_player_filter = Some(filter.clone());
+                }
+                ChooseSpec::Target(inner) => match inner.unhinted() {
+                    ChooseSpec::Player(filter) | ChooseSpec::PlayerOrPlaneswalker(filter) => {
+                        ctx.last_player_filter = Some(PlayerFilter::Target(Box::new(
+                            filter.clone(),
+                        )));
+                    }
+                    _ => {}
+                },
+                _ => {}
             }
-            Ok((effects, choices))
+            Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::Counter { target } => {
             compile_tagged_effect_for_target(target, ctx, "countered", Effect::counter)

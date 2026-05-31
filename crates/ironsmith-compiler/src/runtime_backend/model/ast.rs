@@ -3271,6 +3271,7 @@ pub(crate) enum EffectAst {
     },
     MayCastMatchingSpellWithoutPayingManaCost {
         player: PlayerAst,
+        zone_owner: PlayerAst,
         filter: ObjectFilter,
         zone: Zone,
         payment: ironsmith_core::MayCastMatchingSpellPayment,
@@ -3724,6 +3725,22 @@ impl EffectAst {
     ) -> Self {
         Self::MayCastMatchingSpellWithoutPayingManaCost {
             player,
+            zone_owner: player,
+            filter,
+            zone,
+            payment: ironsmith_core::MayCastMatchingSpellPayment::WithoutPayingManaCost,
+        }
+    }
+
+    pub(crate) fn may_cast_matching_spell_without_paying_mana_cost_from_zone_owner(
+        player: PlayerAst,
+        zone_owner: PlayerAst,
+        filter: ObjectFilter,
+        zone: Zone,
+    ) -> Self {
+        Self::MayCastMatchingSpellWithoutPayingManaCost {
+            player,
+            zone_owner,
             filter,
             zone,
             payment: ironsmith_core::MayCastMatchingSpellPayment::WithoutPayingManaCost,
@@ -3738,6 +3755,7 @@ impl EffectAst {
     ) -> Self {
         Self::MayCastMatchingSpellWithoutPayingManaCost {
             player,
+            zone_owner: player,
             filter,
             zone,
             payment: ironsmith_core::MayCastMatchingSpellPayment::AlternativeCost(kind),
