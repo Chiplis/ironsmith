@@ -49,6 +49,8 @@ pub enum CastStage {
     ReadyToFinalize,
 }
 
+pub(crate) const OFFERING_SACRIFICE_TAG: &str = "offering_sacrifice";
+
 impl CastStage {
     pub fn name(&self) -> &'static str {
         match self {
@@ -122,6 +124,9 @@ pub struct PendingCast {
     pub mana_spent_to_cast: ManaPool,
     /// The computed mana cost to pay (set during PayingMana stage).
     pub mana_cost_to_pay: Option<crate::mana::ManaCost>,
+    /// True when a keyword alternative cost must choose a non-mana cost object before
+    /// the final mana cost can be computed.
+    pub deferred_mana_cost_until_cost_choice: bool,
     /// Stable display pips for the mana payment overlay.
     ///
     /// Unlike `remaining_mana_pips`, this is not mutated as payment proceeds so
@@ -186,6 +191,7 @@ impl PendingCast {
             undo_locked_by_mana: false,
             mana_spent_to_cast: ManaPool::default(),
             mana_cost_to_pay: None,
+            deferred_mana_cost_until_cost_choice: false,
             display_mana_pips: Vec::new(),
             remaining_mana_pips: Vec::new(),
             current_pip_payment_options: Vec::new(),

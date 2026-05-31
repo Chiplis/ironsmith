@@ -1397,6 +1397,15 @@ pub(super) fn continue_spell_next_cost_or_finalize(
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
     auto_pay_spell_tap_cost_steps(game, trigger_queue, &mut pending, decision_maker)?;
+    if pending.deferred_mana_cost_until_cost_choice
+        && pending.mana_cost_to_pay.is_none()
+        && pending.remaining_mana_pips.is_empty()
+        && offering_sacrifice_cost_from_pending(&pending).is_some()
+    {
+        pending.mana_cost_to_pay = compute_pending_spell_effective_mana_cost(game, &pending)
+            .filter(|cost| !cost.is_empty());
+        pending.deferred_mana_cost_until_cost_choice = false;
+    }
     pending.stage = spell_stage_after_targets(&pending);
     let option_count =
         usize::from(pending.mana_cost_to_pay.is_some()) + pending.remaining_cost_steps.len();
@@ -1666,6 +1675,64 @@ fn mana_cost_with_paid_optional_costs(
     crate::mana::ManaCost::from_pips(pips)
 }
 
+fn offering_sacrifice_cost_from_pending(
+    pending: &PendingCast,
+) -> Option<Option<&crate::mana::ManaCost>> {
+    pending
+        .tagged_objects
+        .get(OFFERING_SACRIFICE_TAG)
+        .and_then(|objects| objects.first())
+        .map(|snapshot| snapshot.mana_cost.as_ref())
+}
+
+fn pending_cast_has_unchosen_offering_sacrifice(pending: &PendingCast) -> bool {
+    offering_sacrifice_cost_from_pending(pending).is_none()
+        && pending.remaining_cost_steps.iter().any(|step| {
+            matches!(
+                step,
+                ActivationCostStep::Sacrifice { choice_tag: Some(tag), .. }
+                    if tag.as_str() == OFFERING_SACRIFICE_TAG
+            )
+        })
+}
+
+fn compute_pending_spell_effective_mana_cost(
+    game: &GameState,
+    pending: &PendingCast,
+) -> Option<crate::mana::ManaCost> {
+    use crate::decision::calculate_effective_mana_cost_for_payment_with_chosen_targets_for_casting_method;
+
+    let obj = game.object(pending.spell_id)?;
+    let base_cost = if let Some(sacrificed_cost) = offering_sacrifice_cost_from_pending(pending) {
+        crate::decision::spell_mana_cost_for_cast_with_offering_sacrifice(
+            game,
+            pending.caster,
+            obj,
+            &pending.casting_method,
+            pending.from_zone,
+            sacrificed_cost,
+        )
+    } else {
+        crate::decision::spell_mana_cost_for_cast(
+            game,
+            pending.caster,
+            obj,
+            &pending.casting_method,
+            pending.from_zone,
+        )
+    }?;
+
+    let base_cost = mana_cost_with_paid_optional_costs(&base_cost, obj, &pending.optional_costs_paid);
+    Some(calculate_effective_mana_cost_for_payment_with_chosen_targets_for_casting_method(
+        game,
+        pending.caster,
+        obj,
+        &base_cost,
+        &pending.chosen_targets,
+        &pending.casting_method,
+    ))
+}
+
 pub(super) fn continue_to_mana_payment(
     game: &mut GameState,
     trigger_queue: &mut TriggerQueue,
@@ -1674,38 +1741,8 @@ pub(super) fn continue_to_mana_payment(
     targets: Vec<Target>,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
-    use crate::decision::calculate_effective_mana_cost_for_payment_with_chosen_targets_for_casting_method;
-
     let mut pending = pending;
     pending.chosen_targets = targets;
-
-    // Compute the effective mana cost for this spell
-    let effective_cost = if let Some(obj) = game.object(pending.spell_id) {
-        let base_cost = crate::decision::spell_mana_cost_for_cast(
-            game,
-            pending.caster,
-            obj,
-            &pending.casting_method,
-            pending.from_zone,
-        );
-
-        // Apply cost reductions (affinity, delve, convoke, improvise)
-        base_cost.map(|bc| {
-            let bc = mana_cost_with_paid_optional_costs(&bc, obj, &pending.optional_costs_paid);
-            calculate_effective_mana_cost_for_payment_with_chosen_targets_for_casting_method(
-                game,
-                pending.caster,
-                obj,
-                &bc,
-                &pending.chosen_targets,
-                &pending.casting_method,
-            )
-        })
-    } else {
-        None
-    };
-
-    pending.mana_cost_to_pay = effective_cost.filter(|cost| !cost.is_empty());
 
     if pending.remaining_cost_steps.is_empty() {
         pending.remaining_cost_steps = collect_spell_cost_steps(
@@ -1716,6 +1753,23 @@ pub(super) fn continue_to_mana_payment(
             &pending.optional_costs_paid,
         );
     }
+
+    if pending_cast_has_unchosen_offering_sacrifice(&pending) {
+        pending.deferred_mana_cost_until_cost_choice = true;
+        pending.mana_cost_to_pay = None;
+        return continue_spell_next_cost_or_finalize(
+            game,
+            trigger_queue,
+            state,
+            pending,
+            decision_maker,
+        );
+    }
+
+    // Compute the effective mana cost for this spell
+    let effective_cost = compute_pending_spell_effective_mana_cost(game, &pending);
+
+    pending.mana_cost_to_pay = effective_cost.filter(|cost| !cost.is_empty());
 
     continue_spell_next_cost_or_finalize(game, trigger_queue, state, pending, decision_maker)
 }
@@ -2392,6 +2446,32 @@ pub(super) fn collect_spell_cost_steps(
     };
 
     if let Some(obj) = game.object(spell_id) {
+        let alternative_method = match casting_method {
+            CastingMethod::Normal => obj.cast_alternative_method.clone(),
+            CastingMethod::Alternative(idx) => obj.alternative_casts.get(*idx).cloned(),
+            CastingMethod::PlayFrom {
+                use_alternative: Some(idx),
+                zone,
+                ..
+            }
+            | CastingMethod::SplitOtherHalfPlayFrom {
+                use_alternative: idx,
+                zone,
+                ..
+            } => crate::decision::resolve_play_from_alternative_method(
+                game, caster, obj, *zone, *idx,
+            )
+            .or_else(|| obj.cast_alternative_method.clone()),
+            CastingMethod::FaceDown
+            | CastingMethod::SplitOtherHalf
+            | CastingMethod::Fuse
+            | CastingMethod::GrantedEscape { .. }
+            | CastingMethod::GrantedFlashback
+            | CastingMethod::PlayFrom {
+                use_alternative: None,
+                ..
+            } => None,
+        };
         let alternative_additional_cost = match casting_method {
             CastingMethod::Normal => obj
                 .cast_alternative_method
@@ -2430,7 +2510,29 @@ pub(super) fn collect_spell_cost_steps(
             .unwrap_or_else(crate::cost::TotalCost::free),
         };
 
+        let alternative_start = cost_steps.len();
         extend_non_mana(&mut cost_steps, &alternative_additional_cost);
+        if alternative_method.as_ref().is_some_and(|method| method.is_offering())
+            && let Some(offering_filter) = alternative_method
+                .as_ref()
+                .and_then(|method| {
+                    method
+                        .non_mana_costs()
+                        .into_iter()
+                        .find_map(|cost| cost.sacrifice_filter().cloned())
+                })
+        {
+            for step in cost_steps[alternative_start..].iter_mut() {
+                if let ActivationCostStep::Sacrifice {
+                    filter, choice_tag, ..
+                } = step
+                    && *filter == offering_filter
+                {
+                    *choice_tag = Some(crate::tag::TagKey::from(OFFERING_SACRIFICE_TAG));
+                    break;
+                }
+            }
+        }
         extend_non_mana(&mut cost_steps, &obj.additional_cost);
         for (idx, optional_cost) in obj.optional_costs.iter().enumerate() {
             let times = optional_costs_paid.times_paid(idx);

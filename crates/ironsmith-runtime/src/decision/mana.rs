@@ -198,8 +198,20 @@ fn best_offering_cost_difference(
             }
             Some(offering_cost_difference(base_cost, obj.mana_cost.as_ref()))
         })
-        .min_by_key(|cost| cost.mana_value())
+        .min_by_key(|cost| {
+            (
+                !can_potentially_pay(game, player, cost, 0),
+                cost.mana_value(),
+            )
+        })
         .unwrap_or_else(|| base_cost.clone())
+}
+
+pub(crate) fn apply_offering_cost_difference_for_sacrificed_cost(
+    base_cost: &crate::mana::ManaCost,
+    sacrificed_cost: Option<&crate::mana::ManaCost>,
+) -> crate::mana::ManaCost {
+    offering_cost_difference(base_cost, sacrificed_cost)
 }
 
 pub(crate) fn apply_alternative_keyword_cost_adjustment(
@@ -211,6 +223,25 @@ pub(crate) fn apply_alternative_keyword_cost_adjustment(
 ) -> crate::mana::ManaCost {
     if alternative_method_is_offering(method) {
         best_offering_cost_difference(game, player, source, method, base_cost)
+    } else {
+        apply_emerge_reduction_to_alternative_mana_cost(game, player, source, method, base_cost)
+    }
+}
+
+fn apply_alternative_keyword_cost_adjustment_with_offering_sacrifice(
+    game: &GameState,
+    player: PlayerId,
+    source: crate::ids::ObjectId,
+    method: &crate::alternative_cast::AlternativeCastingMethod,
+    base_cost: &crate::mana::ManaCost,
+    chosen_offering_sacrificed_cost: Option<Option<&crate::mana::ManaCost>>,
+) -> crate::mana::ManaCost {
+    if alternative_method_is_offering(method) {
+        if let Some(sacrificed_cost) = chosen_offering_sacrificed_cost {
+            apply_offering_cost_difference_for_sacrificed_cost(base_cost, sacrificed_cost)
+        } else {
+            best_offering_cost_difference(game, player, source, method, base_cost)
+        }
     } else {
         apply_emerge_reduction_to_alternative_mana_cost(game, player, source, method, base_cost)
     }
@@ -1177,6 +1208,35 @@ pub fn spell_mana_cost_for_cast(
     casting_method: &CastingMethod,
     from_zone: Zone,
 ) -> Option<crate::mana::ManaCost> {
+    spell_mana_cost_for_cast_inner(game, player, spell, casting_method, from_zone, None)
+}
+
+pub(crate) fn spell_mana_cost_for_cast_with_offering_sacrifice(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+    from_zone: Zone,
+    sacrificed_cost: Option<&crate::mana::ManaCost>,
+) -> Option<crate::mana::ManaCost> {
+    spell_mana_cost_for_cast_inner(
+        game,
+        player,
+        spell,
+        casting_method,
+        from_zone,
+        Some(sacrificed_cost),
+    )
+}
+
+fn spell_mana_cost_for_cast_inner(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+    from_zone: Zone,
+    chosen_offering_sacrificed_cost: Option<Option<&crate::mana::ManaCost>>,
+) -> Option<crate::mana::ManaCost> {
     let base_cost = match casting_method {
         CastingMethod::Normal => spell.mana_cost.clone(),
         CastingMethod::FaceDown => Some(face_down_cast_mana_cost()),
@@ -1260,8 +1320,13 @@ pub fn spell_mana_cost_for_cast(
         if let Some(method) =
             alternative_method_for_casting_method(game, player, spell, casting_method)
         {
-            Some(apply_alternative_keyword_cost_adjustment(
-                game, player, spell.id, &method, &cost,
+            Some(apply_alternative_keyword_cost_adjustment_with_offering_sacrifice(
+                game,
+                player,
+                spell.id,
+                &method,
+                &cost,
+                chosen_offering_sacrificed_cost,
             ))
         } else {
             Some(cost)

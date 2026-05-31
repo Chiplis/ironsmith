@@ -260,6 +260,139 @@ fn patron_of_the_orochi_snake_offering_casts_at_instant_timing_and_reduces_color
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn patron_of_the_orochi_offering_mana_matches_the_selected_snake() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(alice);
+
+    let patron = patron_of_the_orochi_definition();
+    let patron_id = game.create_object_from_definition(&patron, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Green, 8);
+
+    let generic_snake_id = create_patron_test_creature(
+        &mut game,
+        "Generic Snake",
+        alice,
+        vec![Subtype::Snake],
+        ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]),
+    );
+    let green_snake_id = create_patron_test_creature(
+        &mut game,
+        "Green Snake",
+        alice,
+        vec![Subtype::Snake],
+        ManaCost::from_symbols(vec![ManaSymbol::Green]),
+    );
+
+    let action = patron_offering_cast_action(&game, alice, patron_id)
+        .expect("Patron should be castable with either Snake offering candidate");
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(action),
+    )
+    .expect("Patron offering cast should start");
+
+    finish_patron_offering_cast_with_sacrifice(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        progress,
+        green_snake_id,
+    );
+
+    assert_eq!(
+        game.player(alice)
+            .expect("Alice should exist")
+            .mana_pool
+            .total(),
+        1,
+        "choosing the one-green Snake should pay {{6}}{{G}}, not the cheaper cost from the other Snake"
+    );
+    assert!(
+        game.battlefield.contains(&generic_snake_id),
+        "the unchosen Snake should remain on the battlefield"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn patron_of_the_orochi_offering_is_legal_when_affordable_choice_is_not_lowest_mana_value() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(alice);
+
+    let patron = patron_of_the_orochi_definition();
+    let patron_id = game.create_object_from_definition(&patron, alice, Zone::Hand);
+    let alice_pool = &mut game
+        .player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool;
+    alice_pool.add(ManaSymbol::Colorless, 6);
+    alice_pool.add(ManaSymbol::Green, 1);
+
+    create_patron_test_creature(
+        &mut game,
+        "Two-Mana Snake",
+        alice,
+        vec![Subtype::Snake],
+        ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]),
+    );
+    let green_snake_id = create_patron_test_creature(
+        &mut game,
+        "One-Green Snake",
+        alice,
+        vec![Subtype::Snake],
+        ManaCost::from_symbols(vec![ManaSymbol::Green]),
+    );
+
+    let action = patron_offering_cast_action(&game, alice, patron_id).expect(
+        "Patron offering should be legal when the selected Snake produces an affordable difference",
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(action),
+    )
+    .expect("Patron offering cast should start");
+
+    finish_patron_offering_cast_with_sacrifice(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        progress,
+        green_snake_id,
+    );
+
+    assert_eq!(
+        game.player(alice)
+            .expect("Alice should exist")
+            .mana_pool
+            .total(),
+        0,
+        "the affordable one-green Snake should allow paying exactly {{6}}{{G}}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn activate_patron_of_the_orochi(
     game: &mut GameState,
     patron_id: ObjectId,
