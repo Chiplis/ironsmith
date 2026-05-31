@@ -907,6 +907,35 @@ pub(crate) fn lower_special_rewrite_triggered_chunk(
 ) -> Result<Option<LineAst>, CardTextError> {
     let normalized = line.full_text.trim_end_matches('.');
 
+    if let Some(effect_text) = str_strip_prefix(
+        normalized,
+        "at the beginning of each player's upkeep, that player chooses target player who has more cards in hand than they do and is their opponent. the first player may ",
+    ) {
+        let trigger = parse_trigger_clause_from_text(
+            "at the beginning of each player's upkeep",
+            line.info.line_index,
+        )?;
+        let effects = parse_effect_sentences_from_text(
+            format!("that player may {effect_text}.").as_str(),
+            line.info.line_index,
+        )?;
+        return Ok(Some(LineAst::Ability(rewrite_parsed_triggered_ability(
+            trigger.clone(),
+            vec![EffectAst::Conditional {
+                predicate: PredicateAst::AnOpponentHasMoreCardsInHandThanPlayer {
+                    player: PlayerAst::That,
+                },
+                if_true: effects,
+                if_false: Vec::new(),
+            }],
+            infer_rewrite_triggered_functional_zones(&trigger, &line.info.raw_line),
+            Some(line.info.raw_line.clone()),
+            None,
+            None,
+            ReferenceImports::default(),
+        ))));
+    }
+
     if normalized
         == "when the names of three or more nonland permanents begin with the same letter, sacrifice this creature. if you do, it deals 2 damage to each creature and each player"
     {

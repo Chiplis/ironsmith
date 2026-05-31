@@ -10967,6 +10967,14 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 format!("an opponent controls more {subject} than {compared_player} does")
             }
         }
+        Condition::AnOpponentHasMoreCardsInHandThanPlayer { player } => {
+            let compared_player = describe_player_filter(player);
+            if compared_player == "you" {
+                "an opponent has more cards in hand than you do".to_string()
+            } else {
+                format!("an opponent has more cards in hand than {compared_player} does")
+            }
+        }
         Condition::PlayerLifeAtMostHalfStartingLifeTotal { player } => {
             let subject = if *player == PlayerFilter::You {
                 "your".to_string()

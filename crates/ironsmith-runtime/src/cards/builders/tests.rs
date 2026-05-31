@@ -46328,6 +46328,32 @@ fn parse_oath_of_druids_maps_to_upkeep_consult_effects() {
     );
 }
 
+#[test]
+fn oath_of_scholars_strict_oracle_regression_keeps_hand_size_gate() {
+    let def = parse_oracle_card_definition("Oath of Scholars");
+    let raw = format!("{:?}", def.abilities);
+    assert!(
+        raw.contains("BeginningOfUpkeepTrigger")
+            && raw.contains("player: Any")
+            && raw.contains("AnOpponentHasMoreCardsInHandThanPlayer")
+            && raw.contains("MayEffect")
+            && raw.contains("DiscardHandEffect")
+            && raw.contains("DrawCardsEffect"),
+        "expected Oath of Scholars to keep its upkeep hand-size gate and optional discard/draw effects, got {raw}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("each player's upkeep")
+            && rendered.contains("more cards in hand than they do")
+            && rendered.contains("the first player may discard their hand")
+            && rendered.contains("draw three cards"),
+        "expected Oath of Scholars compiled text to keep the hand-size condition and discard/draw rider, got {rendered}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_mind_funeral_tracks_passive_consult_count_and_graveyard_followup() {

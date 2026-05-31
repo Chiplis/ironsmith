@@ -625,6 +625,9 @@ pub enum Condition {
         player: PlayerFilter,
         filter: ObjectFilter,
     },
+    AnOpponentHasMoreCardsInHandThanPlayer {
+        player: PlayerFilter,
+    },
     PlayerLifeAtMostHalfStartingLifeTotal {
         player: PlayerFilter,
     },

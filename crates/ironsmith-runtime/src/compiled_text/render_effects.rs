@@ -1038,6 +1038,35 @@ fn describe_each_player_may_discard_hand_draw_commander_value(
     })
 }
 
+fn describe_may_discard_hand_draw_cards(may: &crate::effects::MayEffect) -> Option<String> {
+    let [discard_effect, draw_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let discard = discard_effect.downcast_ref::<crate::effects::DiscardHandEffect>()?;
+    let draw = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    if discard.player != draw.player {
+        return None;
+    }
+    if may
+        .decider
+        .as_ref()
+        .is_some_and(|decider| decider != &discard.player)
+    {
+        return None;
+    }
+
+    let player = describe_player_filter(may.decider.as_ref().unwrap_or(&discard.player));
+    let hand = if player == "you" {
+        "your hand"
+    } else {
+        "their hand"
+    };
+    Some(format!(
+        "{player} may discard {hand} and draw {}",
+        describe_card_count(&draw.count)
+    ))
+}
+
 #[derive(Clone, Copy)]
 pub(super) struct SacrificeView<'a> {
     filter: &'a ObjectFilter,
@@ -14604,11 +14633,40 @@ fn rewrite_damaged_player_reference_for_combat_damage_trigger(
         .replace("The damaged player", "That player")
 }
 
+fn describe_each_upkeep_hand_advantage_oath(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<String> {
+    let upkeep = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::BeginningOfUpkeepTrigger>()?;
+    if upkeep.player != PlayerFilter::Any {
+        return None;
+    }
+    let Some(Condition::AnOpponentHasMoreCardsInHandThanPlayer { player }) =
+        triggered.intervening_if.as_ref()
+    else {
+        return None;
+    };
+    if *player != PlayerFilter::Active {
+        return None;
+    }
+    let effects = describe_triggered_resolution_text(triggered, "this enchantment", true)?;
+    let rest = effects
+        .strip_prefix("that player may ")
+        .or_else(|| effects.strip_prefix("the active player may "))?;
+    Some(format!(
+        "At the beginning of each player's upkeep, that player chooses target player who has more cards in hand than they do and is their opponent. The first player may {rest}"
+    ))
+}
+
 fn describe_triggered_inline_ability(
     triggered: &crate::ability::TriggeredAbility,
     self_subject: &str,
 ) -> String {
     if let Some(rendered) = describe_backup_keyword(triggered) {
+        return rendered;
+    }
+    if let Some(rendered) = describe_each_upkeep_hand_advantage_oath(triggered) {
         return rendered;
     }
 
@@ -30092,6 +30150,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if let Some(compact) = describe_may_choose_reveal_and_move_to_hand(may) {
             return compact;
         }
+        if let Some(compact) = describe_may_discard_hand_draw_cards(may) {
+            return compact;
+        }
         if let Some(compact) = describe_may_search_library_and_or_nonlibrary(may) {
             return compact;
         }
@@ -36311,6 +36372,9 @@ pub(super) fn describe_ability(
         }
         AbilityKind::Triggered(triggered) => {
             if let Some(rendered) = describe_backup_keyword(triggered) {
+                return vec![format!("Triggered ability {index}: {rendered}")];
+            }
+            if let Some(rendered) = describe_each_upkeep_hand_advantage_oath(triggered) {
                 return vec![format!("Triggered ability {index}: {rendered}")];
             }
             if let Some(rendered) = describe_annihilator_keyword(triggered) {

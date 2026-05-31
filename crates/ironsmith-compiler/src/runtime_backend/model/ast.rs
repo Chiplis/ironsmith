@@ -423,6 +423,9 @@ pub(crate) enum PredicateAst {
         player: PlayerAst,
         filter: ObjectFilter,
     },
+    AnOpponentHasMoreCardsInHandThanPlayer {
+        player: PlayerAst,
+    },
     PlayerControlsMoreThanYou {
         player: PlayerAst,
         filter: ObjectFilter,

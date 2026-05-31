@@ -5084,6 +5084,184 @@ fn oath_of_druids_upkeep_trigger_puts_revealed_creature_onto_battlefield() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn oath_of_scholars_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(99_200), "Oath of Scholars")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "At the beginning of each player's upkeep, that player chooses target player who has more cards in hand than they do and is their opponent. The first player may discard their hand and draw three cards.",
+        )
+        .expect("Oath of Scholars should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct OathOfScholarsDecisionMaker {
+    accept_may: bool,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for OathOfScholarsDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        self.accept_may
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn add_named_card_to_zone(
+    game: &mut GameState,
+    id: u32,
+    name: &str,
+    owner: PlayerId,
+    zone: Zone,
+) -> ObjectId {
+    let card = CardBuilder::new(CardId::from_raw(id), name).build();
+    game.create_object_from_card(&card, owner, zone)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_oath_of_scholars_trigger_on_stack(game: &mut GameState, trigger_queue: &mut TriggerQueue) {
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let oath = oath_of_scholars_definition();
+    game.create_object_from_definition(&oath, alice, Zone::Battlefield);
+
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(bob);
+
+    generate_and_queue_step_triggers(game, trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Oath of Scholars should trigger at the beginning of each player's upkeep"
+    );
+    put_triggers_on_stack(game, trigger_queue)
+        .expect("Oath of Scholars upkeep trigger should go on the stack");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_oath_of_scholars_on_battlefield_for_bob_upkeep(game: &mut GameState) {
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let oath = oath_of_scholars_definition();
+    game.create_object_from_definition(&oath, alice, Zone::Battlefield);
+
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(bob);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn oath_of_scholars_upkeep_discards_hand_and_draws_when_accepted() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    add_named_card_to_zone(&mut game, 99_201, "Alice Filler A", alice, Zone::Hand);
+    add_named_card_to_zone(&mut game, 99_202, "Alice Filler B", alice, Zone::Hand);
+    add_named_card_to_zone(&mut game, 99_203, "Bob Old Hand", bob, Zone::Hand);
+    for (offset, name) in ["Bob Draw One", "Bob Draw Two", "Bob Draw Three"]
+        .into_iter()
+        .enumerate()
+    {
+        add_named_card_to_zone(&mut game, 99_204 + offset as u32, name, bob, Zone::Library);
+    }
+
+    put_oath_of_scholars_trigger_on_stack(&mut game, &mut trigger_queue);
+
+    let mut dm = OathOfScholarsDecisionMaker { accept_may: true };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Oath of Scholars upkeep trigger should resolve when accepted");
+
+    let bob_state = game.player(bob).expect("Bob exists");
+    assert_eq!(
+        bob_state.hand.len(),
+        3,
+        "Bob should discard his old hand and draw three cards"
+    );
+    assert!(
+        bob_state.graveyard.iter().any(|&id| {
+            game.object(id)
+                .is_some_and(|object| object.name == "Bob Old Hand" && object.owner == bob)
+        }),
+        "Bob's previous hand should be discarded"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn oath_of_scholars_upkeep_does_nothing_when_declined() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    add_named_card_to_zone(&mut game, 99_210, "Alice Filler A", alice, Zone::Hand);
+    add_named_card_to_zone(&mut game, 99_211, "Alice Filler B", alice, Zone::Hand);
+    let kept = add_named_card_to_zone(&mut game, 99_212, "Bob Kept Hand", bob, Zone::Hand);
+    for (offset, name) in ["Bob Library A", "Bob Library B", "Bob Library C"]
+        .into_iter()
+        .enumerate()
+    {
+        add_named_card_to_zone(&mut game, 99_213 + offset as u32, name, bob, Zone::Library);
+    }
+
+    put_oath_of_scholars_trigger_on_stack(&mut game, &mut trigger_queue);
+
+    let mut dm = OathOfScholarsDecisionMaker { accept_may: false };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Oath of Scholars upkeep trigger should resolve when declined");
+
+    let bob_state = game.player(bob).expect("Bob exists");
+    assert_eq!(bob_state.hand, vec![kept]);
+    assert!(
+        bob_state.graveyard.is_empty(),
+        "declining should not discard Bob's hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn oath_of_scholars_upkeep_does_nothing_without_opponent_hand_advantage() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    add_named_card_to_zone(&mut game, 99_220, "Alice Filler", alice, Zone::Hand);
+    let kept = add_named_card_to_zone(&mut game, 99_221, "Bob Equal Hand", bob, Zone::Hand);
+    for (offset, name) in ["Bob Library A", "Bob Library B", "Bob Library C"]
+        .into_iter()
+        .enumerate()
+    {
+        add_named_card_to_zone(&mut game, 99_222 + offset as u32, name, bob, Zone::Library);
+    }
+
+    put_oath_of_scholars_on_battlefield_for_bob_upkeep(&mut game);
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+
+    assert_eq!(
+        trigger_queue.entries.len(),
+        0,
+        "Oath of Scholars should not trigger without an opponent ahead on cards"
+    );
+
+    let bob_state = game.player(bob).expect("Bob exists");
+    assert_eq!(bob_state.hand, vec![kept]);
+    assert!(
+        bob_state.graveyard.is_empty(),
+        "without an opponent ahead on cards, the discard/draw branch should not happen"
+    );
+}
+
 fn dream_tides_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(99_120), "Dream Tides")
         .mana_cost(ManaCost::from_pips(vec![

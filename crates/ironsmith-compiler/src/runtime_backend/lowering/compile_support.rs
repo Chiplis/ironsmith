@@ -368,6 +368,10 @@ pub(crate) fn compile_condition_from_predicate_ast(
                 filter: resolved,
             }
         }
+        PredicateAst::AnOpponentHasMoreCardsInHandThanPlayer { player } => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::AnOpponentHasMoreCardsInHandThanPlayer { player }
+        }
         PredicateAst::PlayerLifeAtMostHalfStartingLifeTotal { player } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerLifeAtMostHalfStartingLifeTotal { player }

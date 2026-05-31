@@ -526,6 +526,16 @@ fn any_opponent_controls_more_than_player(
         })
 }
 
+fn any_opponent_has_more_cards_in_hand_than_player(game: &GameState, player_id: PlayerId) -> bool {
+    let Some(player_hand) = game.player(player_id).map(|player| player.hand.len()) else {
+        return false;
+    };
+    game.players
+        .iter()
+        .filter(|player| player.id != player_id && player.is_in_game())
+        .any(|opponent| opponent.hand.len() > player_hand)
+}
+
 fn player_has_more_life_than_each_other_player(game: &GameState, player_id: PlayerId) -> bool {
     let Some(life) = game.player(player_id).map(|p| p.life) else {
         return false;
@@ -940,6 +950,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::PlayerControlsMost { .. } => {}
         Condition::PlayerControlsMoreThanYou { .. } => {}
         Condition::AnOpponentControlsMoreThanPlayer { .. } => {}
+        Condition::AnOpponentHasMoreCardsInHandThanPlayer { .. } => {}
         Condition::PlayerLifeAtMostHalfStartingLifeTotal { .. } => {}
         Condition::PlayerLifeLessThanHalfStartingLifeTotal { .. } => {}
         Condition::LifeTotalOrLess(..) => {}
@@ -1589,6 +1600,11 @@ pub fn evaluate_condition_external(
                         game, ctx.source, player, player_id, filter,
                     )
                 })
+        }
+        Condition::AnOpponentHasMoreCardsInHandThanPlayer { player } => {
+            matching_condition_players_external(game, ctx, player)
+                .into_iter()
+                .any(|player_id| any_opponent_has_more_cards_in_hand_than_player(game, player_id))
         }
         Condition::PlayerOwnsCardNamedInZones {
             player,
@@ -2294,6 +2310,11 @@ fn evaluate_condition_simple(
                     any_opponent_controls_more_than_player(game, source, player, player_id, filter)
                 })
         }
+        Condition::AnOpponentHasMoreCardsInHandThanPlayer { player } => {
+            matching_condition_players_simple(game, controller, player)
+                .into_iter()
+                .any(|player_id| any_opponent_has_more_cards_in_hand_than_player(game, player_id))
+        }
         Condition::PlayerLifeAtMostHalfStartingLifeTotal { player } => {
             matching_condition_players_simple(game, controller, player)
                 .into_iter()
@@ -2966,6 +2987,11 @@ fn evaluate_condition(
                         game, ctx.source, player, player_id, filter,
                     )
                 }))
+        }
+        Condition::AnOpponentHasMoreCardsInHandThanPlayer { player } => {
+            Ok(matching_condition_players_exec(game, ctx, player)?
+                .into_iter()
+                .any(|player_id| any_opponent_has_more_cards_in_hand_than_player(game, player_id)))
         }
         Condition::PlayerLifeAtMostHalfStartingLifeTotal { player } => {
             Ok(matching_condition_players_exec(game, ctx, player)?
