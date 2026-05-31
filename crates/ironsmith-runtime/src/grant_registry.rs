@@ -34,6 +34,15 @@ pub enum GrantSource {
         source_id: ObjectId,
         controller: PlayerId,
     },
+    /// From a resolving effect that lasts until end of turn only while a
+    /// particular physical card remains on top of a player's library.
+    EffectWhileStableCardOnTopOfLibrary {
+        source_id: ObjectId,
+        expires_end_of_turn: u32,
+        stable_id: StableId,
+        player: PlayerId,
+        library_top_revision: u64,
+    },
     /// From a static ability on a permanent.
     /// The grant exists only while the source is on the battlefield.
     StaticAbility {
@@ -56,6 +65,7 @@ impl GrantSource {
         match self {
             GrantSource::Effect { source_id, .. } => *source_id,
             GrantSource::EffectWhileControlled { source_id, .. } => *source_id,
+            GrantSource::EffectWhileStableCardOnTopOfLibrary { source_id, .. } => *source_id,
             GrantSource::StaticAbility { source_id } => *source_id,
         }
     }
@@ -80,6 +90,19 @@ impl GrantSource {
             } => game.object(*source_id).is_some_and(|source| {
                 source.zone == Zone::Battlefield && game.controller_of(source) == *controller
             }),
+            GrantSource::EffectWhileStableCardOnTopOfLibrary {
+                expires_end_of_turn,
+                stable_id,
+                player,
+                library_top_revision,
+                ..
+            } => game.turn.turn_number <= *expires_end_of_turn
+                && stable_card_is_top_of_library_at_revision(
+                    game,
+                    *stable_id,
+                    *player,
+                    *library_top_revision,
+                ),
         }
     }
 
@@ -98,6 +121,10 @@ impl GrantSource {
                 battlefield.contains(source_id)
             }
             GrantSource::EffectWhileControlled { source_id, .. } => battlefield.contains(source_id),
+            GrantSource::EffectWhileStableCardOnTopOfLibrary {
+                expires_end_of_turn,
+                ..
+            } => turn_number <= *expires_end_of_turn,
         }
     }
 }
@@ -113,6 +140,13 @@ pub enum GrantLifetime {
         source_id: ObjectId,
         controller: PlayerId,
     },
+    WhileStableCardOnTopOfLibrary {
+        source_id: ObjectId,
+        stable_id: StableId,
+        player: PlayerId,
+        turn: u32,
+        library_top_revision: u64,
+    },
 }
 
 impl GrantLifetime {
@@ -121,6 +155,7 @@ impl GrantLifetime {
             GrantLifetime::UntilEndOfTurn { source_id, .. } => *source_id,
             GrantLifetime::WhileSourceOnBattlefield(source_id) => *source_id,
             GrantLifetime::WhileSourceControlledBy { source_id, .. } => *source_id,
+            GrantLifetime::WhileStableCardOnTopOfLibrary { source_id, .. } => *source_id,
         }
     }
 }
@@ -145,8 +180,46 @@ impl GrantSource {
                 source_id: *source_id,
                 controller: *controller,
             },
+            GrantSource::EffectWhileStableCardOnTopOfLibrary {
+                source_id,
+                stable_id,
+                player,
+                expires_end_of_turn,
+                library_top_revision,
+            } => GrantLifetime::WhileStableCardOnTopOfLibrary {
+                source_id: *source_id,
+                stable_id: *stable_id,
+                player: *player,
+                turn: *expires_end_of_turn,
+                library_top_revision: *library_top_revision,
+            },
         }
     }
+}
+
+pub(crate) fn stable_card_is_top_of_library_at_revision(
+    game: &crate::game_state::GameState,
+    stable_id: StableId,
+    player: PlayerId,
+    library_top_revision: u64,
+) -> bool {
+    game.library_top_revision(player) == library_top_revision
+        && stable_card_is_top_of_library(game, stable_id, player)
+}
+
+pub(crate) fn stable_card_is_top_of_library(
+    game: &crate::game_state::GameState,
+    stable_id: StableId,
+    player: PlayerId,
+) -> bool {
+    let Some(player_state) = game.player(player) else {
+        return false;
+    };
+    let Some(top_id) = player_state.library.last().copied() else {
+        return false;
+    };
+    game.object(top_id)
+        .is_some_and(|object| object.stable_id == stable_id)
 }
 
 /// A granted alternative casting method for a specific card.
@@ -509,6 +582,7 @@ impl GrantRegistry {
             !matches!(&grant.source,
                 GrantSource::Effect { source_id: sid, .. } |
                 GrantSource::EffectWhileControlled { source_id: sid, .. } |
+                GrantSource::EffectWhileStableCardOnTopOfLibrary { source_id: sid, .. } |
                 GrantSource::StaticAbility { source_id: sid }
                 if *sid == source_id
             )

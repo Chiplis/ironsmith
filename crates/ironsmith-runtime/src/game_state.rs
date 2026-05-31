@@ -286,6 +286,8 @@ pub struct EffectStore {
     pub pending_replacement_choice: Option<PendingReplacementChoice>,
     /// Registry for tracking granted alternative casts and abilities.
     pub grant_registry: crate::grant_registry::GrantRegistry,
+    /// Monotonic per-library revision for one-shot "while this remains on top" effects.
+    pub library_top_revisions: HashMap<PlayerId, u64>,
     /// Temporary mana abilities granted to players (e.g., Channel), expiring at end of turn.
     pub granted_mana_abilities: Vec<GrantedManaAbility>,
     /// Temporary spell-cost reductions waiting for the next matching spell this turn.
@@ -312,6 +314,7 @@ impl Default for EffectStore {
             active_state_trigger_conditions: HashSet::new(),
             pending_replacement_choice: None,
             grant_registry: crate::grant_registry::GrantRegistry::new(),
+            library_top_revisions: HashMap::new(),
             granted_mana_abilities: Vec::new(),
             temporary_spell_cost_reductions: Vec::new(),
             temporary_spell_ability_grants: Vec::new(),
@@ -2511,6 +2514,9 @@ impl GameState {
             self.players[index].library.shuffle(&mut rng);
         }
         let after_order = self.players[index].library.clone();
+        if before_order != after_order {
+            self.bump_library_top_revision(player_id);
+        }
         self.push_hidden_info_operation(HiddenInfoOperation::LibraryShuffle {
             player: player_id,
             before_order,
@@ -2572,6 +2578,9 @@ impl GameState {
         }
         if let Some(player_state) = self.player_mut(player) {
             player_state.library = after_order.clone();
+        }
+        if before_order != after_order {
+            self.bump_library_top_revision(player);
         }
         self.record_library_reorder(player, before_order, after_order, reason);
         true
@@ -2678,6 +2687,9 @@ impl GameState {
         } else {
             return false;
         };
+        if before_order != after_order {
+            self.bump_library_top_revision(player);
+        }
         self.record_library_reorder(player, before_order, after_order, reason);
         true
     }
@@ -3366,6 +3378,7 @@ impl GameState {
                 if let Some(player) = self.player_mut(owner) {
                     player.library.push(id);
                 }
+                self.bump_library_top_revision(owner);
             }
             Zone::Hand => {
                 if let Some(player) = self.player_mut(owner) {
@@ -4762,6 +4775,7 @@ impl GameState {
                 if let Some(player) = self.player_mut(owner) {
                     player.library.retain(|&x| x != id);
                 }
+                self.bump_library_top_revision(owner);
             }
             Zone::Hand => {
                 if let Some(player) = self.player_mut(owner) {
@@ -6093,6 +6107,23 @@ impl GameState {
             self.update_replacement_effects();
             self.update_cant_effects();
         }
+    }
+
+    pub fn library_top_revision(&self, player: PlayerId) -> u64 {
+        self.effect_store
+            .library_top_revisions
+            .get(&player)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    fn bump_library_top_revision(&mut self, player: PlayerId) {
+        let revision = self
+            .effect_store
+            .library_top_revisions
+            .entry(player)
+            .or_insert(0);
+        *revision = revision.saturating_add(1);
     }
 
     /// Check if a player may spend mana as though it were mana of any color.

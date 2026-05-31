@@ -1,5 +1,7 @@
 use crate::effect::{Until, Value, ValueComparisonOperator};
-use crate::host::{CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, TagKey};
+use crate::host::{CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, TagKey, TargetAst};
+use crate::runtime_backend::GrantedAbilityAst;
+use crate::static_abilities::StaticAbility;
 use crate::target::ObjectFilter;
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
@@ -499,6 +501,93 @@ fn parse_permission_tail_tokens(
     }
 
     None
+}
+
+fn parse_revealed_top_library_permission_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let tokens = trim_lexed_commas(tokens);
+    let words = token_word_refs(tokens);
+    const PREFIX: &[&str] = &[
+        "until", "end", "of", "turn", "for", "as", "long", "as",
+    ];
+    const REMAINS_TOP: &[&str] = &[
+        "remains", "on", "top", "of", "your", "library", "play", "with", "the", "top", "card",
+        "of", "your", "library", "revealed", "and",
+    ];
+
+    if !word_slice_starts_with(&words, PREFIX) {
+        return Ok(None);
+    }
+
+    let Some(after_prefix) = words.get(PREFIX.len()..) else {
+        return Ok(None);
+    };
+    let referenced_card_len = if word_slice_starts_with(after_prefix, &["that", "card"]) {
+        2
+    } else if word_slice_starts_with(after_prefix, &["that", "revealed", "card"])
+        || word_slice_starts_with(after_prefix, &["the", "revealed", "card"])
+    {
+        3
+    } else {
+        return Ok(None);
+    };
+
+    let after_card = &after_prefix[referenced_card_len..];
+    if !word_slice_starts_with(after_card, REMAINS_TOP) {
+        return Ok(None);
+    }
+
+    let permission_start_word = PREFIX.len() + referenced_card_len + REMAINS_TOP.len();
+    let Some(permission_start_token) = token_index_for_word_index(tokens, permission_start_word)
+    else {
+        return Ok(None);
+    };
+    let permission_tokens = trim_lexed_commas(&tokens[permission_start_token..]);
+    let permission = match parse_permission_clause_spec(permission_tokens)? {
+        Some(PermissionClauseSpec::Tagged {
+            mut tag,
+            player,
+            allow_land,
+            as_copy: false,
+            without_paying_mana_cost,
+            ..
+        }) if matches!(player, PlayerAst::You | PlayerAst::Implicit) => {
+            if tag.as_str() == IT_TAG {
+                tag = TagKey::from("__last_revealed__");
+            }
+            EffectAst::subject_verb_grant_play_tagged_until_end_of_turn_while_on_top_of_library(
+                tag,
+                player,
+                allow_land,
+                without_paying_mana_cost,
+                false,
+            )
+        }
+        _ => {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported revealed top-library play permission clause (clause: '{}')",
+                words.join(" ")
+            )));
+        }
+    };
+
+    Ok(Some(EffectAst::Sequence {
+        effects: vec![
+            EffectAst::subject_verb_grant_abilities_to_target_with_condition(
+                TargetAst::Source(None),
+                vec![GrantedAbilityAst::StaticAbility(
+                    StaticAbility::all_players_look_at_your_top_library_card(),
+                )],
+                crate::effect::Until::EndOfTurn,
+                crate::ConditionExpr::TaggedObjectIsTopOfLibrary {
+                    tag: TagKey::from("__last_revealed__"),
+                    player: crate::target::PlayerFilter::You,
+                },
+            ),
+            permission,
+        ],
+    }))
 }
 
 fn normalize_permission_subject_filter(mut filter: ObjectFilter) -> ObjectFilter {
@@ -1492,6 +1581,10 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
 ) -> Result<Option<EffectAst>, CardTextError> {
     let trimmed_tokens = trim_commas(tokens);
     let mut trimmed = strip_leading_token_words_any(&trimmed_tokens, &["then", "and"]).to_vec();
+
+    if let Some(effect) = parse_revealed_top_library_permission_clause(&trimmed)? {
+        return Ok(Some(effect));
+    }
 
     let mut allow_any_color_for_cast = false;
     if let Some(stripped) = strip_allow_any_color_for_cast_suffix_tokens(&trimmed) {
