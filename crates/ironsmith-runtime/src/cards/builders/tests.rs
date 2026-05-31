@@ -38968,6 +38968,156 @@ fn alena_kessig_trapper_mana_runtime_uses_only_your_creatures_that_entered_this_
 }
 
 #[test]
+fn foriysian_totem_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition("Foriysian Totem");
+    let rendered = canonical_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("{T}: Add {R}."),
+        "expected Foriysian Totem's red mana ability to render, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "As long as this artifact is a creature, it can block an additional creature each combat."
+        ),
+        "expected Foriysian Totem's conditional additional-block clause to render, got {rendered}"
+    );
+
+    let ability_debug = format!("{:#?}", def.abilities);
+    assert!(
+        ability_debug.contains("CanBlockAdditionalCreatureEachCombat")
+            && ability_debug.contains("SourceMatches")
+            && ability_debug.contains("Artifact")
+            && ability_debug.contains("Creature"),
+        "expected Foriysian Totem to lower to a conditional additional-block static ability, got {ability_debug}"
+    );
+}
+
+#[test]
+fn foriysian_totem_animation_and_conditional_additional_blocker_runtime() {
+    fn create_attacker(
+        game: &mut crate::game_state::GameState,
+        controller: PlayerId,
+        name: &str,
+    ) -> ObjectId {
+        let def = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        game.create_object_from_definition(&def, controller, Zone::Battlefield)
+    }
+
+    fn combat_with_two_attackers(
+        game: &mut crate::game_state::GameState,
+        attacker_controller: PlayerId,
+        defending_player: PlayerId,
+    ) -> (crate::combat_state::CombatState, ObjectId, ObjectId) {
+        let attacker_one = create_attacker(game, attacker_controller, "Foriysian Attacker One");
+        let attacker_two = create_attacker(game, attacker_controller, "Foriysian Attacker Two");
+        let mut combat = crate::combat_state::CombatState::default();
+        combat.attackers.push(crate::combat_state::AttackerInfo {
+            creature: attacker_one,
+            target: crate::combat_state::AttackTarget::Player(defending_player),
+        });
+        combat.attackers.push(crate::combat_state::AttackerInfo {
+            creature: attacker_two,
+            target: crate::combat_state::AttackTarget::Player(defending_player),
+        });
+        (combat, attacker_one, attacker_two)
+    }
+
+    let def = parse_oracle_card_definition("Foriysian Totem");
+    let animate_effect = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated
+                .effects
+                .segments
+                .first()
+                .and_then(|segment| segment.default_effects.first()),
+            _ => None,
+        })
+        .expect("Foriysian Totem should have an animation activated ability");
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let totem = game.create_object_from_definition(&def, bob, Zone::Battlefield);
+
+    assert!(
+        !game.current_has_card_type(totem, CardType::Creature),
+        "Foriysian Totem should start as a noncreature artifact"
+    );
+    assert!(
+        !game.current_has_static_ability_id(
+            totem,
+            StaticAbilityId::CanBlockAdditionalCreatureEachCombat
+        ),
+        "Foriysian Totem should not have the extra-blocker ability before it is a creature"
+    );
+
+    let (mut combat, attacker_one, attacker_two) = combat_with_two_attackers(&mut game, alice, bob);
+    let declarations = vec![
+        crate::decision::BlockerDeclaration {
+            blocker: totem,
+            blocking: attacker_one,
+        },
+        crate::decision::BlockerDeclaration {
+            blocker: totem,
+            blocking: attacker_two,
+        },
+    ];
+    assert!(
+        crate::game_loop::apply_blocker_declarations(
+            &mut game,
+            &mut combat,
+            &mut crate::triggers::TriggerQueue::new(),
+            &declarations,
+            bob,
+        )
+        .is_err(),
+        "noncreature Foriysian Totem must not be able to block, let alone block multiple attackers"
+    );
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(totem, bob, &mut dm);
+    crate::effects::execute_effect(&mut game, animate_effect, &mut ctx)
+        .expect("Foriysian Totem animation ability should resolve");
+
+    assert!(game.current_has_card_type(totem, CardType::Artifact));
+    assert!(game.current_has_card_type(totem, CardType::Creature));
+    assert!(game.current_has_subtype(totem, Subtype::Giant));
+    assert_eq!(game.calculated_power(totem), Some(4));
+    assert_eq!(game.calculated_toughness(totem), Some(4));
+    assert!(game.current_has_static_ability_id(totem, StaticAbilityId::Trample));
+    assert!(game.current_has_static_ability_id(
+        totem,
+        StaticAbilityId::CanBlockAdditionalCreatureEachCombat
+    ));
+
+    let (mut combat, attacker_one, attacker_two) = combat_with_two_attackers(&mut game, alice, bob);
+    let declarations = vec![
+        crate::decision::BlockerDeclaration {
+            blocker: totem,
+            blocking: attacker_one,
+        },
+        crate::decision::BlockerDeclaration {
+            blocker: totem,
+            blocking: attacker_two,
+        },
+    ];
+    crate::game_loop::apply_blocker_declarations(
+        &mut game,
+        &mut combat,
+        &mut crate::triggers::TriggerQueue::new(),
+        &declarations,
+        bob,
+    )
+    .expect("creature Foriysian Totem should block two attackers with its conditional ability");
+}
+
+#[test]
 fn when_we_were_young_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("When We Were Young");
     let rendered = canonical_compiled_lines(&def).join(" ");

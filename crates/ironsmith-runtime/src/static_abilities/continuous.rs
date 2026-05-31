@@ -881,6 +881,86 @@ fn flatten_static_condition_and(
     }
 }
 
+fn describe_source_matches_condition(filter: &ObjectFilter) -> Option<String> {
+    if !filter.source {
+        return None;
+    }
+
+    let article = |word: &str| {
+        if word
+            .as_bytes()
+            .first()
+            .is_some_and(|byte| matches!(*byte, b'a' | b'e' | b'i' | b'o' | b'u'))
+        {
+            "an"
+        } else {
+            "a"
+        }
+    };
+    let typed_descriptor = |word: &str| format!("{} {word}", article(word));
+
+    if filter.all_card_types.len() == 2
+        && filter.card_types.is_empty()
+        && filter.subtypes.is_empty()
+        && filter.colors.is_none()
+    {
+        let subject = filter.all_card_types[0].name();
+        let descriptor = filter.all_card_types[1].name();
+        return Some(format!(
+            "as long as this {subject} is {}",
+            typed_descriptor(descriptor)
+        ));
+    }
+
+    let subject = filter
+        .all_card_types
+        .first()
+        .map(|card_type| format!("this {}", card_type.name()))
+        .unwrap_or_else(|| "it".to_string());
+    if filter.all_card_types.len() == 1
+        && filter.card_types.is_empty()
+        && filter.subtypes.is_empty()
+    {
+        let descriptor = filter.all_card_types[0].name();
+        return Some(format!(
+            "as long as {subject} is {}",
+            typed_descriptor(descriptor)
+        ));
+    }
+    if filter.all_card_types.len() <= 1
+        && filter.card_types.len() == 1
+        && filter.subtypes.is_empty()
+    {
+        let descriptor = filter.card_types[0].name();
+        return Some(format!(
+            "as long as {subject} is {}",
+            typed_descriptor(descriptor)
+        ));
+    }
+    if filter.all_card_types.len() <= 1
+        && filter.card_types.is_empty()
+        && filter.subtypes.len() == 1
+    {
+        let descriptor = filter.subtypes[0].display_name();
+        return Some(format!(
+            "as long as {subject} is {}",
+            typed_descriptor(&descriptor)
+        ));
+    }
+    if filter.all_card_types.len() <= 1
+        && filter.card_types.is_empty()
+        && filter.subtypes.is_empty()
+        && let Some(colors) = filter.colors
+    {
+        let colors = color_list(colors);
+        if !colors.is_empty() {
+            return Some(format!("as long as {subject} is {}", join_with_and(&colors)));
+        }
+    }
+
+    None
+}
+
 pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> String {
     match condition {
         crate::ConditionExpr::And(_, _) => {
@@ -977,6 +1057,8 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
         crate::ConditionExpr::SourceIsSoulbondPaired => {
             "as long as this creature is paired with another creature".to_string()
         }
+        crate::ConditionExpr::SourceMatches(filter) => describe_source_matches_condition(filter)
+            .unwrap_or_else(|| format!("as long as {filter:?}")),
         crate::ConditionExpr::PlayerHasCardTypesInGraveyardOrMore { player, count } => {
             let graveyard_owner = match player {
                 crate::target::PlayerFilter::You => "your".to_string(),
@@ -2088,6 +2170,15 @@ impl StaticAbilityKind for GrantAbility {
             }
         };
         if let Some(condition) = &self.condition {
+            if self.source_only
+                && self.ability.id() == StaticAbilityId::CanBlockAdditionalCreatureEachCombat
+            {
+                let condition_text = describe_static_condition(condition);
+                if let Some(rest) = condition_text.strip_prefix("as long as ") {
+                    let ability_text = raw_ability_text.to_ascii_lowercase();
+                    return format!("as long as {rest}, it {ability_text}");
+                }
+            }
             if self.source_only
                 && self.ability.is_keyword()
                 && leading_source_keyword_condition(condition)

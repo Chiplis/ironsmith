@@ -1222,17 +1222,40 @@ pub(crate) fn parse_each_creature_can_block_additional_creature_each_combat_line
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     // High Ground: "Each creature can block an additional creature each combat."
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if clause_words.len() < 9 {
+    let mut line_tokens = trim_edge_punctuation(tokens);
+    let mut condition = None;
+    let line_words = crate::runtime_backend::token_word_refs(&line_tokens);
+    if word_slice_starts_with(&line_words, &["as", "long", "as"]) {
+        let Some(comma_idx) = find_index(&line_tokens, |token| token.is_comma()) else {
+            return Ok(None);
+        };
+        condition = Some(parse_static_condition_clause(&trim_commas(
+            &line_tokens[3..comma_idx],
+        ))?);
+        line_tokens = trim_commas(&line_tokens[comma_idx + 1..]);
+    }
+
+    let clause_words = crate::runtime_backend::token_word_refs(&line_tokens);
+    if clause_words.len() < 8 {
         return Ok(None);
     }
-    let (_subject_len, you_control) = if word_slice_starts_with(
+    let subject_is_source = word_slice_find_word_where(&clause_words, |word| word == "can")
+        .and_then(|can_idx| {
+            (clause_words.get(can_idx + 1) == Some(&"block"))
+                .then(|| &clause_words[..can_idx])
+        })
+        .is_some_and(|subject_words| {
+            word_slice_eq(subject_words, &["it"]) || is_source_reference_words(subject_words)
+        });
+    let you_control = if word_slice_starts_with(
         &clause_words,
         &["each", "creature", "you", "control", "can", "block"],
     ) {
-        (4usize, true)
+        true
     } else if word_slice_starts_with(&clause_words, &["each", "creature", "can", "block"]) {
-        (2usize, false)
+        false
+    } else if subject_is_source {
+        false
     } else {
         return Ok(None);
     };
@@ -1251,12 +1274,25 @@ pub(crate) fn parse_each_creature_can_block_additional_creature_each_combat_line
     let mut additional = 1usize;
     let prev = clause_words[additional_word_idx - 1];
     if prev != "an" {
-        if let Some(prev_token_idx) = token_index_for_word_index(tokens, additional_word_idx - 1)
-            && let Some((count, used)) = parse_number(&tokens[prev_token_idx..])
+        if let Some(prev_token_idx) =
+            token_index_for_word_index(&line_tokens, additional_word_idx - 1)
+            && let Some((count, used)) = parse_number(&line_tokens[prev_token_idx..])
             && used > 0
         {
             additional = count as usize;
         }
+    }
+
+    let granted = StaticAbility::can_block_additional_creature_each_combat(additional);
+    if subject_is_source {
+        let ability = StaticAbilityAst::Static(granted);
+        return Ok(Some(match condition {
+            Some(condition) => StaticAbilityAst::ConditionalStaticAbility {
+                ability: Box::new(ability),
+                condition,
+            },
+            None => ability,
+        }));
     }
 
     let filter = if you_control {
@@ -1264,11 +1300,10 @@ pub(crate) fn parse_each_creature_can_block_additional_creature_each_combat_line
     } else {
         ObjectFilter::creature()
     };
-    let granted = StaticAbility::can_block_additional_creature_each_combat(additional);
     Ok(Some(StaticAbilityAst::GrantStaticAbility {
         filter,
         ability: Box::new(StaticAbilityAst::Static(granted)),
-        condition: None,
+        condition,
     }))
 }
 
@@ -2293,6 +2328,9 @@ pub(crate) fn parse_static_condition_clause(
     ) {
         return Ok(crate::ConditionExpr::SourceIsSoulbondPaired);
     }
+    if let Some(condition) = parse_source_is_descriptor_static_condition(&tokens, &clause_words)? {
+        return Ok(condition);
+    }
     if word_slice_eq_any(
         &clause_words,
         &[
@@ -2911,6 +2949,46 @@ pub(crate) fn parse_static_condition_clause(
         "unsupported static condition clause (clause: '{}')",
         clause_words.join(" ")
     )))
+}
+
+fn parse_source_is_descriptor_static_condition(
+    _tokens: &[OwnedLexToken],
+    clause_words: &[&str],
+) -> Result<Option<crate::ConditionExpr>, CardTextError> {
+    let Some(is_idx) = word_slice_find_word_where(clause_words, |word| word == "is") else {
+        return Ok(None);
+    };
+    let subject_words = &clause_words[..is_idx];
+    if !is_source_reference_words(subject_words) {
+        return Ok(None);
+    }
+
+    let mut descriptor_words = &clause_words[is_idx + 1..];
+    if descriptor_words.first().is_some_and(|word| is_article(word)) {
+        descriptor_words = &descriptor_words[1..];
+    }
+    if descriptor_words.len() != 1 {
+        return Ok(None);
+    }
+
+    let descriptor = descriptor_words[0];
+    let mut filter = ObjectFilter::source();
+    if subject_words.len() == 2
+        && let Some(card_type) = parse_card_type(subject_words[1])
+    {
+        filter.all_card_types.push(card_type);
+    }
+    if let Some(card_type) = parse_card_type(descriptor) {
+        filter.all_card_types.push(card_type);
+    } else if let Some(color) = parse_color(descriptor) {
+        filter.colors = Some(color);
+    } else if let Some(subtype) = parse_subtype_flexible(descriptor) {
+        filter = filter.with_subtype(subtype);
+    } else {
+        return Ok(None);
+    }
+
+    Ok(Some(crate::ConditionExpr::SourceMatches(filter)))
 }
 
 fn parse_devotion_static_condition(
