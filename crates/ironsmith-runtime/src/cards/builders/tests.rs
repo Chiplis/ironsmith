@@ -27456,6 +27456,48 @@ fn parse_semblance_anvil_keeps_shared_exiled_card_type_cost_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn prototype_portal_strict_parser_keeps_imprint_copy_and_x_definition() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(90_401), "Prototype Portal")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Imprint — When this artifact enters, you may exile an artifact card from your hand.\n\
+             {X}, {T}: Create a token that's a copy of the exiled card. X is the mana value of that card.",
+        )
+        .expect("Prototype Portal should parse strictly");
+
+    assert_eq!(
+        crate::compiled_text::compiled_text_lines(&def),
+        vec![
+            "Imprint — When this artifact enters, you may exile an artifact card from your hand."
+                .to_string(),
+            "{X}, {T}: Create a token that's a copy of the exiled card. X is the mana value of that card."
+                .to_string(),
+        ],
+    );
+
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Prototype Portal should have an activated ability");
+    assert!(
+        activated.mana_cost.dynamic_mana_cost().is_some(),
+        "Prototype Portal's {{X}} cost should lower to a dynamic mana cost"
+    );
+    let ability_debug = format!("{:?}", activated);
+    assert!(
+        ability_debug.contains("CreateTokenCopyEffect")
+            && ability_debug.contains(crate::tag::SOURCE_EXILED_TAG),
+        "activated ability should create a token copy of the source-exiled card, got {ability_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_spells_cost_modifier_keeps_noncreature_qualifier() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Glowrider Variant")
         .card_types(vec![CardType::Creature])

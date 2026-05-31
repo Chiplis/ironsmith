@@ -2353,11 +2353,24 @@ fn resolve_and_adjust_component_in_context(
     crate::cost::adjusted_component_for_check(game, payer, source, component, reason)
 }
 
-fn resolve_dynamic_mana_cost(
+pub(crate) fn resolve_dynamic_mana_cost(
     game: &GameState,
     dynamic_mana: &ironsmith_core::DynamicManaCost,
     execution_ctx: &mut ExecutionContext<'_>,
 ) -> Result<ManaCost, CostPaymentError> {
+    let source_exiled = game
+        .get_exiled_with_source_links(execution_ctx.source)
+        .iter()
+        .filter_map(|id| {
+            game.object(*id).map(|object| {
+                ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
+            })
+        })
+        .collect::<Vec<_>>();
+    if !source_exiled.is_empty() {
+        execution_ctx.set_tagged_objects(crate::tag::SOURCE_EXILED_TAG, source_exiled);
+    }
+
     let x_value = if let Some(value) = dynamic_mana.x_value.as_ref() {
         resolve_dynamic_u32(game, value, execution_ctx)?
     } else if dynamic_mana.base.has_x() {

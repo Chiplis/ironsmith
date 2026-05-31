@@ -529,6 +529,10 @@ pub(crate) fn append_activation_cost_steps_from_cost(
 ) {
     use crate::costs::CostProcessingMode;
 
+    if cost.dynamic_mana_cost_ref().is_some() {
+        return;
+    }
+
     let mode = cost.processing_mode();
     let description = mode.display();
     match mode {

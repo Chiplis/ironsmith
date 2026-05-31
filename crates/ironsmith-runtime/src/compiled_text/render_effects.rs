@@ -14806,8 +14806,12 @@ pub(super) fn describe_inline_ability_with_self_subject(
             }
             let mut line = String::new();
             let mut pre = Vec::new();
+            let mut trailing_x_definition = None;
             if !activated.mana_cost.costs().is_empty() {
-                pre.push(describe_cost_list(activated.mana_cost.costs()));
+                let (cost_text, x_definition) =
+                    describe_cost_list_with_trailing_x_definition(activated.mana_cost.costs());
+                pre.push(cost_text);
+                trailing_x_definition = x_definition;
             }
             if !activated.choices.is_empty()
                 && !(!activated.effects.is_empty()
@@ -14849,6 +14853,12 @@ pub(super) fn describe_inline_ability_with_self_subject(
                     &effects,
                     self_subject,
                 ));
+            }
+            if let Some(x_definition) = trailing_x_definition {
+                if !line.is_empty() {
+                    line.push_str(". ");
+                }
+                line.push_str(&x_definition);
             }
             let restriction_clauses = collect_activation_restriction_clauses(
                 &activated.timing,
@@ -18248,6 +18258,39 @@ fn describe_dynamic_mana_cost(dynamic: &ironsmith_core::DynamicManaCost) -> Stri
     } else {
         text
     }
+}
+
+fn describe_cost_list_with_trailing_x_definition(
+    costs: &[crate::costs::Cost],
+) -> (String, Option<String>) {
+    let mut parts = describe_cost_component_parts(costs);
+    let mut trailing = None;
+    for cost in costs {
+        let Some(dynamic) = cost.dynamic_mana_cost_ref() else {
+            continue;
+        };
+        let Some(x_value) = dynamic.x_value.as_ref() else {
+            continue;
+        };
+        let full = describe_dynamic_mana_cost(dynamic);
+        let base_dynamic = ironsmith_core::DynamicManaCost::new(
+            dynamic.base.clone(),
+            None,
+            dynamic.additional_generic.clone(),
+            dynamic.multiplier.clone(),
+            dynamic.display_hint.clone(),
+        );
+        let base = describe_dynamic_mana_cost(&base_dynamic);
+        if let Some(part) = parts.iter_mut().find(|part| **part == full) {
+            *part = base;
+        }
+        trailing = Some(if value_is_source_exiled_mana_value(x_value) {
+            "X is the mana value of that card".to_string()
+        } else {
+            format!("X is {}", describe_value(x_value))
+        });
+    }
+    (parts.join(", "), trailing)
 }
 
 fn describe_total_cost_payment(cost: &crate::cost::TotalCost) -> String {
@@ -31391,6 +31434,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             ChooseSpec::Tagged(tag) if tag.as_str().starts_with("exile_cost_") => {
                 "the exiled card".to_string()
             }
+            ChooseSpec::Object(filter) if is_source_exiled_cards_filter(filter) => {
+                "the exiled card".to_string()
+            }
             ChooseSpec::Tagged(tag)
                 if tag.as_str().starts_with("__sentence_helper_exiled")
                     && create_copy.set_base_power_toughness.is_some()
@@ -37753,9 +37799,13 @@ pub(super) fn describe_ability(
                 format!("Activated ability {index}")
             };
             let mut pre = Vec::new();
+            let mut trailing_x_definition = None;
             if !activated.mana_cost.costs().is_empty() {
+                let (cost_text, x_definition) =
+                    describe_cost_list_with_trailing_x_definition(activated.mana_cost.costs());
+                trailing_x_definition = x_definition;
                 if let Some(cost_text) = normalize_zone_bound_self_exile_cost(
-                    Some(describe_cost_list(activated.mana_cost.costs())),
+                    Some(cost_text),
                     ability,
                 ) {
                     pre.push(cost_text);
@@ -37800,6 +37850,12 @@ pub(super) fn describe_ability(
                         .replace("this spell", &lowercase_first(subject));
                 }
                 line.push_str(&effects);
+            }
+            if let Some(x_definition) = trailing_x_definition {
+                if !line.is_empty() {
+                    line.push_str(". ");
+                }
+                line.push_str(&x_definition);
             }
             let restriction_clauses = collect_activation_restriction_clauses(
                 &activated.timing,
