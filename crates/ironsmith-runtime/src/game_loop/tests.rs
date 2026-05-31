@@ -259,6 +259,49 @@ fn attack_with_assaultron_creature(game: &mut GameState, attacker_id: ObjectId) 
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn assaultron_dominator_enters_trigger_gets_two_energy() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let assaultron = assaultron_dominator_definition();
+    let assaultron_id = game.create_object_from_definition(&assaultron, alice, Zone::Battlefield);
+    let event = crate::events::RawEvent::new(
+        crate::events::ZoneChangeEvent::with_cause(
+            assaultron_id,
+            Zone::Stack,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::from_game_rule(),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    for trigger in crate::triggers::check_triggers(&game, &event) {
+        if trigger.source == assaultron_id {
+            trigger_queue.add(trigger);
+        }
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Assaultron Dominator should trigger when it enters"
+    );
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Assaultron Dominator enters trigger should go on the stack");
+
+    let mut dm = AutoPassDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Assaultron Dominator enters trigger should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").energy_counters,
+        2,
+        "Assaultron Dominator should give two energy when it enters"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn assaultron_dominator_attack_trigger_pays_energy_and_chooses_each_counter_mode() {
     for (mode_index, counter_type) in [
         (0, crate::object::CounterType::PlusOnePlusOne),
