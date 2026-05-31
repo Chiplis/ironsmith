@@ -9137,8 +9137,23 @@ pub(super) fn describe_apply_continuous_animation_effect(
         .filter(|part| !part.is_empty())
         .collect::<Vec<_>>()
         .join(" ");
+    let dynamic_equal_pt = if let (Some(power), Some(toughness)) = (power, toughness) {
+        power == toughness && !matches!(power, Value::Fixed(_))
+    } else {
+        false
+    };
+    let pt_where_clause = if let (Some(power), _) = (power, toughness) {
+        (dynamic_equal_pt && !matches!(power, Value::X)).then(|| describe_value(power))
+    } else {
+        None
+    };
+
     let mut text = if let (Some(power), Some(toughness)) = (power, toughness) {
-        let pt = format!("{}/{}", describe_value(power), describe_value(toughness));
+        let pt = if dynamic_equal_pt {
+            "X/X".to_string()
+        } else {
+            format!("{}/{}", describe_value(power), describe_value(toughness))
+        };
         let pt_noun_phrase = format!("{pt} {noun_phrase}");
         if plural_target {
             format!("{target_text} become {pt_noun_phrase}")
@@ -9206,6 +9221,10 @@ pub(super) fn describe_apply_continuous_animation_effect(
             text.push_str(" that's still a land");
         }
         None => {}
+    }
+    if let Some(where_clause) = pt_where_clause {
+        text.push_str(", where X is ");
+        text.push_str(&where_clause);
     }
     if preserves_land_types && !render_as_addition_to_other_types && !inline_still_land {
         if plural_target {

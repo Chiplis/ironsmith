@@ -2315,6 +2315,9 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::SetBasePowerToughness {
                 power, toughness, ..
             }
+            | SubjectVerbActionAst::BecomeBasePtCreature {
+                power, toughness, ..
+            }
             | SubjectVerbActionAst::PumpAll {
                 power, toughness, ..
             } => {
@@ -2493,7 +2496,6 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { .. }
             | SubjectVerbActionAst::TargetOnly { .. }
             | SubjectVerbActionAst::TagMatchingObjects { .. }
-            | SubjectVerbActionAst::BecomeBasePtCreature { .. }
             | SubjectVerbActionAst::PumpByLastEffect { .. }
             | SubjectVerbActionAst::AddCardTypes { .. }
             | SubjectVerbActionAst::RemoveCardTypes { .. }
