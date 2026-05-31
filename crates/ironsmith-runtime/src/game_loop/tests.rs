@@ -32826,6 +32826,49 @@ fn strength_of_the_tajuru_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn spell_contortion_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(76_301), "Spell Contortion")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Multikicker {1}{U} (You may pay an additional {1}{U} any number of times as you cast this spell.)\n\
+             Counter target spell unless its controller pays {2}. Draw a card for each time Spell Contortion was kicked.",
+        )
+        .expect("Spell Contortion should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn stack_spell_probe_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(76_302), "Stack Spell Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Instant])
+        .parse_text("Draw a card.")
+        .expect("stack spell probe should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_spell_contortion_on_stack(
+    game: &mut GameState,
+    controller: PlayerId,
+    target_spell: ObjectId,
+    kicks: u32,
+) -> ObjectId {
+    let def = spell_contortion_definition();
+    let source = game.create_object_from_definition(&def, controller, Zone::Stack);
+    let mut paid = crate::cost::OptionalCostsPaid::from_costs(&def.optional_costs);
+    paid.pay_times(0, kicks);
+    game.push_to_stack(
+        StackEntry::new(source, controller)
+            .with_targets(vec![Target::Object(target_spell)])
+            .with_optional_costs_paid(paid),
+    );
+    source
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_strength_of_the_tajuru_no_kicks_requires_one_creature_target() {
     let def = strength_of_the_tajuru_definition();
@@ -32977,6 +33020,138 @@ fn test_strength_of_the_tajuru_puts_x_counters_on_each_kicked_target() {
     assert_eq!(
         untargeted_counters, 0,
         "Strength of the Tajuru should affect only its chosen targets"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn spell_contortion_no_kicks_counters_unpaid_target_and_draws_no_cards() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    put_test_cards_in_zone(&mut game, alice, Zone::Library, 3);
+
+    let target_def = stack_spell_probe_definition();
+    let target_spell = game.create_object_from_definition(&target_def, bob, Zone::Stack);
+    game.push_to_stack(StackEntry::new(target_spell, bob));
+    let spell_contortion = put_spell_contortion_on_stack(&mut game, alice, target_spell, 0);
+
+    let alice_hand_before = game.player(alice).expect("alice exists").hand.len();
+    resolve_stack_entry(&mut game).expect("Spell Contortion should resolve");
+
+    let countered_target = game
+        .current_object_id_after_zone_change(target_spell)
+        .expect("target spell should still be tracked after zone change");
+    assert_eq!(
+        game.object(countered_target)
+            .expect("target spell exists")
+            .zone,
+        Zone::Graveyard,
+        "the target spell should be countered when its controller cannot pay {{2}}"
+    );
+    assert!(
+        !game.stack.iter().any(|entry| entry.object_id == spell_contortion)
+            && game.objects_in_zone(Zone::Graveyard).iter().any(|id| {
+                game.object(*id)
+                    .is_some_and(|obj| obj.name == "Spell Contortion")
+            }),
+        "Spell Contortion should leave the stack and go to its owner's graveyard after resolving"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").hand.len(),
+        alice_hand_before,
+        "Spell Contortion with zero kicks should draw no cards"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn spell_contortion_two_kicks_counters_unpaid_target_and_still_draws_two_cards() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    put_test_cards_in_zone(&mut game, alice, Zone::Library, 3);
+
+    let target_def = stack_spell_probe_definition();
+    let target_spell = game.create_object_from_definition(&target_def, bob, Zone::Stack);
+    game.push_to_stack(StackEntry::new(target_spell, bob));
+    let spell_contortion = put_spell_contortion_on_stack(&mut game, alice, target_spell, 2);
+
+    let alice_hand_before = game.player(alice).expect("alice exists").hand.len();
+    resolve_stack_entry(&mut game).expect("Spell Contortion should resolve");
+
+    let countered_target = game
+        .current_object_id_after_zone_change(target_spell)
+        .expect("target spell should still be tracked after zone change");
+    assert_eq!(
+        game.object(countered_target)
+            .expect("target spell exists")
+            .zone,
+        Zone::Graveyard,
+        "the target spell should be countered when its controller cannot pay {{2}}"
+    );
+    assert!(
+        !game.stack.iter().any(|entry| entry.object_id == spell_contortion)
+            && game.objects_in_zone(Zone::Graveyard).iter().any(|id| {
+                game.object(*id)
+                    .is_some_and(|obj| obj.name == "Spell Contortion")
+            }),
+        "Spell Contortion should leave the stack and go to its owner's graveyard after resolving"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").hand.len(),
+        alice_hand_before + 2,
+        "Spell Contortion kicked twice should draw two cards even when the target spell is countered"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn spell_contortion_two_kicks_draws_two_cards_when_target_controller_pays() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    put_test_cards_in_zone(&mut game, alice, Zone::Library, 3);
+    game.player_mut(bob)
+        .expect("bob exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+
+    let target_def = stack_spell_probe_definition();
+    let target_spell = game.create_object_from_definition(&target_def, bob, Zone::Stack);
+    game.push_to_stack(StackEntry::new(target_spell, bob));
+    let spell_contortion = put_spell_contortion_on_stack(&mut game, alice, target_spell, 2);
+
+    let alice_hand_before = game.player(alice).expect("alice exists").hand.len();
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Spell Contortion should resolve");
+
+    assert_eq!(
+        game.object(target_spell).expect("target spell exists").zone,
+        Zone::Stack,
+        "the target spell should remain on the stack when its controller pays {{2}}"
+    );
+    assert!(
+        game.stack.iter().any(|entry| entry.object_id == target_spell),
+        "the paid-for target spell should still have a stack entry"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").mana_pool.total(),
+        0,
+        "the target spell's controller should spend {{2}} to prevent the counter effect"
+    );
+    assert!(
+        !game.stack.iter().any(|entry| entry.object_id == spell_contortion)
+            && game.objects_in_zone(Zone::Graveyard).iter().any(|id| {
+                game.object(*id)
+                    .is_some_and(|obj| obj.name == "Spell Contortion")
+            }),
+        "Spell Contortion should leave the stack and go to its owner's graveyard after resolving"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").hand.len(),
+        alice_hand_before + 2,
+        "Spell Contortion kicked twice should draw two cards"
     );
 }
 
