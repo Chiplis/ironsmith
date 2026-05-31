@@ -7047,6 +7047,177 @@ fn test_pending_zone_change_still_drives_non_delayed_triggered_abilities() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn matter_reshaper_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_806), "Matter Reshaper")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Colorless],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Eldrazi])
+        .power_toughness(PowerToughness::fixed(3, 2))
+        .parse_text(
+            "({C} represents colorless mana.)\n\
+             When this creature dies, reveal the top card of your library. You may put that card onto the battlefield if it's a permanent card with mana value 3 or less. Otherwise, put that card into your hand.",
+        )
+        .expect("Matter Reshaper should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn matter_reshaper_test_card(
+    raw_id: u32,
+    name: &str,
+    card_types: Vec<CardType>,
+    mana_value: u8,
+) -> crate::card::Card {
+    let mut builder = CardBuilder::new(CardId::from_raw(raw_id), name).card_types(card_types);
+    if mana_value > 0 {
+        builder = builder.mana_cost(ManaCost::from_pips(vec![vec![
+            ManaSymbol::Generic(mana_value),
+        ]]));
+    }
+    builder.build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_matter_reshaper_death_trigger(
+    game: &mut GameState,
+    reshaper_id: ObjectId,
+    dm: &mut dyn DecisionMaker,
+) {
+    let mut trigger_queue = TriggerQueue::new();
+    game.move_object_by_effect(reshaper_id, Zone::Graveyard)
+        .expect("Matter Reshaper should move to graveyard");
+    drain_pending_trigger_events(game, &mut trigger_queue);
+    put_triggers_on_stack(game, &mut trigger_queue)
+        .expect("Matter Reshaper death trigger should go on the stack");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "Matter Reshaper death should create one trigger"
+    );
+    resolve_stack_entry_with(game, dm).expect("Matter Reshaper death trigger should resolve");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn matter_reshaper_accepts_small_permanent_card_onto_battlefield() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let reshaper = matter_reshaper_definition();
+    let reshaper_id = game.create_object_from_definition(&reshaper, alice, Zone::Battlefield);
+    let top_card = matter_reshaper_test_card(72_807, "Revealed Land", vec![CardType::Land], 0);
+    let top_id = game.create_object_from_card(&top_card, alice, Zone::Library);
+    let top_stable = game.object(top_id).expect("top card exists").stable_id;
+
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_matter_reshaper_death_trigger(&mut game, reshaper_id, &mut dm);
+
+    let revealed_id = game
+        .find_object_by_stable_id(top_stable)
+        .expect("revealed card should still exist");
+    assert!(
+        game.battlefield.contains(&revealed_id),
+        "accepted small permanent card should move to the battlefield"
+    );
+    assert!(
+        !game.player(alice).expect("alice exists").hand.contains(&revealed_id),
+        "accepted small permanent card should not also move to hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn matter_reshaper_declined_small_permanent_card_goes_to_hand() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let reshaper = matter_reshaper_definition();
+    let reshaper_id = game.create_object_from_definition(&reshaper, alice, Zone::Battlefield);
+    let top_card = matter_reshaper_test_card(72_808, "Declined Land", vec![CardType::Land], 0);
+    let top_id = game.create_object_from_card(&top_card, alice, Zone::Library);
+    let top_stable = game.object(top_id).expect("top card exists").stable_id;
+
+    let mut dm = AutoPassDecisionMaker;
+    resolve_matter_reshaper_death_trigger(&mut game, reshaper_id, &mut dm);
+
+    let revealed_id = game
+        .find_object_by_stable_id(top_stable)
+        .expect("revealed card should still exist");
+    assert!(
+        game.player(alice).expect("alice exists").hand.contains(&revealed_id),
+        "declining the optional battlefield move should put the card into hand"
+    );
+    assert!(
+        !game.battlefield.contains(&revealed_id),
+        "declined card should not move to the battlefield"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn matter_reshaper_nonpermanent_card_goes_to_hand() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let reshaper = matter_reshaper_definition();
+    let reshaper_id = game.create_object_from_definition(&reshaper, alice, Zone::Battlefield);
+    let top_card = matter_reshaper_test_card(
+        72_809,
+        "Revealed Instant",
+        vec![CardType::Instant],
+        2,
+    );
+    let top_id = game.create_object_from_card(&top_card, alice, Zone::Library);
+    let top_stable = game.object(top_id).expect("top card exists").stable_id;
+
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_matter_reshaper_death_trigger(&mut game, reshaper_id, &mut dm);
+
+    let revealed_id = game
+        .find_object_by_stable_id(top_stable)
+        .expect("revealed card should still exist");
+    assert!(
+        game.player(alice).expect("alice exists").hand.contains(&revealed_id),
+        "nonpermanent revealed card should go to hand"
+    );
+    assert!(
+        !game.battlefield.contains(&revealed_id),
+        "nonpermanent revealed card should not move to the battlefield"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn matter_reshaper_large_permanent_card_goes_to_hand() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let reshaper = matter_reshaper_definition();
+    let reshaper_id = game.create_object_from_definition(&reshaper, alice, Zone::Battlefield);
+    let top_card = matter_reshaper_test_card(
+        72_810,
+        "Large Creature",
+        vec![CardType::Creature],
+        4,
+    );
+    let top_id = game.create_object_from_card(&top_card, alice, Zone::Library);
+    let top_stable = game.object(top_id).expect("top card exists").stable_id;
+
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_matter_reshaper_death_trigger(&mut game, reshaper_id, &mut dm);
+
+    let revealed_id = game
+        .find_object_by_stable_id(top_stable)
+        .expect("revealed card should still exist");
+    assert!(
+        game.player(alice).expect("alice exists").hand.contains(&revealed_id),
+        "permanent card with mana value greater than three should go to hand"
+    );
+    assert!(
+        !game.battlefield.contains(&revealed_id),
+        "large permanent card should not move to the battlefield"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_portcullis_exiles_entrying_creature_and_returns_it_when_it_leaves() {
     let mut game = setup_game();

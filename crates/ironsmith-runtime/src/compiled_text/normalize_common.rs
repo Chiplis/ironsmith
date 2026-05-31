@@ -11538,6 +11538,21 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                     };
                     return format!("{possessive} power {comparison}");
                 }
+                let mut without_mana_value = filter.clone();
+                without_mana_value.mana_value = None;
+                if card_context
+                    && without_mana_value == ObjectFilter::permanent_card()
+                    && let Some((_, rest)) = stripped.split_once(" with mana value ")
+                {
+                    return if subject == "it" {
+                        format!("it's a permanent card with mana value {}", rest.trim())
+                    } else {
+                        format!(
+                            "{subject} is a permanent card with mana value {}",
+                            rest.trim()
+                        )
+                    };
+                }
                 if let Some((_, rest)) = stripped.split_once(" with mana value ") {
                     let possessive = if subject == "it" {
                         "its"

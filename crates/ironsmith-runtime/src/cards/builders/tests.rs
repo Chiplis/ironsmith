@@ -26978,6 +26978,45 @@ fn parse_conditional_type_list_predicate_uses_rightmost_comma_split() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn matter_reshaper_parses_and_renders_conditional_may_otherwise() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Matter Reshaper")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Colorless],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Eldrazi])
+        .power_toughness(PowerToughness::fixed(3, 2))
+        .parse_text(
+            "({C} represents colorless mana.)\n\
+             When this creature dies, reveal the top card of your library. You may put that card onto the battlefield if it's a permanent card with mana value 3 or less. Otherwise, put that card into your hand.",
+        )
+        .expect("Matter Reshaper should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let lower = rendered.to_ascii_lowercase();
+    assert!(
+        lower.contains("when this creature dies, reveal the top card of your library"),
+        "expected Matter Reshaper death trigger to render, got {rendered}"
+    );
+    assert!(
+        lower.contains(
+            "you may put that card onto the battlefield if it's a permanent card with mana value 3 or less"
+        ),
+        "expected conditional may battlefield clause, got {rendered}"
+    );
+    assert!(
+        lower.contains("otherwise, put that card into your hand"),
+        "expected otherwise hand clause, got {rendered}"
+    );
+    assert!(
+        !lower.contains("you may if"),
+        "Matter Reshaper should not render malformed conditional permission text: {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_counter_unless_where_x_fails_strictly() {
     let result = CardDefinitionBuilder::new(CardId::from_raw(1), "Rethink Variant")
         .card_types(vec![CardType::Instant])
