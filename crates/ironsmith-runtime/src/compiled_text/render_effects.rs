@@ -11778,6 +11778,18 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 2;
             continue;
         }
+        if idx + 2 < filtered.len()
+            && let Some(reveal_top) =
+                filtered[idx].downcast_ref::<crate::effects::RevealTopEffect>()
+            && let Some(with_id) = filtered[idx + 1].downcast_ref::<crate::effects::WithIdEffect>()
+            && let Some(if_effect) = filtered[idx + 2].downcast_ref::<crate::effects::IfEffect>()
+            && let Some(compact) =
+                describe_reveal_top_may_put_otherwise_hand(reveal_top, with_id, if_effect)
+        {
+            parts.push(compact);
+            idx += 3;
+            continue;
+        }
         if idx + 1 < filtered.len()
             && let Some(with_id) = filtered[idx].downcast_ref::<crate::effects::WithIdEffect>()
             && let Some(deal) = filtered[idx + 1].downcast_ref::<crate::effects::DealDamageEffect>()
@@ -13684,6 +13696,104 @@ pub(super) fn describe_reveal_top_then_if_put_into_hand(
 
     Some(format!(
         "{reveal_sentence}. If {condition_text}, {move_sentence}"
+    ))
+}
+
+fn move_to_zone_for_tag<'a>(
+    effect: &'a Effect,
+    tag: &crate::TagKey,
+) -> Option<&'a crate::effects::MoveToZoneEffect> {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return move_to_zone_for_tag(&tagged.effect, tag);
+    }
+    let move_to_zone = effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    matches!(move_to_zone.target.base(), ChooseSpec::Tagged(target_tag) if target_tag == tag)
+        .then_some(move_to_zone)
+}
+
+fn describe_reveal_top_may_put_otherwise_hand(
+    reveal_top: &crate::effects::RevealTopEffect,
+    with_id: &crate::effects::WithIdEffect,
+    if_effect: &crate::effects::IfEffect,
+) -> Option<String> {
+    if if_effect.condition != with_id.id
+        || !matches!(if_effect.predicate, EffectPredicate::DidNotHappen)
+        || !if_effect.else_.is_empty()
+        || if_effect.then.len() != 1
+    {
+        return None;
+    }
+
+    let reveal_tag = reveal_top.tag.as_ref()?;
+    let may = with_id.effect.downcast_ref::<crate::effects::MayEffect>()?;
+    let [may_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let conditional = may_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if !conditional.if_false.is_empty() || conditional.if_true.len() != 1 {
+        return None;
+    }
+    let Condition::TaggedObjectMatches(cond_tag, _) = &conditional.condition else {
+        return None;
+    };
+    if cond_tag != reveal_tag {
+        return None;
+    }
+
+    let battlefield_move = move_to_zone_for_tag(&conditional.if_true[0], reveal_tag)?;
+    if battlefield_move.zone != Zone::Battlefield || battlefield_move.to_top {
+        return None;
+    }
+    let hand_move = move_to_zone_for_tag(&if_effect.then[0], reveal_tag)?;
+    if hand_move.zone != Zone::Hand || hand_move.to_top {
+        return None;
+    }
+
+    let revealer = describe_player_filter(&reveal_top.player);
+    let revealer_is_you = revealer == "you";
+    let reveal_sentence = if revealer_is_you {
+        "Reveal the top card of your library".to_string()
+    } else {
+        let verb = player_verb(&revealer, "reveal", "reveals");
+        format!("{revealer} {verb} the top card of their library")
+    };
+
+    let decider = may
+        .decider
+        .as_ref()
+        .map(describe_player_filter)
+        .unwrap_or_else(|| "you".to_string());
+    let may_prefix = if decider == "you" {
+        "You may".to_string()
+    } else {
+        format!("{decider} may")
+    };
+
+    let tapped_suffix = if battlefield_move.enters_tapped {
+        " tapped"
+    } else {
+        ""
+    };
+    let owner_control_suffix = if choose_spec_allows_multiple(&battlefield_move.target) {
+        " under their owners' control"
+    } else {
+        " under its owner's control"
+    };
+    let controller_suffix = match battlefield_move.battlefield_controller {
+        crate::effects::BattlefieldController::Preserve => "",
+        crate::effects::BattlefieldController::Owner => owner_control_suffix,
+        crate::effects::BattlefieldController::You => " under your control",
+    };
+    let condition = lowercase_first(&describe_condition(&conditional.condition));
+
+    let hand_clause = if revealer_is_you {
+        "put that card into your hand".to_string()
+    } else {
+        format!("{revealer} puts that card into their hand")
+    };
+
+    Some(format!(
+        "{reveal_sentence}. {may_prefix} put that card onto the battlefield{tapped_suffix}{controller_suffix} if {condition}. Otherwise, {hand_clause}"
     ))
 }
 
