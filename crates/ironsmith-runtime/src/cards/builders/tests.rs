@@ -21375,6 +21375,35 @@ fn parse_omniscience_static_free_cast_permission() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_brain_in_a_jar_strictly_and_renders_counter_gated_free_cast() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Brain in a Jar")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "{1}, {T}: Put a charge counter on this artifact, then you may cast an instant or sorcery spell with mana value equal to the number of charge counters on this artifact from your hand without paying its mana cost.\n{3}, {T}, Remove X charge counters from this artifact: Scry X.",
+        )
+        .expect("Brain in a Jar should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains(
+            "you may cast an instant or sorcery spell from your hand with mana value equal to the number of charge counters on this artifact without paying its mana cost"
+        ) || rendered_lower.contains(
+            "you may cast an instant or sorcery spell with mana value equal to the number of charge counters on this artifact from your hand without paying its mana cost"
+        ),
+        "expected counter-gated free-cast clause in compiled output, got {rendered}"
+    );
+
+    let ability_debug = format!("{:?}", def.abilities);
+    assert!(
+        ability_debug.contains("MayCastMatchingSpellWithoutPayingManaCostEffect")
+            && ability_debug.contains("mana_value_eq_counters_on_source: Some(Charge)"),
+        "expected Brain in a Jar to lower to a charge-counter-gated free-cast effect, got {ability_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_kentaro_static_mana_value_permission() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Kentaro Variant")
         .card_types(vec![CardType::Creature])

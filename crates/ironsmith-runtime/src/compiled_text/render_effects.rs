@@ -33886,7 +33886,13 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             Zone::OutsideGame => "from outside the game".to_string(),
         };
         let mana_value_limit_text = if has_tagged_mana_value_cap {
-            " with mana value less than or equal to that spell's mana value"
+            " with mana value less than or equal to that spell's mana value".to_string()
+        } else if let Some(counter_type) = may_cast_matching.filter.mana_value_eq_counters_on_source
+        {
+            format!(
+                " with mana value equal to the number of {} counters on this artifact",
+                counter_type.description()
+            )
         } else if matches!(
             may_cast_matching.filter.mana_value,
             Some(crate::filter::Comparison::LessThanOrEqualExpr(ref value))
@@ -33895,9 +33901,13 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                     crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount)
                 )
         ) {
-            " with mana value less than or equal to that amount"
+            " with mana value less than or equal to that amount".to_string()
+        } else if let Some(crate::filter::Comparison::EqualExpr(value)) =
+            may_cast_matching.filter.mana_value.as_ref()
+        {
+            format!(" with mana value equal to {}", describe_value(value))
         } else {
-            ""
+            String::new()
         };
         match may_cast_matching.payment {
             ironsmith_core::MayCastMatchingSpellPayment::WithoutPayingManaCost => {

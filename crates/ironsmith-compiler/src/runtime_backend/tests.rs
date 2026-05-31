@@ -4772,6 +4772,35 @@ fn rewrite_lexed_parse_glamdring_trigger_clause_with_damage_value_gate() {
 }
 
 #[test]
+fn rewrite_lexed_parse_brain_in_a_jar_free_cast_clause_with_counter_value_gate() {
+    let tokens = lex_line(
+        "Cast an instant or sorcery spell with mana value equal to the number of charge counters on this artifact from your hand without paying its mana cost",
+        0,
+    )
+    .expect("rewrite lexer should classify Brain in a Jar cast clause");
+
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("Brain in a Jar cast clause should parse as a supported effect");
+
+    let (filter, zone) = match effects.as_slice() {
+        [crate::cards::builders::EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+            filter,
+            zone,
+            ..
+        }] => (filter, zone),
+        _ => panic!("expected one-shot counter-gated hand free-cast effect, got {effects:#?}"),
+    };
+
+    assert_eq!(*zone, crate::zone::Zone::Hand);
+    assert!(filter.card_types.contains(&crate::types::CardType::Instant));
+    assert!(filter.card_types.contains(&crate::types::CardType::Sorcery));
+    assert_eq!(
+        filter.mana_value_eq_counters_on_source,
+        Some(crate::object::CounterType::Charge)
+    );
+}
+
+#[test]
 fn rewrite_lexed_parse_glamdring_static_clause_keeps_first_strike_and_anthem() {
     let tokens = lex_line(
         "Equipped creature has first strike and gets +1/+0 for each instant and sorcery card in your graveyard",

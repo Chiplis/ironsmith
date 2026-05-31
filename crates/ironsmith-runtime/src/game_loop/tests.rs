@@ -35078,6 +35078,32 @@ fn test_choose_casting_method_flow() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn brain_in_a_jar_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(93_000), "Brain in a Jar")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "{1}, {T}: Put a charge counter on this artifact, then you may cast an instant or sorcery spell with mana value equal to the number of charge counters on this artifact from your hand without paying its mana cost.\n{3}, {T}, Remove X charge counters from this artifact: Scry X.",
+        )
+        .expect("Brain in a Jar should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn brain_in_a_jar_ability_index(game: &GameState, brain_id: ObjectId, needle: &str) -> usize {
+    game.object(brain_id)
+        .expect("Brain in a Jar should exist")
+        .abilities
+        .iter()
+        .position(|ability| {
+            if let AbilityKind::Activated(activated) = &ability.kind {
+                format!("{:?}", activated.effects).contains(needle)
+            } else {
+                false
+            }
+        })
+        .unwrap_or_else(|| panic!("Brain in a Jar should have activated ability containing {needle}"))
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_omniscience_grants_free_cast_from_hand_without_mana() {
     use crate::cards::definitions::lightning_bolt;
@@ -35233,6 +35259,316 @@ fn test_omniscience_does_not_bypass_sorcery_timing_restrictions() {
         free_cast.is_none(),
         "Omniscience should not let sorceries ignore normal timing restrictions"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_brain_in_a_jar_first_ability_casts_matching_mana_value_spell_for_free() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let brain = brain_in_a_jar_definition();
+    let brain_id = game.create_object_from_definition(&brain, alice, Zone::Battlefield);
+    let matching_spell = CardBuilder::new(CardId::from_raw(93_001), "One-Mana Instant")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)]))
+        .build();
+    let nonmatching_spell = CardBuilder::new(CardId::from_raw(93_002), "Two-Mana Instant")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]))
+        .build();
+    game.create_object_from_card(&matching_spell, alice, Zone::Hand);
+    let nonmatching_id = game.create_object_from_card(&nonmatching_spell, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    let ability_index = brain_in_a_jar_ability_index(
+        &game,
+        brain_id,
+        "MayCastMatchingSpellWithoutPayingManaCostEffect",
+    );
+    let activate_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == brain_id && *idx == ability_index
+            )
+        })
+        .expect("Brain in a Jar first ability should be legal with one mana and untapped source");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Brain in a Jar activation should be put on the stack");
+
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Brain in a Jar first ability should resolve");
+
+    assert_eq!(
+        game.counter_count(brain_id, crate::object::CounterType::Charge),
+        1,
+        "Brain in a Jar should put a charge counter on itself before checking the free-cast gate"
+    );
+    assert!(
+        game.stack.iter().any(|entry| {
+            game.object(entry.object_id)
+                .is_some_and(|object| object.name == "One-Mana Instant")
+        }),
+        "the one-mana instant should be cast onto the stack without paying its mana cost"
+    );
+    assert_eq!(
+        game.object(nonmatching_id)
+            .expect("nonmatching spell should remain in hand")
+            .zone,
+        Zone::Hand,
+        "the two-mana instant should not match one charge counter"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_brain_in_a_jar_first_ability_casts_nothing_without_matching_mana_value() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let brain = brain_in_a_jar_definition();
+    let brain_id = game.create_object_from_definition(&brain, alice, Zone::Battlefield);
+    let nonmatching_spell = CardBuilder::new(CardId::from_raw(93_003), "Two-Mana Sorcery")
+        .card_types(vec![CardType::Sorcery])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]))
+        .build();
+    let nonmatching_type = CardBuilder::new(CardId::from_raw(93_004), "One-Mana Creature")
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)]))
+        .build();
+    let opponent_spell = CardBuilder::new(CardId::from_raw(93_005), "Opponent One-Mana Instant")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)]))
+        .build();
+    let nonmatching_id = game.create_object_from_card(&nonmatching_spell, alice, Zone::Hand);
+    let nonmatching_type_id = game.create_object_from_card(&nonmatching_type, alice, Zone::Hand);
+    let opponent_spell_id = game.create_object_from_card(&opponent_spell, bob, Zone::Hand);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    let ability_index = brain_in_a_jar_ability_index(
+        &game,
+        brain_id,
+        "MayCastMatchingSpellWithoutPayingManaCostEffect",
+    );
+    let activate_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == brain_id && *idx == ability_index
+            )
+        })
+        .expect("Brain in a Jar first ability should be legal");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Brain in a Jar activation should be put on the stack");
+
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Brain in a Jar first ability should resolve without a matching spell");
+
+    assert_eq!(
+        game.counter_count(brain_id, crate::object::CounterType::Charge),
+        1,
+        "Brain in a Jar should still get its charge counter"
+    );
+    assert_eq!(
+        game.object(nonmatching_id)
+            .expect("nonmatching spell should remain in hand")
+            .zone,
+        Zone::Hand,
+        "a spell with the wrong mana value should not be cast"
+    );
+    assert_eq!(
+        game.object(nonmatching_type_id)
+            .expect("nonmatching card type should remain in hand")
+            .zone,
+        Zone::Hand,
+        "a non-instant, non-sorcery card with matching mana value should not be cast"
+    );
+    assert_eq!(
+        game.object(opponent_spell_id)
+            .expect("opponent's matching spell should remain in hand")
+            .zone,
+        Zone::Hand,
+        "a matching instant in another player's hand should not be cast"
+    );
+    assert!(
+        game.stack.iter().all(|entry| match game.object(entry.object_id) {
+            Some(object) => !matches!(
+                object.name.as_str(),
+                "Two-Mana Sorcery" | "One-Mana Creature" | "Opponent One-Mana Instant"
+            ),
+            None => true,
+        }),
+        "nonmatching or non-owned cards should not be on the stack"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_brain_in_a_jar_second_ability_removes_x_charge_counters_for_scry() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let brain = brain_in_a_jar_definition();
+    let brain_id = game.create_object_from_definition(&brain, alice, Zone::Battlefield);
+    game.add_counters(brain_id, crate::object::CounterType::Charge, 2)
+        .expect("charge counters should be addable to Brain in a Jar");
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 3);
+
+    let ability_index = brain_in_a_jar_ability_index(&game, brain_id, "ScryEffect");
+    let activate_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == brain_id && *idx == ability_index
+            )
+        })
+        .expect("Brain in a Jar scry ability should be legal with three mana and counters");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Brain in a Jar scry activation should ask for X");
+
+    match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::Number(ctx),
+        ) => {
+            assert_eq!(ctx.player, alice);
+            assert_eq!(ctx.source, Some(brain_id));
+        }
+        other => panic!("expected X choice for Brain in a Jar scry activation, got {other:?}"),
+    }
+
+    let mut progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::XValue(2),
+        &mut dm,
+    )
+    .expect("choosing X should finish paying Brain in a Jar activation costs");
+
+    for _ in 0..8 {
+        progress = match progress {
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectOptions(ctx),
+            ) if ctx.description.starts_with("Choose the next cost to pay") => {
+                let option = ctx
+                    .options
+                    .iter()
+                    .find(|option| {
+                        let description = option.description.to_ascii_lowercase();
+                        option.legal && description.contains("remove")
+                    })
+                    .or_else(|| {
+                        ctx.options.iter().find(|option| {
+                            let description = option.description.to_ascii_lowercase();
+                            option.legal && description.contains("tap")
+                        })
+                    })
+                    .or_else(|| ctx.options.iter().find(|option| option.legal))
+                    .expect("Brain in a Jar should have a legal cost option");
+                apply_priority_response_with_dm(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::NextCostChoice(option.index),
+                    &mut dm,
+                )
+                .expect("chosen Brain in a Jar cost should be payable")
+            }
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectOptions(ctx),
+            ) => {
+                let option = ctx
+                    .options
+                    .iter()
+                    .find(|option| option.legal)
+                    .expect("Brain in a Jar mana payment should have a legal option");
+                apply_priority_response_with_dm(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::ManaPayment(option.index),
+                    &mut dm,
+                )
+                .expect("Brain in a Jar mana payment should succeed")
+            }
+            crate::decision::GameProgress::Continue => break,
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Priority(_),
+            ) => break,
+            other => panic!("unexpected Brain in a Jar activation progress: {other:?}"),
+        };
+    }
+
+    assert_eq!(
+        game.counter_count(brain_id, crate::object::CounterType::Charge),
+        0,
+        "the X charge counters should be removed as an activation cost"
+    );
+
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Brain in a Jar scry ability should resolve");
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
