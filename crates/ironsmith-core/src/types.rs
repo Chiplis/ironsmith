@@ -450,6 +450,7 @@ impl Subtype {
             Subtype::Avatar,
             Subtype::Barbarian,
             Subtype::Bard,
+            Subtype::Bat,
             Subtype::Bear,
             Subtype::Beast,
             Subtype::Berserker,

@@ -46842,6 +46842,157 @@ fn valley_floodcaller_compiled_lines_meet_strict_semantic_threshold() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn valley_rotcaller_strict_oracle_parses_and_renders_type_count() {
+    assert_oracle_card_parses_strict("Valley Rotcaller");
+
+    let oracle = oracle_text_by_name()
+        .get("Valley Rotcaller")
+        .expect("missing Valley Rotcaller oracle text")
+        .clone();
+    let def = parse_oracle_card_definition("Valley Rotcaller");
+    let compiled = unprocessed_compiled_lines(&def);
+    let rendered = compiled.join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("each opponent loses x life and you gain x life"),
+        "expected Valley Rotcaller to render its life-drain attack trigger, got {rendered}"
+    );
+    assert!(
+        rendered.contains("where x is the number of other")
+            && rendered.contains("squirrels")
+            && rendered.contains("bats")
+            && rendered.contains("lizards")
+            && rendered.contains("rats")
+            && rendered.contains("you control"),
+        "expected Valley Rotcaller to preserve the comma-separated creature-type count, got {rendered}"
+    );
+
+    let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+        crate::semantic_compare::compare_semantics_scored(
+            &oracle,
+            &compiled,
+            Some(crate::semantic_compare::EmbeddingConfig {
+                dims: 384,
+                mismatch_threshold: 0.99,
+            }),
+        );
+    assert!(
+        similarity >= 0.99,
+        "expected Valley Rotcaller to clear strict semantic threshold, got score={similarity}, lines={compiled:?}"
+    );
+    assert!(
+        !mismatch,
+        "expected Valley Rotcaller to avoid semantic mismatch, got lines={compiled:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn valley_rotcaller_creature(
+    game: &mut crate::game_state::GameState,
+    controller: PlayerId,
+    name: &str,
+    subtype: Subtype,
+) -> ObjectId {
+    let def = CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![subtype])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    game.create_object_from_definition(&def, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_valley_rotcaller_attack(game: &mut crate::game_state::GameState, rotcaller: ObjectId) {
+    let bob = PlayerId::from_index(1);
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::combat::CreatureAttackedEvent::new(
+            rotcaller,
+            crate::triggers::AttackEventTarget::Player(bob),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for entry in crate::triggers::check_triggers(game, &event)
+        .into_iter()
+        .filter(|entry| entry.source == rotcaller)
+    {
+        trigger_queue.add(entry);
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Valley Rotcaller should trigger when it attacks"
+    );
+    crate::game_loop::put_triggers_on_stack(game, &mut trigger_queue)
+        .expect("Valley Rotcaller trigger should go on the stack");
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    crate::game_loop::resolve_stack_entry_with(game, &mut dm)
+        .expect("Valley Rotcaller trigger should resolve");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn valley_rotcaller_attack_trigger_counts_other_supported_types_only() {
+    let def = parse_oracle_card_definition("Valley Rotcaller");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let rotcaller = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.object_mut(rotcaller)
+        .expect("Valley Rotcaller should exist")
+        .subtypes
+        .push(Subtype::Squirrel);
+
+    valley_rotcaller_creature(&mut game, alice, "Squirrel Ally", Subtype::Squirrel);
+    valley_rotcaller_creature(&mut game, alice, "Bat Ally", Subtype::Bat);
+    valley_rotcaller_creature(&mut game, alice, "Lizard Ally", Subtype::Lizard);
+    valley_rotcaller_creature(&mut game, alice, "Rat Ally", Subtype::Rat);
+    valley_rotcaller_creature(&mut game, alice, "Wizard Ally", Subtype::Wizard);
+    valley_rotcaller_creature(&mut game, bob, "Opponent Rat", Subtype::Rat);
+
+    resolve_valley_rotcaller_attack(&mut game, rotcaller);
+
+    assert_eq!(
+        game.life_total(bob),
+        16,
+        "Bob should lose 4 life for Alice's other Squirrel, Bat, Lizard, and Rat"
+    );
+    assert_eq!(
+        game.life_total(alice),
+        24,
+        "Alice should gain 4 life from Valley Rotcaller's trigger"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn valley_rotcaller_attack_trigger_ignores_itself_when_no_other_type_matches() {
+    let def = parse_oracle_card_definition("Valley Rotcaller");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let rotcaller = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.object_mut(rotcaller)
+        .expect("Valley Rotcaller should exist")
+        .subtypes
+        .push(Subtype::Squirrel);
+
+    resolve_valley_rotcaller_attack(&mut game, rotcaller);
+
+    assert_eq!(
+        game.life_total(bob),
+        20,
+        "Valley Rotcaller should not count itself as another matching creature"
+    );
+    assert_eq!(
+        game.life_total(alice),
+        20,
+        "Alice should not gain life when X is 0"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_zealous_display_non_turn_conditional_untap_clause() {
     let oracle = "Creatures you control get +2/+0 until end of turn. If it's not your turn, untap those creatures.";
     let def = CardDefinitionBuilder::new(CardId::new(), "Zealous Display")
