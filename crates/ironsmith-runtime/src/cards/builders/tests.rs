@@ -46336,10 +46336,12 @@ fn oath_of_scholars_strict_oracle_regression_keeps_hand_size_gate() {
         raw.contains("BeginningOfUpkeepTrigger")
             && raw.contains("player: Any")
             && raw.contains("AnOpponentHasMoreCardsInHandThanPlayer")
+            && raw.contains("CardsInHandAtLeastMoreThanYou")
+            && raw.contains("TargetOnlyEffect")
             && raw.contains("MayEffect")
             && raw.contains("DiscardHandEffect")
             && raw.contains("DrawCardsEffect"),
-        "expected Oath of Scholars to keep its upkeep hand-size gate and optional discard/draw effects, got {raw}"
+        "expected Oath of Scholars to keep its upkeep target, hand-size gate, and optional discard/draw effects, got {raw}"
     );
 
     let rendered = unprocessed_compiled_lines(&def)

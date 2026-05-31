@@ -5097,6 +5097,10 @@ fn oath_of_scholars_definition() -> crate::cards::CardDefinition {
 #[cfg(ironsmith_runtime_parser_tests)]
 struct OathOfScholarsDecisionMaker {
     accept_may: bool,
+    target_to_choose: Option<PlayerId>,
+    expected_target_chooser: Option<PlayerId>,
+    expected_legal_targets: Option<Vec<crate::game_state::Target>>,
+    target_calls: usize,
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -5107,6 +5111,25 @@ impl DecisionMaker for OathOfScholarsDecisionMaker {
         _ctx: &crate::decisions::context::BooleanContext,
     ) -> bool {
         self.accept_may
+    }
+
+    fn decide_targets(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::TargetsContext,
+    ) -> Vec<crate::game_state::Target> {
+        self.target_calls += 1;
+        if let Some(expected) = self.expected_target_chooser {
+            assert_eq!(ctx.player, expected, "Oath target chooser should be the active player");
+        }
+        if let Some(expected) = &self.expected_legal_targets {
+            assert_eq!(ctx.requirements.len(), 1);
+            assert_eq!(&ctx.requirements[0].legal_targets, expected);
+        }
+        self.target_to_choose
+            .map(crate::game_state::Target::Player)
+            .into_iter()
+            .collect()
     }
 }
 
@@ -5124,6 +5147,16 @@ fn add_named_card_to_zone(
 
 #[cfg(ironsmith_runtime_parser_tests)]
 fn put_oath_of_scholars_trigger_on_stack(game: &mut GameState, trigger_queue: &mut TriggerQueue) {
+    let mut dm = AutoPassDecisionMaker;
+    put_oath_of_scholars_trigger_on_stack_with_dm(game, trigger_queue, &mut dm);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_oath_of_scholars_trigger_on_stack_with_dm(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    decision_maker: &mut dyn DecisionMaker,
+) {
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     let oath = oath_of_scholars_definition();
@@ -5140,7 +5173,7 @@ fn put_oath_of_scholars_trigger_on_stack(game: &mut GameState, trigger_queue: &m
         1,
         "Oath of Scholars should trigger at the beginning of each player's upkeep"
     );
-    put_triggers_on_stack(game, trigger_queue)
+    put_triggers_on_stack_with_dm(game, trigger_queue, decision_maker)
         .expect("Oath of Scholars upkeep trigger should go on the stack");
 }
 
@@ -5177,7 +5210,13 @@ fn oath_of_scholars_upkeep_discards_hand_and_draws_when_accepted() {
 
     put_oath_of_scholars_trigger_on_stack(&mut game, &mut trigger_queue);
 
-    let mut dm = OathOfScholarsDecisionMaker { accept_may: true };
+    let mut dm = OathOfScholarsDecisionMaker {
+        accept_may: true,
+        target_to_choose: None,
+        expected_target_chooser: None,
+        expected_legal_targets: None,
+        target_calls: 0,
+    };
     resolve_stack_entry_with(&mut game, &mut dm)
         .expect("Oath of Scholars upkeep trigger should resolve when accepted");
 
@@ -5194,6 +5233,33 @@ fn oath_of_scholars_upkeep_discards_hand_and_draws_when_accepted() {
         }),
         "Bob's previous hand should be discarded"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn oath_of_scholars_upkeep_target_is_chosen_by_active_player() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    add_named_card_to_zone(&mut game, 99_240, "Alice Filler A", alice, Zone::Hand);
+    add_named_card_to_zone(&mut game, 99_241, "Alice Filler B", alice, Zone::Hand);
+    add_named_card_to_zone(&mut game, 99_242, "Bob Old Hand", bob, Zone::Hand);
+
+    let mut dm = OathOfScholarsDecisionMaker {
+        accept_may: true,
+        target_to_choose: Some(alice),
+        expected_target_chooser: Some(bob),
+        expected_legal_targets: Some(vec![crate::game_state::Target::Player(alice)]),
+        target_calls: 0,
+    };
+    put_oath_of_scholars_trigger_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm);
+
+    assert_eq!(dm.target_calls, 1, "Oath should ask for exactly one target");
+    let entry = game.stack.last().expect("Oath trigger should be on the stack");
+    assert_eq!(entry.targets, vec![crate::game_state::Target::Player(alice)]);
+    assert_eq!(entry.target_assignments.len(), 1);
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -5216,7 +5282,13 @@ fn oath_of_scholars_upkeep_does_nothing_when_declined() {
 
     put_oath_of_scholars_trigger_on_stack(&mut game, &mut trigger_queue);
 
-    let mut dm = OathOfScholarsDecisionMaker { accept_may: false };
+    let mut dm = OathOfScholarsDecisionMaker {
+        accept_may: false,
+        target_to_choose: None,
+        expected_target_chooser: None,
+        expected_legal_targets: None,
+        target_calls: 0,
+    };
     resolve_stack_entry_with(&mut game, &mut dm)
         .expect("Oath of Scholars upkeep trigger should resolve when declined");
 
@@ -5284,7 +5356,13 @@ fn oath_of_scholars_upkeep_does_nothing_if_hand_advantage_disappears_before_reso
     let caught_up =
         add_named_card_to_zone(&mut game, 99_236, "Bob Catch Up Card", bob, Zone::Hand);
 
-    let mut dm = OathOfScholarsDecisionMaker { accept_may: true };
+    let mut dm = OathOfScholarsDecisionMaker {
+        accept_may: true,
+        target_to_choose: None,
+        expected_target_chooser: None,
+        expected_legal_targets: None,
+        target_calls: 0,
+    };
     resolve_stack_entry_with(&mut game, &mut dm).expect(
         "Oath of Scholars trigger should resolve cleanly when its hand-size gate becomes false",
     );

@@ -915,10 +915,22 @@ pub(crate) fn lower_special_rewrite_triggered_chunk(
             "at the beginning of each player's upkeep",
             line.info.line_index,
         )?;
-        let effects = parse_effect_sentences_from_text(
+        let mut effects = parse_effect_sentences_from_text(
             format!("that player may {effect_text}.").as_str(),
             line.info.line_index,
         )?;
+        let target = TargetAst::Player(
+            PlayerFilter::CardsInHandAtLeastMoreThanYou {
+                base: Box::new(PlayerFilter::Opponent),
+                count: 1,
+            },
+            Some(crate::cards::builders::TextSpan {
+                line: line.info.line_index,
+                start: 0,
+                end: 0,
+            }),
+        );
+        effects.push(EffectAst::subject_verb_target_only(target));
         return Ok(Some(LineAst::Ability(rewrite_parsed_triggered_ability(
             trigger.clone(),
             vec![EffectAst::Conditional {

@@ -14650,13 +14650,41 @@ fn describe_each_upkeep_hand_advantage_may_discard_draw(
     if *player != PlayerFilter::Active {
         return None;
     }
+    if !triggered
+        .choices
+        .iter()
+        .any(is_more_cards_than_chooser_opponent_target)
+    {
+        return None;
+    }
     let effects = describe_triggered_resolution_text(triggered, "this enchantment", true)?;
     let rest = effects
         .strip_prefix("that player may ")
         .or_else(|| effects.strip_prefix("the active player may "))?;
+    let rest = rest
+        .strip_suffix(
+            ". Choose target opponent who has at least one more cards in hand than you do as you activate this ability",
+        )
+        .unwrap_or(rest);
     Some(format!(
         "At the beginning of each player's upkeep, that player chooses target player who has more cards in hand than they do and is their opponent. The first player may {rest}"
     ))
+}
+
+fn is_more_cards_than_chooser_opponent_target(spec: &crate::target::ChooseSpec) -> bool {
+    match spec {
+        crate::target::ChooseSpec::SurfaceHinted { spec, .. }
+        | crate::target::ChooseSpec::Target(spec)
+        | crate::target::ChooseSpec::WithCount(spec, _)
+        | crate::target::ChooseSpec::WithCountValue(spec, _, _) => {
+            is_more_cards_than_chooser_opponent_target(spec)
+        }
+        crate::target::ChooseSpec::Player(PlayerFilter::CardsInHandAtLeastMoreThanYou {
+            base,
+            count,
+        }) => *count == 1 && matches!(base.as_ref(), PlayerFilter::Opponent),
+        _ => false,
+    }
 }
 
 fn describe_triggered_inline_ability(

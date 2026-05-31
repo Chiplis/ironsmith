@@ -2261,6 +2261,47 @@ fn choose_spec_for_resolution_target_validation(
     }
 }
 
+fn target_validation_controller_for_spec(
+    game: &GameState,
+    entry: &StackEntry,
+    spec: &crate::target::ChooseSpec,
+) -> PlayerId {
+    if target_validation_uses_active_player_for_spec(entry, spec) {
+        return game.turn.active_player;
+    }
+    entry.controller
+}
+
+fn target_validation_uses_active_player_for_spec(
+    entry: &StackEntry,
+    spec: &crate::target::ChooseSpec,
+) -> bool {
+    entry
+        .triggering_event
+        .as_ref()
+        .is_some_and(|event| event.kind() == crate::events::EventKind::BeginningOfUpkeep)
+        && target_spec_is_opponent_with_more_cards_than_active_player(spec)
+}
+
+fn target_spec_is_opponent_with_more_cards_than_active_player(
+    spec: &crate::target::ChooseSpec,
+) -> bool {
+    use crate::target::ChooseSpec;
+
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. }
+        | ChooseSpec::Target(spec)
+        | ChooseSpec::WithCount(spec, _)
+        | ChooseSpec::WithCountValue(spec, _, _) => {
+            target_spec_is_opponent_with_more_cards_than_active_player(spec)
+        }
+        ChooseSpec::Player(PlayerFilter::CardsInHandAtLeastMoreThanYou { base, count }) => {
+            *count == 1 && matches!(base.as_ref(), PlayerFilter::Opponent)
+        }
+        _ => false,
+    }
+}
+
 pub(super) fn validate_stack_entry_targets_with_view(
     game: &GameState,
     entry: &StackEntry,
@@ -2285,11 +2326,19 @@ pub(super) fn validate_stack_entry_targets_with_view(
                 &assignment.spec,
                 entry.triggering_event.as_ref(),
             );
-            let resolved_spec = choose_spec_for_resolution_target_validation(&resolved_spec);
+            let preserve_hand_size_target_gate =
+                target_validation_uses_active_player_for_spec(entry, &resolved_spec);
+            let validation_controller =
+                target_validation_controller_for_spec(game, entry, &resolved_spec);
+            let resolved_spec = if preserve_hand_size_target_gate {
+                resolved_spec
+            } else {
+                choose_spec_for_resolution_target_validation(&resolved_spec)
+            };
             let legal_targets = compute_legal_targets_with_source_snapshot_and_view(
                 game,
                 &resolved_spec,
-                entry.controller,
+                validation_controller,
                 Some(entry.object_id),
                 entry.source_snapshot.as_ref(),
                 if entry.tagged_objects.is_empty() {
@@ -2303,7 +2352,7 @@ pub(super) fn validate_stack_entry_targets_with_view(
                 compute_legal_targets_with_tagged_objects_combat_context_and_view(
                     game,
                     &resolved_spec,
-                    entry.controller,
+                    validation_controller,
                     Some(entry.object_id),
                     entry.source_snapshot.as_ref(),
                     if entry.tagged_objects.is_empty() {
@@ -2350,12 +2399,20 @@ pub(super) fn validate_stack_entry_targets_with_view(
         .map(|spec| {
             let resolved_spec =
                 choose_spec_with_damaged_player_from_event(spec, entry.triggering_event.as_ref());
-            let resolved_spec = choose_spec_for_resolution_target_validation(&resolved_spec);
+            let preserve_hand_size_target_gate =
+                target_validation_uses_active_player_for_spec(entry, &resolved_spec);
+            let validation_controller =
+                target_validation_controller_for_spec(game, entry, &resolved_spec);
+            let resolved_spec = if preserve_hand_size_target_gate {
+                resolved_spec
+            } else {
+                choose_spec_for_resolution_target_validation(&resolved_spec)
+            };
             if entry.defending_player.is_some() {
                 return compute_legal_targets_with_tagged_objects_combat_context_and_view(
                     game,
                     &resolved_spec,
-                    entry.controller,
+                    validation_controller,
                     Some(entry.object_id),
                     entry.source_snapshot.as_ref(),
                     None,
@@ -2367,7 +2424,7 @@ pub(super) fn validate_stack_entry_targets_with_view(
             compute_legal_targets_with_source_snapshot_and_view(
                 game,
                 &resolved_spec,
-                entry.controller,
+                validation_controller,
                 Some(entry.object_id),
                 entry.source_snapshot.as_ref(),
                 None,

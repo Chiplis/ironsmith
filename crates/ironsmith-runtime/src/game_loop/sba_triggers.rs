@@ -817,10 +817,11 @@ fn target_requirements_from_explicit_choices(
                 target_spec,
                 entry.triggering_event.as_ref(),
             );
+            let chooser = target_chooser_for_trigger_spec(game, trigger, &resolved_target_spec);
             let legal_targets = compute_legal_targets_with_tagged_objects_combat_context_and_view(
                 game,
                 &resolved_target_spec,
-                trigger.controller,
+                chooser,
                 Some(trigger.source),
                 None,
                 tagged_objects_ref,
@@ -838,6 +839,41 @@ fn target_requirements_from_explicit_choices(
             }
         })
         .collect()
+}
+
+fn target_chooser_for_trigger_spec(
+    game: &GameState,
+    trigger: &TriggeredAbilityEntry,
+    spec: &ChooseSpec,
+) -> PlayerId {
+    if trigger
+        .ability
+        .trigger
+        .downcast_ref::<crate::triggers::BeginningOfUpkeepTrigger>()
+        .is_some_and(|upkeep| upkeep.player == crate::target::PlayerFilter::Any)
+        && target_spec_is_opponent_with_more_cards_than_chooser(spec)
+    {
+        return game.turn.active_player;
+    }
+    trigger.controller
+}
+
+fn target_spec_is_opponent_with_more_cards_than_chooser(spec: &ChooseSpec) -> bool {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. }
+        | ChooseSpec::Target(spec)
+        | ChooseSpec::WithCount(spec, _)
+        | ChooseSpec::WithCountValue(spec, _, _) => {
+            target_spec_is_opponent_with_more_cards_than_chooser(spec)
+        }
+        ChooseSpec::Player(crate::target::PlayerFilter::CardsInHandAtLeastMoreThanYou {
+            base,
+            count,
+        }) => {
+            *count == 1 && matches!(base.as_ref(), crate::target::PlayerFilter::Opponent)
+        }
+        _ => false,
+    }
 }
 
 fn target_requirements_overlap(left: &TargetRequirement, right: &TargetRequirement) -> bool {
@@ -890,11 +926,12 @@ fn refresh_trigger_program_target_requirements(
             &requirement.spec,
             entry.triggering_event.as_ref(),
         );
+        let chooser = target_chooser_for_trigger_spec(game, trigger, &spec);
         requirement.legal_targets =
             compute_legal_targets_with_tagged_objects_combat_context_and_view(
                 game,
                 &spec,
-                trigger.controller,
+                chooser,
                 Some(trigger.source),
                 entry.source_snapshot.as_ref(),
                 tagged_objects,
@@ -941,6 +978,12 @@ fn choose_trigger_targets(
         return Some((Vec::new(), Vec::new()));
     }
 
+    let chooser = requirements
+        .iter()
+        .map(|requirement| target_chooser_for_trigger_spec(game, trigger, &requirement.spec))
+        .find(|chooser| *chooser != trigger.controller)
+        .unwrap_or(trigger.controller);
+
     if requirements
         .iter()
         .any(|requirement| requirement.legal_targets.len() < requirement.min_targets)
@@ -950,7 +993,7 @@ fn choose_trigger_targets(
 
     let requirement_contexts = trigger_target_requirement_contexts(requirements);
     let ctx = crate::decisions::context::TargetsContext::new(
-        trigger.controller,
+        chooser,
         trigger.source,
         format!("{}'s triggered ability", trigger.source_name),
         requirement_contexts.clone(),
