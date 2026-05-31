@@ -230,6 +230,174 @@ fn wheel_of_potential_strict_parser_text_and_paid_energy_regression() {
 }
 
 #[test]
+fn wheel_of_potential_runtime_paid_energy_and_owner_restricted_permission() {
+    fn filler_definition(card_id: u32, name: &str) -> CardDefinition {
+        CardDefinitionBuilder::new(CardId::from_raw(card_id), name)
+            .card_types(vec![CardType::Sorcery])
+            .build()
+    }
+
+    fn add_cards(
+        game: &mut crate::game_state::GameState,
+        owner: PlayerId,
+        zone: Zone,
+        count: usize,
+        card_id_base: u32,
+        name_prefix: &str,
+    ) -> Vec<crate::ids::StableId> {
+        (0..count)
+            .map(|idx| {
+                let def = filler_definition(
+                    card_id_base + idx as u32,
+                    &format!("{name_prefix} {}", idx + 1),
+                );
+                let object_id = game.create_object_from_definition(&def, owner, zone);
+                game.object(object_id)
+                    .expect("created card should exist")
+                    .stable_id
+            })
+            .collect()
+    }
+
+    fn current_id(
+        game: &crate::game_state::GameState,
+        stable_id: crate::ids::StableId,
+    ) -> ObjectId {
+        game.find_object_by_stable_id(stable_id)
+            .expect("stable card should still exist")
+    }
+
+    fn run_wheel_with_starting_energy(
+        starting_energy: u32,
+    ) -> (
+        crate::game_state::GameState,
+        PlayerId,
+        PlayerId,
+        Vec<crate::ids::StableId>,
+        Vec<crate::ids::StableId>,
+    ) {
+        let def = parse_oracle_card_definition("Wheel of Potential");
+        let mut game =
+            crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.player_mut(alice)
+            .expect("Alice should exist")
+            .energy_counters = starting_energy;
+
+        let alice_hand = add_cards(&mut game, alice, Zone::Hand, 2, 93_000, "Alice Hand");
+        let bob_hand = add_cards(&mut game, bob, Zone::Hand, 2, 94_000, "Bob Hand");
+        add_cards(&mut game, alice, Zone::Library, 8, 95_000, "Alice Library");
+        add_cards(&mut game, bob, Zone::Library, 8, 96_000, "Bob Library");
+
+        let source_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let mut ctx = crate::effects::ExecutionContext::new(source_id, alice, &mut dm);
+        for effect in def
+            .spell_effect
+            .as_ref()
+            .expect("Wheel of Potential should have a spell effect")
+            .flattened_default_effects()
+        {
+            effect
+                .0
+                .execute(&mut game, &mut ctx)
+                .expect("Wheel of Potential effect should resolve");
+        }
+
+        (game, alice, bob, alice_hand, bob_hand)
+    }
+
+    let (below_game, below_alice, below_bob, below_alice_hand, below_bob_hand) =
+        run_wheel_with_starting_energy(3);
+    assert_eq!(
+        below_game
+            .player(below_alice)
+            .expect("Alice should exist")
+            .hand
+            .len(),
+        6,
+        "below-seven payment should make Alice draw the amount of energy paid"
+    );
+    assert_eq!(
+        below_game
+            .player(below_bob)
+            .expect("Bob should exist")
+            .hand
+            .len(),
+        6,
+        "below-seven payment should make Bob draw the amount of energy paid"
+    );
+    for stable_id in below_alice_hand.iter().chain(below_bob_hand.iter()) {
+        let object_id = current_id(&below_game, *stable_id);
+        assert_eq!(
+            below_game.object(object_id).expect("card should exist").zone,
+            Zone::Exile,
+            "each player should exile their previous hand"
+        );
+        assert!(
+            !below_game.effect_store.grant_registry.card_can_play_from_zone(
+                &below_game,
+                object_id,
+                Zone::Exile,
+                below_alice
+            ),
+            "below-seven payment should not grant play permission"
+        );
+    }
+
+    let (above_game, above_alice, above_bob, above_alice_hand, above_bob_hand) =
+        run_wheel_with_starting_energy(4);
+    assert_eq!(
+        above_game
+            .player(above_alice)
+            .expect("Alice should exist")
+            .hand
+            .len(),
+        7,
+        "seven-or-more payment should make Alice draw the amount of energy paid"
+    );
+    assert_eq!(
+        above_game
+            .player(above_bob)
+            .expect("Bob should exist")
+            .hand
+            .len(),
+        7,
+        "seven-or-more payment should make Bob draw the amount of energy paid"
+    );
+    let alice_exiled = current_id(&above_game, above_alice_hand[0]);
+    let bob_exiled = current_id(&above_game, above_bob_hand[0]);
+    assert!(
+        above_game.effect_store.grant_registry.card_can_play_from_zone(
+            &above_game,
+            alice_exiled,
+            Zone::Exile,
+            above_alice
+        ),
+        "seven-or-more payment should let the caster play cards they own exiled this way"
+    );
+    assert!(
+        !above_game.effect_store.grant_registry.card_can_play_from_zone(
+            &above_game,
+            bob_exiled,
+            Zone::Exile,
+            above_alice
+        ),
+        "play permission should not include opponents' cards exiled this way"
+    );
+    assert!(
+        !above_game.effect_store.grant_registry.card_can_play_from_zone(
+            &above_game,
+            alice_exiled,
+            Zone::Exile,
+            above_bob
+        ),
+        "the grant should belong to the caster, not each card's owner"
+    );
+}
+
+#[test]
 fn thundermane_dragon_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Thundermane Dragon");
     let rendered = unprocessed_compiled_lines(&def).join(" ");

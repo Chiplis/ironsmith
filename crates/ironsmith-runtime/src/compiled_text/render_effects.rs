@@ -4084,6 +4084,10 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             || grant.player != PlayerFilter::You
             || grant.duration != crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd
             || !grant.allow_land
+            || !grant
+                .object_filter
+                .as_ref()
+                .is_some_and(|filter| filter.owner == Some(PlayerFilter::You))
         {
             return None;
         }

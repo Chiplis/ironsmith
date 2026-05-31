@@ -6,7 +6,10 @@ use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::filter::PlayerFilterExt;
 use crate::game_state::GameState;
 use crate::ids::PlayerId;
+use crate::snapshot::ObjectSnapshot;
+use crate::tag::TagKey;
 use crate::target::PlayerFilter;
+use std::collections::HashMap;
 
 /// Effect that applies effects once for each player matching a filter.
 ///
@@ -82,9 +85,12 @@ impl EffectExecutor for ForPlayersEffect {
         let mut outcomes = Vec::new();
         let mut player_counts = Vec::new();
         let mut player_affected_memory = Vec::new();
+        let base_tagged_objects = ctx.tagged_objects.clone();
+        let mut accumulated_tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>> = HashMap::new();
 
         for player_id in players {
-            ctx.with_temp_iterated_player(Some(player_id), |ctx| {
+            ctx.tagged_objects = base_tagged_objects.clone();
+            let iteration_result = ctx.with_temp_iterated_player(Some(player_id), |ctx| {
                 let start = outcomes.len();
                 // Execute all inner effects for this player
                 for effect in &self.effects {
@@ -103,13 +109,67 @@ impl EffectExecutor for ForPlayersEffect {
                     player_affected_memory.push((player_id, memory.to_vec()));
                 }
                 Ok::<(), ExecutionError>(())
-            })?;
+            });
+
+            accumulate_iteration_tags(
+                &base_tagged_objects,
+                &ctx.tagged_objects,
+                &mut accumulated_tagged_objects,
+            );
+            ctx.tagged_objects = base_tagged_objects.clone();
+            iteration_result?;
+        }
+
+        ctx.tagged_objects = base_tagged_objects;
+        for (tag, snapshots) in accumulated_tagged_objects {
+            ctx.tag_objects_unique(tag, snapshots);
         }
 
         Ok(EffectOutcome::aggregate_summing_counts(outcomes)
             .with_player_counts(player_counts)
             .with_player_affected_object_memory(player_affected_memory))
     }
+}
+
+fn accumulate_iteration_tags(
+    base: &HashMap<TagKey, Vec<ObjectSnapshot>>,
+    current: &HashMap<TagKey, Vec<ObjectSnapshot>>,
+    accumulated: &mut HashMap<TagKey, Vec<ObjectSnapshot>>,
+) {
+    for (tag, snapshots) in current {
+        if base
+            .get(tag)
+            .is_some_and(|base_snapshots| same_snapshots(base_snapshots, snapshots))
+        {
+            continue;
+        }
+        let entry = accumulated.entry(tag.clone()).or_default();
+        for snapshot in snapshots {
+            let existed_before = base
+                .get(tag)
+                .is_some_and(|base_snapshots| contains_snapshot(base_snapshots, snapshot));
+            let already_accumulated = contains_snapshot(entry, snapshot);
+            if !existed_before && !already_accumulated {
+                entry.push(snapshot.clone());
+            }
+        }
+    }
+}
+
+fn same_snapshots(left: &[ObjectSnapshot], right: &[ObjectSnapshot]) -> bool {
+    left.len() == right.len()
+        && left
+            .iter()
+            .zip(right.iter())
+            .all(|(left, right)| {
+                left.object_id == right.object_id && left.stable_id == right.stable_id
+            })
+}
+
+fn contains_snapshot(snapshots: &[ObjectSnapshot], needle: &ObjectSnapshot) -> bool {
+    snapshots.iter().any(|snapshot| {
+        snapshot.object_id == needle.object_id && snapshot.stable_id == needle.stable_id
+    })
 }
 
 #[cfg(test)]
