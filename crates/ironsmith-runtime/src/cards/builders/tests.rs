@@ -46375,6 +46375,181 @@ fn parse_oracle_study_hall_commander_cast_scry_regression() {
 }
 
 #[test]
+fn jirina_kudro_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Jirina Kudro");
+    let compiled = unprocessed_compiled_lines(&def);
+    let rendered = compiled.join("\n");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    let oracle = oracle_text_by_name()
+        .get("Jirina Kudro")
+        .expect("Jirina Kudro oracle text")
+        .clone();
+    let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+        crate::semantic_compare::compare_semantics_scored(
+            &oracle,
+            &compiled,
+            Some(crate::semantic_compare::EmbeddingConfig {
+                dims: 384,
+                mismatch_threshold: 0.99,
+            }),
+        );
+
+    assert!(
+        rendered_lower.contains(
+            "create a 1/1 white human soldier creature token for each time you've cast your commander from the command zone this game"
+        ) && rendered_lower.contains("other humans you control get +2/+0"),
+        "expected Jirina Kudro compiled text to preserve commander-zone token count and Human anthem, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("CreateTokenEffect")
+            && debug.contains("CommanderCastCount")
+            && debug.contains("You"),
+        "expected Jirina Kudro ETB to structurally count commander casts from the command zone, got {debug}"
+    );
+    assert!(
+        similarity >= 0.99 && !mismatch,
+        "expected Jirina Kudro semantic comparison to clear target, score={similarity}, mismatch={mismatch}, compiled={compiled:?}"
+    );
+}
+
+fn execute_jirina_kudro_enters(
+    def: &CardDefinition,
+    commander_casts: u32,
+) -> crate::game_state::GameState {
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let source = game.create_object_from_definition(def, alice, Zone::Battlefield);
+    let commander = CardBuilder::new(CardId::from_raw(46_337), "Jirina Commander")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let commander_id = game.create_object_from_card(&commander, alice, Zone::Command);
+    game.set_as_commander(commander_id, alice);
+    for _ in 0..commander_casts {
+        game.record_commander_cast_from_command_zone(commander_id);
+    }
+
+    let opponent_commander = CardBuilder::new(CardId::from_raw(46_338), "Opponent Commander")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let opponent_commander_id =
+        game.create_object_from_card(&opponent_commander, bob, Zone::Command);
+    game.set_as_commander(opponent_commander_id, bob);
+    game.record_commander_cast_from_command_zone(opponent_commander_id);
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) if triggered.trigger.display().contains("enters") => {
+                Some(triggered)
+            }
+            _ => None,
+        })
+        .expect("Jirina Kudro should compile an enters trigger");
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &triggered.effects,
+        None,
+        &[],
+    )
+    .expect("Jirina Kudro enters trigger should resolve");
+    game
+}
+
+fn jirina_human_soldier_token_count(game: &crate::game_state::GameState) -> usize {
+    game.objects_in_zone(Zone::Battlefield)
+        .into_iter()
+        .filter_map(|id| game.object(id))
+        .filter(|object| {
+            object.name == "Human"
+                && object.card_types == [CardType::Creature]
+                && object.subtypes == [Subtype::Human, Subtype::Soldier]
+                && object.color_override == Some(crate::color::ColorSet::WHITE)
+                && object.base_power == Some(crate::card::PtValue::Fixed(1))
+                && object.base_toughness == Some(crate::card::PtValue::Fixed(1))
+        })
+        .count()
+}
+
+#[test]
+fn jirina_kudro_enters_creates_tokens_for_your_command_zone_casts_only() {
+    let def = parse_oracle_card_definition("Jirina Kudro");
+    let game = execute_jirina_kudro_enters(&def, 2);
+
+    assert_eq!(
+        jirina_human_soldier_token_count(&game),
+        2,
+        "Jirina Kudro should create one Human Soldier token per commander cast by its controller from the command zone"
+    );
+}
+
+#[test]
+fn jirina_kudro_enters_creates_no_tokens_without_your_command_zone_casts() {
+    let def = parse_oracle_card_definition("Jirina Kudro");
+    let game = execute_jirina_kudro_enters(&def, 0);
+
+    assert_eq!(
+        jirina_human_soldier_token_count(&game),
+        0,
+        "Jirina Kudro should ignore opponents' command-zone commander casts"
+    );
+}
+
+#[test]
+fn jirina_kudro_anthem_buffs_only_other_humans_you_control() {
+    let oracle = oracle_text_by_name()
+        .get("Jirina Kudro")
+        .expect("Jirina Kudro oracle text")
+        .clone();
+    let def = CardDefinitionBuilder::new(CardId::new(), "Jirina Kudro")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Soldier])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(oracle)
+        .expect("Jirina Kudro should parse with printed creature characteristics");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let jirina = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let human = CardBuilder::new(CardId::from_raw(46_339), "Alice Human")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let goblin = CardBuilder::new(CardId::from_raw(46_340), "Alice Goblin")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Goblin])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let opposing_human = CardBuilder::new(CardId::from_raw(46_341), "Bob Human")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+
+    let human_id = game.create_object_from_card(&human, alice, Zone::Battlefield);
+    let goblin_id = game.create_object_from_card(&goblin, alice, Zone::Battlefield);
+    let opposing_human_id = game.create_object_from_card(&opposing_human, bob, Zone::Battlefield);
+
+    assert_eq!(game.current_power(human_id), Some(3));
+    assert_eq!(game.current_power(goblin_id), Some(1));
+    assert_eq!(game.current_power(opposing_human_id), Some(1));
+    assert_eq!(game.current_power(jirina), Some(3));
+}
+
+#[test]
 fn parse_oracle_emissary_escort_greatest_mana_value_anthem_regression() {
     let def = parse_oracle_card_definition("Emissary Escort");
     let rendered = unprocessed_compiled_lines(&def)

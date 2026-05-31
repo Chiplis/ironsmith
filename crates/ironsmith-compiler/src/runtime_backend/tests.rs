@@ -11758,6 +11758,21 @@ fn rewrite_lexed_effect_entrypoint_supports_create_for_each_creatures_died() {
 }
 
 #[test]
+fn rewrite_lexed_effect_entrypoint_supports_create_for_each_commander_cast_count() {
+    let text = "Create a 1/1 white Human Soldier creature token for each time you've cast a commander from the command zone this game.";
+    let lexed = lex_line(text, 0)
+        .expect("rewrite lexer should classify commander-cast-count create effect");
+    let native = super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("lexed commander-cast-count create parser should succeed");
+
+    let debug = format!("{native:?}");
+    assert!(
+        debug.contains("CommanderCastCount(You)") && !debug.contains("is_commander: true"),
+        "expected dynamic commander-cast count in create clause, got {debug}"
+    );
+}
+
+#[test]
 fn rewrite_lexed_effect_entrypoint_supports_investigate_for_each_creatures_died() {
     let text = "Investigate for each creature that died this turn.";
     let lexed =

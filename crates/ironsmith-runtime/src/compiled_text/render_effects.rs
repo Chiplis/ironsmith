@@ -20299,6 +20299,22 @@ pub(super) fn describe_create_for_each_count(value: &Value) -> Option<String> {
         Value::ColorsOfManaSpentToCastThisSpell => {
             Some("color of mana spent to cast this spell".to_string())
         }
+        Value::CommanderCastCount(filter) => match filter {
+            PlayerFilter::You => {
+                Some("time you've cast your commander from the command zone this game".to_string())
+            }
+            PlayerFilter::Opponent => Some(
+                "time an opponent has cast their commander from the command zone this game"
+                    .to_string(),
+            ),
+            PlayerFilter::Any => Some(
+                "time a player has cast their commander from the command zone this game".to_string(),
+            ),
+            other => Some(format!(
+                "time {} has cast their commander from the command zone this game",
+                describe_player_filter(other)
+            )),
+        },
         Value::CreaturesDiedThisTurn => Some("creature that died this turn".to_string()),
         Value::SourceRegeneratedThisTurnCount => Some("time it regenerated this turn".to_string()),
         _ => None,

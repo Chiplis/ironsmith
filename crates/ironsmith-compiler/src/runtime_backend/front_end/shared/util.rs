@@ -44,6 +44,7 @@ use super::token_primitives::{
     slice_starts_with, str_contains, str_ends_with, str_find, str_split_once, str_split_once_char,
     str_starts_with, str_strip_prefix, str_strip_suffix, str_strip_suffix_char,
 };
+use super::value_helpers::parse_commander_cast_count_player;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
@@ -465,6 +466,14 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
                 ));
             }
         }
+    }
+
+    let count_tokens = words[idx..filter_end]
+        .iter()
+        .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+        .collect::<Vec<_>>();
+    if let Some(player) = parse_commander_cast_count_player(&count_tokens) {
+        return Some((Value::CommanderCastCount(player), filter_end));
     }
 
     match &words[idx..filter_end] {

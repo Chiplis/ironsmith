@@ -30,6 +30,7 @@ use super::super::util::{
     parse_target_phrase, parse_value, token_index_for_word_index, trim_commas,
     value_contains_unbound_x,
 };
+use super::super::value_helpers::parse_commander_cast_count_player;
 use super::clause_pattern_helpers::extract_subject_player;
 use super::conditionals::parse_subtype_word;
 use super::dispatch_entry::target_references_it;
@@ -1227,6 +1228,9 @@ pub(crate) fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> O
         return Some(
             Value::SourceRegeneratedThisTurnCount.with_surface_hint(ValueSurfaceHint::ForEach),
         );
+    }
+    if let Some(player) = parse_commander_cast_count_player(tokens) {
+        return Some(Value::CommanderCastCount(player).with_surface_hint(ValueSurfaceHint::ForEach));
     }
     let clause_words = token_word_refs(tokens);
     if (grammar::contains_word(tokens, "spell") || grammar::contains_word(tokens, "spells"))
