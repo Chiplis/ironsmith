@@ -11923,6 +11923,17 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             format!("this effect has been used fewer than {limit} times this turn")
         }
         Condition::TriggeringObjectWasEnchanted => "the triggering object was enchanted".to_string(),
+        Condition::TriggeringKeywordAction(action) => match action {
+            crate::events::KeywordActionKind::ArtSticker => "it's an art sticker".to_string(),
+            crate::events::KeywordActionKind::AbilitySticker => {
+                "it's an ability sticker".to_string()
+            }
+            crate::events::KeywordActionKind::NameSticker => "it's a name sticker".to_string(),
+            crate::events::KeywordActionKind::PowerToughnessSticker => {
+                "it's a power and toughness sticker".to_string()
+            }
+            _ => format!("it was {}", action.infinitive()),
+        },
         Condition::TriggeringObjectHadToAttackThisCombat => {
             "that creature had to attack this combat".to_string()
         }

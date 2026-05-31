@@ -9672,6 +9672,137 @@ fn costume_shop_keeps_visit_sticker_effect() {
     );
 }
 
+#[test]
+fn goblin_airbrusher_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Goblin Airbrusher");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert_eq!(
+        rendered,
+        "Whenever you place a sticker, create a Treasure token. If it's an art sticker, create two Treasure tokens instead."
+    );
+    assert!(
+        rendered_lower.contains("whenever you place a sticker"),
+        "expected Goblin Airbrusher to render its sticker trigger, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("if it's an art sticker")
+            && rendered_lower.contains("create two treasure tokens instead"),
+        "expected Goblin Airbrusher to render its art-sticker replacement branch, got {rendered}"
+    );
+    assert!(
+        !rendered_lower.contains("unsupported"),
+        "Goblin Airbrusher should parse strictly without unsupported fallback text, got {rendered}"
+    );
+}
+
+#[test]
+fn goblin_airbrusher_structurally_models_art_sticker_self_replacement() {
+    let def = parse_oracle_card_definition("Goblin Airbrusher");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        debug.contains("KeywordAction")
+            && debug.contains("Sticker")
+            && debug.contains("SelfReplacement")
+            && debug.contains("TriggeringKeywordAction")
+            && debug.contains("ArtSticker"),
+        "expected Goblin Airbrusher to lower as a generic sticker trigger with an art-sticker self replacement, got {debug}"
+    );
+}
+
+fn resolve_goblin_airbrusher_sticker_action(
+    action: crate::events::KeywordActionKind,
+    event_player: PlayerId,
+) -> usize {
+    let airbrusher = parse_oracle_card_definition("Goblin Airbrusher");
+    let alice = PlayerId::from_index(0);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let airbrusher_id = game.create_object_from_definition(&airbrusher, alice, Zone::Battlefield);
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::KeywordActionEvent::new(action, event_player, airbrusher_id, 1),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for entry in crate::triggers::check_triggers(&game, &event)
+        .into_iter()
+        .filter(|entry| entry.source == airbrusher_id)
+    {
+        trigger_queue.add(entry);
+    }
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Goblin Airbrusher trigger should be put on the stack");
+    while !game.stack.is_empty() {
+        crate::game_loop::resolve_stack_entry(&mut game)
+            .expect("Goblin Airbrusher trigger should resolve");
+    }
+
+    game.battlefield
+        .iter()
+        .filter(|&&id| {
+            game.object(id).is_some_and(|object| {
+                object.name == "Treasure" && game.controller_of(object) == alice
+            })
+        })
+        .count()
+}
+
+#[test]
+fn goblin_airbrusher_creates_one_treasure_for_non_art_sticker() {
+    let alice = PlayerId::from_index(0);
+    let treasure_count =
+        resolve_goblin_airbrusher_sticker_action(crate::events::KeywordActionKind::Sticker, alice);
+
+    assert_eq!(
+        treasure_count, 1,
+        "Goblin Airbrusher should create one Treasure for a non-art sticker"
+    );
+}
+
+#[test]
+fn goblin_airbrusher_creates_one_treasure_for_non_art_sticker_subtype() {
+    let alice = PlayerId::from_index(0);
+    let treasure_count = resolve_goblin_airbrusher_sticker_action(
+        crate::events::KeywordActionKind::NameSticker,
+        alice,
+    );
+
+    assert_eq!(
+        treasure_count, 1,
+        "Goblin Airbrusher should trigger for non-art sticker subtypes without taking the art branch"
+    );
+}
+
+#[test]
+fn goblin_airbrusher_creates_two_treasures_for_art_sticker() {
+    let alice = PlayerId::from_index(0);
+    let treasure_count = resolve_goblin_airbrusher_sticker_action(
+        crate::events::KeywordActionKind::ArtSticker,
+        alice,
+    );
+
+    assert_eq!(
+        treasure_count, 2,
+        "Goblin Airbrusher should replace the one-Treasure branch with two Treasures for an art sticker"
+    );
+}
+
+#[test]
+fn goblin_airbrusher_ignores_opponents_stickers() {
+    let bob = PlayerId::from_index(1);
+    let treasure_count = resolve_goblin_airbrusher_sticker_action(
+        crate::events::KeywordActionKind::ArtSticker,
+        bob,
+    );
+
+    assert_eq!(
+        treasure_count, 0,
+        "Goblin Airbrusher should not trigger for an opponent placing an art sticker"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn eldrazi_guacamole_tightrope_ticket_sticker_lines_parse_strictly() {

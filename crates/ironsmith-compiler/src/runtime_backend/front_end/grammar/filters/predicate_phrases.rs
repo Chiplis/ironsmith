@@ -791,6 +791,25 @@ fn parse_card_in_your_graveyard_predicate(words: &[&str]) -> Option<PredicateAst
     })
 }
 
+fn parse_triggering_sticker_action_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tail = match words {
+        ["it", "is", tail @ ..] | ["it", tail @ ..] => tail,
+        _ => return None,
+    };
+
+    let action = match tail {
+        ["art", "sticker"] => crate::events::KeywordActionKind::ArtSticker,
+        ["ability", "sticker"] => crate::events::KeywordActionKind::AbilitySticker,
+        ["name", "sticker"] => crate::events::KeywordActionKind::NameSticker,
+        ["power", "and", "toughness", "sticker"] => {
+            crate::events::KeywordActionKind::PowerToughnessSticker
+        }
+        _ => return None,
+    };
+
+    Some(PredicateAst::TriggeringKeywordAction(action))
+}
+
 pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
     let raw_words_view = GrammarFilterNormalizedWords::new(tokens);
     let raw_words = raw_words_view.to_word_refs();
@@ -939,6 +958,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some(predicate) = parse_card_in_your_graveyard_predicate(&filtered) {
+        return Ok(predicate);
+    }
+
+    if let Some(predicate) = parse_triggering_sticker_action_predicate(&filtered) {
         return Ok(predicate);
     }
 

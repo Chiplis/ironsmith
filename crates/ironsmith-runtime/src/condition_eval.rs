@@ -796,6 +796,11 @@ fn evaluate_condition_shared_core(
             object_matching_was_put_into_graveyard_from_battlefield_this_turn(game, ctx, filter),
         ),
         Condition::SourceWasCast => Some(source_was_cast(game, ctx.source, ctx.triggering_event)),
+        Condition::TriggeringKeywordAction(action) => Some(
+            ctx.triggering_event
+                .and_then(|event| event.downcast::<crate::events::KeywordActionEvent>())
+                .is_some_and(|event| event.action == *action),
+        ),
         Condition::TaggedObjectWasCast(_) => None,
         Condition::ThisSpellEscaped => Some(source_escaped(game, ctx.source)),
         Condition::ThisSpellWasCastFromZone(_) => None,
@@ -1011,6 +1016,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::MaxTimesEachTurn(..) => {}
         Condition::DoThisMaxTimesEachTurn(..) => {}
         Condition::TriggeringObjectWasEnchanted => {}
+        Condition::TriggeringKeywordAction(..) => {}
         Condition::TriggeringObjectHadToAttackThisCombat => {}
         Condition::TriggeringObjectHadCounters { .. } => {}
         Condition::ControlCreaturesTotalPowerAtLeast(..) => {}
@@ -1375,6 +1381,10 @@ pub fn evaluate_condition_external(
             .triggering_event
             .and_then(|event| event.snapshot())
             .is_some_and(|snapshot| snapshot.was_enchanted),
+        Condition::TriggeringKeywordAction(action) => ctx
+            .triggering_event
+            .and_then(|event| event.downcast::<crate::events::KeywordActionEvent>())
+            .is_some_and(|event| event.action == *action),
         Condition::TriggeringObjectHadToAttackThisCombat => {
             triggering_object_had_to_attack_this_combat(game, ctx.triggering_event)
         }
@@ -2060,6 +2070,7 @@ fn evaluate_condition_simple(
             .is_some_and(|obj| obj.optional_costs_paid.was_kicked()),
         Condition::ThisSpellEscaped => source_escaped(game, source),
         Condition::ThisSpellWasCastFromZone(_) => false,
+        Condition::TriggeringKeywordAction(_) => false,
         Condition::ThisSpellPaidLabel(label) => game
             .object(source)
             .is_some_and(|obj| obj.optional_costs_paid.was_paid_label(label)),
@@ -2811,6 +2822,7 @@ fn evaluate_condition(
 
     match condition {
         Condition::ItIsNight => Ok(game.is_night),
+        Condition::TriggeringKeywordAction(_) => Ok(false),
         Condition::YouControl(filter) => {
             let filter_ctx = ctx.filter_context(game);
 

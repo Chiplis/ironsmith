@@ -1,7 +1,7 @@
 use crate::{
     ActivationTiming, AnthemCountExpression, Comparison, CounterType, EffectId, EventValueSpec,
-    ManaSymbol, ObjectFilter, PlayerFilter, PlayerId, StableId, TagKey, ValueComparisonOperator,
-    Zone,
+    KeywordActionKind, ManaSymbol, ObjectFilter, PlayerFilter, PlayerId, StableId, TagKey,
+    ValueComparisonOperator, Zone,
 };
 use crate::{ChooseSpec, Color, ColorSet};
 
@@ -796,6 +796,7 @@ pub enum Condition {
     MaxTimesEachTurn(u32),
     DoThisMaxTimesEachTurn(u32),
     TriggeringObjectWasEnchanted,
+    TriggeringKeywordAction(KeywordActionKind),
     TriggeringObjectHadToAttackThisCombat,
     TriggeringObjectHadCounters {
         counter_type: CounterType,

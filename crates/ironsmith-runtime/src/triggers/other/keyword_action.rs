@@ -10,6 +10,21 @@ use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 use crate::types::CardType;
 
+fn keyword_action_matches(
+    trigger_action: KeywordActionKind,
+    event_action: KeywordActionKind,
+) -> bool {
+    trigger_action == event_action
+        || (trigger_action == KeywordActionKind::Sticker
+            && matches!(
+                event_action,
+                KeywordActionKind::ArtSticker
+                    | KeywordActionKind::AbilitySticker
+                    | KeywordActionKind::NameSticker
+                    | KeywordActionKind::PowerToughnessSticker
+            ))
+}
+
 fn is_plain_other_card_filter(filter: &ObjectFilter) -> bool {
     filter.other
         && !filter.source
@@ -128,7 +143,7 @@ impl TriggerMatcher for KeywordActionTrigger {
         let Some(e) = event.downcast::<KeywordActionEvent>() else {
             return false;
         };
-        if e.action != self.action {
+        if !keyword_action_matches(self.action, e.action) {
             return false;
         }
 
@@ -229,6 +244,14 @@ impl TriggerMatcher for KeywordActionTrigger {
                 PlayerFilter::Opponent => "Whenever the Ring tempts an opponent".to_string(),
                 PlayerFilter::Any => "Whenever the Ring tempts a player".to_string(),
                 _ => "Whenever the Ring tempts a player".to_string(),
+            };
+        }
+        if self.action == KeywordActionKind::Sticker {
+            return match &self.player {
+                PlayerFilter::You => "Whenever you place a sticker".to_string(),
+                PlayerFilter::Opponent => "Whenever an opponent places a sticker".to_string(),
+                PlayerFilter::Any => "Whenever a player places a sticker".to_string(),
+                _ => "Whenever a player places a sticker".to_string(),
             };
         }
         if self.action == KeywordActionKind::ChaosEnsues && self.player == PlayerFilter::Any {

@@ -525,6 +525,7 @@ pub(crate) enum PredicateAst {
     SourceIsTapped,
     SourceIsSaddled,
     SourceMatches(ObjectFilter),
+    TriggeringKeywordAction(crate::events::KeywordActionKind),
     TriggeringObjectHadToAttackThisCombat,
 
     SourceHasNoCounter(CounterType),

@@ -2430,15 +2430,33 @@ pub(crate) fn parse_trigger_clause_lexed(
         }
     }
 
-    if let Some(put_word_idx) = find_index(&words, |word| *word == "put" || *word == "puts") {
+    if let Some(put_word_idx) = find_index(&words, |word| {
+        matches!(*word, "put" | "puts" | "place" | "places" | "placed")
+    }) {
         let subject = &words[..put_word_idx];
         if let Some(player) = parse_trigger_subject_player_filter(subject) {
             let tail = &words[put_word_idx + 1..];
-            let has_name_sticker = word_slice_contains_phrase_or_empty(tail, &["name", "sticker"]);
-            let has_on = word_slice_contains_word(tail, "on");
-            if has_name_sticker && has_on {
+            let tail_without_articles = non_article_word_refs(tail);
+            let action = if word_slice_contains_phrase_or_empty(
+                tail,
+                &["power", "and", "toughness", "sticker"],
+            )
+            {
+                Some(crate::events::KeywordActionKind::PowerToughnessSticker)
+            } else if word_slice_contains_phrase_or_empty(tail, &["ability", "sticker"]) {
+                Some(crate::events::KeywordActionKind::AbilitySticker)
+            } else if word_slice_contains_phrase_or_empty(tail, &["name", "sticker"]) {
+                Some(crate::events::KeywordActionKind::NameSticker)
+            } else if word_slice_contains_phrase_or_empty(tail, &["art", "sticker"]) {
+                Some(crate::events::KeywordActionKind::ArtSticker)
+            } else if word_slice_contains_word(&tail_without_articles, "sticker") {
+                Some(crate::events::KeywordActionKind::Sticker)
+            } else {
+                None
+            };
+            if let Some(action) = action {
                 return Ok(TriggerSpec::KeywordAction {
-                    action: crate::events::KeywordActionKind::NameSticker,
+                    action,
                     player,
                     source_filter: None,
                 });
