@@ -405,6 +405,12 @@ impl StaticAbilityModelInterpreter {
             filter: spec.filter.clone(),
             zone: spec.zone,
             beneficiary: spec.beneficiary.clone(),
+            cast_this_way_grants: spec
+                .cast_this_way_grants
+                .iter()
+                .cloned()
+                .map(StaticAbility::from_model)
+                .collect(),
         }
     }
 

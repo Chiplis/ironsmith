@@ -142,6 +142,23 @@ fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn thundermane_dragon_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Thundermane Dragon");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        ability_debug.contains("PlayFrom") && ability_debug.contains("cast_this_way_grants"),
+        "Thundermane Dragon should structurally grant top-library casting with a cast-this-way ability, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains("from the top of your library")
+            && rendered.contains("If you cast a creature spell this way, it gains haste until end of turn"),
+        "Thundermane Dragon compiled text should preserve the top-library cast and haste clause, got {rendered}"
+    );
+}
+
+#[test]
 fn party_dude_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Party Dude");
     let ability_debug = format!("{:#?}", def.abilities);

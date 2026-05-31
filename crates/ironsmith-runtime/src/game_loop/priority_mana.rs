@@ -3246,6 +3246,7 @@ pub(crate) fn propose_spell_cast(
     caster: PlayerId,
     casting_method: &CastingMethod,
 ) -> Result<ObjectId, GameLoopError> {
+    let cast_origin_object = game.object(spell_id).cloned();
     let selected_method = game.object(spell_id).and_then(|obj| match casting_method {
         CastingMethod::Alternative(idx) => obj.alternative_casts.get(*idx).cloned(),
         CastingMethod::PlayFrom {
@@ -3412,7 +3413,51 @@ pub(crate) fn propose_spell_cast(
         game.set_face_down(new_id);
     }
 
+    if let Some(origin) = cast_origin_object.as_ref() {
+        apply_play_from_cast_this_way_grants(game, new_id, origin, caster, casting_method);
+    }
+
     Ok(new_id)
+}
+
+fn apply_play_from_cast_this_way_grants(
+    game: &mut GameState,
+    stack_id: ObjectId,
+    origin: &crate::object::Object,
+    caster: PlayerId,
+    casting_method: &CastingMethod,
+) {
+    let (source_id, zone) = match casting_method {
+        CastingMethod::PlayFrom { source, zone, .. }
+        | CastingMethod::SplitOtherHalfPlayFrom { source, zone, .. } => (*source, *zone),
+        _ => return,
+    };
+    let Some(source) = game.object(source_id) else {
+        return;
+    };
+    let ctx = game.filter_context_for(caster, Some(source_id));
+    let mut granted = Vec::new();
+    for ability in &source.abilities {
+        let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+            continue;
+        };
+        if !static_ability.is_active(game, source_id) {
+            continue;
+        }
+        let Some(spec) = static_ability.grant_spec() else {
+            continue;
+        };
+        if spec.zone == zone
+            && matches!(spec.grantable, crate::grant::Grantable::PlayFrom)
+            && !spec.cast_this_way_grants.is_empty()
+            && spec.filter.matches(origin, &ctx, game)
+        {
+            granted.extend(spec.cast_this_way_grants.iter().cloned());
+        }
+    }
+    for ability in granted {
+        game.grant_temporary_static_ability_to_object_until_end_of_turn(stack_id, ability.id());
+    }
 }
 
 /// Revert a spell cast that failed during the casting process.

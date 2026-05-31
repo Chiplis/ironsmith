@@ -281,6 +281,8 @@ pub struct GrantSpec<SA, E, C, Cond> {
     pub zone: Zone,
     /// Which player may use the grant when rendered or applied statically.
     pub beneficiary: PlayerFilter,
+    /// Static abilities granted to a spell as it is cast using this permission.
+    pub cast_this_way_grants: Vec<SA>,
 }
 
 impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
@@ -291,12 +293,18 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
             filter,
             zone,
             beneficiary: PlayerFilter::You,
+            cast_this_way_grants: Vec::new(),
         }
     }
 
     /// Return a copy of this grant specification with an explicit beneficiary.
     pub fn with_beneficiary(mut self, beneficiary: PlayerFilter) -> Self {
         self.beneficiary = beneficiary;
+        self
+    }
+
+    pub fn with_cast_this_way_grant(mut self, ability: SA) -> Self {
+        self.cast_this_way_grants.push(ability);
         self
     }
 
@@ -335,6 +343,7 @@ where
             filter,
             zone: Zone::Hand,
             beneficiary: PlayerFilter::You,
+            cast_this_way_grants: Vec::new(),
         }
     }
 
@@ -391,6 +400,7 @@ where
             filter: ObjectFilter::nonland(),
             zone: Zone::Graveyard,
             beneficiary: PlayerFilter::You,
+            cast_this_way_grants: Vec::new(),
         }
     }
 }
@@ -467,6 +477,16 @@ where
         }
 
         fn castable_filter_description(filter: &ObjectFilter) -> String {
+            if filter.card_types.as_slice() == [CardType::Creature]
+                && let Some(crate::filter_model::Comparison::GreaterThanOrEqual(power)) = filter.power
+            {
+                let mut normalized = filter.clone();
+                normalized.card_types.clear();
+                normalized.power = None;
+                if normalized == ObjectFilter::default() {
+                    return format!("creature spells with power {power} or greater");
+                }
+            }
             if let Some(merged) = merged_simple_any_of_card_type_filter(filter) {
                 return castable_filter_description(&merged);
             }
@@ -498,8 +518,10 @@ where
             let description = filter.description();
             if description.contains("permanent") {
                 description.replace("permanent", "spell")
-            } else if description.contains("spell") || description.contains("card") {
+            } else if description.contains("spell") {
                 description
+            } else if description.contains(" card") {
+                description.replace(" card", " spell")
             } else {
                 format!("{description} spells")
             }
@@ -612,6 +634,32 @@ where
         filter.zone.get_or_insert(self.zone);
         let filter_desc = filter.description();
         let may_prefix = beneficiary_may_prefix(&self.beneficiary);
+        let cast_this_way_suffix = || {
+            if self.cast_this_way_grants.is_empty() {
+                return String::new();
+            }
+            let grants = self
+                .cast_this_way_grants
+                .iter()
+                .map(GrantStaticAbility::grant_display)
+                .collect::<Vec<_>>();
+            if grants.len() == 1 && grants[0].eq_ignore_ascii_case("haste") {
+                let cast_desc = castable_filter_description(&self.filter);
+                let spell_text = if let Some(base) = cast_desc.strip_suffix(" spells") {
+                    format!("a {base} spell")
+                } else if let Some((base, tail)) = cast_desc.split_once(" spells ") {
+                    format!("a {base} spell {tail}")
+                } else if cast_desc.starts_with("a ") {
+                    cast_desc
+                } else {
+                    "a spell".to_string()
+                };
+                return format!(
+                    ". If you cast {spell_text} this way, it gains haste until end of turn"
+                );
+            }
+            format!(". Spells cast this way gain {}", grants.join(" and "))
+        };
 
         if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Graveyard
@@ -674,9 +722,9 @@ where
         }
         if matches!(self.grantable, Grantable::PlayFrom) && self.zone == Zone::Library {
             return format!(
-                "{may_prefix} play {} from the top of your library",
-                filter_desc
-            );
+                "{may_prefix} cast {} from the top of your library",
+                castable_filter_description(&self.filter)
+            ) + &cast_this_way_suffix();
         }
         if let Grantable::AlternativeCast(method) = &self.grantable
             && self.zone == Zone::Hand
