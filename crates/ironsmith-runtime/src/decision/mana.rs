@@ -47,6 +47,12 @@ fn alternative_method_is_emerge(
     method.name().eq_ignore_ascii_case("Emerge")
 }
 
+fn alternative_method_is_offering(
+    method: &crate::alternative_cast::AlternativeCastingMethod,
+) -> bool {
+    method.is_offering()
+}
+
 fn emerge_sacrifice_filter(
     method: &crate::alternative_cast::AlternativeCastingMethod,
 ) -> Option<crate::target::ObjectFilter> {
@@ -101,6 +107,112 @@ pub(crate) fn apply_emerge_reduction_to_alternative_mana_cost(
         base_cost.clone()
     } else {
         base_cost.reduce_generic(reduction)
+    }
+}
+
+fn offering_cost_difference(
+    base_cost: &crate::mana::ManaCost,
+    sacrificed_cost: Option<&crate::mana::ManaCost>,
+) -> crate::mana::ManaCost {
+    use crate::mana::ManaSymbol;
+
+    let Some(sacrificed_cost) = sacrificed_cost else {
+        return base_cost.clone();
+    };
+
+    let mut generic = 0u32;
+    let mut colored = Vec::new();
+    for pip in base_cost.pips() {
+        if pip.len() == 1 {
+            match pip[0] {
+                ManaSymbol::Generic(amount) => generic = generic.saturating_add(amount as u32),
+                other => colored.push(other),
+            }
+        } else {
+            colored.extend(pip.iter().copied());
+        }
+    }
+
+    for pip in sacrificed_cost.pips() {
+        if pip.len() == 1 {
+            match pip[0] {
+                ManaSymbol::Generic(amount) => generic = generic.saturating_sub(amount as u32),
+                symbol => {
+                    if let Some(idx) = colored.iter().position(|candidate| *candidate == symbol) {
+                        colored.remove(idx);
+                    } else {
+                        generic = generic.saturating_sub(symbol.mana_value());
+                    }
+                }
+            }
+        } else {
+            generic = generic.saturating_sub(
+                pip.iter()
+                    .map(|symbol| symbol.mana_value())
+                    .max()
+                    .unwrap_or(0),
+            );
+        }
+    }
+
+    let mut pips = Vec::new();
+    if generic > 0 {
+        let mut remaining = generic;
+        while remaining > 0 {
+            let chunk = remaining.min(u8::MAX as u32) as u8;
+            pips.push(vec![ManaSymbol::Generic(chunk)]);
+            remaining -= chunk as u32;
+        }
+    }
+    pips.extend(colored.into_iter().map(|symbol| vec![symbol]));
+    crate::mana::ManaCost::from_pips(pips)
+}
+
+fn best_offering_cost_difference(
+    game: &GameState,
+    player: PlayerId,
+    source: crate::ids::ObjectId,
+    method: &crate::alternative_cast::AlternativeCastingMethod,
+    base_cost: &crate::mana::ManaCost,
+) -> crate::mana::ManaCost {
+    if !alternative_method_is_offering(method) {
+        return base_cost.clone();
+    }
+    let Some(filter) = emerge_sacrifice_filter(method) else {
+        return base_cost.clone();
+    };
+
+    let ctx = game.filter_context_for(player, Some(source));
+    let lands_only = game.player_cant_sacrifice_nonland_to_cast_or_activate(player);
+    game.battlefield
+        .iter()
+        .copied()
+        .filter_map(|id| {
+            let obj = game.object(id)?;
+            if game.controller_of(obj) != player
+                || !filter.matches(obj, &ctx, game)
+                || !game.can_be_sacrificed(id)
+                || (lands_only && !game.object_has_card_type(id, crate::types::CardType::Land))
+            {
+                return None;
+            }
+            Some(offering_cost_difference(base_cost, obj.mana_cost.as_ref()))
+        })
+        .min_by_key(|cost| cost.mana_value())
+        .unwrap_or_else(|| base_cost.clone())
+}
+
+pub(crate) fn apply_alternative_keyword_cost_adjustment(
+    game: &GameState,
+    player: PlayerId,
+    source: crate::ids::ObjectId,
+    method: &crate::alternative_cast::AlternativeCastingMethod,
+    base_cost: &crate::mana::ManaCost,
+) -> crate::mana::ManaCost {
+    if alternative_method_is_offering(method) {
+        best_offering_cost_difference(game, player, source, method, base_cost)
+    } else {
+        apply_emerge_reduction_to_alternative_mana_cost(game, player, source, method, base_cost)
     }
 }
 
@@ -1001,7 +1113,10 @@ fn casting_method_grants_flash_timing(
     };
     matches!(
         method,
-        Some(crate::alternative_cast::AlternativeCastingMethod::FlashWithAdditionalCost { .. })
+        Some(
+            crate::alternative_cast::AlternativeCastingMethod::FlashWithAdditionalCost { .. }
+                | crate::alternative_cast::AlternativeCastingMethod::Offering { .. }
+        )
     )
 }
 
@@ -1145,7 +1260,7 @@ pub fn spell_mana_cost_for_cast(
         if let Some(method) =
             alternative_method_for_casting_method(game, player, spell, casting_method)
         {
-            Some(apply_emerge_reduction_to_alternative_mana_cost(
+            Some(apply_alternative_keyword_cost_adjustment(
                 game, player, spell.id, &method, &cost,
             ))
         } else {
@@ -2189,7 +2304,7 @@ pub(crate) fn can_cast_with_alternative_with_context(
         return false;
     }
     let mana_cost = mana_cost.map(|cost| {
-        apply_emerge_reduction_to_alternative_mana_cost(game, player, spell.id, method, cost)
+        apply_alternative_keyword_cost_adjustment(game, player, spell.id, method, cost)
     });
 
     let requirements = build_requirements_for_method(method);
@@ -2316,7 +2431,7 @@ pub(crate) fn can_cast_with_alternative_from_hand_with_context(
             let zero_cost = crate::mana::ManaCost::new();
             let casting_method = provisional_casting_method_for_alternative(spell, method);
             let mana_cost = method.mana_cost().or(Some(&zero_cost)).map(|cost| {
-                apply_emerge_reduction_to_alternative_mana_cost(
+                apply_alternative_keyword_cost_adjustment(
                     game, player, spell_id, method, cost,
                 )
             });

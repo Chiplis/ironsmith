@@ -621,6 +621,19 @@ pub(super) fn format_alternative_method(
             }
             ("Bestow".to_string(), parts.join(", "))
         }
+        AlternativeCastingMethod::Offering { subtype, .. } => {
+            let mut parts = Vec::new();
+            if let Some(mana) = method.mana_cost() {
+                parts.push(format_mana_cost_simple(mana));
+            }
+            for cost in method.non_mana_costs() {
+                let rendered = cost.display();
+                if !rendered.trim().is_empty() {
+                    parts.push(rendered);
+                }
+            }
+            (format!("{} offering", subtype.display_name()), parts.join(", "))
+        }
         AlternativeCastingMethod::Composed { .. } | AlternativeCastingMethod::FromZone { .. } => {
             let mana_cost = method.mana_cost();
             let name = method.name();

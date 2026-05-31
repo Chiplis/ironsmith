@@ -306,6 +306,7 @@ impl CardDefinitionBuilder {
             KeywordAction::Embalm(cost) => self.embalm(cost),
             KeywordAction::Eternalize(cost) => self.eternalize(cost),
             KeywordAction::Emerge(cost) => self.emerge(cost),
+            KeywordAction::Offering(subtype) => self.offering(subtype),
             KeywordAction::Vanishing(amount) => self.vanishing(amount),
             KeywordAction::Bloodthirst(amount) => self.bloodthirst(amount),
             KeywordAction::Ninjutsu(cost) => self.ninjutsu(cost),
@@ -1138,6 +1139,21 @@ impl CardDefinitionBuilder {
                 )],
             ),
         )
+    }
+
+    pub fn offering(self, subtype: Subtype) -> Self {
+        let printed_cost = self.card_builder.mana_cost_ref().cloned().unwrap_or_default();
+        self.alternative_cast(crate::alternative_cast::AlternativeCastingMethod::Offering {
+            subtype,
+            total_cost: TotalCost::from_costs(vec![
+                crate::costs::Cost::mana(printed_cost),
+                crate::costs::Cost::sacrifice(
+                    crate::target::ObjectFilter::creature()
+                        .with_subtype(subtype)
+                        .you_control(),
+                ),
+            ]),
+        })
     }
 
     pub fn aura_swap(self, cost: ManaCost) -> Self {

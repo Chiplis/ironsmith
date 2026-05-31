@@ -3296,7 +3296,27 @@ fn describe_each_creature_and_player_damage_cant_regenerate_structural(
     ))
 }
 
+fn describe_parallel_untap_all(effects: &[Effect]) -> Option<String> {
+    if effects.len() < 2 {
+        return None;
+    }
+
+    let mut targets = Vec::with_capacity(effects.len());
+    for effect in effects {
+        let untap = effect.downcast_ref::<crate::effects::UntapEffect>()?;
+        if !matches!(untap.target, ChooseSpec::All(_)) {
+            return None;
+        }
+        targets.push(describe_choose_spec(&untap.target));
+    }
+
+    Some(format!("Untap {}", join_with_and(&targets)))
+}
+
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
+    if let Some(compact) = describe_parallel_untap_all(effects) {
+        return compact;
+    }
     if let Some(compact) = describe_structural_multisentence_effect_list(effects) {
         return compact;
     }

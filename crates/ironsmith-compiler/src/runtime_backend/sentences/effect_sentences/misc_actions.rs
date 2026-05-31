@@ -750,6 +750,24 @@ pub(crate) fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
     }
     let words = crate::runtime_backend::token_word_refs(tokens);
     if word_slice_first_is_any(&words, &["all", "each"]) {
+        if let Some(and_idx) = tokens[1..]
+            .windows(2)
+            .position(|window| {
+                window[0].is_word("and") && (window[1].is_word("all") || window[1].is_word("each"))
+            })
+            .map(|idx| idx + 1)
+        {
+            let left_tokens = trim_commas(&tokens[1..and_idx]);
+            let right_tokens = trim_commas(&tokens[and_idx + 2..]);
+            if !left_tokens.is_empty() && !right_tokens.is_empty() {
+                return Ok(EffectAst::Sequence {
+                    effects: vec![
+                        EffectAst::subject_verb_untap_all(parse_object_filter(&left_tokens, false)?),
+                        EffectAst::subject_verb_untap_all(parse_object_filter(&right_tokens, false)?),
+                    ],
+                });
+            }
+        }
         let filter = parse_object_filter(&tokens[1..], false)?;
         return Ok(EffectAst::subject_verb_untap_all(filter));
     }

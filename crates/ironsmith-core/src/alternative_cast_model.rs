@@ -1,4 +1,4 @@
-use crate::{CostComponent, ManaCost, TotalCost, Zone};
+use crate::{CostComponent, ManaCost, Subtype, TotalCost, Zone};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TrapCondition {
@@ -104,6 +104,10 @@ pub enum AlternativeCastingMethod<E, C, Cond> {
     Bestow {
         total_cost: TotalCost<C>,
     },
+    Offering {
+        subtype: Subtype,
+        total_cost: TotalCost<C>,
+    },
 }
 
 impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond>
@@ -130,7 +134,8 @@ where
             | Self::Awaken { .. }
             | Self::Composed { .. }
             | Self::Trap { .. }
-            | Self::Bestow { .. } => Zone::Hand,
+            | Self::Bestow { .. }
+            | Self::Offering { .. } => Zone::Hand,
             Self::FromZone { zone, .. } => *zone,
         }
     }
@@ -174,6 +179,7 @@ where
             Self::Composed { total_cost, .. } => total_cost.mana_cost(),
             Self::FromZone { total_cost, .. } => total_cost.mana_cost(),
             Self::Bestow { total_cost } => total_cost.mana_cost(),
+            Self::Offering { total_cost, .. } => total_cost.mana_cost(),
         }
     }
 
@@ -191,6 +197,7 @@ where
             Self::Composed { total_cost, .. } => non_mana_components(total_cost),
             Self::FromZone { total_cost, .. } => non_mana_components(total_cost),
             Self::Bestow { total_cost } => non_mana_components(total_cost),
+            Self::Offering { total_cost, .. } => non_mana_components(total_cost),
             _ => Vec::new(),
         }
     }
@@ -205,6 +212,7 @@ where
             Self::Composed { total_cost, .. } => Some(total_cost),
             Self::FromZone { total_cost, .. } => Some(total_cost),
             Self::Bestow { total_cost } => Some(total_cost),
+            Self::Offering { total_cost, .. } => Some(total_cost),
             _ => None,
         }
     }
@@ -269,6 +277,14 @@ where
             Self::Trap { name, .. } => name,
             Self::FromZone { name, .. } => name,
             Self::Bestow { .. } => "Bestow",
+            Self::Offering { .. } => "Offering",
+        }
+    }
+
+    pub fn offering_subtype(&self) -> Option<Subtype> {
+        match self {
+            Self::Offering { subtype, .. } => Some(*subtype),
+            _ => None,
         }
     }
 
@@ -413,6 +429,10 @@ where
     pub fn is_bestow(&self) -> bool {
         matches!(self, Self::Bestow { .. })
     }
+
+    pub fn is_offering(&self) -> bool {
+        matches!(self, Self::Offering { .. })
+    }
 }
 
 impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
@@ -529,6 +549,13 @@ impl<E, C, Cond> AlternativeCastingMethod<E, C, Cond> {
                 condition,
             },
             Self::Bestow { total_cost } => AlternativeCastingMethod::Bestow {
+                total_cost: map_total_cost(total_cost, &mut map_cost)?,
+            },
+            Self::Offering {
+                subtype,
+                total_cost,
+            } => AlternativeCastingMethod::Offering {
+                subtype,
                 total_cost: map_total_cost(total_cost, &mut map_cost)?,
             },
         })

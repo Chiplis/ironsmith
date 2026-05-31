@@ -1077,6 +1077,45 @@ fn fae_offering_keeps_both_spell_gate_and_token_bundle() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn patron_of_the_orochi_parses_typed_offering_and_activated_untap_text() {
+    let def = parse_oracle_card_definition("Patron of the Orochi");
+
+    assert_eq!(def.alternative_casts.len(), 1, "expected one offering alternative cast");
+    assert!(
+        matches!(
+            &def.alternative_casts[0],
+            crate::alternative_cast::AlternativeCastingMethod::Offering {
+                subtype: Subtype::Snake,
+                ..
+            }
+        ),
+        "expected Patron to lower Snake offering to an offering alternative cast, got {:#?}",
+        def.alternative_casts
+    );
+
+    let rendered_lines = unprocessed_compiled_lines(&def);
+    let rendered = rendered_lines.join("\n");
+    assert!(
+        rendered.contains("Snake offering"),
+        "expected typed offering keyword to render for Patron of the Orochi, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Untap all Forests and all green creatures")
+            && rendered.contains("Activate only once each turn"),
+        "expected Patron activated ability text to survive compilation, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("Offering")
+            && debug.contains("Snake")
+            && debug.contains("timing: OncePerTurn"),
+        "expected Patron structure to preserve offering semantics and once-per-turn activation, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn sphinx_ambassador_keeps_search_name_choice_condition() {
     let triggered = "Whenever this creature deals combat damage to a player, search that player's library for a card, then that player chooses a card name. If you searched for a creature card that doesn't have that name, you may put it onto the battlefield under your control. Then that player shuffles.";
     let def = CardDefinitionBuilder::new(CardId::new(), "Sphinx Ambassador Variant")

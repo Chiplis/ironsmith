@@ -2142,6 +2142,9 @@ pub(super) fn describe_alternative_cast_line(
                 format!("Bestow {mana_cost}, {extra}")
             }
         }
+        AlternativeCastingMethod::Offering { subtype, .. } => {
+            format!("{} offering", subtype.display_name())
+        }
         other => {
             if other.name().eq_ignore_ascii_case("Parsed alternative cost") {
                 if let Some(cost) = other.mana_cost() {
@@ -2190,6 +2193,7 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
         if matches!(
             method,
             AlternativeCastingMethod::FlashWithAdditionalCost { .. }
+                | AlternativeCastingMethod::Offering { .. }
         ) {
             leading_alternative_cast_lines.push(line);
         } else {

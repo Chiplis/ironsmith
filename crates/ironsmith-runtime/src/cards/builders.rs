@@ -518,6 +518,7 @@ pub(crate) enum KeywordAction {
     Embalm(ManaCost),
     Eternalize(ManaCost),
     Emerge(ManaCost),
+    Offering(Subtype),
     Ninjutsu(ManaCost),
     Backup(u32),
     Cipher,
@@ -787,6 +788,7 @@ impl KeywordAction {
             Self::Embalm(cost) => format!("Embalm {}", cost.to_oracle()),
             Self::Eternalize(cost) => format!("Eternalize {}", cost.to_oracle()),
             Self::Emerge(cost) => format!("Emerge {}", cost.to_oracle()),
+            Self::Offering(subtype) => format!("{} offering", subtype.display_name()),
             Self::Ninjutsu(cost) => format!("Ninjutsu {}", cost.to_oracle()),
             Self::Backup(amount) => format!("Backup {amount}"),
             Self::Cipher => "Cipher".to_string(),
@@ -1655,6 +1657,7 @@ impl CardDefinitionBuilder {
             KeywordAction::Embalm(cost) => self.embalm(cost),
             KeywordAction::Eternalize(cost) => self.eternalize(cost),
             KeywordAction::Emerge(cost) => self.emerge(cost),
+            KeywordAction::Offering(subtype) => self.offering(subtype),
             KeywordAction::Ninjutsu(cost) => self.ninjutsu(cost),
             KeywordAction::Backup(amount) => self.backup(amount),
             KeywordAction::Cipher => self.cipher(),
@@ -2708,6 +2711,20 @@ impl CardDefinitionBuilder {
                 ObjectFilter::creature().you_control(),
             )],
         ))
+    }
+
+    /// Add offering for the given creature subtype.
+    pub fn offering(self, subtype: Subtype) -> Self {
+        let printed_cost = self.card_builder.mana_cost_ref().cloned().unwrap_or_default();
+        self.alternative_cast(AlternativeCastingMethod::Offering {
+            subtype,
+            total_cost: TotalCost::from_costs(vec![
+                crate::costs::Cost::mana(printed_cost),
+                crate::costs::Cost::sacrifice(
+                    ObjectFilter::creature().with_subtype(subtype).you_control(),
+                ),
+            ]),
+        })
     }
 
     /// Add scavenge with a mana cost.

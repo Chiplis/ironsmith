@@ -39,6 +39,349 @@ fn setup_three_player_game() -> GameState {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn patron_of_the_orochi_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(74_542), "Patron of the Orochi")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(6)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .supertypes(vec![Supertype::Legendary])
+        .subtypes(vec![Subtype::Spirit])
+        .power_toughness(PowerToughness::fixed(7, 7))
+        .parse_text(
+            "Snake offering (You may cast this spell any time you could cast an instant by sacrificing a Snake and paying the difference in mana costs between this and the sacrificed Snake. Mana cost includes color.)\n\
+             {T}: Untap all Forests and all green creatures. Activate only once each turn.",
+        )
+        .expect("Patron of the Orochi should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_patron_test_forest(
+    game: &mut GameState,
+    name: &str,
+    controller: PlayerId,
+) -> ObjectId {
+    let forest = CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Forest])
+        .build();
+    game.create_object_from_card(&forest, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_patron_test_creature(
+    game: &mut GameState,
+    name: &str,
+    controller: PlayerId,
+    subtypes: Vec<Subtype>,
+    mana_cost: ManaCost,
+) -> ObjectId {
+    let creature = CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .subtypes(subtypes)
+        .mana_cost(mana_cost)
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    game.create_object_from_card(&creature, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn patron_offering_cast_action(
+    game: &GameState,
+    player: PlayerId,
+    patron_id: ObjectId,
+) -> Option<crate::decision::LegalAction> {
+    crate::decision::compute_legal_actions(game, player)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Hand,
+                    casting_method: crate::alternative_cast::CastingMethod::Alternative(0),
+                } if *spell_id == patron_id
+            )
+        })
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn finish_patron_offering_cast_with_sacrifice(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    state: &mut PriorityLoopState,
+    mut progress: crate::decision::GameProgress,
+    snake_id: ObjectId,
+) {
+    for _ in 0..6 {
+        progress = match progress {
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectOptions(ctx),
+            ) => {
+                let option_index = ctx
+                    .options
+                    .iter()
+                    .find(|option| option.description.to_ascii_lowercase().contains("sacrifice"))
+                    .map(|option| option.index)
+                    .expect("Patron offering should prompt for the sacrifice cost step");
+                apply_priority_response(
+                    game,
+                    trigger_queue,
+                    state,
+                    &PriorityResponse::NextCostChoice(option_index),
+                )
+                .expect("Patron offering should accept sacrifice cost step")
+            }
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectObjects(ctx),
+            ) => {
+                assert!(
+                    ctx.candidates
+                        .iter()
+                        .any(|candidate| candidate.id == snake_id && candidate.legal),
+                    "Patron offering should allow sacrificing a Snake you control"
+                );
+                apply_priority_response(
+                    game,
+                    trigger_queue,
+                    state,
+                    &PriorityResponse::CardCostChoice(snake_id),
+                )
+                .expect("Patron offering should accept the sacrificed Snake")
+            }
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Priority(_),
+            ) => return,
+            other => panic!("unexpected Patron offering cast flow state: {other:?}"),
+        };
+    }
+    panic!("Patron offering cast did not finish paying costs");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn patron_of_the_orochi_snake_offering_casts_at_instant_timing_and_reduces_colored_cost() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(alice);
+
+    let patron = patron_of_the_orochi_definition();
+    let patron_id = game.create_object_from_definition(&patron, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Green, 7);
+
+    assert!(
+        patron_offering_cast_action(&game, alice, patron_id).is_none(),
+        "Patron offering should require a Snake to sacrifice"
+    );
+    create_patron_test_creature(
+        &mut game,
+        "Green Bear",
+        alice,
+        vec![Subtype::Bear],
+        ManaCost::from_symbols(vec![ManaSymbol::Green]),
+    );
+    assert!(
+        patron_offering_cast_action(&game, alice, patron_id).is_none(),
+        "Patron offering should not accept a non-Snake creature"
+    );
+
+    let snake_id = create_patron_test_creature(
+        &mut game,
+        "Orochi Sustainer",
+        alice,
+        vec![Subtype::Snake],
+        ManaCost::from_symbols(vec![ManaSymbol::Green]),
+    );
+    let patron_obj = game.object(patron_id).expect("Patron should be in hand");
+    let offering_cost = crate::decision::spell_mana_cost_for_cast(
+        &game,
+        alice,
+        patron_obj,
+        &crate::alternative_cast::CastingMethod::Alternative(0),
+        Zone::Hand,
+    )
+    .expect("offering cost should resolve");
+    assert_eq!(
+        offering_cost.to_oracle(),
+        "{6}{G}",
+        "Snake offering should subtract the sacrificed Snake's green mana symbol from Patron's mana cost"
+    );
+
+    let action = patron_offering_cast_action(&game, alice, patron_id)
+        .expect("Patron should be castable with Snake offering on Bob's turn");
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(action),
+    )
+    .expect("Patron offering cast should start");
+    finish_patron_offering_cast_with_sacrifice(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        progress,
+        snake_id,
+    );
+
+    assert!(
+        game.player(alice)
+            .expect("Alice should exist")
+            .graveyard
+            .iter()
+            .any(|id| game.object(*id).is_some_and(|obj| obj.name == "Orochi Sustainer")),
+        "the Snake should be sacrificed as part of offering"
+    );
+    assert!(
+        game.stack
+            .iter()
+            .any(|entry| game
+                .object(entry.object_id)
+                .is_some_and(|obj| obj.name == "Patron of the Orochi"))
+            || game
+                .battlefield
+                .iter()
+                .any(|id| game
+                    .object(*id)
+                    .is_some_and(|obj| obj.name == "Patron of the Orochi")),
+        "Patron should have been cast with offering"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn activate_patron_of_the_orochi(
+    game: &mut GameState,
+    patron_id: ObjectId,
+    controller: PlayerId,
+) {
+    let ability_index = game
+        .object(patron_id)
+        .expect("Patron should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Patron should have an activated ability");
+    let activate_action = crate::decision::compute_legal_actions(game, controller)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == patron_id && *idx == ability_index
+            )
+        })
+        .expect("Patron activation should be legal");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = AutoPassDecisionMaker;
+    let progress = apply_priority_response_with_dm(
+        game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Patron activation should start");
+    if let crate::decision::GameProgress::NeedsDecisionCtx(ctx) = progress {
+        match ctx {
+            crate::decisions::context::DecisionContext::Priority(_) => {}
+            other => panic!("Patron activation should not need targets or choices, got {other:?}"),
+        }
+    }
+    if !game.stack.is_empty() {
+        resolve_stack_entry(game).expect("Patron activation should resolve");
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn patron_of_the_orochi_activation_untaps_all_forests_and_green_creatures_once_each_turn() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let patron = patron_of_the_orochi_definition();
+    let patron_id = game.create_object_from_definition(&patron, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(patron_id);
+    let alice_forest = create_patron_test_forest(&mut game, "Alice Forest", alice);
+    let bob_forest = create_patron_test_forest(&mut game, "Bob Forest", bob);
+    let alice_green = create_colored_creature(
+        &mut game,
+        "Alice Green Snake",
+        alice,
+        Some(crate::color::ColorSet::GREEN),
+    );
+    let bob_green = create_colored_creature(
+        &mut game,
+        "Bob Green Bear",
+        bob,
+        Some(crate::color::ColorSet::GREEN),
+    );
+    let colorless_creature = create_colored_creature(&mut game, "Colorless Bear", alice, None);
+    let nonforest_land = CardBuilder::new(CardId::new(), "Wastes")
+        .card_types(vec![CardType::Land])
+        .build();
+    let nonforest_land_id = game.create_object_from_card(&nonforest_land, alice, Zone::Battlefield);
+
+    for id in [
+        alice_forest,
+        bob_forest,
+        alice_green,
+        bob_green,
+        colorless_creature,
+        nonforest_land_id,
+    ] {
+        game.tap(id);
+    }
+
+    activate_patron_of_the_orochi(&mut game, patron_id, alice);
+
+    for (id, label) in [
+        (alice_forest, "Alice Forest"),
+        (bob_forest, "Bob Forest"),
+        (alice_green, "Alice green creature"),
+        (bob_green, "Bob green creature"),
+        (patron_id, "Patron itself"),
+    ] {
+        assert!(!game.is_tapped(id), "{label} should be untapped by Patron");
+    }
+    assert!(
+        game.is_tapped(colorless_creature),
+        "nongreen non-Forest creature should remain tapped"
+    );
+    assert!(
+        game.is_tapped(nonforest_land_id),
+        "non-Forest land should remain tapped"
+    );
+
+    assert!(
+        !crate::decision::compute_legal_actions(&game, alice)
+            .into_iter()
+            .any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, .. } if source == patron_id
+            )),
+        "Patron should not be activatable a second time in the same turn even after untapping itself"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn rampaging_aetherhood_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(74_200), "Rampaging Aetherhood")
         .mana_cost(ManaCost::from_pips(vec![

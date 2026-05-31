@@ -442,6 +442,24 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
         (!text.is_empty()).then_some(vec![KeywordAction::MarkerText(text)])
     }
 
+    fn parse_offering_keyword_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
+        let keyword_tokens = tokens
+            .iter()
+            .position(|token| token.kind == TokenKind::LParen)
+            .map(|idx| &tokens[..idx])
+            .unwrap_or(tokens);
+        let words_view = TokenWordView::new(keyword_tokens);
+        let words = words_view.word_refs();
+        if words.len() != 2 || !words.last().is_some_and(|word| *word == "offering") {
+            return None;
+        }
+
+        let subtype = parse_subtype_flexible(words[0])?;
+        subtype
+            .is_creature_type()
+            .then_some(vec![KeywordAction::Offering(subtype)])
+    }
+
     fn parse_protection_chain_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
         let words_view = TokenWordView::new(tokens);
         let words = words_view.word_refs();
@@ -574,6 +592,9 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
         return Some(actions);
     }
     if let Some(actions) = parse_splice_keyword_line_lexed(tokens) {
+        return Some(actions);
+    }
+    if let Some(actions) = parse_offering_keyword_line_lexed(tokens) {
         return Some(actions);
     }
 
