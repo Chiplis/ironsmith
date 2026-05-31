@@ -3034,6 +3034,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if filtered.len() >= 7
         && filtered[0] == "you"
         && filtered[1] == "put"
+        && !matches!(filtered.get(2..4), Some(["fewer" | "less", "than"]))
         && word_slice_ends_with(&filtered, &["this", "way"])
         && let Some(onto_idx) = onto_battlefield_idx
     {

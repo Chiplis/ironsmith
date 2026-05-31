@@ -520,6 +520,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::pairs::parse_look_at_top_then_exile_face_down_then_play_while_exiled,
     },
     SequenceRuleDef {
+        name: "look-at-top-put-matches-battlefield-rest-bottom",
+        feature_tag: Some("looked-cards-battlefield-bottom"),
+        priority: 236,
+        consumed_sentences: 2,
+        predicate: first_head_look_at,
+        parser: generic_subject_verb_sequences::pairs::parse_look_at_top_then_put_matches_onto_battlefield_rest_bottom,
+    },
+    SequenceRuleDef {
         name: "look-at-top-put-one-hand-other-bottom",
         feature_tag: Some("looked-cards-hand-bottom"),
         priority: 236,

@@ -4104,6 +4104,71 @@ fn compile_subject_verb_effect(
                 choices,
             ))
         }
+        SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldRestOnBottomOfLibrary {
+            battlefield_filter,
+            count,
+            tapped,
+            order,
+        } => {
+            use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
+
+            let looked_tag = ctx.last_object_tag.clone().ok_or_else(|| {
+                CardTextError::ParseError(
+                    "unable to resolve looked-at cards without prior reference".to_string(),
+                )
+            })?;
+
+            let subject = LoweredSubject::resolve_chooser(player, ctx, true, true, false)?;
+            let chooser = subject.clone_player_filter();
+
+            let mut choose_filter = subject
+                .resolve_object_refs_and_bind_player_refs_in_filter(battlefield_filter, ctx)?;
+            let choices = subject.into_choices();
+            choose_filter.zone = Some(Zone::Library);
+            choose_filter.tagged_constraints.push(TaggedObjectConstraint {
+                tag: TagKey::from(looked_tag.as_str()),
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            });
+
+            let chosen_tag = ctx.next_tag("chosen");
+            let chosen_tag_key: TagKey = chosen_tag.as_str().into();
+            let choose = Effect::new(
+                crate::effects::ChooseObjectsEffect::new(
+                    choose_filter,
+                    count.clone(),
+                    chooser.clone(),
+                    chosen_tag_key.clone(),
+                )
+                .in_zone(Zone::Library),
+            );
+
+            let resolved_order = match order {
+                crate::cards::builders::LibraryBottomOrderAst::Random => {
+                    crate::effects::consult_helpers::LibraryBottomOrder::Random
+                }
+                crate::cards::builders::LibraryBottomOrderAst::ChooserChooses => {
+                    crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses
+                }
+            };
+            let move_rest = Effect::put_tagged_remainder_on_library_bottom(
+                TagKey::from(looked_tag.as_str()),
+                Some(chosen_tag_key.clone()),
+                resolved_order,
+                chooser.clone(),
+            );
+
+            let move_chosen = Effect::for_each_tagged(
+                chosen_tag.clone(),
+                vec![Effect::put_onto_battlefield(
+                    ChooseSpec::Iterated,
+                    *tapped,
+                    chooser.clone(),
+                )],
+            );
+
+            ctx.last_object_tag = Some(chosen_tag);
+            Ok((vec![choose, move_chosen, move_rest], choices))
+        }
         SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary {
             battlefield_filter,
             hand_filter,

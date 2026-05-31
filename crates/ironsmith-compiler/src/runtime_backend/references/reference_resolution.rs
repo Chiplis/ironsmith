@@ -1,6 +1,6 @@
 use crate::cards::builders::{
-    CardTextError, EffectAst, IT_TAG, IdGenContext, PlayerAst, PredicateAst, SubjectVerbActionAst,
-    SubjectVerbEffectAst, SubjectVerbRoleAst, TargetAst, TriggerSpec,
+    CardTextError, EffectAst, IT_TAG, IdGenContext, IfResultPredicate, PlayerAst, PredicateAst,
+    SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TargetAst, TriggerSpec,
 };
 use crate::effect::{EffectId, EventValueSpec};
 use crate::filter::{Comparison, TaggedOpbjectRelation};
@@ -402,6 +402,7 @@ fn advance_reference_frame_for_effect(
                 | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. }
                 | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
                 | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
+                | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldRestOnBottomOfLibrary { .. }
                 | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary { .. } => {
                     track_effect_player(subject_verb.subject.player, frame, true, true)?;
                     frame.last_object_tag = Some(next_reference_tag(id_gen, "chosen"));
@@ -1584,6 +1585,10 @@ fn resolve_effect_references_in_effect(
         let condition = state.last_effect_id.ok_or_else(|| {
             CardTextError::ParseError("missing prior effect for if clause".to_string())
         })?;
+        let mut effects = effects;
+        if let IfResultPredicate::Value(crate::effect::Comparison::LessThan(threshold)) = predicate {
+            apply_difference_threshold_to_effects(&mut effects, threshold);
+        }
         let effects = resolve_effect_sequence_references_with_state(
             &effects,
             id_gen,
@@ -1662,6 +1667,56 @@ fn resolve_effect_references_in_effect(
         Ok::<_, CardTextError>(())
     })?;
     Ok(effect)
+}
+
+fn apply_difference_threshold_to_effects(effects: &mut [EffectAst], threshold: i32) {
+    for effect in effects {
+        match effect {
+            EffectAst::SubjectVerb(subject_verb) => {
+                if let SubjectVerbActionAst::Proliferate { count } = &mut subject_verb.action {
+                    apply_difference_threshold_to_value(count, threshold);
+                }
+            }
+            EffectAst::Conditional {
+                if_true, if_false, ..
+            } => {
+                apply_difference_threshold_to_effects(if_true, threshold);
+                apply_difference_threshold_to_effects(if_false, threshold);
+            }
+            EffectAst::IfResult { effects, .. }
+            | EffectAst::WhenResult { effects, .. }
+            | EffectAst::ResolvedIfResult { effects, .. }
+            | EffectAst::ResolvedWhenResult { effects, .. }
+            | EffectAst::ForEachOpponent { effects }
+            | EffectAst::ForEachPlayer { effects }
+            | EffectAst::ForEachTagged { effects, .. }
+            | EffectAst::ForEachOpponentDoesNot { effects, .. }
+            | EffectAst::ForEachPlayerDoesNot { effects, .. }
+            | EffectAst::ForEachOpponentDid { effects, .. }
+            | EffectAst::ForEachPlayerDid { effects, .. }
+            | EffectAst::ForEachTargetPlayers { effects, .. }
+            | EffectAst::ForEachTaggedPlayer { effects, .. }
+            | EffectAst::ForEachPlayersFiltered { effects, .. } => {
+                apply_difference_threshold_to_effects(effects, threshold);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn apply_difference_threshold_to_value(value: &mut Value, threshold: i32) {
+    if let Value::SurfaceHinted { value: inner, hints } = value
+        && hints.contains(&ironsmith_core::ValueSurfaceHint::Difference)
+        && matches!(inner.unhinted(), Value::EventValue(EventValueSpec::Amount))
+    {
+        *value = Value::Add(
+            Box::new(Value::Fixed(threshold)),
+            Box::new(Value::Scaled(
+                Box::new(Value::EventValue(EventValueSpec::Amount)),
+                -1,
+            )),
+        );
+    }
 }
 
 fn resolve_effect_sequence_references_with_state(
@@ -1993,6 +2048,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
+            | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::RetargetStackObject { .. }
             | SubjectVerbActionAst::GrantAbilityToSource { .. }
@@ -2695,6 +2751,10 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 ..
             } => 0,
             SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary {
+                battlefield_filter,
+                ..
+            } => bind_unresolved_it_in_filter(battlefield_filter, seed_tag),
+            SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldRestOnBottomOfLibrary {
                 battlefield_filter,
                 ..
             } => bind_unresolved_it_in_filter(battlefield_filter, seed_tag),

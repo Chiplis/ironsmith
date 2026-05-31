@@ -610,12 +610,20 @@ impl EffectOutcome {
 
     /// Get the count value, or zero if not a Count result.
     pub fn count_or_zero(&self) -> i32 {
-        self.value.count_or_zero()
+        self.result_count().unwrap_or(0)
     }
 
     /// Get the count value if this is a Count result.
     pub fn as_count(&self) -> Option<i32> {
         self.value.as_count()
+    }
+
+    /// Numeric result for effects whose natural result is a countable object set.
+    pub fn result_count(&self) -> Option<i32> {
+        self.as_count().or_else(|| {
+            let count = self.output_objects().len();
+            (count > 0).then_some(count as i32)
+        })
     }
 
     /// Access explicit object IDs returned by the compatibility summary.
@@ -780,7 +788,7 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
                     && !outcome.has_execution_fact(|fact| matches!(fact, ExecutionFact::Replaced))
                     && outcome.status != OutcomeStatus::Replaced
             }
-            Self::Value(cmp) => outcome.as_count().is_some_and(|n| cmp.evaluate(n)),
+            Self::Value(cmp) => outcome.result_count().is_some_and(|n| cmp.evaluate(n)),
             Self::Chosen => {
                 !outcome.has_execution_fact(|fact| matches!(fact, ExecutionFact::Declined))
             }

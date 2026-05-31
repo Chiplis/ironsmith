@@ -26,7 +26,7 @@ use crate::runtime_backend::lexer::TokenWordView;
 use crate::runtime_backend::object_filters::parse_object_filter_lexed;
 use crate::runtime_backend::permission_helpers::parse_cast_or_play_tagged_clause;
 use crate::runtime_backend::token_primitives::{
-    find_index, parse_leading_may_action_lexed, word_view_has_any_prefix,
+    find_index, parse_count_range_prefix, parse_leading_may_action_lexed, word_view_has_any_prefix,
 };
 use crate::runtime_backend::util::trim_commas;
 use crate::runtime_backend::util::{
@@ -74,6 +74,113 @@ fn strip_leading_if_you_do_sentence(tokens: &[OwnedLexToken]) -> (Vec<OwnedLexTo
     let stripped = crate::runtime_backend::token_primitives::strip_leading_if_you_do_lexed(tokens);
     let was_stripped = stripped.len() != tokens.len();
     (trim_commas(stripped), was_stripped)
+}
+
+fn looked_cards_battlefield_choice_count(
+    tokens: &[OwnedLexToken],
+) -> Option<(ChoiceCount, Vec<OwnedLexToken>)> {
+    let trimmed = trim_commas(tokens);
+    let Some(((min, max), rest)) = parse_count_range_prefix(&trimmed) else {
+        return Some((ChoiceCount::up_to(1), trimmed));
+    };
+    let count = match (min, max) {
+        (Some(Value::Fixed(0)), Some(Value::Fixed(max))) if max >= 0 => {
+            ChoiceCount::up_to(max as usize)
+        }
+        (Some(Value::Fixed(min)), Some(Value::Fixed(max))) if min >= 0 && max >= min => {
+            ChoiceCount {
+                min: min as usize,
+                max: Some(max as usize),
+                dynamic_x: false,
+                up_to_x: false,
+                random: false,
+            }
+        }
+        _ => return None,
+    };
+    Some((count, trim_commas(rest)))
+}
+
+pub(crate) fn parse_look_at_top_then_put_matches_onto_battlefield_rest_bottom(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((player, count, reveal_top)) =
+        parse_top_cards_view_sentence(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+
+    let action_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
+    let action_clause = LexedClause::new(&action_tokens).trimmed();
+    if !action_clause.starts_with(&["put"]) {
+        return Ok(None);
+    }
+    let put_tail = action_clause.after_words(1).ok_or_else(|| {
+        CardTextError::ParseError("missing looked-card battlefield choice".to_string())
+    })?;
+    let action_words = put_tail.words();
+    let action_word_refs = action_words.word_refs();
+    let Some((from_among_word_idx, from_among_len)) =
+        find_from_among_looked_cards_phrase(&action_words)
+    else {
+        return Ok(None);
+    };
+
+    let filter_end = action_words
+        .token_index_for_word_index(from_among_word_idx)
+        .unwrap_or(put_tail.len());
+    let filter_tokens = trim_commas(&put_tail.tokens()[..filter_end]);
+    let Some((choice_count, filter_tokens)) = looked_cards_battlefield_choice_count(&filter_tokens)
+    else {
+        return Ok(None);
+    };
+    let mut filter = if let Some(filter) = parse_looked_card_reveal_filter(&filter_tokens) {
+        filter
+    } else {
+        return Ok(None);
+    };
+    effect_sentences::normalize_search_library_filter(&mut filter);
+    filter.zone = None;
+
+    let after_from_words = &action_word_refs[from_among_word_idx + from_among_len..];
+    let battlefield_tapped = word_slice_starts_with_any(
+        after_from_words,
+        &[
+            &[
+                "onto", "the", "battlefield", "tapped", "and", "the", "rest",
+            ],
+            &["onto", "battlefield", "tapped", "and", "the", "rest"],
+        ],
+    );
+    if !battlefield_tapped
+        || !word_slice_contains_all_words(after_from_words, &["rest", "bottom", "library"])
+    {
+        return Ok(None);
+    }
+    let Some(order) = parse_consult_remainder_order(after_from_words) else {
+        return Ok(None);
+    };
+
+    let looked_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "looked");
+    let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
+        player,
+        count,
+        looked_tag.clone(),
+    )];
+    if reveal_top {
+        effects.push(EffectAst::subject_verb_reveal_tagged(looked_tag.clone()));
+    }
+    effects.push(
+        EffectAst::subject_verb_choose_from_looked_cards_onto_battlefield_rest_on_bottom_of_library(
+            player,
+            filter,
+            choice_count,
+            true,
+            order,
+        ),
+    );
+    Ok(Some(effects))
 }
 
 fn wrap_optional_consult_effects(

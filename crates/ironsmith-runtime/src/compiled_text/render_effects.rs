@@ -836,7 +836,11 @@ fn describe_reveal_top_two_optional_picks_rest_bottom(effects: &[&Effect]) -> Op
     else {
         return None;
     };
-    let look = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let look_unwrapped = look_effect
+        .downcast_ref::<crate::effects::WithIdEffect>()
+        .map(|with_id| with_id.effect.as_ref())
+        .unwrap_or(look_effect);
+    let look = look_unwrapped.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
     let reveal = reveal_effect.downcast_ref::<crate::effects::RevealTaggedEffect>()?;
     let first_choose = first_choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let first_tagged = first_move_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
@@ -899,6 +903,114 @@ fn describe_reveal_top_two_optional_picks_rest_bottom(effects: &[&Effect]) -> Op
     let subtype_text = second_choose.filter.subtypes[0].to_string();
     Some(format!(
         "Reveal the top {count_text} cards of your library. You may put up to one land card from among them onto the battlefield tapped and up to one {subtype_text} card from among them into your hand. Put the rest on the bottom of your library in a random order"
+    ))
+}
+
+fn describe_look_top_put_matches_battlefield_rest_bottom_difference(
+    effects: &[&Effect],
+) -> Option<String> {
+    fn unwrap_with_id(effect: &Effect) -> (&Effect, Option<crate::effect::EffectId>) {
+        if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            (with_id.effect.as_ref(), Some(with_id.id))
+        } else {
+            (effect, None)
+        }
+    }
+
+    let [look_effect, choose_effect, move_effect, rest_effect, if_effect] = effects else {
+        return None;
+    };
+    let (look_effect, _) = unwrap_with_id(look_effect);
+    let look = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let (choose_effect, _choose_id) = unwrap_with_id(choose_effect);
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let (move_effect, move_id) = unwrap_with_id(move_effect);
+    let move_id = move_id?;
+    let (move_chosen, move_targets_chosen_cards) = if let Some(for_each) =
+        move_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()
+    {
+        if for_each.tag != choose.tag {
+            return None;
+        }
+        let [inner] = for_each.effects.as_slice() else {
+            return None;
+        };
+        (
+            inner.downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()?,
+            true,
+        )
+    } else {
+        let move_chosen = move_effect.downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()?;
+        let targets_chosen =
+            matches!(&move_chosen.target, ChooseSpec::Tagged(tag) if tag == &choose.tag);
+        (move_chosen, targets_chosen)
+    };
+    let rest = rest_effect
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+    let if_effect = if_effect.downcast_ref::<crate::effects::IfEffect>()?;
+
+    let max = choose.count.max?;
+    let max_i32 = i32::try_from(max).ok()?;
+    if look.player != PlayerFilter::You
+        || look.reveal
+        || choose.chooser != PlayerFilter::You
+        || choose.count.min != 0
+        || choose_primary_zone(choose) != Some(Zone::Library)
+        || !choose.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag == look.tag
+        })
+        || rest.tag != look.tag
+        || rest.keep_tagged.as_ref() != Some(&choose.tag)
+        || rest.order != LibraryBottomOrder::Random
+        || rest.player != PlayerFilter::You
+        || !move_targets_chosen_cards
+        || !move_chosen.tapped
+        || move_chosen.controller != PlayerFilter::You
+        || if_effect.condition != move_id
+        || if_effect.predicate
+            != crate::effect::EffectPredicate::Value(crate::effect::Comparison::LessThan(max_i32))
+        || if_effect.then.len() != 1
+        || !if_effect.else_.is_empty()
+    {
+        return None;
+    }
+
+    let proliferate_effect = if_effect.then[0]
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .map(|tagged| tagged.effect.as_ref())
+        .unwrap_or(&if_effect.then[0]);
+    let proliferate = proliferate_effect.downcast_ref::<crate::effects::ProliferateEffect>()?;
+    let Value::Add(left, right) = &proliferate.count else {
+        return None;
+    };
+    if !matches!(left.as_ref(), Value::Fixed(n) if *n == max_i32)
+        || !matches!(
+            right.as_ref(),
+            Value::Scaled(inner, -1) if matches!(inner.as_ref(), Value::EffectValue(id) if *id == move_id)
+        )
+    {
+        return None;
+    }
+
+    let (look_count_text, noun, _) = describe_look_count_and_noun(&look.count);
+    let max_text = small_number_word(max as u32).unwrap_or_else(|| max.to_string());
+    let mut display_filter = choose.filter.clone();
+    display_filter.zone = None;
+    display_filter.tagged_constraints.clear();
+    let selection = pluralize_noun_phrase(&describe_search_selection_with_cards(
+        &display_filter.description(),
+    ));
+    let shortfall_selection = if display_filter.card_types == [CardType::Land]
+        && display_filter.subtypes.is_empty()
+        && display_filter.supertypes.is_empty()
+    {
+        "lands".to_string()
+    } else {
+        selection.clone()
+    };
+    Some(format!(
+        "Look at the top {look_count_text} {noun} of your library. Put up to {max_text} {selection} from among them onto the battlefield tapped and the rest on the bottom of your library in a random order. If you put fewer than {max_text} {shortfall_selection} onto the battlefield this way, proliferate a number of times equal to the difference"
     ))
 }
 
@@ -4820,6 +4932,14 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         })
         .collect::<Vec<_>>();
 
+    let unfiltered = effects.iter().collect::<Vec<_>>();
+    if unfiltered.len() == 5
+        && let Some(compact) =
+            describe_look_top_put_matches_battlefield_rest_bottom_difference(&unfiltered)
+    {
+        return compact;
+    }
+
     fn describe_source_counter_and_create(effects: &[&Effect]) -> Option<String> {
         let [counter_effect, create_effect] = effects else {
             return None;
@@ -5645,6 +5765,12 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     {
         return compact;
     }
+    if filtered.len() == 5
+        && let Some(compact) =
+            describe_look_top_put_matches_battlefield_rest_bottom_difference(&filtered)
+    {
+        return compact;
+    }
     if filtered.len() == 4
         && let Some(compact) = describe_hideaway_effects(&filtered)
     {
@@ -5688,6 +5814,13 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                 .is_some_and(|tag| is_implicit_reference_tag(tag.tag.as_str()))
         })
         .collect::<Vec<_>>();
+
+    if visible_effects.len() == 5
+        && let Some(compact) =
+            describe_look_top_put_matches_battlefield_rest_bottom_difference(&visible_effects)
+    {
+        return compact;
+    }
 
     if let Some(compact) = describe_choose_each_basic_land_type_then_destroy(&visible_effects) {
         return compact;

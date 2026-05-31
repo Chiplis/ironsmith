@@ -577,6 +577,20 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
     {
         return Some(IfResultPredicate::Did);
     }
+    if words.len() >= 8
+        && words[0] == "you"
+        && words[1] == "put"
+        && matches!(words[2], "fewer" | "less")
+        && words[3] == "than"
+        && words[words.len() - 2] == "this"
+        && words[words.len() - 1] == "way"
+        && let Some(value) = words[4]
+            .parse::<i32>()
+            .ok()
+            .or_else(|| ironsmith_core::parse_cardinal_word(words[4]).and_then(|n| n.try_into().ok()))
+    {
+        return Some(IfResultPredicate::Value(Comparison::LessThan(value)));
+    }
     if is_unqualified_this_way_result("you") {
         return Some(IfResultPredicate::Did);
     }

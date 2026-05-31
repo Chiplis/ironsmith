@@ -1406,6 +1406,12 @@ pub(crate) enum SubjectVerbActionAst {
         battlefield_filter: ObjectFilter,
         tapped: bool,
     },
+    ChooseFromLookedCardsOntoBattlefieldRestOnBottomOfLibrary {
+        battlefield_filter: ObjectFilter,
+        count: ChoiceCount,
+        tapped: bool,
+        order: LibraryBottomOrderAst,
+    },
     ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary {
         battlefield_filter: ObjectFilter,
         hand_filter: ObjectFilter,
@@ -2832,6 +2838,18 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary")
                 .field("battlefield_filter", battlefield_filter)
                 .field("tapped", tapped)
+                .finish(),
+            Self::ChooseFromLookedCardsOntoBattlefieldRestOnBottomOfLibrary {
+                battlefield_filter,
+                count,
+                tapped,
+                order,
+            } => f
+                .debug_struct("ChooseFromLookedCardsOntoBattlefieldRestOnBottomOfLibrary")
+                .field("battlefield_filter", battlefield_filter)
+                .field("count", count)
+                .field("tapped", tapped)
+                .field("order", order)
                 .finish(),
             Self::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary {
                 battlefield_filter,
@@ -4735,6 +4753,25 @@ impl EffectAst {
             SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary {
                 battlefield_filter,
                 tapped,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_choose_from_looked_cards_onto_battlefield_rest_on_bottom_of_library(
+        player: PlayerAst,
+        battlefield_filter: ObjectFilter,
+        count: ChoiceCount,
+        tapped: bool,
+        order: LibraryBottomOrderAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            player,
+            SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldRestOnBottomOfLibrary {
+                battlefield_filter,
+                count,
+                tapped,
+                order,
             },
         )
     }

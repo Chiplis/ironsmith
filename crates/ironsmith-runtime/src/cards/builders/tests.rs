@@ -39460,6 +39460,148 @@ fn proud_pack_rhino_proliferate_mode_increases_selected_counters() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_expand_the_sphere_compiles_strictly_and_renders_difference_clause() {
+    let def = parse_oracle_card_definition("Expand the Sphere");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+
+    assert_eq!(
+        rendered,
+        "Look at the top six cards of your library. Put up to two land cards from among them onto the battlefield tapped and the rest on the bottom of your library in a random order. If you put fewer than two lands onto the battlefield this way, proliferate a number of times equal to the difference.",
+        "expected strict compiled text to match Expand the Sphere's oracle text"
+    );
+    assert!(
+        rendered.contains("Put up to two land cards from among them onto the battlefield tapped"),
+        "expected looked-land battlefield choice in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("If you put fewer than two lands onto the battlefield this way, proliferate a number of times equal to the difference"),
+        "expected shortfall proliferate clause in compiled text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn execute_expand_the_sphere_with_library(land_count: usize) -> (usize, u32, u32) {
+    struct ChooseMaximum;
+
+    impl crate::decision::DecisionMaker for ChooseMaximum {
+        fn decide_objects(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            let count = ctx
+                .max
+                .unwrap_or(ctx.candidates.len())
+                .min(ctx.candidates.len());
+            ctx.candidates
+                .iter()
+                .take(count)
+                .map(|candidate| candidate.id)
+                .collect()
+        }
+
+        fn decide_proliferate(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::ProliferateContext,
+        ) -> crate::decisions::specs::ProliferateResponse {
+            crate::decisions::specs::ProliferateResponse {
+                permanents: ctx.eligible_permanents.iter().map(|(id, _)| *id).collect(),
+                players: ctx.eligible_players.iter().map(|(id, _)| *id).collect(),
+            }
+        }
+    }
+
+    let def = parse_oracle_card_definition("Expand the Sphere");
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let countered_id = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(92_000), "Countered Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    game.add_counters(countered_id, crate::object::CounterType::PlusOnePlusOne, 1)
+        .expect("countered creature should be on battlefield");
+    game.players[1].poison_counters = 1;
+
+    for idx in 0..6 {
+        let is_land = idx < land_count;
+        let mut builder = CardDefinitionBuilder::new(
+            CardId::from_raw(92_001 + idx as u32),
+            &format!("Library Card {idx}"),
+        );
+        builder = if is_land {
+            builder.card_types(vec![CardType::Land])
+        } else {
+            builder
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(1, 1))
+        };
+        game.create_object_from_definition(&builder.build(), alice, Zone::Library);
+    }
+
+    let mut dm = ChooseMaximum;
+    let mut ctx = crate::effects::ExecutionContext::new(source_id, alice, &mut dm);
+    for effect in def.spell_effect.as_ref().expect("Expand the Sphere spell effects") {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Expand the Sphere effect should resolve");
+    }
+
+    let battlefield_lands = game
+        .battlefield
+        .iter()
+        .filter(|&&id| {
+            game.object(id)
+                .is_some_and(|object| object.name.starts_with("Library Card"))
+        })
+        .count();
+    let plus_one_counters = game
+        .object(countered_id)
+        .and_then(|object| {
+            object
+                .counters
+                .get(&crate::object::CounterType::PlusOnePlusOne)
+                .copied()
+        })
+        .unwrap_or(0);
+    (battlefield_lands, game.players[1].poison_counters, plus_one_counters)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn expand_the_sphere_two_lands_enter_and_do_not_proliferate() {
+    let (lands, poison, counters) = execute_expand_the_sphere_with_library(2);
+    assert_eq!(lands, 2, "two eligible lands should enter tapped");
+    assert_eq!(poison, 1, "putting two lands should not proliferate");
+    assert_eq!(counters, 1, "putting two lands should not add permanent counters");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn expand_the_sphere_one_land_proliferates_once() {
+    let (lands, poison, counters) = execute_expand_the_sphere_with_library(1);
+    assert_eq!(lands, 1, "the one eligible land should enter tapped");
+    assert_eq!(poison, 2, "one missing land should proliferate once");
+    assert_eq!(counters, 2, "one missing land should add one permanent counter");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn expand_the_sphere_zero_lands_proliferates_twice() {
+    let (lands, poison, counters) = execute_expand_the_sphere_with_library(0);
+    assert_eq!(lands, 0, "no lands should enter when none are looked at");
+    assert_eq!(poison, 3, "two missing lands should proliferate twice");
+    assert_eq!(counters, 3, "two missing lands should add two permanent counters");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_oracle_tekuthal_inquiry_dominus_compiles_strictly() {
     let def = parse_oracle_card_definition("Tekuthal, Inquiry Dominus");
     let rendered = canonical_compiled_lines(&def)

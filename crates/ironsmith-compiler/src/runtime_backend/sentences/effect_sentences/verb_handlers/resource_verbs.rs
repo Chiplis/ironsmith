@@ -155,6 +155,22 @@ fn parse_proliferate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
         return Ok(EffectAst::subject_verb_proliferate(Value::Fixed(1)));
     }
 
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if crate::runtime_backend::lexer::word_slice_eq_any(
+        &words,
+        &[
+            &["a", "number", "of", "times", "equal", "to", "the", "difference"],
+            &["a", "number", "of", "times", "equal", "to", "difference"],
+            &["number", "of", "times", "equal", "to", "the", "difference"],
+            &["number", "of", "times", "equal", "to", "difference"],
+        ],
+    ) {
+        return Ok(EffectAst::subject_verb_proliferate(
+            Value::EventValue(crate::effect::EventValueSpec::Amount)
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::Difference),
+        ));
+    }
+
     let (count, used) = if let Some(first) = tokens.first().and_then(OwnedLexToken::as_word) {
         match first {
             "once" => (Value::Fixed(1), 1),

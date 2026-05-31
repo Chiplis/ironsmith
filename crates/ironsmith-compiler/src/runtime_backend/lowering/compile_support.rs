@@ -821,6 +821,42 @@ fn assign_effect_result_id(
     id: EffectId,
     error_message: &str,
 ) -> Result<(), CardTextError> {
+    if effects.len() >= 2
+        && effects
+            .last()
+            .is_some_and(|effect| {
+                effect
+                    .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()
+                    .is_some()
+            })
+    {
+        let move_idx = effects.len() - 2;
+        let move_effect_returns_battlefield_count = effects[move_idx]
+            .downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()
+            .is_some()
+            || effects[move_idx]
+                .downcast_ref::<crate::effects::ForEachTaggedEffect<Effect>>()
+                .is_some_and(|for_each| {
+                    for_each.effects.iter().any(|effect| {
+                        effect
+                            .downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()
+                            .is_some()
+                    })
+                });
+        if move_effect_returns_battlefield_count {
+            let move_effect = effects.remove(move_idx);
+            effects.insert(move_idx, Effect::with_id(id.0, move_effect));
+            return Ok(());
+        }
+        if effects[0]
+            .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            .is_some()
+        {
+            let choose_effect = effects.remove(0);
+            effects.insert(0, Effect::with_id(id.0, choose_effect));
+            return Ok(());
+        }
+    }
     let Some(last) = effects.pop() else {
         return Err(CardTextError::InvariantViolation(error_message.to_string()));
     };

@@ -42,6 +42,7 @@ pub enum ValueSurfaceHint {
     WhereXIs,
     EqualTo,
     ForEach,
+    Difference,
 }
 
 #[derive(Debug, Clone, PartialEq)]
