@@ -102,6 +102,37 @@ fn effect_needs_followup_library_shuffle(effect: &EffectAst) -> bool {
     found
 }
 
+fn shuffle_library_if_previous_effect_happened() -> EffectAst {
+    EffectAst::IfResult {
+        predicate: IfResultPredicate::Did,
+        effects: vec![EffectAst::subject_verb(
+            SubjectVerbRoleAst::LibraryOwner,
+            PlayerAst::You,
+            SubjectVerbActionAst::ShuffleLibrary,
+        )],
+    }
+}
+
+fn append_library_shuffle_followup_to_latest_search(effects: &mut Vec<EffectAst>) -> bool {
+    let Some(last) = effects.last_mut() else {
+        return false;
+    };
+
+    if let EffectAst::VoteOption { effects, .. } = last
+        && effects.iter().any(effect_contains_search_library)
+    {
+        effects.push(shuffle_library_if_previous_effect_happened());
+        return true;
+    }
+
+    if effect_contains_search_library(last) {
+        effects.push(shuffle_library_if_previous_effect_happened());
+        return true;
+    }
+
+    false
+}
+
 fn is_if_you_search_library_this_way_shuffle_sentence(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::runtime_backend::util::non_article_token_word_refs(tokens);
     matches!(
@@ -247,7 +278,7 @@ fn pre_rule_library_shuffle_followups(
                 route: None,
             }));
         }
-        if state.effects.iter().any(effect_contains_search_library) {
+        if append_library_shuffle_followup_to_latest_search(state.effects) {
             return Ok(Some(PreParseFollowupResult::Handled {
                 consumed_sentences: 1,
                 route: None,

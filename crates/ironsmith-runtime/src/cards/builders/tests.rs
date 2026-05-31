@@ -45281,6 +45281,7 @@ fn strict_parse_vote_regression_cards() {
         "Brago's Representative",
         "Tivit, Seller of Secrets",
         "Elrond of the White Council",
+        "Travel Through Caradhras",
     ] {
         assert_oracle_card_parses_strict(name);
     }
@@ -45419,6 +45420,231 @@ fn vote_regression_elrond_preserves_voter_choice_branch_and_owner_attack_restric
             && debug.contains("CantAttackItsOwner")
             && debug.contains("VoteCount(\"aid\")"),
         "expected Elrond to keep the fellowship voter choice branch, the owner-attack restriction, and the aid vote loop, got {debug}"
+    );
+}
+
+#[test]
+fn travel_through_caradhras_regression_renders_council_dilemma_vote_branches() {
+    let def = parse_oracle_card_definition("Travel Through Caradhras");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let lower = rendered.to_ascii_lowercase();
+    assert!(
+        lower.contains("council's dilemma")
+            && rendered.contains("Starting with you, each player votes for Redhorn Pass or Mines of Moria")
+            && rendered.contains("For each Redhorn Pass vote, search your library for a basic land card and put it onto the battlefield tapped")
+            && rendered.contains("If you search your library this way, shuffle")
+            && rendered.contains("For each Mines of Moria vote, return a card from your graveyard to your hand")
+            && rendered.contains("Exile Travel Through Caradhras"),
+        "expected Travel Through Caradhras to render its council dilemma branches, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("VoteCount")
+            && debug.contains("\"redhorn pass\"")
+            && debug.contains("ChooseObjectsEffect")
+            && debug.contains("PutOntoBattlefieldEffect")
+            && debug.contains("ShuffleLibraryEffect")
+            && debug.contains("\"mines of moria\"")
+            && debug.contains("ReturnFromGraveyardToHandEffect"),
+        "expected Travel Through Caradhras to keep both vote-count branches structurally, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct TravelVoteDecisionMaker {
+    votes: Vec<usize>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl crate::decision::DecisionMaker for TravelVoteDecisionMaker {
+    fn decide_options(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        if !self.votes.is_empty() {
+            vec![self.votes.remove(0)]
+        } else {
+            ctx.options
+                .iter()
+                .filter(|option| option.legal)
+                .map(|option| option.index)
+                .take(ctx.min)
+                .collect()
+        }
+    }
+
+    fn decide_objects(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        let max = ctx.max.unwrap_or(ctx.candidates.len()).max(ctx.min);
+        ctx.candidates
+            .iter()
+            .filter(|candidate| candidate.legal)
+            .map(|candidate| candidate.id)
+            .take(max)
+            .collect()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn basic_land_for_travel_test(id: u32, name: &str) -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(id), name)
+        .supertypes(vec![Supertype::Basic])
+        .card_types(vec![CardType::Land])
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn graveyard_card_for_travel_test(id: u32, name: &str) -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(id), name)
+        .card_types(vec![CardType::Creature])
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_travel_through_caradhras_with_votes(
+    votes: Vec<usize>,
+) -> (
+    crate::game_state::GameState,
+    Vec<crate::triggers::TriggerEvent>,
+    ObjectId,
+    Vec<ObjectId>,
+    Vec<ObjectId>,
+) {
+    let def = parse_oracle_card_definition("Travel Through Caradhras");
+    let program = def
+        .spell_effect
+        .as_ref()
+        .expect("Travel Through Caradhras should compile to spell effects");
+    let alice = PlayerId::from_index(0);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+
+    let forest = basic_land_for_travel_test(91_201, "Travel Forest");
+    let island = basic_land_for_travel_test(91_202, "Travel Island");
+    let grave_one = graveyard_card_for_travel_test(91_203, "Travel Grave One");
+    let grave_two = graveyard_card_for_travel_test(91_204, "Travel Grave Two");
+    let land_ids = vec![
+        game.create_object_from_definition(&forest, alice, Zone::Library),
+        game.create_object_from_definition(&island, alice, Zone::Library),
+    ];
+    let graveyard_ids = vec![
+        game.create_object_from_definition(&grave_one, alice, Zone::Graveyard),
+        game.create_object_from_definition(&grave_two, alice, Zone::Graveyard),
+    ];
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut dm = TravelVoteDecisionMaker { votes };
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+    let events = crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        program,
+        None,
+        &[],
+    )
+    .expect("Travel Through Caradhras should resolve");
+    (game, events, source, land_ids, graveyard_ids)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn travel_search_event_count(events: &[crate::triggers::TriggerEvent]) -> usize {
+    events
+        .iter()
+        .filter_map(|event| event.downcast::<crate::events::SearchLibraryEvent>())
+        .count()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn travel_shuffle_event_count(events: &[crate::triggers::TriggerEvent]) -> usize {
+    events
+        .iter()
+        .filter_map(|event| event.downcast::<crate::events::ShuffleLibraryEvent>())
+        .count()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn travel_zone_names(game: &crate::game_state::GameState, zone: Zone) -> Vec<String> {
+    game.objects_in_zone(zone)
+        .into_iter()
+        .filter_map(|id| game.object(id).map(|object| object.name.clone()))
+        .collect()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn travel_through_caradhras_runtime_redhorn_pass_votes_search_lands_and_exile_source() {
+    let (game, events, _source, _land_ids, _graveyard_ids) =
+        resolve_travel_through_caradhras_with_votes(vec![0, 0]);
+
+    let battlefield_lands = game
+        .objects_in_zone(Zone::Battlefield)
+        .into_iter()
+        .filter(|&id| {
+            game.object(id)
+                .is_some_and(|object| object.name.starts_with("Travel ") && object.is_land())
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        battlefield_lands.len(),
+        2,
+        "two Redhorn Pass votes should put two basic lands onto the battlefield; battlefield={:?} library={:?} searches={} shuffles={}",
+        travel_zone_names(&game, Zone::Battlefield),
+        travel_zone_names(&game, Zone::Library),
+        travel_search_event_count(&events),
+        travel_shuffle_event_count(&events)
+    );
+    assert!(
+        battlefield_lands.iter().all(|&id| game.is_tapped(id)),
+        "Redhorn Pass lands should enter tapped"
+    );
+    let graveyard_names = travel_zone_names(&game, Zone::Graveyard);
+    assert!(
+        graveyard_names.contains(&"Travel Grave One".to_string())
+            && graveyard_names.contains(&"Travel Grave Two".to_string()),
+        "Mines of Moria branch should not run for Redhorn Pass votes"
+    );
+    assert_eq!(travel_search_event_count(&events), 2, "two Redhorn Pass votes should search twice");
+    assert!(
+        travel_shuffle_event_count(&events) >= 1,
+        "searching this way should shuffle the library"
+    );
+    assert_eq!(
+        travel_zone_names(&game, Zone::Exile),
+        vec!["Travel Through Caradhras".to_string()],
+        "Travel Through Caradhras should exile itself after resolving"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn travel_through_caradhras_runtime_mines_votes_return_graveyard_cards_without_searching() {
+    let (game, events, _source, _land_ids, _graveyard_ids) =
+        resolve_travel_through_caradhras_with_votes(vec![1, 1]);
+
+    let hand_names = travel_zone_names(&game, Zone::Hand);
+    assert!(
+        hand_names.contains(&"Travel Grave One".to_string())
+            && hand_names.contains(&"Travel Grave Two".to_string()),
+        "Mines of Moria votes should return both graveyard cards to hand"
+    );
+    let library_names = travel_zone_names(&game, Zone::Library);
+    assert!(
+        library_names.contains(&"Travel Forest".to_string())
+            && library_names.contains(&"Travel Island".to_string()),
+        "Redhorn Pass branch should not search lands for Mines of Moria votes"
+    );
+    assert_eq!(travel_search_event_count(&events), 0, "Mines-only votes should not search");
+    assert_eq!(travel_shuffle_event_count(&events), 0, "Mines-only votes should not shuffle");
+    assert_eq!(
+        travel_zone_names(&game, Zone::Exile),
+        vec!["Travel Through Caradhras".to_string()],
+        "Travel Through Caradhras should exile itself after resolving"
     );
 }
 
