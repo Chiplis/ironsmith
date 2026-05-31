@@ -1069,11 +1069,11 @@ fn parse_effect_sentences_from_sentence_inputs(
             carried_context = None;
         }
         if sentence_where_x.is_none()
-            && let Some(where_value) = carried_where_x.as_ref()
+            && let Some(where_value) = carried_where_x.take()
         {
             replace_unbound_x_in_effects_anywhere(
                 &mut sentence_effects,
-                where_value,
+                &where_value,
                 &crate::runtime_backend::token_word_refs(&parse_plan.tokens).join(" "),
             )?;
         }

@@ -29461,6 +29461,10 @@ fn commander_liara_portyr_runtime_reduces_each_exiled_spell_by_attacked_players(
     });
     combat.attackers.push(crate::combat_state::AttackerInfo {
         creature: game.new_object_id(),
+        target: AttackTarget::Player(bob),
+    });
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: game.new_object_id(),
         target: AttackTarget::Player(charlie),
     });
     game.combat = Some(combat);
@@ -29520,7 +29524,7 @@ fn commander_liara_portyr_runtime_reduces_each_exiled_spell_by_attacked_players(
     assert_eq!(
         first_cost.to_oracle(),
         "{2}",
-        "two defending players should reduce the first exiled spell by two generic mana"
+        "two distinct defending players should reduce the first exiled spell by two generic mana"
     );
 
     let second = game.object(second_id).expect("second exiled spell exists");
@@ -29569,6 +29573,10 @@ fn commander_liara_portyr_runtime_reduces_each_exiled_spell_by_attacked_players(
     });
     combat.attackers.push(crate::combat_state::AttackerInfo {
         creature: game.new_object_id(),
+        target: AttackTarget::Player(bob),
+    });
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: game.new_object_id(),
         target: AttackTarget::Player(charlie),
     });
     game.combat = Some(combat);
@@ -29580,7 +29588,7 @@ fn commander_liara_portyr_runtime_reduces_each_exiled_spell_by_attacked_players(
     assert_eq!(
         game.player(alice).expect("alice exists").library.len(),
         library_before - 2,
-        "two attacked players should make Commander Liara Portyr exile the top two cards"
+        "two distinct attacked players should make Commander Liara Portyr exile the top two cards"
     );
     assert_eq!(
         game.exile.len(),

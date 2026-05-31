@@ -33695,7 +33695,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 .generic_reduction
                 .as_ref()
                 .map(|value| match value {
-                    Value::Fixed(amount) => (amount.to_string(), String::new()),
+                    Value::Fixed(amount) => (format!("{{{amount}}}"), String::new()),
                     Value::X => ("{X}".to_string(), String::new()),
                     _ => ("{X}".to_string(), format!(", where X is {}", describe_value(value))),
                 })
