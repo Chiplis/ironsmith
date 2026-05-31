@@ -1498,6 +1498,11 @@ where
             payload.creature2.clone(),
         )));
     }
+    if M::downcast_ref::<ironsmith_core::BecomeSaddledUntilEotEffect>(&effect).is_some() {
+        return Ok(Effect::new(
+            crate::effects::BecomeSaddledUntilEotEffect::new(),
+        ));
+    }
 
     macro_rules! clone_direct {
         ($($ty:path),* $(,)?) => {

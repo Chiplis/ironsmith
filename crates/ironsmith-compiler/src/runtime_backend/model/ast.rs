@@ -1174,6 +1174,9 @@ pub(crate) enum SubjectVerbActionAst {
         subtypes: Vec<Subtype>,
         duration: Until,
     },
+    BecomeSaddledUntilEndOfTurn {
+        target: TargetAst,
+    },
     AddColors {
         target: TargetAst,
         colors: ColorSet,
@@ -2490,6 +2493,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("target", target)
                 .field("subtypes", subtypes)
                 .field("duration", duration)
+                .finish(),
+            Self::BecomeSaddledUntilEndOfTurn { target } => f
+                .debug_struct("BecomeSaddledUntilEndOfTurn")
+                .field("target", target)
                 .finish(),
             Self::AddColors {
                 target,
@@ -4152,6 +4159,14 @@ impl EffectAst {
                 subtypes,
                 duration,
             },
+        )
+    }
+
+    pub(crate) fn subject_verb_become_saddled_until_end_of_turn(target: TargetAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::BecomeSaddledUntilEndOfTurn { target },
         )
     }
 
