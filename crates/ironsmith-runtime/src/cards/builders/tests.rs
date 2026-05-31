@@ -3,7 +3,7 @@ use crate::ability::AbilityKind;
 use crate::cards::CardDefinitionRuntimeExt;
 use crate::color::Color;
 use crate::compiled_text::{
-    canonical_compiled_lines, debug_compiled_lines, unprocessed_compiled_lines,
+    canonical_compiled_lines, compiled_text_lines, debug_compiled_lines, unprocessed_compiled_lines,
 };
 use crate::effects::{
     AddManaEffect, ChooseModeEffect, ChooseObjectsEffect, ConsultTopOfLibraryEffect,
@@ -7972,6 +7972,57 @@ fn parse_strength_of_the_tajuru_strict_and_renders_kicked_targets() {
     assert!(
         !rendered.contains("each target permanent"),
         "Strength of the Tajuru should keep the counter effect tied to the chosen creatures, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_spell_contortion_strict_and_renders_kicked_draw_count() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Spell Contortion")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Multikicker {1}{U} (You may pay an additional {1}{U} any number of times as you cast this spell.)\n\
+             Counter target spell unless its controller pays {2}. Draw a card for each time Spell Contortion was kicked.",
+        )
+        .expect("Spell Contortion should parse strictly");
+
+    assert_eq!(def.optional_costs.len(), 1);
+    assert_eq!(def.optional_costs[0].label, "Multikicker");
+    assert!(
+        def.optional_costs[0].repeatable,
+        "Spell Contortion's multikicker should be repeatable"
+    );
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("UnlessPaysEffect")
+            && debug.contains("DrawCardsEffect")
+            && debug.contains("KickCount"),
+        "expected Spell Contortion to model counter-unless and draw per kick count, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Counter target spell unless its controller pays {2}"),
+        "expected Spell Contortion compiled text to preserve counter-unless clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Counter target spell unless its controller pays {2}. Draw a card for each time this spell was kicked"
+        ),
+        "expected Spell Contortion compiled text to preserve kicked draw count, got {rendered}"
+    );
+
+    let scored = compiled_text_lines(&def).join("\n");
+    assert!(
+        scored.contains(
+            "Counter target spell unless its controller pays {2}. Draw a card for each time Spell Contortion was kicked"
+        ),
+        "expected Spell Contortion scored text to use the source name for kicked draw count, got {scored}"
     );
 }
 

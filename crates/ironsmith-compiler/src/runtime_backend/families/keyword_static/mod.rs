@@ -5913,6 +5913,15 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
     if word_slice_starts_with_any(
         &filter_words,
         &[
+            &["time", "this", "was", "kicked"],
+            &["time", "this", "spell", "was", "kicked"],
+        ],
+    ) {
+        return Ok(Some(Value::KickCount));
+    }
+    if word_slice_starts_with_any(
+        &filter_words,
+        &[
             &["creature", "that", "died", "this", "turn"],
             &["creatures", "that", "died", "this", "turn"],
         ],

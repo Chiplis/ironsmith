@@ -2792,6 +2792,10 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         }
     }
 
+    if let Some(compact) = describe_counter_unless_then_kick_count_draw(effects) {
+        return Some(compact);
+    }
+
     if let Some(compact) = describe_return_to_hand_then_owner_discards(effects) {
         return Some(compact);
     }
@@ -2802,6 +2806,32 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         .or_else(|| describe_gain_control_untap_haste_structural(effects))
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
         .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
+}
+
+fn describe_counter_unless_then_kick_count_draw(effects: &[Effect]) -> Option<String> {
+    let [unless_effect, draw_effect] = effects else {
+        return None;
+    };
+    let unless_pays = unwrap_structural_effect_tag(unless_effect)
+        .downcast_ref::<crate::effects::UnlessPaysEffect>()?;
+    let [_counter] = unless_pays.effects.as_slice() else {
+        return None;
+    };
+    unless_pays.effects[0].downcast_ref::<crate::effects::CounterEffect>()?;
+    let draw = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    if draw.count != Value::KickCount {
+        return None;
+    }
+
+    let counter_text = describe_effect(unless_effect)
+        .trim_end_matches('.')
+        .to_string();
+    let draw_text = if draw.player == PlayerFilter::You {
+        "Draw a card for each time this spell was kicked".to_string()
+    } else {
+        describe_draw_for_each(draw)?.trim_end_matches('.').to_string()
+    };
+    Some(format!("{counter_text}. {draw_text}"))
 }
 
 fn describe_return_to_hand_then_owner_discards(effects: &[Effect]) -> Option<String> {
@@ -20492,6 +20522,9 @@ pub(super) fn describe_draw_for_each(draw: &crate::effects::DrawCardsEffect) -> 
         Value::SpellsCastThisTurn(spell_caster) => Some(format!(
             "{player} {verb} a card for each {}",
             describe_spells_cast_this_turn_each(spell_caster)
+        )),
+        Value::KickCount => Some(format!(
+            "{player} {verb} a card for each time this spell was kicked"
         )),
         Value::SpellsCastThisTurnMatching {
             player: spell_caster,
