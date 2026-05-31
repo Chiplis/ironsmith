@@ -118,6 +118,27 @@ pub(crate) fn parse_delayed_until_next_end_step_sentence(
     }
 }
 
+fn retarget_source_copy_spell_to_delayed_triggering_object(effects: &mut [EffectAst]) {
+    fn visit(effect: &mut EffectAst) {
+        if let EffectAst::SubjectVerb(subject_verb) = effect
+            && let SubjectVerbActionAst::CopySpell { target, .. } = &mut subject_verb.action
+            && matches!(target, TargetAst::Source(_))
+        {
+            *target = TargetAst::Tagged(TagKey::from("triggering"), None);
+        }
+
+        crate::runtime_backend::effect_ast_traversal::for_each_nested_effects_mut(
+            effect,
+            true,
+            |nested| retarget_source_copy_spell_to_delayed_triggering_object(nested),
+        );
+    }
+
+    for effect in effects {
+        visit(effect);
+    }
+}
+
 pub(crate) fn parse_sentence_delayed_trigger_this_turn(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -160,7 +181,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
             )));
         }
 
-        let delayed_effects = parse_effect_chain(&trim_commas(effect_part))?;
+        let mut delayed_effects = parse_effect_chain(&trim_commas(effect_part))?;
         if delayed_effects.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing delayed trigger effect clause (clause: '{}')",
@@ -212,14 +233,20 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
                 EffectAst::DelayedTriggerThisTurn {
                     trigger: TriggerSpec::AttacksAndIsntBlocked(trigger_filter),
                     effects: delayed_effects,
+                    one_shot: true,
                 },
             ]));
         }
 
         let trigger = parse_trigger_clause_lexed(&trigger_tokens)?;
+        let one_shot = trigger_words.contains(&"next");
+        if matches!(trigger, TriggerSpec::SpellCast { .. }) {
+            retarget_source_copy_spell_to_delayed_triggering_object(&mut delayed_effects);
+        }
         return Ok(Some(vec![EffectAst::DelayedTriggerThisTurn {
             trigger,
             effects: delayed_effects,
+            one_shot,
         }]));
     }
 
@@ -301,17 +328,22 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
         )));
     }
 
-    let delayed_effects = parse_effect_chain(&remainder)?;
+    let mut delayed_effects = parse_effect_chain(&remainder)?;
     if delayed_effects.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing delayed trigger effect clause (clause: '{}')",
             crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
+    if matches!(trigger, TriggerSpec::SpellCast { .. }) {
+        retarget_source_copy_spell_to_delayed_triggering_object(&mut delayed_effects);
+    }
 
+    let one_shot = trigger_words.contains(&"next");
     Ok(Some(vec![EffectAst::DelayedTriggerThisTurn {
         trigger,
         effects: delayed_effects,
+        one_shot,
     }]))
 }
 

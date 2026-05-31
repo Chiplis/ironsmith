@@ -27898,6 +27898,137 @@ fn test_copied_blitz_creature_spell_schedules_blitz_delayed_triggers() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn howl_of_the_horde_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(435_001), "Howl of the Horde")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "When you next cast an instant or sorcery spell this turn, copy that spell. You may choose new targets for the copy.\nRaid — If you attacked this turn, when you next cast an instant or sorcery spell this turn, copy that spell an additional time. You may choose new targets for the copy.",
+        )
+        .expect("Howl of the Horde should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn execute_howl_of_the_horde_spell_effect(game: &mut GameState, attacked: bool) {
+    let alice = PlayerId::from_index(0);
+    let howl = howl_of_the_horde_definition();
+    let howl_id = game.create_object_from_definition(&howl, alice, Zone::Stack);
+    if attacked {
+        game.turn_store
+            .turn_history
+            .players_attacked_this_turn
+            .insert(alice);
+    }
+    let mut ctx = crate::effects::ExecutionContext::new_default(howl_id, alice);
+    execute_resolution_program(
+        game,
+        &mut ctx,
+        alice,
+        howl_id,
+        howl.spell_effect.as_ref().expect("Howl spell effects"),
+        None,
+        &[],
+    )
+    .expect("Howl spell effect should resolve");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_howl_target_spell_on_stack(game: &mut GameState) -> ObjectId {
+    let alice = PlayerId::from_index(0);
+    let bolt = CardBuilder::new(CardId::from_raw(435_002), "Runtime Bolt")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Instant])
+        .build();
+    let spell_id = game.create_object_from_card(&bolt, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, alice));
+    spell_id
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn howl_of_the_horde_without_raid_schedules_one_one_shot_copy_trigger() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    execute_howl_of_the_horde_spell_effect(&mut game, false);
+    assert_eq!(
+        game.effect_store.delayed_triggers.len(),
+        1,
+        "Howl should schedule only the base next-spell trigger without raid"
+    );
+    assert!(
+        game.effect_store.delayed_triggers[0].one_shot,
+        "Howl's next-spell trigger should be one-shot"
+    );
+
+    let spell_id = create_howl_target_spell_on_stack(&mut game);
+    let event = TriggerEvent::new_with_provenance(
+        SpellCastEvent::new(spell_id, alice, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    for trigger in crate::triggers::check_delayed_triggers(&mut game, &event) {
+        trigger_queue.add(trigger);
+    }
+    assert_eq!(trigger_queue.entries.len(), 1, "base Howl trigger should fire once");
+    assert!(
+        game.effect_store.delayed_triggers.is_empty(),
+        "one-shot Howl trigger should be consumed after the next cast"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue).expect("put Howl trigger on stack");
+    resolve_stack_entry(&mut game).expect("resolve Howl delayed copy trigger");
+    assert_eq!(
+        game.stack.len(),
+        2,
+        "resolving the base Howl trigger should leave the original spell plus one copy on the stack"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn howl_of_the_horde_with_raid_schedules_two_one_shot_copy_triggers() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    execute_howl_of_the_horde_spell_effect(&mut game, true);
+    assert_eq!(
+        game.effect_store.delayed_triggers.len(),
+        2,
+        "Howl should schedule the base and raid next-spell triggers after attacking"
+    );
+    assert!(
+        game.effect_store
+            .delayed_triggers
+            .iter()
+            .all(|trigger| trigger.one_shot),
+        "both Howl delayed triggers should be one-shot"
+    );
+
+    let spell_id = create_howl_target_spell_on_stack(&mut game);
+    let event = TriggerEvent::new_with_provenance(
+        SpellCastEvent::new(spell_id, alice, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    for trigger in crate::triggers::check_delayed_triggers(&mut game, &event) {
+        trigger_queue.add(trigger);
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        2,
+        "base and raid Howl triggers should both fire on the next instant or sorcery"
+    );
+    assert!(
+        game.effect_store.delayed_triggers.is_empty(),
+        "both one-shot Howl triggers should be consumed after the next cast"
+    );
+}
+
 #[test]
 fn test_prototyped_spell_on_stack_snapshots_with_prototype_mana_value() {
     use crate::snapshot::ObjectSnapshot;

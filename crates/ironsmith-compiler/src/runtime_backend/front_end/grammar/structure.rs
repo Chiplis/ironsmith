@@ -1334,7 +1334,10 @@ pub(crate) fn split_if_clause_lexed(
             } else {
                 true
             };
-            if comma_fragment_looks_like_effect
+            let comma_fragment_looks_like_delayed_trigger = effect_tokens
+                .first()
+                .is_some_and(|token| token.is_word("when") || token.is_word("whenever"));
+            if (comma_fragment_looks_like_effect || comma_fragment_looks_like_delayed_trigger)
                 && let Ok(effects) =
                     parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
                 && !effects.is_empty()
