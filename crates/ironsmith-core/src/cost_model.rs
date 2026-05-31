@@ -353,6 +353,13 @@ where
         }
     }
 
+    fn sacrifice_filter(&self) -> Option<&ObjectFilter> {
+        match self {
+            Self::Sacrifice(filter) => Some(filter),
+            _ => None,
+        }
+    }
+
     fn is_mana_cost(&self) -> bool {
         matches!(self, Self::Mana(_) | Self::DynamicMana(_))
     }
@@ -401,6 +408,10 @@ pub trait CostComponent: Clone + std::fmt::Debug + PartialEq {
     fn mana(mana_cost: ManaCost) -> Self;
 
     fn display(&self) -> String;
+
+    fn sacrifice_filter(&self) -> Option<&ObjectFilter> {
+        None
+    }
 
     fn is_mana_cost(&self) -> bool {
         false

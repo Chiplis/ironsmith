@@ -2453,6 +2453,32 @@ fn test_parse_eelectrocute_roll_six_graveyard_cast_condition_and_exile_clause() 
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_maestros_ascendancy_graveyard_cast_cost_and_exile_clause() {
+    assert_oracle_card_parses_strict("Maestros Ascendancy");
+    let def = parse_oracle_card_definition("Maestros Ascendancy");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let debug = format!("{def:#?}");
+    assert!(
+        rendered.contains(
+            "Once during each of your turns, you may cast an instant or sorcery spell from your graveyard by sacrificing a creature in addition to paying its other costs"
+        ) && rendered.contains(
+            "If a spell cast this way would be put into your graveyard, exile it instead"
+        ),
+        "expected Maestros Ascendancy to render its graveyard cast permission, sacrifice additional cost, and exile clause, got {rendered}"
+    );
+    assert!(
+        debug.contains("GraveyardCastFromCardManaCost")
+            && debug.contains("OnceDuringEachOfYourTurns")
+            && debug.contains("Sacrifice")
+            && debug.contains("Creature")
+            && debug.contains("exiles_after_resolution: true"),
+        "expected Maestros Ascendancy to lower to a once-per-turn graveyard cast grant with creature sacrifice and exile-after-resolution, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_oracle_squee_the_immortal_graveyard_or_exile_cast_permission() {
     assert_oracle_card_parses_strict("Squee, the Immortal");
     let def = parse_oracle_card_definition("Squee, the Immortal");

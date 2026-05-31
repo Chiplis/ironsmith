@@ -26,6 +26,12 @@ impl ironsmith_core::CostComponent for Cost {
         self.display()
     }
 
+    fn sacrifice_filter(&self) -> Option<&crate::target::ObjectFilter> {
+        self.effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::SacrificeEffect>())
+            .map(|sacrifice| &sacrifice.filter)
+    }
+
     fn is_mana_cost(&self) -> bool {
         self.is_mana_cost()
     }
