@@ -602,6 +602,7 @@ pub(super) fn resolve_stack_entry_full(
     if let Some(source_snapshot) = entry.source_snapshot.clone() {
         ctx = ctx.with_source_snapshot(source_snapshot);
     }
+    ctx.effect_outcomes = entry.effect_outcomes.clone();
     let mut tagged_objects = entry.tagged_objects.clone();
     let source_exiled = game
         .get_exiled_with_source_links(execution_source)

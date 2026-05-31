@@ -4,7 +4,7 @@ use crate::decisions::context::{TargetRequirementContext, TargetsContext};
 use crate::effect::{Effect, EffectId, EffectOutcome, EffectPredicate, EffectPredicateRuntimeExt};
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::game_state::{GameState, StackEntry};
+use crate::game_state::{GameState, StackEntry, TargetAssignment};
 use crate::target::ChooseSpec;
 use crate::targeting::normalize_targets_for_requirements;
 
@@ -58,11 +58,26 @@ fn choose_reflexive_targets(
     game: &GameState,
     ctx: &mut ExecutionContext,
     choices: &[ChooseSpec],
-) -> Option<Vec<crate::game_state::Target>> {
+) -> Option<(Vec<crate::game_state::Target>, Vec<TargetAssignment>)> {
     let mut chosen_targets = Vec::new();
+    let mut assignments = Vec::new();
 
     for spec in choices {
         let count = spec.count();
+        let (min_targets, max_targets) = if count.dynamic_x || spec.count_value().is_some() {
+            let resolved = if let Some(value) = spec.count_value() {
+                crate::effects::helpers::resolve_value(game, value, ctx).ok()?.max(0) as usize
+            } else {
+                ctx.x_value? as usize
+            };
+            if count.up_to_x {
+                (0, Some(resolved))
+            } else {
+                (resolved, Some(resolved))
+            }
+        } else {
+            (count.min, count.max)
+        };
         let legal_targets = crate::targeting::compute_legal_targets_with_tagged_objects(
             game,
             spec,
@@ -71,7 +86,7 @@ fn choose_reflexive_targets(
             Some(&ctx.tagged_objects),
         );
 
-        if legal_targets.len() < count.min {
+        if legal_targets.len() < min_targets {
             return None;
         }
 
@@ -82,8 +97,8 @@ fn choose_reflexive_targets(
             vec![TargetRequirementContext {
                 description: describe_choice(spec),
                 legal_targets: legal_targets.clone(),
-                min_targets: count.min,
-                max_targets: count.max,
+                min_targets,
+                max_targets,
             }],
         );
         let selected = ctx.decision_maker.decide_targets(game, &targets_ctx);
@@ -92,10 +107,16 @@ fn choose_reflexive_targets(
         }
         let selected = normalize_targets_for_requirements(&targets_ctx.requirements, selected)?;
 
+        let start = chosen_targets.len();
         chosen_targets.extend(selected);
+        let end = chosen_targets.len();
+        assignments.push(TargetAssignment {
+            spec: spec.clone(),
+            range: start..end,
+        });
     }
 
-    Some(chosen_targets)
+    Some((chosen_targets, assignments))
 }
 
 #[cfg(test)]
@@ -139,11 +160,14 @@ mod tests {
         let choices =
             vec![ChooseSpec::target(ChooseSpec::creature()).with_count(ChoiceCount::exactly(2))];
 
-        let selected = choose_reflexive_targets(&game, &mut ctx, &choices).expect("valid targets");
+        let (selected, assignments) =
+            choose_reflexive_targets(&game, &mut ctx, &choices).expect("valid targets");
 
         assert_eq!(selected.len(), 2);
         assert_eq!(selected[0], Target::Object(first));
         assert_eq!(selected[1], Target::Object(second));
+        assert_eq!(assignments.len(), 1);
+        assert_eq!(assignments[0].range, 0..2);
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
@@ -217,18 +241,24 @@ impl EffectExecutor for ReflexiveTriggerEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let outcome = ctx
             .get_outcome(self.condition)
-            .ok_or(ExecutionError::EffectNotFound(self.condition))?;
-        if !self.predicate.evaluate_outcome(outcome) {
+            .ok_or(ExecutionError::EffectNotFound(self.condition))?
+            .clone();
+        if !self.predicate.evaluate_outcome(&outcome) {
             return Ok(EffectOutcome::resolved());
         }
 
-        let targets = choose_reflexive_targets(game, ctx, &self.choices)
+        let (targets, target_assignments) = choose_reflexive_targets(game, ctx, &self.choices)
             .ok_or(ExecutionError::InvalidTarget)?;
 
         let mut entry = StackEntry::ability(ctx.source, ctx.controller, self.effects.clone())
             .with_targets(targets)
+            .with_target_assignments(target_assignments)
             .with_optional_costs_paid(ctx.optional_costs_paid.clone())
-            .with_tagged_objects(ctx.tagged_objects.clone());
+            .with_tagged_objects(ctx.tagged_objects.clone())
+            .with_effect_outcomes(std::collections::HashMap::from([(
+                self.condition,
+                outcome,
+            )]));
 
         if let Some(x) = ctx.x_value {
             entry = entry.with_x(x);

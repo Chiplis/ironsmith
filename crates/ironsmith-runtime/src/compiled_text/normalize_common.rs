@@ -6815,7 +6815,7 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
         ChooseSpec::SpecificObject(_) => "that object".to_string(),
         ChooseSpec::SpecificPlayer(_) => "that player".to_string(),
         ChooseSpec::Iterated => "that object".to_string(),
-        ChooseSpec::WithCount(inner, count) | ChooseSpec::WithCountValue(inner, count, _) => {
+        ChooseSpec::WithCount(inner, count) => {
             let inner_text = describe_choose_spec(inner);
             let random_suffix = if count.is_random() {
                 if count.is_single() {
@@ -6912,6 +6912,38 @@ pub(super) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                             )
                         }
                     }
+                }
+            }
+        }
+        ChooseSpec::WithCountValue(inner, count, value) => {
+            let inner_text = describe_choose_spec(inner);
+            let random_suffix = if count.is_random() {
+                if count.is_single() {
+                    " chosen at random"
+                } else {
+                    " at random"
+                }
+            } else {
+                ""
+            };
+            let count_text = describe_effect_count_backref(value)
+                .unwrap_or_else(|| describe_value(value));
+            if let ChooseSpec::Target(target_inner) = inner.as_ref() {
+                let target_desc = describe_choose_spec(target_inner);
+                let base = strip_leading_article(&target_desc);
+                let plural = pluralize_relative_object_phrase(base);
+                if count.is_up_to_dynamic_x() {
+                    format!("up to {count_text} target {plural}{random_suffix}")
+                } else {
+                    format!("{count_text} target {plural}{random_suffix}")
+                }
+            } else {
+                let base = strip_leading_article(&inner_text);
+                let plural = pluralize_relative_object_phrase(base);
+                if count.is_up_to_dynamic_x() {
+                    format!("up to {count_text} {plural}{random_suffix}")
+                } else {
+                    format!("{count_text} {plural}{random_suffix}")
                 }
             }
         }

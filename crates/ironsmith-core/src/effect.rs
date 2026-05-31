@@ -1786,11 +1786,21 @@ impl BecomeColorChoiceEffect {
 pub struct PayManaEffect {
     pub cost: crate::mana::ManaCost,
     pub player: ChooseSpec,
+    pub any_number_of_times: bool,
 }
 
 impl PayManaEffect {
     pub fn new(cost: crate::mana::ManaCost, player: ChooseSpec) -> Self {
-        Self { cost, player }
+        Self {
+            cost,
+            player,
+            any_number_of_times: false,
+        }
+    }
+
+    pub fn any_number_of_times(mut self) -> Self {
+        self.any_number_of_times = true;
+        self
     }
 }
 
@@ -5541,6 +5551,7 @@ pub struct CastTaggedEffect {
     pub as_copy: bool,
     pub without_paying_mana_cost: bool,
     pub cost_reduction: Option<ManaCost>,
+    pub any_number: bool,
 }
 
 impl CastTaggedEffect {
@@ -5552,6 +5563,7 @@ impl CastTaggedEffect {
             as_copy: false,
             without_paying_mana_cost: false,
             cost_reduction: None,
+            any_number: false,
         }
     }
 
@@ -5572,6 +5584,11 @@ impl CastTaggedEffect {
 
     pub fn cost_reduction(mut self, reduction: ManaCost) -> Self {
         self.cost_reduction = Some(reduction);
+        self
+    }
+
+    pub fn any_number(mut self) -> Self {
+        self.any_number = true;
         self
     }
 }

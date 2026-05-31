@@ -928,6 +928,16 @@ fn parse_effect_sentences_from_sentence_inputs(
         let sentence_text = crate::runtime_backend::token_word_refs(sentence).join(" ");
         let _sentence_scope = parse_trace::scope(format!("effect sentence: \"{}\"", sentence_text));
 
+        if let Some((effect, consumed_sentences)) =
+            try_parse_pay_this_cost_reflexive_sequence(&sentences, sentence_idx)?
+        {
+            parse_trace::event("sequence subject/verb rule: pay-this-cost-reflexive -> MayByPlayer".to_string());
+            effects.push(effect);
+            carried_context = None;
+            sentence_idx += consumed_sentences;
+            continue;
+        }
+
         if let Some(mut matched) = try_parse_subject_verb_sequence_rule(&sentences, sentence_idx)? {
             let stage = if let Some(feature_tag) = matched.feature_tag {
                 format!(
@@ -1261,6 +1271,115 @@ fn parse_effect_sentences_lexed_inner(
     apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
     maybe_repair_that_player_gain_control_if_do_rewards(&mut effects, tokens);
     Ok(effects)
+}
+
+fn sentence_words_start_with(sentence: &[OwnedLexToken], prefix: &[&str]) -> bool {
+    let words = crate::runtime_backend::token_word_refs(sentence);
+    words.len() >= prefix.len()
+        && words
+            .iter()
+            .zip(prefix.iter())
+            .all(|(word, expected)| word == expected)
+}
+
+fn drop_copied_object_marker_effects(effects: &mut Vec<EffectAst>) {
+    effects.retain(|effect| {
+        !matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::TagMatchingObjects { tag, .. },
+                ..
+            }) if tag.as_str() == crate::cards::builders::COPIED_STACK_OBJECT_TAG
+        )
+    });
+}
+
+fn retarget_cast_copies_to_last_object(effects: &mut [EffectAst]) {
+    for effect in effects {
+        match effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::CastTagged {
+                        tag, as_copy: true, ..
+                    },
+                ..
+            }) if tag.as_str() == crate::cards::builders::COPIED_STACK_OBJECT_TAG => {
+                *tag = TagKey::from(IT_TAG);
+            }
+            EffectAst::May { effects }
+            | EffectAst::MayByPlayer { effects, .. }
+            | EffectAst::WhenResult { effects, .. }
+            | EffectAst::IfResult { effects, .. }
+            | EffectAst::ResolvedWhenResult { effects, .. }
+            | EffectAst::ResolvedIfResult { effects, .. }
+            | EffectAst::Sequence { effects }
+            | EffectAst::ForEachOpponent { effects }
+            | EffectAst::ForEachPlayer { effects }
+            | EffectAst::ForEachPlayersFiltered { effects, .. }
+            | EffectAst::ForEachTargetPlayers { effects, .. }
+            | EffectAst::ForEachTaggedPlayer { effects, .. }
+            | EffectAst::ForEachTagged { effects, .. }
+            | EffectAst::ForEachObject { effects, .. }
+            | EffectAst::RepeatEffects { effects, .. } => retarget_cast_copies_to_last_object(effects),
+            _ => {}
+        }
+    }
+}
+
+fn try_parse_pay_this_cost_reflexive_sequence(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<(EffectAst, usize)>, CardTextError> {
+    let Some(pay_sentence) = sentences.get(sentence_idx).map(SentenceInput::lowered) else {
+        return Ok(None);
+    };
+    let Some(followup_sentence) = sentences.get(sentence_idx + 1).map(SentenceInput::lowered) else {
+        return Ok(None);
+    };
+    if !sentence_words_start_with(pay_sentence, &["you", "may", "pay"])
+        || !sentence_words_start_with(
+            followup_sentence,
+            &["when", "you", "pay", "this", "cost", "one", "or", "more"],
+        )
+    {
+        return Ok(None);
+    }
+
+    let mut pay_effects = parse_effect_sentence_lexed(pay_sentence)?;
+    if pay_effects.len() != 1 {
+        return Ok(None);
+    }
+
+    let followup_words = crate::runtime_backend::token_word_refs(followup_sentence);
+    let copies_exiled_objects = word_slice_contains_phrase(&followup_words, &["copy", "them"]);
+    let mut followup_effects = parse_effect_sentence_lexed(followup_sentence)?;
+    if copies_exiled_objects
+        && let Some(EffectAst::WhenResult { effects, .. }) = followup_effects.first_mut()
+    {
+        drop_copied_object_marker_effects(effects);
+    }
+    let mut consumed_sentences = 2;
+    if let Some(cast_sentence) = sentences.get(sentence_idx + 2).map(SentenceInput::lowered)
+        && sentence_words_start_with(cast_sentence, &["you", "may", "cast"])
+    {
+        let mut cast_effects = parse_effect_sentence_lexed(cast_sentence)?;
+        if copies_exiled_objects {
+            retarget_cast_copies_to_last_object(&mut cast_effects);
+        }
+        if let Some(EffectAst::WhenResult { effects, .. }) = followup_effects.first_mut() {
+            effects.extend(cast_effects);
+            consumed_sentences = 3;
+        }
+    }
+
+    let mut pay_effect = pay_effects.remove(0);
+    match &mut pay_effect {
+        EffectAst::MayByPlayer { effects, .. } | EffectAst::May { effects } => {
+            effects.extend(followup_effects);
+            Ok(Some((pay_effect, consumed_sentences)))
+        }
+        _ => Ok(None),
+    }
 }
 
 fn reflected_prevent_next_damage_from_tokens(tokens: &[OwnedLexToken]) -> Option<EffectAst> {

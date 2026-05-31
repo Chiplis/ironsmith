@@ -301,6 +301,7 @@ mod tests {
             saddle_contributors: vec![],
             tagged_objects: std::collections::HashMap::new(),
             chosen_modes: None,
+            effect_outcomes: std::collections::HashMap::new(),
         });
 
         // Resolve with a decision maker that discards a land
@@ -395,6 +396,7 @@ mod tests {
             saddle_contributors: vec![],
             tagged_objects: std::collections::HashMap::new(),
             chosen_modes: None,
+            effect_outcomes: std::collections::HashMap::new(),
         });
 
         // Resolve with a decision maker that DECLINES to discard
@@ -530,6 +532,7 @@ mod tests {
             saddle_contributors: vec![],
             tagged_objects: std::collections::HashMap::new(),
             chosen_modes: None,
+            effect_outcomes: std::collections::HashMap::new(),
         });
 
         // Resolve with a decision maker that chooses to use Library of Leng

@@ -20,7 +20,7 @@ use crate::cost::OptionalCostsPaid;
 use crate::decision::KeywordPaymentContribution;
 use crate::derived_view::DerivedGameView;
 use crate::dungeon::ActiveDungeonProgress;
-use crate::effect::Until;
+use crate::effect::{EffectId, EffectOutcome, Until};
 use crate::events::{Event, EventKind, KeywordActionKind};
 use crate::filter::PlayerFilterExt;
 use crate::ids::{ObjectId, PlayerId, StableId, reset_runtime_id_counters};
@@ -1703,6 +1703,8 @@ pub struct StackEntry {
     /// This supports resolution-time references like `sacrifice_cost_0`.
     pub tagged_objects:
         std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+    /// Prior effect outcomes preserved for delayed/reflexive resolution.
+    pub effect_outcomes: std::collections::HashMap<EffectId, EffectOutcome>,
 }
 
 /// A mana ability granted to a player until end of turn.
@@ -1747,6 +1749,7 @@ impl StackEntry {
             crew_contributors: Vec::new(),
             saddle_contributors: Vec::new(),
             tagged_objects: std::collections::HashMap::new(),
+            effect_outcomes: std::collections::HashMap::new(),
         }
     }
 
@@ -1785,6 +1788,7 @@ impl StackEntry {
             crew_contributors: Vec::new(),
             saddle_contributors: Vec::new(),
             tagged_objects: std::collections::HashMap::new(),
+            effect_outcomes: std::collections::HashMap::new(),
         }
     }
 
@@ -1920,6 +1924,14 @@ impl StackEntry {
         tagged: std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
     ) -> Self {
         self.tagged_objects = tagged;
+        self
+    }
+
+    pub fn with_effect_outcomes(
+        mut self,
+        outcomes: std::collections::HashMap<EffectId, EffectOutcome>,
+    ) -> Self {
+        self.effect_outcomes = outcomes;
         self
     }
 }

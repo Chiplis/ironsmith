@@ -1677,7 +1677,7 @@ fn resolve_effect_sequence_references_with_state(
         let _ = effects_reference_it_tag(remaining) || effects_reference_its_controller(remaining);
         let assigned_effect_id =
             maybe_assign_effect_result_id(effects, idx, id_gen, state.allow_life_event_value);
-        state.last_effect_id = if matches!(
+        let next_last_effect_id = if matches!(
             effect,
             EffectAst::ResolvedIfResult { .. }
                 | EffectAst::ResolvedWhenResult { .. }
@@ -1688,10 +1688,30 @@ fn resolve_effect_sequence_references_with_state(
         } else {
             assigned_effect_id
         };
+        state.last_effect_id = if state.bind_unbound_x_to_last_effect && next_last_effect_id.is_none()
+        {
+            saved_last_effect_id
+        } else {
+            next_last_effect_id
+        };
         resolved.push(effect);
     }
 
     Ok(resolved)
+}
+
+fn resolve_effect_result_values_in_target(
+    target: &mut TargetAst,
+    state: EffectReferenceResolutionState,
+) -> Result<(), CardTextError> {
+    match target {
+        TargetAst::WithCount(inner, _) => resolve_effect_result_values_in_target(inner, state),
+        TargetAst::WithCountValue(inner, _, value) => {
+            resolve_effect_result_values_in_target(inner, state)?;
+            resolve_effect_result_value(value, state)
+        }
+        _ => Ok(()),
+    }
 }
 
 fn advance_reference_env_for_effect(
@@ -1844,6 +1864,9 @@ fn resolve_effect_result_values_in_fields(
             SubjectVerbActionAst::CounterUnlessPays { cost, .. } => {
                 resolve_effect_result_values_in_total_cost(cost, state)?;
             }
+            SubjectVerbActionAst::Exile { target, .. } => {
+                resolve_effect_result_values_in_target(target, state)?;
+            }
             SubjectVerbActionAst::PreventDamageToTargetPutCounters {
                 amount: Some(amount),
                 ..
@@ -1947,7 +1970,6 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Destroy { .. }
             | SubjectVerbActionAst::DestroyAll { .. }
             | SubjectVerbActionAst::DestroyAllOfChosenColor { .. }
-            | SubjectVerbActionAst::Exile { .. }
             | SubjectVerbActionAst::ExileAll { .. }
             | SubjectVerbActionAst::LookAtHand { .. }
             | SubjectVerbActionAst::Counter { .. }

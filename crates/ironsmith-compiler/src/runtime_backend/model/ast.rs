@@ -1037,6 +1037,7 @@ pub(crate) enum SubjectVerbActionAst {
         as_copy: bool,
         without_paying_mana_cost: bool,
         cost_reduction: Option<ManaCost>,
+        any_number: bool,
     },
     GrantPlayTaggedUntilEndOfTurn {
         tag: TagKey,
@@ -1599,6 +1600,7 @@ pub(crate) enum SubjectVerbActionAst {
     },
     PayMana {
         cost: ManaCost,
+        any_number_of_times: bool,
     },
     DoubleManaPool,
     EmptyManaPool,
@@ -2218,6 +2220,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 as_copy,
                 without_paying_mana_cost,
                 cost_reduction,
+                any_number,
             } => f
                 .debug_struct("CastTagged")
                 .field("tag", tag)
@@ -2226,6 +2229,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("as_copy", as_copy)
                 .field("without_paying_mana_cost", without_paying_mana_cost)
                 .field("cost_reduction", cost_reduction)
+                .field("any_number", any_number)
                 .finish(),
             Self::GrantPlayTaggedUntilEndOfTurn {
                 tag,
@@ -3069,7 +3073,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("PayAnyEnergy")
                 .field("min_amount", min_amount)
                 .finish(),
-            Self::PayMana { cost } => f.debug_tuple("PayMana").field(cost).finish(),
+            Self::PayMana {
+                cost,
+                any_number_of_times,
+            } => f
+                .debug_struct("PayMana")
+                .field("cost", cost)
+                .field("any_number_of_times", any_number_of_times)
+                .finish(),
             Self::DoubleManaPool => f.write_str("DoubleManaPool"),
             Self::EmptyManaPool => f.write_str("EmptyManaPool"),
             Self::SetLifeTotal { amount } => f.debug_tuple("SetLifeTotal").field(amount).finish(),
@@ -3667,6 +3678,7 @@ impl EffectAst {
                 as_copy,
                 without_paying_mana_cost,
                 cost_reduction,
+                any_number: false,
             },
         )
     }
@@ -6081,10 +6093,21 @@ impl EffectAst {
     }
 
     pub(crate) fn subject_verb_pay_mana(player: PlayerAst, cost: ManaCost) -> Self {
+        Self::subject_verb_pay_mana_repeated(player, cost, false)
+    }
+
+    pub(crate) fn subject_verb_pay_mana_repeated(
+        player: PlayerAst,
+        cost: ManaCost,
+        any_number_of_times: bool,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
-            SubjectVerbActionAst::PayMana { cost },
+            SubjectVerbActionAst::PayMana {
+                cost,
+                any_number_of_times,
+            },
         )
     }
 

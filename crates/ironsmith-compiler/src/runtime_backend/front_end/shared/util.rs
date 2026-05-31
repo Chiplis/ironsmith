@@ -2713,6 +2713,18 @@ pub(crate) fn wrap_target_count(target: TargetAst, target_count: Option<ChoiceCo
     }
 }
 
+fn wrap_target_count_with_value(
+    target: TargetAst,
+    target_count: Option<ChoiceCount>,
+    target_count_value: Option<Value>,
+) -> TargetAst {
+    match (target_count, target_count_value) {
+        (Some(count), Some(value)) => TargetAst::WithCountValue(Box::new(target), count, value),
+        (Some(count), None) => TargetAst::WithCount(Box::new(target), count),
+        (None, _) => target,
+    }
+}
+
 fn choice_count_from_value(value: &Value, up_to: bool) -> ChoiceCount {
     match value {
         Value::X => {
@@ -2872,6 +2884,7 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
     let mut other = false;
     let span = span_from_tokens(tokens);
     let mut target_count: Option<ChoiceCount> = None;
+    let mut target_count_value: Option<Value> = None;
     let mut explicit_target = false;
 
     let all_words = crate::runtime_backend::token_word_refs(tokens);
@@ -3126,6 +3139,10 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
         idx += 2;
         if let Some((value, used)) = parse_number_or_x_value(&tokens[idx..]) {
             target_count = Some(choice_count_from_value(&value, true));
+            idx += used;
+        } else if let Some((value, used)) = parse_value_expr(&tokens[idx..]) {
+            target_count = Some(ChoiceCount::up_to_dynamic_x());
+            target_count_value = Some(value);
             idx += used;
         } else {
             let next_word = tokens
@@ -3956,9 +3973,10 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
     } else {
         None
     };
-    Ok(wrap_target_count(
+    Ok(wrap_target_count_with_value(
         TargetAst::Object(filter, target_span, it_span),
         target_count,
+        target_count_value,
     ))
 }
 

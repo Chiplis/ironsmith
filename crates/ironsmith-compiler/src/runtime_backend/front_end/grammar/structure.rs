@@ -12,7 +12,7 @@ use super::super::lexer::{
     LexStream, LexToken, OwnedLexToken, TokenKind, TokenWordView, contains_token_kind,
     find_token_word, token_slice_first_is, token_slice_first_is_any, token_slice_last_is,
     token_slice_starts_with_at, trim_lexed_commas, word_slice_at_is, word_slice_contains_any_word,
-    word_slice_contains_word, word_slice_ends_with, word_slice_first_is_any,
+    word_slice_contains_word, word_slice_ends_with, word_slice_first_is_any, word_slice_starts_with,
     word_slice_strip_prefix,
 };
 use super::super::token_primitives::{find_index_with, rfind_index_with};
@@ -578,6 +578,17 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
         return Some(IfResultPredicate::Did);
     }
     if is_unqualified_this_way_result("you") {
+        return Some(IfResultPredicate::Did);
+    }
+    if words.len() >= 7
+        && words[0] == "you"
+        && words[1] == "pay"
+        && words[2] == "this"
+        && words[3] == "cost"
+        && words[4] == "one"
+        && words[5] == "or"
+        && words[6] == "more"
+    {
         return Some(IfResultPredicate::Did);
     }
     if is_unqualified_this_way_result("they") {
@@ -1162,7 +1173,16 @@ pub(crate) fn split_leading_result_prefix_lexed<'a>(
     if predicate_tokens.is_empty() {
         return None;
     }
-    let predicate = parse_if_result_predicate(predicate_tokens)?;
+    let predicate_words = parser_text_non_article_words(predicate_tokens);
+    let predicate_word_refs = predicate_words.iter().map(String::as_str).collect::<Vec<_>>();
+    let predicate = if word_slice_starts_with(
+        &predicate_word_refs,
+        &["you", "pay", "this", "cost", "one", "or", "more"],
+    ) {
+        IfResultPredicate::Did
+    } else {
+        parse_if_result_predicate(predicate_tokens)?
+    };
 
     let trailing_tokens = trim_lexed_commas(&trimmed[comma_idx + 1..]);
     if trailing_tokens.is_empty() {

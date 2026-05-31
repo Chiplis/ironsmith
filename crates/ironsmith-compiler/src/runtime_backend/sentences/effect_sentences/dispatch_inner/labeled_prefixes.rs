@@ -135,6 +135,7 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
                     as_copy: false,
                     without_paying_mana_cost: true,
                     cost_reduction: None,
+                    any_number: false,
                 },
             }),
         ]);
@@ -171,6 +172,7 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
                     as_copy: false,
                     without_paying_mana_cost: true,
                     cost_reduction: None,
+                    any_number: false,
                 },
             }),
         ]);

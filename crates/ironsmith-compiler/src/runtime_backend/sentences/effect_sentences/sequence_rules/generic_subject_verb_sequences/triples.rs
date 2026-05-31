@@ -1258,6 +1258,7 @@ pub(crate) fn parse_top_cards_may_cast_match_rest_bottom(
             as_copy: false,
             without_paying_mana_cost: true,
             cost_reduction: None,
+            any_number: false,
         },
     }));
     effects.push(

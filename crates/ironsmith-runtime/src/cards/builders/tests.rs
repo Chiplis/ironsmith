@@ -704,6 +704,35 @@ fn parse_shiny_impetus_oracle_and_compiled_text() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn bloodthirsty_adversary_strict_parser_compiled_text_and_structure_regression() {
+    assert_oracle_card_parses_strict("Bloodthirsty Adversary");
+    let def = parse_oracle_card_definition("Bloodthirsty Adversary");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let abilities_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains(
+            "When this creature enters, you may pay {2}{R} any number of times. When you pay this cost one or more times, put that many +1/+1 counters on this creature, then exile up to that many target instant and/or sorcery cards with mana value 3 or less from your graveyard and copy them. You may cast any number of the copies without paying their mana costs"
+        ),
+        "Bloodthirsty Adversary compiled text should preserve repeat payment, dynamic targets, copying, and free copy casting, got {rendered}"
+    );
+    assert!(
+        abilities_debug.contains("PayManaEffect")
+            && abilities_debug.contains("any_number_of_times: true")
+            && abilities_debug.contains("ReflexiveTriggerEffect")
+            && abilities_debug.contains("WithCountValue")
+            && abilities_debug.contains("EffectValue")
+            && abilities_debug.contains("ExileEffect")
+            && abilities_debug.contains("CastTaggedEffect")
+            && abilities_debug.contains("as_copy: true")
+            && abilities_debug.contains("any_number: true")
+            && !abilities_debug.contains("__copied_stack_object__"),
+        "Bloodthirsty Adversary should structurally tie payment count to exile targets and cast the exiled tagged cards as copies, got {abilities_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_equipment_attached_goaded_anthem_preserves_equipped_subject() {
     let def = parse_oracle_card_definition("Bloodthirsty Blade");
     let rendered_lines = canonical_compiled_lines(&def);

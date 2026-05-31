@@ -5,6 +5,7 @@
 //! immediately during resolution and returns an outcome that can be used by
 //! subsequent "If you don't" clauses.
 
+use crate::decisions::context::{SelectObjectsContext, SelectableObject};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::zones::{
@@ -12,6 +13,7 @@ use crate::effects::zones::{
 };
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::{GameState, StackEntry, Target, TargetAssignment};
+use crate::snapshot::ObjectSnapshot;
 use crate::zone::Zone;
 pub use ironsmith_core::CastTaggedEffect;
 
@@ -331,6 +333,67 @@ impl EffectExecutor for CastTaggedEffect {
         use crate::alternative_cast::CastingMethod;
         use crate::effects::helpers::resolve_player_filter;
 
+        let caster = resolve_player_filter(game, &self.player, ctx)?;
+        if self.any_number {
+            let Some(snapshots) = ctx.get_tagged_all(self.tag.as_str()).cloned() else {
+                return Ok(EffectOutcome::target_invalid());
+            };
+            let candidates = snapshots
+                .iter()
+                .filter_map(|snapshot| {
+                    let object_id = if game.object(snapshot.object_id).is_some() {
+                        Some(snapshot.object_id)
+                    } else {
+                        game.find_object_by_stable_id(snapshot.stable_id)
+                    }?;
+                    let object = game.object(object_id)?;
+                    Some(SelectableObject::new(object_id, object.name.clone()))
+                })
+                .collect::<Vec<_>>();
+            if candidates.is_empty() {
+                return Ok(EffectOutcome::count(0));
+            }
+            let choice = SelectObjectsContext::new(
+                caster,
+                Some(ctx.source),
+                "Cast any number of copies",
+                candidates.clone(),
+                0,
+                Some(candidates.len()),
+            );
+            let selected = ctx.decision_maker.decide_objects(game, &choice);
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+
+            let original_tagged = ctx.tagged_objects.get(&self.tag).cloned();
+            let mut outcomes = Vec::new();
+            for object_id in selected {
+                if !candidates
+                    .iter()
+                    .any(|candidate| candidate.id == object_id && candidate.legal)
+                {
+                    continue;
+                }
+                let Some(object) = game.object(object_id) else {
+                    continue;
+                };
+                let snapshot =
+                    ObjectSnapshot::from_object_with_calculated_characteristics(object, game);
+                ctx.set_tagged_objects(self.tag.clone(), vec![snapshot]);
+                let mut single = self.clone();
+                single.any_number = false;
+                outcomes.push(single.execute(game, ctx)?);
+            }
+            match original_tagged {
+                Some(snapshots) => ctx.set_tagged_objects(self.tag.clone(), snapshots),
+                None => {
+                    ctx.tagged_objects.remove(&self.tag);
+                }
+            }
+            return Ok(EffectOutcome::aggregate_summing_counts(outcomes));
+        }
+
         let Some(snapshot) = ctx.get_tagged(self.tag.as_str()) else {
             return Ok(EffectOutcome::target_invalid());
         };
@@ -359,8 +422,6 @@ impl EffectExecutor for CastTaggedEffect {
         let x_value = mana_cost
             .as_ref()
             .and_then(|cost| if cost.has_x() { Some(0u32) } else { None });
-
-        let caster = resolve_player_filter(game, &self.player, ctx)?;
 
         if self.as_copy {
             let copy_id = game.new_object_id();
@@ -605,6 +666,7 @@ impl EffectExecutor for CastTaggedEffect {
             saddle_contributors: vec![],
             chosen_modes: None,
             tagged_objects: std::collections::HashMap::new(),
+            effect_outcomes: std::collections::HashMap::new(),
         };
 
         game.push_to_stack(stack_entry);

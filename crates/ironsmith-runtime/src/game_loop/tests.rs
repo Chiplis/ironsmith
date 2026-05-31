@@ -192,6 +192,270 @@ fn rampaging_aetherhood_declining_payment_gets_energy_without_counters() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn bloodthirsty_adversary_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(74_201), "Bloodthirsty Adversary")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Vampire])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "Haste\n\
+             When this creature enters, you may pay {2}{R} any number of times. When you pay this cost one or more times, put that many +1/+1 counters on this creature, then exile up to that many target instant and/or sorcery cards with mana value 3 or less from your graveyard and copy them. You may cast any number of the copies without paying their mana costs.",
+        )
+        .expect("Bloodthirsty Adversary should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct BloodthirstyAdversaryDecisionMaker {
+    boolean_answers: Vec<bool>,
+    selected_objects: Vec<ObjectId>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for BloodthirstyAdversaryDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        if self.boolean_answers.is_empty() {
+            false
+        } else {
+            self.boolean_answers.remove(0)
+        }
+    }
+
+    fn decide_objects(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        if ctx.description == "Cast any number of copies" {
+            return ctx
+                .candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .collect();
+        }
+        let max = ctx.max.unwrap_or(self.selected_objects.len());
+        self.selected_objects
+            .iter()
+            .copied()
+            .filter(|id| ctx.candidates.iter().any(|candidate| candidate.legal && candidate.id == *id))
+            .take(max)
+            .collect()
+    }
+
+    fn decide_targets(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::TargetsContext,
+    ) -> Vec<crate::game_state::Target> {
+        let legal_targets = ctx
+            .requirements
+            .iter()
+            .flat_map(|requirement| requirement.legal_targets.iter())
+            .copied()
+            .collect::<Vec<_>>();
+        self.selected_objects
+            .iter()
+            .copied()
+            .map(crate::game_state::Target::Object)
+            .filter(|target| legal_targets.contains(target))
+            .collect()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_bloodthirsty_adversary_enter_trigger_on_stack(game: &mut GameState, source_id: ObjectId) {
+    let alice = PlayerId::from_index(0);
+    let triggered_effects = game
+        .object(source_id)
+        .expect("Bloodthirsty Adversary should be on the battlefield")
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered.effects.clone()),
+            _ => None,
+        })
+        .expect("Bloodthirsty Adversary should have an enters trigger");
+    game.stack.push(
+        crate::game_state::StackEntry::ability(source_id, alice, triggered_effects)
+            .with_triggering_event(TriggerEvent::new_with_provenance(
+                EnterBattlefieldEvent::new(source_id, Zone::Hand),
+                crate::provenance::ProvNodeId::default(),
+            )),
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn shock_probe_card() -> crate::card::Card {
+    CardBuilder::new(CardId::from_raw(74_202), "Shock Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Instant])
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn bloodthirsty_adversary_declined_payment_does_not_exile_or_add_counters() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let adversary = bloodthirsty_adversary_definition();
+    let adversary_id = game.create_object_from_definition(&adversary, alice, Zone::Battlefield);
+    let shock_id = game.create_object_from_card(&shock_probe_card(), alice, Zone::Graveyard);
+
+    put_bloodthirsty_adversary_enter_trigger_on_stack(&mut game, adversary_id);
+    let mut dm = BloodthirstyAdversaryDecisionMaker {
+        boolean_answers: vec![false],
+        selected_objects: vec![shock_id],
+    };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Bloodthirsty Adversary trigger should resolve when payment is declined");
+
+    assert_eq!(
+        game.counter_count(adversary_id, crate::object::CounterType::PlusOnePlusOne),
+        0,
+        "declining payment should not add counters"
+    );
+    assert_eq!(
+        game.object(shock_id).expect("Shock Probe should still exist").zone,
+        Zone::Graveyard,
+        "declining payment should not exile graveyard cards"
+    );
+    assert!(game.stack.is_empty(), "declining payment should not cast a copy");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn bloodthirsty_adversary_paid_zero_target_branch_keeps_graveyard_card() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let adversary = bloodthirsty_adversary_definition();
+    let adversary_id = game.create_object_from_definition(&adversary, alice, Zone::Battlefield);
+    let shock_id = game.create_object_from_card(&shock_probe_card(), alice, Zone::Graveyard);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    put_bloodthirsty_adversary_enter_trigger_on_stack(&mut game, adversary_id);
+    let mut dm = BloodthirstyAdversaryDecisionMaker {
+        boolean_answers: vec![true, false, false],
+        selected_objects: Vec::new(),
+    };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Bloodthirsty Adversary trigger should resolve with zero selected targets");
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Bloodthirsty Adversary zero-target reflexive trigger should resolve");
+
+    assert_eq!(
+        game.counter_count(adversary_id, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "paying the cost should still add counters when zero targets are chosen"
+    );
+    assert_eq!(
+        game.object(shock_id).expect("Shock Probe should still exist").zone,
+        Zone::Graveyard,
+        "choosing zero targets should leave eligible graveyard cards in the graveyard"
+    );
+    assert!(game.stack.is_empty(), "choosing zero targets should not cast a copy");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn bloodthirsty_adversary_pays_twice_targets_two_and_casts_both_copies() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let adversary = bloodthirsty_adversary_definition();
+    let adversary_id = game.create_object_from_definition(&adversary, alice, Zone::Battlefield);
+    let shock_id = game.create_object_from_card(&shock_probe_card(), alice, Zone::Graveyard);
+    let shock_stable_id = game
+        .object(shock_id)
+        .expect("Shock Probe should exist")
+        .stable_id;
+    let flame_id = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(74_203), "Flame Probe")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+            .card_types(vec![CardType::Sorcery])
+            .build(),
+        alice,
+        Zone::Graveyard,
+    );
+    let flame_stable_id = game
+        .object(flame_id)
+        .expect("Flame Probe should exist")
+        .stable_id;
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 4);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Red, 2);
+
+    put_bloodthirsty_adversary_enter_trigger_on_stack(&mut game, adversary_id);
+    let mut dm = BloodthirstyAdversaryDecisionMaker {
+        boolean_answers: vec![true, true, false, true],
+        selected_objects: vec![shock_id, flame_id],
+    };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Bloodthirsty Adversary trigger should resolve after two payments");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "paying one or more times should put the reflexive trigger on the stack"
+    );
+    assert_eq!(
+        game.stack[0].targets.len(),
+        2,
+        "paying twice should allow up to two targets for the reflexive trigger"
+    );
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Bloodthirsty Adversary reflexive trigger should exile and cast copies");
+
+    assert_eq!(
+        game.counter_count(adversary_id, crate::object::CounterType::PlusOnePlusOne),
+        2,
+        "paying twice should add two +1/+1 counters"
+    );
+    assert_eq!(
+        game.object(
+            game.find_object_by_stable_id(shock_stable_id)
+                .expect("Shock Probe should still exist"),
+        )
+            .expect("Shock Probe should still exist")
+            .zone,
+        Zone::Exile,
+        "the first selected card should be exiled"
+    );
+    assert_eq!(
+        game.object(
+            game.find_object_by_stable_id(flame_stable_id)
+                .expect("Flame Probe should still exist"),
+        )
+            .expect("Flame Probe should still exist")
+            .zone,
+        Zone::Exile,
+        "the second selected card should be exiled"
+    );
+    assert_eq!(
+        game.stack.len(),
+        2,
+        "both card copies should be cast onto the stack"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn twenty_toed_toad_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(72_950), "Twenty-Toed Toad")
         .mana_cost(ManaCost::from_pips(vec![

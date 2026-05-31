@@ -1865,6 +1865,26 @@ impl Effect {
         without_paying_mana_cost: bool,
         cost_reduction: Option<crate::mana::ManaCost>,
     ) -> Self {
+        Self::cast_tagged_with_options(
+            tag,
+            player,
+            allow_land,
+            as_copy,
+            without_paying_mana_cost,
+            cost_reduction,
+            false,
+        )
+    }
+
+    pub fn cast_tagged_with_options(
+        tag: crate::tag::TagKey,
+        player: crate::target::PlayerFilter,
+        allow_land: bool,
+        as_copy: bool,
+        without_paying_mana_cost: bool,
+        cost_reduction: Option<crate::mana::ManaCost>,
+        any_number: bool,
+    ) -> Self {
         Self::new(crate::effects::CastTaggedEffect {
             tag,
             player,
@@ -1872,6 +1892,7 @@ impl Effect {
             as_copy,
             without_paying_mana_cost,
             cost_reduction,
+            any_number,
         })
     }
 

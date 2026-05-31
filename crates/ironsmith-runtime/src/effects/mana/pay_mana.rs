@@ -1,7 +1,8 @@
 //! Pay mana effect implementation.
 
 use crate::ability::ActivatedAbilityRuntimeExt as _;
-use crate::decision::DecisionMaker;
+use crate::decision::{DecisionMaker, FallbackStrategy};
+use crate::decisions::ask_may_choice;
 use crate::decisions::context::{SelectOptionsContext, SelectableOption};
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::resolve_player_from_spec;
@@ -149,6 +150,31 @@ impl EffectExecutor for PayManaEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_from_spec(game, &self.player, ctx)?;
+        if self.any_number_of_times {
+            let mut paid = 0;
+            loop {
+                if !try_pay_interactively(self, game, ctx, player_id) {
+                    break;
+                }
+                paid += 1;
+                let pay_again = ask_may_choice(
+                    game,
+                    &mut ctx.decision_maker,
+                    player_id,
+                    ctx.source,
+                    format!("Pay {} again", self.cost.to_oracle()),
+                    FallbackStrategy::Decline,
+                );
+                if !pay_again {
+                    break;
+                }
+            }
+            return if paid > 0 {
+                Ok(EffectOutcome::count(paid))
+            } else {
+                Ok(EffectOutcome::impossible())
+            };
+        }
         if try_pay_interactively(self, game, ctx, player_id) {
             Ok(EffectOutcome::count(1))
         } else {

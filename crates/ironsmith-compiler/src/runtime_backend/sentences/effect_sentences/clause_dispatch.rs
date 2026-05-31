@@ -966,6 +966,58 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(EffectAst::subject_verb_clear_suspected(None));
     }
 
+    if word_slice_eq_any(
+        &clause_words,
+        &[
+            &["copy", "them"],
+            &["copy", "those", "cards"],
+            &["copy", "the", "exiled", "cards"],
+        ],
+    ) {
+        return Ok(EffectAst::subject_verb_tag_matching_objects(
+            ObjectFilter::tagged(TagKey::from(IT_TAG)),
+            vec![Zone::Exile],
+            TagKey::from(crate::cards::builders::COPIED_STACK_OBJECT_TAG),
+        ));
+    }
+
+    if word_slice_eq_any(
+        &clause_words,
+        &[
+            &[
+                "cast", "any", "number", "of", "the", "copies", "without", "paying", "their",
+                "mana", "costs",
+            ],
+            &[
+                "cast", "the", "copies", "without", "paying", "their", "mana", "costs",
+            ],
+            &[
+                "cast", "the", "copy", "without", "paying", "its", "mana", "cost",
+            ],
+        ],
+    ) {
+        return Ok(EffectAst::SubjectVerb(
+            crate::runtime_backend::ast::SubjectVerbEffectAst {
+                subject: crate::runtime_backend::ast::SubjectVerbSubjectAst {
+                    role: SubjectVerbRoleAst::Actor,
+                    player: PlayerAst::Implicit,
+                },
+                action: SubjectVerbActionAst::CastTagged {
+                    tag: TagKey::from(crate::cards::builders::COPIED_STACK_OBJECT_TAG),
+                    player: PlayerAst::Implicit,
+                    allow_land: false,
+                    as_copy: true,
+                    without_paying_mana_cost: true,
+                    cost_reduction: None,
+                    any_number: word_slice_contains_phrase(
+                        &clause_words,
+                        &["any", "number"],
+                    ),
+                },
+            },
+        ));
+    }
+
     if word_slice_starts_with(&clause_words, &["cast", "target"])
         && let Some(without_word_idx) = word_slice_find_phrase_start(
             &clause_words,
@@ -987,6 +1039,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
                     as_copy: false,
                     without_paying_mana_cost: true,
                     cost_reduction: None,
+                    any_number: false,
                 },
             },
         ));

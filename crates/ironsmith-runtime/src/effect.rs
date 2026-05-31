@@ -3945,6 +3945,26 @@ impl Effect {
         without_paying_mana_cost: bool,
         cost_reduction: Option<crate::mana::ManaCost>,
     ) -> Self {
+        Self::cast_tagged_with_options(
+            tag,
+            player,
+            allow_land,
+            as_copy,
+            without_paying_mana_cost,
+            cost_reduction,
+            false,
+        )
+    }
+
+    pub fn cast_tagged_with_options(
+        tag: impl Into<crate::tag::TagKey>,
+        player: PlayerFilter,
+        allow_land: bool,
+        as_copy: bool,
+        without_paying_mana_cost: bool,
+        cost_reduction: Option<crate::mana::ManaCost>,
+        any_number: bool,
+    ) -> Self {
         use crate::effects::CastTaggedEffect;
         let effect = CastTaggedEffect::new(tag, player);
         let effect = if allow_land {
@@ -3960,6 +3980,11 @@ impl Effect {
         };
         let effect = if let Some(cost_reduction) = cost_reduction {
             effect.cost_reduction(cost_reduction)
+        } else {
+            effect
+        };
+        let effect = if any_number {
+            effect.any_number()
         } else {
             effect
         };

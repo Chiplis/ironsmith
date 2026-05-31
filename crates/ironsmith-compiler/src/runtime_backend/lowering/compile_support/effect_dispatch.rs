@@ -1873,6 +1873,7 @@ fn compile_subject_verb_effect(
             as_copy,
             without_paying_mana_cost,
             cost_reduction,
+            any_number,
         } => {
             let resolved_tag = if tag.as_str() == "__last_revealed__" {
                 TagKey::from(ctx.last_revealed_tag.clone().ok_or_else(|| {
@@ -1904,13 +1905,14 @@ fn compile_subject_verb_effect(
                 _ => resolve_non_target_player_filter(*player, &current_reference_env(ctx))?,
             };
             Ok((
-                vec![Effect::cast_tagged(
+                vec![Effect::cast_tagged_with_options(
                     resolved_tag,
                     player_filter,
                     *allow_land,
                     *as_copy,
                     *without_paying_mana_cost,
                     cost_reduction.clone(),
+                    *any_number,
                 )],
                 Vec::new(),
             ))
@@ -5132,12 +5134,20 @@ fn compile_subject_verb_effect(
                 },
             )
         }
-        SubjectVerbActionAst::PayMana { cost } => {
+        SubjectVerbActionAst::PayMana {
+            cost,
+            any_number_of_times,
+        } => {
             compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
-                Effect::new(crate::effects::PayManaEffect::new(
+                let effect = crate::effects::PayManaEffect::new(
                     cost.clone(),
                     ChooseSpec::Player(subject.into_player_filter()),
-                ))
+                );
+                Effect::new(if *any_number_of_times {
+                    effect.any_number_of_times()
+                } else {
+                    effect
+                })
             })
         }
         SubjectVerbActionAst::DoubleManaPool => {

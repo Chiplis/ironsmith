@@ -943,8 +943,12 @@ pub(crate) fn parse_pay(
             })?
     };
 
-    Ok(EffectAst::subject_verb_pay_mana(
+    let any_number_of_times =
+        word_slice_contains_phrase(&clause_words, &["any", "number", "of", "times"]);
+
+    Ok(EffectAst::subject_verb_pay_mana_repeated(
         player,
         ManaCost::from_pips(pips),
+        any_number_of_times,
     ))
 }

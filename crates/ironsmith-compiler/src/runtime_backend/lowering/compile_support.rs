@@ -1141,11 +1141,15 @@ fn choose_followup_player_filter(
 pub(crate) fn hand_exile_filter_and_count(
     target: &TargetAst,
     ctx: &EffectLoweringContext,
-) -> Result<Option<(ObjectFilter, ChoiceCount, Vec<Zone>)>, CardTextError> {
-    let (filter, count) = match target {
-        TargetAst::Object(filter, _, _) => (filter, ChoiceCount::exactly(1)),
+) -> Result<Option<(ObjectFilter, ChoiceCount, Option<Value>, Vec<Zone>)>, CardTextError> {
+    let (filter, count, count_value) = match target {
+        TargetAst::Object(filter, _, _) => (filter, ChoiceCount::exactly(1), None),
         TargetAst::WithCount(inner, count) => match inner.as_ref() {
-            TargetAst::Object(filter, _, _) => (filter, *count),
+            TargetAst::Object(filter, _, _) => (filter, *count, None),
+            _ => return Ok(None),
+        },
+        TargetAst::WithCountValue(inner, count, count_value) => match inner.as_ref() {
+            TargetAst::Object(filter, _, _) => (filter, *count, Some(count_value.clone())),
             _ => return Ok(None),
         },
         _ => return Ok(None),
@@ -1157,7 +1161,7 @@ pub(crate) fn hand_exile_filter_and_count(
     let Some(zones) = zones else {
         return Ok(None);
     };
-    Ok(Some((resolved_filter, count, zones)))
+    Ok(Some((resolved_filter, count, count_value, zones)))
 }
 
 fn normalize_hand_or_graveyard_cross_zone_filter(filter: &mut ObjectFilter) {
@@ -1225,7 +1229,7 @@ pub(crate) fn lower_hand_exile_target(
     face_down: bool,
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
-    let Some((mut filter, count, zones)) = hand_exile_filter_and_count(target, ctx)? else {
+    let Some((mut filter, count, count_value, zones)) = hand_exile_filter_and_count(target, ctx)? else {
         return Ok(None);
     };
     strip_choice_zones_from_filter(&mut filter, &zones);
@@ -1256,6 +1260,7 @@ pub(crate) fn lower_hand_exile_target(
 
     prelude.push(Effect::new(
         crate::effects::ChooseObjectsEffect::new(filter, count, chooser, tag_key.clone())
+            .with_count_value_opt(count_value)
             .in_zones(zones),
     ));
     prelude.push(Effect::new(
@@ -1412,10 +1417,10 @@ pub(crate) fn lower_may_imprint_from_hand_effect(
         return Ok(None);
     }
 
-    let Some((filter, count, zones)) = hand_exile_filter_and_count(target, ctx)? else {
+    let Some((filter, count, count_value, zones)) = hand_exile_filter_and_count(target, ctx)? else {
         return Ok(None);
     };
-    if !count.is_single() || zones.as_slice() != [Zone::Hand] {
+    if !count.is_single() || count_value.is_some() || zones.as_slice() != [Zone::Hand] {
         return Ok(None);
     }
 

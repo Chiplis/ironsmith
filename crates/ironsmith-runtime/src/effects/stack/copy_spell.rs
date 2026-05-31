@@ -57,6 +57,7 @@ pub(crate) fn resolving_source_stack_entry(ctx: &ExecutionContext) -> StackEntry
     entry.event_value_amount = ctx.event_value_amount;
     entry.chosen_modes = ctx.chosen_modes.clone();
     entry.tagged_objects = ctx.tagged_objects.clone();
+    entry.effect_outcomes = ctx.effect_outcomes.clone();
     entry
 }
 

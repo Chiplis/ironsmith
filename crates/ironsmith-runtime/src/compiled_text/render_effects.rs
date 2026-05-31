@@ -3104,6 +3104,91 @@ fn filter_references_tag(filter: &ObjectFilter, tag: &TagKey) -> bool {
     })
 }
 
+fn describe_may_pay_mana_then_reflexive_counted_copy(
+    may: &crate::effects::MayEffect,
+) -> Option<String> {
+    let [pay_effect, reflexive_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    if may.decider.as_ref() != Some(&PlayerFilter::You) {
+        return None;
+    }
+
+    let pay_with_id = pay_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let pay = pay_with_id.effect.downcast_ref::<crate::effects::PayManaEffect>()?;
+    if !pay.any_number_of_times || !matches!(pay.player, ChooseSpec::Player(PlayerFilter::You)) {
+        return None;
+    }
+
+    let reflexive = reflexive_effect.downcast_ref::<crate::effects::ReflexiveTriggerEffect>()?;
+    if reflexive.condition != pay_with_id.id
+        || reflexive.predicate != crate::effect::EffectPredicate::Happened
+    {
+        return None;
+    }
+    let [put_effect, exile_effect, may_cast_effect] = reflexive.effects.as_slice() else {
+        return None;
+    };
+
+    fn unwrap_tagged(effect: &Effect) -> &Effect {
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            return &tagged.effect;
+        }
+        effect
+    }
+
+    let put = unwrap_tagged(put_effect).downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if put.distributed
+        || put.target_count.is_some()
+        || !matches!(put.target.base(), ChooseSpec::Source)
+        || !matches!(put.amount, Value::EffectValue(effect_id) if effect_id == pay_with_id.id)
+    {
+        return None;
+    }
+
+    let tagged_exile = exile_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let exile = tagged_exile
+        .effect
+        .downcast_ref::<crate::effects::ExileEffect>()?;
+    let ChooseSpec::WithCountValue(_, count, value) = &exile.spec else {
+        return None;
+    };
+    if !count.is_up_to_dynamic_x()
+        || !matches!(value, Value::EffectValue(effect_id) if *effect_id == pay_with_id.id)
+    {
+        return None;
+    }
+
+    let may_cast = may_cast_effect.downcast_ref::<crate::effects::MayEffect>()?;
+    if may_cast.decider.as_ref() != Some(&PlayerFilter::You) {
+        return None;
+    }
+    let [cast_effect] = may_cast.effects.as_slice() else {
+        return None;
+    };
+    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    if cast.tag != tagged_exile.tag
+        || !cast.as_copy
+        || !cast.without_paying_mana_cost
+        || !cast.any_number
+        || cast.allow_land
+        || cast.cost_reduction.is_some()
+        || cast.player != PlayerFilter::You
+    {
+        return None;
+    }
+
+    let counter = describe_counter_type(put.counter_type);
+    let target = describe_choose_spec(&put.target);
+    let exile_text = describe_choose_spec(&exile.spec)
+        .replace("target instants or sorcery cards", "target instant and/or sorcery cards")
+        .replace(" in your graveyard", " from your graveyard");
+    Some(format!(
+        "you may pay {} any number of times. When you pay this cost one or more times, put that many {counter} counters on {target}, then exile {exile_text} and copy them. You may cast any number of the copies without paying their mana costs",
+        pay.cost.to_oracle()
+    ))
+}
+
 fn describe_may_choose_pay_for_each_then_untap_tagged(effects: &[&Effect]) -> Option<String> {
     let [may_effect, if_effect] = effects else {
         return None;
@@ -29874,13 +29959,17 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             || crate::cards::is_sentence_helper_tag(tag, "searched");
         let spec = crate::target::ChooseSpec::Tagged(cast_tagged.tag.clone());
         let target = if cast_tagged.as_copy {
-            let tag_is_numbered = tag.rsplit_once('_').is_some_and(|(_, suffix)| {
-                !suffix.is_empty() && suffix.chars().all(|ch| ch.is_ascii_digit())
-            });
-            if tag == "it" || tag_is_numbered {
-                "the copy".to_string()
+            if cast_tagged.any_number {
+                "any number of the copies".to_string()
             } else {
-                format!("a copy of {}", describe_choose_spec(&spec))
+                let tag_is_numbered = tag.rsplit_once('_').is_some_and(|(_, suffix)| {
+                    !suffix.is_empty() && suffix.chars().all(|ch| ch.is_ascii_digit())
+                });
+                if tag == "it" || tag_is_numbered {
+                    "the copy".to_string()
+                } else {
+                    format!("a copy of {}", describe_choose_spec(&spec))
+                }
             }
         } else if helper_tag {
             "that card".to_string()
@@ -29905,6 +29994,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         return text;
     }
     if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() {
+        if let Some(compact) = describe_may_pay_mana_then_reflexive_counted_copy(may) {
+            return compact;
+        }
         if let Some(compact) = describe_may_enlist(may) {
             return compact;
         }
@@ -31278,11 +31370,16 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(pay_mana) = effect.downcast_ref::<crate::effects::PayManaEffect>() {
         let player = describe_choose_spec(&pay_mana.player);
+        let suffix = if pay_mana.any_number_of_times {
+            " any number of times"
+        } else {
+            ""
+        };
         return format!(
             "{} {} {}",
             player,
             player_verb(&player, "pay", "pays"),
-            pay_mana.cost.to_oracle()
+            format!("{}{suffix}", pay_mana.cost.to_oracle())
         );
     }
     if let Some(add_any) = effect.downcast_ref::<crate::effects::AddManaOfAnyColorEffect>() {
