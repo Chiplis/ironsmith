@@ -402,12 +402,20 @@ fn parse_matching_spell_cost_reduction_this_turn_sentence_lexed(
     let less_token_idx = words.token_index_for_word_index(less_idx)?;
     let subject_tokens = trim_edge_punctuation(&tokens[..=spell_token_idx]);
     let reduction_tokens = trim_edge_punctuation(&tokens[cost_token_idx + 1..less_token_idx]);
-    let (reduction, used) = parse_value(reduction_tokens)?;
+    let (mut reduction, used) = parse_value(&reduction_tokens)?;
     if used != reduction_tokens.len() {
         return None;
     }
+    if matches!(reduction, Value::X)
+        && clause_words.get(less_idx + 3).copied() == Some("where")
+    {
+        let where_token_idx = words.token_index_for_word_index(less_idx + 3)?;
+        if let Some(where_value) = parse_value_binding_clause(&tokens[where_token_idx..]) {
+            reduction = where_value;
+        }
+    }
 
-    let mut filter = crate::runtime_backend::parse_spell_filter_lexed(subject_tokens);
+    let mut filter = crate::runtime_backend::parse_spell_filter_lexed(&subject_tokens);
     filter.cast_by = Some(PlayerFilter::You);
 
     let between_words = &clause_words[spell_idx + 1..cost_idx];

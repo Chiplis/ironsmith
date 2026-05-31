@@ -825,6 +825,12 @@ pub fn resolve_value(
             }
             Ok(total)
         }
+        Value::PlayersBeingAttacked => Ok(game
+            .combat
+            .as_ref()
+            .map(crate::combat_state::defending_players)
+            .map(|players| players.len() as i32)
+            .unwrap_or(0)),
 
         Value::CountPlayers(player_filter) => {
             let filter_ctx = ctx.filter_context(game);

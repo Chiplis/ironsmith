@@ -358,6 +358,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::PlayFromGraveyardUntilEot
             | SubjectVerbActionAst::ControlPlayer { .. }
             | SubjectVerbActionAst::ReduceNextSpellCostThisTurn { .. }
+            | SubjectVerbActionAst::ReduceMatchingSpellCostThisTurn { .. }
             | SubjectVerbActionAst::GrantNextSpellAbilityThisTurn { .. }
             | SubjectVerbActionAst::RingTemptsYou
             | SubjectVerbActionAst::VentureIntoDungeon { .. }

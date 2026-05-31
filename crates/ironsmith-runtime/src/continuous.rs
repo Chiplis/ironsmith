@@ -4333,6 +4333,7 @@ fn resolve_value_with_context(
         // For these, we'd need more complex resolution (game state, execution context)
         // Return 0 as fallback (these are rare in continuous effects anyway)
         Value::XTimes(_)
+        | Value::PlayersBeingAttacked
         | Value::CountPlayers(_)
         | Value::PlayersWhoControlMoreThanYou(_)
         | Value::PartySize(_)

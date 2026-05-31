@@ -142,6 +142,30 @@ fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn commander_liara_portyr_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Commander Liara Portyr");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert!(
+        def.abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, AbilityKind::Triggered(_))),
+        "Commander Liara Portyr should parse its attack trigger strictly"
+    );
+    assert!(
+        ability_debug.contains("PlayersBeingAttacked")
+            && ability_debug.contains("applies_to_all_matching_this_turn: true")
+            && ability_debug.contains("GrantPlayTaggedEffect"),
+        "expected Commander Liara Portyr to lower the dynamic exile-spell reduction and cast permission structurally, got {ability_debug}"
+    );
+    assert_eq!(
+        rendered,
+        "Whenever you attack, spells you cast from exile this turn cost {X} less to cast, where X is the number of players being attacked. Exile the top X cards of your library. Until end of turn, you may cast spells from among those exiled cards."
+    );
+}
+
+#[test]
 fn thundermane_dragon_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Thundermane Dragon");
     let rendered = unprocessed_compiled_lines(&def).join(" ");

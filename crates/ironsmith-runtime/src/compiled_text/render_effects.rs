@@ -12872,7 +12872,15 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                 filtered[idx].downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()
             && let Some(grant_play) =
                 filtered[idx + 1].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
-            && let Some(compact) = describe_exile_top_then_play(exile_top, grant_play)
+            && let Some(compact) = describe_exile_top_then_play(
+                exile_top,
+                grant_play,
+                idx.checked_sub(1)
+                    .and_then(|previous_idx| filtered[previous_idx]
+                        .downcast_ref::<crate::effects::GrantNextSpellCostReductionEffect>())
+                    .and_then(|reduction| reduction.generic_reduction.as_ref())
+                    .is_some_and(|reduction| reduction == &exile_top.count),
+            )
         {
             parts.push(compact);
             idx += 2;
@@ -21927,6 +21935,7 @@ fn describe_exile_top_then_play_without_paying_mana(
 fn describe_exile_top_then_play(
     exile_top: &crate::effects::ExileTopOfLibraryEffect,
     grant_play: &crate::effects::GrantPlayTaggedEffect,
+    suppress_count_where_clause: bool,
 ) -> Option<String> {
     let Some(first_tag) = exile_top.moved_tags.first() else {
         return None;
@@ -21950,7 +21959,10 @@ fn describe_exile_top_then_play(
         _ => {
             let owner = describe_possessive_player_filter(&exile_top.player);
             let value_text = describe_value(&exile_top.count);
-            if value_text == "X" {
+            if value_text == "X"
+                || (suppress_count_where_clause
+                    && value_has_surface_hint(&exile_top.count, ValueSurfaceHint::WhereXIs))
+            {
                 format!("Exile the top X cards of {owner} library")
             } else {
                 format!("Exile the top X cards of {owner} library, where X is {value_text}")
@@ -21967,6 +21979,11 @@ fn describe_exile_top_then_play(
     } else {
         "cast"
     };
+    if !grant_play.allow_land && !singular_count {
+        return Some(format!(
+            "{exile_clause}. Until end of turn, you may cast spells from among those exiled cards"
+        ));
+    }
     Some(format!(
         "{exile_clause}. You may {verb} {cards_text} this turn"
     ))
@@ -33446,6 +33463,20 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 describe_player_filter(&grant_play_tagged.player),
             );
         }
+        if helper_tag
+            && !grant_play_tagged.allow_land
+            && grant_play_tagged.duration == crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
+            && matches!(grant_play_tagged.player, PlayerFilter::You)
+        {
+            let cards_text = if grant_play_tagged.tag.as_str() == "exiled"
+                || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "exiled")
+            {
+                "those exiled cards"
+            } else {
+                "those cards"
+            };
+            return format!("Until end of turn, you may cast spells from among {cards_text}");
+        }
         return format!(
             "{} may {verb} {object_text} {timing}",
             describe_player_filter(&grant_play_tagged.player),
@@ -33659,6 +33690,44 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         let spell_text = spell_text
             .strip_suffix(player_suffix.as_str())
             .unwrap_or(spell_text.as_str());
+        if grant_next_spell_cost_reduction.applies_to_all_matching_this_turn {
+            let (reduction, where_suffix) = grant_next_spell_cost_reduction
+                .generic_reduction
+                .as_ref()
+                .map(|value| match value {
+                    Value::Fixed(amount) => (amount.to_string(), String::new()),
+                    Value::X => ("{X}".to_string(), String::new()),
+                    _ => ("{X}".to_string(), format!(", where X is {}", describe_value(value))),
+                })
+                .unwrap_or_else(|| {
+                    (
+                        grant_next_spell_cost_reduction.reduction.to_oracle(),
+                        String::new(),
+                    )
+                });
+            let plural_spell_text = if grant_next_spell_cost_reduction.filter.zone == Some(Zone::Exile)
+                && grant_next_spell_cost_reduction
+                    .filter
+                    .cast_by
+                    .as_ref()
+                    .is_some_and(|cast_by| cast_by == &grant_next_spell_cost_reduction.player)
+                && grant_next_spell_cost_reduction.filter.card_types.is_empty()
+            {
+                format!("spells {player_text} cast from exile")
+            } else if spell_text.contains("spells") {
+                spell_text.to_string()
+            } else if let Some(rest) = spell_text.strip_prefix("spell") {
+                format!("spells{rest}")
+            } else {
+                format!("{spell_text} spells")
+            };
+            return format!(
+                "{} this turn cost {} less to cast{}",
+                plural_spell_text,
+                reduction,
+                where_suffix,
+            );
+        }
         return format!(
             "The next {} {} cast this turn costs {} less to cast",
             spell_text,

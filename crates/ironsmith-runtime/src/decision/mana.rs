@@ -2978,6 +2978,12 @@ pub(crate) fn apply_spell_cost_modifiers(
             continue;
         }
         if spell_matches_filter(game, spell, player, &effect.filter, &ctx, casting_method) {
+            if let Some(generic_reduction) = &effect.generic_reduction {
+                let amount = resolve_cost_modifier_value(game, player, spell, generic_reduction);
+                if amount > 0 {
+                    total_reduction = total_reduction.saturating_add(amount);
+                }
+            }
             reduction_pips.extend(effect.reduction.pips().iter().cloned());
         }
     }

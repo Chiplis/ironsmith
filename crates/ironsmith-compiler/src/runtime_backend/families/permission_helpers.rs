@@ -109,12 +109,14 @@ fn parse_tagged_cast_or_play_target_inner<'a>(
 ) -> Result<TaggedPermissionTarget, ErrMode<ContextError>> {
     alt((
         alt((
-            grammar::phrase(&["spells", "from", "among", "those", "cards"]).value(
-                TaggedPermissionTarget {
-                    tag: TagKey::from(IT_TAG),
-                    as_copy: false,
-                },
-            ),
+            alt((
+                grammar::phrase(&["spells", "from", "among", "those", "cards"]),
+                grammar::phrase(&["spells", "from", "among", "those", "exiled", "cards"]),
+            ))
+            .value(TaggedPermissionTarget {
+                tag: TagKey::from(IT_TAG),
+                as_copy: false,
+            }),
             grammar::phrase(&["spells", "from", "among", "them"]).value(TaggedPermissionTarget {
                 tag: TagKey::from(IT_TAG),
                 as_copy: false,

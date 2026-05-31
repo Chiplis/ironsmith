@@ -617,6 +617,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::PlayFromGraveyardUntilEot
         | SubjectVerbActionAst::ControlPlayer { .. }
         | SubjectVerbActionAst::ReduceNextSpellCostThisTurn { .. }
+        | SubjectVerbActionAst::ReduceMatchingSpellCostThisTurn { .. }
         | SubjectVerbActionAst::GrantNextSpellAbilityThisTurn { .. }
         | SubjectVerbActionAst::RingTemptsYou
         | SubjectVerbActionAst::VentureIntoDungeon { .. }
@@ -990,7 +991,8 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
             } => value_references_tag(count, IT_TAG) || filter_references_tag(filter, IT_TAG),
             SubjectVerbActionAst::RearrangeLookedCardsInLibrary { tag, .. }
             | SubjectVerbActionAst::ReorderTopOfLibrary { tag } => tag.as_str() == IT_TAG,
-            SubjectVerbActionAst::ReduceNextSpellCostThisTurn { filter, .. } => {
+            SubjectVerbActionAst::ReduceNextSpellCostThisTurn { filter, .. }
+            | SubjectVerbActionAst::ReduceMatchingSpellCostThisTurn { filter, .. } => {
                 filter_references_tag(filter, IT_TAG)
             }
             SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { .. }

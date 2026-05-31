@@ -1336,6 +1336,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::DistinctPowers(_)
         | Value::CreaturesDiedThisTurn
         | Value::CreaturesDiedThisTurnControlledBy(_)
+        | Value::PlayersBeingAttacked
         | Value::CountPlayers(_)
         | Value::PlayersWhoControlMoreThanYou(_)
         | Value::PartySize(_)

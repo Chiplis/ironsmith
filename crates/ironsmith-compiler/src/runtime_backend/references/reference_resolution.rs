@@ -1919,6 +1919,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::PlayFromGraveyardUntilEot
             | SubjectVerbActionAst::ControlPlayer { .. }
             | SubjectVerbActionAst::ReduceNextSpellCostThisTurn { .. }
+            | SubjectVerbActionAst::ReduceMatchingSpellCostThisTurn { .. }
             | SubjectVerbActionAst::GrantNextSpellAbilityThisTurn { .. }
             | SubjectVerbActionAst::RingTemptsYou
             | SubjectVerbActionAst::VentureIntoDungeon { .. }
@@ -2657,7 +2658,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::ControlPlayer { player, .. } => {
                 bind_unresolved_it_in_player_filter(player, seed_tag)
             }
-            SubjectVerbActionAst::ReduceNextSpellCostThisTurn { filter, .. } => {
+            SubjectVerbActionAst::ReduceNextSpellCostThisTurn { filter, .. }
+            | SubjectVerbActionAst::ReduceMatchingSpellCostThisTurn { filter, .. } => {
                 bind_unresolved_it_in_filter(filter, seed_tag)
             }
             SubjectVerbActionAst::GrantNextSpellAbilityThisTurn { filter, .. } => {

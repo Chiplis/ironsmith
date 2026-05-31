@@ -8130,6 +8130,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the number of creatures that died under {} control this turn",
             describe_possessive_player_filter(filter)
         ),
+        Value::PlayersBeingAttacked => "the number of players being attacked".to_string(),
         Value::CountPlayers(filter) => match filter {
             PlayerFilter::Any => "the number of players".to_string(),
             PlayerFilter::Opponent => "the number of opponents".to_string(),
