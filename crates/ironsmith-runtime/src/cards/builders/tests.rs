@@ -35383,6 +35383,140 @@ fn parse_until_end_of_turn_you_may_play_that_card_without_paying_mana_cost() {
     );
 }
 
+#[test]
+fn temporal_aperture_oracle_parses_and_renders_top_library_permission() {
+    let def = parse_oracle_card_definition("Temporal Aperture");
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("RevealTop"),
+        "expected Temporal Aperture to reveal and tag the top card, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("AllPlayersLookAtYourTopLibraryCard"),
+        "expected Temporal Aperture to grant temporary top-library reveal permission, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("GrantPlayTaggedEffect")
+            || abilities_debug.contains("GrantPlayTaggedUntilEndOfTurn"),
+        "expected Temporal Aperture to grant play permission for the revealed card, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("GrantTaggedSpellFreeCastUntilEndOfTurnEffect")
+            || abilities_debug.contains("without_paying_mana_cost: true"),
+        "expected Temporal Aperture to grant a free-cast permission for the revealed card, got {abilities_debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains("for as long as that card remains on top of your library")
+            && rendered_lower.contains("play with the top card of your library revealed")
+            && rendered_lower.contains("you may play that card without paying its mana cost"),
+        "expected Temporal Aperture compiled text to preserve the revealed-top-card permission, got {rendered}"
+    );
+    assert!(
+        !rendered_lower.contains("unsupported") && !rendered_lower.contains("unimplemented"),
+        "Temporal Aperture should compile without fallback markers, got {rendered}"
+    );
+}
+
+#[test]
+fn temporal_aperture_runtime_grants_free_cast_only_while_revealed_card_is_top_library_card() {
+    use crate::card::CardBuilder;
+    use crate::alternative_cast::CastingMethod;
+    use crate::decision::{LegalAction, compute_legal_actions};
+    use crate::effects::{ExecutionContext, execute_effect};
+
+    let def = parse_oracle_card_definition("Temporal Aperture");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Temporal Aperture should have an activated ability");
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let temporal_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let expensive_spell = CardBuilder::new(CardId::from_raw(77_001), "Expensive Spell")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let spell_id = game.create_object_from_card(&expensive_spell, alice, Zone::Library);
+
+    assert!(
+        !game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            spell_id,
+            Zone::Library,
+            alice
+        ),
+        "Temporal Aperture should not grant play permission before its ability resolves"
+    );
+
+    let mut ctx = ExecutionContext::new_default(temporal_id, alice);
+    for effect in activated.effects.flattened_default_effects() {
+        execute_effect(&mut game, effect, &mut ctx)
+            .expect("Temporal Aperture activated effect should resolve");
+    }
+
+    assert!(
+        game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            spell_id,
+            Zone::Library,
+            alice
+        ),
+        "Temporal Aperture should grant play-from-library permission to the revealed card"
+    );
+    assert!(
+        !game
+            .effect_store
+            .grant_registry
+            .granted_alternative_casts_for_card(&game, spell_id, Zone::Library, alice)
+            .is_empty(),
+        "Temporal Aperture should grant a no-mana alternative cast from library"
+    );
+
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id: action_spell_id,
+                from_zone: Zone::Library,
+                casting_method: CastingMethod::PlayFrom { use_alternative: Some(_), .. },
+            } if *action_spell_id == spell_id
+        )),
+        "revealed top spell should be castable from library without paying its mana cost, got {actions:?}"
+    );
+
+    let blocker = CardBuilder::new(CardId::from_raw(77_002), "New Top Card")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    game.create_object_from_card(&blocker, alice, Zone::Library);
+    let actions_after_top_changed = compute_legal_actions(&game, alice);
+    assert!(
+        !actions_after_top_changed.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id: action_spell_id,
+                from_zone: Zone::Library,
+                ..
+            } if *action_spell_id == spell_id
+        )),
+        "Temporal Aperture should not offer the revealed spell once it is no longer the top library card, got {actions_after_top_changed:?}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_your_opponents_cant_cast_spells_this_turn() {

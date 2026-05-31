@@ -12455,6 +12455,25 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 3;
             continue;
         }
+        if idx + 3 < filtered.len()
+            && let Some(reveal_top) = filtered[idx].downcast_ref::<crate::effects::RevealTopEffect>()
+            && let Some(reveal_permission) = unwrap_tag_wrappers(filtered[idx + 1])
+                .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+            && let Some(grant_play) =
+                filtered[idx + 2].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+            && let Some(grant_free_cast) = filtered[idx + 3]
+                .downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>()
+            && let Some(compact) = describe_reveal_top_then_temporarily_play_revealed_top_card(
+                reveal_top,
+                reveal_permission,
+                grant_play,
+                grant_free_cast,
+            )
+        {
+            parts.push(compact);
+            idx += 4;
+            continue;
+        }
         if idx + 1 < filtered.len()
             && let Some(exile_top) =
                 filtered[idx].downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()
@@ -21303,6 +21322,33 @@ fn tagged_move_to_zone(
     move_to_zone.zone == zone
         && move_to_zone.to_top == to_top
         && matches!(move_to_zone.target.base(), ChooseSpec::Tagged(move_tag) if move_tag == tag)
+}
+
+fn describe_reveal_top_then_temporarily_play_revealed_top_card(
+    reveal_top: &crate::effects::RevealTopEffect,
+    reveal_permission: &crate::effects::ApplyContinuousEffect,
+    grant_play: &crate::effects::GrantPlayTaggedEffect,
+    grant_free_cast: &crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect,
+) -> Option<String> {
+    let tag = reveal_top.tag.as_ref()?;
+    if reveal_top.player != PlayerFilter::You
+        || !matches!(reveal_permission.target, crate::continuous::EffectTarget::Source)
+        || reveal_permission.until != Until::EndOfTurn
+        || !apply_continuous_adds_static_ability(
+            reveal_permission,
+            crate::static_abilities::StaticAbilityId::AllPlayersLookAtYourTopLibraryCard,
+        )
+        || grant_play.tag != *tag
+        || grant_free_cast.tag != *tag
+        || grant_play.player != grant_free_cast.player
+        || grant_play.player != PlayerFilter::You
+        || grant_play.duration != crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
+        || !grant_play.allow_land
+    {
+        return None;
+    }
+
+    Some("Reveal the top card of your library. Until end of turn, for as long as that card remains on top of your library, play with the top card of your library revealed and you may play that card without paying its mana cost".to_string())
 }
 
 fn describe_exile_top_then_play_without_paying_mana(
@@ -32679,10 +32725,52 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(grant_tagged_spell_free_cast) =
         effect.downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>()
     {
-        return format!(
-            "{} may cast {} from exile this turn without paying their mana costs",
-            describe_player_filter(&grant_tagged_spell_free_cast.player),
+        let helper_tag = grant_tagged_spell_free_cast
+            .tag
+            .as_str()
+            .starts_with("targeted_")
+            || grant_tagged_spell_free_cast
+                .tag
+                .as_str()
+                .starts_with("__source_")
+            || grant_tagged_spell_free_cast.tag.as_str() == "__it__"
+            || matches!(
+                grant_tagged_spell_free_cast.tag.as_str(),
+                "exiled" | "revealed" | "looked" | "chosen" | "searched"
+            )
+            || crate::cards::is_sentence_helper_tag(
+                grant_tagged_spell_free_cast.tag.as_str(),
+                "exiled",
+            )
+            || crate::cards::is_sentence_helper_tag(
+                grant_tagged_spell_free_cast.tag.as_str(),
+                "revealed",
+            )
+            || crate::cards::is_sentence_helper_tag(
+                grant_tagged_spell_free_cast.tag.as_str(),
+                "looked",
+            )
+            || crate::cards::is_sentence_helper_tag(
+                grant_tagged_spell_free_cast.tag.as_str(),
+                "chosen",
+            )
+            || crate::cards::is_sentence_helper_tag(
+                grant_tagged_spell_free_cast.tag.as_str(),
+                "searched",
+            );
+        let object_text = if helper_tag {
+            "that card"
+        } else {
             "those spells"
+        };
+        let cost_text = if helper_tag {
+            "its mana cost"
+        } else {
+            "their mana costs"
+        };
+        return format!(
+            "{} may cast {object_text} this turn without paying {cost_text}",
+            describe_player_filter(&grant_tagged_spell_free_cast.player),
         );
     }
     if let Some(may_cast_matching) =
