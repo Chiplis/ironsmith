@@ -1,7 +1,7 @@
 //! Move to zone effect implementation.
 
 use crate::effect::{EffectOutcome, OutcomeObjectMemory};
-use crate::combat_state::{AttackerInfo, get_attack_target};
+use crate::combat_state::{AttackTarget, AttackerInfo, CombatState};
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_tagged_object_id};
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -75,6 +75,95 @@ fn matching_cost_candidate_count(
                 .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
         })
         .count()
+}
+
+fn enters_attacking_targets(game: &GameState, combat: &CombatState) -> Vec<AttackTarget> {
+    let mut defending_players = Vec::new();
+    for attacker in &combat.attackers {
+        let defending_player = match attacker.target {
+            AttackTarget::Player(player) => Some(player),
+            AttackTarget::Planeswalker(planeswalker) => game
+                .object(planeswalker)
+                .map(|object| game.controller_of(object)),
+        };
+        if let Some(player) = defending_player
+            && !defending_players.contains(&player)
+        {
+            defending_players.push(player);
+        }
+    }
+
+    let all_effects = game.all_continuous_effects();
+    let mut targets = Vec::new();
+    for defender in defending_players {
+        targets.push(AttackTarget::Player(defender));
+        for &object_id in &game.battlefield {
+            let Some(object) = game.object(object_id) else {
+                continue;
+            };
+            if game.controller_of(object) == defender
+                && object.zone == Zone::Battlefield
+                && game.object_has_card_type_with_effects(
+                    object_id,
+                    crate::types::CardType::Planeswalker,
+                    &all_effects,
+                )
+            {
+                targets.push(AttackTarget::Planeswalker(object_id));
+            }
+        }
+    }
+    targets
+}
+
+fn attack_target_description(game: &GameState, target: &AttackTarget) -> String {
+    match target {
+        AttackTarget::Player(player) => game
+            .player(*player)
+            .map(|player| player.name.clone())
+            .unwrap_or_else(|| format!("player {}", player.0)),
+        AttackTarget::Planeswalker(object_id) => game
+            .object(*object_id)
+            .map(|object| object.name.clone())
+            .unwrap_or_else(|| format!("planeswalker #{}", object_id.0)),
+    }
+}
+
+fn choose_enters_attacking_target(
+    game: &GameState,
+    ctx: &mut ExecutionContext<'_>,
+    moved_id: crate::ids::ObjectId,
+) -> Option<AttackTarget> {
+    let combat = game.combat.as_ref()?;
+    let targets = enters_attacking_targets(game, combat);
+    if targets.len() <= 1 {
+        return targets.first().cloned();
+    }
+
+    let options = targets
+        .iter()
+        .enumerate()
+        .map(|(index, target)| {
+            crate::decisions::DisplayOption::new(index, attack_target_description(game, target))
+        })
+        .collect();
+    let chooser = game
+        .object(moved_id)
+        .map(|object| game.controller_of(object))
+        .unwrap_or(ctx.controller);
+    let source = ctx.source;
+    let selected = crate::decisions::make_decision(
+        game,
+        &mut *ctx.decision_maker,
+        chooser,
+        Some(source),
+        crate::decisions::ChoiceSpec::single(source, options),
+    );
+    let selected_index = selected.into_iter().next().unwrap_or(0);
+    targets
+        .get(selected_index)
+        .cloned()
+        .or_else(|| targets.first().cloned())
 }
 
 impl EffectExecutor for MoveToZoneEffect {
@@ -167,8 +256,9 @@ impl EffectExecutor for MoveToZoneEffect {
                         match move_to_battlefield_with_options(game, ctx, object_id, options) {
                             BattlefieldEntryOutcome::Moved(new_id) => {
                                 if self.enters_attacking
+                                    && let Some(target) =
+                                        choose_enters_attacking_target(game, ctx, new_id)
                                     && let Some(combat) = game.combat.as_mut()
-                                    && let Some(target) = get_attack_target(combat, ctx.source).cloned()
                                 {
                                     combat.attackers.push(AttackerInfo {
                                         creature: new_id,
@@ -384,28 +474,58 @@ mod tests {
         id
     }
 
+    struct ChooseLastOptionDecisionMaker;
+
+    impl crate::decision::DecisionMaker for ChooseLastOptionDecisionMaker {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            ctx.options
+                .iter()
+                .filter(|option| option.legal)
+                .last()
+                .map(|option| vec![option.index])
+                .unwrap_or_default()
+        }
+    }
+
     #[test]
-    fn paladin_elizabeth_taggerdy_move_enters_tapped_and_attacking_same_defender() {
-        let mut game = setup_game();
+    fn paladin_elizabeth_taggerdy_move_enters_tapped_and_attacking_chosen_defender() {
+        let mut game = GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string(), "Cara".to_string()],
+            20,
+        );
         let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
+        let cara = PlayerId::from_index(2);
         let paladin = create_named_creature_in_zone(
             &mut game,
             alice,
             "Paladin Elizabeth Taggerdy",
             Zone::Battlefield,
         );
+        let other_attacker =
+            create_named_creature_in_zone(&mut game, alice, "Wasteland Raider", Zone::Battlefield);
         let vault_dweller =
             create_named_creature_in_zone(&mut game, alice, "Vault Dweller", Zone::Hand);
         game.combat = Some(CombatState {
-            attackers: vec![AttackerInfo {
-                creature: paladin,
-                target: AttackTarget::Player(bob),
-            }],
+            attackers: vec![
+                AttackerInfo {
+                    creature: paladin,
+                    target: AttackTarget::Player(bob),
+                },
+                AttackerInfo {
+                    creature: other_attacker,
+                    target: AttackTarget::Player(cara),
+                },
+            ],
             ..CombatState::default()
         });
 
-        let mut ctx = ExecutionContext::new_default(paladin, alice);
+        let mut decision_maker = ChooseLastOptionDecisionMaker;
+        let mut ctx = ExecutionContext::new(paladin, alice, &mut decision_maker);
         let outcome = MoveToZoneEffect::new(
             ChooseSpec::SpecificObject(vault_dweller),
             Zone::Battlefield,
@@ -432,7 +552,7 @@ mod tests {
             .iter()
             .find(|info| info.creature == moved)
             .expect("moved creature should enter attacking");
-        assert_eq!(moved_attacker.target, AttackTarget::Player(bob));
+        assert_eq!(moved_attacker.target, AttackTarget::Player(cara));
     }
 
     #[test]

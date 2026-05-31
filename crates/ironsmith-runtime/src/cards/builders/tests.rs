@@ -35102,13 +35102,7 @@ fn parse_fallen_shinobi_uses_top_library_exile_and_plural_play_permission() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_paladin_elizabeth_taggerdy_battalion_puts_hand_creature_tapped_and_attacking() {
-    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Paladin Elizabeth Taggerdy")
-        .card_types(vec![CardType::Creature])
-        .power_toughness(PowerToughness::fixed(3, 2))
-        .parse_text(
-            "Battalion — Whenever Paladin Elizabeth Taggerdy and at least two other creatures attack, draw a card, then you may put a creature card with mana value X or less from your hand onto the battlefield tapped and attacking, where X is Paladin Elizabeth Taggerdy's power.",
-        )
-        .expect("Paladin Elizabeth Taggerdy should parse strictly");
+    let def = parse_oracle_card_definition("Paladin Elizabeth Taggerdy");
 
     let debug = format!("{def:#?}").to_ascii_lowercase();
     assert!(
