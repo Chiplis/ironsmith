@@ -2340,6 +2340,24 @@ pub(crate) fn parse_static_condition_clause(
         return Ok(crate::ConditionExpr::EquippedCreatureAttacking);
     }
     if clause_words.len() >= 4
+        && word_slice_ends_with(&clause_words, &["is", "attacking"])
+        && !is_source_reference_words(&clause_words[..clause_words.len() - 2])
+    {
+        let subject_end = token_index_for_word_index(&tokens, clause_words.len() - 2).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unable to map attacking condition subject (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
+        let mut filter = parse_object_filter(&tokens[..subject_end], false)?;
+        filter.attacking = true;
+        return Ok(crate::ConditionExpr::CountComparison {
+            count: AnthemCountExpression::MatchingFilter(filter),
+            comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+            display: Some(clause_words.join(" ")),
+        });
+    }
+    if clause_words.len() >= 4
         && clause_words[2] == "is"
         && matches!(
             &clause_words[..2],
