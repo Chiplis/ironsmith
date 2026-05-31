@@ -11275,6 +11275,50 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 count_text
             )
         }
+        Condition::PlayerPerformedKeywordActionWithCardNameThisGameOrMore {
+            player,
+            action,
+            card_name,
+            count,
+        } => {
+            let subject = describe_player_filter(player);
+            let count_text = small_number_word(*count).unwrap_or_else(|| count.to_string());
+            let action_text = match action {
+                crate::events::KeywordActionKind::Cycle => "cycled",
+                _ => action.infinitive(),
+            };
+            let display_name = card_name
+                .split_whitespace()
+                .map(|word| {
+                    let mut chars = word.chars();
+                    match chars.next() {
+                        Some(first) => format!(
+                            "{}{}",
+                            first.to_ascii_uppercase(),
+                            chars.as_str().to_ascii_lowercase()
+                        ),
+                        None => String::new(),
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            if matches!(player, PlayerFilter::You)
+                && matches!(action, crate::events::KeywordActionKind::Cycle)
+            {
+                format!(
+                    "you've {action_text} a card named {display_name} {count_text} or more times this game"
+                )
+            } else {
+                format!(
+                    "{} {} {} a card named {} {} or more times this game",
+                    subject,
+                    player_verb(&subject, "have", "has"),
+                    action_text,
+                    display_name,
+                    count_text
+                )
+            }
+        }
         Condition::AttackedThisTurn => "you attacked this turn".to_string(),
         Condition::OpponentLostLifeThisTurn => "an opponent lost life this turn".to_string(),
         Condition::PermanentLeftBattlefieldThisTurn => {

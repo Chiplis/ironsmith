@@ -86,6 +86,23 @@ fn unwrap_matching_conditional_replacement_effects(
     conditional.if_true.clone()
 }
 
+fn add_instead_source_zone_condition(
+    condition: crate::effect::Condition,
+    normalized_line: &str,
+) -> crate::effect::Condition {
+    if normalized_line.contains("from your graveyard instead")
+        || normalized_line.contains("from its owner graveyard instead")
+        || normalized_line.contains("from its owners graveyard instead")
+    {
+        crate::effect::Condition::And(
+            Box::new(crate::effect::Condition::SourceIsInZone(Zone::Graveyard)),
+            Box::new(condition),
+        )
+    } else {
+        condition
+    }
+}
+
 fn rewrite_prior_token_placeholder_effect(
     effect: &mut EffectAst,
     token_info: &(String, PlayerAst),
@@ -1169,7 +1186,7 @@ fn lower_statement_chunk(
         segment
             .self_replacements
             .push(crate::resolution::SelfReplacementBranch::new(
-                replacement.condition,
+                add_instead_source_zone_condition(replacement.condition, &normalized_line),
                 replacement.if_true,
             ));
         builder.spell_effect = Some(spell_effect);
@@ -1201,7 +1218,7 @@ fn lower_statement_chunk(
         segment
             .self_replacements
             .push(crate::resolution::SelfReplacementBranch::new(
-                replacement.condition,
+                add_instead_source_zone_condition(replacement.condition, &normalized_line),
                 replacement.if_true,
             ));
         return Ok(builder);
@@ -1212,6 +1229,7 @@ fn lower_statement_chunk(
         && builder.spell_effect.is_none()
         && let Some(condition) = trailing_instead_if_condition
     {
+        let condition = add_instead_source_zone_condition(condition, &normalized_line);
         let previous = compiled[0].clone();
         let mut replacement_effects = vec![compiled[1].clone()];
         if let Some(previous_target) = super::extract_previous_replacement_target(&previous) {
@@ -1243,6 +1261,7 @@ fn lower_statement_chunk(
         && !existing.is_empty()
         && let Some(condition) = trailing_instead_if_condition
     {
+        let condition = add_instead_source_zone_condition(condition, &normalized_line);
         let mut replacement_effects = vec![compiled[1].clone()];
         if let Some(previous_target) = existing
             .last()
@@ -1275,6 +1294,7 @@ fn lower_statement_chunk(
         && !existing.is_empty()
         && let Some(condition) = trailing_instead_if_condition
     {
+        let condition = add_instead_source_zone_condition(condition, &normalized_line);
         let mut replacement_effects = vec![compiled[0].clone()];
         if let Some(previous_target) = existing
             .last()
@@ -1318,6 +1338,10 @@ fn lower_statement_chunk(
                     .to_string(),
             ));
         };
+        replacement.condition = add_instead_source_zone_condition(
+            replacement.condition,
+            &normalized_line,
+        );
         segment.self_replacements.push(replacement);
         return Ok(builder);
     } else if matches!(
@@ -1384,7 +1408,7 @@ fn lower_statement_chunk(
         segment
             .self_replacements
             .push(crate::resolution::SelfReplacementBranch::new(
-                replacement.condition,
+                add_instead_source_zone_condition(replacement.condition, &normalized_line),
                 replacement.if_true,
             ));
     } else if let Some(ref mut existing) = builder.spell_effect {

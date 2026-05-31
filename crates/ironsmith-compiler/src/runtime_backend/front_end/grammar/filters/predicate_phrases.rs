@@ -3825,6 +3825,39 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         });
     }
 
+    if word_slice_starts_with(&filtered, &["youve", "cycled", "card", "named"])
+        || word_slice_starts_with(&filtered, &["you", "have", "cycled", "card", "named"])
+    {
+        let name_start = if filtered[0] == "youve" { 4 } else { 5 };
+        if let Some(times_idx) = filtered[name_start..]
+            .iter()
+            .position(|word| *word == "times")
+            .map(|idx| idx + name_start)
+            && times_idx >= name_start + 1
+            && times_idx + 3 == filtered.len()
+            && word_slice_eq(&filtered[times_idx + 1..], &["this", "game"])
+            && let Some(count_start) = times_idx.checked_sub(3)
+            && word_slice_eq(&filtered[count_start + 1..times_idx], &["or", "more"])
+            && let Some(count) = parse_named_number(filtered[count_start])
+        {
+            let card_name = filtered[name_start..count_start]
+                .iter()
+                .map(|word| (*word).to_string())
+                .collect::<Vec<_>>()
+                .join(" ");
+            if !card_name.is_empty() {
+                return Ok(
+                    PredicateAst::PlayerPerformedKeywordActionWithCardNameThisGameOrMore {
+                        player: PlayerAst::You,
+                        action: crate::events::KeywordActionKind::Cycle,
+                        card_name,
+                        count,
+                    },
+                );
+            }
+        }
+    }
+
     let negative_spell_cast_prefix =
         if word_slice_starts_with(&filtered, &["that", "player", "didnt", "cast"]) {
             Some((4usize, PlayerFilter::Active))

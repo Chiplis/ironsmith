@@ -675,6 +675,21 @@ pub(crate) fn parse_shuffle(
         )
     }
 
+    fn shuffle_source_zone(words: &[&str]) -> Option<Zone> {
+        matches!(
+            words,
+            ["from", "graveyard"]
+                | ["from", "your", "graveyard"]
+                | ["from", "their", "graveyard"]
+                | ["from", "that", "player", "graveyard"]
+                | ["from", "that", "players", "graveyard"]
+                | ["from", "its", "owner", "graveyard"]
+                | ["from", "its", "owners", "graveyard"]
+                | ["from", "his", "or", "her", "graveyard"]
+        )
+        .then_some(Zone::Graveyard)
+    }
+
     fn is_simple_library_phrase(words: &[&str]) -> bool {
         matches!(
             words,
@@ -715,6 +730,26 @@ pub(crate) fn parse_shuffle(
         {
             let trailing_words = &destination_words[consumed..];
             if is_supported_shuffle_source_tail(trailing_words) {
+                if let Some(source_zone) = shuffle_source_zone(trailing_words) {
+                    return Ok(EffectAst::ForEachObject {
+                        filter: ObjectFilter::tagged(TagKey::from(IT_TAG)).in_zone(source_zone),
+                        effects: vec![
+                            EffectAst::subject_verb_move_to_zone(
+                                TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
+                                Zone::Library,
+                                false,
+                                ReturnControllerAst::Preserve,
+                                false,
+                                None,
+                            ),
+                            subject_verb_player_resource_effect(
+                                SubjectVerbRoleAst::LibraryOwner,
+                                destination_player,
+                                SubjectVerbActionAst::ShuffleLibrary,
+                            ),
+                        ],
+                    });
+                }
                 return Ok(EffectAst::ForEachTagged {
                     tag: TagKey::from(IT_TAG),
                     effects: vec![

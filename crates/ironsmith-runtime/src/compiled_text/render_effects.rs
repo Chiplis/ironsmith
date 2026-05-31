@@ -2375,13 +2375,16 @@ fn describe_for_each_tagged_shuffle_into_owner_library(
         return None;
     }
     let shuffle = for_each.effects[1].downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
-    if !matches!(
+    if matches!(&shuffle.player, PlayerFilter::You) {
+        return Some("Shuffle it into your library".to_string());
+    }
+    if matches!(
         &shuffle.player,
         PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(tag)) if tag == &for_each.tag
     ) {
-        return None;
+        return Some("Its owner shuffles it into their library".to_string());
     }
-    Some("Its owner shuffles it into their library".to_string())
+    None
 }
 
 fn describe_source_owner_shuffle_then_reveal_named_to_battlefield(

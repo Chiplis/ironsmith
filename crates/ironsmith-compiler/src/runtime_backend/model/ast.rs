@@ -511,6 +511,12 @@ pub(crate) enum PredicateAst {
         player: PlayerAst,
         count: u32,
     },
+    PlayerPerformedKeywordActionWithCardNameThisGameOrMore {
+        player: PlayerAst,
+        action: crate::events::KeywordActionKind,
+        card_name: String,
+        count: u32,
+    },
     OpponentLostLifeThisTurn,
     YouHaveNoCardsInHand,
     PlayerWouldDrawCard {

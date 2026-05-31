@@ -1043,6 +1043,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::And(..) => {}
         Condition::Or(..) => {}
         Condition::PlayerCastSpellsThisTurnOrMore { .. } => {}
+        Condition::PlayerPerformedKeywordActionWithCardNameThisGameOrMore { .. } => {}
         Condition::PlayerTappedLandForManaThisTurn { .. } => {}
         Condition::PlayerGainedLifeThisTurnOrMore { .. } => {}
         Condition::PlayerHadLandEnterBattlefieldThisTurn { .. } => {}
@@ -1201,6 +1202,17 @@ pub fn evaluate_condition_external(
                 .sum();
             cast_count >= *count
         }
+        Condition::PlayerPerformedKeywordActionWithCardNameThisGameOrMore {
+            player,
+            action,
+            card_name,
+            count,
+        } => matching_condition_players_external(game, ctx, player)
+            .into_iter()
+            .any(|player_id| {
+                game.keyword_action_card_name_count_this_game(player_id, *action, card_name)
+                    >= *count
+            }),
         Condition::PlayerTappedLandForManaThisTurn { player } => {
             let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
                 return false;
@@ -2451,6 +2463,17 @@ fn evaluate_condition_simple(
                 .sum();
             cast_count >= *count
         }
+        Condition::PlayerPerformedKeywordActionWithCardNameThisGameOrMore {
+            player,
+            action,
+            card_name,
+            count,
+        } => matching_condition_players_simple(game, controller, player)
+            .into_iter()
+            .any(|player_id| {
+                game.keyword_action_card_name_count_this_game(player_id, *action, card_name)
+                    >= *count
+            }),
         Condition::PlayerTappedLandForManaThisTurn { player } => {
             let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
                 return false;
@@ -3121,6 +3144,17 @@ fn evaluate_condition(
                 .sum();
             Ok(cast_count >= *count)
         }
+        Condition::PlayerPerformedKeywordActionWithCardNameThisGameOrMore {
+            player,
+            action,
+            card_name,
+            count,
+        } => Ok(matching_condition_players_exec(game, ctx, player)?
+            .into_iter()
+            .any(|player_id| {
+                game.keyword_action_card_name_count_this_game(player_id, *action, card_name)
+                    >= *count
+            })),
         Condition::PlayerTappedLandForManaThisTurn { player } => {
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
             Ok(game

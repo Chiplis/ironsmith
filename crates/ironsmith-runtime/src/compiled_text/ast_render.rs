@@ -437,6 +437,71 @@ fn is_hidden_gift_etb_ability(ability: &Ability) -> bool {
     rendered.starts_with("if the gift was promised") || is_standard_gift_render_payload(&rendered)
 }
 
+fn strip_source_graveyard_condition(condition: &Condition) -> &Condition {
+    if let Condition::And(left, right) = condition {
+        if matches!(left.as_ref(), Condition::SourceIsInZone(Zone::Graveyard)) {
+            return right.as_ref();
+        }
+        if matches!(right.as_ref(), Condition::SourceIsInZone(Zone::Graveyard)) {
+            return left.as_ref();
+        }
+    }
+    condition
+}
+
+fn describe_graveyard_shuffle_to_battlefield_self_replacement(
+    segment: &crate::resolution::ResolutionSegment,
+) -> Option<String> {
+    let [default_effect] = segment.default_effects.as_slice() else {
+        return None;
+    };
+    let [branch] = segment.self_replacements.as_slice() else {
+        return None;
+    };
+    let for_each = default_effect.downcast_ref::<crate::effects::ForEachObject>()?;
+    if for_each.filter.zone != Some(Zone::Graveyard)
+        || !for_each.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+        })
+    {
+        return None;
+    }
+    let [move_to_library_effect, shuffle_effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let move_to_library = move_to_library_effect
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_library.zone != Zone::Library
+        || move_to_library.to_top
+        || !matches!(move_to_library.target, ChooseSpec::Iterated)
+    {
+        return None;
+    }
+    let shuffle = shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+    if !matches!(shuffle.player, PlayerFilter::You) {
+        return None;
+    }
+    let [replacement_effect] = branch.replacement_effects.as_slice() else {
+        return None;
+    };
+    let replacement_effect = replacement_effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .map(|tagged| tagged.effect.as_ref())
+        .unwrap_or(replacement_effect);
+    let replacement_move = replacement_effect
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if replacement_move.zone != Zone::Battlefield
+        || !matches!(replacement_move.target, ChooseSpec::Tagged(_))
+    {
+        return None;
+    }
+    let condition = strip_source_graveyard_condition(&branch.condition);
+    let condition_text = super::normalize_common::describe_condition(condition);
+    Some(format!(
+        "Shuffle it into your library from your graveyard. If {condition_text}, put it onto the battlefield from your graveyard instead"
+    ))
+}
+
 fn describe_single_self_replacement_segment(
     segment: &crate::resolution::ResolutionSegment,
 ) -> Option<String> {
@@ -452,6 +517,9 @@ fn describe_single_self_replacement_segment(
     let conditional_text = describe_effect_list(&[conditional]);
     if conditional_text.contains(" damage instead if ") {
         return Some(conditional_text);
+    }
+    if let Some(text) = describe_graveyard_shuffle_to_battlefield_self_replacement(segment) {
+        return Some(text);
     }
     let default_text = describe_effect_list(&segment.default_effects);
     let replacement_text = describe_effect_list(&branch.replacement_effects);

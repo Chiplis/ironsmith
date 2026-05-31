@@ -2002,6 +2002,9 @@ pub struct GameState {
     /// Highest pregame draft-note number recorded by a player for a named card.
     pub draft_noted_highest_numbers: HashMap<(PlayerId, String), u32>,
 
+    /// Game-wide keyword action counts by player, action, and normalized source card name.
+    pub keyword_action_card_name_counts: HashMap<(PlayerId, crate::events::KeywordActionKind, String), u32>,
+
     // =========================================================================
     // Battlefield State Extension Maps
     // =========================================================================
@@ -2140,6 +2143,21 @@ fn normalize_draft_note_card_name(name: &str) -> String {
         .to_ascii_lowercase()
 }
 
+fn normalize_keyword_action_card_name(name: &str) -> String {
+    name.chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch.is_ascii_whitespace() {
+                ch.to_ascii_lowercase()
+            } else {
+                ' '
+            }
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 impl GameState {
     /// Creates a new game state with the given players.
     pub fn new(player_names: Vec<String>, starting_life: i32) -> Self {
@@ -2191,6 +2209,7 @@ impl GameState {
             combat_damage_player_batch_hits: Vec::new(),
             speed_increase_triggered_this_turn: HashSet::new(),
             draft_noted_highest_numbers: HashMap::new(),
+            keyword_action_card_name_counts: HashMap::new(),
             // Battlefield state extension maps
             tapped_permanents: HashSet::new(),
             summoning_sick: HashSet::new(),
@@ -7581,6 +7600,59 @@ impl GameState {
             .get(&TurnCounterKey::Named(name.to_string()))
     }
 
+    fn keyword_action_source_name(
+        &self,
+        event: &crate::events::KeywordActionEvent,
+        object_snapshot: Option<&ObjectSnapshot>,
+        source_snapshot: Option<&ObjectSnapshot>,
+    ) -> Option<String> {
+        event
+            .snapshot
+            .as_ref()
+            .or(object_snapshot)
+            .or(source_snapshot)
+            .map(|snapshot| snapshot.name.clone())
+            .or_else(|| self.object(event.source).map(|object| object.name.clone()))
+            .or_else(|| {
+                self.find_object_by_stable_id(StableId::from(event.source))
+                    .and_then(|id| self.object(id).map(|object| object.name.clone()))
+            })
+    }
+
+    fn record_keyword_action_card_name_count(
+        &mut self,
+        event: &crate::events::KeywordActionEvent,
+        object_snapshot: Option<&ObjectSnapshot>,
+        source_snapshot: Option<&ObjectSnapshot>,
+    ) {
+        let Some(source_name) =
+            self.keyword_action_source_name(event, object_snapshot, source_snapshot)
+        else {
+            return;
+        };
+        let normalized_name = normalize_keyword_action_card_name(&source_name);
+        if normalized_name.is_empty() {
+            return;
+        }
+        *self
+            .keyword_action_card_name_counts
+            .entry((event.player, event.action, normalized_name))
+            .or_insert(0) += event.amount.max(1);
+    }
+
+    pub fn keyword_action_card_name_count_this_game(
+        &self,
+        player: PlayerId,
+        action: KeywordActionKind,
+        card_name: &str,
+    ) -> u32 {
+        let normalized_name = normalize_keyword_action_card_name(card_name);
+        self.keyword_action_card_name_counts
+            .get(&(player, action, normalized_name))
+            .copied()
+            .unwrap_or(0)
+    }
+
     /// Records that an activated ability was used.
     /// Used for OncePerTurn timing restrictions.
     pub fn record_ability_activation(&mut self, source: ObjectId, ability_index: usize) {
@@ -9127,6 +9199,13 @@ impl GameState {
 
     pub(crate) fn record_turn_history_event(&mut self, event: &crate::triggers::TriggerEvent) {
         let (object_snapshot, source_snapshot) = self.projected_turn_event_snapshots(event);
+        if let Some(keyword_action) = event.downcast::<crate::events::KeywordActionEvent>() {
+            self.record_keyword_action_card_name_count(
+                keyword_action,
+                object_snapshot.as_ref(),
+                source_snapshot.as_ref(),
+            );
+        }
         self.turn_store
             .turn_history
             .record_event(event, object_snapshot, source_snapshot);

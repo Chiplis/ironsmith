@@ -427,6 +427,9 @@ pub(crate) fn parse_put_into_hand(
             TargetAst::Source(span) => {
                 *target = TargetAst::Object(ObjectFilter::source().in_zone(zone), *span, None);
             }
+            TargetAst::Tagged(tag, span) => {
+                *target = TargetAst::Object(ObjectFilter::tagged(tag.clone()).in_zone(zone), *span, None);
+            }
             TargetAst::Object(filter, _, _) => {
                 filter.zone = Some(zone);
             }
@@ -1157,19 +1160,36 @@ pub(crate) fn parse_put_into_hand(
         let mut destination_tail: Vec<OwnedLexToken> = destination_tokens[1..].to_vec();
         let battlefield_attacking = grammar::contains_word(&destination_tail, "attacking");
         let battlefield_tapped = grammar::contains_word(&destination_tail, "tapped");
-        if let Some(from_idx) = find_index(&destination_tail, |token| token.is_word("from"))
-            && destination_tail
-                .get(from_idx + 1)
+        let mut source_zone = None;
+        if let Some(from_idx) = find_index(&destination_tail, |token| token.is_word("from")) {
+            let mut zone_idx = from_idx + 1;
+            if destination_tail
+                .get(zone_idx)
+                .is_some_and(|token| token.is_word("your"))
+            {
+                zone_idx += 1;
+            }
+            if destination_tail
+                .get(zone_idx)
                 .is_some_and(|token| token.is_word("command"))
-            && destination_tail
-                .get(from_idx + 2)
-                .is_some_and(|token| token.is_word("zone"))
-        {
-            destination_tail.drain(from_idx..from_idx + 3);
+                && destination_tail
+                    .get(zone_idx + 1)
+                    .is_some_and(|token| token.is_word("zone"))
+            {
+                source_zone = Some(Zone::Command);
+                destination_tail.drain(from_idx..zone_idx + 2);
+            } else if destination_tail
+                .get(zone_idx)
+                .is_some_and(|token| token.is_word("graveyard"))
+            {
+                source_zone = Some(Zone::Graveyard);
+                destination_tail.drain(from_idx..zone_idx + 1);
+            }
         }
         destination_tail.retain(|token| !token.is_word("and"));
         destination_tail.retain(|token| !token.is_word("tapped"));
         destination_tail.retain(|token| !token.is_word("attacking"));
+        destination_tail.retain(|token| !token.is_word("instead"));
 
         let mut attached_to_target: Option<TargetAst> = None;
         if destination_tail
@@ -1270,7 +1290,9 @@ pub(crate) fn parse_put_into_hand(
         {
             crate::runtime_backend::sentences::effect_sentences::zone_counter_helpers::apply_exile_subject_owner_context(filter, subject);
         }
-        if super::super::grammar::primitives::contains_phrase(
+        if let Some(source_zone) = source_zone {
+            apply_source_zone_constraint(&mut target, source_zone);
+        } else if super::super::grammar::primitives::contains_phrase(
             dest_slice,
             &["from", "the", "command", "zone"],
         ) || super::super::grammar::primitives::contains_phrase(

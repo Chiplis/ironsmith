@@ -190,6 +190,189 @@ fn stage_vampire_socialite_opponent_life_loss(game: &mut crate::game_state::Game
 }
 
 #[test]
+fn yidaro_wandering_monster_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Yidaro, Wandering Monster");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains("Cycling {1}{R}"),
+        "Yidaro should preserve its cycling cost, got {rendered}"
+    );
+    assert!(
+        rendered.contains("shuffle it into your library from your graveyard")
+            && rendered.contains("If you've cycled a card named Yidaro Wandering Monster four or more times this game, put it onto the battlefield from your graveyard instead"),
+        "Yidaro compiled text should preserve the graveyard shuffle and battlefield replacement clause, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("KeywordActionTrigger")
+            && ability_debug.contains("SelfReplacementBranch")
+            && ability_debug.contains("PlayerPerformedKeywordActionWithCardNameThisGameOrMore")
+            && ability_debug.contains("ForEachObject")
+            && ability_debug.contains("SourceIsInZone")
+            && ability_debug.contains("zone: Some")
+            && ability_debug.contains("Graveyard")
+            && ability_debug.contains("zone: Battlefield"),
+        "Yidaro should structurally keep its cycling trigger and replacement branch, got {ability_debug}"
+    );
+}
+
+fn yidaro_cycle_trigger_program(
+    def: &CardDefinition,
+) -> crate::resolution::ResolutionProgram {
+    def.abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Triggered(triggered) = &ability.kind else {
+                return None;
+            };
+            format!("{:?}", triggered.trigger)
+                .contains("KeywordActionTrigger")
+                .then(|| triggered.effects.clone())
+        })
+        .expect("Yidaro should have a cycling triggered ability")
+}
+
+fn record_yidaro_cycle_event(
+    game: &mut crate::game_state::GameState,
+    player: PlayerId,
+    yidaro_id: ObjectId,
+) {
+    let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(yidaro_id)
+            .expect("Yidaro object should exist for cycle event"),
+        game,
+    );
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::KeywordActionEvent::new(
+            crate::events::KeywordActionKind::Cycle,
+            player,
+            snapshot.stable_id.object_id(),
+            1,
+        )
+        .with_snapshot(Some(snapshot)),
+        crate::provenance::ProvNodeId::default(),
+    );
+    game.record_turn_history_event(&event);
+}
+
+fn execute_yidaro_cycle_trigger(
+    game: &mut crate::game_state::GameState,
+    program: &crate::resolution::ResolutionProgram,
+    player: PlayerId,
+    yidaro_id: ObjectId,
+) {
+    let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(yidaro_id)
+            .expect("Yidaro object should exist before trigger resolution"),
+        game,
+    );
+    let mut tagged_objects = HashMap::new();
+    tagged_objects.insert(crate::tag::TagKey::from("triggering"), vec![snapshot]);
+    let mut ctx = crate::effects::ExecutionContext::new_default(yidaro_id, player)
+        .with_tagged_objects(tagged_objects);
+
+    crate::game_loop::execute_resolution_program(
+        game,
+        &mut ctx,
+        player,
+        yidaro_id,
+        program,
+        None,
+        &[],
+    )
+    .expect("Yidaro cycling trigger should resolve");
+}
+
+#[test]
+fn yidaro_wandering_monster_cycle_trigger_shuffles_before_fourth_cycle() {
+    let def = parse_oracle_card_definition("Yidaro, Wandering Monster");
+    let program = yidaro_cycle_trigger_program(&def);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let yidaro_id = game.create_object_from_definition(&def, alice, Zone::Graveyard);
+    let stable_id = game.object(yidaro_id).unwrap().stable_id;
+
+    for _ in 0..3 {
+        record_yidaro_cycle_event(&mut game, alice, yidaro_id);
+    }
+    execute_yidaro_cycle_trigger(&mut game, &program, alice, yidaro_id);
+
+    let current_id = game
+        .find_object_by_stable_id(stable_id)
+        .expect("Yidaro should still exist after trigger resolution");
+    assert_eq!(
+        game.object(current_id).unwrap().zone,
+        Zone::Library,
+        "before the fourth cycle, Yidaro should be shuffled into its owner's library"
+    );
+}
+
+#[test]
+fn yidaro_wandering_monster_fourth_cycle_puts_it_onto_battlefield() {
+    let def = parse_oracle_card_definition("Yidaro, Wandering Monster");
+    let program = yidaro_cycle_trigger_program(&def);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let yidaro_id = game.create_object_from_definition(&def, alice, Zone::Graveyard);
+    let stable_id = game.object(yidaro_id).unwrap().stable_id;
+
+    for _ in 0..2 {
+        record_yidaro_cycle_event(&mut game, alice, yidaro_id);
+    }
+    game.turn_store.turn_history.clear_for_new_turn();
+    for _ in 0..2 {
+        record_yidaro_cycle_event(&mut game, alice, yidaro_id);
+    }
+    execute_yidaro_cycle_trigger(&mut game, &program, alice, yidaro_id);
+
+    let current_id = game
+        .find_object_by_stable_id(stable_id)
+        .expect("Yidaro should still exist after trigger resolution");
+    assert_eq!(
+        game.object(current_id).unwrap().zone,
+        Zone::Battlefield,
+        "on the fourth cycle, Yidaro should replace the shuffle with entering the battlefield"
+    );
+}
+
+#[test]
+fn yidaro_wandering_monster_cycle_trigger_does_not_move_from_other_zone() {
+    let def = parse_oracle_card_definition("Yidaro, Wandering Monster");
+    let program = yidaro_cycle_trigger_program(&def);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let yidaro_id = game.create_object_from_definition(&def, alice, Zone::Graveyard);
+    let stable_id = game.object(yidaro_id).unwrap().stable_id;
+
+    for _ in 0..4 {
+        record_yidaro_cycle_event(&mut game, alice, yidaro_id);
+    }
+    let exiled_id = game
+        .move_object_by_effect(yidaro_id, Zone::Exile)
+        .expect("Yidaro should move out of the graveyard before trigger resolution");
+    execute_yidaro_cycle_trigger(&mut game, &program, alice, exiled_id);
+
+    let current_id = game
+        .find_object_by_stable_id(stable_id)
+        .expect("Yidaro should still exist after trigger resolution");
+    assert_eq!(
+        game.object(current_id).unwrap().zone,
+        Zone::Exile,
+        "Yidaro's trigger should only move it from the graveyard"
+    );
+}
+
+#[test]
 fn vampire_socialite_etb_trigger_condition_and_counter_effect_runtime() {
     let def = parse_oracle_card_definition("Vampire Socialite");
     let triggered = def

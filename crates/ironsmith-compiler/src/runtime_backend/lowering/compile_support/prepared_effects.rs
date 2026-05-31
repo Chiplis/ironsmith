@@ -104,7 +104,7 @@ fn materialize_trailing_self_replacement(
         let default_lowered = compile_statement_effects_with_imports(if_false, &prepared.imports)?;
         let replacement_lowered =
             compile_statement_effects_with_imports(if_true, &prepared.imports)?;
-        let condition = compile_condition_from_predicate_ast_with_env(
+        let mut condition = compile_condition_from_predicate_ast_with_env(
             predicate,
             &prepared.initial_env,
             prepared.imports.last_object_tag.as_ref(),
@@ -131,6 +131,14 @@ fn materialize_trailing_self_replacement(
         } else {
             replacement_effects
         };
+        if default_effects.iter().any(effect_moves_tagged_object_from_graveyard)
+            && replacement_effects.iter().any(effect_moves_tagged_object_to_battlefield)
+        {
+            condition = Condition::And(
+                Box::new(Condition::SourceIsInZone(crate::zone::Zone::Graveyard)),
+                Box::new(condition),
+            );
+        }
 
         let mut choices = prefix_lowered.choices;
         choices.extend(default_lowered.choices);
@@ -150,6 +158,27 @@ fn materialize_trailing_self_replacement(
         }));
     }
     Ok(None)
+}
+
+fn effect_moves_tagged_object_from_graveyard(effect: &Effect) -> bool {
+    let Some(for_each) = effect.downcast_ref::<crate::effects::ForEachObject>() else {
+        return false;
+    };
+    for_each.filter.zone == Some(crate::zone::Zone::Graveyard)
+        && for_each.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+        })
+}
+
+fn effect_moves_tagged_object_to_battlefield(effect: &Effect) -> bool {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return effect_moves_tagged_object_to_battlefield(&tagged.effect);
+    }
+    let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() else {
+        return false;
+    };
+    move_to_zone.zone == crate::zone::Zone::Battlefield
+        && matches!(move_to_zone.target, crate::target::ChooseSpec::Tagged(_))
 }
 
 pub(crate) fn materialize_prepared_triggered_effects(

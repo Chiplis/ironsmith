@@ -489,6 +489,20 @@ pub(crate) fn compile_condition_from_predicate_ast(
                 count: *count,
             }
         }
+        PredicateAst::PlayerPerformedKeywordActionWithCardNameThisGameOrMore {
+            player,
+            action,
+            card_name,
+            count,
+        } => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::PlayerPerformedKeywordActionWithCardNameThisGameOrMore {
+                player,
+                action: *action,
+                card_name: card_name.clone(),
+                count: *count,
+            }
+        }
         PredicateAst::OpponentLostLifeThisTurn => Condition::OpponentLostLifeThisTurn,
         PredicateAst::YouHaveNoCardsInHand => {
             Condition::Not(Box::new(Condition::CardsInHandOrMore(1)))
@@ -4465,6 +4479,24 @@ mod parse_compile_tests {
         assert!(
             choices.is_empty(),
             "self-targeted object filters should not create extra target choices"
+        );
+    }
+
+    #[test]
+    fn resolve_target_spec_preserves_constrained_source_object_filters() {
+        let filter = ObjectFilter::source().in_zone(Zone::Graveyard);
+        let target = TargetAst::Object(filter.clone(), None, None);
+        let (spec, choices) = resolve_target_spec_with_choices(&target, &ReferenceEnv::default())
+            .expect("source object target with zone constraint should resolve cleanly");
+
+        assert_eq!(
+            spec,
+            ChooseSpec::Object(filter),
+            "source object filters with additional constraints must not collapse to unconstrained source"
+        );
+        assert!(
+            choices.is_empty(),
+            "non-targeted constrained source object filters should not create extra target choices"
         );
     }
 

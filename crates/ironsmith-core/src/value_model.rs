@@ -696,6 +696,12 @@ pub enum Condition {
         player: PlayerFilter,
         count: u32,
     },
+    PlayerPerformedKeywordActionWithCardNameThisGameOrMore {
+        player: PlayerFilter,
+        action: crate::KeywordActionKind,
+        card_name: String,
+        count: u32,
+    },
     AttackedThisTurn,
     OpponentLostLifeThisTurn,
     PermanentLeftBattlefieldThisTurn,

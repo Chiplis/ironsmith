@@ -750,7 +750,7 @@ pub(crate) fn choose_spec_for_target(target: &TargetAst) -> ChooseSpec {
             }
         }
         TargetAst::Object(filter, explicit_target_span, _) => {
-            if filter.source {
+            if *filter == ObjectFilter::source() {
                 return ChooseSpec::Source;
             }
             if explicit_target_span.is_some() {
