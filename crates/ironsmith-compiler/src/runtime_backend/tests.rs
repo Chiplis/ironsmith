@@ -6139,6 +6139,31 @@ fn life_lost_this_way_lowers_to_prior_effect_metric() {
 }
 
 #[test]
+fn dance_of_the_manse_strict_parser_lowers_returned_permanent_animation() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Dance of the Manse")
+        .mana_cost(crate::mana::ManaCost::from_pips(vec![
+            vec![ManaSymbol::X],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Return up to X target artifact and/or non-Aura enchantment cards each with mana value X or less from your graveyard to the battlefield. If X is 6 or more, those permanents are 4/4 creatures in addition to their other types.",
+        )
+        .expect("Dance of the Manse should parse strictly");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("ReturnFromGraveyardToBattlefieldEffect")
+            && debug.contains("XValueAtLeast")
+            && debug.contains("ApplyContinuousEffect")
+            && debug.contains("AddCardTypes")
+            && debug.contains("SetPowerToughness"),
+        "expected Dance of the Manse to return cards and conditionally animate returned permanents, got {debug}"
+    );
+}
+
+#[test]
 fn gain_life_equal_to_the_power_of_target_creature_you_control_parses() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Wall of Reverence Variant")
         .card_types(vec![CardType::Creature])

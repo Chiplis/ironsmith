@@ -144,7 +144,7 @@ pub(crate) fn parse_become_clause(
     }
 
     let mut target = if target_subject_words.is_empty()
-        || word_slice_eq_any(&target_subject_words, &[&["it"], &["they"], &["them"]])
+        || super::is_tagged_object_reference(&target_subject_words)
     {
         TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(subject_tokens))
     } else if word_slice_eq_any(

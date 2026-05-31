@@ -2216,6 +2216,312 @@ fn rise_from_the_grave_targets_only_creature_cards_in_graveyards() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn dance_of_the_manse_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_960), "Dance of the Manse")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::X],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Return up to X target artifact and/or non-Aura enchantment cards each with mana value X or less from your graveyard to the battlefield. If X is 6 or more, those permanents are 4/4 creatures in addition to their other types.",
+        )
+        .expect("Dance of the Manse should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn dance_graveyard_card(
+    id: u32,
+    name: &str,
+    card_types: Vec<CardType>,
+    subtypes: Vec<Subtype>,
+    mana_value: u8,
+) -> crate::card::Card {
+    CardBuilder::new(CardId::from_raw(id), name)
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
+            mana_value,
+        )]]))
+        .card_types(card_types)
+        .subtypes(subtypes)
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn dance_of_the_manse_compiled_text_matches_oracle_animation_clause() {
+    let def = dance_of_the_manse_definition();
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join(" ");
+
+    assert_eq!(
+        rendered,
+        "Return up to X target artifact and/or non-Aura enchantment cards each with mana value X or less from your graveyard to the battlefield. If X is 6 or more, those permanents are 4/4 creatures in addition to their other types."
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn dance_of_the_manse_targets_only_own_graveyard_artifacts_or_non_aura_enchantments() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let spell = dance_of_the_manse_definition();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Stack);
+    game.object_mut(spell_id).unwrap().x_value = Some(6);
+
+    let artifact = game.create_object_from_card(
+        &dance_graveyard_card(
+            72_961,
+            "Graveyard Relic",
+            vec![CardType::Artifact],
+            Vec::new(),
+            6,
+        ),
+        alice,
+        Zone::Graveyard,
+    );
+    let enchantment = game.create_object_from_card(
+        &dance_graveyard_card(
+            72_962,
+            "Graveyard Sigil",
+            vec![CardType::Enchantment],
+            Vec::new(),
+            6,
+        ),
+        alice,
+        Zone::Graveyard,
+    );
+    let aura = game.create_object_from_card(
+        &dance_graveyard_card(
+            72_963,
+            "Graveyard Aura",
+            vec![CardType::Enchantment],
+            vec![Subtype::Aura],
+            6,
+        ),
+        alice,
+        Zone::Graveyard,
+    );
+    let too_expensive = game.create_object_from_card(
+        &dance_graveyard_card(
+            72_964,
+            "Expensive Relic",
+            vec![CardType::Artifact],
+            Vec::new(),
+            7,
+        ),
+        alice,
+        Zone::Graveyard,
+    );
+    let opponents_artifact = game.create_object_from_card(
+        &dance_graveyard_card(
+            72_969,
+            "Opponent's Relic",
+            vec![CardType::Artifact],
+            Vec::new(),
+            2,
+        ),
+        bob,
+        Zone::Graveyard,
+    );
+    let battlefield_artifact = game.create_object_from_card(
+        &dance_graveyard_card(
+            72_965,
+            "Battlefield Relic",
+            vec![CardType::Artifact],
+            Vec::new(),
+            2,
+        ),
+        alice,
+        Zone::Battlefield,
+    );
+
+    let effects = game
+        .object(spell_id)
+        .and_then(|object| object.spell_effect.as_deref())
+        .expect("Dance of the Manse should have spell effects");
+    let requirements = extract_target_requirements(&game, effects, alice, Some(spell_id));
+    assert_eq!(
+        requirements.len(),
+        1,
+        "Dance should have one target requirement"
+    );
+    let legal_targets = &requirements[0].legal_targets;
+    assert!(
+        legal_targets.contains(&Target::Object(artifact)),
+        "artifact should be legal"
+    );
+    assert!(
+        legal_targets.contains(&Target::Object(enchantment)),
+        "non-Aura enchantment should be legal"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Object(aura)),
+        "Aura enchantment should not be legal"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Object(too_expensive)),
+        "mana value greater than X should not be legal"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Object(opponents_artifact)),
+        "artifact in an opponent's graveyard should not be legal"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Object(battlefield_artifact)),
+        "battlefield artifact should not be legal"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn dance_of_the_manse_x_six_returns_and_animates_targets() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let spell = dance_of_the_manse_definition();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Stack);
+    let artifact = game.create_object_from_card(
+        &dance_graveyard_card(
+            72_966,
+            "Animated Relic",
+            vec![CardType::Artifact],
+            Vec::new(),
+            6,
+        ),
+        alice,
+        Zone::Graveyard,
+    );
+    let enchantment = game.create_object_from_card(
+        &dance_graveyard_card(
+            72_967,
+            "Animated Sigil",
+            vec![CardType::Enchantment],
+            Vec::new(),
+            3,
+        ),
+        alice,
+        Zone::Graveyard,
+    );
+    let artifact_stable = game.object(artifact).expect("artifact exists").stable_id;
+    let enchantment_stable = game.object(enchantment).expect("enchantment exists").stable_id;
+    game.object_mut(spell_id).unwrap().x_value = Some(6);
+    let target_assignment = {
+        let effects = game
+            .object(spell_id)
+            .and_then(|object| object.spell_effect.as_deref())
+            .expect("Dance of the Manse should have spell effects");
+        let requirements = extract_target_requirements(&game, effects, alice, Some(spell_id));
+        assert_eq!(requirements.len(), 1, "Dance should have one target requirement");
+        crate::game_state::TargetAssignment {
+            spec: requirements[0].spec.clone(),
+            range: 0..2,
+        }
+    };
+
+    game.push_to_stack(
+        StackEntry::new(spell_id, alice)
+            .with_x(6)
+            .with_targets(vec![Target::Object(artifact), Target::Object(enchantment)])
+            .with_target_assignments(vec![target_assignment]),
+    );
+    resolve_stack_entry(&mut game).expect("Dance of the Manse should resolve");
+
+    for stable_id in [artifact_stable, enchantment_stable] {
+        let returned = game
+            .find_object_by_stable_id(stable_id)
+            .expect("returned object should still exist");
+        assert!(
+            game.battlefield.contains(&returned),
+            "target should return to battlefield"
+        );
+        let card_types = game
+            .current_card_types(returned)
+            .expect("returned permanent should have card types");
+        assert!(
+            card_types.contains(&CardType::Creature),
+            "returned permanent should become a creature, got {card_types:?}"
+        );
+        assert_eq!(game.calculated_power(returned), Some(4));
+        assert_eq!(game.calculated_toughness(returned), Some(4));
+    }
+
+    let artifact_id = game.find_object_by_stable_id(artifact_stable).unwrap();
+    let enchantment_id = game.find_object_by_stable_id(enchantment_stable).unwrap();
+    assert!(
+        game.current_card_types(artifact_id)
+            .unwrap()
+            .contains(&CardType::Artifact),
+        "animated artifact should keep artifact type"
+    );
+    assert!(
+        game.current_card_types(enchantment_id)
+            .unwrap()
+            .contains(&CardType::Enchantment),
+        "animated enchantment should keep enchantment type"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn dance_of_the_manse_x_five_returns_without_animation() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let spell = dance_of_the_manse_definition();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Stack);
+    let artifact = game.create_object_from_card(
+        &dance_graveyard_card(
+            72_968,
+            "Small Relic",
+            vec![CardType::Artifact],
+            Vec::new(),
+            5,
+        ),
+        alice,
+        Zone::Graveyard,
+    );
+    let artifact_stable = game.object(artifact).expect("artifact exists").stable_id;
+    game.object_mut(spell_id).unwrap().x_value = Some(5);
+    let target_assignment = {
+        let effects = game
+            .object(spell_id)
+            .and_then(|object| object.spell_effect.as_deref())
+            .expect("Dance of the Manse should have spell effects");
+        let requirements = extract_target_requirements(&game, effects, alice, Some(spell_id));
+        assert_eq!(requirements.len(), 1, "Dance should have one target requirement");
+        crate::game_state::TargetAssignment {
+            spec: requirements[0].spec.clone(),
+            range: 0..1,
+        }
+    };
+
+    game.push_to_stack(
+        StackEntry::new(spell_id, alice)
+            .with_x(5)
+            .with_targets(vec![Target::Object(artifact)])
+            .with_target_assignments(vec![target_assignment]),
+    );
+    resolve_stack_entry(&mut game).expect("Dance of the Manse should resolve");
+
+    let returned = game
+        .find_object_by_stable_id(artifact_stable)
+        .expect("returned artifact should still exist");
+    assert!(
+        game.battlefield.contains(&returned),
+        "target should return to battlefield"
+    );
+    let card_types = game
+        .current_card_types(returned)
+        .expect("returned artifact should have card types");
+    assert!(card_types.contains(&CardType::Artifact));
+    assert!(
+        !card_types.contains(&CardType::Creature),
+        "X less than 6 should not animate the returned artifact, got {card_types:?}"
+    );
+    assert_eq!(game.calculated_power(returned), None);
+    assert_eq!(game.calculated_toughness(returned), None);
+}
+
 #[test]
 fn regeneration_count_tracks_used_shields_until_cleanup() {
     let mut game = setup_game();

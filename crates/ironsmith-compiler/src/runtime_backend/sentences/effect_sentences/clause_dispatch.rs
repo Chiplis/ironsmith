@@ -104,6 +104,64 @@ fn rest_starts_all_abilities_shared_gain(tokens: &[OwnedLexToken]) -> bool {
             .is_some_and(|word| matches!(word, "gain" | "gains"))
 }
 
+fn is_tagged_object_reference(words: &[&str]) -> bool {
+    word_slice_eq_any(
+        words,
+        &[
+            &["it"],
+            &["they"],
+            &["them"],
+            &["that"],
+            &["that", "card"],
+            &["that", "creature"],
+            &["that", "permanent"],
+            &["that", "object"],
+            &["those"],
+            &["those", "cards"],
+            &["those", "creatures"],
+            &["those", "permanents"],
+            &["those", "objects"],
+        ],
+    )
+}
+
+fn parse_copular_base_pt_animation_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let clause = LexedClause::new(tokens).trimmed();
+    let words = clause.word_refs();
+    let Some(copula_idx) = words.iter().position(|word| matches!(*word, "is" | "are")) else {
+        return Ok(None);
+    };
+    if copula_idx == 0 || copula_idx + 1 >= words.len() {
+        return Ok(None);
+    }
+
+    let rest_words = &words[copula_idx + 1..];
+    if parse_pt_modifier(rest_words[0]).is_err()
+        || !rest_words
+            .iter()
+            .any(|word| matches!(*word, "creature" | "creatures"))
+        || !word_slice_contains_phrase(rest_words, &["in", "addition", "to"])
+    {
+        return Ok(None);
+    }
+
+    let Some(subject_clause) = clause.before_word(copula_idx) else {
+        return Ok(None);
+    };
+    let Some(rest_clause) = clause.from_word(copula_idx + 1) else {
+        return Ok(None);
+    };
+    let subject_tokens = subject_clause.trimmed_tokens();
+    let rest_tokens = rest_clause.trimmed_tokens();
+    if subject_tokens.is_empty() || rest_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    parse_become_clause(subject_tokens, rest_tokens).map(Some)
+}
+
 #[derive(Debug, Clone, Copy)]
 struct PlayerObjectClause<'a> {
     subject: SubjectAst,
@@ -716,6 +774,10 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     }
 
     if let Some(effect) = parse_has_base_power_toughness_clause(tokens)? {
+        return Ok(effect);
+    }
+
+    if let Some(effect) = parse_copular_base_pt_animation_clause(tokens)? {
         return Ok(effect);
     }
 
