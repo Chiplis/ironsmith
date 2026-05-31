@@ -5262,6 +5262,45 @@ fn oath_of_scholars_upkeep_does_nothing_without_opponent_hand_advantage() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn oath_of_scholars_upkeep_does_nothing_if_hand_advantage_disappears_before_resolution() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    add_named_card_to_zone(&mut game, 99_230, "Alice Filler A", alice, Zone::Hand);
+    add_named_card_to_zone(&mut game, 99_231, "Alice Filler B", alice, Zone::Hand);
+    let kept = add_named_card_to_zone(&mut game, 99_232, "Bob Original Hand", bob, Zone::Hand);
+    for (offset, name) in ["Bob Library A", "Bob Library B", "Bob Library C"]
+        .into_iter()
+        .enumerate()
+    {
+        add_named_card_to_zone(&mut game, 99_233 + offset as u32, name, bob, Zone::Library);
+    }
+
+    put_oath_of_scholars_trigger_on_stack(&mut game, &mut trigger_queue);
+    let caught_up =
+        add_named_card_to_zone(&mut game, 99_236, "Bob Catch Up Card", bob, Zone::Hand);
+
+    let mut dm = OathOfScholarsDecisionMaker { accept_may: true };
+    resolve_stack_entry_with(&mut game, &mut dm).expect(
+        "Oath of Scholars trigger should resolve cleanly when its hand-size gate becomes false",
+    );
+
+    let bob_state = game.player(bob).expect("Bob exists");
+    assert_eq!(
+        bob_state.hand,
+        vec![kept, caught_up],
+        "if no opponent still has more cards in hand, Bob should keep his hand and draw nothing"
+    );
+    assert!(
+        bob_state.graveyard.is_empty(),
+        "the discard branch should not run after the hand-size gate becomes false"
+    );
+}
+
 fn dream_tides_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(99_120), "Dream Tides")
         .mana_cost(ManaCost::from_pips(vec![

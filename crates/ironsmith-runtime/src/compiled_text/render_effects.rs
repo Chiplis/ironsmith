@@ -14633,7 +14633,7 @@ fn rewrite_damaged_player_reference_for_combat_damage_trigger(
         .replace("The damaged player", "That player")
 }
 
-fn describe_each_upkeep_hand_advantage_oath(
+fn describe_each_upkeep_hand_advantage_may_discard_draw(
     triggered: &crate::ability::TriggeredAbility,
 ) -> Option<String> {
     let upkeep = triggered
@@ -14666,7 +14666,7 @@ fn describe_triggered_inline_ability(
     if let Some(rendered) = describe_backup_keyword(triggered) {
         return rendered;
     }
-    if let Some(rendered) = describe_each_upkeep_hand_advantage_oath(triggered) {
+    if let Some(rendered) = describe_each_upkeep_hand_advantage_may_discard_draw(triggered) {
         return rendered;
     }
 
@@ -36374,7 +36374,7 @@ pub(super) fn describe_ability(
             if let Some(rendered) = describe_backup_keyword(triggered) {
                 return vec![format!("Triggered ability {index}: {rendered}")];
             }
-            if let Some(rendered) = describe_each_upkeep_hand_advantage_oath(triggered) {
+            if let Some(rendered) = describe_each_upkeep_hand_advantage_may_discard_draw(triggered) {
                 return vec![format!("Triggered ability {index}: {rendered}")];
             }
             if let Some(rendered) = describe_annihilator_keyword(triggered) {
