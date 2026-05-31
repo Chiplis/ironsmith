@@ -10190,6 +10190,10 @@ fn describe_hexproof_from_filter(filter: &ObjectFilter) -> String {
             .join(" or ");
     }
 
+    if is_exactly_all_magic_colors_filter(filter) {
+        return "each color".to_string();
+    }
+
     let description = filter.description();
     description
         .strip_suffix(" permanent")
@@ -10197,6 +10201,20 @@ fn describe_hexproof_from_filter(filter: &ObjectFilter) -> String {
         .or_else(|| description.strip_suffix(" source"))
         .unwrap_or(description.as_str())
         .to_string()
+}
+
+fn is_exactly_all_magic_colors_filter(filter: &ObjectFilter) -> bool {
+    let mut expected = ObjectFilter::default();
+    expected.colors = Some(all_magic_colors());
+    filter == &expected
+}
+
+fn all_magic_colors() -> crate::color::ColorSet {
+    crate::color::ColorSet::WHITE
+        .union(crate::color::ColorSet::BLUE)
+        .union(crate::color::ColorSet::BLACK)
+        .union(crate::color::ColorSet::RED)
+        .union(crate::color::ColorSet::GREEN)
 }
 
 pub(super) fn describe_comparison(cmp: &Comparison) -> String {

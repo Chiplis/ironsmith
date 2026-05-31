@@ -39797,6 +39797,235 @@ fn sporeweb_weaver_hexproof_from_blue_blocks_only_opposing_blue_sources() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn breaker_of_creation_strict_parser_text_and_structure_regression() {
+    assert_oracle_card_parses_strict("Breaker of Creation");
+    let def = parse_oracle_card_definition("Breaker of Creation");
+    let rendered_lines = canonical_compiled_lines(&def);
+    let rendered = rendered_lines.join("\n");
+
+    assert!(
+        rendered.contains(
+            "When you cast this spell, you gain 1 life for each colorless permanent you control"
+        ) && rendered.contains("Hexproof from each color")
+            && rendered.contains("Annihilator 2"),
+        "expected Breaker of Creation cast trigger, hexproof-from-each-color, and annihilator text, got {rendered}"
+    );
+    assert!(
+        !rendered.to_ascii_lowercase().contains("unsupported"),
+        "strict Breaker of Creation render should not include unsupported markers, got {rendered}"
+    );
+
+    let all_colors = crate::color::ColorSet::WHITE
+        .union(crate::color::ColorSet::BLUE)
+        .union(crate::color::ColorSet::BLACK)
+        .union(crate::color::ColorSet::RED)
+        .union(crate::color::ColorSet::GREEN);
+    let hexproof_from = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => {
+                if static_ability.id() == StaticAbilityId::HexproofFrom {
+                    static_ability.hexproof_from_filter()
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        })
+        .expect("Breaker of Creation should have hexproof from each color");
+    let mut expected_filter = crate::target::ObjectFilter::default();
+    expected_filter.colors = Some(all_colors);
+    assert_eq!(
+        hexproof_from, &expected_filter,
+        "hexproof from each color should lower to exactly an all-colors source filter"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn breaker_of_creation_hexproof_from_each_color_blocks_only_opposing_colored_sources() {
+    let def = parse_oracle_card_definition("Breaker of Creation");
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let breaker_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    for (idx, symbol) in [
+        ManaSymbol::White,
+        ManaSymbol::Blue,
+        ManaSymbol::Black,
+        ManaSymbol::Red,
+        ManaSymbol::Green,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let source_def = CardDefinitionBuilder::new(
+            CardId::from_raw(92_000 + idx as u32),
+            format!("Opposing {symbol:?} Source"),
+        )
+        .mana_cost(ManaCost::from_pips(vec![vec![symbol]]))
+        .card_types(vec![CardType::Instant])
+        .build();
+        let source_id = game.create_object_from_definition(&source_def, bob, Zone::Battlefield);
+        assert_eq!(
+            crate::targeting::can_target_object(&game, breaker_id, source_id, bob),
+            crate::targeting::TargetingResult::Invalid(
+                crate::targeting::TargetingInvalidReason::HasHexproofFrom
+            ),
+            "opposing {symbol:?} source should be unable to target Breaker of Creation"
+        );
+    }
+
+    let colorless_source = CardDefinitionBuilder::new(CardId::from_raw(92_100), "Colorless Source")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let opposing_colorless =
+        game.create_object_from_definition(&colorless_source, bob, Zone::Battlefield);
+    assert!(
+        crate::targeting::can_target_object(&game, breaker_id, opposing_colorless, bob).is_legal(),
+        "opposing colorless source should be able to target Breaker of Creation"
+    );
+
+    let own_red_source = CardDefinitionBuilder::new(CardId::from_raw(92_101), "Own Red Source")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Instant])
+        .build();
+    let own_red = game.create_object_from_definition(&own_red_source, alice, Zone::Battlefield);
+    assert!(
+        crate::targeting::can_target_object(&game, breaker_id, own_red, alice).is_legal(),
+        "controller's colored source should be able to target their own Breaker of Creation"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn breaker_of_creation_cast_trigger_counts_only_your_colorless_permanents() {
+    let def = parse_oracle_card_definition("Breaker of Creation");
+    let cast_trigger = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => {
+                if ability.functional_zones == [Zone::Stack]
+                    && triggered.trigger.display() == "When you cast this spell"
+                {
+                    Some(triggered)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        })
+        .expect("Breaker of Creation should have a cast trigger on the stack");
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let colorless_artifact =
+        CardDefinitionBuilder::new(CardId::from_raw(92_200), "Colorless Artifact")
+            .card_types(vec![CardType::Artifact])
+            .build();
+    let colorless_land = CardDefinitionBuilder::new(CardId::from_raw(92_201), "Colorless Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let green_creature = CardDefinitionBuilder::new(CardId::from_raw(92_202), "Green Creature")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .card_types(vec![CardType::Creature])
+        .build();
+
+    game.create_object_from_definition(&colorless_artifact, alice, Zone::Battlefield);
+    game.create_object_from_definition(&colorless_land, alice, Zone::Battlefield);
+    game.create_object_from_definition(&green_creature, alice, Zone::Battlefield);
+    game.create_object_from_definition(&colorless_artifact, bob, Zone::Battlefield);
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source_id, alice);
+    for effect in &cast_trigger.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Breaker of Creation cast trigger should resolve");
+    }
+
+    assert_eq!(
+        game.life_total(alice),
+        22,
+        "cast trigger should gain life only for Alice's two colorless battlefield permanents"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn breaker_of_creation_annihilator_sacrifices_two_defending_player_permanents() {
+    let def = parse_oracle_card_definition("Breaker of Creation");
+    let annihilator = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => {
+                if ability.functional_zones == [Zone::Battlefield]
+                    && triggered.trigger.display() == "Whenever this creature attacks"
+                {
+                    Some(triggered)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        })
+        .expect("Breaker of Creation should have annihilator");
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let breaker_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let permanent = CardDefinitionBuilder::new(CardId::from_raw(92_300), "Sacrifice Permanent")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let bob_first = game.create_object_from_definition(&permanent, bob, Zone::Battlefield);
+    let bob_second = game.create_object_from_definition(&permanent, bob, Zone::Battlefield);
+    let bob_third = game.create_object_from_definition(&permanent, bob, Zone::Battlefield);
+    let alice_permanent = game.create_object_from_definition(&permanent, alice, Zone::Battlefield);
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(breaker_id, alice)
+        .with_defending_player(bob)
+        .with_targets(vec![
+            crate::effects::ResolvedTarget::Object(bob_first),
+            crate::effects::ResolvedTarget::Object(bob_second),
+        ]);
+    for effect in &annihilator.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Breaker of Creation annihilator should resolve");
+    }
+
+    let battlefield_after = game.objects_in_zone(Zone::Battlefield);
+    assert!(
+        !battlefield_after.contains(&bob_first),
+        "first chosen defending permanent should leave the battlefield"
+    );
+    assert!(
+        !battlefield_after.contains(&bob_second),
+        "second chosen defending permanent should leave the battlefield"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob").graveyard.len(),
+        2,
+        "annihilator should put exactly two defending permanents into Bob's graveyard"
+    );
+    assert_eq!(
+        game.object(bob_third).expect("bob third").zone,
+        Zone::Battlefield
+    );
+    assert_eq!(
+        game.object(alice_permanent).expect("alice permanent").zone,
+        Zone::Battlefield,
+        "annihilator should affect the defending player, not the attacker"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn sporeweb_weaver_damage_trigger_gains_life_and_creates_saproling() {
     let def = parse_oracle_card_definition("Sporeweb Weaver");
     let mut game =
