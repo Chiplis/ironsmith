@@ -263,6 +263,14 @@ pub(crate) fn parse_trigger_subject_player_filter(subject: &[&str]) -> Option<Pl
     ) {
         return Some(PlayerFilter::ChosenPlayer);
     }
+    if word_slice_eq_any(
+        subject,
+        &[&["enchanted", "player"], &["the", "enchanted", "player"]],
+    ) {
+        return Some(PlayerFilter::TaggedPlayer(crate::tag::TagKey::from(
+            "enchanted",
+        )));
+    }
     if word_slice_starts_with_any(
         subject,
         &[

@@ -29996,6 +29996,117 @@ fn test_curse_aura_attaches_to_player_and_triggers_on_enchanted_players_upkeep()
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn grievous_wound_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Grievous Wound")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![crate::types::Subtype::Aura])
+        .parse_text(
+            "Enchant player\nEnchanted player can't gain life.\nWhenever enchanted player is dealt damage, they lose half their life, rounded up.",
+        )
+        .expect("Grievous Wound should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_grievous_wound_stops_enchanted_player_life_gain_and_triggers_on_damage() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let grievous_wound = grievous_wound_definition();
+    let wound_id = game.create_object_from_definition(&grievous_wound, alice, Zone::Battlefield);
+    game.object_mut(wound_id)
+        .expect("Grievous Wound should exist")
+        .attached_to = Some(crate::object::AttachmentTarget::Player(bob));
+    game.player_mut(bob)
+        .expect("bob should exist")
+        .attachments
+        .push(wound_id);
+    game.refresh_continuous_state();
+
+    assert!(
+        game.can_gain_life(alice),
+        "Grievous Wound should not stop other players from gaining life"
+    );
+    assert!(
+        !game.can_gain_life(bob),
+        "Grievous Wound should stop the enchanted player from gaining life"
+    );
+
+    game.player_mut(bob).expect("bob should exist").life = 17;
+    let mut gain_ctx = crate::effects::ExecutionContext::new_default(wound_id, alice);
+    crate::effects::execute_effect(
+        &mut game,
+        &Effect::gain_life_player(3, crate::target::ChooseSpec::SpecificPlayer(bob)),
+        &mut gain_ctx,
+    )
+    .expect("life gain prevention should still let the effect resolve");
+    assert_eq!(
+        game.player(bob).expect("bob should exist").life,
+        17,
+        "the enchanted player should not gain life"
+    );
+
+    let alice_life_before = game.player(alice).expect("alice should exist").life;
+    let mut gain_ctx = crate::effects::ExecutionContext::new_default(wound_id, alice);
+    crate::effects::execute_effect(
+        &mut game,
+        &Effect::gain_life_player(3, crate::target::ChooseSpec::SpecificPlayer(alice)),
+        &mut gain_ctx,
+    )
+    .expect("other players should still gain life");
+    assert_eq!(
+        game.player(alice).expect("alice should exist").life,
+        alice_life_before + 3,
+        "non-enchanted players should still gain life"
+    );
+
+    let alice_damage_event = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            wound_id,
+            crate::events::DamageTarget::Player(alice),
+            3,
+            false,
+            crate::events::cause::EventCause::effect(),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert!(
+        check_triggers(&game, &alice_damage_event).is_empty(),
+        "Grievous Wound should not trigger when a non-enchanted player is dealt damage"
+    );
+
+    let bob_damage_event = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            wound_id,
+            crate::events::DamageTarget::Player(bob),
+            3,
+            false,
+            crate::events::cause::EventCause::effect(),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in check_triggers(&game, &bob_damage_event) {
+        trigger_queue.add(trigger);
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Grievous Wound should trigger when the enchanted player is dealt damage"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Grievous Wound trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Grievous Wound trigger should resolve");
+    assert_eq!(
+        game.player(bob).expect("bob should exist").life,
+        8,
+        "the enchanted player should lose half their life rounded up from 17"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_kitsune_mystic_requires_two_attached_auras_for_end_step_trigger() {
     let mut game = setup_game();

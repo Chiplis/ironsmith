@@ -469,6 +469,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::PlayerTapsForMana { .. }
         | TriggerSpec::PlayerSacrifices { .. }
         | TriggerSpec::ThisDealsDamageToPlayer { .. }
+        | TriggerSpec::DealsDamageToPlayer { .. }
         | TriggerSpec::DealsNoncombatDamageToPlayer { .. }
         | TriggerSpec::ThisDealsCombatDamageToPlayer
         | TriggerSpec::DealsCombatDamageToPlayer { .. }
@@ -537,6 +538,7 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         TriggerSpec::AbilityActivated { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerSacrifices { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::ThisDealsDamageToPlayer { .. }
+        | TriggerSpec::DealsDamageToPlayer { .. }
         | TriggerSpec::DealsNoncombatDamageToPlayer { .. }
         | TriggerSpec::ThisDealsCombatDamageToPlayer
         | TriggerSpec::DealsCombatDamageToPlayer { .. } => Some(PlayerFilter::DamagedPlayer),
