@@ -347,6 +347,55 @@ fn assaultron_dominator_attack_trigger_pays_energy_and_chooses_each_counter_mode
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn assaultron_dominator_attack_trigger_puts_counter_on_that_attacking_creature() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let assaultron = assaultron_dominator_definition();
+    let assaultron_id = game.create_object_from_definition(&assaultron, alice, Zone::Battlefield);
+    let attacker = CardBuilder::new(CardId::from_raw(74_261), "Artifact Attacker")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let attacker_id = game.create_object_from_card(&attacker, alice, Zone::Battlefield);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .energy_counters = 1;
+
+    let mut trigger_queue = attack_with_assaultron_creature(&mut game, attacker_id);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Assaultron Dominator should trigger when another artifact creature attacks"
+    );
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Assaultron Dominator attack trigger should go on the stack");
+
+    let mut dm = AssaultronDecisionMaker {
+        pay_energy: true,
+        mode_index: 1,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Assaultron Dominator attack trigger should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").energy_counters,
+        0,
+        "Assaultron Dominator should spend one energy when the payment is accepted"
+    );
+    assert_eq!(
+        game.counter_count(attacker_id, crate::object::CounterType::FirstStrike),
+        1,
+        "the selected counter should be put on the attacking artifact creature"
+    );
+    assert_eq!(
+        game.counter_count(assaultron_id, crate::object::CounterType::FirstStrike),
+        0,
+        "the selected counter should not default to Assaultron Dominator"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn assaultron_dominator_declining_energy_payment_adds_no_counter() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
