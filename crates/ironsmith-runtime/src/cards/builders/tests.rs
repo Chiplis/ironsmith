@@ -159,6 +159,172 @@ fn thundermane_dragon_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn vampire_socialite_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Vampire Socialite");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        ability_debug.contains("OpponentLostLifeThisTurn")
+            && ability_debug.contains("EnterWithCountersForFilter")
+            && ability_debug.contains("intervening_if: Some"),
+        "Vampire Socialite should structurally keep both opponent-life-loss gates, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains("When this creature enters, if an opponent lost life this turn, put a +1/+1 counter on each other Vampire you control."),
+        "expected Vampire Socialite ETB intervening-if text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("As long as an opponent lost life this turn, each other Vampire you control enters with an additional +1/+1 counter on it."),
+        "expected Vampire Socialite static conditional ETB-counter text, got {rendered}"
+    );
+}
+
+fn stage_vampire_socialite_opponent_life_loss(game: &mut crate::game_state::GameState) {
+    let bob = PlayerId::from_index(1);
+    let life_loss = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::life::LifeLossEvent::from_effect(bob, 1),
+        crate::provenance::ProvNodeId::default(),
+    );
+    game.stage_turn_history_event(&life_loss);
+}
+
+#[test]
+fn vampire_socialite_etb_trigger_condition_and_counter_effect_runtime() {
+    let def = parse_oracle_card_definition("Vampire Socialite");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Triggered(triggered) = &ability.kind else {
+                return None;
+            };
+            format!("{:?}", triggered.effects)
+                .contains("PutCountersEffect")
+                .then_some(triggered)
+        })
+        .expect("Vampire Socialite should have a counter-placing ETB trigger");
+
+    assert_eq!(
+        triggered.intervening_if,
+        Some(crate::effect::Condition::OpponentLostLifeThisTurn),
+        "Vampire Socialite ETB trigger should be gated by opponent life loss"
+    );
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let socialite_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let other_vampire = CardDefinitionBuilder::new(CardId::from_raw(92_001), "Bloodhall Trainee")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Vampire])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let other_id = game.create_object_from_definition(&other_vampire, alice, Zone::Battlefield);
+
+    assert!(
+        !crate::condition_eval::evaluate_condition_cast_time(
+            &game,
+            &crate::effect::Condition::OpponentLostLifeThisTurn,
+            alice,
+            socialite_id,
+        ),
+        "Vampire Socialite ETB condition should be false before an opponent loses life"
+    );
+    stage_vampire_socialite_opponent_life_loss(&mut game);
+    assert!(
+        crate::condition_eval::evaluate_condition_cast_time(
+            &game,
+            &crate::effect::Condition::OpponentLostLifeThisTurn,
+            alice,
+            socialite_id,
+        ),
+        "Vampire Socialite ETB condition should be true after an opponent loses life"
+    );
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(socialite_id, alice, &mut dm);
+    for effect in triggered.effects.flattened_default_effects() {
+        effect
+            .0
+            .execute(&mut game, &mut ctx)
+            .expect("Vampire Socialite ETB counter effect should resolve");
+    }
+
+    assert_eq!(
+        game.object(other_id).and_then(|object| object
+            .counters
+            .get(&crate::object::CounterType::PlusOnePlusOne)
+            .copied()),
+        Some(1),
+        "Vampire Socialite ETB trigger should put a +1/+1 counter on another Vampire"
+    );
+    assert_eq!(
+        game.object(socialite_id).and_then(|object| object
+            .counters
+            .get(&crate::object::CounterType::PlusOnePlusOne)
+            .copied()),
+        None,
+        "Vampire Socialite ETB trigger should not put a counter on itself"
+    );
+}
+
+#[test]
+fn vampire_socialite_static_replacement_requires_opponent_life_loss() {
+    fn entering_vampire_definition() -> CardDefinition {
+        CardDefinitionBuilder::new(CardId::from_raw(92_002), "Falkenrath Recruit")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Vampire])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build()
+    }
+
+    let def = parse_oracle_card_definition("Vampire Socialite");
+    let alice = PlayerId::from_index(0);
+
+    let mut inactive_game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    inactive_game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let inactive_entering = inactive_game.create_object_from_definition(
+        &entering_vampire_definition(),
+        alice,
+        Zone::Hand,
+    );
+    let inactive_result = inactive_game
+        .move_object_with_etb_processing(inactive_entering, Zone::Battlefield)
+        .expect("inactive Vampire should enter");
+    assert_eq!(
+        inactive_game.object(inactive_result.new_id).and_then(|object| object
+            .counters
+            .get(&crate::object::CounterType::PlusOnePlusOne)
+            .copied()),
+        None,
+        "Vampire Socialite static replacement should not add a counter before opponent life loss"
+    );
+
+    let mut active_game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    active_game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    stage_vampire_socialite_opponent_life_loss(&mut active_game);
+    let active_entering = active_game.create_object_from_definition(
+        &entering_vampire_definition(),
+        alice,
+        Zone::Hand,
+    );
+    let active_result = active_game
+        .move_object_with_etb_processing(active_entering, Zone::Battlefield)
+        .expect("active Vampire should enter");
+    assert_eq!(
+        active_game.object(active_result.new_id).and_then(|object| object
+            .counters
+            .get(&crate::object::CounterType::PlusOnePlusOne)
+            .copied()),
+        Some(1),
+        "Vampire Socialite static replacement should add a counter after opponent life loss"
+    );
+}
+
+#[test]
 fn party_dude_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Party Dude");
     let ability_debug = format!("{:#?}", def.abilities);

@@ -2217,6 +2217,23 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::CreatureDiedThisTurn);
     }
 
+    if matches!(
+        filtered.as_slice(),
+        ["opponent", "lost", "life", "this", "turn"]
+            | [
+                "one",
+                "or",
+                "more",
+                "opponents",
+                "lost",
+                "life",
+                "this",
+                "turn",
+            ]
+    ) {
+        return Ok(PredicateAst::OpponentLostLifeThisTurn);
+    }
+
     if filtered.len() == 7
         && let Some(count) = parse_named_number(filtered[0])
         && word_slice_eq(

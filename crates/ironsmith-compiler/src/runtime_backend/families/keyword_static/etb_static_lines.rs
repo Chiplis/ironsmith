@@ -2516,6 +2516,20 @@ pub(crate) fn parse_enters_with_additional_counter_for_filter_line(
         return parse_enters_with_additional_counter_for_filter_line(&tokens[comma_idx + 1..]);
     }
 
+    if clause_words.len() > 6
+        && word_slice_starts_with(&clause_words, &["as", "long", "as"])
+        && let Some(comma_idx) = find_token_kind(tokens, TokenKind::Comma)
+    {
+        let condition_tokens = trim_edge_punctuation(&tokens[3..comma_idx]);
+        let condition = parse_static_condition_clause(&condition_tokens)?;
+        let Some(ability) =
+            parse_enters_with_additional_counter_for_filter_line(&tokens[comma_idx + 1..])?
+        else {
+            return Ok(None);
+        };
+        return Ok(Some(ability.with_condition(condition)));
+    }
+
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let enter_word_idx = word_slice_find_word_where(&clause_words, |word| matches!(word, "enter" | "enters"));
     let Some(enter_word_idx) = enter_word_idx else {

@@ -963,6 +963,9 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
         crate::ConditionExpr::SourceAttackedThisTurn => {
             "as long as this creature attacked this turn".to_string()
         }
+        crate::ConditionExpr::OpponentLostLifeThisTurn => {
+            "as long as an opponent lost life this turn".to_string()
+        }
         crate::ConditionExpr::SourceCameUnderYourControlThisTurn => {
             "as long as this creature came under your control this turn".to_string()
         }
