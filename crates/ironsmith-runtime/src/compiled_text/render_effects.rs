@@ -38,7 +38,12 @@ fn describe_simple_count_value(value: &Value) -> String {
     describe_value(value)
 }
 
-fn describe_may_conditional_cast_tagged(may: &crate::effects::MayEffect) -> Option<String> {
+fn simple_may_conditional_cast_tagged(
+    may: &crate::effects::MayEffect,
+) -> Option<(
+    &crate::effects::CastTaggedEffect,
+    &crate::effects::ConditionalEffect,
+)> {
     let [conditional_effect] = may.effects.as_slice() else {
         return None;
     };
@@ -47,6 +52,18 @@ fn describe_may_conditional_cast_tagged(may: &crate::effects::MayEffect) -> Opti
         return None;
     }
     let cast = conditional.if_true[0].downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    if cast.player != PlayerFilter::You
+        || cast.allow_land
+        || cast.as_copy
+        || cast.cost_reduction.is_some()
+    {
+        return None;
+    }
+    Some((cast, conditional))
+}
+
+fn describe_may_conditional_cast_tagged(may: &crate::effects::MayEffect) -> Option<String> {
+    let (cast, conditional) = simple_may_conditional_cast_tagged(may)?;
     let (operator_text, right) = match &conditional.condition {
         Condition::ValueComparison {
             left: Value::ManaValueOf(spec),
@@ -25146,17 +25163,17 @@ fn describe_with_id_if_clause(
     let then_text = describe_effect_list(&if_effect.then);
     let else_text = describe_effect_list(&if_effect.else_);
 
-    if with_id
-        .effect
-        .downcast_ref::<crate::effects::MayEffect>()
-        .is_some()
+    if let Some(may) = with_id.effect.downcast_ref::<crate::effects::MayEffect>()
+        && let Some((cast, _)) = simple_may_conditional_cast_tagged(may)
         && if_effect.predicate == EffectPredicate::DidNotHappen
         && if_effect.else_.is_empty()
         && if_effect.then.len() == 1
         && let Some(grant) = if_effect.then[0].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+        && grant.tag == cast.tag
         && grant.player == PlayerFilter::You
         && matches!(grant.duration, crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn)
         && !grant.allow_land
+        && !grant.allow_any_color_for_cast
     {
         return Some("If you don't cast it this way, you may cast it this turn".to_string());
     }
@@ -30746,21 +30763,6 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(if_effect) = effect.downcast_ref::<crate::effects::IfEffect>() {
-        if if_effect.predicate == EffectPredicate::DidNotHappen
-            && if_effect.else_.is_empty()
-            && if_effect.then.len() == 1
-            && let Some(grant) = if_effect.then[0]
-                .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
-            && grant.player == PlayerFilter::You
-            && matches!(grant.duration, crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn)
-            && !grant.allow_land
-            && !grant.allow_any_color_for_cast
-            && (grant.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
-                || grant.tag.as_str().starts_with("__sentence_helper_exiled")
-                || grant.tag.as_str().starts_with("exiled_"))
-        {
-            return "If you don't cast it this way, you may cast it this turn".to_string();
-        }
         let then_text = describe_effect_list(&if_effect.then);
         let else_text = describe_effect_list(&if_effect.else_);
         if then_text.trim().is_empty() && else_text.trim().is_empty() {

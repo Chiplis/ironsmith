@@ -3339,16 +3339,7 @@ fn compile_subject_verb_effect(
                 .extend(lower_granted_abilities_ast_to_object_abilities(granted_abilities)?);
             let subject = LoweredSubject::resolve_actor(*action_player, ctx, true, true, true)?;
             let count = subject.resolve_object_refs_and_bind_player_refs_in_value(count, ctx)?;
-            let mut player_filter = subject.clone_player_filter();
-            if name.eq_ignore_ascii_case("Treasure")
-                && matches!(
-                    &player_filter,
-                    PlayerFilter::OwnerOf(ObjectRef::Tagged(tag))
-                        if tag.as_str() == crate::tag::SOURCE_EXILED_TAG
-                )
-            {
-                player_filter = PlayerFilter::You;
-            }
+            let player_filter = subject.clone_player_filter();
             let count = per_player_partition_value_for_filter(count, &player_filter);
             let mut choices = subject.into_choices();
             let mut effect = if matches!(player_filter, PlayerFilter::You) {

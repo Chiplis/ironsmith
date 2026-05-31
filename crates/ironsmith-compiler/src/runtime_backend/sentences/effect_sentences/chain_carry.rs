@@ -2024,6 +2024,7 @@ fn expand_gain_lose_followup_segment_lexed(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CarryContext {
     Player(PlayerAst),
+    ObjectOwner(PlayerAst),
     ForEachPlayer,
     ForEachTargetPlayers(ChoiceCount),
     ForEachOpponent,
@@ -2103,7 +2104,7 @@ pub(crate) fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryConte
         && let SubjectVerbActionAst::Exile { target, .. } = &subject_verb.action
         && let Some(player) = player_owner_filter_from_target_for_carry(target)
     {
-        return Some(CarryContext::Player(player));
+        return Some(CarryContext::ObjectOwner(player));
     }
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action: SubjectVerbActionAst::ExileUntilSourceLeaves { target, .. },
@@ -2111,7 +2112,7 @@ pub(crate) fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryConte
     }) = effect
         && let Some(player) = player_owner_filter_from_target_for_carry(target)
     {
-        return Some(CarryContext::Player(player));
+        return Some(CarryContext::ObjectOwner(player));
     }
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action: SubjectVerbActionAst::ExileAll { filter, .. },
@@ -2120,7 +2121,7 @@ pub(crate) fn explicit_player_for_carry(effect: &EffectAst) -> Option<CarryConte
         && let Some(owner) = filter.owner.as_ref()
         && let Some(player) = player_ast_from_filter_for_carry(owner)
     {
-        return Some(CarryContext::Player(player));
+        return Some(CarryContext::ObjectOwner(player));
     }
     if matches!(
         effect,
@@ -2328,7 +2329,7 @@ fn subject_verb_player_action_player(effect: &EffectAst) -> Option<PlayerAst> {
 
 pub(crate) fn maybe_apply_carried_player(effect: &mut EffectAst, carried_context: CarryContext) {
     match carried_context {
-        CarryContext::Player(carried_player) => {
+        CarryContext::Player(carried_player) | CarryContext::ObjectOwner(carried_player) => {
             // When carrying an explicit target player/opponent into an implicit clause,
             // bind to the previously selected target ("that player") instead of creating
             // a fresh explicit target. This preserves shared-target semantics for chains
@@ -2353,9 +2354,11 @@ pub(crate) fn maybe_apply_carried_player(effect: &mut EffectAst, carried_context
                     }
                 }
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::CreateTokenWithMods { .. },
+                    action: SubjectVerbActionAst::CreateTokenWithMods { player, .. },
                     ..
-                }) if matches!(carried_player, PlayerAst::ItsOwner | PlayerAst::ItsController) => {}
+                }) if matches!(carried_context, CarryContext::ObjectOwner(_))
+                    || (matches!(carried_player, PlayerAst::ItsOwner | PlayerAst::ItsController)
+                        && matches!(*player, PlayerAst::Implicit)) => {}
                 EffectAst::SubjectVerb(_) => {
                     if let Some(player) = subject_verb_player_action_player_mut(effect)
                         && *player == PlayerAst::Implicit
@@ -2411,7 +2414,7 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
 ) {
     let clause_words = clause_words_for_carry_lexed(clause_tokens);
     let should_skip = match carried_context {
-        CarryContext::Player(_) => {
+        CarryContext::Player(_) | CarryContext::ObjectOwner(_) => {
             matches!(
                 effect,
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {

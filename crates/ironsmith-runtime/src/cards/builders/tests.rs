@@ -33406,6 +33406,48 @@ fn rashmi_and_ragavan_lowers_trigger_treasure_and_cast_branches() {
     );
 }
 
+#[test]
+fn explicit_exiled_object_owner_or_controller_treasure_creator_is_preserved() {
+    fn treasure_controller_for(text: &str) -> PlayerFilter {
+        let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Explicit Creator Variant")
+            .card_types(vec![CardType::Instant])
+            .parse_text(text)
+            .expect("explicit exiled-object token creator should parse");
+        let spell = def.spell_effect.as_ref().expect("spell effect");
+
+        for effect in spell {
+            if let Some(create) = effect.downcast_ref::<CreateTokenEffect>() {
+                if create.token.card.name == "Treasure" {
+                    return create.controller.clone();
+                }
+            }
+            if let Some(tagged) = effect.downcast_ref::<TaggedEffect>()
+                && let Some(create) = tagged.effect.downcast_ref::<CreateTokenEffect>()
+                && create.token.card.name == "Treasure"
+            {
+                return create.controller.clone();
+            }
+        }
+
+        panic!("expected Treasure creation in spell effect, got {spell:#?}");
+    }
+
+    assert!(
+        matches!(
+            treasure_controller_for("Exile target creature. Its owner creates a Treasure token."),
+            PlayerFilter::OwnerOf(ObjectRef::Tagged(_))
+        ),
+        "explicit owner-created Treasure must stay tied to the exiled object's owner"
+    );
+    assert!(
+        matches!(
+            treasure_controller_for("Exile target creature. Its controller creates a Treasure token."),
+            PlayerFilter::ControllerOf(ObjectRef::Tagged(_))
+        ),
+        "explicit controller-created Treasure must stay tied to the exiled object's controller"
+    );
+}
+
 fn resolve_rashmi_and_ragavan_runtime(
     accept_free_cast: bool,
     starting_artifacts: usize,
