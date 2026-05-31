@@ -19,6 +19,7 @@ pub struct GrantPlayTaggedEffect {
     pub duration: GrantPlayTaggedDuration,
     pub allow_land: bool,
     pub allow_any_color_for_cast: bool,
+    pub while_on_top_of_library: bool,
 }
 
 impl GrantPlayTaggedEffect {
@@ -35,7 +36,18 @@ impl GrantPlayTaggedEffect {
             duration,
             allow_land,
             allow_any_color_for_cast,
+            while_on_top_of_library: false,
         }
+    }
+
+    pub fn while_on_top_of_library(mut self) -> Self {
+        self.while_on_top_of_library = true;
+        self
+    }
+
+    pub fn while_on_top_of_library_if(mut self, enabled: bool) -> Self {
+        self.while_on_top_of_library = enabled;
+        self
     }
 
     pub fn until_your_next_turn(tag: impl Into<TagKey>, player: PlayerFilter) -> Self {
@@ -179,7 +191,15 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 mana_permission_stable_ids.push(object.stable_id);
             }
 
-            let source = if self.duration == GrantPlayTaggedDuration::ForAsLongAsYouControlSource {
+            let source = if self.while_on_top_of_library {
+                GrantSource::EffectWhileStableCardOnTopOfLibrary {
+                    source_id: ctx.source,
+                    expires_end_of_turn,
+                    stable_id: object.stable_id,
+                    player: object.owner,
+                    library_top_revision: game.library_top_revision(object.owner),
+                }
+            } else if self.duration == GrantPlayTaggedDuration::ForAsLongAsYouControlSource {
                 GrantSource::EffectWhileControlled {
                     source_id: ctx.source,
                     controller: player_id,

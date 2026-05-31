@@ -556,7 +556,7 @@ fn parse_revealed_top_library_permission_clause(
             if tag.as_str() == IT_TAG {
                 tag = TagKey::from("__last_revealed__");
             }
-            EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
+            EffectAst::subject_verb_grant_play_tagged_until_end_of_turn_while_on_top_of_library(
                 tag,
                 player,
                 allow_land,
@@ -574,12 +574,16 @@ fn parse_revealed_top_library_permission_clause(
 
     Ok(Some(EffectAst::Sequence {
         effects: vec![
-            EffectAst::subject_verb_grant_abilities_to_target(
+            EffectAst::subject_verb_grant_abilities_to_target_with_condition(
                 TargetAst::Source(None),
                 vec![GrantedAbilityAst::StaticAbility(
                     StaticAbility::all_players_look_at_your_top_library_card(),
                 )],
                 crate::effect::Until::EndOfTurn,
+                crate::ConditionExpr::TaggedObjectIsTopOfLibrary {
+                    tag: TagKey::from("__last_revealed__"),
+                    player: crate::target::PlayerFilter::You,
+                },
             ),
             permission,
         ],

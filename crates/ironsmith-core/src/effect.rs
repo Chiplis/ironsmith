@@ -2963,6 +2963,7 @@ impl<E> VoteEffect<E> {
 pub struct GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
     pub tag: crate::tag::TagKey,
     pub player: PlayerFilter,
+    pub while_on_top_of_library: bool,
 }
 
 impl GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
@@ -2970,7 +2971,13 @@ impl GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
         Self {
             tag: tag.into(),
             player,
+            while_on_top_of_library: false,
         }
+    }
+
+    pub fn while_on_top_of_library(mut self) -> Self {
+        self.while_on_top_of_library = true;
+        self
     }
 }
 
@@ -3482,6 +3489,7 @@ pub struct GrantPlayTaggedEffect {
     pub duration: GrantPlayTaggedDuration,
     pub allow_land: bool,
     pub allow_any_color_for_cast: bool,
+    pub while_on_top_of_library: bool,
 }
 
 impl GrantPlayTaggedEffect {
@@ -3498,7 +3506,13 @@ impl GrantPlayTaggedEffect {
             duration,
             allow_land,
             allow_any_color_for_cast,
+            while_on_top_of_library: false,
         }
+    }
+
+    pub fn while_on_top_of_library(mut self) -> Self {
+        self.while_on_top_of_library = true;
+        self
     }
 }
 

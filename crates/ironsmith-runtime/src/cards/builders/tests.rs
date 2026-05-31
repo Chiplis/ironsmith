@@ -35486,6 +35486,13 @@ fn temporal_aperture_runtime_grants_free_cast_only_while_revealed_card_is_top_li
             .is_empty(),
         "Temporal Aperture should grant a no-mana alternative cast from library"
     );
+    assert!(
+        game.current_has_static_ability_id(
+            temporal_id,
+            crate::static_abilities::StaticAbilityId::AllPlayersLookAtYourTopLibraryCard,
+        ),
+        "Temporal Aperture should reveal the top card while the tagged card remains on top"
+    );
 
     let actions = compute_legal_actions(&game, alice);
     assert!(
@@ -35503,7 +35510,48 @@ fn temporal_aperture_runtime_grants_free_cast_only_while_revealed_card_is_top_li
     let blocker = CardBuilder::new(CardId::from_raw(77_002), "New Top Card")
         .card_types(vec![CardType::Artifact])
         .build();
-    game.create_object_from_card(&blocker, alice, Zone::Library);
+    let blocker_id = game.create_object_from_card(&blocker, alice, Zone::Library);
+    assert!(
+        !game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            spell_id,
+            Zone::Library,
+            alice
+        ),
+        "Temporal Aperture's play-from-library grant should stop applying after the tagged card leaves the top"
+    );
+    assert!(
+        game
+            .effect_store
+            .grant_registry
+            .granted_alternative_casts_for_card(&game, spell_id, Zone::Library, alice)
+            .is_empty(),
+        "Temporal Aperture's free-cast grant should stop applying after the tagged card leaves the top"
+    );
+    assert!(
+        !game.current_has_static_ability_id(
+            temporal_id,
+            crate::static_abilities::StaticAbilityId::AllPlayersLookAtYourTopLibraryCard,
+        ),
+        "Temporal Aperture should stop revealing the top card after the tagged card leaves the top"
+    );
+    let _drawn_blocker = game.move_object_by_game_rule(blocker_id, Zone::Hand);
+    assert!(
+        !game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            spell_id,
+            Zone::Library,
+            alice
+        ),
+        "Temporal Aperture's play grant should not resume if the tagged card later becomes top again"
+    );
+    assert!(
+        !game.current_has_static_ability_id(
+            temporal_id,
+            crate::static_abilities::StaticAbilityId::AllPlayersLookAtYourTopLibraryCard,
+        ),
+        "Temporal Aperture's reveal permission should not resume if the tagged card later becomes top again"
+    );
     let actions_after_top_changed = compute_legal_actions(&game, alice);
     assert!(
         !actions_after_top_changed.iter().any(|action| matches!(

@@ -45,6 +45,20 @@ impl EffectExecutor for GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
                 continue;
             }
             let zone = object.zone;
+            let source = if self.while_on_top_of_library {
+                GrantSource::EffectWhileStableCardOnTopOfLibrary {
+                    source_id: ctx.source,
+                    expires_end_of_turn,
+                    stable_id: object.stable_id,
+                    player: object.owner,
+                    library_top_revision: game.library_top_revision(object.owner),
+                }
+            } else {
+                GrantSource::Effect {
+                    source_id: ctx.source,
+                    expires_end_of_turn,
+                }
+            };
 
             let method = AlternativeCastingMethod::alternative_cost(
                 "Without paying its mana cost",
@@ -58,10 +72,7 @@ impl EffectExecutor for GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
                     zone,
                     player_id,
                     method,
-                    GrantSource::Effect {
-                        source_id: ctx.source,
-                        expires_end_of_turn,
-                    },
+                    source,
                 );
             granted += 1;
         }

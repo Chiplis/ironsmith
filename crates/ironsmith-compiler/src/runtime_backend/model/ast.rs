@@ -1044,6 +1044,7 @@ pub(crate) enum SubjectVerbActionAst {
         allow_land: bool,
         without_paying_mana_cost: bool,
         allow_any_color_for_cast: bool,
+        while_on_top_of_library: bool,
     },
     GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
         tag: TagKey,
@@ -1239,6 +1240,7 @@ pub(crate) enum SubjectVerbActionAst {
         target: TargetAst,
         abilities: Vec<GrantedAbilityAst>,
         duration: Until,
+        condition: Option<crate::ConditionExpr>,
     },
     GrantToTarget {
         target: TargetAst,
@@ -2233,6 +2235,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 allow_land,
                 without_paying_mana_cost,
                 allow_any_color_for_cast,
+                while_on_top_of_library,
             } => f
                 .debug_struct("GrantPlayTaggedUntilEndOfTurn")
                 .field("tag", tag)
@@ -2240,6 +2243,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("allow_land", allow_land)
                 .field("without_paying_mana_cost", without_paying_mana_cost)
                 .field("allow_any_color_for_cast", allow_any_color_for_cast)
+                .field("while_on_top_of_library", while_on_top_of_library)
                 .finish(),
             Self::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
                 tag,
@@ -2602,11 +2606,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 target,
                 abilities,
                 duration,
+                condition,
             } => f
                 .debug_struct("GrantAbilitiesToTarget")
                 .field("target", target)
                 .field("abilities", abilities)
                 .field("duration", duration)
+                .field("condition", condition)
                 .finish(),
             Self::GrantToTarget {
                 target,
@@ -3714,6 +3720,28 @@ impl EffectAst {
                 allow_land,
                 without_paying_mana_cost,
                 allow_any_color_for_cast,
+                while_on_top_of_library: false,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_grant_play_tagged_until_end_of_turn_while_on_top_of_library(
+        tag: TagKey,
+        player: PlayerAst,
+        allow_land: bool,
+        without_paying_mana_cost: bool,
+        allow_any_color_for_cast: bool,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+                tag,
+                player,
+                allow_land,
+                without_paying_mana_cost,
+                allow_any_color_for_cast,
+                while_on_top_of_library: true,
             },
         )
     }
@@ -4290,6 +4318,25 @@ impl EffectAst {
                 target,
                 abilities,
                 duration,
+                condition: None,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_grant_abilities_to_target_with_condition(
+        target: TargetAst,
+        abilities: Vec<GrantedAbilityAst>,
+        duration: Until,
+        condition: crate::ConditionExpr,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::GrantAbilitiesToTarget {
+                target,
+                abilities,
+                duration,
+                condition: Some(condition),
             },
         )
     }

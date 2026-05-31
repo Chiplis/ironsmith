@@ -21368,6 +21368,13 @@ fn describe_reveal_top_then_temporarily_play_revealed_top_card(
         || grant_play.player != PlayerFilter::You
         || grant_play.duration != crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
         || !grant_play.allow_land
+        || !grant_play.while_on_top_of_library
+        || !grant_free_cast.while_on_top_of_library
+        || !matches!(
+            reveal_permission.condition,
+            Some(crate::ConditionExpr::TaggedObjectIsTopOfLibrary { .. })
+                | Some(crate::ConditionExpr::StableObjectIsTopOfLibrary { .. })
+        )
     {
         return None;
     }

@@ -11761,6 +11761,19 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 }
                 format!("the tagged object '{}' matches {desc}", tag.as_str())
             }
+        Condition::TaggedObjectIsTopOfLibrary { tag, .. } => {
+            if is_implicit_reference_tag(tag.as_str()) {
+                "it remains on top of its owner's library".to_string()
+            } else {
+                format!(
+                    "the tagged object '{}' remains on top of its owner's library",
+                    tag.as_str()
+                )
+            }
+        }
+        Condition::StableObjectIsTopOfLibrary { .. } => {
+            "that card remains on top of its owner's library".to_string()
+        }
         Condition::TaggedObjectWasCast(tag) => {
             if is_implicit_reference_tag(tag.as_str()) {
                 "it was cast".to_string()

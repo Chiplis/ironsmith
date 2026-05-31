@@ -19,6 +19,47 @@ fn describe_value_for_mode(value: &Value) -> String {
     }
 }
 
+fn resolve_tagged_top_library_condition(
+    condition: &crate::ConditionExpr,
+    ctx: &EffectLoweringContext,
+) -> Result<crate::ConditionExpr, CardTextError> {
+    match condition {
+        crate::ConditionExpr::TaggedObjectIsTopOfLibrary { tag, player } => {
+            let resolved_tag = if tag.as_str() == "__last_revealed__" {
+                TagKey::from(ctx.last_revealed_tag.clone().ok_or_else(|| {
+                    CardTextError::ParseError(
+                        "unable to resolve last revealed card without prior reveal".to_string(),
+                    )
+                })?)
+            } else if tag.as_str() == IT_TAG {
+                TagKey::from(ctx.last_object_tag.clone().ok_or_else(|| {
+                    CardTextError::ParseError(
+                        "unable to resolve 'it' without prior reference".to_string(),
+                    )
+                })?)
+            } else {
+                tag.clone()
+            };
+            Ok(crate::ConditionExpr::TaggedObjectIsTopOfLibrary {
+                tag: resolved_tag,
+                player: player.clone(),
+            })
+        }
+        crate::ConditionExpr::Not(inner) => Ok(crate::ConditionExpr::Not(Box::new(
+            resolve_tagged_top_library_condition(inner, ctx)?,
+        ))),
+        crate::ConditionExpr::And(left, right) => Ok(crate::ConditionExpr::And(
+            Box::new(resolve_tagged_top_library_condition(left, ctx)?),
+            Box::new(resolve_tagged_top_library_condition(right, ctx)?),
+        )),
+        crate::ConditionExpr::Or(left, right) => Ok(crate::ConditionExpr::Or(
+            Box::new(resolve_tagged_top_library_condition(left, ctx)?),
+            Box::new(resolve_tagged_top_library_condition(right, ctx)?),
+        )),
+        _ => Ok(condition.clone()),
+    }
+}
+
 const EFFECT_COMPILE_HANDLERS: [EffectCompileHandlerDef; 14] = [
     EffectCompileHandlerDef {
         run: effect_combat_resource_handlers::try_compile_combat_and_damage_effect,
@@ -1921,6 +1962,7 @@ fn compile_subject_verb_effect(
             allow_land,
             without_paying_mana_cost,
             allow_any_color_for_cast,
+            while_on_top_of_library,
         } => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
@@ -1946,20 +1988,27 @@ fn compile_subject_verb_effect(
             } else {
                 tag.clone()
             };
-            let mut effects = vec![Effect::new(crate::effects::GrantPlayTaggedEffect::new(
+            let mut grant_play = crate::effects::GrantPlayTaggedEffect::new(
                 resolved_tag.clone(),
                 player_filter.clone(),
                 crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn,
                 *allow_land,
                 *allow_any_color_for_cast,
-            ))];
+            );
+            if *while_on_top_of_library {
+                grant_play = grant_play.while_on_top_of_library();
+            }
+            let mut effects = vec![Effect::new(grant_play)];
             if *without_paying_mana_cost {
-                effects.push(Effect::new(
+                let mut grant_free_cast =
                     crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect::new(
                         resolved_tag,
                         player_filter,
-                    ),
-                ));
+                    );
+                if *while_on_top_of_library {
+                    grant_free_cast = grant_free_cast.while_on_top_of_library();
+                }
+                effects.push(Effect::new(grant_free_cast));
             }
             Ok((effects, Vec::new()))
         }
@@ -2913,6 +2962,7 @@ fn compile_subject_verb_effect(
             target,
             abilities,
             duration,
+            condition,
         } => {
             let modifications = lower_granted_ability_grant_modifications(abilities)?;
             let Some(first_modification) = modifications.first() else {
@@ -2920,6 +2970,10 @@ fn compile_subject_verb_effect(
                     Effect::new(crate::effects::TargetOnlyEffect::new(spec))
                 });
             };
+            let resolved_condition = condition
+                .as_ref()
+                .map(|condition| resolve_tagged_top_library_condition(condition, ctx))
+                .transpose()?;
 
             compile_tagged_effect_for_target(target, ctx, "granted", |spec| {
                 let mut apply = crate::effects::ApplyContinuousEffect::with_spec(
@@ -2930,6 +2984,9 @@ fn compile_subject_verb_effect(
 
                 for modification in modifications.iter().skip(1) {
                     apply = apply.with_additional_modification(modification.clone());
+                }
+                if let Some(condition) = &resolved_condition {
+                    apply = apply.with_condition(condition.clone());
                 }
 
                 Effect::new(apply)
