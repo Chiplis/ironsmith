@@ -508,6 +508,19 @@ fn normalize_permission_subject_filter(mut filter: ObjectFilter) -> ObjectFilter
     filter
 }
 
+fn permanent_spell_filter() -> ObjectFilter {
+    ObjectFilter {
+        card_types: vec![
+            CardType::Artifact,
+            CardType::Creature,
+            CardType::Enchantment,
+            CardType::Planeswalker,
+            CardType::Battle,
+        ],
+        ..ObjectFilter::default()
+    }
+}
+
 fn parse_permission_subject_filter_tokens_lexed(
     filter_tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
@@ -522,6 +535,12 @@ fn parse_permission_subject_filter_tokens_lexed(
             | ["aura", "cards", "with", "enchant", "creature"]
     ) {
         return Ok(Some(ObjectFilter::default().with_subtype(Subtype::Aura)));
+    }
+    if matches!(
+        strip_leading_article_word_refs(&filter_words),
+        ["permanent", "spell"] | ["permanent", "spells"]
+    ) {
+        return Ok(Some(permanent_spell_filter()));
     }
     for separator in ["and", "or"] {
         let Some(split_idx) = find_token_index(filter_words.as_slice(), |word| *word == separator)
@@ -745,123 +764,6 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         return Ok(Some(spec));
     }
 
-    if clause_refs
-        == [
-            "once",
-            "during",
-            "each",
-            "of",
-            "your",
-            "turns",
-            "you",
-            "may",
-            "cast",
-            "a",
-            "permanent",
-            "spell",
-            "from",
-            "your",
-            "graveyard",
-            "by",
-            "sacrificing",
-            "a",
-            "land",
-            "in",
-            "addition",
-            "to",
-            "paying",
-            "its",
-            "other",
-            "costs",
-        ]
-    {
-        let permanent_spell_filter = ObjectFilter {
-            card_types: vec![
-                CardType::Artifact,
-                CardType::Creature,
-                CardType::Enchantment,
-                CardType::Planeswalker,
-                CardType::Battle,
-            ],
-            ..ObjectFilter::default()
-        };
-        return Ok(Some(PermissionClauseSpec::GrantBySpec {
-            player: PlayerAst::You,
-            spec: crate::grant::GrantSpec::new(
-                crate::grant::Grantable::once_each_turn_graveyard_cast_from_cards_mana_cost(vec![
-                    crate::costs::Cost::sacrifice(ObjectFilter::land().you_control()),
-                ]),
-                permanent_spell_filter,
-                Zone::Graveyard,
-            ),
-            lifetime: PermissionLifetime::Static,
-        }));
-    }
-
-    if word_slice_starts_with(
-        &clause_refs,
-        &[
-            "once", "during", "each", "of", "your", "turns", "you", "may", "cast",
-        ],
-    ) && word_slice_ends_with(&clause_refs, &["from", "your", "graveyard"])
-    {
-        let Some(from_idx) = find_token_index(tokens, |token| token.is_word("from")) else {
-            return Ok(None);
-        };
-        let Some(subject_start) = token_index_for_word_index(tokens, 9) else {
-            return Ok(None);
-        };
-        let subject_tokens = trim_lexed_commas(&tokens[subject_start..from_idx]);
-        if let Some(filter) = parse_permission_subject_filter_tokens_lexed(subject_tokens)? {
-            return Ok(Some(PermissionClauseSpec::GrantBySpec {
-                player: PlayerAst::You,
-                spec: crate::grant::GrantSpec::new(
-                    crate::grant::Grantable::once_each_turn_graveyard_cast_from_cards_mana_cost(
-                        Vec::new(),
-                    ),
-                    filter,
-                    Zone::Graveyard,
-                ),
-                lifetime: PermissionLifetime::Static,
-            }));
-        }
-    }
-
-    if clause_refs
-        == [
-            "once",
-            "during",
-            "each",
-            "of",
-            "your",
-            "turns",
-            "you",
-            "may",
-            "cast",
-            "a",
-            "creature",
-            "spell",
-            "from",
-            "your",
-            "graveyard",
-        ]
-    {
-        return Ok(Some(PermissionClauseSpec::GrantBySpec {
-            player: PlayerAst::You,
-            spec: crate::grant::GrantSpec::new(
-                crate::grant::Grantable::once_each_turn_graveyard_cast_from_cards_mana_cost(
-                    Vec::new(),
-                ),
-                ObjectFilter {
-                    card_types: vec![CardType::Creature],
-                    ..ObjectFilter::default()
-                },
-                Zone::Graveyard,
-            ),
-            lifetime: PermissionLifetime::Static,
-        }));
-    }
-
     let (prefixed_lifetime, body_tokens) = parse_permission_duration_prefix_tokens(tokens);
     let body_tokens = trim_lexed_commas(body_tokens);
     let Some((lead, rest_tokens)) = parse_permission_lead_tokens(body_tokens) else {
@@ -973,56 +875,6 @@ pub(crate) fn parse_permission_clause_spec_lexed(
     }
 
     let rest_words = token_word_refs(rest_tokens);
-    if prefixed_lifetime.is_none()
-        && player == PlayerAst::You
-        && !allow_land
-        && rest_words
-            == [
-                "a",
-                "permanent",
-                "spell",
-                "from",
-                "your",
-                "graveyard",
-                "by",
-                "sacrificing",
-                "a",
-                "land",
-                "in",
-                "addition",
-                "to",
-                "paying",
-                "its",
-                "other",
-                "costs",
-            ]
-        && word_slice_starts_with(
-            &clause_refs,
-            &["once", "during", "each", "of", "your", "turns"],
-        )
-    {
-        let permanent_spell_filter = ObjectFilter {
-            card_types: vec![
-                CardType::Artifact,
-                CardType::Creature,
-                CardType::Enchantment,
-                CardType::Planeswalker,
-                CardType::Battle,
-            ],
-            ..ObjectFilter::default()
-        };
-        return Ok(Some(PermissionClauseSpec::GrantBySpec {
-            player,
-            spec: crate::grant::GrantSpec::new(
-                crate::grant::Grantable::once_each_turn_graveyard_cast_from_cards_mana_cost(vec![
-                    crate::costs::Cost::sacrifice(ObjectFilter::land().you_control()),
-                ]),
-                permanent_spell_filter,
-                Zone::Graveyard,
-            ),
-            lifetime: PermissionLifetime::Static,
-        }));
-    }
 
     if matches!(
         rest_words.as_slice(),
