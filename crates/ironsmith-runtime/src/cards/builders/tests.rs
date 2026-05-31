@@ -35901,6 +35901,43 @@ fn parse_split_the_spoils_divvy_uses_splitter_then_opponent_choice() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_unesh_criosphinx_sovereign_reveal_top_opponent_split_piles() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(91_102), "Unesh, Criosphinx Sovereign")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Sphinx])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Flying\n\
+             Sphinx spells you cast cost {2} less to cast.\n\
+             Whenever Unesh or another Sphinx you control enters, reveal the top four cards of your library. An opponent separates those cards into two piles. Put one pile into your hand and the other into your graveyard.",
+        )
+        .expect("Unesh, Criosphinx Sovereign should parse strictly");
+
+    let rendered = compiled_text_lines(&def).join("\n");
+    assert_eq!(
+        rendered,
+        "Flying\nSphinx spells you cast cost {2} less to cast.\nWhenever Unesh or another Sphinx you control enters, reveal the top four cards of your library. An opponent separates those cards into two piles. Put one pile into your hand and the other into your graveyard."
+    );
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("LookAtTopCardsEffect")
+            && abilities_debug.contains("divvy_source")
+            && abilities_debug.contains("divvy_pile")
+            && abilities_debug.contains("chooser: Opponent")
+            && abilities_debug.contains("player: You"),
+        "expected Unesh's reveal-and-piles trigger to preserve the opponent split and caster pile choice structurally, got {abilities_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn render_make_an_example_preserves_choose_then_sacrifice_surface() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Make an Example")
         .mana_cost(ManaCost::from_pips(vec![
