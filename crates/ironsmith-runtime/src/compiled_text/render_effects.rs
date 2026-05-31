@@ -177,6 +177,114 @@ pub fn compile_effect_list(effects: &[Effect]) -> String {
     normalize_compile_effect_list_surface(&describe_effect_list(effects))
 }
 
+pub(super) fn describe_spell_mastery_reanimation_program(
+    program: &crate::resolution::ResolutionProgram,
+) -> Option<String> {
+    if program
+        .segments
+        .iter()
+        .any(|segment| !segment.self_replacements.is_empty())
+    {
+        return None;
+    }
+    let effects = program
+        .segments
+        .iter()
+        .flat_map(|segment| segment.default_effects.iter())
+        .collect::<Vec<_>>();
+    describe_spell_mastery_reanimation_effects(&effects)
+}
+
+fn unwrap_basic_tag_wrappers(effect: &Effect) -> &Effect {
+    if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+        return unwrap_basic_tag_wrappers(&tag_all.effect);
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return unwrap_basic_tag_wrappers(&tagged.effect);
+    }
+    effect
+}
+
+fn direct_wrapped_effect_tag(effect: &Effect) -> Option<&crate::TagKey> {
+    effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .map(|tagged| &tagged.tag)
+}
+
+fn describe_spell_mastery_reanimation_effects(effects: &[&Effect]) -> Option<String> {
+    let [move_effect, conditional_effect] = effects else {
+        return None;
+    };
+
+    let move_tag = direct_wrapped_effect_tag(move_effect)?;
+    let move_to_zone = unwrap_basic_tag_wrappers(move_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_zone.zone != Zone::Battlefield
+        || move_to_zone.battlefield_controller != crate::effects::BattlefieldController::You
+        || move_to_zone.enters_tapped
+    {
+        return None;
+    }
+    let target_filter = match move_to_zone.target.base() {
+        ChooseSpec::Object(filter) => filter,
+        ChooseSpec::WithCount(inner, count) if count.is_single() => {
+            let ChooseSpec::Object(filter) = inner.base() else {
+                return None;
+            };
+            filter
+        }
+        _ => return None,
+    };
+    if target_filter.zone != Some(Zone::Graveyard)
+        || !target_filter.card_types.contains(&CardType::Creature)
+    {
+        return None;
+    }
+
+    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if !conditional.if_false.is_empty() || conditional.if_true.len() != 1 {
+        return None;
+    }
+    let Condition::ValueComparison {
+        left: Value::Count(condition_filter),
+        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::Fixed(2),
+    } = &conditional.condition
+    else {
+        return None;
+    };
+    if condition_filter.zone != Some(Zone::Graveyard)
+        || condition_filter.owner != Some(PlayerFilter::You)
+        || condition_filter.card_types != vec![CardType::Instant, CardType::Sorcery]
+    {
+        return None;
+    }
+
+    let put_counters = unwrap_basic_tag_wrappers(&conditional.if_true[0])
+        .downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if put_counters.distributed
+        || put_counters.target_count.is_some()
+        || !matches!(&put_counters.target, ChooseSpec::Tagged(tag) if tag == move_tag)
+    {
+        return None;
+    }
+
+    let move_text = describe_effect(move_effect).replace(" in a graveyard", " from a graveyard");
+    let counter_type = describe_counter_type(put_counters.counter_type);
+    let counter_suffix = match &put_counters.amount {
+        Value::Fixed(1) => format!("an additional {counter_type} counter"),
+        Value::Fixed(amount) => {
+            let count_text = number_word(*amount).unwrap_or_else(|| amount.to_string());
+            format!("{count_text} additional {counter_type} counters")
+        }
+        _ => return None,
+    };
+    Some(format!(
+        "{move_text}. Spell mastery — If there are two or more instant and/or sorcery cards in \
+         your graveyard, that creature enters with {counter_suffix} on it"
+    ))
+}
+
 fn normalize_compile_effect_list_surface(line: &str) -> String {
     let lower = line.to_ascii_lowercase();
     if lower
@@ -5444,6 +5552,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
     if let Some(compact) = describe_sacrifice_source_then_return_with_counters(&visible_effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_spell_mastery_reanimation_effects(&visible_effects) {
         return compact;
     }
     if let Some(compact) = describe_choose_then_put_counter_on_each(&visible_effects) {

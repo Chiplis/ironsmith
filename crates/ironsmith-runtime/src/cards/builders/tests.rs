@@ -45985,6 +45985,88 @@ fn parse_rise_from_the_grave_color_and_subtype_followup_sentence() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_necromantic_summons_spell_mastery_counter_followup() {
+    let def = parse_oracle_card_definition("Necromantic Summons");
+    assert!(
+        def.card.card_types.contains(&CardType::Sorcery),
+        "Necromantic Summons should parse as a sorcery"
+    );
+
+    let spell_effect = def.spell_effect.as_ref().expect("expected spell effect");
+    assert_eq!(
+        spell_effect.segments.len(),
+        2,
+        "expected reanimation effect plus spell-mastery follow-up"
+    );
+    let move_effects = &spell_effect.segments[0].default_effects;
+    assert_eq!(move_effects.len(), 1);
+    let moved = move_effects[0]
+        .downcast_ref::<TaggedEffect>()
+        .expect("returned creature should be tagged");
+    let move_to_battlefield = moved
+        .effect
+        .downcast_ref::<MoveToZoneEffect>()
+        .expect("first effect should return a creature card");
+    assert_eq!(move_to_battlefield.zone, Zone::Battlefield);
+    match move_to_battlefield.target.base() {
+        ChooseSpec::Object(filter) => {
+            assert_eq!(filter.zone, Some(Zone::Graveyard));
+            assert!(filter.card_types.contains(&CardType::Creature));
+        }
+        other => panic!(
+            "Necromantic Summons should target a creature card in a graveyard, got {other:?}"
+        ),
+    }
+
+    assert_eq!(spell_effect.segments[1].default_effects.len(), 1);
+    let conditional = spell_effect.segments[1].default_effects[0]
+        .downcast_ref::<crate::effects::ConditionalEffect>()
+        .expect("spell mastery should lower to a conditional counter effect");
+    match &conditional.condition {
+        crate::effect::Condition::ValueComparison {
+            left: crate::effect::Value::Count(filter),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: crate::effect::Value::Fixed(2),
+        } => {
+            assert_eq!(filter.zone, Some(Zone::Graveyard));
+            assert_eq!(filter.owner, Some(PlayerFilter::You));
+            assert_eq!(filter.card_types, vec![CardType::Instant, CardType::Sorcery]);
+        }
+        other => panic!("expected spell mastery graveyard count condition, got {other:?}"),
+    }
+    assert!(
+        conditional.if_false.is_empty(),
+        "spell mastery should have no false branch"
+    );
+    assert_eq!(conditional.if_true.len(), 1);
+    let put_counters = conditional.if_true[0]
+        .downcast_ref::<TaggedEffect>()
+        .and_then(|tagged| tagged.effect.downcast_ref::<crate::effects::PutCountersEffect>())
+        .expect("spell mastery condition should put counters on the returned creature");
+    assert_eq!(
+        put_counters.counter_type,
+        crate::object::CounterType::PlusOnePlusOne
+    );
+    assert_eq!(put_counters.amount, crate::effect::Value::Fixed(2));
+    assert!(matches!(
+        &put_counters.target,
+        ChooseSpec::Tagged(tag) if tag == &moved.tag
+    ));
+
+    let expected_compiled = concat!(
+        "Put target creature card from a graveyard onto the battlefield under your control. ",
+        "Spell mastery — If there are two or more instant and/or sorcery cards in your graveyard, ",
+        "that creature enters with two additional +1/+1 counters on it."
+    );
+    assert_eq!(
+        crate::compiled_text::compiled_text_lines(&def),
+        vec![expected_compiled.to_string()],
+        "compiled text should preserve reanimation plus spell mastery counter clause"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_ghost_vacuum_base_pt_and_subtype_followup_sentence() {
     CardDefinitionBuilder::new(CardId::new(), "Ghost Vacuum Variant")
         .parse_text(

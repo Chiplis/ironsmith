@@ -301,6 +301,18 @@ pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive
         parse_if_enters_with_additional_counter_sentence,
         parse_if_enters_with_additional_counter_sentence_matched
     ),
+    primitive_with_pattern_parser!(
+        "tagged-enters-with-additional-counter",
+        52,
+        PreDiagnostic,
+        &[
+            LexRuleHeadHint::Single("it"),
+            LexRuleHeadHint::Single("that"),
+        ],
+        TAGGED_ENTERS_WITH_ADDITIONAL_COUNTER_PATTERN_ATOMS,
+        parse_tagged_enters_with_additional_counter_sentence,
+        parse_tagged_enters_with_additional_counter_sentence_matched
+    ),
     primitive_with_pattern!(
         "if-any-tagged-cards-share-card-type-with-triggering-spell",
         55,
