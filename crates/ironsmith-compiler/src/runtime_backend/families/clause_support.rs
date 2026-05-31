@@ -51,14 +51,17 @@ fn protection_from_colored_spells_action(words: &[&str]) -> Option<KeywordAction
         return None;
     }
 
-    let all_colors = crate::color::ColorSet::WHITE
+    let mut filter = ObjectFilter::spell();
+    filter.colors = Some(all_magic_colors());
+    Some(KeywordAction::ProtectionFromFilter(filter))
+}
+
+fn all_magic_colors() -> crate::color::ColorSet {
+    crate::color::ColorSet::WHITE
         .union(crate::color::ColorSet::BLUE)
         .union(crate::color::ColorSet::BLACK)
         .union(crate::color::ColorSet::RED)
-        .union(crate::color::ColorSet::GREEN);
-    let mut filter = ObjectFilter::spell();
-    filter.colors = Some(all_colors);
-    Some(KeywordAction::ProtectionFromFilter(filter))
+        .union(crate::color::ColorSet::GREEN)
 }
 
 fn protection_from_each_mana_value_among_action(
@@ -159,6 +162,12 @@ fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>
 }
 
 fn color_only_hexproof_filter_words(words: &[&str]) -> Option<ObjectFilter> {
+    if matches!(words, ["each", "color"]) {
+        let mut filter = ObjectFilter::default();
+        filter.colors = Some(all_magic_colors());
+        return Some(filter);
+    }
+
     let mut filters = Vec::new();
     for word in words {
         if matches!(*word, "and" | "from") {
