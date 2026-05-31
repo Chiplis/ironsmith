@@ -190,11 +190,15 @@ impl<'p> ClauseShape<'p> {
     }
 
     pub(crate) fn matches_token(self, token: &OwnedLexToken) -> bool {
-        token.as_word().is_some_and(|_| self.matches_word(token.parser_text()))
+        token
+            .as_word()
+            .is_some_and(|_| self.matches_word(token.parser_text()))
     }
 
     pub(crate) fn matches_lex_token(self, token: &LexToken) -> bool {
-        token.as_word().is_some_and(|_| self.matches_word(token.parser_text()))
+        token
+            .as_word()
+            .is_some_and(|_| self.matches_word(token.parser_text()))
     }
 
     pub(crate) fn matches_word_at(self, words: &[&str], idx: usize) -> bool {

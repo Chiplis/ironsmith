@@ -202,8 +202,9 @@ fn finalize_ast_surface_line(line: String) -> String {
             "unless an opponent was dealt damage this turn, sacrifice it",
         );
     }
-    if line.contains("The next face-down creature cast by you spell you cast this turn costs {3} less to cast")
-    {
+    if line.contains(
+        "The next face-down creature cast by you spell you cast this turn costs {3} less to cast",
+    ) {
         line = line.replace(
             "The next face-down creature cast by you spell you cast this turn costs {3} less to cast",
             "The next face-down creature spell you cast this turn costs {3} less to cast",

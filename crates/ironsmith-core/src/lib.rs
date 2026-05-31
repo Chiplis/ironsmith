@@ -177,8 +177,8 @@ pub use tag::{EXPLOITED_TAG, EXPLOITER_TAG, SOURCE_EXILED_TAG, TagKey};
 pub use target_model::{ChooseSpec, ChooseSpecSurfaceHint, SourceReferenceSurface};
 pub use trigger_model::{
     CountMode as CompilerTriggerCountMode, CounterPutOnTrigger as CompilerCounterPutOnTrigger,
-    DamagedBySource, Trigger as CompilerTrigger, TriggerIntroSurface as CompilerTriggerIntroSurface,
-    TriggerKind,
+    DamagedBySource, Trigger as CompilerTrigger,
+    TriggerIntroSurface as CompilerTriggerIntroSurface, TriggerKind,
     ZoneChangeTrigger as CompilerZoneChangeTrigger,
 };
 pub use types::{CardType, Subtype, SubtypeFamily, Supertype};

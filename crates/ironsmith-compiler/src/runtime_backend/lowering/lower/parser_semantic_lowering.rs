@@ -52,9 +52,7 @@ fn full_text_has_triggered_intervening_if_clause(text: &str, line_index: usize) 
     let Ok(tokens) = lexed_tokens(text, line_index) else {
         return false;
     };
-    let start_idx = if tokens.first().is_some_and(|token| {
-        token.is_word("whenever") || token.is_word("at") || token.is_word("when")
-    }) {
+    let start_idx = if tokens_start_with_trigger_intro_surface(&tokens) {
         1
     } else {
         0
@@ -82,9 +80,7 @@ fn triggered_line_source_text(line: &RewriteTriggeredLine) -> &str {
 }
 
 fn has_trigger_intro_surface(text: &str) -> bool {
-    let trimmed = text.trim_start();
-    let lower = trimmed.to_ascii_lowercase();
-    lower.starts_with("when ") || lower.starts_with("whenever ") || lower.starts_with("at ")
+    text_starts_with_trigger_intro_surface(text)
 }
 
 fn presentation_label_from_raw_trigger_line(raw_line: &str) -> Option<&str> {
@@ -98,11 +94,7 @@ fn presentation_label_from_raw_trigger_line(raw_line: &str) -> Option<&str> {
     {
         return None;
     }
-    let body_lower = body.to_ascii_lowercase();
-    (body_lower.starts_with("when ")
-        || body_lower.starts_with("whenever ")
-        || body_lower.starts_with("at "))
-    .then_some(label)
+    text_starts_with_trigger_intro_surface(body).then_some(label)
 }
 
 fn raw_preserves_triggered_source(raw: &str, full: &str) -> bool {
@@ -130,11 +122,7 @@ fn raw_label_prefix_parts(raw: &str) -> Option<(&str, &str)> {
     }
 
     let body = body.trim();
-    let body_lower = body.to_ascii_lowercase();
-    if !(str_starts_with(body_lower.as_str(), "whenever ")
-        || str_starts_with(body_lower.as_str(), "when ")
-        || str_starts_with(body_lower.as_str(), "at "))
-    {
+    if !text_starts_with_trigger_intro_surface(body) {
         return None;
     }
 
@@ -457,9 +445,11 @@ fn parse_self_enters_with_x_counters_static_chunk(tokens: &[OwnedLexToken]) -> O
             || effect == "it enters with a +1/+1 counter on it";
         if is_single_counter_effect {
             let predicate_text = predicate.trim();
-            let predicate_body = predicate_text
-                .strip_prefix("if ")
-                .or_else(|| predicate_text.rsplit_once(" if ").map(|(_, tail)| tail))?;
+            let predicate_body = if text_starts_with_if(predicate_text) {
+                predicate_text.get("if".len()..)?.trim_start()
+            } else {
+                predicate_text.rsplit_once(" if ").map(|(_, tail)| tail)?
+            };
             let predicate_words = predicate_body.split_whitespace().collect::<Vec<_>>();
             if predicate_words.len() == 11
                 && predicate_words[0] == "at"
@@ -498,11 +488,7 @@ fn parse_self_enters_with_x_counters_static_chunk(tokens: &[OwnedLexToken]) -> O
         }
     }
 
-    let is_self_x_counter_etb = normalized
-        .starts_with("this creature enters with x +1/+1 counters on it")
-        || normalized.starts_with("this permanent enters with x +1/+1 counters on it")
-        || normalized.starts_with("it enters with x +1/+1 counters on it");
-    if !is_self_x_counter_etb {
+    if !text_starts_with_self_x_counter_etb(normalized.as_str()) {
         return None;
     }
 
@@ -524,19 +510,7 @@ fn parse_self_enters_with_x_counters_static_chunk(tokens: &[OwnedLexToken]) -> O
 
 fn parse_day_night_starts_day_static_chunk(tokens: &[OwnedLexToken]) -> Option<LineAst> {
     let rendered = render_token_slice(tokens);
-    let normalized = rendered
-        .to_ascii_lowercase()
-        .replace('\u{2019}', "'")
-        .replace("  ", " ")
-        .trim()
-        .trim_end_matches('.')
-        .to_string();
-    let starts_day = normalized.contains("neither day nor night")
-        && normalized.contains("becomes day")
-        && (normalized.contains("as this creature enters")
-            || normalized.contains("as this permanent enters")
-            || normalized.contains("as this object enters"));
-    starts_day.then(|| {
+    tokens_mention_day_night_starts_day(tokens).then(|| {
         LineAst::StaticAbilities(vec![crate::cards::builders::StaticAbilityAst::Static(
             StaticAbility::rule_fallback_text(rendered.trim().trim_end_matches('.').to_string()),
         )])
@@ -647,14 +621,11 @@ fn lower_rewrite_triggered_to_chunk_impl(
         );
     }
 
-    let normalized_full_text = line.full_text.to_ascii_lowercase();
-    let normalized_effect_text = line.effect_text.trim().to_ascii_lowercase();
-    if str_contains(normalized_full_text.as_str(), "if you have a full party")
-        && str_contains(normalized_full_text.as_str(), "until end of turn instead")
+    if text_mentions_full_party_instead(line.full_text.as_str())
         && let Ok(trigger) = parse_trigger_clause_lexed(trigger_parse_tokens)
     {
         let effect_text =
-            if str_contains(normalized_effect_text.as_str(), "if you have a full party") {
+            if text_contains_word_phrase(line.effect_text.trim(), IF_YOU_HAVE_FULL_PARTY_PHRASE) {
                 line.effect_text.as_str()
             } else {
                 line.full_text
@@ -692,15 +663,15 @@ fn lower_rewrite_triggered_to_chunk_impl(
         && let Ok(first_triggered) = parse_triggered_line_lexed(full_sentences[0])
     {
         let mut chunks = Vec::with_capacity(full_sentences.len());
-            chunks.push(apply_chosen_option_to_triggered_chunk(
-                apply_explicit_intervening_if_to_triggered_chunk(
-                    first_triggered,
-                    line.intervening_if.clone(),
-                )?,
-                trigger_surface_text,
-                inferred_max_triggers_per_turn,
-                chosen_option_label.clone(),
-                presentation_label,
+        chunks.push(apply_chosen_option_to_triggered_chunk(
+            apply_explicit_intervening_if_to_triggered_chunk(
+                first_triggered,
+                line.intervening_if.clone(),
+            )?,
+            trigger_surface_text,
+            inferred_max_triggers_per_turn,
+            chosen_option_label.clone(),
+            presentation_label,
         )?);
 
         let mut parsed_all_static = true;
@@ -783,10 +754,9 @@ fn lower_rewrite_triggered_to_chunk_impl(
             line.full_text.as_str(),
             line.info.line_index,
         )
-        && !str_contains(normalized_full_text.as_str(), "if you do")
-        && !str_contains(normalized_full_text.as_str(), "if you don't")
-        && !str_contains(normalized_full_text.as_str(), "if you dont")
-        && !str_starts_with(normalized_effect_text.as_str(), "if ")
+        && !text_mentions_if_you_do(line.full_text.as_str())
+        && !text_mentions_if_you_dont(line.full_text.as_str())
+        && !text_starts_with_if(line.effect_text.trim())
     {
         let direct_trigger = parse_trigger_clause_lexed(trigger_parse_tokens);
         let direct_effects = parse_effect_sentences_lexed(effect_parse_tokens);
@@ -824,116 +794,41 @@ fn lower_rewrite_triggered_to_chunk_impl(
 }
 
 fn infer_trigger_cap_from_text(text: &str) -> Option<u32> {
-    let normalized = text.trim().to_ascii_lowercase();
-    if str_contains(
-        normalized.as_str(),
-        "this ability triggers only once each turn",
-    ) {
-        Some(1)
-    } else if str_contains(
-        normalized.as_str(),
-        "this ability triggers only twice each turn",
-    ) {
-        Some(2)
-    } else if str_contains(normalized.as_str(), "do this only once each turn") {
-        Some(1)
-    } else if str_contains(normalized.as_str(), "do this only twice each turn") {
-        Some(2)
-    } else {
-        None
+    trigger_cap_surface_from_text(text)
+}
+
+fn combat_death_blocked_damage_amount_lexed(
+    trigger_parse_tokens: &[OwnedLexToken],
+    effect_parse_tokens: &[OwnedLexToken],
+) -> Option<String> {
+    const TRIGGER_WORDS: &[&str] = &["when", "this", "creature", "dies", "during", "combat"];
+    const EFFECT_PREFIX: &[&str] = &["it", "deals"];
+    const EFFECT_SUFFIX: &[&str] = &[
+        "damage", "to", "each", "creature", "it", "blocked", "this", "combat",
+    ];
+
+    let trigger_words = token_word_refs(trigger_parse_tokens);
+    if trigger_words.as_slice() != TRIGGER_WORDS {
+        return None;
     }
+
+    let effect_words = token_word_refs(effect_parse_tokens);
+    if !word_slice_starts_with(effect_words.as_slice(), EFFECT_PREFIX)
+        || !word_slice_ends_with(effect_words.as_slice(), EFFECT_SUFFIX)
+        || effect_words.len() <= EFFECT_PREFIX.len() + EFFECT_SUFFIX.len()
+    {
+        return None;
+    }
+
+    let amount_words = &effect_words[EFFECT_PREFIX.len()..effect_words.len() - EFFECT_SUFFIX.len()];
+    Some(amount_words.join(" "))
 }
 
 pub(super) fn infer_rewrite_triggered_functional_zones(
     trigger: &TriggerSpec,
     normalized_line: &str,
 ) -> Vec<Zone> {
-    let mut zones = match trigger {
-        TriggerSpec::WithIntro { trigger, .. } => {
-            return infer_rewrite_triggered_functional_zones(trigger, normalized_line);
-        }
-        TriggerSpec::YouCastThisSpell => vec![Zone::Stack],
-        TriggerSpec::KeywordActionFromSource {
-            action: crate::events::KeywordActionKind::Cycle,
-            ..
-        } => vec![Zone::Graveyard],
-        _ => vec![Zone::Battlefield],
-    };
-
-    let normalized = normalized_line.to_ascii_lowercase();
-    for (needle, zone) in [
-        ("if this is in your hand", Zone::Hand),
-        ("if this card is in your hand", Zone::Hand),
-        ("if this is in your graveyard", Zone::Graveyard),
-        ("if this card is in your graveyard", Zone::Graveyard),
-        ("if this creature is in your graveyard", Zone::Graveyard),
-        ("if this permanent is in your graveyard", Zone::Graveyard),
-        ("if this object is in your graveyard", Zone::Graveyard),
-        ("if this is in your library", Zone::Library),
-        ("if this card is in your library", Zone::Library),
-        ("if this is in exile", Zone::Exile),
-        ("if this card is in exile", Zone::Exile),
-        ("if this card is exiled", Zone::Exile),
-        ("if this is in the command zone", Zone::Command),
-        ("if this card is in the command zone", Zone::Command),
-    ] {
-        if str_contains(normalized.as_str(), needle) {
-            zones = vec![zone];
-            break;
-        }
-    }
-    if (str_contains(normalized.as_str(), "return this from your graveyard")
-        || str_contains(normalized.as_str(), "return this card from your graveyard"))
-        && !trigger_references_attached_object(trigger)
-    {
-        zones = vec![Zone::Graveyard];
-    } else if str_contains(normalized.as_str(), "discard this card") {
-        zones = vec![Zone::Hand];
-    }
-
-    zones
-}
-
-fn trigger_references_attached_object(trigger: &TriggerSpec) -> bool {
-    match trigger {
-        TriggerSpec::WithIntro { trigger, .. } => trigger_references_attached_object(trigger),
-        TriggerSpec::PutIntoGraveyard(filter) | TriggerSpec::PutIntoGraveyardOneOrMore(filter) => {
-            filter_references_tag(filter, "enchanted") || filter_references_tag(filter, "equipped")
-        }
-        TriggerSpec::PutIntoGraveyardFromZone { filter, .. } => {
-            filter_references_tag(filter, "enchanted") || filter_references_tag(filter, "equipped")
-        }
-        TriggerSpec::Either(left, right) => {
-            trigger_references_attached_object(left) || trigger_references_attached_object(right)
-        }
-        _ => false,
-    }
-}
-
-fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
-    filter
-        .tagged_constraints
-        .iter()
-        .any(|constraint| constraint.tag.as_str() == tag)
-        || filter
-            .could_be_targeted_by
-            .as_ref()
-            .is_some_and(|constraint| {
-                matches!(&constraint.stack_object, crate::filter::ObjectRef::Tagged(object_tag) if object_tag.as_str() == tag)
-            })
-        || matches!(&filter.blocked_by, Some(crate::filter::ObjectRef::Tagged(object_tag)) if object_tag.as_str() == tag)
-        || filter
-            .targets_object
-            .as_deref()
-            .is_some_and(|targets| filter_references_tag(targets, tag))
-        || filter
-            .targets_only_object
-            .as_deref()
-            .is_some_and(|targets| filter_references_tag(targets, tag))
-        || filter
-            .any_of
-            .iter()
-            .any(|branch| filter_references_tag(branch, tag))
+    infer_triggered_ability_functional_zones(trigger, normalized_line)
 }
 
 pub(crate) fn lower_special_rewrite_triggered_chunk(
@@ -976,20 +871,11 @@ pub(crate) fn lower_special_rewrite_triggered_chunk(
         }));
     }
 
-    if let Some(rest) = str_strip_prefix(
-        normalized,
-        "when this creature dies during combat, it deals ",
-    ) && let Some((amount, _)) =
-        str_split_once(rest, " damage to each creature it blocked this combat")
+    if let Some(_amount) =
+        combat_death_blocked_damage_amount_lexed(trigger_parse_tokens, effect_parse_tokens)
     {
         let trigger = parse_trigger_clause_from_text("this creature dies", line.info.line_index)?;
-        let effects = if effect_parse_tokens.is_empty() {
-            let effect_text =
-                format!("it deals {amount} damage to each creature it blocked this combat.");
-            parse_effect_sentences_from_text(effect_text.as_str(), line.info.line_index)?
-        } else {
-            parse_effect_sentences_lexed(effect_parse_tokens)?
-        };
+        let effects = parse_effect_sentences_lexed(effect_parse_tokens)?;
         return Ok(Some(LineAst::Triggered {
             trigger,
             effects,
@@ -997,13 +883,7 @@ pub(crate) fn lower_special_rewrite_triggered_chunk(
         }));
     }
 
-    if str_starts_with(
-        normalized,
-        "whenever this creature blocks or becomes blocked by a creature",
-    ) && str_ends_with(
-        normalized,
-        "that creature gains first strike until end of turn",
-    ) {
+    if text_matches_blocks_or_blocked_first_strike(normalized) {
         let trigger = parse_trigger_clause_from_text(
             "this creature becomes blocked by a creature",
             line.info.line_index,
@@ -1254,10 +1134,7 @@ pub(crate) fn lower_special_rewrite_triggered_chunk(
 /// Recognizes "you may pay {COST} rather than pay the equip cost of the first
 /// equip ability you activate each turn." and the variant "during each of your turns."
 fn is_first_equip_cost_alternative_lowering_line(text: &str) -> bool {
-    let s = text.trim_end_matches('.');
-    s.starts_with("you may pay ")
-        && s.contains(" rather than pay the equip cost of the first equip ability you activate")
-        && (s.ends_with("each turn") || s.ends_with("during each of your turns"))
+    text_is_first_equip_cost_alternative_line(text)
 }
 
 /// Build the display text for the first-equip-cost alternative static ability.
@@ -1295,21 +1172,17 @@ fn lower_rewrite_static_to_chunk_impl(
     let chosen_option_label =
         effective_chosen_option_label(&line.info.raw_line, line.chosen_option_label.as_deref());
     let raw = line.info.raw_line.trim();
-    let raw_lower = raw.to_ascii_lowercase();
-    if raw_lower.starts_with("partner") {
-        let rest = raw.get("Partner".len()..).unwrap_or("").trim_start();
-        if rest.starts_with('\u{2014}') || rest.starts_with('-') || rest.starts_with('\u{2013}') {
-            let visible_label = raw
-                .split_once('(')
-                .map(|(head, _)| head)
-                .unwrap_or(raw)
-                .trim()
-                .to_string();
-            return wrap_chosen_option_static_chunk(
-                LineAst::StaticAbility(StaticAbility::partner().with_text(visible_label).into()),
-                chosen_option_label,
-            );
-        }
+    if tokens_start_with_partner_dash_label(&line.parse_tokens) {
+        let visible_label = raw
+            .split_once('(')
+            .map(|(head, _)| head)
+            .unwrap_or(raw)
+            .trim()
+            .to_string();
+        return wrap_chosen_option_static_chunk(
+            LineAst::StaticAbility(StaticAbility::partner().with_text(visible_label).into()),
+            chosen_option_label,
+        );
     }
     if matches!(
         line.text.as_str(),
@@ -1396,7 +1269,7 @@ fn lower_rewrite_static_to_chunk_impl(
     }
 
     let lexed = parse_tokens;
-    if str_starts_with(line.text.as_str(), "level up ") {
+    if tokens_start_with_level_up(lexed) {
         if let Some(level_up) = parse_level_up_line_lexed(&lexed)? {
             return Ok(LineAst::Ability(level_up));
         }
@@ -1546,20 +1419,6 @@ fn lower_rewrite_keyword_to_chunk_impl(
     super::super::keyword_registry::lower_keyword_line_ast(line, parse_tokens)
 }
 
-fn strip_exert_reminder_suffix_for_lowering(text: &str) -> &str {
-    let trimmed = text.trim();
-    for suffix in [
-        " (an exerted creature won't untap during your next untap step.)",
-        " (an exerted permanent won't untap during your next untap step.)",
-        " (it won't untap during your next untap step.)",
-    ] {
-        if let Some(stripped) = str_strip_suffix(trimmed, suffix) {
-            return stripped.trim_end();
-        }
-    }
-    trimmed
-}
-
 #[cfg(test)]
 fn test_line_info(raw_line: &str) -> LineInfo {
     LineInfo {
@@ -1641,64 +1500,116 @@ pub(super) fn normalize_exert_followup_source_reference_tokens(
     normalized
 }
 
+struct ExertAttackHead {
+    only_if_not_exerted_this_turn: bool,
+    source_ref: String,
+}
+
+fn exert_attack_prefix_word_count(words: &TokenWordView<'_>) -> Option<(bool, usize)> {
+    const EXERT_PREFIX: &[&str] = &["you", "may", "exert"];
+    const IF_NOT_EXERTED_PREFIXES: &[&[&str]] = &[
+        &[
+            "if", "this", "creature", "hasnt", "been", "exerted", "this", "turn", "you", "may",
+            "exert",
+        ],
+        &[
+            "if", "this", "creature", "hasn't", "been", "exerted", "this", "turn", "you", "may",
+            "exert",
+        ],
+    ];
+
+    IF_NOT_EXERTED_PREFIXES
+        .iter()
+        .find(|prefix| word_view_has_prefix(words, prefix))
+        .map(|prefix| (true, prefix.len()))
+        .or_else(|| {
+            word_view_has_prefix(words, EXERT_PREFIX).then_some((false, EXERT_PREFIX.len()))
+        })
+}
+
+fn parse_exert_attack_head_tokens(
+    head_tokens: &[OwnedLexToken],
+) -> Result<ExertAttackHead, CardTextError> {
+    let words = TokenWordView::new(head_tokens);
+    let Some((only_if_not_exerted_this_turn, source_start_word)) =
+        exert_attack_prefix_word_count(&words)
+    else {
+        return Err(CardTextError::ParseError(
+            "rewrite keyword lowering could not parse exert attack line".to_string(),
+        ));
+    };
+
+    let Some(as_word_idx) = (source_start_word..words.len()).find(|idx| words.at_is(*idx, "as"))
+    else {
+        return Err(CardTextError::ParseError(
+            "rewrite keyword lowering could not parse exert attack head".to_string(),
+        ));
+    };
+    if as_word_idx == source_start_word {
+        return Err(CardTextError::ParseError(
+            "rewrite keyword lowering missing exert source".to_string(),
+        ));
+    }
+
+    let source_range = words
+        .token_range_for_word_range(source_start_word, as_word_idx)
+        .ok_or_else(|| {
+            CardTextError::ParseError(
+                "rewrite keyword lowering could not isolate exert source".to_string(),
+            )
+        })?;
+    let attack_range = words
+        .token_range_for_word_range(as_word_idx + 1, words.len())
+        .ok_or_else(|| {
+            CardTextError::ParseError(
+                "rewrite keyword lowering could not isolate exert attack clause".to_string(),
+            )
+        })?;
+    let attack_tokens = &head_tokens[attack_range];
+    if !ATTACK_ACTION_SUFFIXES
+        .iter()
+        .any(|suffix| token_slice_ends_with(attack_tokens, suffix))
+    {
+        return Err(CardTextError::ParseError(
+            "rewrite keyword lowering expected attack clause".to_string(),
+        ));
+    }
+
+    Ok(ExertAttackHead {
+        only_if_not_exerted_this_turn,
+        source_ref: render_token_slice(&head_tokens[source_range])
+            .trim()
+            .to_string(),
+    })
+}
+
 pub(crate) fn lower_exert_attack_keyword_line(
     line: &RewriteKeywordLine,
     parse_tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
-    let normalized = strip_exert_reminder_suffix_for_lowering(line.text.as_str());
-    let normalized = normalized.trim_end_matches('.');
-    let (only_if_not_exerted_this_turn, body) = if let Some(rest) = str_strip_prefix(
-        normalized,
-        "if this creature hasn't been exerted this turn, ",
-    ) {
-        (true, rest)
-    } else {
-        (false, normalized)
-    };
-
-    let Some(body) = str_strip_prefix(body, "you may exert ") else {
+    let sentence_tokens = split_lexed_sentences(parse_tokens);
+    let Some(head_tokens) = sentence_tokens.first().copied() else {
         return Err(CardTextError::ParseError(format!(
             "rewrite keyword lowering could not parse exert attack line '{}'",
             line.info.raw_line
         )));
     };
-
-    let (head, followup_text) =
-        if let Some((head, followup)) = str_split_once(body, ". when you do, ") {
-            (head, Some(followup.trim()))
-        } else {
-            (body.trim(), None)
-        };
-
-    let Some((source_ref, attack_clause)) = str_split_once(head, " as ") else {
-        return Err(CardTextError::ParseError(format!(
-            "rewrite keyword lowering could not parse exert attack head '{}'",
-            line.info.raw_line
-        )));
-    };
-    let attack_clause = attack_clause.trim();
-    if !(str_ends_with(attack_clause, " attack") || str_ends_with(attack_clause, " attacks")) {
-        return Err(CardTextError::ParseError(format!(
-            "rewrite keyword lowering expected attack clause in '{}'",
-            line.info.raw_line
-        )));
-    }
-
-    let linked_trigger = if followup_text.is_some() {
-        let sentence_tokens = split_lexed_sentences(parse_tokens);
-        let [_, followup_tokens] = sentence_tokens.as_slice() else {
-            return Err(CardTextError::ParseError(format!(
-                "rewrite keyword lowering could not find exert followup '{}'",
-                line.info.raw_line
-            )));
-        };
-        let followup_words = TokenWordView::new(followup_tokens);
-        if !word_view_has_prefix(&followup_words, &["when", "you", "do"]) {
-            return Err(CardTextError::ParseError(format!(
-                "rewrite keyword lowering expected exert reflexive followup '{}'",
-                line.info.raw_line
-            )));
+    let ExertAttackHead {
+        only_if_not_exerted_this_turn,
+        source_ref,
+    } = parse_exert_attack_head_tokens(head_tokens).map_err(|err| match err {
+        CardTextError::ParseError(message) => {
+            CardTextError::ParseError(format!("{message} '{}'", line.info.raw_line))
         }
+        other => other,
+    })?;
+
+    let followup_tokens = sentence_tokens.get(1).copied().filter(|tokens| {
+        let followup_words = TokenWordView::new(tokens);
+        word_view_has_prefix(&followup_words, &["when", "you", "do"])
+    });
+    let linked_trigger = if let Some(followup_tokens) = followup_tokens {
+        let followup_words = TokenWordView::new(followup_tokens);
         let Some(followup_effect_start) = followup_words.token_index_after_words(3) else {
             return Err(CardTextError::ParseError(format!(
                 "rewrite keyword lowering could not strip exert followup intro '{}'",
@@ -1706,8 +1617,10 @@ pub(crate) fn lower_exert_attack_keyword_line(
             )));
         };
         let followup_effect_tokens = trim_lexed_commas(&followup_tokens[followup_effect_start..]);
-        let normalized_followup_tokens =
-            normalize_exert_followup_source_reference_tokens(source_ref, followup_effect_tokens);
+        let normalized_followup_tokens = normalize_exert_followup_source_reference_tokens(
+            source_ref.as_str(),
+            followup_effect_tokens,
+        );
         let effects_ast = parse_effect_sentences_lexed(&normalized_followup_tokens)?;
         let prepared = rewrite_prepare_effects_with_trigger_context_for_lowering(
             None,
@@ -1722,6 +1635,14 @@ pub(crate) fn lower_exert_attack_keyword_line(
             intervening_if: None,
             presentation_label: None,
         })
+    } else if sentence_tokens
+        .get(1)
+        .is_some_and(|tokens| TokenWordView::new(tokens).first_is("when"))
+    {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite keyword lowering expected exert reflexive followup '{}'",
+            line.info.raw_line
+        )));
     } else {
         None
     };
@@ -1947,7 +1868,7 @@ fn standard_gift_followup(text: &str) -> Option<(String, Vec<EffectAst>)> {
 fn standard_gift_timing(text: &str) -> Option<GiftTimingAst> {
     let normalized = text.trim().to_ascii_lowercase();
     let variant = standard_gift_variant(normalized.as_str())?;
-    if str_contains(normalized.as_str(), "when it enters") {
+    if text_mentions_when_it_enters(text) {
         Some(GiftTimingAst::PermanentEtb)
     } else {
         Some(variant.default_timing())
@@ -2080,9 +2001,8 @@ fn try_lower_partner_with_text(
 
 fn partner_with_name_from_text(text: &str) -> Option<String> {
     let trimmed = text.trim();
-    let lower = trimmed.to_ascii_lowercase();
     let rest_start = "partner with ".len();
-    if !lower.starts_with("partner with ") {
+    if !text_starts_with_partner_with(trimmed) {
         return None;
     }
 
@@ -2101,12 +2021,7 @@ pub(crate) fn try_lower_optional_cost_with_cast_trigger(
     line: &RewriteKeywordLine,
     parse_tokens: &[OwnedLexToken],
 ) -> Result<Option<LineAst>, CardTextError> {
-    let normalized = line.text.as_str();
-    let prefix = "as an additional cost to cast this spell, ";
-    if line.kind != RewriteKeywordLineKind::AdditionalCost
-        || !str_starts_with(normalized, prefix)
-        || !str_contains(normalized, ". when you do, ")
-    {
+    if line.kind != RewriteKeywordLineKind::AdditionalCost {
         return Ok(None);
     }
 
@@ -2208,9 +2123,7 @@ pub(crate) fn try_lower_optional_behold_additional_cost(
     line: &RewriteKeywordLine,
     parse_tokens: &[OwnedLexToken],
 ) -> Result<Option<LineAst>, CardTextError> {
-    let normalized = line.text.as_str();
-    let prefix = "as an additional cost to cast this spell, ";
-    if line.kind != RewriteKeywordLineKind::AdditionalCost || !str_starts_with(normalized, prefix) {
+    if line.kind != RewriteKeywordLineKind::AdditionalCost {
         return Ok(None);
     }
 

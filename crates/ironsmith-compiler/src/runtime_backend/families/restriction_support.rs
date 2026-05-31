@@ -6,10 +6,20 @@ use super::activation_and_restrictions::{
     parse_activation_condition_lexed, parse_mana_spend_bonus_sentence_lexed,
     parse_mana_usage_restriction_sentence_lexed, parse_triggered_times_each_turn_lexed,
 };
-use super::lexer::lex_line;
-use super::token_primitives::{str_contains, str_strip_prefix, str_strip_suffix};
+use super::lexer::{OwnedLexToken, contains_token_word_sequence, lex_line};
+use super::token_primitives::{str_strip_prefix, str_strip_suffix};
 
 const ACTIVATE_ONLY_ONCE_EACH_TURN_TEXT: &str = "activate only once each turn";
+const DID_NOT_ATTACK_THIS_TURN_PHRASES: &[&[&str]] = &[
+    &["didn't", "attack", "this", "turn"],
+    &["did", "not", "attack", "this", "turn"],
+    &["has", "not", "attacked", "this", "turn"],
+];
+const SOURCE_ATTACKED_THIS_TURN_PHRASES: &[&[&str]] = &[
+    &["this", "creature", "attacked", "this", "turn"],
+    &["it", "attacked", "this", "turn"],
+    &["that", "creature", "attacked", "this", "turn"],
+];
 
 pub(crate) fn apply_pending_restrictions_to_ability(
     ability: &mut Ability,
@@ -73,27 +83,21 @@ pub(crate) fn apply_pending_activation_restriction(
         }
     }
 
-    fn parse_text_only_activation_restriction_condition(
-        restriction: &str,
+    fn parse_text_only_activation_restriction_condition_tokens(
+        tokens: &[OwnedLexToken],
     ) -> Option<crate::ConditionExpr> {
-        let lower = restriction
-            .trim()
-            .to_ascii_lowercase()
-            .trim_end_matches('.')
-            .to_string();
-
-        if str_contains(&lower, "didn't attack this turn")
-            || str_contains(&lower, "did not attack this turn")
-            || str_contains(&lower, "has not attacked this turn")
+        if DID_NOT_ATTACK_THIS_TURN_PHRASES
+            .iter()
+            .any(|phrase| contains_token_word_sequence(tokens, phrase))
         {
             return Some(crate::ConditionExpr::Not(Box::new(
                 crate::ConditionExpr::SourceAttackedThisTurn,
             )));
         }
 
-        if str_contains(&lower, "this creature attacked this turn")
-            || str_contains(&lower, "it attacked this turn")
-            || str_contains(&lower, "that creature attacked this turn")
+        if SOURCE_ATTACKED_THIS_TURN_PHRASES
+            .iter()
+            .any(|phrase| contains_token_word_sequence(tokens, phrase))
         {
             return Some(crate::ConditionExpr::SourceAttackedThisTurn);
         }
@@ -127,7 +131,7 @@ pub(crate) fn apply_pending_activation_restriction(
         push_restriction_condition(ability, crate::ConditionExpr::MaxActivationsPerTurn(limit));
     }
 
-    if let Some(text_condition) = parse_text_only_activation_restriction_condition(restriction) {
+    if let Some(text_condition) = parse_text_only_activation_restriction_condition_tokens(&tokens) {
         push_restriction_condition(ability, text_condition);
     }
 

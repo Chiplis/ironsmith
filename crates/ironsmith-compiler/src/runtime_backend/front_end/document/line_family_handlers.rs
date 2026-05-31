@@ -1,7 +1,6 @@
 use super::super::token_primitives::{
-    str_contains, str_ends_with, str_ends_with_any_char, str_find, str_find_char, str_rfind,
-    str_split_once, str_split_once_char, str_starts_with, str_starts_with_char, str_strip_prefix,
-    str_strip_suffix,
+    str_contains, str_ends_with_any_char, str_find, str_find_char, str_rfind, str_split_once,
+    str_split_once_char, str_starts_with, str_starts_with_char, str_strip_prefix, str_strip_suffix,
 };
 use super::line_dispatch::{LineDispatchContext, LineDispatchResult};
 use super::*;
@@ -37,6 +36,197 @@ const START_YOUR_ENGINES_LINE_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["start", "your", "engines"]);
 const LEARN_LINE_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["learn"]);
 const STATION_LINE_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["station"]);
+const ARTIFACT_CREATURE_AT_PREFIX: &[&str] = &["artifact", "creature", "at"];
+const CHAMPIONED_WITH_THIS_PHRASE: &[&str] = &["is", "championed", "with", "this"];
+const MAX_SPEED_PREFIX: &[&str] = &["max", "speed"];
+const GRAVEYARD_CAST_CONTROL_PREFIX: &[&str] = &[
+    "you",
+    "may",
+    "cast",
+    "this",
+    "card",
+    "from",
+    "your",
+    "graveyard",
+    "as",
+    "long",
+    "as",
+    "you",
+    "control",
+    "a",
+];
+const GRAVEYARD_OR_EXILE_CAST_LINE: &[&str] = &[
+    "you",
+    "may",
+    "cast",
+    "this",
+    "card",
+    "from",
+    "your",
+    "graveyard",
+    "or",
+    "from",
+    "exile",
+];
+const CHAMPION_PREFIX: &[&str] = &["champion"];
+const PARTNER_PREFIX: &[&str] = &["partner"];
+const PARTNER_WITH_PREFIX: &[&str] = &["partner", "with"];
+const ESCAPES_WITH_PHRASE: &[&str] = &["escapes", "with"];
+const CREATURES_YOU_CONTROL_GET_PREFIX: &[&str] = &["creatures", "you", "control", "get"];
+const NON_TURN_UNTAP_SUFFIX: &[&str] = &[
+    "if",
+    "it's",
+    "not",
+    "your",
+    "turn",
+    "untap",
+    "those",
+    "creatures",
+];
+const SPLIT_TOP_AND_FACE_DOWN_LOOK_LINE: &[&str] = &[
+    "you",
+    "may",
+    "look",
+    "at",
+    "the",
+    "top",
+    "card",
+    "of",
+    "your",
+    "library",
+    "and",
+    "at",
+    "face-down",
+    "creatures",
+    "you",
+    "don't",
+    "control",
+    "any",
+    "time",
+];
+const SPLIT_TOP_LOOK_AND_TOP_LAND_PLAY_LINE: &[&str] = &[
+    "you", "may", "look", "at", "the", "top", "card", "of", "your", "library", "any", "time",
+    "and", "you", "may", "play", "lands", "from", "the", "top", "of", "your", "library",
+];
+const ASSIGN_DAMAGE_AS_UNBLOCKED_ENCHANTED_LINE: &[&str] = &[
+    "enchanted",
+    "creature's",
+    "controller",
+    "may",
+    "have",
+    "it",
+    "assign",
+    "its",
+    "combat",
+    "damage",
+    "as",
+    "though",
+    "it",
+    "weren't",
+    "blocked",
+];
+const ADDITIONAL_COMBAT_AFTER_THIS_PHASE_PHRASE: &[&str] = &[
+    "there",
+    "is",
+    "an",
+    "additional",
+    "combat",
+    "phase",
+    "after",
+    "this",
+    "phase",
+    "followed",
+    "by",
+    "an",
+    "additional",
+    "main",
+    "phase",
+];
+const ADDITIONAL_COMBAT_AFTER_THIS_MAIN_PHASE_LINE: &[&str] = &[
+    "after",
+    "this",
+    "main",
+    "phase",
+    "there",
+    "is",
+    "an",
+    "additional",
+    "combat",
+    "phase",
+    "followed",
+    "by",
+    "an",
+    "additional",
+    "main",
+    "phase",
+];
+
+fn line_starts_with_words(line: &PreprocessedLine, words: &[&str]) -> bool {
+    token_slice_starts_with(&line.tokens, words)
+}
+
+fn line_contains_words(line: &PreprocessedLine, words: &[&str]) -> bool {
+    contains_token_word_sequence(&line.tokens, words)
+}
+
+fn line_ends_with_words(line: &PreprocessedLine, words: &[&str]) -> bool {
+    token_slice_ends_with(&line.tokens, words)
+}
+
+fn keyword_body_tokens_before_reminder<'a>(
+    line: &'a PreprocessedLine,
+    prefix: &[&str],
+) -> Option<&'a [OwnedLexToken]> {
+    if !token_slice_starts_with(&line.tokens, prefix) {
+        return None;
+    }
+    let body_start = prefix.len();
+    let body_end = line.tokens[body_start..]
+        .iter()
+        .position(|token| matches!(token.kind, TokenKind::LParen | TokenKind::Period))
+        .map(|offset| body_start + offset)
+        .unwrap_or(line.tokens.len());
+    Some(trim_lexed_commas(&line.tokens[body_start..body_end]))
+}
+
+fn strip_indefinite_article_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    if token_slice_starts_with(tokens, &["a"]) || token_slice_starts_with(tokens, &["an"]) {
+        &tokens[1..]
+    } else {
+        tokens
+    }
+}
+
+fn render_keyword_cost_tokens(tokens: &[OwnedLexToken]) -> String {
+    let rendered = render_token_slice(tokens);
+    let mut out = String::with_capacity(rendered.len());
+    let mut in_mana_group = false;
+    for ch in rendered.chars() {
+        match ch {
+            '{' => {
+                in_mana_group = true;
+                out.push(ch);
+            }
+            '}' => {
+                in_mana_group = false;
+                out.push(ch);
+            }
+            _ if in_mana_group => out.push(ch.to_ascii_uppercase()),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+fn line_starts_with_trigger_intro(line: &PreprocessedLine) -> bool {
+    token_slice_starts_with_any(&line.tokens, &[&["when"], &["whenever"], &["at"]])
+}
+
+fn text_starts_with_words(text: &str, words: &[&str]) -> bool {
+    lex_line(text, 0)
+        .ok()
+        .is_some_and(|tokens| token_slice_starts_with(&tokens, words))
+}
 
 pub(super) fn run_trailing_keyword_activation_line_family(
     ctx: &LineDispatchContext<'_>,
@@ -79,17 +269,22 @@ fn is_sticker_sheet_ticket_marker_line(ctx: &LineDispatchContext<'_>) -> bool {
         return false;
     }
 
-    let Some((cost, body)) = str_split_once_char(ctx.line.info.raw_line.as_str(), '—') else {
+    let Some(dash_idx) = ctx
+        .line
+        .tokens
+        .iter()
+        .position(|token| token.kind == TokenKind::EmDash)
+    else {
         return false;
     };
-    let mut remainder = cost.trim().to_ascii_lowercase();
-    let mut saw_ticket_symbol = false;
-    while let Some(next) = str_strip_prefix(remainder.as_str(), "{tk}") {
-        saw_ticket_symbol = true;
-        remainder = next.trim_start().to_string();
-    }
+    let cost_tokens = &ctx.line.tokens[..dash_idx];
+    let body_tokens = &ctx.line.tokens[dash_idx + 1..];
+    let saw_ticket_symbol = !cost_tokens.is_empty()
+        && cost_tokens.iter().all(|token| {
+            token.kind == TokenKind::ManaGroup && token.slice.eq_ignore_ascii_case("{tk}")
+        });
 
-    saw_ticket_symbol && remainder.is_empty() && !body.trim().is_empty()
+    saw_ticket_symbol && !TokenWordView::new(body_tokens).is_empty()
 }
 
 pub(super) fn run_triggered_line_family(
@@ -102,9 +297,8 @@ pub(super) fn run_championed_with_this_trigger_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     let raw = ctx.line.info.raw_line.trim();
-    let lower = raw.to_ascii_lowercase();
-    if !str_starts_with(lower.as_str(), "when ")
-        || !str_contains(lower.as_str(), " is championed with this ")
+    if !line_starts_with_words(ctx.line, &["when"])
+        || !line_contains_words(ctx.line, CHAMPIONED_WITH_THIS_PHRASE)
     {
         return Ok(None);
     }
@@ -127,7 +321,7 @@ pub(super) fn run_max_speed_labeled_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     let raw = ctx.line.info.raw_line.trim_start();
-    if !str_starts_with(raw.to_ascii_lowercase().as_str(), "max speed") {
+    if !line_starts_with_words(ctx.line, MAX_SPEED_PREFIX) {
         return Ok(None);
     };
 
@@ -146,11 +340,8 @@ pub(super) fn run_max_speed_labeled_line_family(
         )));
     }
 
-    let body_lower = body_text.to_ascii_lowercase();
-    if str_starts_with(body_lower.as_str(), "when ")
-        || str_starts_with(body_lower.as_str(), "whenever ")
-        || str_starts_with(body_lower.as_str(), "at ")
-    {
+    let body_line = rewrite_line_normalized(ctx.line, body_text.as_str())?;
+    if line_starts_with_trigger_intro(&body_line) {
         let triggered_text = max_speed_intervening_if_text(body_text.as_str());
         let triggered_line = rewrite_line_normalized(ctx.line, triggered_text.as_str())?;
         let triggered = parse_triggered_line_cst(&triggered_line)?;
@@ -284,9 +475,7 @@ pub(super) fn run_learn_line_family(
 pub(super) fn run_split_top_and_face_down_look_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let lower = ctx.line.info.raw_line.trim().to_ascii_lowercase();
-    let phrase = "you may look at the top card of your library and at face-down creatures you don't control any time";
-    if lower.trim_end_matches('.') != phrase {
+    if !token_slice_words_eq(&ctx.line.tokens, SPLIT_TOP_AND_FACE_DOWN_LOOK_LINE) {
         return Ok(None);
     }
 
@@ -324,9 +513,7 @@ pub(super) fn run_split_top_and_face_down_look_line_family(
 pub(super) fn run_split_top_look_and_top_land_play_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let lower = ctx.line.info.raw_line.trim().to_ascii_lowercase();
-    let phrase = "you may look at the top card of your library any time, and you may play lands from the top of your library";
-    if lower.trim_end_matches('.') != phrase {
+    if !token_slice_words_eq(&ctx.line.tokens, SPLIT_TOP_LOOK_AND_TOP_LAND_PLAY_LINE) {
         return Ok(None);
     }
 
@@ -362,10 +549,7 @@ pub(super) fn run_split_top_look_and_top_land_play_line_family(
 pub(super) fn run_assign_damage_as_unblocked_enchanted_creature_controller_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let raw = ctx.line.info.raw_line.trim();
-    let lower = raw.to_ascii_lowercase();
-    let phrase = "enchanted creature's controller may have it assign its combat damage as though it weren't blocked";
-    if lower.trim_end_matches('.') != phrase {
+    if !token_slice_words_eq(&ctx.line.tokens, ASSIGN_DAMAGE_AS_UNBLOCKED_ENCHANTED_LINE) {
         return Ok(None);
     }
 
@@ -387,28 +571,22 @@ pub(super) fn run_assign_damage_as_unblocked_enchanted_creature_controller_line_
 pub(super) fn run_graveyard_cast_control_condition_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let raw = ctx.line.info.raw_line.trim();
-    let raw_no_period = raw.trim_end_matches('.');
-    let lower = raw_no_period.to_ascii_lowercase();
-    let prefix = "you may cast this card from your graveyard as long as you control a ";
-    if !str_starts_with(lower.as_str(), prefix) || !str_ends_with(lower.as_str(), " permanent") {
+    if !line_starts_with_words(ctx.line, GRAVEYARD_CAST_CONTROL_PREFIX)
+        || !line_ends_with_words(ctx.line, &["permanent"])
+    {
         return Ok(None);
     }
 
-    let Some(condition_text) = raw_no_period.get(prefix.len()..) else {
+    let words = TokenWordView::new(&ctx.line.tokens);
+    let prefix_len = GRAVEYARD_CAST_CONTROL_PREFIX.len();
+    if words.len() != prefix_len + 4
+        || !words.at_is(prefix_len + 1, "or")
+        || !words.at_is(prefix_len + 3, "permanent")
+    {
         return Ok(None);
     };
-    let condition_text = condition_text.trim();
-    let Some(color_pair_text) = str_strip_suffix(condition_text, " permanent") else {
-        return Ok(None);
-    };
-    let color_pair_text = color_pair_text.trim();
-    let Some((left, right)) = str_split_once(color_pair_text, " or ") else {
-        return Ok(None);
-    };
-
-    let left = left.trim();
-    let right = right.trim();
+    let left = words.get(prefix_len).unwrap_or_default();
+    let right = words.get(prefix_len + 2).unwrap_or_default();
     if left.is_empty() || right.is_empty() {
         return Ok(None);
     }
@@ -436,11 +614,7 @@ pub(super) fn run_graveyard_cast_control_condition_line_family(
 pub(super) fn run_graveyard_or_exile_cast_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let raw = ctx.line.info.raw_line.trim();
-    let raw_no_period = raw.trim_end_matches('.');
-    if raw_no_period.to_ascii_lowercase()
-        != "you may cast this card from your graveyard or from exile"
-    {
+    if !token_slice_words_eq(&ctx.line.tokens, GRAVEYARD_OR_EXILE_CAST_LINE) {
         return Ok(None);
     }
 
@@ -473,24 +647,12 @@ pub(super) fn run_graveyard_or_exile_cast_line_family(
 pub(super) fn run_champion_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let raw = ctx.line.info.raw_line.trim();
-    let lower = raw.to_ascii_lowercase();
-    if !str_starts_with(lower.as_str(), "champion ") {
-        return Ok(None);
-    }
-
-    let without_reminder = str_split_once_char(raw, '(')
-        .map(|(prefix, _)| prefix)
-        .unwrap_or(raw)
-        .trim()
-        .trim_end_matches('.');
-    let Some(filter_text) = str_strip_prefix(without_reminder, "Champion ") else {
+    let Some(filter_tokens) = keyword_body_tokens_before_reminder(ctx.line, CHAMPION_PREFIX) else {
         return Ok(None);
     };
-    let filter_text = str_strip_prefix(filter_text, "a ")
-        .or_else(|| str_strip_prefix(filter_text, "an "))
-        .unwrap_or(filter_text)
-        .trim();
+    let filter_text = render_token_slice(strip_indefinite_article_tokens(filter_tokens))
+        .trim()
+        .to_string();
     if filter_text.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "champion keyword missing object filter: '{}'",
@@ -516,7 +678,6 @@ pub(super) fn run_station_line_family(
     if !STATION_LINE_PATTERN.matches_words(&words) {
         return Ok(None);
     }
-    let lower = ctx.line.info.raw_line.trim().to_ascii_lowercase();
 
     let activation_text = "Tap another untapped creature you control: Put X charge counters on this artifact, where X is the power of the creature tapped this way. Activate only as a sorcery.";
     let activation_line = rewrite_line_normalized(ctx.line, activation_text)?;
@@ -550,7 +711,8 @@ pub(super) fn run_station_line_family(
         })
         .any(|line| parse_station_threshold_line(line.info.raw_line.as_str()).is_some());
     if !has_explicit_station_threshold_rows
-        && let Some(threshold) = parse_station_keyword_creature_threshold(&lower)
+        && let Some(threshold) =
+            parse_station_keyword_creature_threshold_text(ctx.line.info.raw_line.as_str())
         && let Some(pt) = ctx.preprocessed.builder.card_builder.power_toughness_ref()
     {
         let label = station_threshold_condition_label(threshold);
@@ -623,11 +785,7 @@ pub(super) fn run_station_threshold_line_family(
     }
 
     let body_line = rewrite_line_normalized(ctx.line, body_text.as_str())?;
-    let body_lower = body_text.to_ascii_lowercase();
-    if str_starts_with(body_lower.as_str(), "when ")
-        || str_starts_with(body_lower.as_str(), "whenever ")
-        || str_starts_with(body_lower.as_str(), "at ")
-    {
+    if line_starts_with_trigger_intro(&body_line) {
         let mut triggered = parse_triggered_line_cst(&body_line)?;
         triggered.chosen_option_label = Some(label);
         lines.push(RewriteLineCst::Triggered(triggered));
@@ -684,18 +842,32 @@ fn parse_station_threshold_line(raw_line: &str) -> Option<(i32, String)> {
     (!body.is_empty()).then(|| (threshold, body.to_string()))
 }
 
-fn parse_station_keyword_creature_threshold(lower: &str) -> Option<i32> {
-    let marker = "artifact creature at ";
-    let start = str_find(lower, marker)? + marker.len();
-    let tail = &lower[start..];
-    let digits = tail
-        .chars()
-        .take_while(|ch| ch.is_ascii_digit())
-        .collect::<String>();
-    if digits.is_empty() || !str_starts_with_char(&tail[digits.len()..], '+') {
-        return None;
+fn parse_station_keyword_creature_threshold(tokens: &[OwnedLexToken]) -> Option<i32> {
+    let word_positions = crate::runtime_backend::lexer::parser_token_word_positions(tokens);
+    for (word_idx, window) in word_positions.windows(4).enumerate() {
+        if !window
+            .iter()
+            .take(3)
+            .map(|(_, word)| *word)
+            .eq(ARTIFACT_CREATURE_AT_PREFIX.iter().copied())
+        {
+            continue;
+        }
+        let (threshold_token_idx, threshold_word) = word_positions[word_idx + 3];
+        let threshold = threshold_word.parse::<i32>().ok()?;
+        if tokens
+            .get(threshold_token_idx + 1)
+            .is_some_and(|token| token.kind == TokenKind::Plus)
+        {
+            return Some(threshold);
+        }
     }
-    digits.parse().ok()
+    None
+}
+
+fn parse_station_keyword_creature_threshold_text(raw_line: &str) -> Option<i32> {
+    let tokens = lex_line(raw_line, 0).ok()?;
+    parse_station_keyword_creature_threshold(&tokens)
 }
 
 fn station_threshold_condition_label(threshold: i32) -> String {
@@ -715,13 +887,12 @@ fn station_threshold_is_creature_pt_threshold(
     {
         return false;
     }
-    let needle = format!("artifact creature at {threshold}+");
     ctx.preprocessed.items.iter().any(|item| {
         let PreprocessedItem::Line(line) = item else {
             return false;
         };
-        let lower = line.info.raw_line.to_ascii_lowercase();
-        str_contains(lower.as_str(), needle.as_str())
+        parse_station_keyword_creature_threshold_text(line.info.raw_line.as_str())
+            == Some(threshold)
     })
 }
 
@@ -751,8 +922,7 @@ pub(super) fn run_partner_variant_keyword_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     let raw = ctx.line.info.raw_line.trim();
-    let lower = raw.to_ascii_lowercase();
-    if !str_starts_with(lower.as_str(), "partner") {
+    if !line_starts_with_words(ctx.line, PARTNER_PREFIX) {
         return Ok(None);
     }
 
@@ -761,7 +931,7 @@ pub(super) fn run_partner_variant_keyword_line_family(
     };
     let rest = rest.trim_start();
     if !(str_starts_with_char(rest, '\u{2014}')
-        || str_starts_with(rest, "-")
+        || rest.starts_with('-')
         || str_starts_with_char(rest, '\u{2013}'))
     {
         return Ok(None);
@@ -795,9 +965,7 @@ pub(super) fn run_partner_variant_keyword_line_family(
 pub(super) fn run_escape_enters_with_counter_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let raw = ctx.line.info.raw_line.trim();
-    let lower = raw.to_ascii_lowercase();
-    if !str_contains(lower.as_str(), " escapes with ") {
+    if !line_contains_words(ctx.line, ESCAPES_WITH_PHRASE) {
         return Ok(None);
     }
     Ok(parse_static_line_cst(ctx.line)?.map(|static_cst| {
@@ -808,16 +976,10 @@ pub(super) fn run_escape_enters_with_counter_line_family(
 pub(super) fn run_surge_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let raw = ctx.line.info.raw_line.trim();
-    let Some(rest) = str_strip_prefix(raw, "Surge ") else {
+    let Some(cost_tokens) = keyword_body_tokens_before_reminder(ctx.line, &["surge"]) else {
         return Ok(None);
     };
-    let cost_text = str_split_once_char(rest, '(')
-        .map(|(prefix, _)| prefix)
-        .unwrap_or(rest)
-        .trim()
-        .trim_end_matches('.')
-        .trim();
+    let cost_text = render_keyword_cost_tokens(cost_tokens).trim().to_string();
     if cost_text.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "surge keyword missing cost: '{}'",
@@ -846,16 +1008,10 @@ pub(super) fn run_surge_line_family(
 pub(super) fn run_freerunning_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let raw = ctx.line.info.raw_line.trim();
-    let Some(rest) = str_strip_prefix(raw, "Freerunning ") else {
+    let Some(cost_tokens) = keyword_body_tokens_before_reminder(ctx.line, &["freerunning"]) else {
         return Ok(None);
     };
-    let cost_text = str_split_once_char(rest, '(')
-        .map(|(prefix, _)| prefix)
-        .unwrap_or(rest)
-        .trim()
-        .trim_end_matches('.')
-        .trim();
+    let cost_text = render_keyword_cost_tokens(cost_tokens).trim().to_string();
     if cost_text.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "freerunning keyword missing cost: '{}'",
@@ -892,11 +1048,13 @@ pub(super) fn run_keyword_line_family(
 pub(super) fn run_additional_combat_after_this_phase_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let needle = "there is an additional combat phase after this phase, followed by an additional main phase";
-    let direct = "after this main phase, there is an additional combat phase followed by an additional main phase";
     let raw = ctx.line.info.raw_line.trim();
-    let lower = raw.to_ascii_lowercase();
-    if !str_contains(lower.as_str(), needle) && !str_contains(lower.as_str(), direct) {
+    if !line_contains_words(ctx.line, ADDITIONAL_COMBAT_AFTER_THIS_PHASE_PHRASE)
+        && !token_slice_words_eq(
+            &ctx.line.tokens,
+            ADDITIONAL_COMBAT_AFTER_THIS_MAIN_PHASE_LINE,
+        )
+    {
         return Ok(None);
     }
 
@@ -983,9 +1141,8 @@ pub(super) fn run_activation_line_family(
 
 fn partner_with_name_from_line(raw_line: &str) -> Option<String> {
     let trimmed = raw_line.trim();
-    let lower = trimmed.to_ascii_lowercase();
     let rest_start = "partner with ".len();
-    if !str_starts_with(lower.as_str(), "partner with ") {
+    if !text_starts_with_words(trimmed, PARTNER_WITH_PREFIX) {
         return None;
     }
 
@@ -1026,11 +1183,11 @@ pub(super) fn run_non_turn_conditional_untap_line_family(
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     let raw = ctx.line.info.raw_line.trim();
     let lower = raw.to_ascii_lowercase();
-    const SUFFIX: &str = "if it's not your turn, untap those creatures.";
-    if !str_ends_with(lower.as_str(), SUFFIX) {
+    if !line_ends_with_words(ctx.line, NON_TURN_UNTAP_SUFFIX) {
         return Ok(None);
     }
 
+    const SUFFIX: &str = "if it's not your turn, untap those creatures.";
     let marker = format!(". {SUFFIX}");
     let Some(split_idx) = str_rfind(lower.as_str(), marker.as_str()) else {
         return Ok(None);
@@ -1044,8 +1201,7 @@ pub(super) fn run_non_turn_conditional_untap_line_family(
         return Ok(None);
     }
 
-    let first_sentence_lower = first_sentence.to_ascii_lowercase();
-    if !str_starts_with(first_sentence_lower.as_str(), "creatures you control get ") {
+    if !text_starts_with_words(first_sentence, CREATURES_YOU_CONTROL_GET_PREFIX) {
         return Ok(None);
     }
 

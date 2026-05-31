@@ -859,8 +859,7 @@ fn token_quoted_ability_needs_terminal_period(text: &str) -> bool {
     !trimmed.ends_with('.')
         && !trimmed.ends_with('!')
         && !trimmed.ends_with('?')
-        && (trimmed.starts_with('{')
-            || trimmed.contains("Sacrifice this token:"))
+        && (trimmed.starts_with('{') || trimmed.contains("Sacrifice this token:"))
 }
 
 pub(super) fn normalize_token_quoted_ability_surfaces(line: &str) -> String {

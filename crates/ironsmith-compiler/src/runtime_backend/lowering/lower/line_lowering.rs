@@ -417,10 +417,7 @@ fn attach_morbid_search_to_battlefield_self_replacement(
     builder: &mut CardDefinitionBuilder,
     normalized_line: &str,
 ) -> bool {
-    if !normalized_line
-        .contains("put that card onto the battlefield instead of putting it into your hand")
-        || !normalized_line.contains("creature died this turn")
-    {
+    if !text_mentions_morbid_search_to_battlefield_replacement(normalized_line) {
         return false;
     }
     let Some(existing) = builder.spell_effect.as_mut() else {
@@ -450,10 +447,7 @@ fn back_for_seconds_style_replacement_program(
     compiled: &[crate::effect::Effect],
     normalized_line: &str,
 ) -> Option<crate::resolution::ResolutionProgram> {
-    if !normalized_line.contains("if this spell was bargained")
-        || !normalized_line.contains("one of those cards with mana value 4 or less")
-        || !normalized_line.contains("onto the battlefield instead of putting it into your hand")
-    {
+    if !text_mentions_bargained_return_to_battlefield_replacement(normalized_line) {
         return None;
     }
     let (default_effects, return_effect, condition) = match compiled {
@@ -501,10 +495,7 @@ fn attach_back_for_seconds_style_replacement(
     compiled: &[crate::effect::Effect],
     normalized_line: &str,
 ) -> bool {
-    if !normalized_line.contains("if this spell was bargained")
-        || !normalized_line.contains("one of those cards with mana value 4 or less")
-        || !normalized_line.contains("onto the battlefield instead of putting it into your hand")
-    {
+    if !text_mentions_bargained_return_to_battlefield_replacement(normalized_line) {
         return false;
     }
     let [followup] = compiled else {
@@ -538,9 +529,7 @@ fn kicked_count_override_self_replacement_program(
     compiled: &[crate::effect::Effect],
     normalized_line: &str,
 ) -> Option<crate::resolution::ResolutionProgram> {
-    if !normalized_line.contains("put two of those cards into your hand instead")
-        || !normalized_line.contains("put one of those cards into your hand")
-    {
+    if !text_mentions_kicked_count_override_replacement(normalized_line) {
         return None;
     }
     let [look_effect, conditional_effect] = compiled else {
@@ -578,11 +567,7 @@ fn kicked_multi_zone_search_to_battlefield_program(
     compiled: &[crate::effect::Effect],
     normalized_line: &str,
 ) -> Option<crate::resolution::ResolutionProgram> {
-    if !normalized_line.contains("search your library and/or graveyard for up to five doctor cards")
-        || !normalized_line.contains(
-            "if this spell was kicked, put those cards onto the battlefield instead of putting them into your hand",
-        )
-    {
+    if !text_mentions_kicked_multi_zone_search_to_battlefield_replacement(normalized_line) {
         return None;
     }
     let [choose, reveal, move_to_hand, shuffle, conditional] = compiled else {
@@ -625,10 +610,7 @@ fn clash_win_optional_top_replacement_program(
     compiled: &[crate::effect::Effect],
     normalized_line: &str,
 ) -> Option<crate::resolution::ResolutionProgram> {
-    if !normalized_line.contains("clash with an opponent")
-        || !normalized_line.contains("if you win")
-        || !normalized_line.contains("on top of its owner's library instead")
-    {
+    if !text_mentions_clash_win_top_replacement(normalized_line) {
         return None;
     }
     let [clash_effect, return_with_id_effect, followup] = compiled else {
@@ -878,8 +860,7 @@ fn rewrite_self_spell_cost_modifier(
     ability: crate::static_abilities::StaticAbility,
     raw_line: &str,
 ) -> crate::static_abilities::StaticAbility {
-    let raw_lower = raw_line.trim_start().to_ascii_lowercase();
-    if !(raw_lower.starts_with("this spell costs ") || raw_lower.starts_with("this spell cost ")) {
+    if !text_starts_with_this_spell_cost(raw_line) {
         return ability;
     }
 
@@ -1325,7 +1306,7 @@ fn lower_statement_chunk(
         crate::cards::builders::InsteadSemantics::SelfReplacement
     ) && compiled.len() == 1
         && builder.spell_effect.is_none()
-        && (normalized_line.starts_with("if ")
+        && (text_starts_with_if(normalized_line.as_str())
             || conditional_self_replacement_followup(&compiled[0])
                 .is_some_and(|replacement| replacement.if_false.is_empty()))
     {
@@ -1747,9 +1728,8 @@ fn lower_triggered_chunk(
         Some(info.raw_line.as_str()),
         max_triggers_per_turn,
     );
-    let lower_source =
-        format!("{} {}", info.raw_line, info.normalized.original).to_ascii_lowercase();
-    if lower_source.contains("becomes tapped during your turn") {
+    let trigger_surface_source = format!("{} {}", info.raw_line, info.normalized.original);
+    if text_mentions_becomes_tapped_during_your_turn(&trigger_surface_source) {
         let condition = crate::ConditionExpr::YourTurn;
         intervening_if = Some(match intervening_if {
             Some(existing) => crate::ConditionExpr::And(Box::new(condition), Box::new(existing)),
@@ -1780,19 +1760,12 @@ fn lower_triggered_chunk(
         }
         Err(err) => return Err(err),
     };
-    let source_for_frequency_surface = format!("{} {}", info.raw_line, info.normalized.original);
-    let source_for_frequency_surface = source_for_frequency_surface.to_ascii_lowercase();
-    if source_for_frequency_surface.contains("do this only once each turn")
+    if let Some(surface_count) = do_this_frequency_surface_from_text(&trigger_surface_source)
         && let AbilityKind::Triggered(triggered) = parsed.kind_mut()
-        && triggered.intervening_if == Some(crate::ConditionExpr::MaxTimesEachTurn(1))
+        && triggered.intervening_if == Some(crate::ConditionExpr::MaxTimesEachTurn(surface_count))
     {
-        triggered.intervening_if = Some(crate::ConditionExpr::DoThisMaxTimesEachTurn(1));
-    }
-    if source_for_frequency_surface.contains("do this only twice each turn")
-        && let AbilityKind::Triggered(triggered) = parsed.kind_mut()
-        && triggered.intervening_if == Some(crate::ConditionExpr::MaxTimesEachTurn(2))
-    {
-        triggered.intervening_if = Some(crate::ConditionExpr::DoThisMaxTimesEachTurn(2));
+        triggered.intervening_if =
+            Some(crate::ConditionExpr::DoThisMaxTimesEachTurn(surface_count));
     }
     if contains_haunted_creature_dies && let AbilityKind::Triggered(triggered) = parsed.kind() {
         state.haunt_linkage = Some((triggered.effects.to_vec(), triggered.choices.clone()));

@@ -15,8 +15,7 @@ use super::super::grammar::structure::{
 };
 use super::super::keyword_static::{
     parse_ability_line, parse_cost_modifier_mana_cost, parse_pt_modifier,
-    parse_value_binding_clause,
-    parse_value_binding_clause_lexed,
+    parse_value_binding_clause, parse_value_binding_clause_lexed,
 };
 use super::super::lexer::{
     LexedClause, OwnedLexToken, TokenKind, contains_token_kind, find_token_word_sequence,

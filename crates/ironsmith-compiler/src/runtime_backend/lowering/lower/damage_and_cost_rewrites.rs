@@ -70,27 +70,10 @@ pub(crate) fn parse_next_spell_cost_reduction_sentence_rewrite(
 }
 
 pub(crate) fn parse_each_player_and_their_creatures_damage_sentence_rewrite(
-    effect_text: &str,
+    _effect_text: &str,
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
-    let normalized = effect_text
-        .trim()
-        .trim_end_matches('.')
-        .to_ascii_lowercase();
-    let matches_shape = str_contains(
-        normalized.as_str(),
-        " damage to each player and each creature they control",
-    ) || str_contains(
-        normalized.as_str(),
-        " damage to each player and each creatures they control",
-    ) || str_contains(
-        normalized.as_str(),
-        " damage to each player and each creature that player controls",
-    ) || str_contains(
-        normalized.as_str(),
-        " damage to each player and each creatures that player controls",
-    );
-    if !matches_shape {
+    if !tokens_match_each_player_and_their_creatures_damage(tokens) {
         return None;
     }
     let clause_words = token_word_refs(tokens);

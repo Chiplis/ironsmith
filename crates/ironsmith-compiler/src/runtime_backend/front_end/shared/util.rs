@@ -30,23 +30,27 @@ use super::grammar::primitives::{split_lexed_slices_on_or, token_slice_span};
 use super::keyword_static::keyword_action_to_static_ability;
 use super::keyword_static::parse_this_spell_cost_condition;
 use super::lexer::{
-    OwnedLexToken, TokenKind, TokenWordView, find_token_kind, find_token_word, lex_line,
-    render_token_slice, token_slice_at_is, token_slice_at_is_any, token_slice_first_is,
-    token_slice_first_is_any, token_slice_first_kind, token_slice_starts_with, token_word_refs,
-    word_slice_at_is, word_slice_at_is_any, word_slice_contains_any_phrase,
-    word_slice_contains_phrase, word_slice_contains_word, word_slice_ends_with,
-    word_slice_ends_with_any, word_slice_eq, word_slice_eq_any, word_slice_find_window_by,
-    word_slice_find_word, word_slice_first_is, word_slice_first_is_any, word_slice_last_is_any,
-    word_slice_starts_with, word_slice_starts_with_any,
+    OwnedLexToken, TokenKind, TokenWordView, contains_token_word_sequence, find_token_kind,
+    find_token_word, lex_line, render_token_slice, token_slice_at_is, token_slice_at_is_any,
+    token_slice_first_is, token_slice_first_is_any, token_slice_first_kind,
+    token_slice_starts_with, token_word_refs, word_slice_at_is, word_slice_at_is_any,
+    word_slice_contains_any_phrase, word_slice_contains_phrase, word_slice_contains_word,
+    word_slice_ends_with, word_slice_ends_with_any, word_slice_eq, word_slice_eq_any,
+    word_slice_find_window_by, word_slice_find_word, word_slice_first_is, word_slice_first_is_any,
+    word_slice_last_is_any, word_slice_starts_with, word_slice_starts_with_any,
 };
 use super::object_filters::parse_object_filter;
 use super::token_primitives::{
     self as shared_tokens, find_index, find_window_by, iter_eq, slice_contains, slice_ends_with,
-    slice_starts_with, str_contains, str_ends_with, str_find, str_split_once, str_split_once_char,
-    str_starts_with, str_strip_prefix, str_strip_suffix, str_strip_suffix_char,
+    slice_starts_with, str_contains, str_contains_char, str_find, str_split_once,
+    str_split_once_char, str_starts_with, str_strip_prefix, str_strip_suffix,
+    str_strip_suffix_char,
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
+
+const SACRIFICE_COST_TAG_PREFIX: &str = "sacrifice_cost_";
+const EXILE_COST_TAG_PREFIX: &str = "exile_cost_";
 
 #[derive(Clone)]
 struct SourceReferenceAlias {
@@ -280,8 +284,20 @@ pub(crate) fn source_reference_surface_for_span(
 }
 
 pub(crate) fn revealed_cards_total_mana_value_x_value(normalized: &str) -> Option<Value> {
-    (normalized.contains("where x is the total mana value of all cards revealed this way")
-        || normalized.contains("where x is the total mana value of cards revealed this way"))
+    let tokens = lex_line(normalized, 0).ok()?;
+    (contains_token_word_sequence(
+        &tokens,
+        &[
+            "where", "x", "is", "the", "total", "mana", "value", "of", "all", "cards", "revealed",
+            "this", "way",
+        ],
+    ) || contains_token_word_sequence(
+        &tokens,
+        &[
+            "where", "x", "is", "the", "total", "mana", "value", "of", "cards", "revealed", "this",
+            "way",
+        ],
+    ))
     .then(|| Value::TotalManaValue(ObjectFilter::tagged(TagKey::from("__public_revealed"))))
 }
 
@@ -662,6 +678,7 @@ const MANA_ABILITY_PREFIX_PATTERN: ClauseShape<'static> =
 const BASIC_LANDCYCLING_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["basic", "landcycling"]);
 const CYCLING_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["cycling"]);
+const CYCLING_SUFFIX_CHARS: &[char] = &['c', 'y', 'c', 'l', 'i', 'n', 'g'];
 const BARGAIN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["bargain"]);
 const REPLICATE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["replicate"]);
 const ESCAPE_EXILE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["exile"]);
@@ -1553,6 +1570,14 @@ pub(crate) fn non_article_possessive_word_refs<'a>(words: &[&'a str]) -> Vec<&'a
 }
 
 const SENTENCE_HELPER_TAG_PREFIX: &str = "__sentence_helper_";
+const INSTEAD_WORD: &str = "instead";
+const WOULD_WORD: &str = "would";
+const THE_NEXT_TIME_PHRASE: &[&str] = &["the", "next", "time"];
+const COUNTERED_THIS_WAY_PHRASE: &[&str] = &["countered", "this", "way"];
+const INSTEAD_OF_PHRASE: &[&str] = &["instead", "of"];
+const GRAVEYARD_WORD_PHRASE: &[&str] = &["graveyard"];
+const INSTEAD_OF_PUTTING_IT_INTO_PHRASE: &[&str] = &["instead", "of", "putting", "it", "into"];
+const INSTEAD_OF_PUTTING_THEM_INTO_PHRASE: &[&str] = &["instead", "of", "putting", "them", "into"];
 
 pub(crate) fn helper_tag_for_tokens(tokens: &[OwnedLexToken], prefix: &str) -> TagKey {
     let span = span_from_tokens(tokens).unwrap_or(TextSpan {
@@ -1570,29 +1595,32 @@ pub(crate) fn helper_tag_for_tokens(tokens: &[OwnedLexToken], prefix: &str) -> T
 pub(crate) fn classify_instead_followup_text(
     text: &str,
 ) -> crate::cards::builders::InsteadSemantics {
-    let normalized = text.to_ascii_lowercase();
+    let Ok(tokens) = lex_line(text, 0) else {
+        return crate::cards::builders::InsteadSemantics::NonReplacement;
+    };
+    let words = token_word_refs(&tokens);
 
-    if !str_contains(normalized.as_str(), " instead") {
+    let first_instead = word_slice_find_word(&words, INSTEAD_WORD);
+    if first_instead.is_none() {
         return crate::cards::builders::InsteadSemantics::NonReplacement;
     }
 
-    let first_instead = str_find(normalized.as_str(), "instead");
-    let first_would = str_find(normalized.as_str(), " would ");
+    let first_would = word_slice_find_word(&words, WOULD_WORD);
     if first_would.is_some_and(|would| first_instead.is_none_or(|instead| would < instead))
-        || str_contains(normalized.as_str(), "the next time")
+        || word_slice_contains_phrase(&words, THE_NEXT_TIME_PHRASE)
     {
         return crate::cards::builders::InsteadSemantics::FutureReplacement;
     }
 
-    if str_contains(normalized.as_str(), "countered this way")
-        && str_contains(normalized.as_str(), "instead of")
-        && str_contains(normalized.as_str(), "graveyard")
+    if word_slice_contains_phrase(&words, COUNTERED_THIS_WAY_PHRASE)
+        && word_slice_contains_phrase(&words, INSTEAD_OF_PHRASE)
+        && word_slice_contains_phrase(&words, GRAVEYARD_WORD_PHRASE)
     {
         return crate::cards::builders::InsteadSemantics::FutureReplacement;
     }
 
-    if str_contains(normalized.as_str(), "instead of putting it into")
-        || str_contains(normalized.as_str(), "instead of putting them into")
+    if word_slice_contains_phrase(&words, INSTEAD_OF_PUTTING_IT_INTO_PHRASE)
+        || word_slice_contains_phrase(&words, INSTEAD_OF_PUTTING_THEM_INTO_PHRASE)
     {
         return crate::cards::builders::InsteadSemantics::FutureReplacement;
     }
@@ -1608,7 +1636,7 @@ pub(crate) fn find_first_sacrifice_cost_choice_tag(mana_cost: &TotalCost) -> Opt
         let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() else {
             continue;
         };
-        if str_starts_with(choose.tag.as_str(), "sacrifice_cost_") {
+        if is_sacrifice_cost_choice_tag(&choose.tag) {
             return Some(choose.tag.clone());
         }
     }
@@ -1624,11 +1652,23 @@ pub(crate) fn find_last_exile_cost_choice_tag(mana_cost: &TotalCost) -> Option<T
         let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() else {
             continue;
         };
-        if str_starts_with(choose.tag.as_str(), "exile_cost_") {
+        if is_exile_cost_choice_tag(&choose.tag) {
             found = Some(choose.tag.clone());
         }
     }
     found
+}
+
+fn tag_has_prefix(tag: &TagKey, prefix: &str) -> bool {
+    tag.as_str().strip_prefix(prefix).is_some()
+}
+
+fn is_sacrifice_cost_choice_tag(tag: &TagKey) -> bool {
+    tag_has_prefix(tag, SACRIFICE_COST_TAG_PREFIX)
+}
+
+fn is_exile_cost_choice_tag(tag: &TagKey) -> bool {
+    tag_has_prefix(tag, EXILE_COST_TAG_PREFIX)
 }
 
 pub(crate) fn value_contains_unbound_x(value: &Value) -> bool {
@@ -1702,7 +1742,7 @@ pub(crate) fn starts_with_activation_cost(tokens: &[OwnedLexToken]) -> bool {
     ) {
         return true;
     }
-    if str_contains(word, "/") {
+    if str_contains_char(word, '/') {
         return parse_mana_symbol_group(word).is_ok();
     }
     false
@@ -2222,11 +2262,7 @@ pub(crate) fn parse_alternative_cast_words(words: &[&str]) -> Option<(Alternativ
 
 pub(crate) fn parse_unsigned_pt_word(word: &str) -> Option<(i32, i32)> {
     let (power, toughness) = str_split_once(word, "/")?;
-    if str_starts_with(power, "+")
-        || str_starts_with(toughness, "+")
-        || str_starts_with(power, "-")
-        || str_starts_with(toughness, "-")
-    {
+    if power.starts_with(['+', '-']) || toughness.starts_with(['+', '-']) {
         return None;
     }
     let power = power.parse::<i32>().ok()?;
@@ -2416,7 +2452,7 @@ pub(crate) fn parse_filter_keyword_constraint_words(
     if MANA_ABILITY_PREFIX_PATTERN.matches_words(words) {
         return Some((FilterKeywordConstraint::Marker("mana ability"), 2));
     }
-    if CYCLING_WORD_PATTERN.matches_word(words[0]) || str_ends_with(words[0], "cycling") {
+    if word_is_cycling_keyword_marker(words[0]) {
         return Some((FilterKeywordConstraint::Marker("cycling"), 1));
     }
     if BASIC_LANDCYCLING_PREFIX_PATTERN.matches_words(words) {
@@ -2434,6 +2470,20 @@ pub(crate) fn parse_filter_keyword_constraint_words(
         }
     }
     None
+}
+
+fn word_has_char_suffix(word: &str, suffix: &[char]) -> bool {
+    let mut chars = word.chars().rev();
+    suffix
+        .iter()
+        .rev()
+        .all(|expected| chars.next().is_some_and(|ch| ch == *expected))
+}
+
+fn word_is_cycling_keyword_marker(word: &str) -> bool {
+    CYCLING_WORD_PATTERN.matches_word(word)
+        || (word.chars().count() > CYCLING_SUFFIX_CHARS.len()
+            && word_has_char_suffix(word, CYCLING_SUFFIX_CHARS))
 }
 
 pub(crate) fn parse_filter_counter_constraint_words(
@@ -3832,6 +3882,14 @@ pub(crate) fn parse_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst,
     }
 }
 
+fn tagged_it_owner_or_controller_player_filter(word: &str) -> PlayerFilter {
+    if matches!(word, "owner" | "owners") {
+        PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(IT_TAG))
+    } else {
+        PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(IT_TAG))
+    }
+}
+
 fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
     let mut tokens = tokens;
     while token_slice_first_is(tokens, "then") {
@@ -4255,11 +4313,7 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
         && second_word_is_object_head
         && CONTROLLER_OR_OWNER_PLURAL_WORD_PATTERN.matches_word(remaining_words[2])
     {
-        let player = if str_starts_with(remaining_words[2], "owner") {
-            PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(IT_TAG))
-        } else {
-            PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(IT_TAG))
-        };
+        let player = tagged_it_owner_or_controller_player_filter(remaining_words[2]);
         return Ok(wrap_target_count(
             TargetAst::Player(player, target_span),
             target_count,
@@ -4272,11 +4326,7 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
         && is_demonstrative_object_head(remaining_words[3])
         && CONTROLLER_OR_OWNER_PLURAL_WORD_PATTERN.matches_word(remaining_words[4])
     {
-        let player = if str_starts_with(remaining_words[4], "owner") {
-            PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(IT_TAG))
-        } else {
-            PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(IT_TAG))
-        };
+        let player = tagged_it_owner_or_controller_player_filter(remaining_words[4]);
         return Ok(wrap_target_count(
             TargetAst::Player(player, target_span),
             target_count,
@@ -4314,11 +4364,7 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
                 parse_card_type(singular).is_some() || parse_subtype_word(singular).is_some()
             }))
         {
-            let player = if str_starts_with(remaining_words[1], "owner") {
-                PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(IT_TAG))
-            } else {
-                PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(IT_TAG))
-            };
+            let player = tagged_it_owner_or_controller_player_filter(remaining_words[1]);
             return Ok(wrap_target_count(
                 TargetAst::Player(player, target_span),
                 target_count,
@@ -5679,16 +5725,11 @@ pub(crate) fn parse_retrace_line_lexed(
 pub(crate) fn parse_jump_start_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AlternativeCastingMethod>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    let rendered = crate::runtime_backend::front_end::lexer::render_token_slice(tokens)
-        .trim()
-        .to_ascii_lowercase();
-    if str_starts_with(rendered.as_str(), "jump-start")
-        || str_starts_with(rendered.as_str(), "jump start")
-        || words
-            .first()
-            .is_some_and(|word| JUMP_START_WORD_PATTERN.matches_word(word))
-        || JUMP_START_SPLIT_PATTERN.matches_words(&words)
+    let parser_words = words(tokens);
+    if parser_words
+        .first()
+        .is_some_and(|word| JUMP_START_WORD_PATTERN.matches_word(word))
+        || JUMP_START_SPLIT_PATTERN.matches_words(&parser_words)
     {
         return Ok(Some(AlternativeCastingMethod::JumpStart));
     }
@@ -6603,15 +6644,19 @@ pub(crate) fn parse_if_conditional_alternative_cost_line(
     let Some(method) = parse_you_may_rather_than_spell_cost_line(&tail_tokens, line)? else {
         return Ok(None);
     };
-    if line.trim_start().to_ascii_lowercase().starts_with("freerunning ")
+    if lex_line(line, 0)
+        .ok()
+        .is_some_and(|tokens| token_slice_starts_with(&tokens, &["freerunning"]))
         && let Some(cost) = method.mana_cost().cloned()
     {
-        return Ok(Some(AlternativeCastingMethod::alternative_cost_with_condition(
-            "Freerunning",
-            Some(cost),
-            method.non_mana_costs(),
-            condition,
-        )));
+        return Ok(Some(
+            AlternativeCastingMethod::alternative_cost_with_condition(
+                "Freerunning",
+                Some(cost),
+                method.non_mana_costs(),
+                condition,
+            ),
+        ));
     }
     let method = method.with_cast_condition(condition);
     if let Some(trap_condition) = method

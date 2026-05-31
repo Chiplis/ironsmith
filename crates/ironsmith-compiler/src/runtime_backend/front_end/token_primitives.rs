@@ -194,10 +194,6 @@ pub(crate) fn str_starts_with_char(text: &str, expected: char) -> bool {
     crate::string_primitives::starts_with_char(text, expected)
 }
 
-pub(crate) fn str_ends_with(text: &str, suffix: &str) -> bool {
-    crate::string_primitives::ends_with(text, suffix)
-}
-
 pub(crate) fn str_ends_with_char(text: &str, expected: char) -> bool {
     crate::string_primitives::ends_with_char(text, expected)
 }

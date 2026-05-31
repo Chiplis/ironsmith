@@ -279,6 +279,15 @@ pub(super) fn align_rewrite_activated_parse_sentences(
         joined
     }
 
+    fn parsed_sentence_starts_with_tokens(parsed_sentence: &str, tokens: &[OwnedLexToken]) -> bool {
+        let Ok(parsed_tokens) = lex_line(parsed_sentence, 0) else {
+            return false;
+        };
+        let parsed_words = token_word_refs(&parsed_tokens);
+        let token_words = token_word_refs(tokens);
+        word_slice_starts_with(&parsed_words, &token_words)
+    }
+
     let token_sentences = split_lexed_sentences(effect_parse_tokens);
     let mut aligned = Vec::with_capacity(parsed_sentences.len());
     let mut start_idx = 0usize;
@@ -297,7 +306,7 @@ pub(super) fn align_rewrite_activated_parse_sentences(
                     matched = Some((probe + 1, joined));
                     break;
                 }
-                if !str_starts_with(parsed_sentence.as_str(), joined_text.as_str()) {
+                if !parsed_sentence_starts_with_tokens(parsed_sentence.as_str(), &joined) {
                     break;
                 }
                 probe += 1;
@@ -528,17 +537,14 @@ fn lower_rewrite_activated_to_chunk_impl(
     let ability_text = rewrite_activated_display_text(line);
     let additional_activation_restrictions = if ability_text
         .as_deref()
-        .is_some_and(|text| text.trim_start().starts_with("Exhaust"))
+        .is_some_and(text_starts_with_exhaust)
     {
         vec!["Activate each exhaust ability only once.".to_string()]
     } else {
         Vec::new()
     };
-    let normalized_effect_text = effect_text.to_ascii_lowercase();
-    let normalized_raw_line = line.info.raw_line.to_ascii_lowercase();
-
-    if str_contains(normalized_effect_text.as_str(), "add x mana")
-        && !str_contains(normalized_raw_line.as_str(), "where x is")
+    if text_mentions_add_x_mana(effect_text.as_str())
+        && !text_mentions_where_x_is(line.info.raw_line.as_str())
         && !activation_cost_defines_x_for_mana_ability(&normalized_cost)
     {
         return Err(CardTextError::ParseError(
@@ -546,9 +552,7 @@ fn lower_rewrite_activated_to_chunk_impl(
         ));
     }
 
-    if let Some(level_text) = normalized_effect_text.strip_prefix("level ")
-        && let Ok(level) = level_text.parse::<u32>()
-    {
+    if let Some(level) = level_number_from_text(effect_text.as_str()) {
         let parsed = ParsedAbility {
             ability: Ability {
                 kind: AbilityKind::Activated(ActivatedAbility {
@@ -802,22 +806,10 @@ fn infer_rewrite_activated_functional_zones(
     effect_text: &str,
     effect_parse_tokens: &[OwnedLexToken],
 ) -> Result<Vec<Zone>, CardTextError> {
-    let raw_lower = line.info.raw_line.to_ascii_lowercase();
-    if str_contains(raw_lower.as_str(), "any player may activate this ability")
-        && str_contains(raw_lower.as_str(), "on the stack")
-    {
+    if text_mentions_any_player_activate_on_stack(line.info.raw_line.as_str()) {
         return Ok(vec![Zone::Stack]);
     }
-    if str_contains(raw_lower.as_str(), "exile this card from your graveyard")
-        || str_contains(
-            raw_lower.as_str(),
-            "exile this creature from your graveyard",
-        )
-        || str_contains(
-            raw_lower.as_str(),
-            "exile this permanent from your graveyard",
-        )
-    {
+    if text_mentions_exile_self_from_graveyard(line.info.raw_line.as_str()) {
         return Ok(vec![Zone::Graveyard]);
     }
     let fallback_cost_text;

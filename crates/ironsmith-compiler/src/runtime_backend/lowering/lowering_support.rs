@@ -32,6 +32,7 @@ use super::effect_pipeline::{
     NormalizedPreparedAbility, PreparedEffectsForLowering, PreparedPredicateForLowering,
     PreparedTriggeredEffectsForLowering,
 };
+use super::lexer::{lex_line, token_slice_starts_with};
 use super::reference_model::{LoweredEffects, ReferenceEnv, ReferenceExports, ReferenceImports};
 use super::reference_resolution::{EffectReferenceResolutionConfig, annotate_effect_sequence};
 use super::static_ability_helpers::exalted_triggered_ability;
@@ -463,8 +464,7 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
                 &trigger,
                 TriggerSpec::WithIntro { trigger, .. }
                     if matches!(**trigger, TriggerSpec::ThisAttacksWithExactlyNOthers(1))
-            )
-        {
+            ) {
             // Exact single-partner attack triggers can bind "that creature"
             // to the other attacker snapshot captured at trigger time.
             Some("other_attacker")
@@ -662,6 +662,12 @@ fn effect_produces_mana(effect: &crate::effect::Effect) -> bool {
     effect.contains_mana_production()
 }
 
+fn text_starts_with_if(text: &str) -> bool {
+    lex_line(text, 0)
+        .ok()
+        .is_some_and(|tokens| token_slice_starts_with(&tokens, &["if"]))
+}
+
 pub(crate) fn rewrite_lower_parsed_ability(
     parsed: ParsedAbility,
 ) -> Result<ParsedAbility, CardTextError> {
@@ -693,7 +699,7 @@ pub(crate) fn rewrite_apply_instead_followup_statement_to_last_ability(
     }
 
     let normalized = info.normalized.normalized.as_str().to_ascii_lowercase();
-    if !normalized.starts_with("if ")
+    if !text_starts_with_if(normalized.as_str())
         || !matches!(
             classify_instead_followup_text(&normalized),
             crate::cards::builders::InsteadSemantics::SelfReplacement

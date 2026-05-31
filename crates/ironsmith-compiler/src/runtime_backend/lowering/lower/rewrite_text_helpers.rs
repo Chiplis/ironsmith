@@ -84,7 +84,7 @@ pub(crate) fn uses_referenced_ability_functional_zones(
     normalized_line: &str,
 ) -> bool {
     static_ability.id() == crate::static_abilities::StaticAbilityId::ActivatedAbilityCostReduction
-        && str_starts_with(normalized_line, "this ability costs")
+        && text_starts_with_this_ability_costs(normalized_line)
 }
 
 pub(crate) fn uses_all_zone_functional_zones(static_ability: &StaticAbility) -> bool {
@@ -365,11 +365,7 @@ pub(crate) fn lower_split_rewrite_static_chunk(
 }
 
 pub(crate) fn should_skip_keyword_action_static_probe(normalized: &str) -> bool {
-    let normalized = normalized.trim();
-    (str_ends_with(normalized, "can't be blocked.")
-        || str_ends_with(normalized, "can't be blocked"))
-        && !str_starts_with(normalized, "this ")
-        && !str_starts_with(normalized, "it ")
+    text_is_unqualified_cant_be_blocked(normalized.trim())
 }
 
 pub(crate) fn split_statement_label_prefix_for_lowering_lexed(

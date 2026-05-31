@@ -58,6 +58,7 @@ use super::token_primitives::{
     str_split_once_char, str_starts_with, str_strip_suffix,
 };
 use crate::runtime_backend::lexer::{
+    OwnedLexToken, TokenKind, contains_token_word_sequence, lex_line, token_slice_starts_with,
     word_slice_contains_any_phrase, word_slice_contains_phrase,
     word_slice_contains_phrase_or_empty, word_slice_contains_word,
     word_slice_find_phrase_start_or_zero,
@@ -158,8 +159,10 @@ pub(crate) use tag_support::{
     effect_references_event_derived_amount, effect_references_it_tag,
     effect_references_its_controller, effect_references_tag, effects_reference_it_tag,
     effects_reference_its_controller, effects_reference_tag, filter_references_tag,
-    object_ref_references_tag, player_filter_references_tag, restriction_references_tag,
-    target_references_tag, value_references_event_derived_amount, value_references_tag,
+    is_exile_cost_collection_tag, is_revealed_collection_tag, is_searched_collection_tag,
+    is_sentence_helper_exiled_collection_tag, object_ref_references_tag,
+    player_filter_references_tag, restriction_references_tag, target_references_tag,
+    value_references_event_derived_amount, value_references_tag,
 };
 pub(crate) use trigger_support::{
     compile_trigger_effects, compile_trigger_effects_with_imports, compile_trigger_spec,
@@ -2086,23 +2089,59 @@ fn equipment_equip_ability(amount: u32) -> Option<Ability> {
     })
 }
 
+fn lex_text_for_surface_check(text: &str) -> Option<Vec<OwnedLexToken>> {
+    lex_line(text, 0).ok()
+}
+
+fn token_slice_contains_colon(tokens: &[OwnedLexToken]) -> bool {
+    tokens.iter().any(|token| token.kind == TokenKind::Colon)
+}
+
+fn token_slice_contains_tap_symbol(tokens: &[OwnedLexToken]) -> bool {
+    tokens.iter().any(|token| token.parser_text == "{t}")
+}
+
+fn token_slice_contains_trigger_intro(tokens: &[OwnedLexToken]) -> bool {
+    tokens.first().is_some_and(|token| {
+        token.is_word("when") || token.is_word("whenever") || token.is_word("at")
+    })
+}
+
+fn token_slice_contains_power_and_toughness(tokens: &[OwnedLexToken]) -> bool {
+    contains_token_word_sequence(tokens, &["power"])
+        && contains_token_word_sequence(tokens, &["toughness"])
+}
+
+fn token_slice_starts_with_equip(tokens: &[OwnedLexToken]) -> bool {
+    token_slice_starts_with(tokens, &["equip"])
+}
+
+fn token_slice_starts_with_equipped_creature_has(tokens: &[OwnedLexToken]) -> bool {
+    token_slice_starts_with(tokens, &["equipped", "creature", "has"])
+}
+
+fn equipment_damage_amount_from_tokens(tokens: &[OwnedLexToken]) -> Option<i32> {
+    tokens.windows(2).find_map(|window| {
+        let [left, right] = window else {
+            return None;
+        };
+        left.is_word("deals")
+            .then(|| parse_number_word(right.parser_text.as_str()))
+            .flatten()
+    })
+}
+
 fn equipment_granted_damage_ability(ability_text: &str, token_name: &str) -> Option<Ability> {
-    let lower = ability_text.to_ascii_lowercase();
     let (cost_text, effect_text) = ability_text.split_once(':')?;
-    let effect_lower = effect_text.to_ascii_lowercase();
-    if !effect_lower.contains("this creature deals") || !effect_lower.contains("any target") {
+    let ability_tokens = lex_text_for_surface_check(ability_text)?;
+    let effect_tokens = lex_text_for_surface_check(effect_text)?;
+    if !contains_token_word_sequence(&effect_tokens, &["this", "creature", "deals"])
+        || !contains_token_word_sequence(&effect_tokens, &["any", "target"])
+    {
         return None;
     }
 
-    let damage_amount = effect_lower
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .windows(2)
-        .find_map(|window| {
-            (window[0] == "deals")
-                .then(|| parse_number_word(window[1]))
-                .flatten()
-        })?;
+    let damage_amount = equipment_damage_amount_from_tokens(&effect_tokens)?;
 
     let mut costs = Vec::new();
     let generic_amount = parse_braced_generic_mana_amount(cost_text);
@@ -2111,10 +2150,10 @@ fn equipment_granted_damage_ability(ability_text: &str, token_name: &str) -> Opt
     {
         costs.push(crate::costs::Cost::mana(generic_mana_cost(amount)?));
     }
-    if lower.contains("{t}") {
+    if token_slice_contains_tap_symbol(&ability_tokens) {
         costs.push(crate::costs::Cost::Tap);
     }
-    if lower.contains("sacrifice") {
+    if contains_token_word_sequence(&ability_tokens, &["sacrifice"]) {
         costs.push(crate::costs::Cost::sacrifice(
             ObjectFilter::artifact().you_control().named(token_name),
         ));
@@ -2125,10 +2164,10 @@ fn equipment_granted_damage_ability(ability_text: &str, token_name: &str) -> Opt
     if let Some(amount) = generic_amount {
         cost_display.push(format!("{{{amount}}}"));
     }
-    if lower.contains("{t}") {
+    if token_slice_contains_tap_symbol(&ability_tokens) {
         cost_display.push("{T}".to_string());
     }
-    if lower.contains("sacrifice") {
+    if contains_token_word_sequence(&ability_tokens, &["sacrifice"]) {
         cost_display.push(format!("Sacrifice {token_name}"));
     }
 
@@ -2163,8 +2202,12 @@ fn build_equipment_token_from_rules_text(
         .map(str::trim)
         .filter(|line| !line.is_empty())
     {
-        let lower = line.to_ascii_lowercase();
-        if lower.starts_with("equipped creature has ") && line.contains(':') {
+        let Some(tokens) = lex_text_for_surface_check(line) else {
+            return None;
+        };
+        if token_slice_starts_with_equipped_creature_has(&tokens)
+            && token_slice_contains_colon(&tokens)
+        {
             let ability_text = line
                 .split_once("has ")
                 .map(|(_, tail)| tail.trim())
@@ -2178,7 +2221,7 @@ fn build_equipment_token_from_rules_text(
             continue;
         }
 
-        if lower.starts_with("equip ") {
+        if token_slice_starts_with_equip(&tokens) {
             let amount = parse_braced_generic_mana_amount(line)?;
             builder = builder.with_ability(equipment_equip_ability(amount)?);
             handled_any = true;
@@ -2202,7 +2245,9 @@ fn build_equipment_token_from_parsed_rules_text(
         .map(str::trim)
         .filter(|line| !line.is_empty())
     {
-        if line.to_ascii_lowercase().starts_with("equip ") {
+        if lex_text_for_surface_check(line)
+            .is_some_and(|tokens| token_slice_starts_with_equip(&tokens))
+        {
             equip_amounts.push(parse_braced_generic_mana_amount(line)?);
         } else {
             non_equip_lines.push(line);
@@ -2285,12 +2330,10 @@ fn try_parse_quoted_token_rules_text(
 ) -> Option<CardDefinition> {
     let quoted = extract_double_quoted_token_rules_text(source_text)
         .or_else(|| extract_inline_token_rules_text(source_text))?;
-    let quoted_lower = quoted.to_ascii_lowercase();
-    let looks_triggered = quoted_lower.starts_with("when ")
-        || quoted_lower.starts_with("whenever ")
-        || quoted_lower.starts_with("at ");
-    let looks_activated = quoted.contains(':');
-    let looks_static = quoted_lower.contains("power") && quoted_lower.contains("toughness");
+    let quoted_tokens = lex_text_for_surface_check(&quoted)?;
+    let looks_triggered = token_slice_contains_trigger_intro(&quoted_tokens);
+    let looks_activated = token_slice_contains_colon(&quoted_tokens);
+    let looks_static = token_slice_contains_power_and_toughness(&quoted_tokens);
     if !looks_triggered && !looks_activated && !looks_static {
         return None;
     }
@@ -2319,11 +2362,11 @@ fn apply_quoted_token_keyword_rules_text(
     let Some(quoted) = extract_double_quoted_token_rules_text(source_text) else {
         return (builder, false);
     };
-    let quoted_lower = quoted.to_ascii_lowercase();
-    let looks_triggered = quoted_lower.starts_with("when ")
-        || quoted_lower.starts_with("whenever ")
-        || quoted_lower.starts_with("at ");
-    let looks_activated = quoted.contains(':');
+    let Some(quoted_tokens) = lex_text_for_surface_check(&quoted) else {
+        return (builder, false);
+    };
+    let looks_triggered = token_slice_contains_trigger_intro(&quoted_tokens);
+    let looks_activated = token_slice_contains_colon(&quoted_tokens);
     if looks_triggered || looks_activated {
         return (builder, false);
     }
@@ -3437,15 +3480,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
         let subtype_scan_end = find_index(words.as_slice(), |word| {
             matches!(
                 *word,
-                "with"
-                    | "when"
-                    | "whenever"
-                    | "has"
-                    | "have"
-                    | "gains"
-                    | "gain"
-                    | "gets"
-                    | "get"
+                "with" | "when" | "whenever" | "has" | "have" | "gains" | "gain" | "gets" | "get"
             )
         })
         .unwrap_or(words.len());
@@ -3913,11 +3948,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
 
 pub(crate) fn parse_token_pt(word: &str) -> Option<(i32, i32)> {
     let (left, right) = str_split_once_char(word, '/')?;
-    if str_starts_with(left, "+")
-        || str_starts_with(right, "+")
-        || str_starts_with(left, "-")
-        || str_starts_with(right, "-")
-    {
+    if left.starts_with(['+', '-']) || right.starts_with(['+', '-']) {
         return None;
     }
     let power = left.parse::<i32>().ok()?;

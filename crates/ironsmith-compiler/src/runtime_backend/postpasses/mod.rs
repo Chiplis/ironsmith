@@ -5,16 +5,25 @@ use crate::cards::builders::{CardDefinitionBuilder, CardTextError};
 use crate::effect::{Condition, Effect, Value};
 use crate::resolution::ResolutionProgram;
 use crate::target::{ChooseSpec, PlayerFilter};
-use crate::triggers::Trigger;
+use crate::triggers::{Trigger, TriggerKind};
 use crate::zone::Zone;
+
+use super::lexer::{lex_line, parser_token_word_refs, word_slice_contains_phrase};
+
+fn line_starts_with_keyword(line: &str, keyword: &str) -> bool {
+    lex_line(line.trim_start(), 0).ok().is_some_and(|tokens| {
+        parser_token_word_refs(&tokens)
+            .first()
+            .is_some_and(|word| *word == keyword)
+    })
+}
 
 fn overload_rewritten_text(text: &str) -> Option<String> {
     let mut rewritten_lines = Vec::new();
     let mut saw_overload = false;
 
     for line in text.lines() {
-        let trimmed = line.trim_start();
-        if trimmed.to_ascii_lowercase().starts_with("overload ") {
+        if line_starts_with_keyword(line, "overload") {
             saw_overload = true;
             continue;
         }
@@ -188,36 +197,51 @@ fn finalize_offspring_abilities(mut definition: CardDefinition) -> CardDefinitio
     definition
 }
 
-fn normalize_delayed_trigger_text(text: &str) -> String {
-    text.to_ascii_lowercase()
-        .replace('’', "'")
-        .replace("'s", "s")
+const NEXT_UPKEEP_PHRASE: &[&str] = &["next", "upkeep"];
+const NEXT_TURNS_UPKEEP_PHRASE: &[&str] = &["next", "turns", "upkeep"];
+const THAT_TURNS_END_STEP_PHRASE: &[&str] = &["that", "turns", "end", "step"];
+const THAT_PLAYERS_NEXT_UPKEEP_PHRASE: &[&str] = &["that", "players", "next", "upkeep"];
+const THAT_PLAYERS_NEXT_END_STEP_PHRASE: &[&str] = &["that", "players", "next", "end", "step"];
+const END_STEP_OF_THAT_PLAYERS_NEXT_TURN_PHRASE: &[&str] =
+    &["end", "step", "of", "that", "players", "next", "turn"];
+const NEXT_END_STEP_PHRASE: &[&str] = &["next", "end", "step"];
+const NEXT_TURNS_END_STEP_PHRASE: &[&str] = &["next", "turns", "end", "step"];
+const YOUR_NEXT_UPKEEP_PHRASE: &[&str] = &["your", "next", "upkeep"];
+const YOUR_NEXT_DRAW_STEP_PHRASE: &[&str] = &["your", "next", "draw", "step"];
+
+fn is_upkeep_or_end_step_trigger(trigger: &Trigger) -> bool {
+    matches!(
+        trigger.kind,
+        TriggerKind::BeginningOfUpkeep { .. } | TriggerKind::BeginningOfEndStep { .. }
+    )
 }
 
 fn spell_battlefield_trigger_text_implies_delayed_schedule(
     ability_text: &str,
     trigger: &Trigger,
 ) -> Option<bool> {
-    let normalized = normalize_delayed_trigger_text(ability_text);
-    let trigger_text = normalize_delayed_trigger_text(trigger.display().as_str());
-
-    let trigger_is_upkeep_or_end_step = trigger_text.contains("beginning of")
-        && (trigger_text.contains("upkeep") || trigger_text.contains("end step"));
-    if !trigger_is_upkeep_or_end_step {
+    if !is_upkeep_or_end_step_trigger(trigger) {
         return None;
     }
 
-    if normalized.contains("next upkeep") || normalized.contains("next turns upkeep") {
-        return Some(true);
-    }
-    if normalized.contains("that turns end step")
-        || normalized.contains("that players next upkeep")
-        || normalized.contains("that players next end step")
-        || normalized.contains("end step of that players next turn")
+    let tokens = lex_line(ability_text, 0).ok()?;
+    let words = parser_token_word_refs(&tokens);
+
+    if word_slice_contains_phrase(&words, NEXT_UPKEEP_PHRASE)
+        || word_slice_contains_phrase(&words, NEXT_TURNS_UPKEEP_PHRASE)
     {
         return Some(true);
     }
-    if normalized.contains("next end step") || normalized.contains("next turns end step") {
+    if word_slice_contains_phrase(&words, THAT_TURNS_END_STEP_PHRASE)
+        || word_slice_contains_phrase(&words, THAT_PLAYERS_NEXT_UPKEEP_PHRASE)
+        || word_slice_contains_phrase(&words, THAT_PLAYERS_NEXT_END_STEP_PHRASE)
+        || word_slice_contains_phrase(&words, END_STEP_OF_THAT_PLAYERS_NEXT_TURN_PHRASE)
+    {
+        return Some(true);
+    }
+    if word_slice_contains_phrase(&words, NEXT_END_STEP_PHRASE)
+        || word_slice_contains_phrase(&words, NEXT_TURNS_END_STEP_PHRASE)
+    {
         return Some(false);
     }
 
@@ -245,8 +269,7 @@ fn convert_nonpermanent_delayed_triggered_ability_to_spell_effect(
             spell_battlefield_trigger_text_implies_delayed_schedule(line, &triggered.trigger)?;
         Some((line, start_next_turn))
     })?;
-    let trigger =
-        delayed_trigger_spec_from_label(triggered.trigger.display().as_str(), Some(ability_text))?;
+    let trigger = delayed_trigger_spec_from_trigger(&triggered.trigger, Some(ability_text))?;
 
     let mut delayed = crate::effects::ScheduleDelayedTriggerEffect::new(
         trigger,
@@ -262,15 +285,18 @@ fn convert_nonpermanent_delayed_triggered_ability_to_spell_effect(
     Some(Effect::new(delayed))
 }
 
-fn delayed_trigger_spec_from_label(
-    trigger_label: &str,
+fn delayed_trigger_spec_from_trigger(
+    trigger: &Trigger,
     ability_text: Option<&str>,
 ) -> Option<ironsmith_core::DelayedTriggerSpec> {
-    let label = trigger_label.to_ascii_lowercase();
-    let text = ability_text.unwrap_or_default().to_ascii_lowercase();
-    match label.as_str() {
-        "beginning_of_upkeep" => {
-            let player = if text.contains("your next upkeep") {
+    let ability_tokens = ability_text
+        .and_then(|text| lex_line(text, 0).ok())
+        .unwrap_or_default();
+    let ability_words = parser_token_word_refs(&ability_tokens);
+
+    match trigger.kind {
+        TriggerKind::BeginningOfUpkeep { .. } => {
+            let player = if word_slice_contains_phrase(&ability_words, YOUR_NEXT_UPKEEP_PHRASE) {
                 PlayerFilter::You
             } else {
                 PlayerFilter::Any
@@ -279,8 +305,8 @@ fn delayed_trigger_spec_from_label(
                 player,
             ))
         }
-        "beginning_of_draw_step" => {
-            let player = if text.contains("your next draw step") {
+        TriggerKind::BeginningOfDrawStep { .. } => {
+            let player = if word_slice_contains_phrase(&ability_words, YOUR_NEXT_DRAW_STEP_PHRASE) {
                 PlayerFilter::You
             } else {
                 PlayerFilter::Any
@@ -289,11 +315,11 @@ fn delayed_trigger_spec_from_label(
                 player,
             ))
         }
-        "beginning_of_end_step" => Some(ironsmith_core::DelayedTriggerSpec::BeginningOfEndStep(
-            PlayerFilter::Any,
-        )),
-        "end_of_combat" => Some(ironsmith_core::DelayedTriggerSpec::EndOfCombat),
-        "this_dies" => Some(ironsmith_core::DelayedTriggerSpec::ThisDies),
+        TriggerKind::BeginningOfEndStep { .. } => Some(
+            ironsmith_core::DelayedTriggerSpec::BeginningOfEndStep(PlayerFilter::Any),
+        ),
+        TriggerKind::EndOfCombat => Some(ironsmith_core::DelayedTriggerSpec::EndOfCombat),
+        TriggerKind::ThisDies => Some(ironsmith_core::DelayedTriggerSpec::ThisDies),
         _ => None,
     }
 }

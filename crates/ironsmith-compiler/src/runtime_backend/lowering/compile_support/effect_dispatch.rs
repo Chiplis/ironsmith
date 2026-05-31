@@ -1437,7 +1437,7 @@ fn compile_subject_verb_effect(
                 && ctx
                     .last_object_tag
                     .as_ref()
-                    .is_some_and(|tag| tag.starts_with("searched"))
+                    .is_some_and(|tag| is_searched_collection_tag(tag))
                 && ctx
                     .last_player_filter
                     .as_ref()
@@ -3571,7 +3571,7 @@ fn compile_subject_verb_effect(
                 push_choice(&mut choices, choice);
             }
             if let Some(last_tag) = ctx.last_object_tag.as_deref()
-                && str_starts_with(last_tag, "exile_cost_")
+                && is_exile_cost_collection_tag(last_tag)
                 && let ChooseSpec::Object(filter) = &source_spec
                 && filter.zone == Some(Zone::Exile)
                 && filter.tagged_constraints.iter().any(|constraint| {

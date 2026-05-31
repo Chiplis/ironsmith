@@ -19,7 +19,7 @@ pub(crate) fn try_merge_modal_into_remove_mode(
     }
 
     let Some(remove_mode_idx) = find_index(choose_mode.modes.as_slice(), |mode| {
-        str_starts_with(mode.description.to_ascii_lowercase().as_str(), "remove ")
+        text_starts_with_remove(mode.description.as_str())
     }) else {
         effects.push(last_effect);
         return false;

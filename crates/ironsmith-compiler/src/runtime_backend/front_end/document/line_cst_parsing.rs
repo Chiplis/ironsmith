@@ -233,6 +233,7 @@ pub(super) fn parse_static_line_cst(
         parse_tokens: parse_tokens.clone(),
         chosen_option_label,
     };
+    let lexed = &parse_tokens;
     if matches!(
         normalized,
         "for each {B} in a cost, you may pay 2 life rather than pay that mana."
@@ -244,14 +245,13 @@ pub(super) fn parse_static_line_cst(
             | "you may activate equip abilities any time you could cast an instant."
             | "while voting, you may vote an additional time."
             | "while voting, you get an additional vote."
-    ) || is_first_equip_cost_alternative_line(normalized)
-        || is_additional_land_play_static_line(normalized)
-        || is_can_block_additional_creatures_static_line(normalized)
+    ) || is_first_equip_cost_alternative_line(lexed)
+        || is_additional_land_play_static_line(lexed)
+        || is_can_block_additional_creatures_static_line(lexed)
     {
         return Ok(Some(make_static(None)));
     }
 
-    let lexed = &parse_tokens;
     let mut deferred_error = None;
 
     if grammar::parse_prefix(&lexed, grammar::phrase(&["level", "up"])).is_some() {
@@ -308,23 +308,21 @@ pub(super) fn parse_static_line_cst(
 
 /// Recognizes "you may pay {COST} rather than pay the equip cost of the first
 /// equip ability you activate each turn." and the variant "during each of your turns."
-fn is_first_equip_cost_alternative_line(normalized: &str) -> bool {
-    let s = normalized.trim_end_matches('.');
-    crate::runtime_backend::token_primitives::str_starts_with(s, "you may pay ")
-        && crate::runtime_backend::token_primitives::str_contains(
-            s,
-            " rather than pay the equip cost of the first equip ability you activate",
+fn is_first_equip_cost_alternative_line(tokens: &[OwnedLexToken]) -> bool {
+    token_slice_starts_with(tokens, &["you", "may", "pay"])
+        && contains_token_word_sequence(
+            tokens,
+            &[
+                "rather", "than", "pay", "the", "equip", "cost", "of", "the", "first", "equip",
+                "ability", "you", "activate",
+            ],
         )
-        && (crate::runtime_backend::token_primitives::str_ends_with(s, "each turn")
-            || crate::runtime_backend::token_primitives::str_ends_with(
-                s,
-                "during each of your turns",
-            ))
+        && (token_slice_ends_with(tokens, &["each", "turn"])
+            || token_slice_ends_with(tokens, &["during", "each", "of", "your", "turns"]))
 }
 
-fn is_additional_land_play_static_line(normalized: &str) -> bool {
-    let normalized = normalized.trim_end_matches('.').to_ascii_lowercase();
-    let words = normalized.split_whitespace().collect::<Vec<_>>();
+fn is_additional_land_play_static_line(tokens: &[OwnedLexToken]) -> bool {
+    let words = token_word_refs(tokens);
     if !ADDITIONAL_LAND_PLAY_PREFIX_PATTERN.matches_words(&words) {
         return false;
     }
@@ -345,19 +343,15 @@ fn is_additional_land_play_static_line(normalized: &str) -> bool {
     )
 }
 
-fn is_can_block_additional_creatures_static_line(normalized: &str) -> bool {
-    let normalized = normalized.trim_end_matches('.').to_ascii_lowercase();
-    if !crate::runtime_backend::token_primitives::str_starts_with(
-        normalized.as_str(),
-        "this creature can block an additional ",
+fn is_can_block_additional_creatures_static_line(tokens: &[OwnedLexToken]) -> bool {
+    if !token_slice_starts_with(
+        tokens,
+        &["this", "creature", "can", "block", "an", "additional"],
     ) {
         return false;
     }
-    crate::runtime_backend::token_primitives::str_ends_with(normalized.as_str(), " each combat")
-        || crate::runtime_backend::token_primitives::str_ends_with(
-            normalized.as_str(),
-            " this turn",
-        )
+    token_slice_ends_with(tokens, &["each", "combat"])
+        || token_slice_ends_with(tokens, &["this", "turn"])
 }
 
 fn parse_split_static_item_count(tokens: &[OwnedLexToken]) -> Result<Option<usize>, CardTextError> {

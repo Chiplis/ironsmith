@@ -306,6 +306,49 @@ mod tests {
     }
 
     #[test]
+    fn rewrite_exert_keyword_lowering_uses_parse_tokens_when_text_is_stale()
+    -> Result<(), CardTextError> {
+        let token_text = "if this creature hasn't been exerted this turn, you may exert champion as it attacks. when you do, he can't block this turn.";
+        let tokens =
+            lex_line(token_text, 0).expect("rewrite lexer should classify exert keyword line");
+
+        let parsed = lower_rewrite_keyword_to_chunk(
+            super::LineInfo {
+                line_index: 0,
+                display_line_index: 0,
+                raw_line: "placeholder exert text".to_string(),
+                normalized: NormalizedLine {
+                    original: "placeholder exert text".to_string(),
+                    normalized: "placeholder exert text".to_string(),
+                    char_map: Vec::new(),
+                },
+            },
+            "placeholder exert text",
+            &tokens,
+            RewriteKeywordLineKind::ExertAttack,
+        )?;
+
+        match parsed {
+            LineAst::StaticAbility(ability) => {
+                let debug = format!("{ability:?}");
+                assert!(
+                    str_contains(debug.as_str(), "exert attack")
+                        || str_contains(debug.as_str(), "ExertAttack"),
+                    "{debug}"
+                );
+                assert!(
+                    str_contains(debug.as_str(), "only_if_not_exerted_this_turn: true")
+                        || str_contains(debug.as_str(), "true"),
+                    "{debug}"
+                );
+            }
+            other => panic!("expected exert static ability, got {other:?}"),
+        }
+
+        Ok(())
+    }
+
+    #[test]
     fn rewrite_special_triggered_burning_rune_demon_accepts_stored_parse_tokens()
     -> Result<(), CardTextError> {
         let full_text = "when this creature enters, you may search your library for exactly two cards not named burning rune demon that have different names. if you do, reveal those cards. an opponent chooses one of them. put the chosen card into your hand and the other into your graveyard, then shuffle.";

@@ -278,17 +278,17 @@ fn pre_rule_future_zone_replacement_followup(
     _sentence_idx: usize,
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
-    let sentence_text = LexedClause::new(sentence_tokens).text();
-    if !str_contains(&sentence_text, "would die this turn") {
+    if !sentence_contains(sentence_tokens, WOULD_DIE_THIS_TURN_PHRASE) {
         return Ok(None);
     }
+    let sentence_text = LexedClause::new(sentence_tokens).text();
     if !matches!(
         classify_instead_followup_text(&sentence_text),
         InsteadSemantics::FutureReplacement
     ) {
         return Ok(None);
     }
-    let Some(replacement) = future_zone_replacement_from_sentence_text(&sentence_text) else {
+    let Some(replacement) = future_zone_replacement_from_sentence_tokens(sentence_tokens) else {
         return Ok(None);
     };
     Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {

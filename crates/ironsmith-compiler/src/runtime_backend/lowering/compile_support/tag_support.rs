@@ -8,6 +8,37 @@ use crate::target::ChooseSpec;
 
 use super::{NormalizedLine, assert_effect_ast_variant_coverage, for_each_nested_effects};
 
+const REVEALED_COLLECTION_TAG_PREFIX: &str = "revealed";
+const SEARCHED_COLLECTION_TAG_PREFIX: &str = "searched";
+const EXILE_COST_TAG_PREFIX: &str = "exile_cost_";
+const EXILED_COLLECTION_TAG_PREFIX: &str = "exiled_";
+const SENTENCE_HELPER_EXILED_TAG_PREFIX: &str = "__sentence_helper_exiled";
+
+fn tag_str_has_prefix(tag: &str, prefix: &str) -> bool {
+    tag.strip_prefix(prefix).is_some()
+}
+
+pub(crate) fn is_revealed_collection_tag(tag: &str) -> bool {
+    tag_str_has_prefix(tag, REVEALED_COLLECTION_TAG_PREFIX)
+}
+
+pub(crate) fn is_searched_collection_tag(tag: &str) -> bool {
+    tag_str_has_prefix(tag, SEARCHED_COLLECTION_TAG_PREFIX)
+}
+
+pub(crate) fn is_exile_cost_collection_tag(tag: &str) -> bool {
+    tag_str_has_prefix(tag, EXILE_COST_TAG_PREFIX)
+}
+
+pub(crate) fn is_sentence_helper_exiled_collection_tag(tag: &str) -> bool {
+    tag_str_has_prefix(tag, SENTENCE_HELPER_EXILED_TAG_PREFIX)
+}
+
+pub(crate) fn is_exiled_collection_tag(tag: &str) -> bool {
+    tag_str_has_prefix(tag, EXILED_COLLECTION_TAG_PREFIX)
+        || is_sentence_helper_exiled_collection_tag(tag)
+}
+
 fn total_cost_values_any(
     cost: &crate::cost::TotalCost,
     predicate: impl Fn(&Value) -> bool + Copy,
@@ -384,9 +415,7 @@ pub(crate) fn choose_spec_references_tag(spec: &ChooseSpec, tag: &str) -> bool {
 
 pub(crate) fn choose_spec_references_exiled_tag(spec: &ChooseSpec) -> bool {
     fn is_exiled_tag(tag: &TagKey) -> bool {
-        let tag = tag.as_str();
-        super::str_starts_with(tag, "exiled_")
-            || super::str_starts_with(tag, "__sentence_helper_exiled")
+        is_exiled_collection_tag(tag.as_str())
     }
 
     match spec {

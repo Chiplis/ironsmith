@@ -53,7 +53,7 @@ use super::token_primitives::{
     clone_sentence_chunk_tokens, find_index as find_token_index, lexed_head_words,
     lexed_tokens_contain_non_prefix_instead, remove_copy_exception_type_removal_lexed,
     rewrite_followup_intro_to_if_lexed, split_em_dash_label_prefix,
-    split_em_dash_label_prefix_tokens, str_contains, str_ends_with, str_ends_with_char,
+    split_em_dash_label_prefix_tokens, str_contains, str_contains_char, str_ends_with_char,
     str_split_once, str_split_once_char, str_starts_with, str_starts_with_char, str_strip_prefix,
     str_strip_suffix,
 };
@@ -73,8 +73,12 @@ const TRIGGERS_ONLY_ONCE_EACH_TURN_SUFFIX_PATTERN: ClauseShape<'static> = clause
             &["do", "this", "only", "once", "each", "turn"],
         ]
 );
-const NAMED_REFERENCE_MARKER: &str = " named ";
-const TOKEN_NAME_SUFFIX: &str = " twin";
+const HALF_STARTING_LIFE_PLUS_ONE_UNSUPPORTED_PHRASE: &[&str] = &[
+    "if", "your", "life", "total", "is", "less", "than", "or", "equal", "to", "half", "your",
+    "starting", "life", "total", "plus", "one",
+];
+const NAMED_REFERENCE_WORD: &str = "named";
+const TOKEN_NAME_SUFFIX_WORD: &str = "twin";
 const SOURCE_ALIAS_EFFECT_VERBS: &[&str] = &[
     "add",
     "attach",
@@ -664,8 +668,8 @@ fn looks_like_activation_cost_prefix(raw: &str) -> bool {
         return false;
     }
     if str_starts_with_char(trimmed, '{')
-        || str_starts_with(trimmed, "+")
-        || str_starts_with(trimmed, "-")
+        || str_starts_with_char(trimmed, '+')
+        || str_starts_with_char(trimmed, '-')
         || str_starts_with_char(trimmed, '−')
     {
         return true;
@@ -749,7 +753,8 @@ fn split_label_prefix(text: &str) -> Option<(&str, &str)> {
     let (label, body) = str_split_once_char(trimmed, '—')?;
     let label = label.trim();
     let body = body.trim();
-    (!label.is_empty() && !body.is_empty() && !str_contains(label, ".")).then_some((label, body))
+    (!label.is_empty() && !body.is_empty() && !str_contains_char(label, '.'))
+        .then_some((label, body))
 }
 
 fn split_label_prefix_lexed(tokens: &[OwnedLexToken]) -> Option<(String, &[OwnedLexToken])> {
@@ -824,14 +829,15 @@ fn normalize_trailing_keyword_activation_sentence_lexed(
 }
 
 fn preflight_known_strict_unsupported(text: &str) -> Option<CardTextError> {
-    let normalized = text.to_ascii_lowercase();
-    if str_contains(
-        normalized.as_str(),
-        "if your life total is less than or equal to half your starting life total plus one",
-    ) {
-        return Some(CardTextError::ParseError(
-            "unsupported predicate".to_string(),
-        ));
+    for (line_idx, line) in text.lines().enumerate() {
+        let Ok(tokens) = lex_line(line, line_idx) else {
+            continue;
+        };
+        if contains_token_word_sequence(&tokens, HALF_STARTING_LIFE_PLUS_ONE_UNSUPPORTED_PHRASE) {
+            return Some(CardTextError::ParseError(
+                "unsupported predicate".to_string(),
+            ));
+        }
     }
     None
 }
@@ -1117,7 +1123,24 @@ fn is_effect_verb_word(word: &str) -> bool {
 }
 
 fn mentions_named_reference(text: &str) -> bool {
-    str_contains(text, NAMED_REFERENCE_MARKER)
+    lex_line(text, 0)
+        .ok()
+        .is_some_and(|tokens| token_word_refs(&tokens).contains(&NAMED_REFERENCE_WORD))
+}
+
+fn alias_tail_starts_with_token_name_suffix(tail: &str) -> bool {
+    if !tail
+        .chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_whitespace())
+    {
+        return false;
+    }
+    lex_line(tail.trim_start(), 0).ok().is_some_and(|tokens| {
+        token_word_refs(&tokens)
+            .first()
+            .is_some_and(|word| *word == TOKEN_NAME_SUFFIX_WORD)
+    })
 }
 
 fn replace_named_source_aliases(text: &str, alias: &str, replacement: &str) -> String {
@@ -1151,7 +1174,7 @@ fn replace_named_source_aliases_with_options(
         let end = start + alias.len();
         let before_is_boundary = start == 0 || !bytes[start - 1].is_ascii_alphanumeric();
         let after_is_boundary = end >= bytes.len() || !bytes[end].is_ascii_alphanumeric();
-        let is_token_name_suffix = str_starts_with(&lower[end..], TOKEN_NAME_SUFFIX);
+        let is_token_name_suffix = alias_tail_starts_with_token_name_suffix(&lower[end..]);
         let preserve_surface = preserve_surface_hints
             && source_alias_occurrence_should_preserve_surface(lower.as_bytes(), start, end);
         if before_is_boundary && after_is_boundary && !is_token_name_suffix && !preserve_surface {

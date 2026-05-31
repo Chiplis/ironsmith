@@ -33447,7 +33447,8 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "looked")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "chosen")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "searched");
-        let helper_exiled = crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "exiled");
+        let helper_exiled =
+            crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "exiled");
         let object_text = if grant_play_tagged.allow_land && helper_exiled {
             "those cards".to_string()
         } else if grant_play_tagged.tag.as_str().starts_with("targeted_")
@@ -33565,9 +33566,10 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 grant_tagged_spell_free_cast.tag.as_str(),
                 "searched",
             );
-        let helper_exiled =
-            crate::cards::is_sentence_helper_tag(grant_tagged_spell_free_cast.tag.as_str(), "exiled")
-                || grant_tagged_spell_free_cast.tag.as_str() == "exiled";
+        let helper_exiled = crate::cards::is_sentence_helper_tag(
+            grant_tagged_spell_free_cast.tag.as_str(),
+            "exiled",
+        ) || grant_tagged_spell_free_cast.tag.as_str() == "exiled";
         let object_text = if helper_exiled {
             "those exiled cards"
         } else if helper_tag {

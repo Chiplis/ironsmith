@@ -2150,6 +2150,40 @@ fn rewrite_triggered_lowering_uses_parse_tokens_when_text_fields_are_stale()
 }
 
 #[test]
+fn rewrite_combat_death_blocked_damage_special_case_uses_parse_tokens() -> Result<(), CardTextError>
+{
+    let full_text = "when this creature dies during combat, it deals 2 damage to each creature it blocked this combat.";
+    let trigger_text = "when this creature dies during combat";
+    let effect_text = "it deals 2 damage to each creature it blocked this combat.";
+    let full_tokens = lex_line(full_text, 0)
+        .expect("rewrite lexer should classify combat death blocked-damage trigger");
+    let trigger_tokens =
+        lex_line(trigger_text, 0).expect("rewrite lexer should classify combat death trigger");
+    let effect_tokens =
+        lex_line(effect_text, 0).expect("rewrite lexer should classify blocked-damage effect");
+
+    let parsed = super::lower_rewrite_triggered_to_chunk(
+        rewrite_line_info("placeholder triggered text"),
+        "placeholder triggered text",
+        &full_tokens,
+        "placeholder trigger text",
+        &trigger_tokens,
+        "placeholder effect text",
+        &effect_tokens,
+        None,
+        None,
+        None,
+        None,
+    )?;
+
+    let debug = format!("{parsed:?}");
+    assert!(debug.contains("Triggered"), "{debug}");
+    assert!(debug.contains("DealDamage"), "{debug}");
+
+    Ok(())
+}
+
+#[test]
 fn rewrite_gift_keyword_lowering_builds_closed_form_followup_effects() -> Result<(), CardTextError>
 {
     let cases = [
@@ -5759,6 +5793,26 @@ fn rewrite_lexed_cycling_parser_ignores_static_grant_clause_prefixes() {
         super::parse_cycling_line_lexed(&tokens)
             .expect("cycling parser should inspect granted clause")
             .is_none()
+    );
+}
+
+#[test]
+fn filter_keyword_constraint_accepts_cycling_variant_words() {
+    use super::front_end::shared::util::{
+        FilterKeywordConstraint, parse_filter_keyword_constraint_words,
+    };
+
+    assert_eq!(
+        parse_filter_keyword_constraint_words(&["cycling"]),
+        Some((FilterKeywordConstraint::Marker("cycling"), 1))
+    );
+    assert_eq!(
+        parse_filter_keyword_constraint_words(&["slivercycling"]),
+        Some((FilterKeywordConstraint::Marker("cycling"), 1))
+    );
+    assert_eq!(
+        parse_filter_keyword_constraint_words(&["basic", "landcycling"]),
+        Some((FilterKeywordConstraint::Marker("cycling"), 2))
     );
 }
 
@@ -12520,6 +12574,19 @@ fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exile_variants
             filter_text,
         }] if *choice_count == ChoiceCount::at_least(1)
             && filter_text == "cards from your graveyard"
+    ));
+
+    let single_graveyard_tokens = lex_line("Exile a card from a single graveyard", 0)
+        .expect("lexer should classify exile-from-single-graveyard activation cost");
+    let single_graveyard_cst = parse_activation_cost_tokens_rewrite(&single_graveyard_tokens)
+        .expect("token activation-cost parser should parse single-graveyard exile costs");
+    assert!(matches!(
+        single_graveyard_cst.segments.as_slice(),
+        [super::ActivationCostSegmentCst::ExileChosen {
+            choice_count,
+            filter_text,
+        }] if *choice_count == ChoiceCount::exactly(1)
+            && filter_text == "card from a graveyard"
     ));
 
     let exile_spell_tokens = lex_line("Exile an instant or sorcery spell you control", 0)

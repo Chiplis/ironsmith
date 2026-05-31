@@ -1,67 +1,22 @@
 use super::*;
 
 pub(super) fn infer_static_ability_functional_zones(normalized_line: &str) -> Option<Vec<Zone>> {
-    let normalized = normalized_line.to_ascii_lowercase();
-    if (str_contains(normalized.as_str(), "while youre searching your library")
-        || str_contains(normalized.as_str(), "while you're searching your library"))
-        && str_contains(normalized.as_str(), "from your library")
+    if text_contains_any_word_phrase(normalized_line, STATIC_LIBRARY_SEARCH_ZONE_PHRASES)
+        && text_contains_word_phrase(normalized_line, FROM_YOUR_LIBRARY_PHRASE)
     {
         return Some(vec![Zone::Library]);
     }
-    if str_contains(normalized.as_str(), "cast this card from your graveyard")
-        || str_contains(normalized.as_str(), "play this card from your graveyard")
-    {
+    if text_contains_any_word_phrase(normalized_line, CAST_OR_PLAY_SELF_FROM_GRAVEYARD_PHRASES) {
         return Some(vec![Zone::Graveyard]);
     }
-    if str_contains(normalized.as_str(), "cast this card from exile")
-        || str_contains(normalized.as_str(), "play this card from exile")
-    {
+    if text_contains_any_word_phrase(normalized_line, CAST_OR_PLAY_SELF_FROM_EXILE_PHRASES) {
         return Some(vec![Zone::Exile]);
     }
 
     let mut zones = Vec::new();
-    for (needles, zone) in [
-        (
-            &[
-                "this card is in your hand",
-                "there is this card in your hand",
-            ][..],
-            Zone::Hand,
-        ),
-        (
-            &[
-                "this card is in your graveyard",
-                "this creature is in your graveyard",
-                "this permanent is in your graveyard",
-                "this object is in your graveyard",
-                "there is this card in your graveyard",
-            ][..],
-            Zone::Graveyard,
-        ),
-        (
-            &[
-                "this card is in your library",
-                "there is this card in your library",
-            ][..],
-            Zone::Library,
-        ),
-        (
-            &["this card is in exile", "there is this card in exile"][..],
-            Zone::Exile,
-        ),
-        (
-            &[
-                "this card is in the command zone",
-                "there is this card in the command zone",
-            ][..],
-            Zone::Command,
-        ),
-    ] {
-        if needles
-            .iter()
-            .any(|needle| str_contains(normalized_line, needle))
-        {
-            zones.push(zone);
+    for (phrase, zone) in STATIC_ZONE_HINT_PHRASES {
+        if text_contains_word_phrase(normalized_line, phrase) {
+            zones.push(zone.clone());
         }
     }
     if zones.is_empty() { None } else { Some(zones) }
@@ -83,34 +38,17 @@ pub(super) fn infer_triggered_ability_functional_zones(
         _ => vec![Zone::Battlefield],
     };
 
-    let normalized = normalized_line.to_ascii_lowercase();
-    for (needle, zone) in [
-        ("if this is in your hand", Zone::Hand),
-        ("if this card is in your hand", Zone::Hand),
-        ("if this is in your graveyard", Zone::Graveyard),
-        ("if this card is in your graveyard", Zone::Graveyard),
-        ("if this creature is in your graveyard", Zone::Graveyard),
-        ("if this permanent is in your graveyard", Zone::Graveyard),
-        ("if this object is in your graveyard", Zone::Graveyard),
-        ("if this is in your library", Zone::Library),
-        ("if this card is in your library", Zone::Library),
-        ("if this is in exile", Zone::Exile),
-        ("if this card is in exile", Zone::Exile),
-        ("if this card is exiled", Zone::Exile),
-        ("if this is in the command zone", Zone::Command),
-        ("if this card is in the command zone", Zone::Command),
-    ] {
-        if str_contains(normalized.as_str(), needle) {
-            zones = vec![zone];
+    for (phrase, zone) in TRIGGER_ZONE_HINT_PHRASES {
+        if text_contains_word_phrase(normalized_line, phrase) {
+            zones = vec![zone.clone()];
             break;
         }
     }
-    if (str_contains(normalized.as_str(), "return this from your graveyard")
-        || str_contains(normalized.as_str(), "return this card from your graveyard"))
+    if text_contains_any_word_phrase(normalized_line, RETURN_SELF_FROM_GRAVEYARD_PHRASES)
         && !trigger_references_attached_object(trigger)
     {
         zones = vec![Zone::Graveyard];
-    } else if str_contains(normalized.as_str(), "discard this card") {
+    } else if text_contains_word_phrase(normalized_line, DISCARD_THIS_CARD_PHRASE) {
         zones = vec![Zone::Hand];
     }
     zones

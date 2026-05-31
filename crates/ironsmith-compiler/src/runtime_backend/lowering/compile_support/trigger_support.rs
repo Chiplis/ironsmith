@@ -11,13 +11,12 @@ use super::LoweredEffects;
 
 pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
     match trigger {
-        TriggerSpec::WithIntro { intro, trigger } => {
-            compile_trigger_spec(*trigger).with_intro_surface(match intro {
+        TriggerSpec::WithIntro { intro, trigger } => compile_trigger_spec(*trigger)
+            .with_intro_surface(match intro {
                 TriggerIntroSurfaceAst::When => crate::triggers::TriggerIntroSurface::When,
                 TriggerIntroSurfaceAst::Whenever => crate::triggers::TriggerIntroSurface::Whenever,
                 TriggerIntroSurfaceAst::At => crate::triggers::TriggerIntroSurface::At,
-            })
-        }
+            }),
         TriggerSpec::StateBased { display, .. } => Trigger::state_based(display),
         TriggerSpec::ThisAttacks => Trigger::this_attacks(),
         TriggerSpec::ThisAttacksWithNOthers {

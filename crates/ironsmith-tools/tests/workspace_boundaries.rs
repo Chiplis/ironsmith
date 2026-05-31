@@ -630,24 +630,52 @@ fn condition_antecedent_binding_has_single_lowering_owner() {
     );
 }
 
-fn non_test_contains_literals(content: &str) -> Vec<String> {
+fn production_source(content: &str) -> &str {
+    content.split("\n#[cfg(test)]").next().unwrap_or(content)
+}
+
+fn non_test_raw_text_check_literals(content: &str) -> Vec<String> {
     let mut literals = Vec::new();
-    for line in content.lines() {
+    for line in production_source(content).lines() {
         if line.contains("debug.contains(") {
             continue;
         }
 
-        let mut rest = line;
-        while let Some(start) = rest.find(".contains(\"") {
-            rest = &rest[start + ".contains(\"".len()..];
-            let Some(end) = rest.find('"') else {
-                break;
-            };
-            literals.push(rest[..end].to_string());
-            rest = &rest[end + 1..];
+        for pattern in [
+            ".contains(\"",
+            ".starts_with(\"",
+            ".ends_with(\"",
+            "str_contains(",
+            "str_starts_with(",
+            "str_ends_with(",
+        ] {
+            let mut rest = line;
+            while let Some(start) = rest.find(pattern) {
+                rest = &rest[start + pattern.len()..];
+                let Some(literal_start) = rest.find('"') else {
+                    break;
+                };
+                rest = &rest[literal_start + 1..];
+                let Some(literal_end) = rest.find('"') else {
+                    break;
+                };
+                literals.push(rest[..literal_end].to_string());
+                rest = &rest[literal_end + 1..];
+            }
         }
     }
     literals
+}
+
+fn function_source<'a>(content: &'a str, start_marker: &str, end_marker: &str) -> &'a str {
+    let start = content
+        .find(start_marker)
+        .unwrap_or_else(|| panic!("missing function start marker: {start_marker}"));
+    let tail = &content[start..];
+    let end = tail.find(end_marker).unwrap_or_else(|| {
+        panic!("missing function end marker after {start_marker}: {end_marker}")
+    });
+    &tail[..end]
 }
 
 #[test]
@@ -663,49 +691,699 @@ fn raw_text_checks_in_lower_module_are_legacy_allowlisted() {
             let relative = repo_relative(&root, &path);
             let content = fs::read_to_string(&path)
                 .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
-            non_test_contains_literals(&content)
+            non_test_raw_text_check_literals(&content)
                 .into_iter()
                 .map(move |literal| format!("{relative} -> {literal}"))
         })
         .collect::<BTreeSet<_>>();
 
-    let expected = [
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> becomes tapped during your turn",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> clash with an opponent",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> creature died this turn",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> do this only once each turn",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> do this only twice each turn",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> if this spell was bargained",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> if you win",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> on top of its owner's library instead",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> one of those cards with mana value 4 or less",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> onto the battlefield instead of putting it into your hand",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> put one of those cards into your hand",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> put that card onto the battlefield instead of putting it into your hand",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> put two of those cards into your hand instead",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> search your library and/or graveyard for up to five doctor cards",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/normalization_support.rs ->  - when ",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/normalization_support.rs ->  - whenever ",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/normalization_support.rs ->  — when ",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/normalization_support.rs ->  — whenever ",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/normalization_support.rs -> : when ",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/normalization_support.rs -> : whenever ",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/normalization_support.rs -> becomes tapped during your turn",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/normalization_support.rs -> do this only once each turn",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/normalization_support.rs -> do this only twice each turn",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/parser_semantic_lowering.rs ->  rather than pay the equip cost of the first equip ability you activate",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/parser_semantic_lowering.rs -> as this creature enters",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/parser_semantic_lowering.rs -> as this object enters",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/parser_semantic_lowering.rs -> as this permanent enters",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/parser_semantic_lowering.rs -> becomes day",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/parser_semantic_lowering.rs -> neither day nor night",
-    ]
-    .into_iter()
-    .map(String::from)
-    .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
 
     assert_eq!(
         actual, expected,
         "new raw text checks in lowering/lower need a typed parser handoff or an explicit legacy allowlist update"
+    );
+}
+
+#[test]
+fn raw_text_checks_in_document_line_family_handlers_are_legacy_allowlisted() {
+    let root = workspace_root();
+    let relative =
+        "crates/ironsmith-compiler/src/runtime_backend/front_end/document/line_family_handlers.rs";
+    let content = read_repo_file(&root, relative);
+    let actual = non_test_raw_text_check_literals(&content)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "new raw text checks in document line-family routing need token/shape helpers or an explicit legacy allowlist update"
+    );
+}
+
+#[test]
+fn station_threshold_routing_uses_tokens_not_raw_text() {
+    let root = workspace_root();
+    let relative =
+        "crates/ironsmith-compiler/src/runtime_backend/front_end/document/line_family_handlers.rs";
+    let content = read_repo_file(&root, relative);
+    let parser = function_source(
+        &content,
+        "fn parse_station_keyword_creature_threshold",
+        "fn station_threshold_condition_label",
+    );
+    let classifier = function_source(
+        &content,
+        "fn station_threshold_is_creature_pt_threshold",
+        "pub(super) fn run_partner_with_keyword_line_family",
+    );
+    let actual = non_test_raw_text_check_literals(&format!("{parser}\n{classifier}"))
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "station threshold routing should use token word positions, not raw rendered text searches"
+    );
+}
+
+#[test]
+fn raw_text_checks_in_document_cst_parsing_are_legacy_allowlisted() {
+    let root = workspace_root();
+    let checks = [
+        (
+            "crates/ironsmith-compiler/src/runtime_backend/front_end/document/line_cst_parsing.rs",
+            ["crates/ironsmith-compiler/src/runtime_backend/front_end/document/line_cst_parsing.rs -> unsupported trigger clause"]
+                .into_iter()
+                .map(String::from)
+                .collect::<BTreeSet<_>>(),
+        ),
+        (
+            "crates/ironsmith-compiler/src/runtime_backend/front_end/document/statement_cst_support.rs",
+            BTreeSet::<String>::new(),
+        ),
+    ];
+
+    for (relative, expected) in checks {
+        let content = read_repo_file(&root, relative);
+        let actual = non_test_raw_text_check_literals(&content)
+            .into_iter()
+            .map(|literal| format!("{relative} -> {literal}"))
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(
+            actual, expected,
+            "new raw text checks in document CST parsing need token/shape helpers or an explicit legacy allowlist update"
+        );
+    }
+}
+
+#[test]
+fn document_prefix_punctuation_checks_use_char_helpers() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/document/mod.rs";
+    let content = read_repo_file(&root, relative);
+    let activation_prefix = function_source(
+        &content,
+        "fn looks_like_activation_cost_prefix",
+        "#[cfg(test)]\nfn looks_like_static_line",
+    );
+    let label_prefix = function_source(
+        &content,
+        "fn split_label_prefix",
+        "fn split_label_prefix_lexed",
+    );
+    let actual = non_test_raw_text_check_literals(&format!("{activation_prefix}\n{label_prefix}"))
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "document prefix punctuation checks should use char/token helpers, not raw string checks"
+    );
+}
+
+#[test]
+fn strict_unsupported_preflight_uses_tokens_not_raw_text() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/document/mod.rs";
+    let content = read_repo_file(&root, relative);
+    let preflight = function_source(
+        &content,
+        "fn preflight_known_strict_unsupported",
+        "fn preflight_invalid_payment_keyword_lines",
+    );
+    let actual = non_test_raw_text_check_literals(preflight)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "strict unsupported preflight should recognize oracle phrases through tokens, not raw substring checks"
+    );
+}
+
+#[test]
+fn named_source_alias_guards_use_tokens_not_raw_text() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/document/mod.rs";
+    let content = read_repo_file(&root, relative);
+    let marker = function_source(
+        &content,
+        "fn mentions_named_reference",
+        "fn replace_named_source_aliases",
+    );
+    let alias_rewriter = function_source(
+        &content,
+        "fn replace_named_source_aliases_with_options",
+        "fn source_alias_occurrence_should_preserve_surface",
+    );
+    let actual = non_test_raw_text_check_literals(&format!("{marker}\n{alias_rewriter}"))
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "named-source alias rewrite guards should use token words, not raw named/token suffix checks"
+    );
+}
+
+#[test]
+fn instead_followup_classifier_uses_tokens_not_raw_oracle_text() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/shared/util.rs";
+    let content = read_repo_file(&root, relative);
+    let classifier = function_source(
+        &content,
+        "pub(crate) fn classify_instead_followup_text",
+        "pub(crate) fn find_first_sacrifice_cost_choice_tag",
+    );
+    let actual = non_test_raw_text_check_literals(classifier)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "instead followup semantics should be classified from tokens, not raw oracle-text searches"
+    );
+}
+
+#[test]
+fn shared_util_cost_tag_lookup_uses_named_tag_helpers() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/shared/util.rs";
+    let content = read_repo_file(&root, relative);
+    let helper = function_source(
+        &content,
+        "pub(crate) fn find_first_sacrifice_cost_choice_tag",
+        "pub(crate) fn value_contains_unbound_x",
+    );
+    let actual = non_test_raw_text_check_literals(helper)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "cost tag lookup helpers should route through named tag classifiers, not raw tag prefix literals"
+    );
+}
+
+#[test]
+fn shared_util_pt_and_owner_target_helpers_avoid_raw_prefix_checks() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/shared/util.rs";
+    let content = read_repo_file(&root, relative);
+    let pt_parser = function_source(
+        &content,
+        "pub(crate) fn parse_unsigned_pt_word",
+        "pub(crate) fn intern_counter_name",
+    );
+    let owner_helper = function_source(
+        &content,
+        "fn tagged_it_owner_or_controller_player_filter",
+        "fn parse_target_phrase_inner",
+    );
+    let actual = non_test_raw_text_check_literals(&format!("{pt_parser}\n{owner_helper}"))
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "shared parser utility sign and owner/controller decisions should use chars or word equality, not raw prefix checks"
+    );
+}
+
+#[test]
+fn compile_support_token_pt_parser_uses_char_checks() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/lowering/compile_support.rs";
+    let content = read_repo_file(&root, relative);
+    let helper = function_source(
+        &content,
+        "pub(crate) fn parse_token_pt",
+        "pub(crate) fn target_mentions_graveyard",
+    );
+    let actual = non_test_raw_text_check_literals(helper)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "token P/T parsing should use char checks for signs, not raw prefix strings"
+    );
+}
+
+#[test]
+fn activated_sentence_alignment_uses_token_prefixes() {
+    let root = workspace_root();
+    let relative =
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/activated_lowering.rs";
+    let content = read_repo_file(&root, relative);
+    let helper = function_source(
+        &content,
+        "pub(super) fn align_rewrite_activated_parse_sentences",
+        "fn split_rewrite_activated_effect_text",
+    );
+    let actual = non_test_raw_text_check_literals(helper)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "activated sentence alignment should compare token word prefixes, not rendered raw text prefixes"
+    );
+}
+
+#[test]
+fn activation_restriction_support_uses_tokens_for_text_conditions() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/families/restriction_support.rs";
+    let content = read_repo_file(&root, relative);
+    let actual = non_test_raw_text_check_literals(&content)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "activation restriction text conditions should be classified from tokens, not raw oracle-text searches"
+    );
+}
+
+#[test]
+fn jump_start_parser_uses_tokens_not_raw_oracle_text() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/shared/util.rs";
+    let content = read_repo_file(&root, relative);
+    let parser = function_source(
+        &content,
+        "pub(crate) fn parse_jump_start_line",
+        "pub(crate) fn parse_jump_start_line_lexed",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "jump-start recognition should use token phrase helpers, not rendered oracle-text searches"
+    );
+}
+
+#[test]
+fn filter_keyword_constraint_cycling_variants_use_named_word_helper() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/shared/util.rs";
+    let content = read_repo_file(&root, relative);
+    let parser = function_source(
+        &content,
+        "pub(crate) fn parse_filter_keyword_constraint_words",
+        "pub(crate) fn parse_filter_counter_constraint_words",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "filter keyword constraint parsing should classify cycling variants through word helpers, not raw suffix checks"
+    );
+}
+
+#[test]
+fn leaf_exile_filter_normalization_uses_tokens_not_raw_text() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/leaf.rs";
+    let content = read_repo_file(&root, relative);
+    let renderer = function_source(
+        &content,
+        "fn render_exile_filter_text",
+        "fn parse_discard_segment_tokens",
+    );
+    let actual = non_test_raw_text_check_literals(renderer)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "leaf exile filter normalization should use token suffix helpers, not raw rendered-text suffix checks"
+    );
+}
+
+#[test]
+fn leaf_sacrifice_filter_article_normalization_uses_tokens_not_raw_text() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/leaf.rs";
+    let content = read_repo_file(&root, relative);
+    let helper = function_source(
+        &content,
+        "fn strip_single_choice_article_from_filter_text",
+        "fn filter_text_mentions_spell",
+    );
+    let lower = function_source(
+        &content,
+        "ActivationCostSegmentCst::SacrificeChosen",
+        "ActivationCostSegmentCst::ExileChosen",
+    );
+    let actual = non_test_raw_text_check_literals(&format!("{helper}\n{lower}"))
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "single-choice sacrifice filter normalization should strip articles through tokens, not raw text prefixes"
+    );
+}
+
+#[test]
+fn preprocess_line_prefix_matching_uses_tokens_not_raw_text() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/preprocess.rs";
+    let content = read_repo_file(&root, relative);
+    let helper = function_source(
+        &content,
+        "fn line_starts_with_words",
+        "fn split_parse_line_variants",
+    );
+    let actual = non_test_raw_text_check_literals(helper)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "preprocess parser-shaping prefix checks should use token word helpers, not raw text starts_with checks"
+    );
+}
+
+#[test]
+fn self_reference_name_word_shape_uses_word_counts_not_raw_spaces() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/preprocess.rs";
+    let content = read_repo_file(&root, relative);
+    let helper = function_source(
+        &content,
+        "fn is_single_word_keyword_verb",
+        "fn preceded_by_named_keyword",
+    );
+    let actual = non_test_raw_text_check_literals(helper)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "self-reference name/keyword word-shape checks should use word counts, not raw space searches"
+    );
+}
+
+#[test]
+fn enchantment_parenthetical_preprocess_uses_tokens_not_raw_text() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/preprocess.rs";
+    let content = read_repo_file(&root, relative);
+    let helper = function_source(
+        &content,
+        "fn strip_parenthetical_segments",
+        "fn line_starts_with_words",
+    );
+    let actual = non_test_raw_text_check_literals(helper)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "enchantment parenthetical preprocessing should classify from token words, not raw oracle-text searches"
+    );
+}
+
+#[test]
+fn borrow_static_same_is_true_preprocess_uses_tokens_not_raw_text() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/preprocess.rs";
+    let content = read_repo_file(&root, relative);
+    let helper = function_source(
+        &content,
+        "fn rewrite_borrow_static_condition",
+        "fn rewrite_exile_return_when_source_leaves_line",
+    );
+    let actual = non_test_raw_text_check_literals(helper)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "borrowed-keyword static/same-is-true preprocessing should use token phrase helpers, not raw oracle-text searches"
+    );
+}
+
+#[test]
+fn self_reference_vote_choice_detection_uses_tokens_not_raw_text() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/preprocess.rs";
+    let content = read_repo_file(&root, relative);
+    let helper = function_source(
+        &content,
+        "fn within_vote_choice_clause",
+        "fn is_short_name_self_reference_context",
+    );
+    let actual = non_test_raw_text_check_literals(helper)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "self-reference preservation inside vote options should use token phrases, not raw text searches"
+    );
+}
+
+#[test]
+fn vote_count_followup_preprocess_uses_tokens_not_raw_text() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/preprocess.rs";
+    let content = read_repo_file(&root, relative);
+    let helper = function_source(
+        &content,
+        "fn rewrite_vote_count_followups_line",
+        "fn rewrite_exile_return_when_source_leaves_line",
+    );
+    let actual = non_test_raw_text_check_literals(helper)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "vote-count followup preprocessing should use token words and spans, not raw oracle-text searches"
+    );
+}
+
+#[test]
+fn exile_return_source_leaves_preprocess_uses_tokens_not_raw_text() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/preprocess.rs";
+    let content = read_repo_file(&root, relative);
+    let helper = function_source(
+        &content,
+        "fn rewrite_exile_return_when_source_leaves_line",
+        "fn rewrite_lowest_life_tie_choice_line",
+    );
+    let actual = non_test_raw_text_check_literals(helper)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "exile/return source-leaves preprocessing should use token phrases, not raw oracle-text searches"
+    );
+}
+
+#[test]
+fn delayed_trigger_postpass_uses_typed_triggers_and_tokens() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/postpasses/mod.rs";
+    let content = read_repo_file(&root, relative);
+    let classifier = function_source(
+        &content,
+        "fn spell_battlefield_trigger_text_implies_delayed_schedule",
+        "fn convert_nonpermanent_delayed_triggered_ability_to_spell_effect",
+    );
+    let spec_builder = function_source(
+        &content,
+        "fn delayed_trigger_spec_from_trigger",
+        "fn finalize_nonpermanent_delayed_triggered_abilities",
+    );
+    let actual = non_test_raw_text_check_literals(&format!("{classifier}\n{spec_builder}"))
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "delayed trigger postpass should use typed triggers and token phrase helpers, not rendered text searches"
+    );
+}
+
+#[test]
+fn future_zone_replacement_recognizer_uses_tokens_not_raw_text() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_entry.rs";
+    let content = read_repo_file(&root, relative);
+    let recognizer = function_source(
+        &content,
+        "fn future_zone_replacement_from_sentence_text",
+        "fn maybe_rewrite_future_zone_replacement_sentence",
+    );
+    let actual = non_test_raw_text_check_literals(recognizer)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "future zone replacement recognition should use token phrase helpers, not raw oracle-text searches"
+    );
+}
+
+#[test]
+fn compile_support_tag_prefix_checks_use_named_helpers() {
+    let root = workspace_root();
+    let checked_files = [
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/compile_support/effect_dispatch.rs",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/compile_support/effect_visibility_object_handlers.rs",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/compile_support/tag_support.rs",
+    ];
+    let forbidden_fragments = [
+        ".starts_with(\"revealed",
+        ".starts_with(\"searched",
+        ".starts_with(\"exile_cost_",
+        ".starts_with(\"exiled_",
+        ".starts_with(\"__sentence_helper_exiled",
+        "str_starts_with(tag, \"exiled_",
+        "str_starts_with(tag, \"__sentence_helper_exiled",
+        "str_starts_with(last_tag, \"exile_cost_",
+    ];
+
+    for relative in checked_files {
+        let content = read_repo_file(&root, relative);
+        for forbidden in forbidden_fragments {
+            assert!(
+                !content.contains(forbidden),
+                "{relative} should use named tag-family helpers instead of raw prefix check `{forbidden}`"
+            );
+        }
+    }
+}
+
+#[test]
+fn combat_death_blocked_damage_special_case_uses_tokens() {
+    let root = workspace_root();
+    let relative =
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/parser_semantic_lowering.rs";
+    let content = read_repo_file(&root, relative);
+    let special_case = function_source(
+        &content,
+        "fn combat_death_blocked_damage_amount_lexed",
+        "if text_matches_blocks_or_blocked_first_strike",
+    );
+    let forbidden_fragments = [
+        "when this creature dies during combat, it deals ",
+        " damage to each creature it blocked this combat",
+    ];
+
+    for forbidden in forbidden_fragments {
+        assert!(
+            !special_case.contains(forbidden),
+            "{relative} should recognize the combat-death blocked-damage special case through token words, not raw text fragment `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn exert_attack_keyword_lowering_uses_parse_tokens_not_raw_text_splits() {
+    let root = workspace_root();
+    let relative =
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/parser_semantic_lowering.rs";
+    let content = read_repo_file(&root, relative);
+    let helper = function_source(
+        &content,
+        "struct ExertAttackHead",
+        "pub(crate) fn lower_gift_keyword_line",
+    );
+    let actual = non_test_raw_text_check_literals(helper)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "exert attack keyword lowering should use parse-token word slices, not raw oracle-text prefix/split checks"
     );
 }

@@ -5,6 +5,7 @@ use crate::runtime_backend::condition_antecedent::{
     predicate_contains_source_match, predicate_object_filter_antecedent,
     retarget_it_animations_to_source,
 };
+use crate::runtime_backend::front_end::lexer::{TokenKind, lex_line};
 
 fn merge_optional_predicates(
     left: Option<PredicateAst>,
@@ -26,25 +27,46 @@ fn is_stack_object_targeting_filter(filter: &ObjectFilter) -> bool {
 }
 
 fn trigger_intro_surface_from_text(text: &str) -> Option<TriggerIntroSurfaceAst> {
-    let trimmed = text.trim_start();
-    let lower = trimmed.to_ascii_lowercase();
-    if lower.starts_with("when ") {
+    let tokens = lex_line(text, 0).ok()?;
+    trigger_intro_surface_from_tokens(&tokens)
+}
+
+fn trigger_intro_surface_word(token: &OwnedLexToken) -> Option<TriggerIntroSurfaceAst> {
+    if token.is_word("when") {
         Some(TriggerIntroSurfaceAst::When)
-    } else if lower.starts_with("whenever ") {
+    } else if token.is_word("whenever") {
         Some(TriggerIntroSurfaceAst::Whenever)
-    } else if lower.starts_with("at ") {
+    } else if token.is_word("at") {
         Some(TriggerIntroSurfaceAst::At)
-    } else if lower.contains(" — when ") || lower.contains(" - when ") {
-        Some(TriggerIntroSurfaceAst::When)
-    } else if lower.contains(" — whenever ") || lower.contains(" - whenever ") {
-        Some(TriggerIntroSurfaceAst::Whenever)
-    } else if lower.contains(": when ") {
-        Some(TriggerIntroSurfaceAst::When)
-    } else if lower.contains(": whenever ") {
-        Some(TriggerIntroSurfaceAst::Whenever)
     } else {
         None
     }
+}
+
+fn trigger_intro_surface_from_tokens(tokens: &[OwnedLexToken]) -> Option<TriggerIntroSurfaceAst> {
+    if let Some(first) = tokens.first()
+        && let Some(intro) = trigger_intro_surface_word(first)
+    {
+        return Some(intro);
+    }
+
+    tokens.windows(2).find_map(|window| {
+        let [separator, intro] = window else {
+            return None;
+        };
+        if !matches!(
+            separator.kind,
+            TokenKind::Colon | TokenKind::Dash | TokenKind::EmDash
+        ) {
+            return None;
+        }
+        trigger_intro_surface_word(intro).filter(|intro| {
+            matches!(
+                intro,
+                TriggerIntroSurfaceAst::When | TriggerIntroSurfaceAst::Whenever
+            )
+        })
+    })
 }
 
 fn apply_trigger_intro_surface(trigger: TriggerSpec, full_text: &str) -> TriggerSpec {
@@ -475,9 +497,7 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
     chosen_option_label: Option<&str>,
     presentation_label: Option<&str>,
 ) -> Result<LineAst, CardTextError> {
-    let during_your_turn_condition = full_text
-        .to_ascii_lowercase()
-        .contains("becomes tapped during your turn")
+    let during_your_turn_condition = text_mentions_becomes_tapped_during_your_turn(full_text)
         .then_some(crate::ConditionExpr::YourTurn);
     let max_condition =
         crate::runtime_backend::trigger_frequency_condition(Some(full_text), max_triggers_per_turn);
@@ -586,21 +606,15 @@ fn rewrite_do_this_trigger_frequency_surface(
     full_text: &str,
     triggered: &mut crate::ability::TriggeredAbility,
 ) {
-    let normalized = full_text.trim().to_ascii_lowercase();
-    if !normalized.contains("do this only once each turn")
-        && !normalized.contains("do this only twice each turn")
-    {
+    let Some(surface_count) = do_this_frequency_surface_from_text(full_text) else {
         return;
-    }
+    };
     let Some(condition) = triggered.intervening_if.take() else {
         return;
     };
     triggered.intervening_if = Some(match condition {
-        crate::ConditionExpr::MaxTimesEachTurn(1) => {
-            crate::ConditionExpr::DoThisMaxTimesEachTurn(1)
-        }
-        crate::ConditionExpr::MaxTimesEachTurn(2) => {
-            crate::ConditionExpr::DoThisMaxTimesEachTurn(2)
+        crate::ConditionExpr::MaxTimesEachTurn(count) if count == surface_count => {
+            crate::ConditionExpr::DoThisMaxTimesEachTurn(count)
         }
         other => other,
     });

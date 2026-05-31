@@ -21,7 +21,8 @@ use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::keyword_static::parse_value_binding_clause;
 use super::super::keyword_static_helpers::parse_granted_activated_or_triggered_ability_for_gain;
 use super::super::lexer::{
-    LexStream, LexedClause, OwnedLexToken, TokenKind, split_lexed_sentences, token_slice_at_is,
+    LexStream, LexedClause, OwnedLexToken, TokenKind, contains_token_word_sequence, lex_line,
+    split_lexed_sentences, token_slice_at_is,
 };
 use super::super::object_filters::{
     is_comparison_or_delimiter, parse_object_filter, parse_object_filter_lexed,
@@ -33,8 +34,8 @@ use super::super::permission_helpers::{
 use super::super::token_primitives::{
     LeadingMayActor, TurnDurationPhrase, find_index, find_window_by,
     parse_leading_may_action_lexed, parse_turn_duration_prefix, parse_value_comparison_tokens,
-    slice_contains, slice_ends_with, slice_starts_with, str_contains, str_ends_with,
-    str_starts_with, strip_leading_if_you_do_lexed, word_view_has_any_prefix, word_view_has_prefix,
+    slice_contains, slice_ends_with, slice_starts_with, strip_leading_if_you_do_lexed,
+    word_view_has_any_prefix, word_view_has_prefix,
 };
 use super::super::util::{
     helper_tag_for_tokens, is_article, mana_pips_from_token, parse_counter_type_from_tokens,
@@ -96,6 +97,48 @@ const THAT_OBJECT_POWER_DAMAGE_PATTERN: ClauseShape<'static> = clause_shape!(
             ],
         ]]
 );
+const COUNTERED_THIS_WAY_PHRASE: &[&str] = &["countered", "this", "way"];
+const INSTEAD_OF_PHRASE: &[&str] = &["instead", "of"];
+const GRAVEYARD_PHRASE: &[&str] = &["graveyard"];
+const EXILE_PHRASE: &[&str] = &["exile"];
+const HAND_PHRASE: &[&str] = &["hand"];
+const LIBRARY_PHRASE: &[&str] = &["library"];
+const WOULD_DIE_THIS_TURN_PHRASE: &[&str] = &["would", "die", "this", "turn"];
+const DEALT_DAMAGE_THIS_WAY_PHRASE: &[&str] = &["dealt", "damage", "this", "way"];
+const DEALT_DAMAGE_BY_PHRASE: &[&str] = &["dealt", "damage", "by"];
+const PERMANENT_DEALT_DAMAGE_PHRASE: &[&str] = &["permanent", "dealt", "damage"];
+const WOULD_BE_PUT_INTO_PHRASE: &[&str] = &["would", "be", "put", "into"];
+const THIS_TURN_PHRASE: &[&str] = &["this", "turn"];
+const YOUR_GRAVEYARD_PHRASE: &[&str] = &["your", "graveyard"];
+const EXILE_THAT_CARD_INSTEAD_PHRASE: &[&str] = &["exile", "that", "card", "instead"];
+const THE_NEXT_TIME_PHRASE: &[&str] = &["the", "next", "time"];
+const SOURCE_OF_YOUR_CHOICE_PHRASE: &[&str] = &["source", "of", "your", "choice"];
+const WOULD_DEAL_DAMAGE_TO_YOU_THIS_TURN_PHRASE: &[&str] =
+    &["would", "deal", "damage", "to", "you", "this", "turn"];
+const PREVENT_THAT_DAMAGE_PHRASE: &[&str] = &["prevent", "that", "damage"];
+const DAMAGE_IS_PREVENTED_THIS_WAY_PHRASE: &[&str] = &["damage", "is", "prevented", "this", "way"];
+const DEALS_THAT_MUCH_DAMAGE_TO_THAT_SOURCE_PHRASE: &[&str] =
+    &["deals", "that", "much", "damage", "to", "that", "source"];
+const CONTROLLER_PHRASE: &[&str] = &["controller"];
+const CAST_INSTANT_OR_SORCERY_FROM_HAND_PHRASES: &[&[&str]] = &[
+    &["cast", "an", "instant", "or", "sorcery", "spell"],
+    &["from", "your", "hand"],
+];
+const PUT_THAT_CARD_INTO_YOUR_HAND_PHRASE: &[&str] =
+    &["put", "that", "card", "into", "your", "hand"];
+const INSTEAD_OF_INTO_YOUR_GRAVEYARD_PHRASE: &[&str] =
+    &["instead", "of", "into", "your", "graveyard"];
+const WOULD_ENTER_BATTLEFIELD_UNDER_OPPONENT_PHRASE: &[&str] = &[
+    "would",
+    "enter",
+    "the",
+    "battlefield",
+    "under",
+    "an",
+    "opponent",
+];
+const ENTERS_UNDER_YOUR_CONTROL_INSTEAD_PHRASE: &[&str] =
+    &["enters", "under", "your", "control", "instead"];
 const THIS_OBJECT_DAMAGE_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(
     contains_any_phrases & [&[&["to", "this", "creature"], &["to", "this", "permanent"],]]
 );
@@ -653,13 +696,41 @@ impl SentenceParsePlan {
     }
 }
 
+fn sentence_contains(tokens: &[OwnedLexToken], phrase: &[&str]) -> bool {
+    contains_token_word_sequence(tokens, phrase)
+}
+
+fn reflected_prevent_next_damage_from_tokens(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    if sentence_contains(tokens, THE_NEXT_TIME_PHRASE)
+        && sentence_contains(tokens, SOURCE_OF_YOUR_CHOICE_PHRASE)
+        && sentence_contains(tokens, WOULD_DEAL_DAMAGE_TO_YOU_THIS_TURN_PHRASE)
+        && sentence_contains(tokens, PREVENT_THAT_DAMAGE_PHRASE)
+        && sentence_contains(tokens, DAMAGE_IS_PREVENTED_THIS_WAY_PHRASE)
+        && sentence_contains(tokens, DEALS_THAT_MUCH_DAMAGE_TO_THAT_SOURCE_PHRASE)
+        && sentence_contains(tokens, CONTROLLER_PHRASE)
+    {
+        return Some(
+            EffectAst::subject_verb_prevent_next_time_damage_with_reflection(
+                PreventNextTimeDamageSourceAst::Choice,
+                PreventNextTimeDamageTargetAst::You,
+                true,
+            ),
+        );
+    }
+    None
+}
+
 fn future_zone_replacement_from_sentence_text(sentence_text: &str) -> Option<EffectAst> {
-    let normalized = sentence_text.to_ascii_lowercase();
+    let tokens = lex_line(sentence_text, 0).ok()?;
+    future_zone_replacement_from_sentence_tokens(&tokens)
+}
+
+fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     let target = || TargetAst::Tagged(TagKey::from(IT_TAG), None);
-    if str_contains(&normalized, "countered this way")
-        && str_contains(&normalized, "instead of")
-        && str_contains(&normalized, "graveyard")
-        && str_contains(&normalized, "exile")
+    if sentence_contains(tokens, COUNTERED_THIS_WAY_PHRASE)
+        && sentence_contains(tokens, INSTEAD_OF_PHRASE)
+        && sentence_contains(tokens, GRAVEYARD_PHRASE)
+        && sentence_contains(tokens, EXILE_PHRASE)
     {
         return Some(EffectAst::subject_verb_register_zone_replacement(
             target(),
@@ -670,10 +741,10 @@ fn future_zone_replacement_from_sentence_text(sentence_text: &str) -> Option<Eff
         ));
     }
 
-    if str_contains(&normalized, "countered this way")
-        && str_contains(&normalized, "instead of")
-        && str_contains(&normalized, "graveyard")
-        && str_contains(&normalized, "hand")
+    if sentence_contains(tokens, COUNTERED_THIS_WAY_PHRASE)
+        && sentence_contains(tokens, INSTEAD_OF_PHRASE)
+        && sentence_contains(tokens, GRAVEYARD_PHRASE)
+        && sentence_contains(tokens, HAND_PHRASE)
     {
         return Some(EffectAst::subject_verb_register_zone_replacement(
             target(),
@@ -684,10 +755,10 @@ fn future_zone_replacement_from_sentence_text(sentence_text: &str) -> Option<Eff
         ));
     }
 
-    if str_contains(&normalized, "countered this way")
-        && str_contains(&normalized, "instead of")
-        && str_contains(&normalized, "graveyard")
-        && str_contains(&normalized, "library")
+    if sentence_contains(tokens, COUNTERED_THIS_WAY_PHRASE)
+        && sentence_contains(tokens, INSTEAD_OF_PHRASE)
+        && sentence_contains(tokens, GRAVEYARD_PHRASE)
+        && sentence_contains(tokens, LIBRARY_PHRASE)
     {
         return Some(EffectAst::subject_verb_register_zone_replacement(
             target(),
@@ -698,11 +769,13 @@ fn future_zone_replacement_from_sentence_text(sentence_text: &str) -> Option<Eff
         ));
     }
 
-    if str_contains(&normalized, "would die this turn") && str_contains(&normalized, "exile") {
-        if str_contains(&normalized, "dealt damage this way")
-            || str_contains(&normalized, "dealt damage by")
+    if sentence_contains(tokens, WOULD_DIE_THIS_TURN_PHRASE)
+        && sentence_contains(tokens, EXILE_PHRASE)
+    {
+        if sentence_contains(tokens, DEALT_DAMAGE_THIS_WAY_PHRASE)
+            || sentence_contains(tokens, DEALT_DAMAGE_BY_PHRASE)
         {
-            let filter = if str_contains(&normalized, "permanent dealt damage") {
+            let filter = if sentence_contains(tokens, PERMANENT_DEALT_DAMAGE_PHRASE) {
                 ObjectFilter::permanent()
             } else {
                 ObjectFilter::creature()
@@ -727,13 +800,13 @@ fn future_zone_replacement_from_sentence_text(sentence_text: &str) -> Option<Eff
         ));
     }
 
-    if str_contains(&normalized, "would be put into")
-        && str_contains(&normalized, "graveyard")
-        && str_contains(&normalized, "this turn")
-        && str_contains(&normalized, "exile")
+    if sentence_contains(tokens, WOULD_BE_PUT_INTO_PHRASE)
+        && sentence_contains(tokens, GRAVEYARD_PHRASE)
+        && sentence_contains(tokens, THIS_TURN_PHRASE)
+        && sentence_contains(tokens, EXILE_PHRASE)
     {
-        if str_contains(&normalized, "your graveyard")
-            && str_contains(&normalized, "exile that card instead")
+        if sentence_contains(tokens, YOUR_GRAVEYARD_PHRASE)
+            && sentence_contains(tokens, EXILE_THAT_CARD_INSTEAD_PHRASE)
         {
             crate::parse_trace::event(
                 "effect-route: subject-verb verb=Exile subject=implicit recognizer=instead-replacement",
@@ -751,29 +824,17 @@ fn future_zone_replacement_from_sentence_text(sentence_text: &str) -> Option<Eff
         ));
     }
 
-    if str_contains(&normalized, "the next time")
-        && str_contains(&normalized, "source of your choice")
-        && str_contains(&normalized, "would deal damage to you this turn")
-        && str_contains(&normalized, "prevent that damage")
-        && str_contains(&normalized, "damage is prevented this way")
-        && str_contains(&normalized, "deals that much damage to that source")
-        && str_contains(&normalized, "controller")
-    {
-        return Some(
-            EffectAst::subject_verb_prevent_next_time_damage_with_reflection(
-                PreventNextTimeDamageSourceAst::Choice,
-                PreventNextTimeDamageTargetAst::You,
-                true,
-            ),
-        );
+    if let Some(effect) = reflected_prevent_next_damage_from_tokens(tokens) {
+        return Some(effect);
     }
 
-    if str_contains(&normalized, "the next time")
-        && str_contains(&normalized, "cast an instant or sorcery spell")
-        && str_contains(&normalized, "from your hand")
-        && str_contains(&normalized, "this turn")
-        && str_contains(&normalized, "put that card into your hand")
-        && str_contains(&normalized, "instead of into your graveyard")
+    if sentence_contains(tokens, THE_NEXT_TIME_PHRASE)
+        && CAST_INSTANT_OR_SORCERY_FROM_HAND_PHRASES
+            .iter()
+            .all(|phrase| sentence_contains(tokens, phrase))
+        && sentence_contains(tokens, THIS_TURN_PHRASE)
+        && sentence_contains(tokens, PUT_THAT_CARD_INTO_YOUR_HAND_PHRASE)
+        && sentence_contains(tokens, INSTEAD_OF_INTO_YOUR_GRAVEYARD_PHRASE)
     {
         return Some(EffectAst::subject_verb_register_future_zone_replacement(
             ObjectFilter::instant_or_sorcery().cast_by_you(),
@@ -784,9 +845,9 @@ fn future_zone_replacement_from_sentence_text(sentence_text: &str) -> Option<Eff
         ));
     }
 
-    if str_contains(&normalized, "would enter the battlefield under an opponent")
-        && str_contains(&normalized, "this turn")
-        && str_contains(&normalized, "enters under your control instead")
+    if sentence_contains(tokens, WOULD_ENTER_BATTLEFIELD_UNDER_OPPONENT_PHRASE)
+        && sentence_contains(tokens, THIS_TURN_PHRASE)
+        && sentence_contains(tokens, ENTERS_UNDER_YOUR_CONTROL_INSTEAD_PHRASE)
     {
         let mut filter = ObjectFilter::creature();
         filter.controller = Some(PlayerFilter::Opponent);
@@ -1131,11 +1192,7 @@ fn parse_effect_sentences_from_sentence_inputs(
             continue;
         }
 
-        let normalized_sentence_text =
-            crate::runtime_backend::token_word_refs(&sentence_tokens).join(" ");
-        if let Some(replacement) =
-            future_zone_replacement_from_sentence_text(normalized_sentence_text.as_str())
-        {
+        if let Some(replacement) = future_zone_replacement_from_sentence_tokens(&sentence_tokens) {
             effects.push(replacement);
             carried_context = None;
             sentence_idx += 1;
@@ -1408,29 +1465,6 @@ fn parse_effect_sentences_lexed_inner(
     apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
     maybe_repair_that_player_gain_control_if_do_rewards(&mut effects, tokens);
     Ok(effects)
-}
-
-fn reflected_prevent_next_damage_from_tokens(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
-    let joined = crate::runtime_backend::token_word_refs(tokens)
-        .join(" ")
-        .to_ascii_lowercase();
-    if str_contains(&joined, "the next time")
-        && str_contains(&joined, "source of your choice")
-        && str_contains(&joined, "would deal damage to you this turn")
-        && str_contains(&joined, "prevent that damage")
-        && str_contains(&joined, "damage is prevented this way")
-        && str_contains(&joined, "deals that much damage to that source")
-        && str_contains(&joined, "controller")
-    {
-        return Some(
-            EffectAst::subject_verb_prevent_next_time_damage_with_reflection(
-                PreventNextTimeDamageSourceAst::Choice,
-                PreventNextTimeDamageTargetAst::You,
-                true,
-            ),
-        );
-    }
-    None
 }
 
 fn is_copy_reference_effect(effect: &EffectAst) -> bool {

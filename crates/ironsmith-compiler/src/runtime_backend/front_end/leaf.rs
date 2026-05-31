@@ -20,15 +20,12 @@ use super::grammar::values::{
 };
 use super::lexer::{
     OwnedLexToken, TokenKind, lex_line, render_token_slice, token_slice_at_is,
-    token_slice_first_is, word_slice_at_is_any, word_slice_contains_word, word_slice_ends_with,
-    word_slice_eq, word_slice_eq_any, word_slice_find_window_by, word_slice_first_is,
-    word_slice_first_is_any, word_slice_last_is_any, word_slice_starts_with,
+    token_slice_first_is, token_slice_starts_with, word_slice_at_is_any, word_slice_contains_word,
+    word_slice_ends_with, word_slice_eq, word_slice_eq_any, word_slice_find_window_by,
+    word_slice_first_is, word_slice_first_is_any, word_slice_last_is_any, word_slice_starts_with,
 };
 use super::object_filters::parse_object_filter_lexed;
-use super::token_primitives::{
-    find_index as find_token_index, str_ends_with, str_starts_with, str_strip_prefix,
-    str_strip_suffix,
-};
+use super::token_primitives::{find_index as find_token_index, str_starts_with, str_strip_suffix};
 use super::util::{
     is_source_reference_words, parse_card_type, parse_counter_type_from_tokens, parse_number,
 };
@@ -248,6 +245,8 @@ const LEAF_FROM_YOUR_HAND_SUFFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(suffix & ["from", "your", "hand"]);
 const LEAF_FROM_YOUR_GRAVEYARD_SUFFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(suffix & ["from", "your", "graveyard"]);
+const LEAF_FROM_SINGLE_GRAVEYARD_SUFFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(suffix & ["from", "a", "single", "graveyard"]);
 const LEAF_SOURCE_SELF_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -364,6 +363,20 @@ fn is_reserved_activation_symbol_token(token: &OwnedLexToken) -> bool {
 fn parse_filter_text(text: &str, other: bool) -> Result<ObjectFilter, CardTextError> {
     let tokens = lex_line(text, 0)?;
     parse_object_filter_lexed(&tokens, other)
+}
+
+fn strip_single_choice_article_from_filter_text(text: &str) -> String {
+    let trimmed = text.trim();
+    let Ok(tokens) = lex_line(trimmed, 0) else {
+        return trimmed.to_string();
+    };
+    let stripped =
+        if token_slice_starts_with(&tokens, &["a"]) || token_slice_starts_with(&tokens, &["an"]) {
+            &tokens[1..]
+        } else {
+            tokens.as_slice()
+        };
+    render_token_slice(stripped).trim().to_string()
 }
 
 fn filter_text_mentions_spell(text: &str) -> bool {
@@ -613,6 +626,21 @@ fn parse_generic_choice_prefix_tokens<'a>(
         &tokens[token_start..]
     };
     Some((choice_count, remainder))
+}
+
+fn render_exile_filter_text(filter_tokens: &[OwnedLexToken]) -> String {
+    let words = LeafCompatWords::new(filter_tokens);
+    let lowered = words.to_word_refs();
+    if LEAF_FROM_SINGLE_GRAVEYARD_SUFFIX_PATTERN.matches_words(&lowered) {
+        let graveyard_suffix_words = 4;
+        let filter_end = lowered.len().saturating_sub(graveyard_suffix_words);
+        if let Some(base_tokens) = token_slice_for_word_range(filter_tokens, &words, 0, filter_end)
+        {
+            let base_text = render_lower_lexed_tokens(base_tokens);
+            return format!("{base_text} from a graveyard");
+        }
+    }
+    render_lower_lexed_tokens(filter_tokens)
 }
 
 fn parse_discard_segment_tokens(
@@ -968,13 +996,9 @@ fn parse_exile_segment_tokens(
         .ok_or_else(|| {
             CardTextError::ParseError(format!("rewrite exile parser does not yet support '{raw}'"))
         })?;
-    let mut filter_text = render_lower_lexed_tokens(filter_tokens);
-    if str_ends_with(filter_text.as_str(), " from a single graveyard") {
-        filter_text = filter_text.replace(" from a single graveyard", " from a graveyard");
-    }
     Ok(ActivationCostSegmentCst::ExileChosen {
         choice_count,
-        filter_text,
+        filter_text: render_exile_filter_text(filter_tokens),
     })
 }
 
@@ -1949,13 +1973,11 @@ pub(crate) fn lower_activation_cost_cst(
             } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 let normalized_filter_text = if *count == 1 {
-                    str_strip_prefix(filter_text.trim(), "a ")
-                        .or_else(|| str_strip_prefix(filter_text.trim(), "an "))
-                        .unwrap_or(filter_text.trim())
+                    strip_single_choice_article_from_filter_text(filter_text)
                 } else {
-                    filter_text.trim()
+                    filter_text.trim().to_string()
                 };
-                let mut filter = parse_filter_text(normalized_filter_text, *other)?;
+                let mut filter = parse_filter_text(normalized_filter_text.as_str(), *other)?;
                 if filter.controller.is_none() {
                     filter.controller = Some(PlayerFilter::You);
                 }

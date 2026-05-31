@@ -372,10 +372,14 @@ pub(super) fn parse_colon_nonactivation_statement_fallback(
         }
     }
 
-    let left = render_token_slice(left_tokens);
-    let trimmed_left = left.trim();
+    let left_has_mana_group = left_tokens
+        .iter()
+        .any(|token| matches!(token.kind, TokenKind::ManaGroup));
+    let left_has_comma = left_tokens
+        .iter()
+        .any(|token| token.kind == TokenKind::Comma);
 
-    if !str_contains(trimmed_left, "{") && str_contains(trimmed_left, ",") {
+    if !left_has_mana_group && left_has_comma {
         let right_line = rewrite_line_tokens(line, right_tokens);
         if let Some(statement) = parse_statement_line_cst(&right_line)? {
             return Ok(Some(statement));

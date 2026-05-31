@@ -174,7 +174,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 let has_revealed_collection_tag = ctx
                     .last_object_tag
                     .as_deref()
-                    .is_some_and(|tag| tag.starts_with("revealed"));
+                    .is_some_and(is_revealed_collection_tag);
                 if !has_revealed_collection_tag {
                     resolved_filter.tagged_constraints.retain(|constraint| {
                         !matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
@@ -249,7 +249,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 || extends_existing_it_choice_set;
             ctx.last_it_choice_is_set = tag.as_str() == IT_TAG && choice_can_select_multiple;
             ctx.last_object_tag = Some(tag.as_str().to_string());
-            if str_starts_with(tag.as_str(), "__sentence_helper_exiled") {
+            if is_sentence_helper_exiled_collection_tag(tag.as_str()) {
                 ctx.last_exiled_collection_tag = Some(tag.as_str().to_string());
             }
             ctx.last_player_filter = Some(followup_player);
@@ -283,7 +283,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 let has_revealed_collection_tag = ctx
                     .last_object_tag
                     .as_deref()
-                    .is_some_and(|tag| tag.starts_with("revealed"));
+                    .is_some_and(is_revealed_collection_tag);
                 if !has_revealed_collection_tag {
                     resolved_filter.tagged_constraints.retain(|constraint| {
                         !matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)

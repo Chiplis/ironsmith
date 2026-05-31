@@ -36425,6 +36425,28 @@ fn parse_finale_of_devastation_x_threshold_spell() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_station_threshold_reminder_adds_creature_pt_support() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Station Probe")
+        .card_types(vec![CardType::Artifact])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "Station (Tap another creature you control: Put charge counters equal to its power on this artifact. Station only as a sorcery. It's an artifact creature at 4+.)\n4+ | Flying",
+        )
+        .expect("station artifact-creature threshold should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("flying")
+            && rendered.contains("creature in addition to its other types")
+            && rendered.contains("base power and toughness 2/2"),
+        "expected station threshold to include creature/PT support, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_eldritch_evolution_sacrifice_scaled_where_x_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Eldritch Evolution")
         .card_types(vec![CardType::Sorcery])
