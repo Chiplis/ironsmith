@@ -527,6 +527,25 @@ where
             }
         }
 
+        fn cast_this_way_spell_subject(filter: &ObjectFilter) -> String {
+            let cast_desc = castable_filter_description(filter);
+            if let Some(base) = cast_desc.strip_suffix(" spells") {
+                return format!("a {base} spell");
+            }
+            for pt_clause in [" spells with power ", " spells with toughness "] {
+                if let Some((base, _)) = cast_desc.split_once(pt_clause) {
+                    return format!("a {base} spell");
+                }
+            }
+            if let Some((base, tail)) = cast_desc.split_once(" spells ") {
+                return format!("a {base} spell {tail}");
+            }
+            if cast_desc.starts_with("a ") || cast_desc.starts_with("an ") {
+                return cast_desc;
+            }
+            "a spell".to_string()
+        }
+
         fn sacrifice_cost_filter_description(filter: &ObjectFilter) -> Option<String> {
             let mut normalized = filter.clone();
             normalized.controller = None;
@@ -644,16 +663,7 @@ where
                 .map(GrantStaticAbility::grant_display)
                 .collect::<Vec<_>>();
             if grants.len() == 1 && grants[0].eq_ignore_ascii_case("haste") {
-                let cast_desc = castable_filter_description(&self.filter);
-                let spell_text = if let Some(base) = cast_desc.strip_suffix(" spells") {
-                    format!("a {base} spell")
-                } else if let Some((base, tail)) = cast_desc.split_once(" spells ") {
-                    format!("a {base} spell {tail}")
-                } else if cast_desc.starts_with("a ") {
-                    cast_desc
-                } else {
-                    "a spell".to_string()
-                };
+                let spell_text = cast_this_way_spell_subject(&self.filter);
                 return format!(
                     ". If you cast {spell_text} this way, it gains haste until end of turn"
                 );
