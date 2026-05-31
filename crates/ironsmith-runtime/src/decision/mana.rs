@@ -569,6 +569,71 @@ fn spell_view_for_cost_filter_match(
     None
 }
 
+pub(crate) fn optional_life_cost_reduction_costs_for_cast(
+    game: &GameState,
+    caster: PlayerId,
+    spell_id: ObjectId,
+    casting_method: &CastingMethod,
+) -> Vec<(ObjectId, ironsmith_core::OptionalLifeAdditionalCost)> {
+    let Some(spell) = game.object(spell_id) else {
+        return Vec::new();
+    };
+    let mut spell_for_filter = spell_view_for_cost_filter_match(game, caster, spell, casting_method)
+        .unwrap_or_else(|| {
+            let mut spell_for_filter = spell.clone();
+            if let Some(chars) = game.current_characteristics(spell_id) {
+                spell_for_filter.name = chars.name;
+                spell_for_filter.card_types = chars.card_types;
+                spell_for_filter.subtypes = chars.subtypes;
+                spell_for_filter.supertypes = chars.supertypes;
+                spell_for_filter.color_override = Some(chars.colors);
+            }
+            spell_for_filter
+        });
+    spell_for_filter.zone = Zone::Stack;
+
+    let mut costs = Vec::new();
+    for &perm_id in &game.battlefield {
+        let Some(perm) = game.object(perm_id) else {
+            continue;
+        };
+        let controller = game.controller_of(perm);
+        let filter_ctx = game
+            .filter_context_for(controller, Some(perm_id))
+            .with_caster(Some(caster));
+        let abilities = game
+            .current_characteristics(perm_id)
+            .map(|chars| chars.static_abilities)
+            .unwrap_or_default();
+        for static_ability in abilities {
+            if !static_ability.is_active(game, perm_id) {
+                continue;
+            }
+            let Some(reduction) = static_ability.cost_reduction_mana_cost() else {
+                continue;
+            };
+            let Some(optional) = &reduction.optional_life_additional_cost else {
+                continue;
+            };
+            if reduction
+                .filter
+                .matches_non_recursive(&spell_for_filter, &filter_ctx, game)
+            {
+                costs.push((perm_id, optional.clone()));
+            }
+        }
+    }
+
+    costs
+}
+
+pub(crate) fn optional_life_cost_reduction_label(
+    optional: &ironsmith_core::OptionalLifeAdditionalCost,
+    source: ObjectId,
+) -> String {
+    format!("{} [source:{}]", optional.label, source.0)
+}
+
 fn disturb_linked_face_matches_cost_filter(
     game: &GameState,
     caster: PlayerId,
@@ -1426,7 +1491,30 @@ fn effective_cost_with_affordable_non_mana_optional_cost(
     casting_method: &CastingMethod,
     view: &DerivedGameView<'_>,
 ) -> Option<crate::mana::ManaCost> {
-    for (index, optional_cost) in spell.optional_costs.iter().enumerate() {
+    let mut spell_with_optional_costs = spell.clone();
+    for (source, optional) in optional_life_cost_reduction_costs_for_cast(
+        game,
+        player,
+        spell.id,
+        casting_method,
+    ) {
+        let label = optional_life_cost_reduction_label(&optional, source);
+        if spell_with_optional_costs
+            .optional_costs
+            .iter()
+            .any(|existing| existing.label == label)
+        {
+            continue;
+        }
+        spell_with_optional_costs
+            .optional_costs
+            .push(crate::cost::OptionalCost::custom(
+                label,
+                crate::cost::TotalCost::from_cost(crate::costs::Cost::life(optional.life_cost)),
+            ));
+    }
+
+    for (index, optional_cost) in spell_with_optional_costs.optional_costs.iter().enumerate() {
         if optional_cost.cost.mana_cost().is_some() {
             continue;
         }
@@ -1442,7 +1530,8 @@ fn effective_cost_with_affordable_non_mana_optional_cost(
             continue;
         }
 
-        let mut hypothetical = spell.clone();
+        let mut hypothetical = spell_with_optional_costs.clone();
+        hypothetical.zone = Zone::Stack;
         hypothetical.optional_costs_paid =
             crate::cost::OptionalCostsPaid::from_costs(&hypothetical.optional_costs);
         hypothetical.optional_costs_paid.pay_times(index, 1);
@@ -2879,6 +2968,19 @@ pub(crate) fn apply_spell_cost_modifiers(
             })
     }
 
+    fn optional_life_reduction_was_paid(
+        spell: &crate::object::Object,
+        reduction: &crate::static_abilities::CostReductionManaCost,
+        source: ObjectId,
+    ) -> bool {
+        match &reduction.optional_life_additional_cost {
+            Some(optional) => spell
+                .optional_costs_paid
+                .was_paid_label(&optional_life_cost_reduction_label(optional, source)),
+            None => true,
+        }
+    }
+
     let mut total_increase: i32 = 0;
     let mut total_reduction: i32 = 0;
     let mut increase_pips: Vec<Vec<ManaSymbol>> = Vec::new();
@@ -2952,6 +3054,7 @@ pub(crate) fn apply_spell_cost_modifiers(
         }
         if let Some(reduction) = static_ability.cost_reduction_mana_cost()
             && spell_matches_filter(game, spell, player, &reduction.filter, &ctx, casting_method)
+            && optional_life_reduction_was_paid(spell, reduction, spell.id)
         {
             reduction_pips.extend(reduction.reduction.pips().iter().cloned());
         }
@@ -3053,6 +3156,19 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
             })
     }
 
+    fn optional_life_reduction_was_paid(
+        spell: &crate::object::Object,
+        reduction: &crate::static_abilities::CostReductionManaCost,
+        source: ObjectId,
+    ) -> bool {
+        match &reduction.optional_life_additional_cost {
+            Some(optional) => spell
+                .optional_costs_paid
+                .was_paid_label(&optional_life_cost_reduction_label(optional, source)),
+            None => true,
+        }
+    }
+
     let mut total_increase: i32 = 0;
     let mut total_reduction: i32 = 0;
     let mut increase_pips: Vec<Vec<ManaSymbol>> = Vec::new();
@@ -3139,6 +3255,7 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
                         casting_method,
                         chosen_target_count,
                     )
+                    && optional_life_reduction_was_paid(spell, reduction, perm_id)
                 {
                     reduction_pips.extend(reduction.reduction.pips().iter().cloned());
                 }
@@ -3235,6 +3352,7 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
                         casting_method,
                         chosen_target_count,
                     )
+                    && optional_life_reduction_was_paid(spell, reduction, perm_id)
                 {
                     reduction_pips.extend(reduction.reduction.pips().iter().cloned());
                 }

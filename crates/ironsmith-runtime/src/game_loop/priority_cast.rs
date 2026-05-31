@@ -123,6 +123,36 @@ fn ensure_granted_conspire_optional_costs(game: &mut GameState, pending: &mut Pe
     pending.optional_costs_paid = crate::cost::OptionalCostsPaid::from_costs(&spell.optional_costs);
 }
 
+fn ensure_optional_life_cost_reduction_costs(game: &mut GameState, pending: &mut PendingCast) {
+    let costs = crate::decision::optional_life_cost_reduction_costs_for_cast(
+        game,
+        pending.caster,
+        pending.spell_id,
+        &pending.casting_method,
+    );
+    if costs.is_empty() {
+        return;
+    }
+    let Some(spell) = game.object_mut(pending.spell_id) else {
+        return;
+    };
+    for (source, optional) in costs {
+        let label = crate::decision::optional_life_cost_reduction_label(&optional, source);
+        if spell
+            .optional_costs
+            .iter()
+            .any(|existing| existing.label == label)
+        {
+            continue;
+        }
+        spell.optional_costs.push(crate::cost::OptionalCost::custom(
+            label,
+            crate::cost::TotalCost::from_cost(crate::costs::Cost::life(optional.life_cost)),
+        ));
+    }
+    pending.optional_costs_paid = crate::cost::OptionalCostsPaid::from_costs(&spell.optional_costs);
+}
+
 /// Collect all available casting methods for a spell.
 /// Returns a list of CastingMethodOption structs for each method that can be used.
 pub(super) fn collect_available_casting_methods(
@@ -963,6 +993,7 @@ pub(super) fn check_optional_costs_or_continue(
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<GameProgress, GameLoopError> {
     ensure_granted_conspire_optional_costs(game, &mut pending);
+    ensure_optional_life_cost_reduction_costs(game, &mut pending);
 
     // Check if the spell has optional costs
     let optional_costs = if let Some(obj) = game.object(pending.spell_id) {

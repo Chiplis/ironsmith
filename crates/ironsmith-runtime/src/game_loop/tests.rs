@@ -29447,6 +29447,186 @@ fn test_next_matching_spell_cost_reduction_is_consumed_by_first_match_only() {
     );
 }
 
+fn defiler_of_instinct_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(466_119), "Defiler of Instinct")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Phyrexian, Subtype::Kavu])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "First strike\n\
+             As an additional cost to cast red permanent spells, you may pay 2 life. Those spells cost {R} less to cast if you paid life this way. This effect reduces only the amount of red mana you pay.\n\
+             Whenever you cast a red permanent spell, this creature deals 1 damage to any target.",
+        )
+        .expect("Defiler of Instinct should parse for runtime tests")
+}
+
+fn one_red_creature_definition(name: &str) -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build()
+}
+
+fn start_defiler_red_creature_cast(
+    game: &mut GameState,
+    creature_id: ObjectId,
+) -> (
+    TriggerQueue,
+    PriorityLoopState,
+    crate::decisions::context::SelectOptionsContext,
+) {
+    let alice = PlayerId::from_index(0);
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    let progress = apply_priority_response_with_dm(
+        game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(crate::decision::LegalAction::CastSpell {
+            spell_id: creature_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+        &mut dm,
+    )
+    .expect("red creature cast should start");
+
+    let ctx = match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectOptions(ctx),
+        ) => ctx,
+        other => panic!("expected Defiler optional-cost prompt, got {other:?}"),
+    };
+    assert_eq!(ctx.player, alice);
+    (trigger_queue, state, ctx)
+}
+
+#[test]
+fn defiler_of_instinct_optional_life_cost_reduces_red_permanent_spell_cost() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let defiler = defiler_of_instinct_definition();
+    game.create_object_from_definition(&defiler, alice, Zone::Battlefield);
+    let red_creature = one_red_creature_definition("Defiler of Instinct Red Creature Probe");
+    let red_creature_id = game.create_object_from_definition(&red_creature, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    let (mut trigger_queue, mut state, optional_ctx) =
+        start_defiler_red_creature_cast(&mut game, red_creature_id);
+    assert!(
+        optional_ctx.options.iter().any(|option| {
+            option.description.to_ascii_lowercase().contains(
+                "as an additional cost to cast red permanent spells, you may pay 2 life",
+            )
+        }),
+        "Defiler should offer its optional life additional cost, got {:?}",
+        optional_ctx.options
+    );
+
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::OptionalCosts(vec![(0, 1)]),
+        &mut dm,
+    )
+    .expect("paying Defiler optional life cost should continue casting");
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        18,
+        "paying the Defiler additional cost should cost 2 life"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").mana_pool.total(),
+        1,
+        "paying life should reduce the red pip and leave the red mana unspent"
+    );
+}
+
+#[test]
+fn defiler_of_instinct_declining_life_cost_does_not_reduce_red_permanent_spell_cost() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let defiler = defiler_of_instinct_definition();
+    game.create_object_from_definition(&defiler, alice, Zone::Battlefield);
+    let red_creature = one_red_creature_definition("Defiler of Instinct Decline Probe");
+    let red_creature_id = game.create_object_from_definition(&red_creature, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    let (mut trigger_queue, mut state, _optional_ctx) =
+        start_defiler_red_creature_cast(&mut game, red_creature_id);
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::OptionalCosts(vec![]),
+        &mut dm,
+    )
+    .expect("declining Defiler optional life cost should continue casting");
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        20,
+        "declining the Defiler additional cost should not cost life"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").mana_pool.total(),
+        0,
+        "declining life should leave the red pip unreduced and spend the red mana"
+    );
+}
+
+#[test]
+fn defiler_of_instinct_life_cost_makes_red_permanent_spell_legal_without_red_mana() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let defiler = defiler_of_instinct_definition();
+    game.create_object_from_definition(&defiler, alice, Zone::Battlefield);
+    let red_creature = one_red_creature_definition("Defiler of Instinct Legal Action Probe");
+    let red_creature_id = game.create_object_from_definition(&red_creature, alice, Zone::Hand);
+
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            crate::decision::LegalAction::CastSpell { spell_id, from_zone: Zone::Hand, .. }
+                if *spell_id == red_creature_id
+        )),
+        "Defiler's optional life additional cost should make a one-red permanent spell castable with no red mana, got {actions:?}"
+    );
+}
+
 #[test]
 fn test_face_down_cast_matches_panoptic_filter_and_enters_battlefield_face_down() {
     let mut game = setup_game();

@@ -5100,9 +5100,109 @@ pub(crate) fn parse_cost_modifier_prefix_condition(
     Ok((None, 0))
 }
 
+fn parse_optional_life_additional_cost_reduction_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let additional_words = crate::runtime_backend::token_word_refs(tokens);
+    if !word_slice_starts_with(
+        &additional_words,
+        &["as", "an", "additional", "cost", "to", "cast"],
+    ) {
+        return Ok(None);
+    }
+
+    let Some(additional_spells_word_idx) = find_index(&additional_words, |word| {
+        *word == "spell" || *word == "spells"
+    }) else {
+        return Ok(None);
+    };
+    let Some(cost_subject_start) = token_index_for_word_index(tokens, 6) else {
+        return Ok(None);
+    };
+    let Some(additional_spells_idx) = token_index_for_word_index(tokens, additional_spells_word_idx)
+    else {
+        return Ok(None);
+    };
+    let subject_tokens = trim_commas(&tokens[cost_subject_start..additional_spells_idx]);
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let mut filter = parse_spell_filter_with_grammar_entrypoint(&subject_tokens);
+    let subject_words = crate::runtime_backend::token_word_refs(&subject_tokens);
+    if word_slice_contains_word(&subject_words, "permanent") {
+        filter.card_types = ObjectFilter::permanent_card().card_types;
+    }
+    filter.cast_by = Some(PlayerFilter::You);
+
+    let Some(pay_word_idx) = find_index(&additional_words, |word| *word == "pay") else {
+        return Ok(None);
+    };
+    let payment_words = &additional_words[pay_word_idx + 1..];
+    let Some(life_cost) = payment_words
+        .first()
+        .and_then(|word| parse_number_word_i32(word))
+        .and_then(|amount| u32::try_from(amount).ok())
+    else {
+        return Ok(None);
+    };
+    if !word_slice_contains_word(&payment_words, "life") {
+        return Ok(None);
+    }
+
+    let Some(those_spells_idx) =
+        word_slice_find_phrase_start(&additional_words, &["those", "spells"])
+    else {
+        return Ok(None);
+    };
+    if !word_slice_contains_phrase(
+        &additional_words[those_spells_idx..],
+        &["paid", "life", "this", "way"],
+    )
+    {
+        return Ok(None);
+    }
+    let Some(costs_word_idx) = find_index(&additional_words[those_spells_idx..], |word| {
+        *word == "cost" || *word == "costs"
+    }) else {
+        return Ok(None);
+    };
+    let costs_word_idx = those_spells_idx + costs_word_idx;
+    let Some(costs_idx) = token_index_for_word_index(tokens, costs_word_idx) else {
+        return Ok(None);
+    };
+    let amount_tokens = &tokens[costs_idx + 1..];
+    let (_, parsed_mana_cost) = parse_cost_modifier_components(amount_tokens);
+    let Some((reduction, _)) = parsed_mana_cost else {
+        return Ok(None);
+    };
+    let remaining_words = crate::runtime_backend::token_word_refs(amount_tokens);
+    if parse_cost_modifier_direction(&remaining_words) != Some(CostModifierDirection::Less)
+        || !word_slice_contains_word(&remaining_words, "cast")
+    {
+        return Ok(None);
+    }
+
+    let label_end = find_token_kind(tokens, TokenKind::Period)
+        .map(|idx| idx + 1)
+        .unwrap_or(costs_idx);
+    let label = render_token_slice(&tokens[..label_end])
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    Ok(Some(StaticAbility::new(
+        crate::static_abilities::CostReductionManaCost::new(filter, reduction)
+            .with_optional_life_additional_cost(label, life_cost),
+    )))
+}
+
 pub(crate) fn parse_spells_cost_modifier_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    if let Some(ability) = parse_optional_life_additional_cost_reduction_line(tokens)? {
+        return Ok(Some(ability));
+    }
+
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if clause_words.len() < 4 {
         return Ok(None);

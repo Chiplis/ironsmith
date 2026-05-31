@@ -4165,14 +4165,45 @@ impl CostReduction {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct OptionalLifeAdditionalCost {
+    pub label: String,
+    pub life_cost: u32,
+}
+
+impl OptionalLifeAdditionalCost {
+    pub fn new(label: impl Into<String>, life_cost: u32) -> Self {
+        Self {
+            label: label.into(),
+            life_cost,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct CostReductionManaCost {
     pub filter: ObjectFilter,
     pub cost: ManaCost,
+    pub optional_life_additional_cost: Option<OptionalLifeAdditionalCost>,
 }
 
 impl CostReductionManaCost {
     pub fn new(filter: ObjectFilter, cost: ManaCost) -> Self {
-        Self { filter, cost }
+        Self {
+            filter,
+            cost,
+            optional_life_additional_cost: None,
+        }
+    }
+
+    pub fn with_optional_life_additional_cost(
+        mut self,
+        label: impl Into<String>,
+        life_cost: u32,
+    ) -> Self {
+        self.optional_life_additional_cost = Some(OptionalLifeAdditionalCost::new(
+            label, life_cost,
+        ));
+        self
     }
     pub fn with_condition(self, _condition: Condition) -> Self {
         self
