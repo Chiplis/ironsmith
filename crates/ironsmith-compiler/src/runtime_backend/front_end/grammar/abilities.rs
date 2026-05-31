@@ -18,7 +18,8 @@ use super::super::lexer::{
     LexStream, LexToken, OwnedLexToken, TokenKind, TokenWordView, contains_token_any_word,
     contains_token_word, contains_token_word_sequence, find_token_any_word, find_token_kind,
     find_token_word, token_slice_first_is, token_slice_first_is_any, token_slice_starts_with,
-    trim_lexed_commas, word_slice_strip_any_prefix,
+    trim_lexed_commas, word_slice_contains_any_word, word_slice_eq, word_slice_starts_with,
+    word_slice_strip_any_prefix,
 };
 use super::super::token_primitives::{slice_contains, str_strip_suffix};
 use super::filters::{

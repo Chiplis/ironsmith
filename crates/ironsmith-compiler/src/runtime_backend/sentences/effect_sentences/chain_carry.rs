@@ -12,7 +12,7 @@ use super::super::grammar::structure::{
 };
 use super::super::lexer::{
     OwnedLexToken, TokenKind, token_slice_at_is, token_slice_first_is, token_word_refs,
-    trim_lexed_commas,
+    trim_lexed_commas, word_slice_starts_with,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::permission_helpers::{
