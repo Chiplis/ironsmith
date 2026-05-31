@@ -16620,6 +16620,145 @@ fn test_goddric_celebration_granted_ability_buffs_only_dragons() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn kjeldoran_elite_guard_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Kjeldoran Elite Guard")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Soldier])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "{T}: Target creature gets +2/+2 until end of turn. When that creature leaves the battlefield this turn, sacrifice this creature. Activate only during combat.",
+        )
+        .expect("Kjeldoran Elite Guard should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn zone_contains_named(game: &GameState, zone: Zone, name: &str) -> bool {
+    game.objects_in_zone(zone).into_iter().any(|id| {
+        game.object(id)
+            .is_some_and(|object| object.name.eq_ignore_ascii_case(name))
+    })
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn kjeldoran_elite_guard_delayed_trigger_tracks_only_targeted_creature() {
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::BeginCombat);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let guard = kjeldoran_elite_guard_definition();
+    let guard_id = game.create_object_from_definition(&guard, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(guard_id);
+
+    let target = CardBuilder::new(CardId::new(), "Chosen Target")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let decoy = CardBuilder::new(CardId::new(), "Decoy Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let target_id = game.create_object_from_card(&target, bob, Zone::Battlefield);
+    let decoy_id = game.create_object_from_card(&decoy, bob, Zone::Battlefield);
+
+    let activate_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source, .. } if *source == guard_id
+            )
+        })
+        .expect("Kjeldoran Elite Guard should be activatable during combat");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = ChooseSpecificObjectDecisionMaker::new(target_id);
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Kjeldoran Elite Guard activation should choose the target and go on the stack");
+
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Object(target_id)]),
+        &mut dm,
+    )
+    .expect("Kjeldoran Elite Guard target choice should complete activation");
+
+    if !game.stack.is_empty() {
+        resolve_stack_entry(&mut game).expect("Kjeldoran Elite Guard activation should resolve");
+    }
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        game.calculated_power(target_id),
+        Some(4),
+        "the chosen target should get +2/+2 until end of turn"
+    );
+    assert_eq!(
+        game.calculated_power(decoy_id),
+        Some(2),
+        "an untargeted creature should not get the pump"
+    );
+
+    game.move_object(
+        decoy_id,
+        Zone::Graveyard,
+        crate::events::cause::EventCause::effect(),
+    )
+    .expect("decoy should move to graveyard");
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "a nontarget creature leaving should not trigger the delayed sacrifice"
+    );
+    assert!(
+        zone_contains_named(&game, Zone::Battlefield, "Kjeldoran Elite Guard"),
+        "Kjeldoran Elite Guard should remain after the decoy leaves"
+    );
+
+    game.move_object(
+        target_id,
+        Zone::Graveyard,
+        crate::events::cause::EventCause::effect(),
+    )
+    .expect("target should move to graveyard");
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "the targeted creature leaving should trigger the delayed sacrifice"
+    );
+
+    let mut trigger_dm = SelectFirstDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut trigger_dm)
+        .expect("delayed sacrifice trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("delayed sacrifice trigger should resolve");
+
+    assert!(
+        zone_contains_named(&game, Zone::Graveyard, "Kjeldoran Elite Guard"),
+        "Kjeldoran Elite Guard should be sacrificed when the targeted creature leaves"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_root_greevil_activation_reaches_stack_and_resolves_with_color_choice() {
     use crate::decision::{LegalAction, compute_legal_actions};

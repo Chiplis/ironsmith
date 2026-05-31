@@ -39796,6 +39796,38 @@ fn alena_kessig_trapper_strict_parser_and_text_regression() {
 }
 
 #[test]
+fn kjeldoran_elite_guard_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition("Kjeldoran Elite Guard");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains("target creature gets +2/+2 until end of turn"),
+        "expected Kjeldoran Elite Guard to render the target pump, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("when that creature leaves the battlefield this turn, sacrifice this creature"),
+        "expected the delayed target leaves-battlefield clause to render, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("activate only during combat"),
+        "expected the combat-only activation restriction to render, got {rendered}"
+    );
+
+    let ability_debug = format!("{:#?}", def.abilities);
+    assert!(
+        ability_debug.contains("ScheduleDelayedTriggerEffect")
+            && ability_debug.contains("target_tag: Some")
+            && ability_debug.contains("targeted_0")
+            && ability_debug.contains("from: Specific(")
+            && ability_debug.contains("Battlefield")
+            && ability_debug.contains("to: Any")
+            && ability_debug.contains("this_object: true"),
+        "expected delayed trigger to watch the targeted creature leaving, got {ability_debug}"
+    );
+}
+
+#[test]
 fn alena_kessig_trapper_mana_runtime_uses_only_your_creatures_that_entered_this_turn() {
     fn record_entered_this_turn(game: &mut crate::game_state::GameState, id: ObjectId) {
         let snapshot = crate::snapshot::ObjectSnapshot::from_object(
