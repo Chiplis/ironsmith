@@ -3,6 +3,7 @@
 //! These types describe effect identity and selection cardinality without
 //! pulling in the runtime execution engine.
 
+use crate::counter::CounterType;
 use crate::filter_model::{AlternativeCastKind, ObjectFilter, ObjectRef, PlayerFilter};
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::tag::TagKey;
@@ -3568,6 +3569,30 @@ pub struct RegisterEnterUnderControlReplacementEffect {
 impl RegisterEnterUnderControlReplacementEffect {
     pub fn new(filter: crate::filter_model::ObjectFilter, mode: ReplacementApplyMode) -> Self {
         Self { filter, mode }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RegisterEnterWithCountersReplacementEffect {
+    pub filter: crate::filter_model::ObjectFilter,
+    pub counter_type: CounterType,
+    pub count: Value,
+    pub mode: ReplacementApplyMode,
+}
+
+impl RegisterEnterWithCountersReplacementEffect {
+    pub fn new(
+        filter: crate::filter_model::ObjectFilter,
+        counter_type: CounterType,
+        count: Value,
+        mode: ReplacementApplyMode,
+    ) -> Self {
+        Self {
+            filter,
+            counter_type,
+            count,
+            mode,
+        }
     }
 }
 

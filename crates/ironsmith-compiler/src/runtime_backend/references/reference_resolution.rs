@@ -2118,7 +2118,8 @@ fn resolve_effect_result_values_in_fields(
                 resolve_effect_result_value(count, state)?;
             }
             SubjectVerbActionAst::Learn
-            | SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. } => {}
+            | SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. }
+            | SubjectVerbActionAst::RegisterEnterWithCountersReplacement { .. } => {}
             SubjectVerbActionAst::AdditionalPhases { .. } => {}
         },
         EffectAst::ChooseObjects { count_value, .. }
@@ -2954,6 +2955,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             }
             SubjectVerbActionAst::AdditionalPhases { .. } => 0,
             SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. } => 0,
+            SubjectVerbActionAst::RegisterEnterWithCountersReplacement { .. } => 0,
             SubjectVerbActionAst::Learn => 0,
             SubjectVerbActionAst::ShuffleLibrary => 0,
         },

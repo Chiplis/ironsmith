@@ -894,6 +894,12 @@ pub(crate) enum SubjectVerbActionAst {
         filter: ObjectFilter,
         duration: ZoneReplacementDurationAst,
     },
+    RegisterEnterWithCountersReplacement {
+        filter: ObjectFilter,
+        counter_type: CounterType,
+        count: Value,
+        duration: ZoneReplacementDurationAst,
+    },
     ExileInsteadOfGraveyardThisTurn,
     ControlCombatChoicesThisTurn {
         attackers: bool,
@@ -1991,6 +1997,18 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::RegisterEnterUnderControlReplacement { filter, duration } => f
                 .debug_struct("RegisterEnterUnderControlReplacement")
                 .field("filter", filter)
+                .field("duration", duration)
+                .finish(),
+            Self::RegisterEnterWithCountersReplacement {
+                filter,
+                counter_type,
+                count,
+                duration,
+            } => f
+                .debug_struct("RegisterEnterWithCountersReplacement")
+                .field("filter", filter)
+                .field("counter_type", counter_type)
+                .field("count", count)
                 .field("duration", duration)
                 .finish(),
             Self::ExileInsteadOfGraveyardThisTurn => f.write_str("ExileInsteadOfGraveyardThisTurn"),
@@ -4811,6 +4829,24 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::RegisterEnterUnderControlReplacement { filter, duration },
+        )
+    }
+
+    pub(crate) fn subject_verb_register_enter_with_counters_replacement(
+        filter: ObjectFilter,
+        counter_type: CounterType,
+        count: Value,
+        duration: ZoneReplacementDurationAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::RegisterEnterWithCountersReplacement {
+                filter,
+                counter_type,
+                count,
+                duration,
+            },
         )
     }
 

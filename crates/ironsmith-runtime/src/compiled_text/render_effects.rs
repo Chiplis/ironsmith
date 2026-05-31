@@ -25,6 +25,35 @@ fn describe_pay_any_energy_amount(
     }
 }
 
+fn plural_enter_filter_description(filter: &ObjectFilter) -> String {
+    let mut subject = filter.description();
+    for prefix in ["a ", "an "] {
+        if let Some(stripped) = subject.strip_prefix(prefix) {
+            subject = stripped.to_string();
+            break;
+        }
+    }
+
+    for (singular, plural) in [
+        ("creature you control", "creatures you control"),
+        ("artifact you control", "artifacts you control"),
+        ("enchantment you control", "enchantments you control"),
+        ("permanent you control", "permanents you control"),
+        ("creature", "creatures"),
+        ("artifact", "artifacts"),
+        ("enchantment", "enchantments"),
+        ("permanent", "permanents"),
+    ] {
+        if subject.ends_with(singular) {
+            let prefix_len = subject.len() - singular.len();
+            subject.replace_range(prefix_len.., plural);
+            return subject;
+        }
+    }
+
+    subject
+}
+
 fn describe_discard_hand_add_mana_draw_sequence(effects: &[&Effect]) -> Option<String> {
     let [discard_effect, mana_effect, draw_effect] = effects else {
         return None;
@@ -32011,6 +32040,31 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         return format!(
             "If {target} would go{from}{to}{duration}, it goes to {replacement} instead"
+        );
+    }
+    if let Some(register) =
+        effect.downcast_ref::<crate::effects::RegisterEnterWithCountersReplacementEffect>()
+    {
+        let subject = plural_enter_filter_description(&register.filter);
+        let counter = register.counter_type.description().into_owned();
+        let counter_clause = match &register.count {
+            Value::Fixed(1) => format!("an additional {counter} counter"),
+            Value::Fixed(_) => format!(
+                "{} additional {counter} counters",
+                describe_value(&register.count)
+            ),
+            value => format!(
+                "a number of additional {counter} counters equal to {}",
+                describe_value(value)
+            ),
+        };
+        let duration = match register.mode {
+            crate::effects::ReplacementApplyMode::OneShot
+            | crate::effects::ReplacementApplyMode::UntilEndOfTurn => " this turn",
+            crate::effects::ReplacementApplyMode::Resolution => "",
+        };
+        return format!(
+            "The next time one or more {subject} enter{duration}, each enters with {counter_clause} on it"
         );
     }
     if let Some(register) =

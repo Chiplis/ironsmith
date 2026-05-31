@@ -113,6 +113,252 @@ fn parse_clash_repeat_process_spell_effect() {
     );
 }
 
+fn storyweave_modal_effect(def: &CardDefinition) -> &ChooseModeEffect {
+    def.spell_effect
+        .as_ref()
+        .expect("Storyweave should have spell effects")
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<ChooseModeEffect>())
+        .expect("Storyweave should compile to a modal choice effect")
+}
+
+fn storyweave_target_assignment(
+    modal: &ChooseModeEffect,
+    mode_idx: usize,
+) -> crate::game_state::TargetAssignment {
+    let spec = modal.modes[mode_idx]
+        .effects
+        .iter()
+        .find_map(|effect| {
+            effect
+                .downcast_ref::<crate::effects::PutCountersEffect>()
+                .map(|put| put.target.clone())
+                .or_else(|| {
+                    effect
+                        .downcast_ref::<TaggedEffect>()
+                        .and_then(|tagged| {
+                            tagged
+                                .effect
+                                .downcast_ref::<crate::effects::PutCountersEffect>()
+                        })
+                        .map(|put| put.target.clone())
+                })
+        })
+        .expect("Storyweave mode should declare its counter target");
+    crate::game_state::TargetAssignment {
+        spec,
+        range: 0..1,
+    }
+}
+
+#[test]
+fn storyweave_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Storyweave");
+    let modal = storyweave_modal_effect(&def);
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert_eq!(
+        modal.modes.len(),
+        2,
+        "Storyweave should keep both choose-one modes"
+    );
+    assert!(
+        spell_debug.contains("PutCountersEffect")
+            && spell_debug.contains("Lore")
+            && spell_debug.contains("RegisterEnterWithCountersReplacementEffect")
+            && spell_debug.contains("PlusOnePlusOne"),
+        "Storyweave should structurally lower lore counters and future ETB counters, got {spell_debug}"
+    );
+    assert!(
+        rendered.contains("Choose one")
+            && rendered.contains("Put two lore counters on target Saga you control")
+            && rendered.contains(
+                "The next time one or more enchantment creatures you control enter this turn, each enters with two additional +1/+1 counters on it"
+            ),
+        "Storyweave compiled text should preserve its modal replacement clause, got {rendered}"
+    );
+}
+
+#[test]
+fn storyweave_saga_mode_adds_lore_and_next_enchantment_creature_enters_with_counters() {
+    let def = parse_oracle_card_definition("Storyweave");
+    let modal = storyweave_modal_effect(&def).clone();
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let storyweave_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let saga = CardDefinitionBuilder::new(CardId::from_raw(92_600), "Saga Probe")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Saga])
+        .build();
+    let saga_id = game.create_object_from_definition(&saga, alice, Zone::Battlefield);
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(storyweave_id, alice, &mut dm)
+        .with_chosen_modes(Some(vec![1]))
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(saga_id)])
+        .with_target_assignments(vec![storyweave_target_assignment(&modal, 1)]);
+
+    modal
+        .execute(&mut game, &mut ctx)
+        .expect("Storyweave Saga mode should resolve");
+
+    assert_eq!(
+        game.counter_count(saga_id, CounterType::Lore),
+        2,
+        "Saga mode should put two lore counters on the targeted Saga"
+    );
+
+    let enchantment_creature = CardDefinitionBuilder::new(
+        CardId::from_raw(92_601),
+        "Enchantment Creature Probe",
+    )
+    .card_types(vec![CardType::Enchantment, CardType::Creature])
+    .power_toughness(PowerToughness::fixed(2, 2))
+    .build();
+
+    let opponent_id = game.create_object_from_definition(&enchantment_creature, bob, Zone::Hand);
+    let opponent_entry = game
+        .move_object_with_etb_processing(opponent_id, Zone::Battlefield)
+        .expect("opponent enchantment creature should enter");
+    assert_eq!(
+        game.counter_count(opponent_entry.new_id, CounterType::PlusOnePlusOne),
+        0,
+        "Storyweave should not apply to or be consumed by enchantment creatures an opponent controls"
+    );
+
+    let non_enchantment_creature = CardDefinitionBuilder::new(
+        CardId::from_raw(92_604),
+        "Non-Enchantment Creature Probe",
+    )
+    .card_types(vec![CardType::Creature])
+    .power_toughness(PowerToughness::fixed(2, 2))
+    .build();
+    let non_matching_id =
+        game.create_object_from_definition(&non_enchantment_creature, alice, Zone::Hand);
+    let non_matching_entry = game
+        .move_object_with_etb_processing(non_matching_id, Zone::Battlefield)
+        .expect("non-enchantment creature should enter");
+    assert_eq!(
+        game.counter_count(non_matching_entry.new_id, CounterType::PlusOnePlusOne),
+        0,
+        "Storyweave should not apply to or be consumed by non-enchantment creatures"
+    );
+
+    let first_id = game.create_object_from_definition(&enchantment_creature, alice, Zone::Hand);
+    let first_entry = game
+        .move_object_with_etb_processing(first_id, Zone::Battlefield)
+        .expect("first enchantment creature should enter");
+    assert_eq!(
+        game.counter_count(first_entry.new_id, CounterType::PlusOnePlusOne),
+        2,
+        "the next enchantment creature you control should enter with two additional +1/+1 counters"
+    );
+
+    let second_id = game.create_object_from_definition(&enchantment_creature, alice, Zone::Hand);
+    let second_entry = game
+        .move_object_with_etb_processing(second_id, Zone::Battlefield)
+        .expect("second enchantment creature should enter");
+    assert_eq!(
+        game.counter_count(second_entry.new_id, CounterType::PlusOnePlusOne),
+        0,
+        "Storyweave's next-time replacement should be consumed after the first matching entry"
+    );
+}
+
+#[test]
+fn storyweave_future_etb_replacement_expires_at_cleanup() {
+    let def = parse_oracle_card_definition("Storyweave");
+    let modal = storyweave_modal_effect(&def).clone();
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+
+    let storyweave_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let saga = CardDefinitionBuilder::new(CardId::from_raw(92_605), "Saga Probe")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Saga])
+        .build();
+    let saga_id = game.create_object_from_definition(&saga, alice, Zone::Battlefield);
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(storyweave_id, alice, &mut dm)
+        .with_chosen_modes(Some(vec![1]))
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(saga_id)])
+        .with_target_assignments(vec![storyweave_target_assignment(&modal, 1)]);
+
+    modal
+        .execute(&mut game, &mut ctx)
+        .expect("Storyweave Saga mode should resolve");
+    crate::turn::execute_cleanup_step(&mut game);
+
+    let enchantment_creature = CardDefinitionBuilder::new(
+        CardId::from_raw(92_606),
+        "Next-Turn Enchantment Creature",
+    )
+    .card_types(vec![CardType::Enchantment, CardType::Creature])
+    .power_toughness(PowerToughness::fixed(2, 2))
+    .build();
+    let later_id = game.create_object_from_definition(&enchantment_creature, alice, Zone::Hand);
+    let later_entry = game
+        .move_object_with_etb_processing(later_id, Zone::Battlefield)
+        .expect("later enchantment creature should enter");
+    assert_eq!(
+        game.counter_count(later_entry.new_id, CounterType::PlusOnePlusOne),
+        0,
+        "Storyweave's next-time replacement should expire at cleanup if unused"
+    );
+}
+
+#[test]
+fn storyweave_creature_counter_mode_does_not_register_future_etb_replacement() {
+    let def = parse_oracle_card_definition("Storyweave");
+    let modal = storyweave_modal_effect(&def).clone();
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+
+    let storyweave_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let creature = CardDefinitionBuilder::new(CardId::from_raw(92_602), "Creature Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let target_id = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(storyweave_id, alice, &mut dm)
+        .with_chosen_modes(Some(vec![0]))
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target_id)])
+        .with_target_assignments(vec![storyweave_target_assignment(&modal, 0)]);
+
+    modal
+        .execute(&mut game, &mut ctx)
+        .expect("Storyweave creature mode should resolve");
+    assert_eq!(
+        game.counter_count(target_id, CounterType::PlusOnePlusOne),
+        2,
+        "creature mode should put two +1/+1 counters on the target"
+    );
+
+    let enchantment_creature = CardDefinitionBuilder::new(
+        CardId::from_raw(92_603),
+        "Later Enchantment Creature",
+    )
+    .card_types(vec![CardType::Enchantment, CardType::Creature])
+    .power_toughness(PowerToughness::fixed(2, 2))
+    .build();
+    let later_id = game.create_object_from_definition(&enchantment_creature, alice, Zone::Hand);
+    let later_entry = game
+        .move_object_with_etb_processing(later_id, Zone::Battlefield)
+        .expect("later enchantment creature should enter");
+    assert_eq!(
+        game.counter_count(later_entry.new_id, CounterType::PlusOnePlusOne),
+        0,
+        "choosing Storyweave's first mode should not register the future ETB replacement"
+    );
+}
+
 #[test]
 fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Rampaging Aetherhood");

@@ -750,6 +750,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::RegisterFutureZoneReplacement { .. }
         | SubjectVerbActionAst::RegisterDamagedBySourceZoneReplacement { .. }
         | SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. }
+        | SubjectVerbActionAst::RegisterEnterWithCountersReplacement { .. }
         | SubjectVerbActionAst::Enchant { .. }
         | SubjectVerbActionAst::ChooseSpellCastHistory { .. }
         | SubjectVerbActionAst::AdditionalPhases { .. }

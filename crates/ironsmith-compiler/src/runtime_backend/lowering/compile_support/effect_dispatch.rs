@@ -1130,6 +1130,27 @@ fn compile_subject_verb_effect(
             );
             Ok((vec![effect], Vec::new()))
         }
+        SubjectVerbActionAst::RegisterEnterWithCountersReplacement {
+            filter,
+            counter_type,
+            count,
+            duration,
+        } => {
+            let mode = match duration {
+                crate::cards::builders::ZoneReplacementDurationAst::OneShot => {
+                    crate::effects::ReplacementApplyMode::OneShot
+                }
+            };
+            let effect = Effect::new(
+                crate::effects::RegisterEnterWithCountersReplacementEffect::new(
+                    filter.clone(),
+                    *counter_type,
+                    count.clone(),
+                    mode,
+                ),
+            );
+            Ok((vec![effect], Vec::new()))
+        }
         SubjectVerbActionAst::ExileInsteadOfGraveyardThisTurn => {
             compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
                 Effect::exile_instead_of_graveyard_this_turn(subject.into_player_filter())

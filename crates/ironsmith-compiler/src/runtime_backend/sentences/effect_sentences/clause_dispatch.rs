@@ -55,7 +55,9 @@ use super::subject_verb_primitives::{
 };
 use super::verb_dispatch::parse_effect_with_verb;
 use super::verb_handlers::parse_control_duration;
-use super::zone_counter_helpers::{parse_half_starting_life_total_value, parse_put_counters};
+use super::zone_counter_helpers::{
+    parse_counter_descriptor, parse_half_starting_life_total_value, parse_put_counters,
+};
 use super::zone_handlers::{collapse_leading_signed_pt_modifier_tokens, parse_sacrifice};
 use super::{
     Verb, bind_implicit_player_context, find_verb, parse_effect_chain_with_subject_verb_primitives,
@@ -65,6 +67,7 @@ use crate::TagKey;
 use crate::cards::builders::{
     CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, KeywordAction, PlayerAst,
     ReturnControllerAst, SubjectAst, SubjectVerbActionAst, SubjectVerbRoleAst, TargetAst,
+    ZoneReplacementDurationAst,
 };
 use crate::effect::{ChoiceCount, Until, Value};
 use crate::object::CounterType;
@@ -476,6 +479,83 @@ fn parse_cast_any_number_from_among_tagged_clause(tokens: &[OwnedLexToken]) -> O
     })
 }
 
+fn parse_next_enter_with_counters_replacement_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let clause_word_view = ClauseDispatchCompatWords::new(tokens);
+    let words = clause_word_view.to_word_refs();
+    if !word_slice_starts_with(&words, &["the", "next", "time"]) {
+        return Ok(None);
+    }
+
+    let mut filter_start = 3usize;
+    if word_slice_at_is(&words, filter_start, "one")
+        && word_slice_at_is(&words, filter_start + 1, "or")
+        && word_slice_at_is(&words, filter_start + 2, "more")
+    {
+        filter_start += 3;
+    }
+
+    let Some(enter_idx) = words
+        .iter()
+        .enumerate()
+        .skip(filter_start)
+        .find_map(|(idx, word)| matches!(*word, "enter" | "enters").then_some(idx))
+    else {
+        return Ok(None);
+    };
+    if enter_idx <= filter_start {
+        return Ok(None);
+    }
+
+    let tail = words.get(enter_idx + 1..).unwrap_or_default();
+    if !word_slice_starts_with(tail, &["this", "turn", "each", "enters", "with"]) {
+        return Ok(None);
+    }
+    let counter_start = enter_idx + 6;
+    let Some(on_idx) = words
+        .iter()
+        .enumerate()
+        .skip(counter_start)
+        .find_map(|(idx, word)| (*word == "on").then_some(idx))
+    else {
+        return Ok(None);
+    };
+    if words.get(on_idx + 1..) != Some(["it"].as_slice()) || on_idx <= counter_start {
+        return Ok(None);
+    }
+
+    let Some(filter_token_start) = token_index_for_word_index(tokens, filter_start) else {
+        return Ok(None);
+    };
+    let Some(filter_token_end) = token_index_for_word_index(tokens, enter_idx) else {
+        return Ok(None);
+    };
+    let filter = parse_object_filter(&tokens[filter_token_start..filter_token_end], false)?;
+
+    let Some(counter_token_start) = token_index_for_word_index(tokens, counter_start) else {
+        return Ok(None);
+    };
+    let Some(counter_token_end) = token_index_for_word_index(tokens, on_idx) else {
+        return Ok(None);
+    };
+    let counter_tokens = tokens[counter_token_start..counter_token_end]
+        .iter()
+        .filter(|token| !token.is_word("additional"))
+        .cloned()
+        .collect::<Vec<_>>();
+    let (count, counter_type) = parse_counter_descriptor(&counter_tokens)?;
+
+    Ok(Some(
+        EffectAst::subject_verb_register_enter_with_counters_replacement(
+            filter,
+            counter_type,
+            Value::Fixed(count as i32),
+            ZoneReplacementDurationAst::OneShot,
+        ),
+    ))
+}
+
 pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if tokens.is_empty() {
         return Err(CardTextError::ParseError("empty effect clause".to_string()));
@@ -518,6 +598,10 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
 
     let clause_word_view = ClauseDispatchCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
+
+    if let Some(effect) = parse_next_enter_with_counters_replacement_clause(tokens)? {
+        return Ok(effect);
+    }
 
     if let Some(effect) = parse_for_each_prevent_damage_clause(tokens)? {
         return Ok(effect);

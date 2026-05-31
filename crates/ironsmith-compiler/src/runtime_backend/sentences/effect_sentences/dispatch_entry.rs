@@ -2551,7 +2551,8 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
                 }
             }
             SubjectVerbActionAst::Learn
-            | SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. } => {}
+            | SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. }
+            | SubjectVerbActionAst::RegisterEnterWithCountersReplacement { .. } => {}
         },
         _ => {
             try_for_each_nested_effects_mut(effect, true, |nested| {

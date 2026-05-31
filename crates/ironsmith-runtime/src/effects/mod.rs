@@ -175,8 +175,8 @@ pub use player::{
 };
 pub use replacement::{
     ApplyReplacementEffect, RegisterDamagedBySourceZoneReplacementEffect,
-    RegisterEnterUnderControlReplacementEffect, RegisterFutureZoneReplacementEffect,
-    RegisterZoneReplacementEffect, ReplacementApplyMode,
+    RegisterEnterUnderControlReplacementEffect, RegisterEnterWithCountersReplacementEffect,
+    RegisterFutureZoneReplacementEffect, RegisterZoneReplacementEffect, ReplacementApplyMode,
 };
 pub use restrictions::CantEffect;
 pub(crate) use stack::EpicSpellCopyEffect;
