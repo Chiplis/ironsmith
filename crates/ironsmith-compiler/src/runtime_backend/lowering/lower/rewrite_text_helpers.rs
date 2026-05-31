@@ -72,6 +72,7 @@ pub(crate) fn uses_spell_only_functional_zones(static_ability: &StaticAbility) -
     matches!(
         static_ability.id(),
         crate::static_abilities::StaticAbilityId::ConditionalSpellKeyword
+            | crate::static_abilities::StaticAbilityId::CantBeCountered
             | crate::static_abilities::StaticAbilityId::ThisSpellCastRestriction
             | crate::static_abilities::StaticAbilityId::ThisSpellXMaximum
             | crate::static_abilities::StaticAbilityId::ThisSpellCostReduction

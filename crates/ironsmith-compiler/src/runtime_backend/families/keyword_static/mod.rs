@@ -22,6 +22,7 @@ use super::grammar::abilities::{
     is_draw_replacement_skip_empty_library_line_lexed,
     is_during_your_turn_prevent_all_damage_to_source_line_lexed,
     is_effect_discard_to_library_replacement_line_lexed,
+    is_opponent_effect_discard_this_to_battlefield_replacement_line_lexed,
     is_enchanted_land_is_chosen_type_line_lexed,
     is_if_source_you_control_with_mana_value_double_instead_marker_line_lexed,
     is_krrik_black_mana_life_payment_line_lexed,
@@ -9856,6 +9857,12 @@ pub(crate) fn parse_effect_discard_to_library_replacement_line(
 ) -> Result<Option<StaticAbility>, CardTextError> {
     if is_effect_discard_to_library_replacement_line_lexed(tokens) {
         return Ok(Some(StaticAbility::effect_discard_to_library_replacement()));
+    }
+
+    if is_opponent_effect_discard_this_to_battlefield_replacement_line_lexed(tokens) {
+        return Ok(Some(
+            StaticAbility::opponent_effect_discard_this_to_battlefield_replacement(),
+        ));
     }
 
     Ok(None)

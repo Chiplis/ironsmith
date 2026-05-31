@@ -2888,6 +2888,10 @@ impl StaticAbility {
         Self::new(EffectDiscardToLibraryReplacement)
     }
 
+    pub fn opponent_effect_discard_this_to_battlefield_replacement() -> Self {
+        Self::new(OpponentEffectDiscardThisToBattlefieldReplacement)
+    }
+
     pub fn duplicate_matching_triggered_abilities(
         source_filter: Option<crate::target::ObjectFilter>,
         event_matcher: Option<crate::triggers::Trigger>,
