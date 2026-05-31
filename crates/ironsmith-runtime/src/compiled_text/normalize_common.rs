@@ -8440,6 +8440,10 @@ pub(super) fn describe_dynamic_runtime_pt_with_where_x(
     let power_is_variable = !matches!(power, Value::Fixed(_));
     let toughness_is_variable = !matches!(toughness, Value::Fixed(_));
 
+    if let Some(for_each_text) = describe_basic_land_type_pt_for_each(power, toughness) {
+        return Some(format!("{target} {gets} {for_each_text} {until_text}"));
+    }
+
     if matches!((power, toughness), (Value::X, Value::X)) {
         return Some(format!("{target} {gets} +X/+X {until_text}"));
     }
@@ -8476,6 +8480,38 @@ pub(super) fn describe_dynamic_runtime_pt_with_where_x(
     }
 
     None
+}
+
+pub(super) fn describe_basic_land_type_pt_for_each(
+    power: &Value,
+    toughness: &Value,
+) -> Option<String> {
+    let power_multiplier = basic_land_types_multiplier(power);
+    let toughness_multiplier = basic_land_types_multiplier(toughness);
+
+    let (power_per, toughness_per, filter) = match (power_multiplier, toughness_multiplier) {
+        (Some((power_filter, power_per)), Some((toughness_filter, toughness_per))) => {
+            if power_filter != toughness_filter {
+                return None;
+            }
+            (power_per, toughness_per, power_filter)
+        }
+        (Some((filter, power_per)), None) if matches!(toughness, Value::Fixed(0)) => {
+            (power_per, 0, filter)
+        }
+        (None, Some((filter, toughness_per))) if matches!(power, Value::Fixed(0)) => {
+            (0, toughness_per, filter)
+        }
+        _ => return None,
+    };
+
+    let each_text =
+        describe_basic_land_types_among(filter).replace("basic land types", "basic land type");
+    Some(format!(
+        "{}/{} for each {each_text}",
+        describe_signed_i32(power_per),
+        describe_signed_i32(toughness_per)
+    ))
 }
 
 pub(super) fn describe_signed_i32(value: i32) -> String {
@@ -8805,11 +8841,15 @@ pub(super) fn describe_apply_continuous_clauses(
                 power,
                 toughness,
             } => {
-                clauses.push(format!(
-                    "{gets} {}/{}",
-                    describe_signed_value(power),
-                    describe_toughness_delta_with_power_context(power, toughness)
-                ));
+                if let Some(for_each_text) = describe_basic_land_type_pt_for_each(power, toughness) {
+                    clauses.push(format!("{gets} {for_each_text}"));
+                } else {
+                    clauses.push(format!(
+                        "{gets} {}/{}",
+                        describe_signed_value(power),
+                        describe_toughness_delta_with_power_context(power, toughness)
+                    ));
+                }
             }
             crate::effects::continuous::RuntimeModification::ModifyPower { value } => {
                 clauses.push(format!("{gets} {} power", describe_signed_value(value)));

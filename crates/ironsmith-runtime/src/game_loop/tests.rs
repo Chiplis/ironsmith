@@ -36930,6 +36930,92 @@ fn voices_from_the_void_discards_one_card_per_basic_land_type() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn tromp_the_domains_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Tromp the Domains")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Domain — Until end of turn, creatures you control gain trample and get +1/+1 for each basic land type among lands you control.",
+        )
+        .expect("Tromp the Domains should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn tromp_the_domains_grants_trample_and_distinct_domain_pump_until_cleanup() {
+    use crate::cards::definitions::{basic_forest, basic_island};
+    use crate::game_loop::resolve_stack_entry_with_dm_and_triggers;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let tromp = tromp_the_domains_definition();
+    let spell_id = game.create_object_from_definition(&tromp, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, alice));
+
+    game.create_object_from_definition(&basic_forest(), alice, Zone::Battlefield);
+    game.create_object_from_definition(&basic_forest(), alice, Zone::Battlefield);
+    game.create_object_from_definition(&basic_island(), alice, Zone::Battlefield);
+
+    let alice_creature = create_creature(&mut game, "Tromping Bear", alice, 2, 2);
+    let bob_creature = create_creature(&mut game, "Untromped Bear", bob, 2, 2);
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = SelectFirstDecisionMaker;
+
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("Tromp the Domains should resolve");
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        game.calculated_power(alice_creature),
+        Some(4),
+        "Tromp should count distinct basic land types, not total lands"
+    );
+    assert_eq!(game.calculated_toughness(alice_creature), Some(4));
+    assert!(
+        game.current_has_static_ability_id(
+            alice_creature,
+            crate::static_abilities::StaticAbilityId::Trample,
+        ),
+        "Tromp should grant trample to creatures you control"
+    );
+    assert_eq!(
+        game.calculated_power(bob_creature),
+        Some(2),
+        "Tromp should not pump opponents' creatures"
+    );
+    assert!(
+        !game.current_has_static_ability_id(
+            bob_creature,
+            crate::static_abilities::StaticAbilityId::Trample,
+        ),
+        "Tromp should not grant trample to opponents' creatures"
+    );
+
+    execute_cleanup_step(&mut game);
+    game.refresh_continuous_state();
+
+    assert_eq!(game.calculated_power(alice_creature), Some(2));
+    assert_eq!(game.calculated_toughness(alice_creature), Some(2));
+    assert!(
+        !game.current_has_static_ability_id(
+            alice_creature,
+            crate::static_abilities::StaticAbilityId::Trample,
+        ),
+        "Tromp's effects should expire during cleanup"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn atraxa_grand_unifier_puts_one_card_per_type_into_hand_and_bottoms_the_rest() {
     use crate::effects::ExecutionContext;
