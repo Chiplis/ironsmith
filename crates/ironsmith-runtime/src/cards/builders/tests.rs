@@ -17695,6 +17695,144 @@ fn healing_grace_runtime_only_protects_chosen_target() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn selfless_squire_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Selfless Squire");
+    let def = parse_oracle_card_definition("Selfless Squire");
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec![
+            "Flash".to_string(),
+            "When this creature enters, prevent all damage that would be dealt to you this turn."
+                .to_string(),
+            "Whenever damage that would be dealt to you is prevented, put that many +1/+1 counters on this creature."
+                .to_string(),
+        ],
+        "expected Selfless Squire oracle wording to survive compilation"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn selfless_squire_prevents_damage_to_you_and_adds_prevented_amount_counters() {
+    let squire = parse_oracle_card_definition("Selfless Squire");
+    let etb_effects = squire
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => triggered
+                .trigger
+                .display()
+                .to_ascii_lowercase()
+                .contains("enters")
+                .then(|| triggered.effects.clone()),
+            _ => None,
+        })
+        .expect("Selfless Squire should have an ETB prevention trigger");
+
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let squire_id = game.create_object_from_definition(&squire, alice, Zone::Battlefield);
+    let damage_source = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_300), "Damage Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(4, 4))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+
+    let (unprevented_damage, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        damage_source,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    crate::game_loop::drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(
+        unprevented_damage, 3,
+        "damage before the ETB shield should not be prevented"
+    );
+    assert!(
+        trigger_queue.is_empty(),
+        "unprevented damage should not queue Selfless Squire's prevention trigger"
+    );
+    assert_eq!(
+        game.counter_count(squire_id, CounterType::PlusOnePlusOne),
+        0,
+        "Selfless Squire should not get counters without prevented damage"
+    );
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(squire_id, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        squire_id,
+        &etb_effects,
+        None,
+        &[],
+    )
+    .expect("Selfless Squire ETB prevention trigger should resolve");
+
+    let (damage_to_bob, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        damage_source,
+        crate::events::DamageTarget::Player(bob),
+        4,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    crate::game_loop::drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(
+        damage_to_bob, 4,
+        "Selfless Squire should only protect its controller"
+    );
+    assert!(
+        trigger_queue.is_empty(),
+        "damage to another player should not queue Selfless Squire's prevention trigger"
+    );
+
+    let (prevented_damage, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        damage_source,
+        crate::events::DamageTarget::Player(alice),
+        4,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        prevented_damage, 0,
+        "Selfless Squire should prevent damage to you"
+    );
+    crate::game_loop::drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "prevented damage to you should queue Selfless Squire's trigger"
+    );
+
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Selfless Squire trigger should be put on the stack");
+    crate::game_loop::resolve_stack_entry(&mut game)
+        .expect("Selfless Squire counter trigger should resolve");
+    assert_eq!(
+        game.counter_count(squire_id, CounterType::PlusOnePlusOne),
+        4,
+        "Selfless Squire should get counters equal to the prevented damage"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_oracle_cho_arrim_alchemist_strict_text_and_activation_shape() {
     assert_oracle_card_parses_strict("Cho-Arrim Alchemist");
     let def = parse_oracle_card_definition("Cho-Arrim Alchemist");

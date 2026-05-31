@@ -261,6 +261,9 @@ pub(crate) fn interpret_trigger_model(
                 crate::triggers::Trigger::is_dealt_damage(target)
             }
         }
+        TriggerKind::DamagePreventedToPlayer { player } => {
+            crate::triggers::Trigger::damage_prevented_to_player(player)
+        }
         TriggerKind::YouGainLife => crate::triggers::Trigger::you_gain_life(),
         TriggerKind::YouGainLifeDuringTurn { during_turn } => {
             crate::triggers::Trigger::you_gain_life_during_turn(during_turn)

@@ -19,6 +19,8 @@ use super::context::EventContext;
 pub enum EventKind {
     /// Damage being dealt
     Damage,
+    /// Damage was prevented
+    DamagePrevented,
     /// Object changing zones
     ZoneChange,
     /// Player drawing cards

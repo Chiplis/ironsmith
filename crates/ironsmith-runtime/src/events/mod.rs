@@ -93,7 +93,7 @@ pub use traits::{
 // Re-export event types
 pub use cards::{DiscardEvent, DrawEvent};
 pub use counters::{MoveCountersEvent, PutCountersEvent, RemoveCountersEvent};
-pub use damage::DamageEvent;
+pub use damage::{DamageEvent, DamagePreventedEvent};
 pub use life::{LifeGainEvent, LifeLossEvent};
 pub use mana::ManaAddedEvent;
 pub use permanents::{DestroyEvent, SacrificeEvent, TapEvent, UntapEvent};

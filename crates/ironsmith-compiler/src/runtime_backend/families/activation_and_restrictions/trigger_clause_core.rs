@@ -708,6 +708,16 @@ pub(crate) fn parse_trigger_clause_lexed(
         return Ok(spell_activity_trigger);
     }
 
+    if words.len() >= 9
+        && word_slice_starts_with(&words, &["damage", "that", "would", "be", "dealt", "to"])
+        && word_slice_ends_with(&words, &["is", "prevented"])
+    {
+        let target_words = &words[6..words.len() - 2];
+        if let Some(player) = parse_trigger_subject_player_filter(target_words) {
+            return Ok(TriggerSpec::DamagePreventedToPlayer(player));
+        }
+    }
+
     if let Some(play_idx) = find_index(tokens, |token| {
         token.is_word("play") || token.is_word("plays")
     }) {

@@ -171,6 +171,9 @@ pub enum TriggerKind {
         target: ChooseSpec,
         combat_only: bool,
     },
+    DamagePreventedToPlayer {
+        player: PlayerFilter,
+    },
     YouGainLife,
     YouGainLifeDuringTurn {
         during_turn: PlayerFilter,
@@ -698,6 +701,12 @@ impl Trigger {
                 target,
                 combat_only: true,
             },
+        )
+    }
+    pub fn damage_prevented_to_player(player: PlayerFilter) -> Self {
+        Self::typed(
+            "damage_prevented_to_player",
+            TriggerKind::DamagePreventedToPlayer { player },
         )
     }
     pub fn you_gain_life() -> Self {

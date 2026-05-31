@@ -2419,15 +2419,26 @@ fn apply_prevention_for_damage_assignment(
         }
     };
 
+    let prevented_amount = amount.saturating_sub(result.remaining);
+    if can_prevent && prevented_amount > 0 {
+        game.queue_trigger_event(
+            provenance,
+            crate::events::RawEvent::new(
+                crate::events::DamagePreventedEvent::with_cause(
+                    source,
+                    target,
+                    prevented_amount,
+                    is_combat,
+                    cause.clone(),
+                ),
+                provenance,
+            ),
+        );
+    }
+
     if can_prevent && !result.follow_ups.is_empty() {
         let prevented_event = crate::events::RawEvent::new(
-            DamageEvent::with_cause(
-                source,
-                target,
-                amount - result.remaining,
-                is_combat,
-                cause.clone(),
-            ),
+            DamageEvent::with_cause(source, target, prevented_amount, is_combat, cause.clone()),
             provenance,
         );
         for follow_up in result.follow_ups {

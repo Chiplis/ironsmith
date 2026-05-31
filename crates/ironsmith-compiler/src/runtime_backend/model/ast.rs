@@ -198,6 +198,7 @@ pub(crate) enum TriggerSpec {
     ThisIsDealtCombatDamage,
     IsDealtDamage(ObjectFilter),
     IsDealtCombatDamage(ObjectFilter),
+    DamagePreventedToPlayer(PlayerFilter),
     YouGainLife,
     YouGainLifeDuringTurn(PlayerFilter),
     PlayerLosesLife(PlayerFilter),

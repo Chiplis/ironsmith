@@ -657,6 +657,11 @@ impl Trigger {
         Self::new(IsDealtDamageTrigger::combat_only(target))
     }
 
+    /// Create a "when damage that would be dealt to [player] is prevented" trigger.
+    pub fn damage_prevented_to_player(player: PlayerFilter) -> Self {
+        Self::new(DamagePreventedTrigger::new(player))
+    }
+
     // === Spell/Ability Triggers ===
 
     /// Create a "when [player] casts a spell" trigger.

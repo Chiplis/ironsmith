@@ -133,6 +133,7 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::IsDealtCombatDamage(filter) => {
             Trigger::is_dealt_combat_damage(ChooseSpec::Object(filter))
         }
+        TriggerSpec::DamagePreventedToPlayer(player) => Trigger::damage_prevented_to_player(player),
         TriggerSpec::YouGainLife => Trigger::you_gain_life(),
         TriggerSpec::YouGainLifeDuringTurn(during_turn) => {
             Trigger::you_gain_life_during_turn(during_turn)
@@ -542,6 +543,7 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         | TriggerSpec::DealsNoncombatDamageToPlayer { .. }
         | TriggerSpec::ThisDealsCombatDamageToPlayer
         | TriggerSpec::DealsCombatDamageToPlayer { .. } => Some(PlayerFilter::DamagedPlayer),
+        TriggerSpec::DamagePreventedToPlayer(player) => Some(player.clone()),
         TriggerSpec::ThisAttacks | TriggerSpec::ThisBecomesBlocked => Some(PlayerFilter::Defending),
         TriggerSpec::Attacks(filter) | TriggerSpec::AttacksOneOrMore(filter)
             if filter
@@ -623,6 +625,7 @@ pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventVa
             | TriggerSpec::ThisDealsCombatDamageToPlayer
             | TriggerSpec::DealsCombatDamageToPlayer { .. }
             | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { .. }
+            | TriggerSpec::DamagePreventedToPlayer(_)
             | TriggerSpec::AttacksOneOrMore(_)
             | TriggerSpec::AttacksOneOrMoreWithMinTotal { .. }
             | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_)
