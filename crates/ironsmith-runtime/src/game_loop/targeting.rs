@@ -33,7 +33,9 @@ fn resolve_modal_count_value_for_source(
 pub fn requires_target_selection(spec: &ChooseSpec) -> bool {
     match spec {
         // Target wrapper - check the inner spec
-        ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
+        ChooseSpec::Target(inner)
+        | ChooseSpec::WithCount(inner, _)
+        | ChooseSpec::WithCountValue(inner, _, _) => {
             requires_target_selection(inner)
         }
         // These require target selection during casting

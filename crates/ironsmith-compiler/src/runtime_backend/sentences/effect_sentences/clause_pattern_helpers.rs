@@ -1728,6 +1728,64 @@ fn parse_choose_target_prelude_targets(
     ]))
 }
 
+fn parse_kicked_additional_targets_prelude(
+    target_tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    fn canonical_target_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
+        LexedClause::new(tokens)
+            .word_refs()
+            .into_iter()
+            .filter(|word| {
+                !matches!(
+                    *word,
+                    "another" | "other" | "target" | "a" | "an" | "the"
+                )
+            })
+            .collect()
+    }
+
+    let Some(then_choose_idx) = find_token_word_sequence(target_tokens, &["then", "choose"])
+    else {
+        return Ok(None);
+    };
+
+    let first_target_tokens = trim_commas(&target_tokens[..then_choose_idx]);
+    let after_choose = trim_commas(&target_tokens[then_choose_idx + 2..]);
+    if first_target_tokens.is_empty() || after_choose.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(for_each_idx) = find_token_word_sequence(
+        &after_choose,
+        &["for", "each", "time", "this", "spell", "was", "kicked"],
+    ) else {
+        return Ok(None);
+    };
+
+    let additional_target_tokens = trim_commas(&after_choose[..for_each_idx]);
+    let suffix_words = LexedClause::new(&after_choose[for_each_idx..]).word_refs();
+    if additional_target_tokens.is_empty()
+        || !word_slice_eq(
+            &suffix_words,
+            &["for", "each", "time", "this", "spell", "was", "kicked"],
+        )
+    {
+        return Ok(None);
+    }
+
+    if canonical_target_words(&first_target_tokens)
+        != canonical_target_words(&additional_target_tokens)
+    {
+        return Ok(None);
+    }
+
+    let first_target = parse_target_phrase(&first_target_tokens)?;
+    let count = Value::Add(Box::new(Value::Fixed(1)), Box::new(Value::KickCount));
+    Ok(Some(vec![EffectAst::subject_verb_target_only(
+        TargetAst::WithCountValue(Box::new(first_target), ChoiceCount::dynamic_x(), count),
+    )]))
+}
+
 pub(crate) fn parse_choose_target_prelude_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1743,6 +1801,10 @@ pub(crate) fn parse_choose_target_prelude_sentence(
     }
     if find_verb(target_tokens).is_some() {
         return Ok(None);
+    }
+
+    if let Some(effects) = parse_kicked_additional_targets_prelude(target_tokens)? {
+        return Ok(Some(effects));
     }
 
     if let Some(targets) = parse_choose_target_prelude_targets(target_tokens)? {

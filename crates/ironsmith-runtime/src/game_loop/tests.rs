@@ -30739,6 +30739,177 @@ fn test_flashback_requires_enough_mana() {
 // =========================================================================
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn strength_of_the_tajuru_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(76_300), "Strength of the Tajuru")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::X],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Multikicker {1} (You may pay an additional {1} any number of times as you cast this spell.)\n\
+             Choose target creature, then choose another target creature for each time this spell was kicked. Put X +1/+1 counters on each of them.",
+        )
+        .expect("Strength of the Tajuru should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_strength_of_the_tajuru_no_kicks_requires_one_creature_target() {
+    let def = strength_of_the_tajuru_definition();
+    let effects = def.spell_effect.clone().expect("expected spell effects");
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    game.object_mut(source).expect("source").optional_costs_paid =
+        crate::cost::OptionalCostsPaid::from_costs(&def.optional_costs);
+
+    let creature_a = create_creature(&mut game, "Tajuru Target A", bob, 2, 2);
+    let creature_b = create_creature(&mut game, "Tajuru Target B", bob, 3, 3);
+
+    let requirements = extract_target_requirements_from_program_with_modes(
+        &game,
+        &effects,
+        alice,
+        Some(source),
+        None,
+    );
+    assert_eq!(requirements.len(), 1, "expected one target requirement");
+    assert_eq!(requirements[0].min_targets, 1);
+    assert_eq!(requirements[0].max_targets, Some(1));
+    assert!(
+        requirements[0]
+            .legal_targets
+            .contains(&Target::Object(creature_a))
+            && requirements[0]
+                .legal_targets
+                .contains(&Target::Object(creature_b)),
+        "both creatures should be legal no-kick targets, got {:?}",
+        requirements[0].legal_targets
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_strength_of_the_tajuru_two_kicks_requires_three_creature_targets() {
+    let def = strength_of_the_tajuru_definition();
+    let effects = def.spell_effect.clone().expect("expected spell effects");
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut paid = crate::cost::OptionalCostsPaid::from_costs(&def.optional_costs);
+    paid.pay_times(0, 2);
+    game.object_mut(source).expect("source").optional_costs_paid = paid;
+
+    let creature_a = create_creature(&mut game, "Tajuru Target A", bob, 2, 2);
+    let creature_b = create_creature(&mut game, "Tajuru Target B", bob, 3, 3);
+    let creature_c = create_creature(&mut game, "Tajuru Target C", bob, 4, 4);
+
+    let requirements = extract_target_requirements_from_program_with_modes(
+        &game,
+        &effects,
+        alice,
+        Some(source),
+        None,
+    );
+    assert_eq!(requirements.len(), 1, "expected one target requirement");
+    assert_eq!(requirements[0].min_targets, 3);
+    assert_eq!(requirements[0].max_targets, Some(3));
+    assert!(
+        [creature_a, creature_b, creature_c]
+            .into_iter()
+            .all(|id| requirements[0].legal_targets.contains(&Target::Object(id))),
+        "all three creatures should be legal kicked targets, got {:?}",
+        requirements[0].legal_targets
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_strength_of_the_tajuru_two_kicks_is_illegal_with_only_two_targets() {
+    let def = strength_of_the_tajuru_definition();
+    let effects = def.spell_effect.clone().expect("expected spell effects");
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut paid = crate::cost::OptionalCostsPaid::from_costs(&def.optional_costs);
+    paid.pay_times(0, 2);
+    game.object_mut(source).expect("source").optional_costs_paid = paid;
+
+    create_creature(&mut game, "Tajuru Target A", bob, 2, 2);
+    create_creature(&mut game, "Tajuru Target B", bob, 3, 3);
+
+    let requirements = extract_target_requirements_from_program_with_modes(
+        &game,
+        &effects,
+        alice,
+        Some(source),
+        None,
+    );
+    assert!(
+        requirements.is_empty(),
+        "two kicks require three creature targets, got {requirements:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_strength_of_the_tajuru_puts_x_counters_on_each_kicked_target() {
+    let def = strength_of_the_tajuru_definition();
+    let effects = def.spell_effect.clone().expect("expected spell effects");
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut paid = crate::cost::OptionalCostsPaid::from_costs(&def.optional_costs);
+    paid.pay_times(0, 2);
+    game.object_mut(source).expect("source").optional_costs_paid = paid.clone();
+
+    let creature_a = create_creature(&mut game, "Tajuru Target A", bob, 2, 2);
+    let creature_b = create_creature(&mut game, "Tajuru Target B", bob, 3, 3);
+    let creature_c = create_creature(&mut game, "Tajuru Target C", bob, 4, 4);
+    let untargeted = create_creature(&mut game, "Untargeted Creature", bob, 5, 5);
+
+    let entry = StackEntry::ability(source, alice, effects)
+        .with_targets(vec![
+            Target::Object(creature_a),
+            Target::Object(creature_b),
+            Target::Object(creature_c),
+        ])
+        .with_optional_costs_paid(paid)
+        .with_x(4);
+    game.push_to_stack(entry);
+
+    resolve_stack_entry(&mut game).expect("Strength of the Tajuru should resolve");
+
+    for target in [creature_a, creature_b, creature_c] {
+        let counters = game
+            .object(target)
+            .expect("target creature")
+            .counters
+            .get(&crate::object::CounterType::PlusOnePlusOne)
+            .copied()
+            .unwrap_or(0);
+        assert_eq!(counters, 4, "target {target:?} should get X counters");
+    }
+    let untargeted_counters = game
+        .object(untargeted)
+        .expect("untargeted creature")
+        .counters
+        .get(&crate::object::CounterType::PlusOnePlusOne)
+        .copied()
+        .unwrap_or(0);
+    assert_eq!(
+        untargeted_counters, 0,
+        "Strength of the Tajuru should affect only its chosen targets"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_everflowing_chalice_no_kicks() {
     use crate::cards::definitions::everflowing_chalice;
