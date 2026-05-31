@@ -843,6 +843,29 @@ pub(super) fn apply_reference_and_tag_stage(
                 &["that", "aura"],
             ],
         );
+        let references_source = word_slice_starts_with_any(
+            attached_to_words,
+            &[
+                &["this", "creature"],
+                &["this", "permanent"],
+                &["this", "source"],
+                &["this", "object"],
+            ],
+        ) || (1..=attached_to_words.len())
+            .rev()
+            .any(|end| is_source_reference_words(&attached_to_words[..end]));
+        if references_source {
+            let trim_start = if attached_idx >= 2
+                && all_words[attached_idx - 2] == "that"
+                && matches!(all_words[attached_idx - 1], "were" | "was" | "is" | "are")
+            {
+                attached_idx - 2
+            } else {
+                attached_idx
+            };
+            all_words.truncate(trim_start);
+            filter.attached_to_source = true;
+        }
         if references_it {
             let trim_start = if attached_idx >= 2
                 && all_words[attached_idx - 2] == "that"

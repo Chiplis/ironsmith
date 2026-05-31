@@ -266,6 +266,11 @@ impl TriggerMatcher for AttacksTrigger {
                 }
                 return format!("Whenever {min_total} or more {subject} attack{target_tail}");
             }
+            if target_tail.is_empty()
+                && matches!(subject.as_str(), "creature you control" | "creatures you control")
+            {
+                return "Whenever you attack".to_string();
+            }
             return format!("Whenever one or more {subject} attack{target_tail}");
         }
         if self.min_total_attackers > 1 {

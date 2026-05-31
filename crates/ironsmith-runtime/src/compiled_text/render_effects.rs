@@ -1071,6 +1071,88 @@ fn sacrifice_view_unwrapped(effect: &Effect) -> Option<SacrificeView<'_>> {
     }
 }
 
+fn describe_may_pay_mana_and_sacrifice(may: &crate::effects::MayEffect) -> Option<String> {
+    let [pay_effect, choose_effect, sacrifice_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    if !matches!(may.decider.as_ref(), Some(PlayerFilter::You)) {
+        return None;
+    }
+    let pay = pay_effect.downcast_ref::<crate::effects::PayManaEffect>()?;
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let sacrifice = sacrifice_view_unwrapped(sacrifice_effect)?;
+    if pay.player != ChooseSpec::Player(PlayerFilter::You)
+        || choose.chooser != PlayerFilter::You
+        || !choose.count.is_single()
+        || sacrifice.player != &PlayerFilter::You
+        || sacrifice.count != &Value::Fixed(1)
+        || sacrifice.filter != &ObjectFilter::tagged(choose.tag.clone())
+    {
+        return None;
+    }
+
+    let mut object_filter = choose.filter.clone();
+    if object_filter.attached_to_source {
+        object_filter.controller = None;
+    }
+    let object = with_indefinite_article(&object_filter.description());
+    Some(format!(
+        "you may pay {} and sacrifice {object}",
+        pay.cost.to_oracle()
+    ))
+}
+
+fn describe_may_sacrifice_reflexive_condition(
+    may: &crate::effects::MayEffect,
+    predicate: EffectPredicate,
+) -> Option<String> {
+    if predicate != EffectPredicate::Happened
+        || !matches!(may.decider.as_ref(), Some(PlayerFilter::You))
+    {
+        return None;
+    }
+    let [_pay_effect, choose_effect, sacrifice_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let sacrifice = sacrifice_view_unwrapped(sacrifice_effect)?;
+    if !choose.count.is_single()
+        || sacrifice.player != &PlayerFilter::You
+        || sacrifice.count != &Value::Fixed(1)
+        || sacrifice.filter != &ObjectFilter::tagged(choose.tag.clone())
+    {
+        return None;
+    }
+
+    let mut object_filter = ObjectFilter::default();
+    object_filter.card_types = choose.filter.card_types.clone();
+    object_filter.subtypes = choose.filter.subtypes.clone();
+    let object = with_indefinite_article(&object_filter.description());
+    Some(format!("When you sacrifice {object} this way"))
+}
+
+fn sacrificed_object_noun_for_may(may: &crate::effects::MayEffect) -> Option<String> {
+    let [_pay_effect, choose_effect, sacrifice_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let sacrifice = sacrifice_view_unwrapped(sacrifice_effect)?;
+    if !choose.count.is_single()
+        || sacrifice.player != &PlayerFilter::You
+        || sacrifice.count != &Value::Fixed(1)
+        || sacrifice.filter != &ObjectFilter::tagged(choose.tag.clone())
+    {
+        return None;
+    }
+    if choose.filter.subtypes.len() == 1 {
+        return Some(choose.filter.subtypes[0].to_string());
+    }
+    if choose.filter.card_types.len() == 1 {
+        return Some(choose.filter.card_types[0].to_string().to_ascii_lowercase());
+    }
+    None
+}
+
 fn tagged_target_only_effect(
     effect: &Effect,
 ) -> Option<(&crate::TagKey, &crate::effects::TargetOnlyEffect)> {
@@ -24872,8 +24954,16 @@ pub(super) fn describe_with_id_then_reflexive_trigger(
     }
 
     let setup = describe_effect(&with_id.effect);
-    let triggered = lowercase_first(&describe_effect_list(&reflexive.effects));
+    let mut triggered = lowercase_first(&describe_effect_list(&reflexive.effects));
     let condition = if let Some(may) = with_id.effect.downcast_ref::<crate::effects::MayEffect>() {
+        if let Some(noun) = sacrificed_object_noun_for_may(may) {
+            triggered = triggered.replace("copy of it", &format!("copy of that {noun}"));
+        }
+        if let Some(condition) =
+            describe_may_sacrifice_reflexive_condition(may, reflexive.predicate.clone())
+        {
+            return Some(format!("{setup}. {condition}, {triggered}"));
+        }
         let who = may
             .decider
             .as_ref()
@@ -26657,6 +26747,18 @@ fn created_token_effect(effect: &Effect) -> Option<&crate::effects::CreateTokenE
     unwrap_for_each_attachment_wrappers(effect).downcast_ref::<crate::effects::CreateTokenEffect>()
 }
 
+fn tagged_create_token_copy_effect(
+    effect: &Effect,
+) -> Option<(&TagKey, &crate::effects::CreateTokenCopyEffect)> {
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return tagged_create_token_copy_effect(&with_id.effect);
+    }
+    let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let create_token = unwrap_for_each_attachment_wrappers(&tagged.effect)
+        .downcast_ref::<crate::effects::CreateTokenCopyEffect>()?;
+    Some((&tagged.tag, create_token))
+}
+
 fn choose_spec_references_exact_tag(spec: &ChooseSpec, tag: &TagKey) -> bool {
     match spec {
         ChooseSpec::Tagged(candidate) => candidate == tag,
@@ -26745,6 +26847,47 @@ fn describe_for_each_created_token_attachment(
     let target_noun = describe_iterated_object_reference_noun(&for_each.filter);
     Some(format!(
         "For each {subject}, create {token} attached to that {target_noun}"
+    ))
+}
+
+fn describe_for_each_created_token_copy_attachment(
+    for_each: &crate::effects::ForEachObject,
+) -> Option<String> {
+    let [create_effect, attach_effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let (created_tag, create_token) = tagged_create_token_copy_effect(create_effect)?;
+    let attach = unwrap_for_each_attachment_wrappers(attach_effect)
+        .downcast_ref::<crate::effects::AttachObjectsEffect>()?;
+    if !matches!(attach.target, ChooseSpec::Iterated)
+        || !choose_spec_references_exact_tag(&attach.objects, created_tag)
+        || create_token.count != Value::Fixed(1)
+        || !matches!(&create_token.controller, PlayerFilter::You)
+        || create_token.enters_tapped
+        || create_token.enters_attacking
+        || create_token.attack_target_mode.is_some()
+        || create_token.exile_at_end_of_combat
+        || create_token.sacrifice_at_next_end_step
+        || create_token.exile_at_next_end_step
+        || create_token.pt_adjustment.is_some()
+        || create_token.clear_mana_cost
+        || !create_token.added_card_types.is_empty()
+        || !create_token.added_subtypes.is_empty()
+        || !create_token.removed_supertypes.is_empty()
+        || create_token.set_base_power_toughness.is_some()
+        || create_token.set_colors.is_some()
+        || create_token.set_card_types.is_some()
+        || create_token.set_subtypes.is_some()
+        || !create_token.granted_static_abilities.is_empty()
+    {
+        return None;
+    }
+
+    let subject = describe_for_each_object_filter_subject(&for_each.filter);
+    let target = describe_choose_spec(&create_token.target);
+    let target_noun = describe_iterated_object_reference_noun(&for_each.filter);
+    Some(format!(
+        "For each {subject}, create a token that's a copy of {target} attached to that {target_noun}"
     ))
 }
 
@@ -26957,6 +27100,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return compact;
         }
         if let Some(compact) = describe_for_each_created_token_attachment(for_each) {
+            return compact;
+        }
+        if let Some(compact) = describe_for_each_created_token_copy_attachment(for_each) {
             return compact;
         }
         if let Some(compact) = describe_for_each_devotion_damage(for_each) {
@@ -30106,6 +30252,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         return text;
     }
     if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() {
+        if let Some(compact) = describe_may_pay_mana_and_sacrifice(may) {
+            return compact;
+        }
         if let Some(compact) = describe_may_enlist(may) {
             return compact;
         }

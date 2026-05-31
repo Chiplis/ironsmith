@@ -29294,19 +29294,271 @@ fn parse_combat_damage_tap_then_doesnt_untap_sentence() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn parse_rejects_three_dog_aura_copy_attachment_clause() {
-    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Three Dog Variant")
-        .parse_text(
-            "Whenever you attack, you may pay {2} and sacrifice an Aura attached to this creature. When you sacrifice an Aura this way, for each other attacking creature you control, create a token that's a copy of that Aura attached to that creature.",
-        )
-        .expect_err("unsupported aura-copy attachment fanout should not partially parse");
+fn three_dog_galaxy_news_dj_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition("Three Dog, Galaxy News DJ");
+    let debug = format!("{:#?}", def.abilities);
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
 
-    let message = format!("{err:?}").to_ascii_lowercase();
     assert!(
-        message.contains("unsupported parser line")
-            || message.contains("unsupported known partial parse pattern")
-            || message.contains("unsupported aura-copy attachment fanout clause"),
-        "expected explicit unsupported rejection, got {message}"
+        debug.contains("attached_to_source: true"),
+        "Three Dog should restrict the sacrificed Aura to one attached to itself, got {debug}"
+    );
+    assert!(
+        debug.contains("ReflexiveTriggerEffect")
+            && debug.contains("ForEachObject")
+            && debug.contains("CreateTokenCopyEffect")
+            && debug.contains("AttachObjectsEffect")
+            && debug.contains("attacking: true")
+            && debug.contains("other: true"),
+        "Three Dog should structurally copy the sacrificed Aura onto each other attacking creature, got {debug}"
+    );
+    assert!(
+        rendered_lower.contains("sacrifice an aura attached to this creature")
+            && rendered_lower.contains("for each other attacking creature you control")
+            && rendered_lower.contains(
+                "create a token that's a copy of that aura attached to that creature"
+            ),
+        "expected Three Dog compiled text to preserve the source-attached Aura and fanout attachment clauses, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn three_dog_test_creature_definition(name: &str) -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn three_dog_test_aura_definition(name: &str) -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .enchants(crate::target::ObjectFilter::creature())
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn three_dog_galaxy_news_dj_sacrifices_only_aura_attached_to_source_and_copies_it() {
+    let three_dog = parse_oracle_card_definition("Three Dog, Galaxy News DJ");
+    let creature = three_dog_test_creature_definition("Attack Helper");
+    let source_aura = three_dog_test_aura_definition("Source Aura");
+    let other_aura = three_dog_test_aura_definition("Other Aura");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+
+    let three_dog_id = game.create_object_from_definition(&three_dog, alice, Zone::Battlefield);
+    let first_attacker = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+    let second_attacker = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+    let other_aura_id = game.create_object_from_definition(&other_aura, alice, Zone::Battlefield);
+    let source_aura_id =
+        game.create_object_from_definition(&source_aura, alice, Zone::Battlefield);
+    assert!(game.attach_object_to_target(
+        other_aura_id,
+        crate::object::AttachmentTarget::Object(first_attacker),
+    ));
+    assert!(game.attach_object_to_target(
+        source_aura_id,
+        crate::object::AttachmentTarget::Object(three_dog_id),
+    ));
+    let source_aura_stable_id = game
+        .object(source_aura_id)
+        .expect("source aura exists before sacrifice")
+        .stable_id;
+    for attacker in [three_dog_id, first_attacker, second_attacker] {
+        game.remove_summoning_sickness(attacker);
+    }
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+    game.turn.active_player = alice;
+    game.turn.phase = crate::game_state::Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = crate::combat_state::CombatState::default();
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    crate::game_loop::apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[
+            crate::decision::AttackerDeclaration {
+                creature: three_dog_id,
+                target: crate::combat_state::AttackTarget::Player(bob),
+            },
+            crate::decision::AttackerDeclaration {
+                creature: first_attacker,
+                target: crate::combat_state::AttackTarget::Player(bob),
+            },
+            crate::decision::AttackerDeclaration {
+                creature: second_attacker,
+                target: crate::combat_state::AttackTarget::Player(bob),
+            },
+        ],
+    )
+    .expect("attack declaration should succeed");
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Three Dog should trigger once when one or more creatures attack"
+    );
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Three Dog attack trigger should go on the stack");
+    crate::game_loop::resolve_stack_entry_with(
+        &mut game,
+        &mut crate::decision::SelectFirstDecisionMaker,
+    )
+    .expect("Three Dog payment and sacrifice trigger should resolve");
+
+    let sacrificed_source_aura = game
+        .find_object_by_stable_id(source_aura_stable_id)
+        .expect("source aura should still be tracked after sacrifice");
+    assert_eq!(
+        game.object(sacrificed_source_aura)
+            .expect("source aura exists")
+            .zone,
+        Zone::Graveyard,
+        "the Aura attached to Three Dog should be sacrificed"
+    );
+    assert_eq!(
+        game.object(other_aura_id).expect("other aura exists").zone,
+        Zone::Battlefield,
+        "an Aura attached to another creature must not satisfy the source-attached sacrifice filter"
+    );
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "sacrificing the Aura this way should create the reflexive copy trigger"
+    );
+
+    crate::game_loop::resolve_stack_entry_with(
+        &mut game,
+        &mut crate::decision::SelectFirstDecisionMaker,
+    )
+    .expect("Three Dog reflexive copy trigger should resolve");
+    let copied_auras: Vec<_> = game
+        .battlefield
+        .iter()
+        .filter_map(|id| game.object(*id).map(|object| (*id, object)))
+        .filter(|(_, object)| {
+            object.kind == crate::object::ObjectKind::Token && object.name == "Source Aura"
+        })
+        .map(|(id, object)| (id, object.name.clone(), object.attached_to))
+        .collect();
+    let copied_aura_attachments: Vec<_> = copied_auras
+        .iter()
+        .map(|(_, _, attachment)| *attachment)
+        .collect();
+    assert_eq!(
+        copied_aura_attachments.len(),
+        2,
+        "Three Dog should create one Aura copy for each other attacking creature, got {copied_auras:?}"
+    );
+    assert!(
+        copied_aura_attachments.contains(&Some(crate::object::AttachmentTarget::Object(
+            first_attacker,
+        ))),
+        "expected a copied Aura attached to the first other attacker, got {copied_auras:?}"
+    );
+    assert!(
+        copied_aura_attachments.contains(&Some(crate::object::AttachmentTarget::Object(
+            second_attacker,
+        ))),
+        "expected a copied Aura attached to the second other attacker, got {copied_auras:?}"
+    );
+    assert!(
+        !copied_aura_attachments.contains(&Some(crate::object::AttachmentTarget::Object(
+            three_dog_id,
+        ))),
+        "Three Dog itself is not an other attacking creature"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn three_dog_galaxy_news_dj_declining_payment_creates_no_aura_copies() {
+    let three_dog = parse_oracle_card_definition("Three Dog, Galaxy News DJ");
+    let creature = three_dog_test_creature_definition("Attack Helper");
+    let aura = three_dog_test_aura_definition("Source Aura");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+
+    let three_dog_id = game.create_object_from_definition(&three_dog, alice, Zone::Battlefield);
+    let other_attacker = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+    let aura_id = game.create_object_from_definition(&aura, alice, Zone::Battlefield);
+    assert!(game.attach_object_to_target(
+        aura_id,
+        crate::object::AttachmentTarget::Object(three_dog_id),
+    ));
+    for attacker in [three_dog_id, other_attacker] {
+        game.remove_summoning_sickness(attacker);
+    }
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+    game.turn.active_player = alice;
+    game.turn.phase = crate::game_state::Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = crate::combat_state::CombatState::default();
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    crate::game_loop::apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[
+            crate::decision::AttackerDeclaration {
+                creature: three_dog_id,
+                target: crate::combat_state::AttackTarget::Player(bob),
+            },
+            crate::decision::AttackerDeclaration {
+                creature: other_attacker,
+                target: crate::combat_state::AttackTarget::Player(bob),
+            },
+        ],
+    )
+    .expect("attack declaration should succeed");
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Three Dog attack trigger should go on the stack");
+    crate::game_loop::resolve_stack_entry_with(
+        &mut game,
+        &mut crate::decision::AutoPassDecisionMaker,
+    )
+    .expect("declining Three Dog's may payment should resolve cleanly");
+
+    assert_eq!(
+        game.object(aura_id).expect("source aura exists").zone,
+        Zone::Battlefield,
+        "declining the payment should leave the attached Aura on the battlefield"
+    );
+    assert!(
+        game.stack.is_empty(),
+        "declining the payment should not create the reflexive copy trigger"
+    );
+    let copied_aura_count = game
+        .battlefield
+        .iter()
+        .filter_map(|id| game.object(*id))
+        .filter(|object| {
+            object.kind == crate::object::ObjectKind::Token && object.name == "Source Aura"
+        })
+        .count();
+    assert_eq!(
+        copied_aura_count, 0,
+        "declining the payment should not create Aura copies"
     );
 }
 

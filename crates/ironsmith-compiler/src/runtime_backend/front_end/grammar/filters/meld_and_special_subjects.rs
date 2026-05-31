@@ -198,6 +198,7 @@ pub(super) fn parse_mana_symbol_word(word: &str) -> Option<ManaSymbol> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runtime_backend::front_end::shared::util::with_source_reference_context;
     use crate::runtime_backend::lexer::lex_line;
     use crate::static_abilities::StaticAbilityId;
 
@@ -539,6 +540,32 @@ mod tests {
                     relation: TaggedOpbjectRelation::AttachedToTaggedObject,
                 }
         }));
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_handles_attached_to_source_reference() {
+        let tokens = lex_line("Aura attached to this creature", 0).unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.subtypes, vec![Subtype::Aura]);
+        assert!(
+            filter.attached_to_source,
+            "attached to this creature should bind to the source object"
+        );
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_handles_attached_to_source_name_reference() {
+        let tokens = lex_line("Aura attached to Three Dog", 0).unwrap();
+
+        let filter = with_source_reference_context("Three Dog, Galaxy News DJ", || {
+            parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap()
+        });
+        assert_eq!(filter.subtypes, vec![Subtype::Aura]);
+        assert!(
+            filter.attached_to_source,
+            "attached to a source-name alias should bind to the source object"
+        );
     }
 
     #[test]
