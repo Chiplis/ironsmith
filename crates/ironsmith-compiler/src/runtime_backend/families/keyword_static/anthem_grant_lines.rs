@@ -2167,6 +2167,38 @@ pub(crate) fn parse_static_condition_clause(
     if word_slice_eq_any(
         &clause_words,
         &[
+            &["you", "havent", "cast", "a", "spell", "this", "turn"],
+            &["you", "have", "not", "cast", "a", "spell", "this", "turn"],
+            &["you", "didnt", "cast", "a", "spell", "this", "turn"],
+            &["you", "did", "not", "cast", "a", "spell", "this", "turn"],
+        ],
+    ) {
+        return Ok(crate::ConditionExpr::Not(Box::new(
+            crate::ConditionExpr::PlayerCastSpellsThisTurnOrMore {
+                player: PlayerFilter::You,
+                count: 1,
+            },
+        )));
+    }
+
+    if word_slice_eq_any(
+        &clause_words,
+        &[
+            &["youve", "cast", "a", "spell", "this", "turn"],
+            &["you", "ve", "cast", "a", "spell", "this", "turn"],
+            &["you", "have", "cast", "a", "spell", "this", "turn"],
+            &["you", "cast", "a", "spell", "this", "turn"],
+        ],
+    ) {
+        return Ok(crate::ConditionExpr::PlayerCastSpellsThisTurnOrMore {
+            player: PlayerFilter::You,
+            count: 1,
+        });
+    }
+
+    if word_slice_eq_any(
+        &clause_words,
+        &[
             &["there", "are", "no", "cards", "in", "your", "library"],
             &["your", "library", "has", "no", "cards", "in", "it"],
         ],

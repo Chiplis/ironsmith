@@ -974,6 +974,35 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
         {
             "as long as this creature didn't attack this turn".to_string()
         }
+        crate::ConditionExpr::Not(inner) => {
+            if let crate::ConditionExpr::PlayerCastSpellsThisTurnOrMore { player, count: 1 } =
+                inner.as_ref()
+            {
+                return match player {
+                    crate::target::PlayerFilter::You => {
+                        "as long as you haven't cast a spell this turn".to_string()
+                    }
+                    crate::target::PlayerFilter::Opponent => {
+                        "as long as an opponent hasn't cast a spell this turn".to_string()
+                    }
+                    crate::target::PlayerFilter::Any => {
+                        "as long as no player has cast a spell this turn".to_string()
+                    }
+                    _ => "as long as that player hasn't cast a spell this turn".to_string(),
+                };
+            }
+            format!("as long as not ({})", describe_static_condition(inner))
+        }
+        crate::ConditionExpr::PlayerCastSpellsThisTurnOrMore { player, count } => {
+            let subject = describe_static_player(player);
+            let count_text = number_word_u32(*count).unwrap_or_else(|| count.to_string());
+            let verb = if matches!(player, crate::target::PlayerFilter::You) {
+                "have"
+            } else {
+                "has"
+            };
+            format!("as long as {subject} {verb} cast {count_text} or more spells this turn")
+        }
         crate::ConditionExpr::SourceIsUntapped => {
             "as long as this creature is untapped".to_string()
         }

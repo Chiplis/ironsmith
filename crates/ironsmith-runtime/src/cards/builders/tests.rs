@@ -371,6 +371,85 @@ fn king_darien_xlviii_sacrifice_ability_grants_keywords_only_to_your_tokens_runt
     );
 }
 
+#[test]
+fn stoic_sphinx_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Stoic Sphinx");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = canonical_compiled_lines(&def).join("\n");
+
+    assert!(
+        ability_debug.contains("Hexproof")
+            && ability_debug.contains("Not")
+            && ability_debug.contains("PlayerCastSpellsThisTurnOrMore"),
+        "Stoic Sphinx should model conditional hexproof using the player-cast-spell condition, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains("This creature has Hexproof as long as you haven't cast a spell this turn."),
+        "Stoic Sphinx compiled text should preserve the haven't-cast-a-spell static clause, got {rendered}"
+    );
+}
+
+fn record_stoic_sphinx_spell_cast_event(
+    game: &mut crate::game_state::GameState,
+    caster: PlayerId,
+    raw_id: u32,
+) {
+    let spell = CardBuilder::new(CardId::from_raw(raw_id), "Recorded Spell")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let spell_id = game.create_object_from_card(&spell, caster, Zone::Stack);
+    let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(spell_id)
+            .expect("recorded spell should exist on the stack"),
+        game,
+    );
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::spells::SpellCastEvent::new_with_snapshot(
+            spell_id,
+            caster,
+            Zone::Hand,
+            snapshot.clone(),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    game.turn_store
+        .turn_history
+        .record_event(&event, Some(snapshot), None);
+}
+
+#[test]
+fn stoic_sphinx_hexproof_tracks_whether_controller_cast_a_spell_this_turn() {
+    let def = parse_oracle_card_definition("Stoic Sphinx");
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let sphinx_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    assert!(
+        game.object_has_static_ability_id(sphinx_id, StaticAbilityId::Hexproof),
+        "Stoic Sphinx should have hexproof before its controller casts a spell this turn"
+    );
+
+    record_stoic_sphinx_spell_cast_event(&mut game, bob, 92_102);
+    assert!(
+        game.object_has_static_ability_id(sphinx_id, StaticAbilityId::Hexproof),
+        "an opponent casting a spell should not turn off Stoic Sphinx's hexproof"
+    );
+
+    record_stoic_sphinx_spell_cast_event(&mut game, alice, 92_103);
+    assert!(
+        !game.object_has_static_ability_id(sphinx_id, StaticAbilityId::Hexproof),
+        "Stoic Sphinx should lose hexproof after its controller has cast a spell this turn"
+    );
+
+    game.turn_store.turn_history.clear_for_new_turn();
+    assert!(
+        game.object_has_static_ability_id(sphinx_id, StaticAbilityId::Hexproof),
+        "Stoic Sphinx should regain hexproof after turn-scoped spell-cast history clears"
+    );
+}
+
 fn alacrian_armory_trigger(def: &CardDefinition) -> &crate::ability::TriggeredAbility {
     def.abilities
         .iter()
