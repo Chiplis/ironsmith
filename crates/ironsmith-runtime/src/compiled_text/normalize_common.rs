@@ -675,6 +675,9 @@ fn token_extra_abilities_prefer_with_clause(abilities: &[String]) -> bool {
             if ability == "\"This token can't block.\"" {
                 return true;
             }
+            if ability.starts_with("\"{") {
+                return true;
+            }
             ability.to_ascii_lowercase().starts_with(
                 "\"this token saddles mounts and crews vehicles as though its power were ",
             )
@@ -708,7 +711,10 @@ pub(super) fn quote_token_granted_ability_text(text: &str) -> String {
     } else {
         trimmed
     };
-    let normalized = normalize_quoted_token_ability_surface(unquoted);
+    let mut normalized = normalize_quoted_token_ability_surface(unquoted);
+    if token_quoted_ability_needs_terminal_period(&normalized) {
+        normalized.push('.');
+    }
     format!("\"{normalized}\"")
 }
 
@@ -776,7 +782,8 @@ fn token_quoted_ability_needs_terminal_period(text: &str) -> bool {
     !trimmed.ends_with('.')
         && !trimmed.ends_with('!')
         && !trimmed.ends_with('?')
-        && (trimmed.contains("Sacrifice this token:")
+        && (trimmed.starts_with('{')
+            || trimmed.contains("Sacrifice this token:")
             || trimmed.starts_with("When this token ")
             || trimmed.starts_with("Whenever this token "))
 }
@@ -12643,11 +12650,11 @@ mod tests {
     fn quoted_token_abilities_use_token_self_reference_for_activation_costs() {
         assert_eq!(
             quote_token_granted_ability_text("Sacrifice this creature, add {c}"),
-            "\"Sacrifice this token: Add {C}\""
+            "\"Sacrifice this token: Add {C}.\""
         );
         assert_eq!(
             quote_token_granted_ability_text("{t}, Sacrifice this artifact, add {r} or {g}"),
-            "\"{T}, Sacrifice this token: Add {R} or {G}\""
+            "\"{T}, Sacrifice this token: Add {R} or {G}.\""
         );
         assert_eq!(
             normalize_common_semantic_phrasing(

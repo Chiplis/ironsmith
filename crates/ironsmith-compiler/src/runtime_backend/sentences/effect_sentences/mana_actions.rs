@@ -118,6 +118,28 @@ pub(crate) fn parse_add_mana(
             }
         }
     }
+    if let Some(tail_tokens) = grammar::words_match_prefix(
+        tokens,
+        &["one", "mana", "of", "that", "color"],
+    ) {
+        let tail_tokens = trim_leading_commas(tail_tokens);
+        if tail_tokens.is_empty() || is_mana_pool_tail_tokens(tail_tokens) {
+            return Ok(EffectAst::subject_verb_add_mana_chosen_color(
+                player,
+                Value::Fixed(1),
+                None,
+            ));
+        }
+        if let Some(amount) = parse_dynamic_cost_modifier_value(tail_tokens)? {
+            return Ok(EffectAst::subject_verb_add_mana_chosen_color(
+                player, amount, None,
+            ));
+        }
+        return Err(CardTextError::ParseError(format!(
+            "unsupported dynamic chosen-color mana amount (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
     if grammar::words_match_prefix(
         tokens,
         &["an", "amount", "of", "mana", "of", "that", "color"],

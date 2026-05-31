@@ -6146,6 +6146,35 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
             return Ok(Some(Value::CardTypesAmong(filter)));
         }
     }
+    if word_slice_starts_with_any(
+        &filter_words,
+        &[
+            &["different", "powers", "among"],
+            &["different", "power", "values", "among"],
+            &["different", "power", "among"],
+        ],
+    ) {
+        let scope_start_word_idx = if word_slice_at_is(&filter_words, 2, "among") {
+            3
+        } else {
+            4
+        };
+        let Some(scope_start_token_idx) =
+            token_index_for_word_index(filter_tokens, scope_start_word_idx)
+        else {
+            return Ok(None);
+        };
+        let mut end_token_idx = filter_tokens.len();
+        if let Some(period_idx) =
+            find_token_kind(&filter_tokens[scope_start_token_idx..], TokenKind::Period)
+        {
+            end_token_idx = scope_start_token_idx + period_idx;
+        }
+        let scope_tokens = trim_commas(&filter_tokens[scope_start_token_idx..end_token_idx]);
+        if let Ok(filter) = parse_object_filter(&scope_tokens, false) {
+            return Ok(Some(Value::DistinctPowers(filter)));
+        }
+    }
 
     let has_card_type_among = word_slice_contains_any_phrase(
         &filter_words,

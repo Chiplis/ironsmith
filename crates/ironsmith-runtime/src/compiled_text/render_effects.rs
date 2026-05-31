@@ -3296,12 +3296,36 @@ fn describe_each_creature_and_player_damage_cant_regenerate_structural(
     ))
 }
 
+fn describe_choose_color_then_chosen_color_mana(effects: &[&Effect]) -> Option<String> {
+    let [choose_effect, mana_effect] = effects else {
+        return None;
+    };
+    let choose_color = choose_effect.downcast_ref::<crate::effects::ChooseColorEffect>()?;
+    let add_mana = mana_effect.downcast_ref::<crate::effects::AddManaOfChosenColorEffect>()?;
+    if choose_color.chooser != PlayerFilter::You
+        || add_mana.player != PlayerFilter::You
+        || add_mana.fixed_option.is_some()
+    {
+        return None;
+    }
+    if let Value::DistinctPowers(filter) = &add_mana.amount {
+        return Some(format!(
+            "Choose a color. Add one mana of that color for each different power among {}",
+            pluralize_noun_phrase(&describe_for_each_count_filter(filter))
+        ));
+    }
+    None
+}
+
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     if let Some(compact) = describe_structural_multisentence_effect_list(effects) {
         return compact;
     }
 
     let raw_effects = effects.iter().collect::<Vec<_>>();
+    if let Some(compact) = describe_choose_color_then_chosen_color_mana(&raw_effects) {
+        return compact;
+    }
     if let Some(compact) = describe_kicked_additional_targets_put_counters(&raw_effects) {
         return compact;
     }
@@ -13415,6 +13439,11 @@ fn normalize_haunting_echoes_text(text: &str) -> Option<String> {
 pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> {
     if effects.len() < 2 {
         return None;
+    }
+
+    let effect_refs = effects.iter().collect::<Vec<_>>();
+    if let Some(compact) = describe_choose_color_then_chosen_color_mana(&effect_refs) {
+        return Some(compact);
     }
 
     if effects.len() >= 3
@@ -31803,6 +31832,13 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         if matches!(add_chosen.amount, Value::Fixed(1)) {
             return format!("Add one mana of the chosen color{}", destination);
+        }
+        if let Value::DistinctPowers(filter) = &add_chosen.amount {
+            return format!(
+                "Add one mana of the chosen color for each different power among {}{}",
+                pluralize_noun_phrase(&describe_for_each_count_filter(filter)),
+                destination
+            );
         }
         if !matches!(&add_chosen.amount, Value::Fixed(_) | Value::X) {
             return format!(
