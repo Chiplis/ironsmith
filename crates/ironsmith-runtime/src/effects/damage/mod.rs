@@ -19,6 +19,6 @@ pub use prevent_next_time_damage::{
 };
 pub use redirect_next_damage_to_target::RedirectNextDamageToTargetEffect;
 pub use redirect_next_time_damage_to_source::{
-    RedirectAllDamageThisTurnToTargetEffect, RedirectNextTimeDamageSource,
-    RedirectNextTimeDamageToSourceEffect,
+    RedirectAllDamageThisTurnToTargetEffect, RedirectNextTimeDamageDestination,
+    RedirectNextTimeDamageSource, RedirectNextTimeDamageToSourceEffect,
 };

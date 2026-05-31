@@ -1079,6 +1079,13 @@ pub(crate) enum PreventNextTimeDamageSourceAst {
 }
 
 #[cfg(any(test, ironsmith_runtime_parser_tests))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RedirectNextTimeDamageDestinationAst {
+    SourceObject,
+    Controller,
+}
+
+#[cfg(any(test, ironsmith_runtime_parser_tests))]
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum PreventNextTimeDamageTargetAst {
     AnyTarget,

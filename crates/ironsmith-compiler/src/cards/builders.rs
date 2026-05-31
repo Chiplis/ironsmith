@@ -13,9 +13,9 @@ pub use crate::model::{
     AdditionalCostChoiceOptionAst, ClashOpponentAst, ControlDurationAst, DamageBySpec,
     ExchangeValueAst, ExchangeValueKindAst, ExtraTurnAnchorAst, LibraryBottomOrderAst,
     LibraryConsultModeAst, LibraryConsultStopRuleAst, ObjectRefAst, PlayerAst,
-    PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, RetargetModeAst,
-    ReturnControllerAst, SearchLibrarySlotAst, SharedTypeConstraintAst, TargetAst,
-    ZoneReplacementDurationAst,
+    PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst,
+    RedirectNextTimeDamageDestinationAst, RetargetModeAst, ReturnControllerAst,
+    SearchLibrarySlotAst, SharedTypeConstraintAst, TargetAst, ZoneReplacementDurationAst,
 };
 use crate::object::AuraAttachmentFilter;
 pub use crate::payload::{IfResultPredicate, KeywordAction};

@@ -1,7 +1,7 @@
 use crate::cards::builders::{
     CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, IfResultPredicate, OwnedLexToken,
-    PlayerAst, PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst, SubjectAst, TagKey,
-    TargetAst, TextSpan, Verb,
+    PlayerAst, PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst,
+    RedirectNextTimeDamageDestinationAst, SubjectAst, TagKey, TargetAst, TextSpan, Verb,
 };
 use crate::effect::{EventValueSpec, Until, Value};
 use crate::static_abilities::StaticAbilityId;
@@ -1365,23 +1365,30 @@ pub(crate) fn parse_redirect_next_damage_sentence(
             .after_words(is_dealt_idx + 3)
             .unwrap_or_else(|| clause.from(clause.len()))
             .trimmed();
-        let redirects_to_source = redirect_clause.matches_any_words(&[
+        let destination = if redirect_clause.matches_any_words(&[
             &["this", "creature", "instead"],
             &["this", "permanent", "instead"],
             &["this", "instead"],
             &["it", "instead"],
-        ]);
-        if !redirects_to_source {
+        ]) {
+            RedirectNextTimeDamageDestinationAst::SourceObject
+        } else if redirect_clause.matches_any_words(&[&["you", "instead"]]) {
+            RedirectNextTimeDamageDestinationAst::Controller
+        } else {
             return Err(CardTextError::ParseError(format!(
                 "unsupported redirected-all-damage protected destination (clause: '{}')",
                 clause_text
             )));
-        }
+        };
 
         let target = parse_target_phrase(target_clause.tokens())?;
 
         return Ok(Some(vec![
-            EffectAst::subject_verb_redirect_all_damage_this_turn_to_source(source, target),
+            EffectAst::subject_verb_redirect_all_damage_this_turn_to_source(
+                source,
+                target,
+                destination,
+            ),
         ]));
     }
 
@@ -1465,28 +1472,41 @@ pub(crate) fn parse_redirect_next_damage_sentence(
             .after_words(this_turn_idx + 2)
             .unwrap_or_else(|| clause.from(clause.len()))
             .trimmed();
-        if tail_clause.word_len() < 7
-            || !tail_clause.starts_with(&["that", "damage", "is", "dealt", "to"])
-            || !tail_clause.ends_with(&["instead"])
+        let destination_clause = if tail_clause.word_len() >= 7
+            && tail_clause.starts_with(&["that", "damage", "is", "dealt", "to"])
+            && tail_clause.ends_with(&["instead"])
         {
+            tail_clause.between_words_trimmed(5, tail_clause.word_len() - 1)
+        } else if tail_clause.word_len() >= 8
+            && tail_clause.starts_with(&["that", "source", "deals", "that", "damage", "to"])
+            && tail_clause.ends_with(&["instead"])
+        {
+            tail_clause.between_words_trimmed(6, tail_clause.word_len() - 1)
+        } else {
             return Ok(None);
-        }
-        let redirect_clause = tail_clause.between_words_trimmed(5, tail_clause.word_len() - 1);
-        let redirects_to_source = redirect_clause.matches_any_words(&[
+        };
+        let destination = if destination_clause.matches_any_words(&[
             &["this"],
             &["it"],
             &["this", "creature"],
             &["this", "permanent"],
-        ]);
-        if !redirects_to_source {
+        ]) {
+            RedirectNextTimeDamageDestinationAst::SourceObject
+        } else if destination_clause.matches_any_words(&[&["you"]]) {
+            RedirectNextTimeDamageDestinationAst::Controller
+        } else {
             return Err(CardTextError::ParseError(format!(
                 "unsupported redirected-next-time damage destination (clause: '{}')",
                 clause_text
             )));
-        }
+        };
 
         return Ok(Some(vec![
-            EffectAst::subject_verb_redirect_next_time_damage_to_source(source, target),
+            EffectAst::subject_verb_redirect_next_time_damage_to_source(
+                source,
+                target,
+                destination,
+            ),
         ]));
     }
 

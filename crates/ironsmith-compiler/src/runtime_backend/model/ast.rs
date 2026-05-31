@@ -4,6 +4,7 @@ use crate::color::ColorSet;
 use crate::cost::TotalCost;
 use crate::effect::{ChoiceCount, EffectId, Until, Value};
 use crate::mana::{ManaCost, ManaSymbol};
+use crate::model::RedirectNextTimeDamageDestinationAst;
 use crate::object::{AuraAttachmentFilter, CounterType};
 use crate::static_abilities::StaticAbility;
 use crate::tag::TagKey;
@@ -1356,6 +1357,7 @@ pub(crate) enum SubjectVerbActionAst {
     RedirectNextTimeDamageToSource {
         source: PreventNextTimeDamageSourceAst,
         target: TargetAst,
+        destination: RedirectNextTimeDamageDestinationAst,
         all_this_turn: bool,
     },
     RedirectAllDamageThisTurnToTarget {
@@ -2736,11 +2738,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::RedirectNextTimeDamageToSource {
                 source,
                 target,
+                destination,
                 all_this_turn,
             } => f
                 .debug_struct("RedirectNextTimeDamageToSource")
                 .field("source", source)
                 .field("target", target)
+                .field("destination", destination)
                 .field("all_this_turn", all_this_turn)
                 .finish(),
             Self::RedirectAllDamageThisTurnToTarget {
@@ -4540,6 +4544,7 @@ impl EffectAst {
     pub(crate) fn subject_verb_redirect_next_time_damage_to_source(
         source: PreventNextTimeDamageSourceAst,
         target: TargetAst,
+        destination: RedirectNextTimeDamageDestinationAst,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -4547,6 +4552,7 @@ impl EffectAst {
             SubjectVerbActionAst::RedirectNextTimeDamageToSource {
                 source,
                 target,
+                destination,
                 all_this_turn: false,
             },
         )
@@ -4555,6 +4561,7 @@ impl EffectAst {
     pub(crate) fn subject_verb_redirect_all_damage_this_turn_to_source(
         source: PreventNextTimeDamageSourceAst,
         target: TargetAst,
+        destination: RedirectNextTimeDamageDestinationAst,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -4562,6 +4569,7 @@ impl EffectAst {
             SubjectVerbActionAst::RedirectNextTimeDamageToSource {
                 source,
                 target,
+                destination,
                 all_this_turn: true,
             },
         )

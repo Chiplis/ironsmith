@@ -146,6 +146,12 @@ pub enum PreventNextTimeDamageSourceAst<Filter = crate::target::ObjectFilter> {
     Filter(Filter),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RedirectNextTimeDamageDestinationAst {
+    SourceObject,
+    Controller,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PreventNextTimeDamageTargetAst {
     AnyTarget,

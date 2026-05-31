@@ -997,6 +997,10 @@ where
             ));
         };
         let effect = crate::effects::RedirectNextTimeDamageToSourceEffect::new(source, target);
+        let effect = match payload.destination {
+            ironsmith_core::RedirectNextTimeDamageDestination::SourceObject => effect,
+            ironsmith_core::RedirectNextTimeDamageDestination::Controller => effect.to_controller(),
+        };
         let effect = if payload.all_this_turn {
             effect.all_this_turn()
         } else {

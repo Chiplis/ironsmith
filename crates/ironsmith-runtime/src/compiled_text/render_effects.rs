@@ -32372,15 +32372,27 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             }
         };
         if redirect_next_time.all_this_turn {
+            let destination_text = match redirect_next_time.destination {
+                crate::effects::RedirectNextTimeDamageDestination::SourceObject => {
+                    "this creature".to_string()
+                }
+                crate::effects::RedirectNextTimeDamageDestination::Controller => "you".to_string(),
+            };
             return format!(
-                "All damage that would be dealt to {} this turn by {source_text} is dealt to this creature instead",
+                "All damage that would be dealt to {} this turn by {source_text} is dealt to {destination_text} instead",
                 describe_choose_spec(&redirect_next_time.target)
             );
         }
-        return format!(
-            "The next time {source_text} would deal damage to {} this turn, that damage is dealt to this creature instead",
-            describe_choose_spec(&redirect_next_time.target)
-        );
+        return match redirect_next_time.destination {
+            crate::effects::RedirectNextTimeDamageDestination::SourceObject => format!(
+                "The next time {source_text} would deal damage to {} this turn, that damage is dealt to this creature instead",
+                describe_choose_spec(&redirect_next_time.target)
+            ),
+            crate::effects::RedirectNextTimeDamageDestination::Controller => format!(
+                "The next time {source_text} would deal damage to {} this turn, that source deals that damage to you instead",
+                describe_choose_spec(&redirect_next_time.target)
+            ),
+        };
     }
     if let Some(redirect_all) =
         effect.downcast_ref::<crate::effects::RedirectAllDamageThisTurnToTargetEffect>()
