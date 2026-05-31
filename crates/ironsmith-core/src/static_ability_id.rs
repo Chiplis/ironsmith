@@ -221,6 +221,7 @@ pub enum StaticAbilityId {
     OpponentSearchExileFoundCards,
     CastThisCardFromLibraryWhileSearching,
     EffectDiscardToLibraryReplacement,
+    OpponentEffectDiscardThisToBattlefieldReplacement,
     DrawReplacementExileTopFaceDown,
     DrawReplacementExileTopAndPlay,
     DrawReplacementDouble,
@@ -477,6 +478,7 @@ impl StaticAbilityId {
             | OpponentSearchExileFoundCards
             | CastThisCardFromLibraryWhileSearching
             | EffectDiscardToLibraryReplacement
+            | OpponentEffectDiscardThisToBattlefieldReplacement
             | DrawReplacementExileTopFaceDown
             | DrawReplacementExileTopAndPlay
             | DrawReplacementDouble

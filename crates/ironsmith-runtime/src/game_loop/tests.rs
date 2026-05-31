@@ -12894,6 +12894,205 @@ fn vexing_shusher_activation_targets_spell_and_stops_countering_it() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn loxodon_smiter_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(290_543), "Loxodon Smiter")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elephant, Subtype::Soldier])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "This spell can't be countered.\nIf a spell or ability an opponent controls causes you to discard this card, put it onto the battlefield instead of putting it into your graveyard.",
+        )
+        .expect("Loxodon Smiter should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn loxodon_smiter_spell_cant_be_countered_runtime() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let loxodon = loxodon_smiter_definition();
+    let smiter_spell = game.create_object_from_definition(&loxodon, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(smiter_spell, alice));
+
+    game.update_cant_effects();
+    assert!(
+        !game.can_be_countered(smiter_spell),
+        "Loxodon Smiter should be uncounterable while it is a spell on the stack"
+    );
+
+    let counter_source = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Counter Source")
+            .card_types(vec![CardType::Instant])
+            .build(),
+        bob,
+        Zone::Stack,
+    );
+    let mut dm = SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(counter_source, bob, &mut dm);
+    let outcome = crate::effects::execute_effect(
+        &mut game,
+        &Effect::counter(crate::target::ChooseSpec::SpecificObject(smiter_spell)),
+        &mut ctx,
+    )
+    .expect("counter attempt should resolve as protected");
+
+    assert_eq!(outcome.status, crate::effect::OutcomeStatus::Protected);
+    assert!(
+        game.stack.iter().any(|entry| entry.object_id == smiter_spell),
+        "Loxodon Smiter should remain on the stack after a counter attempt"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn loxodon_smiter_opponent_effect_discard_replacement_moves_to_battlefield() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let loxodon = loxodon_smiter_definition();
+    let smiter = game.create_object_from_definition(&loxodon, alice, Zone::Hand);
+    let discard_source = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Opponent Discard Spell")
+            .card_types(vec![CardType::Sorcery])
+            .build(),
+        bob,
+        Zone::Stack,
+    );
+    let mut dm = SelectFirstDecisionMaker;
+
+    let result = crate::events::processing::execute_discard(
+        &mut game,
+        smiter,
+        alice,
+        crate::events::cause::EventCause::from_effect(discard_source, bob),
+        false,
+        crate::provenance::ProvNodeId::default(),
+        &mut dm,
+    );
+
+    assert_eq!(result.final_zone, Zone::Battlefield);
+    let moved = result
+        .new_id
+        .expect("Loxodon Smiter should have moved to the battlefield");
+    assert!(
+        game.object(moved).is_some_and(|object| object.name == "Loxodon Smiter"
+            && object.zone == Zone::Battlefield),
+        "opponent-controlled discard effect should put Loxodon Smiter onto the battlefield"
+    );
+    assert!(
+        !game
+            .player(alice)
+            .expect("Alice exists")
+            .graveyard
+            .iter()
+            .any(|&id| game
+                .object(id)
+                .is_some_and(|object| object.name == "Loxodon Smiter")),
+        "Loxodon Smiter should not be put into Alice's graveyard when the replacement applies"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn loxodon_smiter_discard_replacement_ignores_own_effects_and_costs() {
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let loxodon = loxodon_smiter_definition();
+
+    for (source_controller, cause_kind) in [(alice, "own effect"), (bob, "opponent cost")] {
+        let mut game = setup_game();
+        let smiter = game.create_object_from_definition(&loxodon, alice, Zone::Hand);
+        let discard_source = game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Discard Source")
+                .card_types(vec![CardType::Sorcery])
+                .build(),
+            source_controller,
+            Zone::Stack,
+        );
+        let cause = if cause_kind == "own effect" {
+            crate::events::cause::EventCause::from_effect(discard_source, source_controller)
+        } else {
+            crate::events::cause::EventCause::from_cost(discard_source, source_controller)
+        };
+        let mut dm = SelectFirstDecisionMaker;
+
+        let result = crate::events::processing::execute_discard(
+            &mut game,
+            smiter,
+            alice,
+            cause,
+            false,
+            crate::provenance::ProvNodeId::default(),
+            &mut dm,
+        );
+
+        assert_eq!(
+            result.final_zone,
+            Zone::Graveyard,
+            "Loxodon Smiter should go to the graveyard for {cause_kind}"
+        );
+        assert!(
+            game.player(alice)
+                .expect("Alice exists")
+                .graveyard
+                .iter()
+                .any(|&id| game
+                    .object(id)
+                    .is_some_and(|object| object.name == "Loxodon Smiter")),
+            "Loxodon Smiter should be in Alice's graveyard for {cause_kind}"
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn loxodon_smiter_discard_replacement_only_applies_to_itself() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let loxodon = loxodon_smiter_definition();
+    let smiter = game.create_object_from_definition(&loxodon, alice, Zone::Hand);
+    let other_card = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Other Discarded Card")
+            .card_types(vec![CardType::Creature])
+            .build(),
+        alice,
+        Zone::Hand,
+    );
+    let discard_source = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Opponent Discard Spell")
+            .card_types(vec![CardType::Sorcery])
+            .build(),
+        bob,
+        Zone::Stack,
+    );
+    let mut dm = SelectFirstDecisionMaker;
+
+    let result = crate::events::processing::execute_discard(
+        &mut game,
+        other_card,
+        alice,
+        crate::events::cause::EventCause::from_effect(discard_source, bob),
+        false,
+        crate::provenance::ProvNodeId::default(),
+        &mut dm,
+    );
+
+    assert_eq!(result.final_zone, Zone::Graveyard);
+    assert!(
+        game.object(smiter)
+            .is_some_and(|object| object.zone == Zone::Hand),
+        "Loxodon Smiter's replacement should not apply to another discarded card"
+    );
+}
+
 #[test]
 fn magma_mine_activated_ability_sacrifices_source_and_deals_counter_scaled_damage_to_player() {
     let mut game = setup_game();

@@ -479,6 +479,18 @@ impl StaticAbilityKind for CantBeCountered {
         .with_condition(condition)
     }
 
+    fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
+        let mut tracker = CantEffectTracker::default();
+        Restriction::be_countered(ObjectFilter::source()).apply(
+            game,
+            &mut tracker,
+            controller,
+            Some(source),
+            None,
+        );
+        game.effect_store.cant_effects.merge(tracker);
+    }
+
     fn cant_be_countered(&self) -> bool {
         true
     }

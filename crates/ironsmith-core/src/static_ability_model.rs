@@ -3431,6 +3431,13 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
+    pub fn opponent_effect_discard_this_to_battlefield_replacement() -> Self {
+        Self {
+            id: Some(StaticAbilityId::OpponentEffectDiscardThisToBattlefieldReplacement),
+            label: "opponent effect discard this to battlefield replacement".into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
     pub fn draw_replacement_exile_top_face_down() -> Self {
         Self {
             id: Some(StaticAbilityId::DrawReplacementExileTopFaceDown),

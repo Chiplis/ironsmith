@@ -4072,6 +4072,38 @@ impl StaticAbilityKind for EffectDiscardToLibraryReplacement {
     }
 }
 
+/// Replacement for opponent-controlled effects causing this card to be discarded.
+///
+/// "If a spell or ability an opponent controls causes you to discard this card,
+/// put it onto the battlefield instead of putting it into your graveyard."
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct OpponentEffectDiscardThisToBattlefieldReplacement;
+
+impl StaticAbilityKind for OpponentEffectDiscardThisToBattlefieldReplacement {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::OpponentEffectDiscardThisToBattlefieldReplacement
+    }
+
+    fn display(&self) -> String {
+        "If a spell or ability an opponent controls causes you to discard this card, put it onto \
+         the battlefield instead of putting it into your graveyard"
+            .to_string()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            WouldDiscardMatcher::source_from_opponent_effect(),
+            ReplacementAction::ChangeDestination(Zone::Battlefield),
+        ))
+    }
+}
+
 /// "If you would draw a card, exile the top card of your library face down instead."
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct DrawReplacementExileTopFaceDown;

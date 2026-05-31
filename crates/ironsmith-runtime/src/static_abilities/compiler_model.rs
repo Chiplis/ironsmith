@@ -209,6 +209,9 @@ impl StaticAbility {
             Some(StaticAbilityId::EffectDiscardToLibraryReplacement) => {
                 Self::effect_discard_to_library_replacement()
             }
+            Some(StaticAbilityId::OpponentEffectDiscardThisToBattlefieldReplacement) => {
+                Self::opponent_effect_discard_this_to_battlefield_replacement()
+            }
             Some(StaticAbilityId::DrawReplacementExileTopFaceDown) => {
                 Self::draw_replacement_exile_top_face_down()
             }

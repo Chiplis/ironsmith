@@ -1643,6 +1643,43 @@ pub(crate) fn is_effect_discard_to_library_replacement_line_lexed(
         && contains_token_word(tokens, "graveyard")
 }
 
+pub(crate) fn is_opponent_effect_discard_this_to_battlefield_replacement_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    let words = TokenWordView::new(tokens).word_refs();
+    word_slice_eq(
+        &words,
+        &[
+            "if",
+            "a",
+            "spell",
+            "or",
+            "ability",
+            "an",
+            "opponent",
+            "controls",
+            "causes",
+            "you",
+            "to",
+            "discard",
+            "this",
+            "card",
+            "put",
+            "it",
+            "onto",
+            "the",
+            "battlefield",
+            "instead",
+            "of",
+            "putting",
+            "it",
+            "into",
+            "your",
+            "graveyard",
+        ],
+    )
+}
+
 pub(crate) fn is_shuffle_into_library_from_graveyard_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     contains_token_word_sequence(tokens, &["would", "be", "put"])
         && contains_token_word(tokens, "graveyard")

@@ -3616,6 +3616,42 @@ fn vexing_shusher_strict_parser_and_compiled_text_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn loxodon_smiter_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Loxodon Smiter");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("This spell can't be countered."),
+        "expected Loxodon Smiter to render its uncounterable spell line, got {rendered}"
+    );
+    assert!(
+        rendered.contains("If a spell or ability an opponent controls causes you to discard this card, put it onto the battlefield instead of putting it into your graveyard"),
+        "expected Loxodon Smiter to render its opponent-caused discard replacement, got {rendered}"
+    );
+
+    assert!(
+        def.abilities.iter().any(|ability| matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::CantBeCountered
+                    && ability.functions_in(&Zone::Stack)
+        )),
+        "Loxodon Smiter's uncounterable ability should function on the stack"
+    );
+    assert!(
+        def.abilities.iter().any(|ability| matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.id()
+                    == StaticAbilityId::OpponentEffectDiscardThisToBattlefieldReplacement
+                    && ability.functions_in(&Zone::Hand)
+        )),
+        "Loxodon Smiter's discard replacement should function from hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_spells_cant_be_countered_as_rule_restriction() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Global No Counter")
         .parse_text("Spells can't be countered.")
