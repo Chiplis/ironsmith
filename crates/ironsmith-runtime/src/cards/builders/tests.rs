@@ -7489,6 +7489,48 @@ fn test_parse_multikicker_and_entwine_keyword_lines_compile_to_optional_costs() 
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_strength_of_the_tajuru_strict_and_renders_kicked_targets() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Strength of the Tajuru")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::X],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Multikicker {1} (You may pay an additional {1} any number of times as you cast this spell.)\n\
+             Choose target creature, then choose another target creature for each time this spell was kicked. Put X +1/+1 counters on each of them.",
+        )
+        .expect("Strength of the Tajuru should parse strictly");
+
+    assert_eq!(def.optional_costs.len(), 1);
+    assert_eq!(def.optional_costs[0].label, "Multikicker");
+    assert!(
+        def.optional_costs[0].repeatable,
+        "Strength of the Tajuru's multikicker should be repeatable"
+    );
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("WithCountValue") && debug.contains("KickCount"),
+        "expected target count to be structurally tied to the multikicker count, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains(
+            "Choose target creature, then choose another target creature for each time this spell was kicked. Put X +1/+1 counters on each of them"
+        ),
+        "expected Strength of the Tajuru compiled text to preserve kicked target clause, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("each target permanent"),
+        "Strength of the Tajuru should keep the counter effect tied to the chosen creatures, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_replicate_keyword_line_compiles_to_repeatable_optional_cost() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Replicate Probe")
         .card_types(vec![CardType::Instant])

@@ -2861,6 +2861,62 @@ fn structural_unwrap_render_wrappers(effect: &Effect) -> &Effect {
     effect
 }
 
+fn describe_kicked_additional_targets_put_counters(effects: &[&Effect]) -> Option<String> {
+    let [target_effect, for_each_effect] = effects else {
+        return None;
+    };
+    let target_tag = target_effect
+        .downcast_ref::<crate::effects::TaggedEffect>()?
+        .tag
+        .clone();
+    let target_only = structural_unwrap_render_wrappers(target_effect)
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    let ChooseSpec::WithCountValue(target, count, count_value) = &target_only.target else {
+        return None;
+    };
+    if !count.is_dynamic_x() || count.is_up_to_dynamic_x() || count.is_random() {
+        return None;
+    }
+    let Value::Add(left, right) = count_value else {
+        return None;
+    };
+    let counts_one_plus_kicked = matches!(
+        (left.as_ref(), right.as_ref()),
+        (Value::Fixed(1), Value::KickCount) | (Value::KickCount, Value::Fixed(1))
+    );
+    if !counts_one_plus_kicked {
+        return None;
+    }
+
+    let for_each = structural_unwrap_render_wrappers(for_each_effect)
+        .downcast_ref::<crate::effects::ForEachObject>()?;
+    if !for_each.filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag == target_tag
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+    }) {
+        return None;
+    }
+    let [put] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let put = structural_unwrap_render_wrappers(put)
+        .downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if put.distributed || put.target_count.is_some() || !matches!(put.target, ChooseSpec::Iterated)
+    {
+        return None;
+    }
+
+    let first_target = describe_choose_spec(target);
+    let additional_target = first_target
+        .strip_prefix("target ")
+        .map(|tail| format!("another target {tail}"))
+        .unwrap_or_else(|| format!("another {first_target}"));
+    Some(format!(
+        "Choose {first_target}, then choose {additional_target} for each time this spell was kicked. Put {} on each of them",
+        describe_put_counter_phrase(&put.amount, put.counter_type)
+    ))
+}
+
 fn for_each_moves_unchosen_iterated_to_zone(
     effect: &Effect,
     revealed_tag: &crate::TagKey,
@@ -3245,6 +3301,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     }
 
     let raw_effects = effects.iter().collect::<Vec<_>>();
+    if let Some(compact) = describe_kicked_additional_targets_put_counters(&raw_effects) {
+        return compact;
+    }
     fn unwrap_wrapped_effect(effect: &Effect) -> &Effect {
         if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
             return unwrap_wrapped_effect(&tagged.effect);
