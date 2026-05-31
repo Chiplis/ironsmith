@@ -405,6 +405,7 @@ where
                 .cloned()
                 .map(|ability| hooks.runtime_static_ability_hook(ability))
                 .collect::<Result<Vec<_>, _>>()?,
+            suppress_aura_attachment_choice: payload.suppress_aura_attachment_choice,
         }));
     }
     if let Some(payload) =

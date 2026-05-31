@@ -887,11 +887,23 @@ fn advance_reference_frame_for_effect(
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "searched"));
                     }
                 }
-                SubjectVerbActionAst::CreateTokenCopy { player, .. }
-                | SubjectVerbActionAst::CreateTokenCopyFromSource { player, .. } => {
+                SubjectVerbActionAst::CreateTokenCopy { player, .. } => {
                     track_effect_player(*player, frame, true, true)?;
                     if frame.auto_tag_object_targets {
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "created"));
+                    }
+                }
+                SubjectVerbActionAst::CreateTokenCopyFromSource {
+                    player,
+                    attached_to,
+                    ..
+                } => {
+                    track_effect_player(*player, frame, true, true)?;
+                    if frame.auto_tag_object_targets || attached_to.is_some() {
+                        frame.last_object_tag = Some(next_reference_tag(id_gen, "created"));
+                    }
+                    if frame.auto_tag_object_targets && attached_to.is_some() {
+                        frame.last_object_tag = Some(next_reference_tag(id_gen, "attachment_target"));
                     }
                 }
                 SubjectVerbActionAst::CreateTokenWithMods {
@@ -2932,9 +2944,18 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 bind_unresolved_it_in_object_ref_ast(object, seed_tag)
                     + bind_unresolved_it_in_value(count, seed_tag)
             }
-            SubjectVerbActionAst::CreateTokenCopyFromSource { source, count, .. } => {
-                bind_unresolved_it_in_target(source, seed_tag)
-                    + bind_unresolved_it_in_value(count, seed_tag)
+            SubjectVerbActionAst::CreateTokenCopyFromSource {
+                source,
+                count,
+                attached_to,
+                ..
+            } => {
+                let mut replacements = bind_unresolved_it_in_target(source, seed_tag)
+                    + bind_unresolved_it_in_value(count, seed_tag);
+                if let Some(target) = attached_to.as_mut() {
+                    replacements += bind_unresolved_it_in_target(target, seed_tag);
+                }
+                replacements
             }
             SubjectVerbActionAst::CreateTokenWithMods {
                 count,

@@ -2344,6 +2344,7 @@ pub struct CreateTokenCopyEffect<A> {
     pub set_card_types: Option<Vec<CardType>>,
     pub set_subtypes: Option<Vec<Subtype>>,
     pub granted_static_abilities: Vec<A>,
+    pub suppress_aura_attachment_choice: bool,
 }
 
 impl<A> CreateTokenCopyEffect<A> {
@@ -2369,6 +2370,7 @@ impl<A> CreateTokenCopyEffect<A> {
             set_card_types: None,
             set_subtypes: None,
             granted_static_abilities: Vec::new(),
+            suppress_aura_attachment_choice: false,
         }
     }
 
@@ -2495,6 +2497,11 @@ impl<A> CreateTokenCopyEffect<A> {
 
     pub fn grant_static_ability(mut self, ability: A) -> Self {
         self.granted_static_abilities.push(ability);
+        self
+    }
+
+    pub fn suppress_aura_attachment_choice(mut self) -> Self {
+        self.suppress_aura_attachment_choice = true;
         self
     }
 }

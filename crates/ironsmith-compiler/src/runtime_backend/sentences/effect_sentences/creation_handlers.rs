@@ -1,7 +1,7 @@
 use crate::cards::builders::{
     CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, KeywordAction, ObjectRefAst,
-    OwnedLexToken, PlayerAst, PredicateAst, SubjectAst, SubjectVerbActionAst, SubjectVerbRoleAst,
-    TagKey, TargetAst,
+    OwnedLexToken, PREVIOUS_OBJECT_TAG, PlayerAst, PredicateAst, SubjectAst,
+    SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst,
 };
 use crate::color::ColorSet;
 use crate::effect::{EventValueSpec, Value};
@@ -17,7 +17,7 @@ use super::super::keyword_static::parse_value_binding_clause;
 use super::super::lexer::{
     LexedClause, render_token_slice, token_slice_at_is, token_slice_first_is, token_word_refs,
     word_slice_contains_any_phrase, word_slice_contains_phrase, word_slice_contains_word,
-    word_slice_eq_any, word_slice_find_any_phrase_start, word_slice_find_phrase_start,
+    word_slice_eq, word_slice_eq_any, word_slice_find_any_phrase_start, word_slice_find_phrase_start,
     word_slice_find_word, word_slice_find_word_where, word_slice_first_is, word_slice_first_is_any,
     word_slice_rfind_word_where, word_slice_starts_with, word_slice_starts_with_any,
 };
@@ -655,16 +655,6 @@ pub(crate) fn parse_create(
         tail_tokens.truncate(attached_token_idx);
     }
     let tail_words = token_word_refs(&tail_tokens);
-    if attached_to_target.is_some()
-        && tail_words
-            .iter()
-            .any(|word| matches!(*word, "copy" | "copies"))
-    {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported aura-copy attachment fanout clause (clause: '{}')",
-            clause_words.join(" ")
-        )));
-    }
     let with_idx = word_slice_find_word_where(&tail_words, |word| word == "with");
     let raw_for_each_idx = word_slice_find_phrase_start(&tail_words, &["for", "each"]);
     let for_each_idx = raw_for_each_idx.filter(|idx| {
@@ -886,8 +876,18 @@ pub(crate) fn parse_create(
                 enters_attacking = tail_attacking || inline_attacking;
                 attack_target_player_or_planeswalker_controlled_by = inline_attack_target_player;
                 if !source_tokens.is_empty() {
-                    let source = parse_target_phrase(&source_tokens)?;
-                    let references_iterated_object = target_references_it(&source);
+                    let source_words = token_word_refs(&source_tokens);
+                    let source = if word_slice_eq(&source_words, &["that", "aura"]) {
+                        TargetAst::Tagged(TagKey::from(PREVIOUS_OBJECT_TAG), None)
+                    } else {
+                        parse_target_phrase(&source_tokens)?
+                    };
+                    let source_references_iterated_object = target_references_it(&source);
+                    let attach_references_iterated_object = attached_to_target
+                        .as_ref()
+                        .is_some_and(target_references_it);
+                    let references_iterated_object =
+                        source_references_iterated_object || attach_references_iterated_object;
                     let create = EffectAst::subject_verb(
                         SubjectVerbRoleAst::Actor,
                         player,
@@ -895,6 +895,7 @@ pub(crate) fn parse_create(
                             source,
                             count: resolve_create_count(references_iterated_object),
                             player,
+                            attached_to: attached_to_target.clone(),
                             enters_tapped,
                             enters_attacking,
                             attack_target_player_or_planeswalker_controlled_by,

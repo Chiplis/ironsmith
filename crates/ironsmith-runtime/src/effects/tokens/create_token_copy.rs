@@ -34,6 +34,7 @@ use super::lifecycle::{
 /// * `enters_attacking` - Whether the copy enters attacking
 /// * `attack_target_mode` - Optional custom attack-target selection when attacking
 /// * `exile_at_end_of_combat` - Whether to exile at end of combat
+/// * `suppress_aura_attachment_choice` - Whether Aura attachment is handled by a later effect
 ///
 /// # Example
 ///
@@ -301,11 +302,20 @@ impl EffectExecutor for CreateTokenCopyEffect {
             let token_is_creature = token.is_creature();
 
             game.add_object(token);
-            let Some(entry_result) = game.move_object_with_etb_processing_with_dm(
-                id,
-                Zone::Battlefield,
-                &mut ctx.decision_maker,
-            ) else {
+            let entry_result = if self.suppress_aura_attachment_choice {
+                game.move_object_with_etb_processing_without_aura_attachment_choice(
+                    id,
+                    Zone::Battlefield,
+                    &mut ctx.decision_maker,
+                )
+            } else {
+                game.move_object_with_etb_processing_with_dm(
+                    id,
+                    Zone::Battlefield,
+                    &mut ctx.decision_maker,
+                )
+            };
+            let Some(entry_result) = entry_result else {
                 game.remove_object(id);
                 continue;
             };

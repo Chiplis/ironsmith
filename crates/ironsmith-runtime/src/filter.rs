@@ -12,7 +12,7 @@
 use crate::color::{Color, ColorSet};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
-use crate::object::{CounterType, Object, ObjectKind};
+use crate::object::{AttachmentTarget, CounterType, Object, ObjectKind};
 use crate::snapshot::ObjectSnapshot;
 use crate::static_abilities::StaticAbilityId;
 use crate::tag::TagKey;
@@ -1652,6 +1652,14 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
 
+        if self.attached_to_source
+            && ctx.source.is_none_or(|source_id| {
+                object.attached_to != Some(AttachmentTarget::Object(source_id))
+            })
+        {
+            return false;
+        }
+
         if let Some(targetability) = &self.could_be_targeted_by
             && !object_could_be_targeted_by(object.id, targetability, ctx, game)
         {
@@ -2489,6 +2497,14 @@ impl ObjectFilterExt for ObjectFilter {
             && ctx
                 .source
                 .is_none_or(|source_id| snapshot.object_id != source_id)
+        {
+            return false;
+        }
+
+        if self.attached_to_source
+            && ctx.source.is_none_or(|source_id| {
+                snapshot.attached_to != Some(AttachmentTarget::Object(source_id))
+            })
         {
             return false;
         }

@@ -480,6 +480,9 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
                 | ["that"]
                 | ["card"]
                 | ["a", "card"]
+                | ["a", "aura"]
+                | ["an", "aura"]
+                | ["aura"]
                 | ["a", "creature", "card"]
                 | ["creature", "card"]
         )

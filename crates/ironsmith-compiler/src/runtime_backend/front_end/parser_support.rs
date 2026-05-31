@@ -56,6 +56,7 @@ pub(crate) fn looks_like_spell_resolution_followup_intro_lexed(tokens: &[OwnedLe
 pub(crate) fn looks_like_reflexive_followup_intro_lexed(tokens: &[OwnedLexToken]) -> bool {
     looks_like_when_one_or_more_this_way_followup_lexed(tokens)
         || looks_like_when_it_connives_this_way_followup_lexed(tokens)
+        || looks_like_when_you_action_this_way_followup_lexed(tokens)
         || looks_like_when_you_do_followup_lexed(tokens)
         || looks_like_otherwise_followup_lexed(tokens)
 }
@@ -214,6 +215,25 @@ fn looks_like_when_it_connives_this_way_followup_lexed(tokens: &[OwnedLexToken])
         0,
         parse_when_it_connives_this_way_followup_intro_inner,
     )
+}
+
+fn parse_when_you_action_this_way_followup_intro_inner<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<(), ErrMode<ContextError>> {
+    (
+        alt((grammar::kw("when"), grammar::kw("whenever"))),
+        grammar::kw("you"),
+    )
+        .void()
+        .parse_next(input)
+}
+
+fn looks_like_when_you_action_this_way_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
+    let this_way_in_prefix = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
+        .map(|(before, _after)| contains_token_word_sequence(before, &["this", "way"]))
+        .unwrap_or_else(|| contains_token_word_sequence(tokens, &["this", "way"]));
+    starts_with_lexed_parser(tokens, 0, parse_when_you_action_this_way_followup_intro_inner)
+        && this_way_in_prefix
 }
 
 fn parse_when_you_do_followup_intro_inner<'a>(

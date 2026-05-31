@@ -89,13 +89,6 @@ const UNSUPPORTED_CONTAINS_RULES: &[UnsupportedWordRule] = &[
         message: "unsupported if-you-sacrifice-an-island-this-way clause",
     },
     UnsupportedWordRule {
-        phrase: &[
-            "create", "a", "token", "thats", "a", "copy", "of", "that", "aura", "attached", "to",
-            "that", "creature",
-        ],
-        message: "unsupported aura-copy attachment fanout clause",
-    },
-    UnsupportedWordRule {
         phrase: &["target", "face", "down", "creature"],
         message: "unsupported face-down clause",
     },

@@ -29,6 +29,46 @@ fn bind_explicit_tag_to_player_tagged_predicate(
     bound
 }
 
+fn bind_previous_object_tag_in_target(target: &mut TargetAst, tag: &TagKey) {
+    match target {
+        TargetAst::Tagged(found, _) if found.as_str() == crate::cards::builders::PREVIOUS_OBJECT_TAG => {
+            *found = tag.clone();
+        }
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+            bind_previous_object_tag_in_target(inner, tag);
+        }
+        _ => {}
+    }
+}
+
+fn bind_previous_object_tag_in_effect(effect: &mut EffectAst, tag: &TagKey) {
+    if let EffectAst::SubjectVerb(subject_verb) = effect
+        && let SubjectVerbActionAst::CreateTokenCopyFromSource {
+            source,
+            attached_to,
+            ..
+        } = &mut subject_verb.action
+    {
+        bind_previous_object_tag_in_target(source, tag);
+        if let Some(target) = attached_to.as_mut() {
+            bind_previous_object_tag_in_target(target, tag);
+        }
+    }
+    for_each_nested_effects_mut(effect, true, |nested| {
+        for inner in nested {
+            bind_previous_object_tag_in_effect(inner, tag);
+        }
+    });
+}
+
+fn bind_previous_object_tag_in_effects(effects: &[EffectAst], tag: &TagKey) -> Vec<EffectAst> {
+    let mut effects = effects.to_vec();
+    for effect in &mut effects {
+        bind_previous_object_tag_in_effect(effect, tag);
+    }
+    effects
+}
+
 pub(crate) fn compile_if_do_with_opponent_doesnt(
     first: &EffectAst,
     second: &EffectAst,
@@ -775,6 +815,13 @@ pub(crate) fn compile_effects_in_iterated_object_context(
     ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
     let saved_frame = ctx.lowering_frame();
+    let bound_effects;
+    let effects_to_compile = if let Some(tag) = saved_frame.last_object_tag.as_ref() {
+        bound_effects = bind_previous_object_tag_in_effects(effects, &TagKey::from(tag.as_str()));
+        bound_effects.as_slice()
+    } else {
+        effects
+    };
     let mut iterated_frame = saved_frame.clone();
     iterated_frame.iterated_player = true;
     iterated_frame.last_effect_id = None;
@@ -783,7 +830,7 @@ pub(crate) fn compile_effects_in_iterated_object_context(
 
     let mut id_gen = ctx.id_gen_context();
     let (compiled, choices, _frame_out) =
-        compile_effects_with_explicit_frame(effects, &mut id_gen, iterated_frame)?;
+        compile_effects_with_explicit_frame(effects_to_compile, &mut id_gen, iterated_frame)?;
     let choices = choices
         .into_iter()
         .filter(|choice| !format!("{choice:?}").contains("IteratedPlayer"))

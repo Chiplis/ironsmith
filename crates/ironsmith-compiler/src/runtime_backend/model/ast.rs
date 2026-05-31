@@ -1311,6 +1311,7 @@ pub(crate) enum SubjectVerbActionAst {
         source: TargetAst,
         count: Value,
         player: PlayerAst,
+        attached_to: Option<TargetAst>,
         enters_tapped: bool,
         enters_attacking: bool,
         attack_target_player_or_planeswalker_controlled_by: Option<PlayerAst>,

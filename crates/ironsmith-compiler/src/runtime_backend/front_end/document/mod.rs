@@ -2236,25 +2236,16 @@ mod tests {
         let landwalk = single_preprocessed_line(
             "Creatures with islandwalk can be blocked as though they didn’t have islandwalk.",
         );
-        let aura_copy = single_preprocessed_line(
-            "Create a token that’s a copy of that Aura attached to that creature.",
-        );
         let face_down = single_preprocessed_line("Target face-down creature can block this turn.");
 
         let landwalk_error = diagnose_known_unsupported_rewrite_line(&landwalk.tokens)
             .expect("expected landwalk override diagnostic");
-        let aura_copy_error = diagnose_known_unsupported_rewrite_line(&aura_copy.tokens)
-            .expect("expected aura-copy diagnostic");
         let face_down_error = diagnose_known_unsupported_rewrite_line(&face_down.tokens)
             .expect("expected face-down diagnostic");
 
         assert_eq!(
             landwalk_error.to_string(),
             "unsupported landwalk override clause"
-        );
-        assert_eq!(
-            aura_copy_error.to_string(),
-            "unsupported aura-copy attachment fanout clause"
         );
         assert_eq!(face_down_error.to_string(), "unsupported face-down clause");
     }

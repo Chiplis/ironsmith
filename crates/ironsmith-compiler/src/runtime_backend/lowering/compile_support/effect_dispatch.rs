@@ -3452,6 +3452,7 @@ fn compile_subject_verb_effect(
             source,
             count,
             player: action_player,
+            attached_to,
             enters_tapped,
             enters_attacking,
             attack_target_player_or_planeswalker_controlled_by,
@@ -3477,6 +3478,15 @@ fn compile_subject_verb_effect(
                 resolve_target_spec_with_choices(source, &current_reference_env(ctx))?;
             for choice in source_choices {
                 push_choice(&mut choices, choice);
+            }
+            let resolved_attached_to = attached_to
+                .as_ref()
+                .map(|target| resolve_target_spec_with_choices(target, &current_reference_env(ctx)))
+                .transpose()?;
+            if let Some((_, target_choices)) = &resolved_attached_to {
+                for choice in target_choices {
+                    push_choice(&mut choices, choice.clone());
+                }
             }
             if let Some(last_tag) = ctx.last_object_tag.as_deref()
                 && str_starts_with(last_tag, "exile_cost_")
@@ -3542,14 +3552,37 @@ fn compile_subject_verb_effect(
             for ability in granted_abilities {
                 effect = effect.grant_static_ability(ability.clone());
             }
+            if attached_to.is_some() {
+                effect = effect.suppress_aura_attachment_choice();
+            }
 
             let mut effect = Effect::new(effect);
-            if ctx.auto_tag_object_targets {
+            let needs_created_tag = ctx.auto_tag_object_targets || attached_to.is_some();
+            let mut created_tag = None;
+            if needs_created_tag {
                 let tag = ctx.next_tag("created");
                 ctx.last_object_tag = Some(tag.clone());
-                effect = effect.tag(tag);
+                effect = effect.tag(tag.clone());
+                created_tag = Some(tag);
             }
-            Ok((vec![effect], choices))
+            let mut compiled = vec![effect];
+            if let Some((target_spec, _)) = resolved_attached_to {
+                let Some(created_tag) = created_tag else {
+                    return Err(CardTextError::InvariantViolation(
+                        "attached token-copy creation requires created token tag to be present"
+                            .to_string(),
+                    ));
+                };
+                let objects = ChooseSpec::All(ObjectFilter::tagged(created_tag));
+                let mut attach_effect = Effect::attach_objects(objects, target_spec);
+                if ctx.auto_tag_object_targets {
+                    let tag = ctx.next_tag("attachment_target");
+                    attach_effect = attach_effect.tag(tag.clone());
+                    ctx.last_object_tag = Some(tag);
+                }
+                compiled.push(attach_effect);
+            }
+            Ok((compiled, choices))
         }
         SubjectVerbActionAst::Meld {
             result_name,

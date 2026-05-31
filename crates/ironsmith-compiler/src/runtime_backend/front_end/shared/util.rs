@@ -2952,7 +2952,10 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
             target_count,
         ));
     }
-    if word_slice_eq_any(&all_words, &[&["that", "permanent"], &["that", "creature"]]) {
+    if word_slice_eq_any(
+        &all_words,
+        &[&["that", "permanent"], &["that", "creature"]],
+    ) {
         return Ok(wrap_target_count(
             TargetAst::Tagged(TagKey::from(IT_TAG), span),
             target_count,
