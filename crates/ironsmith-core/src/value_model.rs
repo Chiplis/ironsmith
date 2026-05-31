@@ -73,6 +73,7 @@ pub enum Value {
     DistinctPowers(ObjectFilter),
     CreaturesDiedThisTurn,
     CreaturesDiedThisTurnControlledBy(PlayerFilter),
+    PlayersBeingAttacked,
     CountPlayers(PlayerFilter),
     PlayersWhoControlMoreThanYou(ObjectFilter),
     PartySize(PlayerFilter),

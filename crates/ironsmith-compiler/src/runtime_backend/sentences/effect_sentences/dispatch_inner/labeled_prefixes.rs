@@ -53,6 +53,9 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
     if let Some(effects) = parse_next_spell_grant_sentence_lexed(tokens)? {
         return Ok(effects);
     }
+    if let Some(effect) = parse_matching_spell_cost_reduction_this_turn_sentence_lexed(tokens) {
+        return Ok(vec![effect]);
+    }
     if word_slice_first_is_any(&sentence_words, &["prevent", "take", "monstrosity"])
         && let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)?
     {
@@ -371,6 +374,63 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
 
     let (_, effects) = super::sentence_registry::run_sentence_parse_rules_lexed(tokens)?;
     Ok(effects)
+}
+
+fn parse_matching_spell_cost_reduction_this_turn_sentence_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<EffectAst> {
+    let words = TokenWordView::new(tokens);
+    let clause_words = words.to_word_refs();
+    let spell_idx = word_slice_find_word(clause_words.as_slice(), "spells")
+        .or_else(|| word_slice_find_word(clause_words.as_slice(), "spell"))?;
+    let cost_idx = word_slice_find_word(clause_words.as_slice(), "cost")
+        .or_else(|| word_slice_find_word(clause_words.as_slice(), "costs"))?;
+    let less_idx = word_slice_find_word(clause_words.as_slice(), "less")?;
+
+    if cost_idx <= spell_idx
+        || less_idx <= cost_idx
+        || !word_slice_contains_phrase(&clause_words, &["you", "cast"])
+        || !word_slice_contains_phrase(&clause_words, &["this", "turn"])
+        || clause_words.get(less_idx + 1).copied() != Some("to")
+        || clause_words.get(less_idx + 2).copied() != Some("cast")
+    {
+        return None;
+    }
+
+    let spell_token_idx = words.token_index_for_word_index(spell_idx)?;
+    let cost_token_idx = words.token_index_for_word_index(cost_idx)?;
+    let less_token_idx = words.token_index_for_word_index(less_idx)?;
+    let subject_tokens = trim_edge_punctuation(&tokens[..=spell_token_idx]);
+    let reduction_tokens = trim_edge_punctuation(&tokens[cost_token_idx + 1..less_token_idx]);
+    let (mut reduction, used) = parse_value(&reduction_tokens)?;
+    if used != reduction_tokens.len() {
+        return None;
+    }
+    if matches!(reduction, Value::X)
+        && clause_words.get(less_idx + 3).copied() == Some("where")
+    {
+        let where_token_idx = words.token_index_for_word_index(less_idx + 3)?;
+        if let Some(where_value) = parse_value_binding_clause(&tokens[where_token_idx..]) {
+            reduction = where_value;
+        }
+    }
+
+    let mut filter = crate::runtime_backend::parse_spell_filter_lexed(&subject_tokens);
+    filter.cast_by = Some(PlayerFilter::You);
+
+    let between_words = &clause_words[spell_idx + 1..cost_idx];
+    if word_slice_contains_phrase(between_words, &["from", "exile"]) {
+        filter.zone = Some(Zone::Exile);
+    } else if word_slice_contains_phrase(between_words, &["from", "your", "graveyard"]) {
+        filter.zone = Some(Zone::Graveyard);
+        filter.owner = Some(PlayerFilter::You);
+    }
+
+    Some(EffectAst::subject_verb_reduce_matching_spell_cost_this_turn(
+        PlayerAst::You,
+        filter,
+        reduction,
+    ))
 }
 
 fn parse_exile_replacement_subject_verb_sentence(

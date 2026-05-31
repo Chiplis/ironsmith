@@ -5399,6 +5399,28 @@ fn compile_subject_verb_effect(
                 Vec::new(),
             ))
         }
+        SubjectVerbActionAst::ReduceMatchingSpellCostThisTurn { filter, reduction } => {
+            let subject = resolve_subject_verb_subject(role, player, ctx, false, false, true)?;
+            let mut player_filter = subject.into_player_filter();
+            let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            if let Some(last_player_filter) = ctx.last_player_filter.clone() {
+                bind_relative_iterated_player_to_last_player_filter(
+                    &mut player_filter,
+                    &mut resolved_filter,
+                    &last_player_filter,
+                );
+            }
+            Ok((
+                vec![Effect::new(
+                    crate::effects::GrantNextSpellCostReductionEffect::all_matching_this_turn(
+                        player_filter,
+                        resolved_filter,
+                        reduction.clone(),
+                    ),
+                )],
+                Vec::new(),
+            ))
+        }
         SubjectVerbActionAst::GrantNextSpellAbilityThisTurn { filter, ability } => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let mut player_filter = subject.clone_player_filter();

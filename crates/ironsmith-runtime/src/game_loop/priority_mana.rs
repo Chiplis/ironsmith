@@ -3936,6 +3936,7 @@ pub(super) fn finalize_spell_cast(
                 .temporary_spell_cost_reductions
                 .get_mut(idx)
                 && effect.remaining_uses > 0
+                && !effect.applies_to_all_matching_this_turn
             {
                 effect.remaining_uses -= 1;
             }

@@ -29624,6 +29624,219 @@ fn test_next_matching_spell_cost_reduction_is_consumed_by_first_match_only() {
 }
 
 #[test]
+fn commander_liara_portyr_runtime_reduces_each_exiled_spell_by_attacked_players() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+
+    let mut combat = CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: game.new_object_id(),
+        target: AttackTarget::Player(bob),
+    });
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: game.new_object_id(),
+        target: AttackTarget::Player(charlie),
+    });
+    game.combat = Some(combat);
+
+    let source = game.new_object_id();
+    let grant_reduction = Effect::new(
+        crate::effects::GrantNextSpellCostReductionEffect::all_matching_this_turn(
+            PlayerFilter::You,
+            crate::target::ObjectFilter::default()
+                .in_zone(Zone::Exile)
+                .cast_by_you(),
+            Value::PlayersBeingAttacked,
+        ),
+    );
+    let mut ctx = ExecutionContext::new_default(source, alice);
+    execute_effect(&mut game, &grant_reduction, &mut ctx)
+        .expect("Commander Liara Portyr reduction grant should resolve");
+    game.combat = None;
+
+    let first_exiled =
+        CardDefinitionBuilder::new(CardId::new(), "Commander Liara Portyr Exiled Probe")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+            .card_types(vec![CardType::Sorcery])
+            .with_spell_effect(vec![Effect::draw(1)])
+            .build();
+    let second_exiled = CardDefinitionBuilder::new(
+        CardId::new(),
+        "Commander Liara Portyr Second Exiled Probe",
+    )
+    .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(5)]]))
+    .card_types(vec![CardType::Sorcery])
+    .with_spell_effect(vec![Effect::draw(1)])
+    .build();
+    let hand_spell = CardDefinitionBuilder::new(CardId::new(), "Commander Liara Portyr Hand Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Sorcery])
+        .with_spell_effect(vec![Effect::draw(1)])
+        .build();
+
+    let first_id = game.create_object_from_definition(&first_exiled, alice, Zone::Exile);
+    let second_id = game.create_object_from_definition(&second_exiled, alice, Zone::Exile);
+    let hand_id = game.create_object_from_definition(&hand_spell, alice, Zone::Hand);
+    let play_from_exile = CastingMethod::PlayFrom {
+        source,
+        zone: Zone::Exile,
+        use_alternative: None,
+    };
+
+    let first = game.object(first_id).expect("first exiled spell exists");
+    let first_cost = crate::decision::calculate_effective_mana_cost_for_casting_method(
+        &game,
+        alice,
+        first,
+        first.mana_cost.as_ref().expect("first spell mana cost"),
+        &play_from_exile,
+    );
+    assert_eq!(
+        first_cost.to_oracle(),
+        "{2}",
+        "two defending players should reduce the first exiled spell by two generic mana"
+    );
+
+    let second = game.object(second_id).expect("second exiled spell exists");
+    let second_cost = crate::decision::calculate_effective_mana_cost_for_casting_method(
+        &game,
+        alice,
+        second,
+        second.mana_cost.as_ref().expect("second spell mana cost"),
+        &play_from_exile,
+    );
+    assert_eq!(
+        second_cost.to_oracle(),
+        "{3}",
+        "Commander Liara Portyr's reduction applies to every matching exiled spell this turn"
+    );
+
+    let hand = game.object(hand_id).expect("hand spell exists");
+    let hand_cost = crate::decision::calculate_effective_mana_cost(
+        &game,
+        alice,
+        hand,
+        hand.mana_cost.as_ref().expect("hand spell mana cost"),
+    );
+    assert_eq!(
+        hand_cost.to_oracle(),
+        "{4}",
+        "Commander Liara Portyr should not reduce spells cast from hand"
+    );
+
+    for idx in 0..3 {
+        let library_card = CardDefinitionBuilder::new(
+            CardId::new(),
+            format!("Commander Liara Portyr Library Probe {idx}"),
+        )
+        .card_types(vec![CardType::Sorcery])
+        .with_spell_effect(vec![Effect::draw(1)])
+        .build();
+        game.create_object_from_definition(&library_card, alice, Zone::Library);
+    }
+    let library_before = game.player(alice).expect("alice exists").library.len();
+    let exile_before = game.exile.len();
+    let mut combat = CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: game.new_object_id(),
+        target: AttackTarget::Player(bob),
+    });
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: game.new_object_id(),
+        target: AttackTarget::Player(charlie),
+    });
+    game.combat = Some(combat);
+    let exile_top =
+        Effect::exile_top_of_library_player(Value::PlayersBeingAttacked, PlayerFilter::You);
+    let mut ctx = ExecutionContext::new_default(source, alice);
+    execute_effect(&mut game, &exile_top, &mut ctx)
+        .expect("Commander Liara Portyr exile-top effect should resolve");
+    assert_eq!(
+        game.player(alice).expect("alice exists").library.len(),
+        library_before - 2,
+        "two attacked players should make Commander Liara Portyr exile the top two cards"
+    );
+    assert_eq!(
+        game.exile.len(),
+        exile_before + 2,
+        "Commander Liara Portyr should exile one top card per attacked player"
+    );
+}
+
+#[test]
+fn commander_liara_portyr_runtime_has_no_reduction_without_attacked_players() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let source = game.new_object_id();
+    let grant_reduction = Effect::new(
+        crate::effects::GrantNextSpellCostReductionEffect::all_matching_this_turn(
+            PlayerFilter::You,
+            crate::target::ObjectFilter::default()
+                .in_zone(Zone::Exile)
+                .cast_by_you(),
+            Value::PlayersBeingAttacked,
+        ),
+    );
+    let mut ctx = ExecutionContext::new_default(source, alice);
+    execute_effect(&mut game, &grant_reduction, &mut ctx)
+        .expect("Commander Liara Portyr zero-count reduction grant should resolve");
+
+    let exiled_spell =
+        CardDefinitionBuilder::new(CardId::new(), "Commander Liara Portyr No Attack Probe")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+            .card_types(vec![CardType::Sorcery])
+            .with_spell_effect(vec![Effect::draw(1)])
+            .build();
+    let spell_id = game.create_object_from_definition(&exiled_spell, alice, Zone::Exile);
+    let spell = game.object(spell_id).expect("exiled spell exists");
+    let cost = crate::decision::calculate_effective_mana_cost_for_casting_method(
+        &game,
+        alice,
+        spell,
+        spell.mana_cost.as_ref().expect("spell mana cost"),
+        &CastingMethod::PlayFrom {
+            source,
+            zone: Zone::Exile,
+            use_alternative: None,
+        },
+    );
+
+    assert_eq!(
+        cost.to_oracle(),
+        "{4}",
+        "without current attacked players, Commander Liara Portyr's dynamic reduction is zero"
+    );
+
+    let library_card = CardDefinitionBuilder::new(
+        CardId::new(),
+        "Commander Liara Portyr No Attack Library Probe",
+    )
+    .card_types(vec![CardType::Sorcery])
+    .with_spell_effect(vec![Effect::draw(1)])
+    .build();
+    game.create_object_from_definition(&library_card, alice, Zone::Library);
+    let library_before = game.player(alice).expect("alice exists").library.len();
+    let exile_before = game.exile.len();
+    let exile_top =
+        Effect::exile_top_of_library_player(Value::PlayersBeingAttacked, PlayerFilter::You);
+    let mut ctx = ExecutionContext::new_default(source, alice);
+    execute_effect(&mut game, &exile_top, &mut ctx)
+        .expect("Commander Liara Portyr zero-count exile-top effect should resolve");
+    assert_eq!(
+        game.player(alice).expect("alice exists").library.len(),
+        library_before,
+        "without attacked players, Commander Liara Portyr should exile no library cards"
+    );
+    assert_eq!(
+        game.exile.len(),
+        exile_before,
+        "without attacked players, Commander Liara Portyr should leave exile unchanged"
+    );
+}
+
+#[test]
 fn test_face_down_cast_matches_panoptic_filter_and_enters_battlefield_face_down() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);

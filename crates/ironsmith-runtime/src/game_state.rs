@@ -787,6 +787,8 @@ pub struct TemporarySpellCostReductionEffectInstance {
     pub source: ObjectId,
     pub filter: crate::target::ObjectFilter,
     pub reduction: crate::mana::ManaCost,
+    pub generic_reduction: Option<crate::effect::Value>,
+    pub applies_to_all_matching_this_turn: bool,
     pub remaining_uses: u32,
     pub expires_end_of_turn: u32,
 }
@@ -2781,7 +2783,30 @@ impl GameState {
                 source,
                 filter,
                 reduction,
+                generic_reduction: None,
+                applies_to_all_matching_this_turn: false,
                 remaining_uses,
+                expires_end_of_turn: self.turn.turn_number,
+            },
+        );
+    }
+
+    pub fn add_temporary_matching_spell_cost_reduction_this_turn(
+        &mut self,
+        player: PlayerId,
+        source: ObjectId,
+        filter: crate::target::ObjectFilter,
+        generic_reduction: crate::effect::Value,
+    ) {
+        self.effect_store.temporary_spell_cost_reductions.push(
+            TemporarySpellCostReductionEffectInstance {
+                player,
+                source,
+                filter,
+                reduction: crate::mana::ManaCost::new(),
+                generic_reduction: Some(generic_reduction),
+                applies_to_all_matching_this_turn: true,
+                remaining_uses: u32::MAX,
                 expires_end_of_turn: self.turn.turn_number,
             },
         );
