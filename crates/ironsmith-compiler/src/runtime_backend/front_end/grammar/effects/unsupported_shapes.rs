@@ -284,6 +284,14 @@ pub(crate) fn has_face_down_clause_sentence_lexed(
         return false;
     }
 
+    let supported_exile_pile_manifest = words.first() == Some(&"exile")
+        && word_slice_contains_phrase(words, &["in", "a", "face", "down", "pile"])
+        && word_slice_contains_phrase(words, &["shuffle", "that", "pile"])
+        && word_slice_contains_phrase(words, &["then", "manifest", "those", "cards"]);
+    if supported_exile_pile_manifest {
+        return false;
+    }
+
     let simple_exile_face_down = primitives::words_match_any_prefix(tokens, EXILE_PREFIXES)
         .is_some()
         && !primitives::contains_word(tokens, "then")

@@ -19,6 +19,7 @@ use super::super::lexer::{
     word_slice_starts_with_at,
 };
 use super::super::object_filters::parse_object_filter;
+use super::super::object_filters::parse_object_filter_lexed;
 use super::super::permission_helpers::{
     PermissionClauseSpec, PermissionLifetime, parse_additional_land_plays_clause_lexed,
     parse_cast_or_play_tagged_clause, parse_permission_clause_spec_lexed,
@@ -52,8 +53,8 @@ use super::{
 };
 #[allow(unused_imports)]
 use crate::cards::builders::{
-    CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, SubjectVerbActionAst,
-    SubjectVerbEffectAst, SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan,
+    CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, ReturnControllerAst,
+    SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan,
 };
 use crate::effect::{ChoiceCount, Until, Value};
 use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
@@ -318,6 +319,62 @@ fn parse_exile_library_then_shuffle_graveyard_chain_lexed(
     ]))
 }
 
+fn parse_exile_face_down_pile_then_manifest_chain_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let clause_tokens = trim_lexed_commas(tokens);
+    if grammar::words_match_prefix(clause_tokens, &["exile", "all"]).is_none() {
+        return Ok(None);
+    }
+
+    let clause_words = token_word_refs(clause_tokens);
+    let Some(in_pile_idx) = word_slice_find_phrase_start(
+        &clause_words,
+        &["in", "a", "face", "down", "pile"],
+    )
+    .or_else(|| word_slice_find_phrase_start(&clause_words, &["in", "a", "face-down", "pile"]))
+    .or_else(|| word_slice_find_phrase_start(&clause_words, &["in", "a", "facedown", "pile"]))
+    else {
+        return Ok(None);
+    };
+    if in_pile_idx <= 2 {
+        return Ok(None);
+    }
+
+    let pile_tail_start = in_pile_idx
+        + if word_slice_starts_with_at(
+            &clause_words,
+            in_pile_idx,
+            &["in", "a", "face", "down", "pile"],
+        ) {
+            5
+        } else {
+            4
+        };
+    if !word_slice_eq(
+        &clause_words[pile_tail_start..],
+        &["shuffle", "that", "pile", "then", "manifest", "those", "cards"],
+    ) {
+        return Ok(None);
+    }
+
+    let filter = parse_object_filter_lexed(&clause_tokens[2..in_pile_idx], false)?;
+    if filter.zone != Some(Zone::Graveyard) {
+        return Ok(None);
+    }
+    let it_tag = TagKey::from(IT_TAG);
+    Ok(Some(vec![
+        EffectAst::subject_verb_exile_all(filter, true),
+        EffectAst::ForEachTagged {
+            tag: it_tag.clone(),
+            effects: vec![EffectAst::subject_verb_move_to_zone_manifested(
+                TargetAst::Tagged(it_tag, None),
+                ReturnControllerAst::You,
+            )],
+        },
+    ]))
+}
+
 pub(crate) fn looks_like_multi_create_chain_lexed(tokens: &[OwnedLexToken]) -> bool {
     matches!(find_verb_lexed(tokens), Some((Verb::Create, _)))
         && token_word_refs(tokens)
@@ -341,6 +398,9 @@ pub(crate) fn parse_effect_chain_lexed(
     }
 
     if let Some(effects) = parse_exile_library_then_shuffle_graveyard_chain_lexed(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effects) = parse_exile_face_down_pile_then_manifest_chain_lexed(tokens)? {
         return Ok(effects);
     }
     if let Some(effects) =

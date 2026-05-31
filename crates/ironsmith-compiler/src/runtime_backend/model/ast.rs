@@ -1098,6 +1098,7 @@ pub(crate) enum SubjectVerbActionAst {
         battlefield_controller: ReturnControllerAst,
         battlefield_tapped: bool,
         battlefield_attacking: bool,
+        battlefield_manifested: bool,
         attached_to: Option<TargetAst>,
     },
     MoveToLibraryTopOrBottomChoice {
@@ -2346,6 +2347,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 battlefield_controller,
                 battlefield_tapped,
                 battlefield_attacking,
+                battlefield_manifested,
                 attached_to,
             } => f
                 .debug_struct("MoveToZone")
@@ -2355,6 +2357,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("battlefield_controller", battlefield_controller)
                 .field("battlefield_tapped", battlefield_tapped)
                 .field("battlefield_attacking", battlefield_attacking)
+                .field("battlefield_manifested", battlefield_manifested)
                 .field("attached_to", attached_to)
                 .finish(),
             Self::MoveToLibraryTopOrBottomChoice { target } => f
@@ -3932,6 +3935,44 @@ impl EffectAst {
         battlefield_attacking: bool,
         attached_to: Option<TargetAst>,
     ) -> Self {
+        Self::subject_verb_move_to_zone_with_battlefield_flags(
+            target,
+            zone,
+            to_top,
+            battlefield_controller,
+            battlefield_tapped,
+            battlefield_attacking,
+            false,
+            attached_to,
+        )
+    }
+
+    pub(crate) fn subject_verb_move_to_zone_manifested(
+        target: TargetAst,
+        battlefield_controller: ReturnControllerAst,
+    ) -> Self {
+        Self::subject_verb_move_to_zone_with_battlefield_flags(
+            target,
+            Zone::Battlefield,
+            false,
+            battlefield_controller,
+            false,
+            false,
+            true,
+            None,
+        )
+    }
+
+    pub(crate) fn subject_verb_move_to_zone_with_battlefield_flags(
+        target: TargetAst,
+        zone: Zone,
+        to_top: bool,
+        battlefield_controller: ReturnControllerAst,
+        battlefield_tapped: bool,
+        battlefield_attacking: bool,
+        battlefield_manifested: bool,
+        attached_to: Option<TargetAst>,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3942,6 +3983,7 @@ impl EffectAst {
                 battlefield_controller,
                 battlefield_tapped,
                 battlefield_attacking,
+                battlefield_manifested,
                 attached_to,
             },
         )

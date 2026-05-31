@@ -16412,17 +16412,129 @@ fn parse_protection_from_spells_that_are_one_or_more_colors() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn parse_exile_face_down_manifest_tail_fails_instead_of_partial_exile() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Ghastly Conscription Variant")
-        .parse_text(
-            "Exile all creature cards from target player's graveyard in a face-down pile, shuffle that pile, then manifest those cards.",
-        )
-        .expect_err("face-down/manifest exile tail should fail loudly when unsupported");
-    let message = format!("{err:?}");
+fn ghastly_conscription_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Ghastly Conscription");
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
     assert!(
-        message.contains("unsupported face-down/manifest exile clause")
-            || message.contains("unsupported face-down clause"),
-        "expected actionable face-down/manifest parse error, got {message}"
+        rendered.contains(
+            "exile all creature cards from target player's graveyard in a face-down pile, shuffle that pile, then manifest those cards"
+        ),
+        "expected Ghastly Conscription face-down pile manifest clause, got {rendered}"
+    );
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("ExileEffect")
+            && debug.contains("face_down: true")
+            && debug.contains("ForEachTaggedEffect")
+            && debug.contains("enters_manifested: true"),
+        "expected tagged face-down exile followed by manifested battlefield move, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn ghastly_conscription_manifests_only_target_players_creature_cards_runtime() {
+    let def = parse_oracle_card_definition("Ghastly Conscription");
+    let spell_effects = def
+        .spell_effect
+        .as_ref()
+        .expect("Ghastly Conscription spell effects");
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+
+    let creature_def = |name: &str| {
+        CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(4, 4))
+            .build()
+    };
+    let bear = creature_def("Bob Bear");
+    let zombie = creature_def("Bob Zombie");
+    let artifact = CardDefinitionBuilder::new(CardId::new(), "Bob Relic")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let alice_creature = creature_def("Alice Graveyard Creature");
+    game.create_object_from_definition(&bear, bob, Zone::Graveyard);
+    game.create_object_from_definition(&zombie, bob, Zone::Graveyard);
+    let artifact_id = game.create_object_from_definition(&artifact, bob, Zone::Graveyard);
+    let alice_graveyard_id =
+        game.create_object_from_definition(&alice_creature, alice, Zone::Graveyard);
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source_id, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)]);
+    let mut events = Vec::new();
+    for effect in spell_effects {
+        let outcome = crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Ghastly Conscription effect should resolve");
+        events.extend(outcome.events);
+    }
+
+    let manifested = game
+        .battlefield
+        .iter()
+        .copied()
+        .filter(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.owner == bob && game.is_manifested(*id))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        manifested.len(),
+        2,
+        "both target player's creature cards should be manifested"
+    );
+    for id in manifested {
+        let object = game.object(id).expect("manifested permanent should exist");
+        assert_eq!(object.owner, bob, "manifest keeps the card owner");
+        assert_eq!(
+            game.controller_of(object),
+            alice,
+            "spell controller should control manifested cards"
+        );
+        assert!(game.is_face_down(id), "manifested card should be face down");
+        assert!(game.is_manifested(id), "manifested card should be marked as manifested");
+        assert_eq!(game.calculated_power(id), Some(2));
+        assert_eq!(game.calculated_toughness(id), Some(2));
+    }
+    assert!(
+        game.object(artifact_id).is_some_and(|object| object.zone == Zone::Graveyard),
+        "target player's noncreature card should stay in their graveyard"
+    );
+    assert!(
+        game.object(alice_graveyard_id)
+            .is_some_and(|object| object.zone == Zone::Graveyard),
+        "non-target player's creature card should stay in their graveyard"
+    );
+    let manifest_events = events
+        .iter()
+        .filter_map(|event| {
+            (event.kind() == crate::events::EventKind::KeywordAction)
+                .then(|| {
+                    event
+                        .inner()
+                        .as_any()
+                        .downcast_ref::<crate::events::KeywordActionEvent>()
+                })
+                .flatten()
+        })
+        .filter(|event| event.action == crate::events::KeywordActionKind::Manifest)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        manifest_events.iter().map(|event| event.amount).sum::<u32>(),
+        2,
+        "Ghastly Conscription should emit manifest keyword actions for manifested cards"
+    );
+    assert!(
+        manifest_events.iter().all(|event| event.player == alice),
+        "spell controller should perform the manifest keyword action"
     );
 }
 

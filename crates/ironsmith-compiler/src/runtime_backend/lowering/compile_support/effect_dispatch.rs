@@ -2336,6 +2336,7 @@ fn compile_subject_verb_effect(
             battlefield_controller,
             battlefield_tapped,
             battlefield_attacking,
+            battlefield_manifested,
             attached_to,
         } => {
             let (mut spec, mut choices) =
@@ -2401,6 +2402,11 @@ fn compile_subject_verb_effect(
                 } else {
                     move_effect
                 };
+                let move_effect = if *zone == Zone::Battlefield && *battlefield_manifested {
+                    move_effect.manifested()
+                } else {
+                    move_effect
+                };
                 let move_effect = match battlefield_controller {
                     ReturnControllerAst::Preserve => move_effect,
                     ReturnControllerAst::Owner => move_effect.under_owner_control(),
@@ -2457,6 +2463,11 @@ fn compile_subject_verb_effect(
             };
             let move_effect = if *zone == Zone::Battlefield && *battlefield_attacking {
                 move_effect.attacking()
+            } else {
+                move_effect
+            };
+            let move_effect = if *zone == Zone::Battlefield && *battlefield_manifested {
+                move_effect.manifested()
             } else {
                 move_effect
             };

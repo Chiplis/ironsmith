@@ -5,6 +5,7 @@ use crate::combat_state::{AttackTarget, AttackerInfo, CombatState};
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_tagged_object_id};
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::{KeywordActionEvent, KeywordActionKind};
 use crate::events::processing::{EventOutcome, process_zone_change_with_additional_effects};
 use crate::filter::FilterContext;
 use crate::filter::ObjectFilterExt as _;
@@ -202,6 +203,7 @@ impl EffectExecutor for MoveToZoneEffect {
         let mut any_prevented = false;
         let mut any_replaced = false;
         let mut moved_source_lki = None;
+        let mut manifested_count = 0;
 
         for object_id in object_ids {
             let Some(obj) = game.object(object_id) else {
@@ -222,6 +224,11 @@ impl EffectExecutor for MoveToZoneEffect {
                 crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
                     obj, game,
                 );
+            if self.enters_manifested && self.zone == Zone::Battlefield {
+                if let Some(object) = game.object_mut(object_id) {
+                    object.apply_face_down_cast_overlay();
+                }
+            }
             let additional_effects = ctx.additional_replacement_effects_snapshot();
 
             // Process through replacement effects with decision maker
@@ -237,6 +244,11 @@ impl EffectExecutor for MoveToZoneEffect {
 
             match result {
                 EventOutcome::Prevented => {
+                    if self.enters_manifested && self.zone == Zone::Battlefield {
+                        if let Some(object) = game.object_mut(object_id) {
+                            object.end_face_down_cast_overlay();
+                        }
+                    }
                     return Ok(EffectOutcome::prevented());
                 }
                 EventOutcome::Proceed(final_zone) => {
@@ -255,6 +267,11 @@ impl EffectExecutor for MoveToZoneEffect {
                         };
                         match move_to_battlefield_with_options(game, ctx, object_id, options) {
                             BattlefieldEntryOutcome::Moved(new_id) => {
+                                if self.enters_manifested {
+                                    game.set_face_down(new_id);
+                                    game.set_manifested(new_id);
+                                    manifested_count += 1;
+                                }
                                 if self.enters_attacking
                                     && let Some(target) =
                                         choose_enters_attacking_target(game, ctx, new_id)
@@ -275,10 +292,21 @@ impl EffectExecutor for MoveToZoneEffect {
                                 moved_ids.push(new_id);
                             }
                             BattlefieldEntryOutcome::Prevented => {
+                                if self.enters_manifested {
+                                    if let Some(object) = game.object_mut(object_id) {
+                                        object.end_face_down_cast_overlay();
+                                    }
+                                }
                                 any_prevented = true;
                             }
                         }
                         continue;
+                    }
+
+                    if self.enters_manifested {
+                        if let Some(object) = game.object_mut(object_id) {
+                            object.end_face_down_cast_overlay();
+                        }
                     }
 
                     let mut result =
@@ -334,6 +362,14 @@ impl EffectExecutor for MoveToZoneEffect {
                     continue;
                 }
                 EventOutcome::Replaced => {
+                    if self.enters_manifested {
+                        if let Some(object) = game
+                            .find_object_by_stable_id(stable_id)
+                            .and_then(|id| game.object_mut(id))
+                        {
+                            object.end_face_down_cast_overlay();
+                        }
+                    }
                     any_replaced = true;
                     if let Some(result) = take_recorded_zone_change(game, object_id) {
                         affected_ids.extend(result.new_object_ids);
@@ -361,6 +397,17 @@ impl EffectExecutor for MoveToZoneEffect {
         if !moved_ids.is_empty() {
             let mut outcome =
                 EffectOutcome::with_objects(moved_ids).with_affected_objects(affected_ids);
+            if manifested_count > 0 {
+                outcome = outcome.with_event(crate::triggers::TriggerEvent::new_with_provenance(
+                    KeywordActionEvent::new(
+                        KeywordActionKind::Manifest,
+                        ctx.controller,
+                        ctx.source,
+                        manifested_count,
+                    ),
+                    ctx.provenance,
+                ));
+            }
             if !affected_memory.is_empty() {
                 outcome = outcome.with_affected_object_memory(affected_memory);
             }

@@ -3527,6 +3527,66 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         None
     }
 
+    fn describe_exile_face_down_pile_then_manifest(effects: &[Effect]) -> Option<String> {
+        let effects = if let [target_only, rest @ ..] = effects
+            && target_only
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                .is_some()
+        {
+            rest
+        } else {
+            effects
+        };
+        let [exile_effect, for_each_effect] = effects else {
+            return None;
+        };
+        let exile_tag = effect_tag(exile_effect)?;
+        let exile = unwrap_wrapped_effect(exile_effect)
+            .downcast_ref::<crate::effects::ExileEffect>()?;
+        if !exile.face_down {
+            return None;
+        }
+        let crate::target::ChooseSpec::All(filter) = &exile.spec else {
+            return None;
+        };
+        if filter.zone != Some(Zone::Graveyard) {
+            return None;
+        }
+        let for_each = for_each_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+        if &for_each.tag != exile_tag || for_each.effects.len() != 1 {
+            return None;
+        }
+        let move_to_zone = unwrap_wrapped_effect(&for_each.effects[0])
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+        if move_to_zone.zone != Zone::Battlefield
+            || move_to_zone.battlefield_controller != crate::effects::BattlefieldController::You
+            || move_to_zone.enters_tapped
+            || move_to_zone.enters_attacking
+            || !move_to_zone.enters_manifested
+        {
+            return None;
+        }
+        if !matches!(move_to_zone.target.base(), ChooseSpec::Iterated)
+            && !matches!(move_to_zone.target.base(), ChooseSpec::Tagged(tag) if tag == exile_tag)
+        {
+            return None;
+        }
+
+        let mut target = describe_choose_spec(&exile.spec);
+        target = target
+            .replace(" in target player's graveyard", " from target player's graveyard")
+            .replace(" in target opponent's graveyard", " from target opponent's graveyard")
+            .replace(" in your graveyard", " from your graveyard")
+            .replace(" in their graveyard", " from their graveyard");
+        Some(format!(
+            "Exile {target} in a face-down pile, shuffle that pile, then manifest those cards"
+        ))
+    }
+
+    if let Some(compact) = describe_exile_face_down_pile_then_manifest(effects) {
+        return compact;
+    }
+
     fn tagged_apply_continuous(effect: &Effect) -> Option<&crate::effects::ApplyContinuousEffect> {
         unwrap_wrapped_effect(effect).downcast_ref::<crate::effects::ApplyContinuousEffect>()
     }
@@ -28363,6 +28423,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 } else {
                     ""
                 };
+                let manifested_suffix = if move_to_zone.enters_manifested {
+                    " face down as a 2/2 creature"
+                } else {
+                    ""
+                };
                 let controller_suffix = match move_to_zone.battlefield_controller {
                     crate::effects::BattlefieldController::Preserve => "",
                     crate::effects::BattlefieldController::Owner => owner_control_suffix,
@@ -28373,9 +28438,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                         || tag.as_str().starts_with("exiled_")
                         || crate::cards::is_sentence_helper_tag(tag.as_str(), "exiled"))
                 {
-                    format!("Return {target} to the battlefield{tapped_suffix}{attacking_suffix}{controller_suffix}")
+                    format!("Return {target} to the battlefield{tapped_suffix}{attacking_suffix}{manifested_suffix}{controller_suffix}")
                 } else {
-                    format!("Put {target} onto the battlefield{tapped_suffix}{attacking_suffix}{controller_suffix}")
+                    format!("Put {target} onto the battlefield{tapped_suffix}{attacking_suffix}{manifested_suffix}{controller_suffix}")
                 }
             }
             Zone::Stack => format!("Put {target} on the stack"),

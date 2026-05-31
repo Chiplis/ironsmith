@@ -1369,6 +1369,7 @@ pub struct MoveToZoneEffect {
     pub battlefield_controller: BattlefieldController,
     pub enters_tapped: bool,
     pub enters_attacking: bool,
+    pub enters_manifested: bool,
     pub transfer_exiled_with_source_links: bool,
 }
 
@@ -1381,6 +1382,7 @@ impl MoveToZoneEffect {
             battlefield_controller: BattlefieldController::Preserve,
             enters_tapped: false,
             enters_attacking: false,
+            enters_manifested: false,
             transfer_exiled_with_source_links: false,
         }
     }
@@ -1423,6 +1425,11 @@ impl MoveToZoneEffect {
 
     pub fn attacking(mut self) -> Self {
         self.enters_attacking = true;
+        self
+    }
+
+    pub fn manifested(mut self) -> Self {
+        self.enters_manifested = true;
         self
     }
 }
