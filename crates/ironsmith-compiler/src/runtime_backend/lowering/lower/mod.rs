@@ -290,6 +290,17 @@ const CAST_OR_PLAY_SELF_FROM_EXILE_PHRASES: &[&[&str]] = &[
     &["cast", "this", "card", "from", "exile"],
     &["play", "this", "card", "from", "exile"],
 ];
+const CAUSES_YOU_TO_DISCARD_THIS_CARD_PHRASE: &[&str] =
+    &["causes", "you", "to", "discard", "this", "card"];
+const INSTEAD_OF_PUTTING_IT_INTO_YOUR_GRAVEYARD_PHRASE: &[&str] = &[
+    "instead",
+    "of",
+    "putting",
+    "it",
+    "into",
+    "your",
+    "graveyard",
+];
 const STATIC_ZONE_HINT_PHRASES: &[(&[&str], Zone)] = &[
     (&["this", "card", "is", "in", "your", "hand"], Zone::Hand),
     (

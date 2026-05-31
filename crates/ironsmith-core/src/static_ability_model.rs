@@ -4222,9 +4222,8 @@ impl CostReductionManaCost {
         label: impl Into<String>,
         life_cost: u32,
     ) -> Self {
-        self.optional_life_additional_cost = Some(OptionalLifeAdditionalCost::new(
-            label, life_cost,
-        ));
+        self.optional_life_additional_cost =
+            Some(OptionalLifeAdditionalCost::new(label, life_cost));
         self
     }
     pub fn with_condition(self, _condition: Condition) -> Self {

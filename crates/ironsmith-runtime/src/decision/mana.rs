@@ -578,18 +578,20 @@ pub(crate) fn optional_life_cost_reduction_costs_for_cast(
     let Some(spell) = game.object(spell_id) else {
         return Vec::new();
     };
-    let mut spell_for_filter = spell_view_for_cost_filter_match(game, caster, spell, casting_method)
-        .unwrap_or_else(|| {
-            let mut spell_for_filter = spell.clone();
-            if let Some(chars) = game.current_characteristics(spell_id) {
-                spell_for_filter.name = chars.name;
-                spell_for_filter.card_types = chars.card_types;
-                spell_for_filter.subtypes = chars.subtypes;
-                spell_for_filter.supertypes = chars.supertypes;
-                spell_for_filter.color_override = Some(chars.colors);
-            }
-            spell_for_filter
-        });
+    let mut spell_for_filter =
+        spell_view_for_cost_filter_match(game, caster, spell, casting_method).unwrap_or_else(
+            || {
+                let mut spell_for_filter = spell.clone();
+                if let Some(chars) = game.current_characteristics(spell_id) {
+                    spell_for_filter.name = chars.name;
+                    spell_for_filter.card_types = chars.card_types;
+                    spell_for_filter.subtypes = chars.subtypes;
+                    spell_for_filter.supertypes = chars.supertypes;
+                    spell_for_filter.color_override = Some(chars.colors);
+                }
+                spell_for_filter
+            },
+        );
     spell_for_filter.zone = Zone::Stack;
 
     let mut costs = Vec::new();
@@ -1492,12 +1494,9 @@ fn effective_cost_with_affordable_non_mana_optional_cost(
     view: &DerivedGameView<'_>,
 ) -> Option<crate::mana::ManaCost> {
     let mut spell_with_optional_costs = spell.clone();
-    for (source, optional) in optional_life_cost_reduction_costs_for_cast(
-        game,
-        player,
-        spell.id,
-        casting_method,
-    ) {
+    for (source, optional) in
+        optional_life_cost_reduction_costs_for_cast(game, player, spell.id, casting_method)
+    {
         let label = optional_life_cost_reduction_label(&optional, source);
         if spell_with_optional_costs
             .optional_costs

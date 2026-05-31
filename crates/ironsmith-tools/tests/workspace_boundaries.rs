@@ -1000,6 +1000,13 @@ fn activation_restriction_support_uses_tokens_for_text_conditions() {
         actual, expected,
         "activation restriction text conditions should be classified from tokens, not raw oracle-text searches"
     );
+
+    for forbidden in ["str_strip_prefix(", "str_strip_suffix("] {
+        assert!(
+            !content.contains(forbidden),
+            "{relative} should normalize activation restriction phrases through tokens, not `{forbidden}`"
+        );
+    }
 }
 
 #[test]

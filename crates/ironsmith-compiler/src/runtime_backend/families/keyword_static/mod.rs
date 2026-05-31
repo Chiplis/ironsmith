@@ -22,7 +22,6 @@ use super::grammar::abilities::{
     is_draw_replacement_skip_empty_library_line_lexed,
     is_during_your_turn_prevent_all_damage_to_source_line_lexed,
     is_effect_discard_to_library_replacement_line_lexed,
-    is_opponent_effect_discard_this_to_battlefield_replacement_line_lexed,
     is_enchanted_land_is_chosen_type_line_lexed,
     is_if_source_you_control_with_mana_value_double_instead_marker_line_lexed,
     is_krrik_black_mana_life_payment_line_lexed,
@@ -30,6 +29,7 @@ use super::grammar::abilities::{
     is_mana_group_slash_marker_line_lexed, is_may_assign_damage_as_unblocked_line_lexed,
     is_minimum_spell_total_mana_three_line_lexed, is_more_than_meets_the_eye_marker_line_lexed,
     is_no_maximum_hand_size_line_lexed, is_once_each_turn_play_from_exile_marker_guard_lexed,
+    is_opponent_effect_discard_this_to_battlefield_replacement_line_lexed,
     is_permanents_enter_tapped_line_lexed, is_play_lands_from_graveyard_line_lexed,
     is_play_top_card_your_library_revealed_line_lexed, is_players_cant_cycle_line_lexed,
     is_players_cant_pay_life_or_sacrifice_line_lexed,
@@ -6665,7 +6665,8 @@ fn parse_optional_life_additional_cost_reduction_line(
     let Some(cost_subject_start) = token_index_for_word_index(tokens, 6) else {
         return Ok(None);
     };
-    let Some(additional_spells_idx) = token_index_for_word_index(tokens, additional_spells_word_idx)
+    let Some(additional_spells_idx) =
+        token_index_for_word_index(tokens, additional_spells_word_idx)
     else {
         return Ok(None);
     };
@@ -6704,8 +6705,7 @@ fn parse_optional_life_additional_cost_reduction_line(
     if !word_slice_contains_phrase(
         &additional_words[those_spells_idx..],
         &["paid", "life", "this", "way"],
-    )
-    {
+    ) {
         return Ok(None);
     }
     let Some(costs_word_idx) = find_index(&additional_words[those_spells_idx..], |word| {

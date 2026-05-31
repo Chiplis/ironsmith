@@ -5135,7 +5135,8 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     for article in ["a", "an"] {
         let marker = format!("When this creature enters or {article} ");
         if let Some(rest) = normalized.strip_prefix(&marker)
-            && let Some((subject, effect_clause)) = rest.split_once(" you control other than this enters,")
+            && let Some((subject, effect_clause)) =
+                rest.split_once(" you control other than this enters,")
         {
             return format!(
                 "Whenever this creature or another {subject} you control enters,{effect_clause}"

@@ -1036,7 +1036,10 @@ fn default_effects_for_self_replacement(
     previous: EffectAst,
 ) -> (Vec<EffectAst>, Option<PlayerAst>) {
     let mut default_effects = vec![previous];
-    let mut carried_player = default_effects.iter().rev().find_map(carried_player_from_effect);
+    let mut carried_player = default_effects
+        .iter()
+        .rev()
+        .find_map(carried_player_from_effect);
 
     if carried_player.is_none()
         && default_effects.iter().any(effect_has_that_player_subject)

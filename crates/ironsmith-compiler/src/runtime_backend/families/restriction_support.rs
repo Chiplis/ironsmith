@@ -6,10 +6,14 @@ use super::activation_and_restrictions::{
     parse_activation_condition_lexed, parse_mana_spend_bonus_sentence_lexed,
     parse_mana_usage_restriction_sentence_lexed, parse_triggered_times_each_turn_lexed,
 };
-use super::lexer::{OwnedLexToken, contains_token_word_sequence, lex_line};
-use super::token_primitives::{str_strip_prefix, str_strip_suffix};
+use super::lexer::{
+    OwnedLexToken, TokenWordView, contains_token_word_sequence, lex_line, render_token_slice,
+};
 
 const ACTIVATE_ONLY_ONCE_EACH_TURN_TEXT: &str = "activate only once each turn";
+const ACTIVATE_ONLY_ONCE_EACH_TURN_AND_PREFIX: &[&str] =
+    &["activate", "only", "once", "each", "turn", "and"];
+const AND_ONLY_ONCE_EACH_TURN_SUFFIX: &[&str] = &["and", "only", "once", "each", "turn"];
 const DID_NOT_ATTACK_THIS_TURN_PHRASES: &[&[&str]] = &[
     &["didn't", "attack", "this", "turn"],
     &["did", "not", "attack", "this", "turn"],
@@ -221,14 +225,29 @@ fn normalize_activation_restriction(
     if normalized == ACTIVATE_ONLY_ONCE_EACH_TURN_TEXT {
         return None;
     }
-    let prefix = "activate only once each turn and ";
-    if let Some(stripped) = str_strip_prefix(&normalized, prefix) {
-        normalized = stripped.trim_start().to_string();
+
+    let tokens = lex_line(normalized.as_str(), 0).ok()?;
+    let words = TokenWordView::new(&tokens);
+    let mut start = 0usize;
+    let mut end = tokens.len();
+
+    if words.starts_with(ACTIVATE_ONLY_ONCE_EACH_TURN_AND_PREFIX)
+        && let Some(token_idx) =
+            words.token_index_after_words(ACTIVATE_ONLY_ONCE_EACH_TURN_AND_PREFIX.len())
+    {
+        start = token_idx;
     }
-    let suffix = " and only once each turn";
-    if let Some(stripped) = str_strip_suffix(&normalized, suffix) {
-        normalized = stripped.trim_end().to_string();
+
+    if words.ends_with(AND_ONLY_ONCE_EACH_TURN_SUFFIX)
+        && let Some(range) = words.token_range_for_word_range(
+            words.len() - AND_ONLY_ONCE_EACH_TURN_SUFFIX.len(),
+            words.len(),
+        )
+    {
+        end = range.start;
     }
+
+    normalized = render_token_slice(&tokens[start..end]).trim().to_string();
     if normalized.is_empty() {
         None
     } else {

@@ -604,10 +604,8 @@ fn lower_rewrite_activated_to_chunk_impl(
         )));
     }
 
-    let normalized_cost = bind_activated_x_definition_to_mana_cost(
-        line.cost.clone(),
-        x_definition_value,
-    );
+    let normalized_cost =
+        bind_activated_x_definition_to_mana_cost(line.cost.clone(), x_definition_value);
     let ability_text = rewrite_activated_display_text(line);
     let additional_activation_restrictions = if ability_text
         .as_deref()

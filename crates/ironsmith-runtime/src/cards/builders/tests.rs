@@ -223,10 +223,16 @@ fn templar_knight_deck_construction_rule_has_no_game_runtime_effects() {
     let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
     let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
 
-    assert!(static_ability.generate_effects(source, alice, &game).is_empty());
-    assert!(static_ability
-        .generate_replacement_effect(source, alice)
-        .is_none());
+    assert!(
+        static_ability
+            .generate_effects(source, alice, &game)
+            .is_empty()
+    );
+    assert!(
+        static_ability
+            .generate_replacement_effect(source, alice)
+            .is_none()
+    );
     assert!(static_ability.pregame_action_kind().is_none());
 }
 
@@ -293,7 +299,9 @@ fn templar_knight_activation_cost_filter_requires_untapped_attacking_named_creat
     let ctx = game.filter_context_for(alice, Some(source));
 
     for creature in matching {
-        let object = game.object(creature).expect("matching Templar should exist");
+        let object = game
+            .object(creature)
+            .expect("matching Templar should exist");
         assert!(
             choose_cost.filter.matches(object, &ctx, &game),
             "untapped attacking Templars you control should satisfy the activation cost filter"
@@ -305,7 +313,9 @@ fn templar_knight_activation_cost_filter_requires_untapped_attacking_named_creat
         (bob_attacker, "opponent-controlled"),
         (wrong_name_attacker, "wrong-name"),
     ] {
-        let object = game.object(creature).expect("negative branch object should exist");
+        let object = game
+            .object(creature)
+            .expect("negative branch object should exist");
         assert!(
             !choose_cost.filter.matches(object, &ctx, &game),
             "{reason} creatures should not satisfy the Templar Knight activation cost filter"
@@ -1298,9 +1308,7 @@ fn pious_kitsune_upkeep_effects(def: &CardDefinition) -> &[Effect] {
     triggered.effects.flattened_default_effects()
 }
 
-fn pious_kitsune_life_activated_ability(
-    def: &CardDefinition,
-) -> &crate::ability::ActivatedAbility {
+fn pious_kitsune_life_activated_ability(def: &CardDefinition) -> &crate::ability::ActivatedAbility {
     def.abilities
         .iter()
         .find_map(|ability| match &ability.kind {
@@ -1421,8 +1429,9 @@ fn pious_kitsune_activated_ability_removes_devotion_counter_and_gains_life() {
     game.add_counters(source, CounterType::Named("devotion"), 1)
         .expect("Pious Kitsune should accept devotion counters");
 
-    crate::cost::can_pay_cost(&game, source, alice, &activated.mana_cost)
-        .expect("Pious Kitsune activation should be payable with an untapped source and a devotion counter");
+    crate::cost::can_pay_cost(&game, source, alice, &activated.mana_cost).expect(
+        "Pious Kitsune activation should be payable with an untapped source and a devotion counter",
+    );
     let mut dm = crate::decision::AutoPassDecisionMaker::default();
     crate::special_actions::pay_total_cost_with_choice(
         &mut game,
@@ -1434,7 +1443,10 @@ fn pious_kitsune_activated_ability_removes_devotion_counter_and_gains_life() {
     )
     .expect("Pious Kitsune activation cost should be paid");
 
-    assert!(game.is_tapped(source), "activation cost should tap Pious Kitsune");
+    assert!(
+        game.is_tapped(source),
+        "activation cost should tap Pious Kitsune"
+    );
     assert_eq!(
         game.counter_count(source, CounterType::Named("devotion")),
         0,
@@ -27979,7 +27991,10 @@ fn parse_oracle_defiler_of_instinct_optional_life_cost_reduction_regression() {
         reduction.filter.card_types.contains(&CardType::Creature)
             && reduction.filter.card_types.contains(&CardType::Artifact)
             && reduction.filter.card_types.contains(&CardType::Enchantment)
-            && reduction.filter.card_types.contains(&CardType::Planeswalker)
+            && reduction
+                .filter
+                .card_types
+                .contains(&CardType::Planeswalker)
             && reduction.filter.card_types.contains(&CardType::Battle),
         "Defiler cost reduction should apply to red permanent spells, got {:?}",
         reduction.filter
@@ -27989,8 +28004,10 @@ fn parse_oracle_defiler_of_instinct_optional_life_cost_reduction_regression() {
         "Defiler cost reduction should be gated by its optional life additional cost, got {raw}"
     );
     assert!(
-        rendered_lower.contains("as an additional cost to cast red permanent spells, you may pay 2 life")
-            && rendered_lower.contains("those spells cost {r} less to cast if you paid life this way")
+        rendered_lower
+            .contains("as an additional cost to cast red permanent spells, you may pay 2 life")
+            && rendered_lower
+                .contains("those spells cost {r} less to cast if you paid life this way")
             && rendered_lower.contains("this effect reduces only the amount of red mana you pay"),
         "Defiler compiled text should preserve the optional additional cost and gated colored reduction, got {rendered}"
     );
@@ -40969,10 +40986,8 @@ fn losheel_test_creature(
 #[test]
 fn losheel_clockwork_scholar_prevents_only_attacking_artifact_creature_combat_damage() {
     let losheel = parse_oracle_card_definition("Losheel, Clockwork Scholar");
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
 
@@ -41046,10 +41061,8 @@ fn losheel_clockwork_scholar_prevents_only_attacking_artifact_creature_combat_da
 #[test]
 fn losheel_clockwork_scholar_prevention_rejects_nonattacking_and_opponent_artifacts() {
     let losheel = parse_oracle_card_definition("Losheel, Clockwork Scholar");
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
 
@@ -41110,9 +41123,8 @@ fn losheel_clockwork_scholar_prevention_rejects_nonattacking_and_opponent_artifa
         .matcher
         .as_ref()
         .expect("Losheel replacement should have a matcher");
-    let ctx = crate::events::context::EventContext::for_replacement_effect(
-        alice, losheel_id, &game,
-    );
+    let ctx =
+        crate::events::context::EventContext::for_replacement_effect(alice, losheel_id, &game);
 
     let protected = crate::events::damage::DamageEvent::with_cause(
         damage_source,
@@ -41164,10 +41176,8 @@ fn losheel_clockwork_scholar_prevention_rejects_nonattacking_and_opponent_artifa
 #[test]
 fn losheel_clockwork_scholar_artifact_creature_enter_trigger_is_once_each_turn() {
     let losheel = parse_oracle_card_definition("Losheel, Clockwork Scholar");
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
 
     let losheel_id = game.create_object_from_definition(&losheel, alice, Zone::Battlefield);
@@ -41257,7 +41267,9 @@ fn kjeldoran_elite_guard_strict_parser_and_text_regression() {
         "expected Kjeldoran Elite Guard to render the target pump, got {rendered}"
     );
     assert!(
-        rendered_lower.contains("when that creature leaves the battlefield this turn, sacrifice this creature"),
+        rendered_lower.contains(
+            "when that creature leaves the battlefield this turn, sacrifice this creature"
+        ),
         "expected the delayed target leaves-battlefield clause to render, got {rendered}"
     );
     assert!(
@@ -46532,7 +46544,11 @@ fn travel_through_caradhras_runtime_redhorn_pass_votes_search_lands_and_exile_so
             && graveyard_names.contains(&"Travel Grave Two".to_string()),
         "Mines of Moria branch should not run for Redhorn Pass votes"
     );
-    assert_eq!(travel_search_event_count(&events), 2, "two Redhorn Pass votes should search twice");
+    assert_eq!(
+        travel_search_event_count(&events),
+        2,
+        "two Redhorn Pass votes should search twice"
+    );
     assert!(
         travel_shuffle_event_count(&events) >= 1,
         "searching this way should shuffle the library"
@@ -46562,8 +46578,16 @@ fn travel_through_caradhras_runtime_mines_votes_return_graveyard_cards_without_s
             && library_names.contains(&"Travel Island".to_string()),
         "Redhorn Pass branch should not search lands for Mines of Moria votes"
     );
-    assert_eq!(travel_search_event_count(&events), 0, "Mines-only votes should not search");
-    assert_eq!(travel_shuffle_event_count(&events), 0, "Mines-only votes should not shuffle");
+    assert_eq!(
+        travel_search_event_count(&events),
+        0,
+        "Mines-only votes should not search"
+    );
+    assert_eq!(
+        travel_shuffle_event_count(&events),
+        0,
+        "Mines-only votes should not shuffle"
+    );
     assert_eq!(
         travel_zone_names(&game, Zone::Exile),
         vec!["Travel Through Caradhras".to_string()],

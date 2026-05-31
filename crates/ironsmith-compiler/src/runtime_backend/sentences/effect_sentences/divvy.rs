@@ -773,7 +773,10 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             &sentence_words,
             &["put", "one", "pile", "into", "your", "hand"],
         )
-        && sentence_has_phrase(&sentence_words, &["the", "other", "into", "your", "graveyard"])
+        && sentence_has_phrase(
+            &sentence_words,
+            &["the", "other", "into", "your", "graveyard"],
+        )
     {
         let mut effects = parse_effect_sentence_sequence(sentences[0].lowered())?;
         effects.extend(vec![

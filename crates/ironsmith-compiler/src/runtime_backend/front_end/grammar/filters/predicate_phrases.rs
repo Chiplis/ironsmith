@@ -2063,7 +2063,9 @@ fn parse_object_on_battlefield_predicate(
     let object_tokens = &tokens[..object_token_end];
     let mut filter = parse_object_filter(object_tokens, false)?;
     if filter.name.is_some()
-        && let Some(named_idx) = object_tokens.iter().position(|token| token.is_word("named"))
+        && let Some(named_idx) = object_tokens
+            .iter()
+            .position(|token| token.is_word("named"))
     {
         let object_words = object_tokens
             .iter()

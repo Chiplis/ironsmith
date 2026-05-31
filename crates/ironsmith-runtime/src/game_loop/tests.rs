@@ -2472,7 +2472,11 @@ fn setup_covenant_of_minds_stack(
         create_covenant_library_card(game, alice, &format!("Covenant Draw Filler {idx}"));
     }
     let mut revealed = Vec::new();
-    for name in ["Covenant Revealed A", "Covenant Revealed B", "Covenant Revealed C"] {
+    for name in [
+        "Covenant Revealed A",
+        "Covenant Revealed B",
+        "Covenant Revealed C",
+    ] {
         let id = create_covenant_library_card(game, alice, name);
         revealed.push(game.object(id).expect("revealed card exists").stable_id);
     }
@@ -2539,7 +2543,10 @@ fn covenant_of_minds_opponent_declines_graveyards_revealed_cards_and_draws_five(
             .find_object_by_stable_id(stable_id)
             .expect("revealed card should still exist");
         assert!(
-            game.player(alice).expect("alice exists").graveyard.contains(&id),
+            game.player(alice)
+                .expect("alice exists")
+                .graveyard
+                .contains(&id),
             "declining should put revealed card {id:?} into Alice's graveyard"
         );
     }
@@ -13138,7 +13145,9 @@ fn loxodon_smiter_spell_cant_be_countered_runtime() {
 
     assert_eq!(outcome.status, crate::effect::OutcomeStatus::Protected);
     assert!(
-        game.stack.iter().any(|entry| entry.object_id == smiter_spell),
+        game.stack
+            .iter()
+            .any(|entry| entry.object_id == smiter_spell),
         "Loxodon Smiter should remain on the stack after a counter attempt"
     );
 }
@@ -13175,8 +13184,9 @@ fn loxodon_smiter_opponent_effect_discard_replacement_moves_to_battlefield() {
         .new_id
         .expect("Loxodon Smiter should have moved to the battlefield");
     assert!(
-        game.object(moved).is_some_and(|object| object.name == "Loxodon Smiter"
-            && object.zone == Zone::Battlefield),
+        game.object(moved).is_some_and(
+            |object| object.name == "Loxodon Smiter" && object.zone == Zone::Battlefield
+        ),
         "opponent-controlled discard effect should put Loxodon Smiter onto the battlefield"
     );
     assert!(
@@ -29055,16 +29065,24 @@ fn execute_unesh_trigger_with_pile_choice(
         EnterBattlefieldEvent::new(source_id, Zone::Hand),
         crate::provenance::ProvNodeId::default(),
     );
-    let mut ctx = ExecutionContext::new(source_id, alice, &mut dm)
-        .with_triggering_event(entering_event);
+    let mut ctx =
+        ExecutionContext::new(source_id, alice, &mut dm).with_triggering_event(entering_event);
     for effect in &triggered.effects {
         execute_effect(&mut game, effect, &mut ctx).expect("Unesh trigger effect should resolve");
     }
 
     if choose_split_pile {
-        (game, vec!["Unesh Gamma", "Unesh Delta"], vec!["Unesh Alpha", "Unesh Beta"])
+        (
+            game,
+            vec!["Unesh Gamma", "Unesh Delta"],
+            vec!["Unesh Alpha", "Unesh Beta"],
+        )
     } else {
-        (game, vec!["Unesh Alpha", "Unesh Beta"], vec!["Unesh Gamma", "Unesh Delta"])
+        (
+            game,
+            vec!["Unesh Alpha", "Unesh Beta"],
+            vec!["Unesh Gamma", "Unesh Delta"],
+        )
     }
 }
 
@@ -29122,7 +29140,8 @@ fn unesh_criosphinx_sovereign_trigger_matches_self_and_other_sphinx_only() {
         .subtypes(vec![Subtype::Sphinx])
         .power_toughness(PowerToughness::fixed(2, 2))
         .build();
-    let other_sphinx_id = game.create_object_from_definition(&other_sphinx, alice, Zone::Battlefield);
+    let other_sphinx_id =
+        game.create_object_from_definition(&other_sphinx, alice, Zone::Battlefield);
     let bear = CardDefinitionBuilder::new(CardId::from_raw(91_139), "Other Runtime Bear")
         .card_types(vec![CardType::Creature])
         .subtypes(vec![Subtype::Bear])
@@ -29145,17 +29164,23 @@ fn unesh_criosphinx_sovereign_trigger_matches_self_and_other_sphinx_only() {
 
     let self_triggers = crate::triggers::check_triggers(&game, &entering_event(unesh_id));
     assert!(
-        self_triggers.iter().any(|trigger| trigger.source == unesh_id),
+        self_triggers
+            .iter()
+            .any(|trigger| trigger.source == unesh_id),
         "Unesh should trigger when it enters"
     );
     let sphinx_triggers = crate::triggers::check_triggers(&game, &entering_event(other_sphinx_id));
     assert!(
-        sphinx_triggers.iter().any(|trigger| trigger.source == unesh_id),
+        sphinx_triggers
+            .iter()
+            .any(|trigger| trigger.source == unesh_id),
         "Unesh should trigger when another Sphinx you control enters"
     );
     let bear_triggers = crate::triggers::check_triggers(&game, &entering_event(bear_id));
     assert!(
-        !bear_triggers.iter().any(|trigger| trigger.source == unesh_id),
+        !bear_triggers
+            .iter()
+            .any(|trigger| trigger.source == unesh_id),
         "Unesh should not trigger for a non-Sphinx entering"
     );
 }
@@ -29188,7 +29213,9 @@ fn unesh_criosphinx_sovereign_puts_opponent_split_pile_into_hand() {
             .expect("alice exists")
             .library
             .iter()
-            .any(|&id| game.object(id).is_some_and(|object| object.name == "Unesh Bottom Card")),
+            .any(|&id| game
+                .object(id)
+                .is_some_and(|object| object.name == "Unesh Bottom Card")),
         "Unesh should reveal only the top four cards"
     );
 }
@@ -30651,9 +30678,10 @@ fn defiler_of_instinct_optional_life_cost_reduces_red_permanent_spell_cost() {
         start_defiler_red_creature_cast(&mut game, red_creature_id);
     assert!(
         optional_ctx.options.iter().any(|option| {
-            option.description.to_ascii_lowercase().contains(
-                "as an additional cost to cast red permanent spells, you may pay 2 life",
-            )
+            option
+                .description
+                .to_ascii_lowercase()
+                .contains("as an additional cost to cast red permanent spells, you may pay 2 life")
         }),
         "Defiler should offer its optional life additional cost, got {:?}",
         optional_ctx.options
@@ -34427,15 +34455,29 @@ fn prototype_portal_imprints_artifact_and_copies_it_for_exact_dynamic_x_cost() {
         &mut ctx,
     )
     .expect("Prototype Portal activation should accept mana equal to imprinted card's mana value");
-    assert!(game.is_tapped(portal_id), "Prototype Portal should tap as a cost");
+    assert!(
+        game.is_tapped(portal_id),
+        "Prototype Portal should tap as a cost"
+    );
     assert_eq!(
-        game.player(alice).expect("Alice should exist").mana_pool.total(),
+        game.player(alice)
+            .expect("Alice should exist")
+            .mana_pool
+            .total(),
         0,
         "Prototype Portal should spend exactly three mana for the imprinted mana value"
     );
 
-    execute_resolution_program(&mut game, &mut ctx, alice, portal_id, &activated.effects, None, &[])
-        .expect("Prototype Portal activation should resolve");
+    execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        portal_id,
+        &activated.effects,
+        None,
+        &[],
+    )
+    .expect("Prototype Portal activation should resolve");
 
     let copied_tokens = game
         .battlefield
@@ -36038,7 +36080,9 @@ fn brain_in_a_jar_ability_index(game: &GameState, brain_id: ObjectId, needle: &s
                 false
             }
         })
-        .unwrap_or_else(|| panic!("Brain in a Jar should have activated ability containing {needle}"))
+        .unwrap_or_else(|| {
+            panic!("Brain in a Jar should have activated ability containing {needle}")
+        })
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -36371,13 +36415,15 @@ fn test_brain_in_a_jar_first_ability_casts_nothing_without_matching_mana_value()
         "a matching instant in another player's hand should not be cast"
     );
     assert!(
-        game.stack.iter().all(|entry| match game.object(entry.object_id) {
-            Some(object) => !matches!(
-                object.name.as_str(),
-                "Two-Mana Sorcery" | "One-Mana Creature" | "Opponent One-Mana Instant"
-            ),
-            None => true,
-        }),
+        game.stack
+            .iter()
+            .all(|entry| match game.object(entry.object_id) {
+                Some(object) => !matches!(
+                    object.name.as_str(),
+                    "Two-Mana Sorcery" | "One-Mana Creature" | "Opponent One-Mana Instant"
+                ),
+                None => true,
+            }),
         "nonmatching or non-owned cards should not be on the stack"
     );
 }

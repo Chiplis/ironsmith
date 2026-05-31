@@ -4,7 +4,7 @@ use crate::events::EventKind;
 use crate::events::other::DieRolledEvent;
 use crate::target::PlayerFilter;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
-use crate::triggers::{player_filter_matches_with_context, TriggerEvent};
+use crate::triggers::{TriggerEvent, player_filter_matches_with_context};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlayerRollsResultTrigger {

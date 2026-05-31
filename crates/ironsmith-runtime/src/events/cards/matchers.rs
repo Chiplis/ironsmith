@@ -255,7 +255,10 @@ impl ReplacementMatcher for WouldDiscardMatcher {
     }
 
     fn display(&self) -> String {
-        if self.card_filter.as_ref().is_some_and(|filter| filter.source)
+        if self
+            .card_filter
+            .as_ref()
+            .is_some_and(|filter| filter.source)
             && matches!(self.player_filter, PlayerFilter::You)
             && matches!(
                 self.cause_filter.cause_type,

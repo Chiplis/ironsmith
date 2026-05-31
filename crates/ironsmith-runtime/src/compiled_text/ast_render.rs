@@ -905,7 +905,10 @@ fn rewrite_standalone_spell_self_exile(rendered: &str, card_name: &str) -> Strin
     while let Some(idx) = rest.find(needle) {
         out.push_str(&rest[..idx]);
         let after = &rest[idx + needle.len()..];
-        if matches!(after.chars().next(), None | Some('.') | Some(',') | Some(';')) {
+        if matches!(
+            after.chars().next(),
+            None | Some('.') | Some(',') | Some(';')
+        ) {
             out.push_str(&replacement);
         } else {
             out.push_str(needle);

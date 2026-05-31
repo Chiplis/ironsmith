@@ -4817,11 +4817,13 @@ fn rewrite_lexed_parse_brain_in_a_jar_free_cast_clause_with_counter_value_gate()
         .expect("Brain in a Jar cast clause should parse as a supported effect");
 
     let (filter, zone) = match effects.as_slice() {
-        [crate::cards::builders::EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
-            filter,
-            zone,
-            ..
-        }] => (filter, zone),
+        [
+            crate::cards::builders::EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                filter,
+                zone,
+                ..
+            },
+        ] => (filter, zone),
         _ => panic!("expected one-shot counter-gated hand free-cast effect, got {effects:#?}"),
     };
 

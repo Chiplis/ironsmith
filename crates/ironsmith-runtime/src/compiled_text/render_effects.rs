@@ -177,7 +177,9 @@ fn describe_council_dilemma_named_vote_sequence(effects: &[Effect]) -> Option<St
         || vote.controller_optional_extra_votes != 0
         || options.len() < 2
         || repeat_effects.len() != options.len()
-        || options.iter().any(|option| !option.effects_per_vote.is_empty())
+        || options
+            .iter()
+            .any(|option| !option.effects_per_vote.is_empty())
     {
         return None;
     }
@@ -3637,9 +3639,7 @@ fn describe_revealed_cards_opponent_may_put_or_draw(effects: &[&Effect]) -> Opti
     }
 
     let with_id = may_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
-    let may = with_id
-        .effect
-        .downcast_ref::<crate::effects::MayEffect>()?;
+    let may = with_id.effect.downcast_ref::<crate::effects::MayEffect>()?;
     if !matches!(
         may.decider.as_ref(),
         Some(PlayerFilter::Target(inner)) if matches!(inner.as_ref(), PlayerFilter::Opponent)
@@ -3650,7 +3650,10 @@ fn describe_revealed_cards_opponent_may_put_or_draw(effects: &[&Effect]) -> Opti
         return None;
     };
     let target = target_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
-    if !matches!(target.target.base(), ChooseSpec::Player(PlayerFilter::Opponent)) {
+    if !matches!(
+        target.target.base(),
+        ChooseSpec::Player(PlayerFilter::Opponent)
+    ) {
         return None;
     }
     let move_to_hand = hand_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
@@ -33284,9 +33287,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             }
             return format!("When that creature dies this turn, {delayed_text}");
         }
-        if schedule.target_tag.is_some()
-            && trigger_lower.contains("leaves the battlefield")
-        {
+        if schedule.target_tag.is_some() && trigger_lower.contains("leaves the battlefield") {
             let subject = schedule
                 .target_filter
                 .as_ref()
@@ -37993,10 +37994,9 @@ pub(super) fn describe_ability(
                 let (cost_text, x_definition) =
                     describe_cost_list_with_trailing_x_definition(activated.mana_cost.costs());
                 trailing_x_definition = x_definition;
-                if let Some(cost_text) = normalize_zone_bound_self_exile_cost(
-                    Some(cost_text),
-                    ability,
-                ) {
+                if let Some(cost_text) =
+                    normalize_zone_bound_self_exile_cost(Some(cost_text), ability)
+                {
                     pre.push(cost_text);
                 }
             }
