@@ -791,6 +791,54 @@ fn parse_card_in_your_graveyard_predicate(words: &[&str]) -> Option<PredicateAst
     })
 }
 
+fn parse_object_on_battlefield_predicate(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let suffix_len = if word_slice_ends_with(&words, &["is", "on", "the", "battlefield"])
+        || word_slice_ends_with(&words, &["are", "on", "the", "battlefield"])
+    {
+        4
+    } else if word_slice_ends_with(&words, &["is", "on", "battlefield"])
+        || word_slice_ends_with(&words, &["are", "on", "battlefield"])
+    {
+        3
+    } else {
+        return Ok(None);
+    };
+    let object_token_end = tokens.len().saturating_sub(suffix_len);
+    if object_token_end == 0 {
+        return Ok(None);
+    }
+
+    let object_tokens = &tokens[..object_token_end];
+    let mut filter = parse_object_filter(object_tokens, false)?;
+    if filter.name.is_some()
+        && let Some(named_idx) = object_tokens.iter().position(|token| token.is_word("named"))
+    {
+        let object_words = object_tokens
+            .iter()
+            .filter_map(OwnedLexToken::as_word)
+            .collect::<Vec<_>>();
+        let name_end = find_name_clause_end(&object_words, named_idx + 1);
+        let name = object_tokens[named_idx + 1..name_end]
+            .iter()
+            .filter_map(OwnedLexToken::as_word)
+            .collect::<Vec<_>>()
+            .join(" ");
+        if !name.is_empty() {
+            filter.name = Some(name);
+        }
+    }
+    filter.zone = Some(Zone::Battlefield);
+
+    Ok(Some(PredicateAst::ValueComparison {
+        left: Value::Count(filter),
+        operator: crate::effect::ValueComparisonOperator::GreaterThan,
+        right: Value::Fixed(0),
+    }))
+}
+
 pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
     let raw_words_view = GrammarFilterNormalizedWords::new(tokens);
     let raw_words = raw_words_view.to_word_refs();
@@ -939,6 +987,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some(predicate) = parse_card_in_your_graveyard_predicate(&filtered) {
+        return Ok(predicate);
+    }
+
+    if let Some(predicate) = parse_object_on_battlefield_predicate(tokens)? {
         return Ok(predicate);
     }
 

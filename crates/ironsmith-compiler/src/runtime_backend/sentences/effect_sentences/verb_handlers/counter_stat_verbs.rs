@@ -931,6 +931,16 @@ pub(crate) fn parse_life_amount_from_trailing(
         return Ok(None);
     }
 
+    if let Some(counter_value) = parse_for_each_counter_on_reference_value(trailing)
+        && let Some(multiplier) = match base_amount {
+            Value::Fixed(value) => Some(*value),
+            Value::X => Some(1),
+            _ => None,
+        }
+    {
+        return Ok(Some(scale_value_multiplier(counter_value, multiplier)));
+    }
+
     if let Some(dynamic) = parse_dynamic_cost_modifier_value(trailing)? {
         if let Some(multiplier) = match base_amount {
             Value::Fixed(value) => Some(*value),
@@ -956,6 +966,59 @@ pub(crate) fn parse_life_amount_from_trailing(
     }
 
     Ok(None)
+}
+
+fn parse_for_each_counter_on_reference_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if !word_slice_starts_with(&words, &["for", "each"]) {
+        return None;
+    }
+    let counter_idx = find_index(words.as_slice(), |word| {
+        *word == "counter" || *word == "counters"
+    })?;
+    if counter_idx <= 2 || !words.get(counter_idx + 1).is_some_and(|word| *word == "on") {
+        return None;
+    }
+
+    let counter_type = crate::runtime_backend::parse_counter_type_from_tokens(
+        &tokens[2..=counter_idx],
+    );
+    let reference = &words[counter_idx + 2..];
+    if word_slice_eq_any(
+        reference,
+        &[
+            &["it"],
+            &["this"],
+            &["this", "creature"],
+            &["this", "permanent"],
+            &["this", "source"],
+        ],
+    ) {
+        return Some(match counter_type {
+            Some(counter_type) => Value::CountersOnSource(counter_type),
+            None => Value::CountersOn(Box::new(ChooseSpec::Source), None),
+        });
+    }
+
+    if word_slice_eq_any(
+        reference,
+        &[
+            &["that"],
+            &["that", "creature"],
+            &["that", "permanent"],
+            &["that", "object"],
+            &["those"],
+            &["those", "creatures"],
+            &["those", "permanents"],
+        ],
+    ) {
+        return Some(Value::CountersOn(
+            Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))),
+            counter_type,
+        ));
+    }
+
+    None
 }
 
 pub(crate) fn validate_life_keyword(rest: &[OwnedLexToken]) -> Result<(), CardTextError> {
