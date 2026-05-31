@@ -4172,6 +4172,36 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         ))
     }
 
+    fn describe_reveal_hand_then_discard(effects: &[&Effect]) -> Option<String> {
+        let [look_effect, discard_effect] = effects else {
+            return None;
+        };
+        let look = look_effect.downcast_ref::<crate::effects::LookAtHandEffect>()?;
+        let discard = discard_effect.downcast_ref::<crate::effects::DiscardEffect>()?;
+        if !look.reveal || discard.random || discard.any_number {
+            return None;
+        }
+
+        let revealer = describe_choose_spec(&look.target);
+        if describe_player_filter(&discard.player) != revealer {
+            return None;
+        }
+
+        let reveal_verb = player_verb(&revealer, "reveal", "reveals");
+        let discard_verb = player_verb(&revealer, "discard", "discards");
+        let hand = if revealer == "you" {
+            "your hand"
+        } else {
+            "their hand"
+        };
+        Some(format!(
+            "{} {} {hand} and {discard_verb} {}",
+            capitalize_first(&revealer),
+            reveal_verb,
+            describe_discard_count(&discard.count, discard.card_filter.as_ref())
+        ))
+    }
+
     fn downcast_move_to_library_nth<'a>(
         effect: &'a Effect,
     ) -> Option<&'a crate::effects::MoveToLibraryNthFromTopEffect> {
@@ -4513,6 +4543,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         .collect::<Vec<_>>();
 
     if let Some(compact) = describe_reveal_hand_choose_move(&filtered) {
+        return compact;
+    }
+    if let Some(compact) = describe_reveal_hand_then_discard(&filtered) {
         return compact;
     }
     if let Some(compact) = describe_exile_graveyard_reflexive_copy_artifact(&filtered) {

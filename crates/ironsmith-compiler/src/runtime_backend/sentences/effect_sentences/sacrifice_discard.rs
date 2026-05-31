@@ -44,6 +44,28 @@ fn wrap_unless_escaped(effect: EffectAst, unless_escaped: bool) -> EffectAst {
     }
 }
 
+fn parse_trailing_discard_same_mana_value_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if !word_slice_eq_any(
+        &words,
+        &[
+            &["with", "that", "spells", "mana", "value"],
+            &["with", "that", "spell's", "mana", "value"],
+            &["with", "the", "same", "mana", "value", "as", "that", "spell"],
+            &["with", "same", "mana", "value", "as", "that", "spell"],
+        ],
+    ) {
+        return None;
+    }
+
+    let mut filter = ObjectFilter::default();
+    filter.tagged_constraints.push(crate::target::TaggedObjectConstraint {
+        tag: crate::TagKey::from("triggering"),
+        relation: crate::target::TaggedOpbjectRelation::SameManaValueAsTagged,
+    });
+    Some(filter)
+}
+
 fn parse_unless_mana_spent_to_cast_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let [mana_token, rest @ ..] = tokens else {
         return None;
@@ -464,6 +486,8 @@ pub(crate) fn parse_discard(
             filter.name = Some("{chosen name}".to_string());
             Some(filter)
         } else if let Some(filter) = parse_discard_chosen_color_qualifier_filter(trailing_tokens) {
+            Some(filter)
+        } else if let Some(filter) = parse_trailing_discard_same_mana_value_filter(trailing_tokens) {
             Some(filter)
         } else if let Some(filter) = parse_discard_color_qualifier_filter(trailing_tokens) {
             Some(filter)

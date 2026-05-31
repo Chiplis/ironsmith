@@ -7619,6 +7619,226 @@ fn emrakul_cast_trigger_prompt_does_not_autofill_or_stack_before_choice() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn infernal_kirin_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(74_377), "Infernal Kirin")
+        .mana_cost(ManaCost::from_symbols(vec![
+            ManaSymbol::Generic(2),
+            ManaSymbol::Black,
+            ManaSymbol::Black,
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Kirin, Subtype::Spirit])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "Flying\nWhenever you cast a Spirit or Arcane spell, target player reveals their hand and discards all cards with that spell's mana value.",
+        )
+        .expect("Infernal Kirin should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn test_card_with_mana_value(
+    name: &str,
+    mana: Vec<ManaSymbol>,
+    card_types: Vec<CardType>,
+) -> crate::card::Card {
+    CardBuilder::new(CardId::new(), name)
+        .mana_cost(ManaCost::from_symbols(mana))
+        .card_types(card_types)
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn infernal_kirin_discards_only_cards_matching_triggering_spell_mana_value() {
+    struct ChooseBobAndAllDiscardCards {
+        bob: PlayerId,
+        reveal_calls: Vec<(PlayerId, PlayerId, bool, Vec<ObjectId>)>,
+    }
+
+    impl DecisionMaker for ChooseBobAndAllDiscardCards {
+        fn decide_targets(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::TargetsContext,
+        ) -> Vec<Target> {
+            vec![Target::Player(self.bob)]
+        }
+
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .collect()
+        }
+
+        fn view_cards(
+            &mut self,
+            _game: &GameState,
+            viewer: PlayerId,
+            cards: &[ObjectId],
+            ctx: &crate::decisions::context::ViewCardsContext,
+        ) {
+            self.reveal_calls
+                .push((viewer, ctx.subject, ctx.public, cards.to_vec()));
+        }
+    }
+
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.create_object_from_definition(&infernal_kirin_definition(), alice, Zone::Battlefield);
+
+    let matching_one = game.create_object_from_card(
+        &test_card_with_mana_value(
+            "Bob Matching One",
+            vec![ManaSymbol::Generic(1), ManaSymbol::Blue],
+            vec![CardType::Instant],
+        ),
+        bob,
+        Zone::Hand,
+    );
+    let matching_two = game.create_object_from_card(
+        &test_card_with_mana_value(
+            "Bob Matching Two",
+            vec![ManaSymbol::Black, ManaSymbol::Black],
+            vec![CardType::Sorcery],
+        ),
+        bob,
+        Zone::Hand,
+    );
+    let nonmatching = game.create_object_from_card(
+        &test_card_with_mana_value(
+            "Bob Nonmatching",
+            vec![ManaSymbol::Generic(2), ManaSymbol::Green],
+            vec![CardType::Instant],
+        ),
+        bob,
+        Zone::Hand,
+    );
+    let alice_matching = game.create_object_from_card(
+        &test_card_with_mana_value(
+            "Alice Matching",
+            vec![ManaSymbol::Generic(1), ManaSymbol::Red],
+            vec![CardType::Instant],
+        ),
+        alice,
+        Zone::Hand,
+    );
+
+    let triggering_spell = CardBuilder::new(CardId::new(), "Triggering Spirit")
+        .mana_cost(ManaCost::from_symbols(vec![
+            ManaSymbol::Generic(1),
+            ManaSymbol::White,
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Spirit])
+        .build();
+    let spell_id = game.create_object_from_card(&triggering_spell, alice, Zone::Stack);
+    let event = TriggerEvent::new_with_provenance(
+        SpellCastEvent::new(spell_id, alice, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Infernal Kirin should trigger from a Spirit spell"
+    );
+
+    let mut dm = ChooseBobAndAllDiscardCards {
+        bob,
+        reveal_calls: Vec::new(),
+    };
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Infernal Kirin trigger should go on the stack");
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Infernal Kirin trigger should resolve");
+
+    assert_eq!(
+        dm.reveal_calls.len(),
+        game.players.len(),
+        "revealing a hand should show it publicly to every player"
+    );
+    for (_viewer, subject, public, cards) in &dm.reveal_calls {
+        assert_eq!(*subject, bob);
+        assert!(*public, "Infernal Kirin should reveal the targeted player's hand");
+        assert!(cards.contains(&matching_one));
+        assert!(cards.contains(&matching_two));
+        assert!(cards.contains(&nonmatching));
+    }
+
+    let bob_hand = &game.player(bob).expect("bob exists").hand;
+    assert!(!bob_hand.contains(&matching_one));
+    assert!(!bob_hand.contains(&matching_two));
+    assert!(bob_hand.contains(&nonmatching));
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .hand
+            .contains(&alice_matching),
+        "Infernal Kirin should only discard from the targeted player's hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn infernal_kirin_triggers_for_arcane_spell() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    game.create_object_from_definition(&infernal_kirin_definition(), alice, Zone::Battlefield);
+
+    let arcane_spell = CardBuilder::new(CardId::new(), "Arcane Probe")
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Red]))
+        .card_types(vec![CardType::Instant])
+        .subtypes(vec![Subtype::Arcane])
+        .build();
+    let spell_id = game.create_object_from_card(&arcane_spell, alice, Zone::Stack);
+    let event = TriggerEvent::new_with_provenance(
+        SpellCastEvent::new(spell_id, alice, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
+
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Infernal Kirin should trigger from an Arcane spell"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn infernal_kirin_does_not_trigger_for_non_spirit_non_arcane_spell() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    game.create_object_from_definition(&infernal_kirin_definition(), alice, Zone::Battlefield);
+
+    let ordinary_spell = CardBuilder::new(CardId::new(), "Ordinary Instant")
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Blue]))
+        .card_types(vec![CardType::Instant])
+        .build();
+    let spell_id = game.create_object_from_card(&ordinary_spell, alice, Zone::Stack);
+    let event = TriggerEvent::new_with_provenance(
+        SpellCastEvent::new(spell_id, alice, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
+
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Infernal Kirin should not trigger from a spell that is neither Spirit nor Arcane"
+    );
+}
+
 #[test]
 fn put_triggers_on_stack_uses_controller_selected_order_for_simultaneous_triggers() {
     use crate::ability::TriggeredAbility;
