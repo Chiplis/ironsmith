@@ -112,6 +112,7 @@ pub enum ThisSpellCastCondition {
 pub struct ThisSpellCastRestrictionKind {
     pub timing: Option<ThisSpellCastTiming>,
     pub condition: Option<ThisSpellCastCondition>,
+    pub zone: Option<crate::zone::Zone>,
 }
 
 impl ThisSpellCastRestrictionKind {
@@ -119,6 +120,7 @@ impl ThisSpellCastRestrictionKind {
         Self {
             timing: Some(timing),
             condition: None,
+            zone: None,
         }
     }
 
@@ -129,6 +131,7 @@ impl ThisSpellCastRestrictionKind {
         Self {
             timing: Some(timing),
             condition: Some(condition),
+            zone: None,
         }
     }
 
@@ -136,6 +139,15 @@ impl ThisSpellCastRestrictionKind {
         Self {
             timing: None,
             condition: Some(condition),
+            zone: None,
+        }
+    }
+
+    pub fn from_zone(zone: crate::zone::Zone) -> Self {
+        Self {
+            timing: None,
+            condition: None,
+            zone: Some(zone),
         }
     }
 

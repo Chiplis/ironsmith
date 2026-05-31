@@ -2227,6 +2227,17 @@ pub(crate) fn parse_static_condition_clause(
     if word_slice_eq_any(
         &clause_words,
         &[
+            &["this", "is", "on", "the", "battlefield"],
+            &["this", "card", "is", "on", "the", "battlefield"],
+            &["this", "creature", "is", "on", "the", "battlefield"],
+            &["this", "permanent", "is", "on", "the", "battlefield"],
+        ],
+    ) {
+        return Ok(crate::ConditionExpr::SourceIsInZone(Zone::Battlefield));
+    }
+    if word_slice_eq_any(
+        &clause_words,
+        &[
             &["this", "creature", "is", "equipped"],
             &["this", "is", "equipped"],
             &["it", "is", "equipped"],

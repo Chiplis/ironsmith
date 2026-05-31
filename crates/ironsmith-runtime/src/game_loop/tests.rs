@@ -31977,6 +31977,208 @@ fn test_library_play_from_grant_offers_top_creature_card() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn haakon_stromgald_scourge_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(92_300), "Haakon, Stromgald Scourge")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Black],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Zombie, Subtype::Knight])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "You may cast this card from your graveyard, but not from anywhere else.\n\
+             As long as Haakon is on the battlefield, you may cast Knight spells from your graveyard.\n\
+             When Haakon dies, you lose 2 life.",
+        )
+        .expect("Haakon, Stromgald Scourge should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn add_haakon_mana(game: &mut GameState, player: PlayerId) {
+    let mana_pool = &mut game.player_mut(player).expect("player exists").mana_pool;
+    mana_pool.add(ManaSymbol::Colorless, 1);
+    mana_pool.add(ManaSymbol::Black, 2);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn has_haakon_self_cast_action(
+    game: &GameState,
+    player: PlayerId,
+    card_id: ObjectId,
+    zone: Zone,
+) -> bool {
+    crate::decision::compute_legal_actions(game, player)
+        .iter()
+        .any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone,
+                casting_method: CastingMethod::PlayFrom {
+                    zone: Zone::Graveyard,
+                    use_alternative: None,
+                    ..
+                },
+            } if *spell_id == card_id && *from_zone == zone
+        ))
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn haakon_can_be_cast_from_graveyard_but_not_hand_or_exile() {
+    let alice = PlayerId::from_index(0);
+
+    let mut graveyard_game = setup_game();
+    graveyard_game.turn.phase = Phase::FirstMain;
+    graveyard_game.turn.step = None;
+    graveyard_game.turn.active_player = alice;
+    graveyard_game.turn.priority_player = Some(alice);
+    add_haakon_mana(&mut graveyard_game, alice);
+    let graveyard_haakon = graveyard_game.create_object_from_definition(
+        &haakon_stromgald_scourge_definition(),
+        alice,
+        Zone::Graveyard,
+    );
+    assert!(
+        has_haakon_self_cast_action(&graveyard_game, alice, graveyard_haakon, Zone::Graveyard),
+        "Haakon should be castable from its controller's graveyard"
+    );
+
+    let mut hand_game = setup_game();
+    hand_game.turn.phase = Phase::FirstMain;
+    hand_game.turn.step = None;
+    hand_game.turn.active_player = alice;
+    hand_game.turn.priority_player = Some(alice);
+    add_haakon_mana(&mut hand_game, alice);
+    let hand_haakon = hand_game.create_object_from_definition(
+        &haakon_stromgald_scourge_definition(),
+        alice,
+        Zone::Hand,
+    );
+    let hand_actions = crate::decision::compute_legal_actions(&hand_game, alice);
+    assert!(
+        !hand_actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell { spell_id, .. } if *spell_id == hand_haakon
+        )),
+        "Haakon should not be castable from hand; got {hand_actions:?}"
+    );
+
+    let mut exile_game = setup_game();
+    exile_game.turn.phase = Phase::FirstMain;
+    exile_game.turn.step = None;
+    exile_game.turn.active_player = alice;
+    exile_game.turn.priority_player = Some(alice);
+    add_haakon_mana(&mut exile_game, alice);
+    let exile_haakon = exile_game.create_object_from_definition(
+        &haakon_stromgald_scourge_definition(),
+        alice,
+        Zone::Exile,
+    );
+    let exile_actions = crate::decision::compute_legal_actions(&exile_game, alice);
+    assert!(
+        !exile_actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell { spell_id, .. } if *spell_id == exile_haakon
+        )),
+        "Haakon should not be castable from exile; got {exile_actions:?}"
+    );
+
+    let mut exile_grant_game = setup_game();
+    exile_grant_game.turn.phase = Phase::FirstMain;
+    exile_grant_game.turn.step = None;
+    exile_grant_game.turn.active_player = alice;
+    exile_grant_game.turn.priority_player = Some(alice);
+    add_haakon_mana(&mut exile_grant_game, alice);
+    let exile_grant_haakon = exile_grant_game.create_object_from_definition(
+        &haakon_stromgald_scourge_definition(),
+        alice,
+        Zone::Exile,
+    );
+    add_test_play_from_grant_source(
+        &mut exile_grant_game,
+        alice,
+        crate::filter::ObjectFilter::default().with_type(CardType::Creature),
+        Zone::Exile,
+    );
+    let exile_grant_actions = crate::decision::compute_legal_actions(&exile_grant_game, alice);
+    assert!(
+        !exile_grant_actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell { spell_id, .. } if *spell_id == exile_grant_haakon
+        )),
+        "Haakon's graveyard-only restriction should override another exile-cast permission; got {exile_grant_actions:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn haakon_grants_knight_graveyard_casts_only_while_on_battlefield() {
+    let alice = PlayerId::from_index(0);
+    let knight = CardBuilder::new(CardId::from_raw(92_301), "Graveyard Test Knight")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Knight])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    let mut game = setup_game();
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    let haakon_id = game.create_object_from_definition(
+        &haakon_stromgald_scourge_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    let knight_id = game.create_object_from_card(&knight, alice, Zone::Graveyard);
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Graveyard,
+                casting_method: CastingMethod::PlayFrom {
+                    source,
+                    zone: Zone::Graveyard,
+                    use_alternative: None,
+                },
+            } if *spell_id == knight_id && *source == haakon_id
+        )),
+        "Haakon should let Alice cast Knight spells from her graveyard; got {actions:?}"
+    );
+
+    let mut absent_game = setup_game();
+    absent_game.turn.phase = Phase::FirstMain;
+    absent_game.turn.step = None;
+    absent_game.turn.active_player = alice;
+    absent_game.turn.priority_player = Some(alice);
+    absent_game.create_object_from_definition(
+        &haakon_stromgald_scourge_definition(),
+        alice,
+        Zone::Graveyard,
+    );
+    let absent_knight_id = absent_game.create_object_from_card(&knight, alice, Zone::Graveyard);
+    let absent_actions = crate::decision::compute_legal_actions(&absent_game, alice);
+    assert!(
+        !absent_actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Graveyard,
+                casting_method: CastingMethod::PlayFrom { .. },
+            } if *spell_id == absent_knight_id
+        )),
+        "Haakon should not grant Knight graveyard casts unless it is on the battlefield; got {absent_actions:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn thundermane_dragon_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Thundermane Dragon")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(5)]]))

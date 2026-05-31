@@ -869,6 +869,8 @@ pub(super) fn substitute_legendary_source_reference(
         || lower.contains(": as long as "))
         && (lower.contains(", this creature has ") || lower.contains(" this creature has "));
     let uses_named_source_surface = lower.starts_with("this creature gets ")
+        || lower.starts_with("as long as this creature is on the battlefield")
+        || lower.starts_with("when this creature dies")
         || conditional_static_self_surface
         || lower.contains("if this land has ")
         || lower.starts_with("whenever this creature deals combat damage to a player")
@@ -1477,6 +1479,68 @@ fn describe_structural_graveyard_or_exile_cast_pair(
         }
         _ => None,
     }
+}
+
+fn describe_structural_cast_from_zone_only_pair(
+    first: &Ability,
+    second: &Ability,
+) -> Option<String> {
+    fn play_from_source_zone(ability: &Ability) -> Option<Zone> {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return None;
+        };
+        let spec = static_ability.grant_spec()?;
+        (matches!(spec.grantable, crate::grant::Grantable::PlayFrom)
+            && spec.filter == crate::target::ObjectFilter::source()
+            && matches!(spec.beneficiary, PlayerFilter::You))
+        .then_some(spec.zone)
+    }
+
+    fn cast_restriction_zone(ability: &Ability) -> Option<Zone> {
+        let AbilityKind::Static(static_ability) = &ability.kind else {
+            return None;
+        };
+        let kind = static_ability.this_spell_cast_restriction_kind()?;
+        (kind.timing.is_none() && kind.condition.is_none()).then_some(kind.zone?)
+    }
+
+    let zone = play_from_source_zone(first)?;
+    if cast_restriction_zone(second)? != zone {
+        return None;
+    }
+    let zone_text = match zone {
+        Zone::Graveyard => "your graveyard",
+        Zone::Exile => "exile",
+        _ => return None,
+    };
+    Some(format!(
+        "You may cast this card from {zone_text}, but not from anywhere else"
+    ))
+}
+
+fn describe_structural_battlefield_play_from_grant(
+    ability: &Ability,
+    subject: &str,
+) -> Option<String> {
+    let AbilityKind::Static(static_ability) = &ability.kind else {
+        return None;
+    };
+    let spec = static_ability.grant_spec()?;
+    if !matches!(spec.grantable, crate::grant::Grantable::PlayFrom)
+        || !matches!(spec.beneficiary, PlayerFilter::You)
+        || spec.filter == crate::target::ObjectFilter::source()
+        || ability.functional_zones.as_slice() != [Zone::Battlefield]
+    {
+        return None;
+    }
+    let permission = spec.display();
+    if permission.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "As long as {subject} is on the battlefield, {}",
+        lowercase_first(&permission)
+    ))
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2307,6 +2371,16 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 continue;
             }
             if ability_idx + 1 < def.abilities.len()
+                && let Some(permission) = describe_structural_cast_from_zone_only_pair(
+                    ability,
+                    &def.abilities[ability_idx + 1],
+                )
+            {
+                output.push(format!("Static ability {}: {permission}", ability_idx + 1));
+                ability_idx += 2;
+                continue;
+            }
+            if ability_idx + 1 < def.abilities.len()
                 && let Some(permission) = describe_structural_graveyard_or_exile_cast_pair(
                     ability,
                     &def.abilities[ability_idx + 1],
@@ -2314,6 +2388,13 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
             {
                 output.push(format!("Static ability {}: {permission}", ability_idx + 1));
                 ability_idx += 2;
+                continue;
+            }
+            if let Some(permission) =
+                describe_structural_battlefield_play_from_grant(ability, subject)
+            {
+                output.push(format!("Static ability {}: {permission}", ability_idx + 1));
+                ability_idx += 1;
                 continue;
             }
             if let Some((keyword, consumed)) =

@@ -204,7 +204,7 @@ const LINE_FAMILY_RULES: [LineFamilyRuleDef; 31] = [
     LineFamilyRuleDef {
         id: "graveyard-or-exile-cast",
         priority: 76,
-        heads: &["you"],
+        heads: &["you", "as"],
         run: run_graveyard_or_exile_cast_line_family,
     },
     LineFamilyRuleDef {

@@ -870,6 +870,22 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     for (phrase, zone) in [
+        (
+            ["this", "is", "on", "the", "battlefield"].as_slice(),
+            Zone::Battlefield,
+        ),
+        (
+            ["this", "card", "is", "on", "the", "battlefield"].as_slice(),
+            Zone::Battlefield,
+        ),
+        (
+            ["this", "creature", "is", "on", "the", "battlefield"].as_slice(),
+            Zone::Battlefield,
+        ),
+        (
+            ["this", "permanent", "is", "on", "the", "battlefield"].as_slice(),
+            Zone::Battlefield,
+        ),
         (["this", "is", "in", "your", "hand"].as_slice(), Zone::Hand),
         (
             ["this", "card", "is", "in", "your", "hand"].as_slice(),

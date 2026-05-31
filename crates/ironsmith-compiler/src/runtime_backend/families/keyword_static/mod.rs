@@ -779,6 +779,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_rule!(parse_surveilled_graveyard_play_life_cost_line),
         single_static_ability_ast_rule!(parse_play_from_permission_with_haste_this_way_line),
         single_static_ability_ast_rule!(parse_you_may_static_grant_line),
+        single_static_ability_ast_rule!(parse_cast_this_spell_only_line_lexed),
         single_static_ability_ast_rule!(parse_grant_flash_to_noncreature_spells_line),
         single_static_ability_ast_rule!(parse_cast_this_spell_as_though_it_had_flash_line),
         single_static_ability_ast_rule!(parse_during_your_turn_prevent_all_damage_to_source_line),

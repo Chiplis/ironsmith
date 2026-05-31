@@ -732,8 +732,13 @@ pub(crate) fn player_was_attacked_this_step(game: &GameState, player: PlayerId) 
 pub(crate) fn this_spell_cast_restriction_allows(
     game: &GameState,
     player: PlayerId,
+    spell: &crate::object::Object,
     kind: &crate::static_abilities::ThisSpellCastRestrictionKind,
 ) -> bool {
+    if kind.zone.is_some_and(|zone| spell.zone != zone) {
+        return false;
+    }
+
     let timing_allows = kind
         .timing
         .is_none_or(|timing| this_spell_cast_timing_allows(game, player, timing));
@@ -936,7 +941,7 @@ pub(crate) fn spell_cast_restrictions_allow(
         let Some(kind) = static_ability.this_spell_cast_restriction_kind() else {
             return true;
         };
-        this_spell_cast_restriction_allows(game, player, &kind)
+        this_spell_cast_restriction_allows(game, player, spell, &kind)
     })
 }
 

@@ -5365,7 +5365,12 @@ pub(crate) fn parse_cast_this_spell_only_line(
         ],
     ];
 
-    let restriction = if declare_attackers_tails
+    let restriction = if word_slice_eq(tail, &["from", "your", "graveyard"]) {
+        Some((
+            crate::static_abilities::ThisSpellCastRestrictionKind::from_zone(Zone::Graveyard),
+            "Cast this spell only from your graveyard.",
+        ))
+    } else if declare_attackers_tails
         .iter()
         .any(|candidate| *candidate == tail)
     {

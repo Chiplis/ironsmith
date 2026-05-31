@@ -18,9 +18,9 @@ pub(crate) use super::permission_helpers::parse_permission_clause_spec;
 pub(crate) use super::static_ability_helpers::static_ability_for_keyword_action;
 pub(crate) use super::util::{
     contains_until_end_of_turn, intern_counter_name, is_article, non_article_word_refs_except,
-    parse_mana_symbol, parse_number, parse_number_word_i32, parser_trace, parser_trace_stack,
-    replace_unbound_x_with_value, starts_with_until_end_of_turn, value_contains_unbound_x,
-    word_refs_at_is_article,
+    parse_cast_this_spell_only_line_lexed, parse_mana_symbol, parse_number, parse_number_word_i32,
+    parser_trace, parser_trace_stack, replace_unbound_x_with_value, starts_with_until_end_of_turn,
+    value_contains_unbound_x, word_refs_at_is_article,
 };
 pub(crate) use super::value_helpers::{
     parse_equal_to_aggregate_filter_value, parse_equal_to_number_of_counters_on_reference_value,

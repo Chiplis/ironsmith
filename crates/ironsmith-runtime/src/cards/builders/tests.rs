@@ -2916,6 +2916,43 @@ fn parse_oracle_squee_the_immortal_graveyard_or_exile_cast_permission() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_haakon_graveyard_only_and_knight_permission_text_regression() {
+    assert_oracle_card_parses_strict("Haakon, Stromgald Scourge");
+    let info = oracle_card_info_by_name()
+        .get("Haakon, Stromgald Scourge")
+        .expect("Haakon oracle entry should be present");
+    let def = CardDefinitionBuilder::new(CardId::from_raw(92_300), "Haakon, Stromgald Scourge")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Black],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Zombie, Subtype::Knight])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(info.oracle_text.clone())
+        .expect("Haakon, Stromgald Scourge should parse strictly");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let debug = format!("{def:#?}");
+
+    assert_eq!(
+        rendered,
+        "You may cast this card from your graveyard, but not from anywhere else.\n\
+As long as Haakon is on the battlefield, you may cast Knight spells from your graveyard.\n\
+When Haakon dies, you lose 2 life."
+    );
+    assert!(
+        debug.contains("grantable: PlayFrom")
+            && debug.contains("ThisSpellCastRestriction")
+            && debug.contains("zone: Some(Graveyard)")
+            && debug.contains("subtypes: [Knight]"),
+        "expected Haakon to lower to graveyard PlayFrom grants, a graveyard-only cast restriction, and a Knight subtype filter, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_max_speed_draw_replacement_static_ability() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Vnwxt Parse Test")
         .card_types(vec![CardType::Creature])

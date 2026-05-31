@@ -419,9 +419,63 @@ pub(super) fn run_graveyard_or_exile_cast_line_family(
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     let raw = ctx.line.info.raw_line.trim();
     let raw_no_period = raw.trim_end_matches('.');
-    if raw_no_period.to_ascii_lowercase()
-        != "you may cast this card from your graveyard or from exile"
+    let lower = raw_no_period.to_ascii_lowercase();
+
+    if str_starts_with(lower.as_str(), "as long as ")
+        && let Some((condition_text, permission_text)) = str_split_once(raw_no_period, ",")
+        && is_source_battlefield_condition(ctx, condition_text)
+        && str_starts_with(permission_text.trim_start().to_ascii_lowercase().as_str(), "you may ")
+        && str_ends_with(
+            permission_text.trim().to_ascii_lowercase().as_str(),
+            " from your graveyard",
+        )
     {
+        let permission_line = rewrite_line_normalized(
+            ctx.line,
+            format!("{}.", permission_text.trim()).as_str(),
+        )?;
+        let Some(static_cst) = parse_static_line_cst(&permission_line)? else {
+            return Err(CardTextError::ParseError(format!(
+                "parser could not lower battlefield-source graveyard permission line: '{}'",
+                ctx.line.info.raw_line
+            )));
+        };
+
+        return Ok(Some(LineDispatchResult::single(
+            RewriteLineCst::Static(static_cst),
+            ctx.idx + 1,
+        )));
+    }
+
+    if lower == "you may cast this card from your graveyard, but not from anywhere else" {
+        let graveyard_line =
+            rewrite_line_normalized(ctx.line, "You may cast this card from your graveyard.")?;
+        let restriction_line =
+            rewrite_line_normalized(ctx.line, "Cast this spell only from your graveyard.")?;
+
+        let Some(graveyard_static) = parse_static_line_cst(&graveyard_line)? else {
+            return Err(CardTextError::ParseError(format!(
+                "parser could not lower graveyard-only cast line permission half: '{}'",
+                ctx.line.info.raw_line
+            )));
+        };
+        let Some(restriction_static) = parse_static_line_cst(&restriction_line)? else {
+            return Err(CardTextError::ParseError(format!(
+                "parser could not lower graveyard-only cast line restriction half: '{}'",
+                ctx.line.info.raw_line
+            )));
+        };
+
+        return Ok(Some(LineDispatchResult {
+            lines: vec![
+                RewriteLineCst::Static(graveyard_static),
+                RewriteLineCst::Static(restriction_static),
+            ],
+            next_idx: ctx.idx + 1,
+        }));
+    }
+
+    if lower != "you may cast this card from your graveyard or from exile" {
         return Ok(None);
     }
 
@@ -449,6 +503,28 @@ pub(super) fn run_graveyard_or_exile_cast_line_family(
         ],
         next_idx: ctx.idx + 1,
     }))
+}
+
+fn is_source_battlefield_condition(ctx: &LineDispatchContext<'_>, condition_text: &str) -> bool {
+    let lower = condition_text.trim().to_ascii_lowercase();
+    let Some(condition_body) = str_strip_prefix(lower.as_str(), "as long as ") else {
+        return false;
+    };
+
+    let is_source_battlefield_phrase = |text: &str| {
+        [
+            "this is on the battlefield",
+            "this card is on the battlefield",
+            "this creature is on the battlefield",
+            "this permanent is on the battlefield",
+        ]
+        .iter()
+        .any(|candidate| *candidate == text)
+    };
+
+    is_source_battlefield_phrase(condition_body)
+        || normalize_named_source_sentence_for_builder(&ctx.preprocessed.builder, condition_body)
+            .is_some_and(|normalized| is_source_battlefield_phrase(normalized.as_str()))
 }
 
 pub(super) fn run_champion_line_family(

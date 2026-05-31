@@ -145,6 +145,10 @@ impl ThisSpellCastRestrictionKind {
     pub fn if_you_control_subtype_or_more(subtype: Subtype, count: u32) -> Self {
         Self::named(format!("if you control {count}+ {subtype}"))
     }
+
+    pub fn from_zone(zone: Zone) -> Self {
+        Self::named(format!("from {zone}"))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

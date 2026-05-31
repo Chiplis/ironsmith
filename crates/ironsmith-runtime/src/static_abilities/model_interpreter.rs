@@ -768,6 +768,10 @@ impl StaticAbilityModelInterpreter {
                 super::ThisSpellCastRestrictionKind::during_opponents_turn_after_upkeep()
             }
             "during your end step" => super::ThisSpellCastRestrictionKind::during_your_end_step(),
+            "from graveyard" => {
+                super::ThisSpellCastRestrictionKind::from_zone(crate::zone::Zone::Graveyard)
+            }
+            "from exile" => super::ThisSpellCastRestrictionKind::from_zone(crate::zone::Zone::Exile),
             "if you cast another spell this turn" => {
                 super::ThisSpellCastRestrictionKind::if_you_cast_another_spell_this_turn()
             }

@@ -1,5 +1,6 @@
 use super::super::grammar::structure;
 use super::*;
+use crate::runtime_backend::util::parse_cast_this_spell_only_line_lexed;
 use crate::parse_trace;
 
 pub(super) fn parse_triggered_line_cst(
@@ -274,6 +275,10 @@ pub(super) fn parse_static_line_cst(
     }
 
     if split_compound_buff_and_unblockable_sentence(&lexed).is_some() {
+        return Ok(Some(make_static(None)));
+    }
+
+    if parse_cast_this_spell_only_line_lexed(&lexed)?.is_some() {
         return Ok(Some(make_static(None)));
     }
 

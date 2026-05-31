@@ -738,6 +738,15 @@ where
         }
         if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Graveyard
+            && (!filter_can_include_lands(&self.filter) || !self.filter.subtypes.is_empty())
+        {
+            return format!(
+                "{may_prefix} cast {} from your graveyard",
+                castable_filter_description(&self.filter)
+            ) + &cast_this_way_suffix();
+        }
+        if matches!(self.grantable, Grantable::PlayFrom)
+            && self.zone == Zone::Graveyard
             && self.filter.surveilled_this_turn
         {
             return format!(
