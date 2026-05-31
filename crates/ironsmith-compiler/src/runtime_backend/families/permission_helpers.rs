@@ -599,6 +599,131 @@ pub(crate) fn parse_unsupported_play_cast_permission_clause(
     parse_unsupported_play_cast_permission_clause_lexed(tokens)
 }
 
+fn find_word_phrase_index(words: &[&str], phrase: &[&str]) -> Option<usize> {
+    if phrase.is_empty() || words.len() < phrase.len() {
+        return None;
+    }
+    words.windows(phrase.len()).position(|window| window == phrase)
+}
+
+fn token_slice_for_word_range<'a>(
+    tokens: &'a [OwnedLexToken],
+    start_word: usize,
+    end_word: usize,
+) -> Option<&'a [OwnedLexToken]> {
+    let start = token_index_for_word_index(tokens, start_word)?;
+    let end = if end_word == token_word_refs(tokens).len() {
+        tokens.len()
+    } else if start_word == end_word {
+        start
+    } else {
+        token_index_for_word_index(tokens, end_word)?
+    };
+    Some(&tokens[start..end])
+}
+
+fn parse_sacrificing_additional_cost_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<crate::costs::Cost>, CardTextError> {
+    let words = token_word_refs(tokens);
+    let Some(rest) = words.strip_prefix(&["sacrificing"]) else {
+        return Ok(None);
+    };
+    if rest.is_empty() {
+        return Ok(None);
+    }
+    let Some(filter_tokens) = token_slice_for_word_range(tokens, 1, words.len()) else {
+        return Ok(None);
+    };
+    let Some(filter) = parse_permission_subject_filter_tokens_lexed(filter_tokens)? else {
+        return Ok(None);
+    };
+    Ok(Some(crate::costs::Cost::sacrifice(filter.you_control())))
+}
+
+fn parse_once_each_turn_graveyard_cast_permission(
+    tokens: &[OwnedLexToken],
+    clause_refs: &[&str],
+) -> Result<Option<PermissionClauseSpec>, CardTextError> {
+    const PREFIX: &[&str] = &[
+        "once", "during", "each", "of", "your", "turns", "you", "may", "cast",
+    ];
+    const GRAVEYARD_SUFFIX: &[&str] = &["from", "your", "graveyard"];
+    const ADDITIONAL_COST_SUFFIX: &[&str] = &[
+        "in", "addition", "to", "paying", "its", "other", "costs",
+    ];
+    const EXILE_AFTER_RESOLUTION_SUFFIX: &[&str] = &[
+        "if", "a", "spell", "cast", "this", "way", "would", "be", "put", "into", "your",
+        "graveyard", "exile", "it", "instead",
+    ];
+
+    if !word_slice_starts_with(clause_refs, PREFIX) {
+        return Ok(None);
+    }
+
+    let (main_refs, exiles_after_resolution) = if word_slice_ends_with(
+        clause_refs,
+        EXILE_AFTER_RESOLUTION_SUFFIX,
+    ) {
+        (
+            &clause_refs[..clause_refs.len() - EXILE_AFTER_RESOLUTION_SUFFIX.len()],
+            true,
+        )
+    } else {
+        (clause_refs, false)
+    };
+    let Some(from_idx) = find_word_phrase_index(main_refs, GRAVEYARD_SUFFIX) else {
+        return Ok(None);
+    };
+    let subject_start = PREFIX.len();
+    if from_idx <= subject_start {
+        return Ok(None);
+    }
+    let Some(subject_tokens) = token_slice_for_word_range(tokens, subject_start, from_idx) else {
+        return Ok(None);
+    };
+    let Some(filter) =
+        parse_permission_subject_filter_tokens_lexed(trim_lexed_commas(subject_tokens))?
+    else {
+        return Ok(None);
+    };
+
+    let after_graveyard_idx = from_idx + GRAVEYARD_SUFFIX.len();
+    let additional_costs = if after_graveyard_idx == main_refs.len() {
+        Vec::new()
+    } else {
+        let cost_refs = &main_refs[after_graveyard_idx..];
+        if !word_slice_starts_with(cost_refs, &["by"])
+            || !word_slice_ends_with(cost_refs, ADDITIONAL_COST_SUFFIX)
+        {
+            return Ok(None);
+        }
+        let cost_start = after_graveyard_idx + 1;
+        let cost_end = main_refs.len() - ADDITIONAL_COST_SUFFIX.len();
+        let Some(cost_tokens) = token_slice_for_word_range(tokens, cost_start, cost_end) else {
+            return Ok(None);
+        };
+        let Some(cost) =
+            parse_sacrificing_additional_cost_tokens(trim_lexed_commas(cost_tokens))?
+        else {
+            return Ok(None);
+        };
+        vec![cost]
+    };
+
+    let grantable =
+        crate::grant::Grantable::once_each_turn_graveyard_cast_from_cards_mana_cost_exiles_after_resolution(
+            additional_costs,
+            exiles_after_resolution,
+        );
+
+    Ok(Some(PermissionClauseSpec::GrantBySpec {
+        player: PlayerAst::You,
+        spec: crate::grant::GrantSpec::new(grantable, filter, Zone::Graveyard),
+        lifetime: PermissionLifetime::Static,
+    }))
+}
+
 pub(crate) fn parse_permission_clause_spec_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PermissionClauseSpec>, CardTextError> {
@@ -614,6 +739,10 @@ pub(crate) fn parse_permission_clause_spec_lexed(
     let clause_refs = token_word_refs(tokens);
     if clause_refs.is_empty() {
         return Ok(None);
+    }
+
+    if let Some(spec) = parse_once_each_turn_graveyard_cast_permission(tokens, &clause_refs)? {
+        return Ok(Some(spec));
     }
 
     if clause_refs

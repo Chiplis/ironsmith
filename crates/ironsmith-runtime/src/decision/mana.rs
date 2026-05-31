@@ -2243,7 +2243,7 @@ fn tagged_dependency_satisfied_by_prior_cost(
         })
 }
 
-fn can_pay_non_mana_cost_sequence_for_cast(
+pub(crate) fn can_pay_non_mana_cost_sequence_for_cast(
     game: &GameState,
     player: PlayerId,
     source: ObjectId,

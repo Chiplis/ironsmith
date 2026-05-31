@@ -96,11 +96,21 @@ impl<C: CostComponent> DerivedAlternativeCast<C> {
     }
 
     pub fn once_each_turn_graveyard_cast_from_cards_mana_cost(additional_costs: Vec<C>) -> Self {
+        Self::once_each_turn_graveyard_cast_from_cards_mana_cost_exiles_after_resolution(
+            additional_costs,
+            false,
+        )
+    }
+
+    pub fn once_each_turn_graveyard_cast_from_cards_mana_cost_exiles_after_resolution(
+        additional_costs: Vec<C>,
+        exiles_after_resolution: bool,
+    ) -> Self {
         Self::GraveyardCastFromCardManaCost {
             additional_costs,
             usage_limit: Some(GrantUsageLimit::OnceDuringEachOfYourTurns),
             condition: None,
-            exiles_after_resolution: false,
+            exiles_after_resolution,
         }
     }
 
@@ -213,6 +223,18 @@ where
         Self::DerivedAlternativeCast(
             DerivedAlternativeCast::once_each_turn_graveyard_cast_from_cards_mana_cost(
                 additional_costs,
+            ),
+        )
+    }
+
+    pub fn once_each_turn_graveyard_cast_from_cards_mana_cost_exiles_after_resolution(
+        additional_costs: Vec<C>,
+        exiles_after_resolution: bool,
+    ) -> Self {
+        Self::DerivedAlternativeCast(
+            DerivedAlternativeCast::once_each_turn_graveyard_cast_from_cards_mana_cost_exiles_after_resolution(
+                additional_costs,
+                exiles_after_resolution,
             ),
         )
     }
@@ -395,7 +417,59 @@ where
             }
         }
 
+        fn list_card_types(types: &[CardType]) -> String {
+            let names = types
+                .iter()
+                .map(|card_type| card_type.to_string().to_ascii_lowercase())
+                .collect::<Vec<_>>();
+            match names.as_slice() {
+                [] => String::new(),
+                [one] => one.clone(),
+                [left, right] => format!("{left} or {right}"),
+                _ => {
+                    let Some((last, rest)) = names.split_last() else {
+                        return String::new();
+                    };
+                    format!("{}, or {last}", rest.join(", "))
+                }
+            }
+        }
+
+        fn is_simple_card_type_filter(filter: &ObjectFilter) -> bool {
+            if filter.card_types.is_empty() {
+                return false;
+            }
+            let mut normalized = filter.clone();
+            normalized.card_types.clear();
+            normalized.zone = None;
+            normalized == ObjectFilter::default()
+        }
+
+        fn article_for(phrase: &str) -> &'static str {
+            match phrase.chars().next().map(|c| c.to_ascii_lowercase()) {
+                Some('a' | 'e' | 'i' | 'o' | 'u') => "an",
+                _ => "a",
+            }
+        }
+
+        fn merged_simple_any_of_card_type_filter(filter: &ObjectFilter) -> Option<ObjectFilter> {
+            if filter.any_of.is_empty() {
+                return None;
+            }
+            let mut merged = ObjectFilter::default();
+            for branch in &filter.any_of {
+                if !is_simple_card_type_filter(branch) || branch.card_types.len() != 1 {
+                    return None;
+                }
+                merged.card_types.push(branch.card_types[0]);
+            }
+            Some(merged)
+        }
+
         fn castable_filter_description(filter: &ObjectFilter) -> String {
+            if let Some(merged) = merged_simple_any_of_card_type_filter(filter) {
+                return castable_filter_description(&merged);
+            }
             if !filter.any_of.is_empty() {
                 return filter
                     .any_of
@@ -407,6 +481,20 @@ where
             if *filter == ObjectFilter::noncreature_spell() {
                 return "noncreature spells".to_string();
             }
+            if is_simple_card_type_filter(filter) {
+                let permanent_types = [
+                    CardType::Artifact,
+                    CardType::Creature,
+                    CardType::Enchantment,
+                    CardType::Planeswalker,
+                    CardType::Battle,
+                ];
+                if filter.card_types == permanent_types {
+                    return "a permanent spell".to_string();
+                }
+                let type_text = list_card_types(&filter.card_types);
+                return format!("{} {type_text} spell", article_for(type_text.as_str()));
+            }
             let description = filter.description();
             if description.contains("permanent") {
                 description.replace("permanent", "spell")
@@ -414,6 +502,43 @@ where
                 description
             } else {
                 format!("{description} spells")
+            }
+        }
+
+        fn sacrifice_cost_filter_description(filter: &ObjectFilter) -> Option<String> {
+            let mut normalized = filter.clone();
+            normalized.controller = None;
+            normalized.zone = None;
+            if !matches!(filter.controller, None | Some(PlayerFilter::You))
+                || !is_simple_card_type_filter(&normalized)
+            {
+                return None;
+            }
+            let type_text = list_card_types(&normalized.card_types);
+            Some(format!("{} {type_text}", article_for(type_text.as_str())))
+        }
+
+        fn graveyard_cast_cost_text<C: CostComponent>(additional_costs: &[C]) -> String {
+            if let [cost] = additional_costs
+                && let Some(filter) = cost.sacrifice_filter()
+                && let Some(filter_text) = sacrifice_cost_filter_description(filter)
+            {
+                return format!(
+                    "sacrificing {filter_text} in addition to paying its other costs"
+                );
+            }
+
+            if additional_costs.is_empty() {
+                "paying its mana cost".to_string()
+            } else {
+                format!(
+                    "paying its mana cost plus {}",
+                    additional_costs
+                        .iter()
+                        .map(CostComponent::display)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
             }
         }
 
@@ -708,19 +833,10 @@ where
         ) = &self.grantable
             && self.zone == Zone::Graveyard
         {
-            let filter_desc = castable_filter_description(&filter);
-            let cost_text = if additional_costs.is_empty() {
-                "paying its mana cost".to_string()
-            } else {
-                format!(
-                    "paying its mana cost plus {}",
-                    additional_costs
-                        .iter()
-                        .map(CostComponent::display)
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            };
+            let mut cast_filter = self.filter.clone();
+            cast_filter.zone = None;
+            let filter_desc = castable_filter_description(&cast_filter);
+            let cost_text = graveyard_cast_cost_text(additional_costs);
             if self.filter == ObjectFilter::source() {
                 let mut line = format!("{may_prefix} cast this card from your graveyard");
                 if let Some(condition) = condition
@@ -742,12 +858,18 @@ where
             } else {
                 ""
             };
-            return format!(
+            let mut line = format!(
                 "{prefix}{} cast {} from your graveyard by {}",
                 may_prefix.to_ascii_lowercase(),
                 filter_desc,
                 cost_text
             );
+            if *exiles_after_resolution {
+                line.push_str(
+                    ". If a spell cast this way would be put into your graveyard, exile it instead",
+                );
+            }
+            return line;
         }
         if let Grantable::Ability(ability) = &self.grantable
             && ability.grant_has_flash()

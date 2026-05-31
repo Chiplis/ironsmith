@@ -213,6 +213,14 @@ fn append_graveyard_granted_alternative_cast_actions_for_card(
         ) {
             continue;
         }
+        if !can_pay_non_mana_cost_sequence_for_cast(
+            game,
+            player,
+            card_id,
+            method.non_mana_costs(),
+        ) {
+            continue;
+        }
 
         actions.push(LegalAction::CastSpell {
             spell_id: card_id,
@@ -269,6 +277,14 @@ fn append_graveyard_granted_adventure_alternative_cast_actions_for_card(
             &requirements,
             &casting_method,
             view,
+        ) {
+            continue;
+        }
+        if !can_pay_non_mana_cost_sequence_for_cast(
+            game,
+            player,
+            card_id,
+            method.non_mana_costs(),
         ) {
             continue;
         }

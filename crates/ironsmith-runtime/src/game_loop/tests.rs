@@ -23373,6 +23373,300 @@ fn test_bosh_iron_golem_uses_sacrificed_artifact_mana_value_for_damage() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn maestros_ascendancy_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(92_180), "Maestros Ascendancy")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Once during each of your turns, you may cast an instant or sorcery spell from your graveyard by sacrificing a creature in addition to paying its other costs. If a spell cast this way would be put into your graveyard, exile it instead.",
+        )
+        .expect("Maestros Ascendancy should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn zero_mana_spell_card(name: &str, card_type: CardType) -> crate::card::Card {
+    CardBuilder::new(CardId::new(), name)
+        .card_types(vec![card_type])
+        .mana_cost(ManaCost::new())
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn maestros_graveyard_cast_action(
+    game: &GameState,
+    player: PlayerId,
+    source_id: ObjectId,
+    spell_id: ObjectId,
+) -> Option<LegalAction> {
+    compute_legal_actions(game, player)
+        .into_iter()
+        .find(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id: action_spell_id,
+                from_zone: Zone::Graveyard,
+                casting_method: CastingMethod::PlayFrom {
+                    source,
+                    zone: Zone::Graveyard,
+                    use_alternative: Some(_),
+                },
+            } if *action_spell_id == spell_id && *source == source_id
+        ))
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn finish_maestros_cast_with_sacrifice(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    state: &mut PriorityLoopState,
+    mut progress: GameProgress,
+    sacrifice_id: ObjectId,
+) {
+    for _ in 0..6 {
+        progress = match progress {
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectOptions(ctx),
+            ) => {
+                let option_index = ctx
+                    .options
+                    .iter()
+                    .find(|option| option.description.to_ascii_lowercase().contains("sacrifice"))
+                    .map(|option| option.index)
+                    .expect("Maestros cast should prompt for the sacrifice cost step");
+                apply_priority_response(
+                    game,
+                    trigger_queue,
+                    state,
+                    &PriorityResponse::NextCostChoice(option_index),
+                )
+                .expect("Maestros cast should accept sacrifice cost step")
+            }
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectObjects(ctx),
+            ) => {
+                assert!(
+                    ctx.candidates
+                        .iter()
+                        .any(|candidate| candidate.id == sacrifice_id && candidate.legal),
+                    "Maestros cast should allow sacrificing a creature you control"
+                );
+                apply_priority_response(
+                    game,
+                    trigger_queue,
+                    state,
+                    &PriorityResponse::CardCostChoice(sacrifice_id),
+                )
+                .expect("Maestros cast should accept the sacrificed creature")
+            }
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Priority(_),
+            ) => return,
+            other => panic!("unexpected Maestros cast flow state: {other:?}"),
+        };
+    }
+    panic!("Maestros cast did not finish paying costs");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn maestros_ascendancy_casts_graveyard_spell_by_sacrificing_creature_and_exiles_it() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let source_id = game.create_object_from_definition(
+        &maestros_ascendancy_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    let buried_spell = zero_mana_spell_card("Buried Scheme", CardType::Sorcery);
+    let spell_id = game.create_object_from_card(&buried_spell, alice, Zone::Graveyard);
+    let fodder = CardBuilder::new(CardId::new(), "Maestros Fodder")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let fodder_id = game.create_object_from_card(&fodder, alice, Zone::Battlefield);
+
+    let action = maestros_graveyard_cast_action(&game, alice, source_id, spell_id)
+        .expect("Maestros Ascendancy should offer the graveyard sorcery cast");
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(action),
+    )
+    .expect("Maestros graveyard cast should start");
+    finish_maestros_cast_with_sacrifice(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        progress,
+        fodder_id,
+    );
+
+    assert!(
+        game.player(alice)
+            .expect("Alice exists")
+            .graveyard
+            .iter()
+            .any(|id| game.object(*id).is_some_and(|obj| obj.name == "Maestros Fodder")),
+        "the sacrificed creature should be put into its owner's graveyard as a cost"
+    );
+    assert!(
+        game.stack
+            .iter()
+            .any(|entry| game.object(entry.object_id).is_some_and(|obj| obj.name == "Buried Scheme")),
+        "the graveyard spell should be on the stack after paying Maestros Ascendancy's cost"
+    );
+
+    resolve_stack_entry(&mut game).expect("Maestros-cast spell should resolve");
+    assert!(
+        game.exile
+            .iter()
+            .any(|id| game.object(*id).is_some_and(|obj| obj.name == "Buried Scheme")),
+        "a spell cast with Maestros Ascendancy should be exiled instead of returning to the graveyard"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn maestros_ascendancy_requires_creature_cost_and_instant_or_sorcery_card() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let source_id = game.create_object_from_definition(
+        &maestros_ascendancy_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    let buried_instant = zero_mana_spell_card("Buried Instant", CardType::Instant);
+    let instant_id = game.create_object_from_card(&buried_instant, alice, Zone::Graveyard);
+    assert!(
+        maestros_graveyard_cast_action(&game, alice, source_id, instant_id).is_none(),
+        "Maestros Ascendancy should not offer the cast when you cannot sacrifice a creature"
+    );
+
+    let fodder = CardBuilder::new(CardId::new(), "Spare Informant")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    game.create_object_from_card(&fodder, alice, Zone::Battlefield);
+    let artifact = zero_mana_spell_card("Buried Artifact", CardType::Artifact);
+    let artifact_id = game.create_object_from_card(&artifact, alice, Zone::Graveyard);
+    assert!(
+        maestros_graveyard_cast_action(&game, alice, source_id, artifact_id).is_none(),
+        "Maestros Ascendancy should not grant the alternative cast to non-instant non-sorcery cards"
+    );
+    assert!(
+        maestros_graveyard_cast_action(&game, alice, source_id, instant_id).is_some(),
+        "after a creature is available, Maestros Ascendancy should offer an instant from the graveyard"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn maestros_ascendancy_is_once_each_turn_and_only_on_your_turn() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let source_id = game.create_object_from_definition(
+        &maestros_ascendancy_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    let first_spell = zero_mana_spell_card("First Buried Spell", CardType::Sorcery);
+    let first_spell_id = game.create_object_from_card(&first_spell, alice, Zone::Graveyard);
+    let second_spell = zero_mana_spell_card("Second Buried Spell", CardType::Sorcery);
+    let second_spell_id = game.create_object_from_card(&second_spell, alice, Zone::Graveyard);
+    let first_fodder = CardBuilder::new(CardId::new(), "First Fodder")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let first_fodder_id = game.create_object_from_card(&first_fodder, alice, Zone::Battlefield);
+    let second_fodder = CardBuilder::new(CardId::new(), "Second Fodder")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    game.create_object_from_card(&second_fodder, alice, Zone::Battlefield);
+
+    let action = maestros_graveyard_cast_action(&game, alice, source_id, first_spell_id)
+        .expect("first Maestros cast should be available");
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(action),
+    )
+    .expect("first Maestros cast should start");
+    finish_maestros_cast_with_sacrifice(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        progress,
+        first_fodder_id,
+    );
+    resolve_stack_entry(&mut game).expect("first Maestros spell should resolve");
+
+    assert!(
+        maestros_graveyard_cast_action(&game, alice, source_id, second_spell_id).is_none(),
+        "Maestros Ascendancy should not offer a second graveyard cast from the same source in one turn"
+    );
+
+    let mut opponent_turn_game = setup_game();
+    opponent_turn_game.turn.phase = Phase::FirstMain;
+    opponent_turn_game.turn.step = None;
+    opponent_turn_game.turn.active_player = bob;
+    opponent_turn_game.turn.priority_player = Some(alice);
+    let opponent_turn_source = opponent_turn_game.create_object_from_definition(
+        &maestros_ascendancy_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    let flash_spell = CardDefinitionBuilder::new(CardId::new(), "Grave Flash Probe")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::new())
+        .parse_text("Flash")
+        .expect("flash probe should parse");
+    let flash_spell_id =
+        opponent_turn_game.create_object_from_definition(&flash_spell, alice, Zone::Graveyard);
+    let fodder = CardBuilder::new(CardId::new(), "Opponent Turn Fodder")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    opponent_turn_game.create_object_from_card(&fodder, alice, Zone::Battlefield);
+    assert!(
+        maestros_graveyard_cast_action(
+            &opponent_turn_game,
+            alice,
+            opponent_turn_source,
+            flash_spell_id,
+        )
+        .is_none(),
+        "Maestros Ascendancy's once-during-your-turn permission should not function on another player's turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn demon_of_fates_design_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(92_200), "Demon of Fate's Design")
         .mana_cost(ManaCost::from_pips(vec![
