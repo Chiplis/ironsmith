@@ -28101,6 +28101,235 @@ fn test_split_the_spoils_opponent_can_take_the_other_pile_into_hand() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+const SPHINX_OF_UTHUUN_ORACLE: &str = "Flying\nWhen this creature enters, reveal the top five cards of your library. An opponent separates those cards into two piles. Put one pile into your hand and the other into your graveyard.";
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn sphinx_of_uthuun_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(91_130), "Sphinx of Uthuun")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Sphinx])
+        .power_toughness(PowerToughness::fixed(5, 6))
+        .parse_text(SPHINX_OF_UTHUUN_ORACLE)
+        .expect("Sphinx of Uthuun oracle text should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct SphinxOfUthuunDecisionMaker {
+    caster: PlayerId,
+    opponent: PlayerId,
+    split_names: &'static [&'static str],
+    choose_split_pile: bool,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for SphinxOfUthuunDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        assert_eq!(
+            ctx.player, self.caster,
+            "Sphinx of Uthuun's controller chooses which separated pile goes to hand"
+        );
+        self.choose_split_pile
+    }
+
+    fn decide_objects(
+        &mut self,
+        game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        assert_eq!(
+            ctx.player, self.opponent,
+            "an opponent should separate Sphinx of Uthuun's revealed cards"
+        );
+        let legal = ctx
+            .candidates
+            .iter()
+            .filter(|candidate| candidate.legal)
+            .collect::<Vec<_>>();
+
+        self.split_names
+            .iter()
+            .map(|wanted_name| {
+                legal
+                    .iter()
+                    .find(|candidate| {
+                        game.object(candidate.id)
+                            .is_some_and(|object| object.name == *wanted_name)
+                    })
+                    .map(|candidate| candidate.id)
+                    .unwrap_or_else(|| panic!("expected to find {wanted_name} in the split"))
+            })
+            .collect()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn add_sphinx_library_card(
+    game: &mut GameState,
+    owner: PlayerId,
+    name: &'static str,
+    raw_id: u32,
+) -> ObjectId {
+    let card = CardBuilder::new(CardId::from_raw(raw_id), name)
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    game.create_object_from_card(&card, owner, Zone::Library)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn zone_contains_named(game: &GameState, ids: &[ObjectId], name: &str) -> bool {
+    ids.iter()
+        .any(|&id| game.object(id).is_some_and(|object| object.name == name))
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_sphinx_of_uthuun_etb(
+    game: &mut GameState,
+    sphinx: &crate::cards::CardDefinition,
+    source_id: ObjectId,
+    controller: PlayerId,
+    decision_maker: &mut dyn DecisionMaker,
+) {
+    use crate::effects::{ExecutionContext, execute_effect};
+
+    let triggered = sphinx
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Sphinx of Uthuun should have an enters triggered ability");
+    let event = TriggerEvent::new_with_provenance(
+        EnterBattlefieldEvent::new(source_id, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut ctx = ExecutionContext::new(source_id, controller, decision_maker)
+        .with_triggering_event(event);
+
+    for effect in &triggered.effects {
+        execute_effect(game, effect, &mut ctx).expect("Sphinx of Uthuun ETB should resolve");
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sphinx_of_uthuun_strict_parse_and_compiled_text_match_oracle() {
+    let sphinx = sphinx_of_uthuun_definition();
+    let rendered = crate::compiled_text::compiled_text_lines(&sphinx).join("\n");
+
+    assert_eq!(rendered, SPHINX_OF_UTHUUN_ORACLE);
+
+    let debug = format!("{:#?}", sphinx.abilities);
+    assert!(debug.contains("LookAtTopCardsEffect"), "{debug}");
+    assert!(debug.contains("divvy_source"), "{debug}");
+    assert!(debug.contains("divvy_pile"), "{debug}");
+    assert!(debug.contains("UnlessActionEffect"), "{debug}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sphinx_of_uthuun_puts_the_opponent_split_pile_into_hand() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let sphinx = sphinx_of_uthuun_definition();
+    let source_id = game.create_object_from_definition(&sphinx, alice, Zone::Battlefield);
+
+    add_sphinx_library_card(&mut game, alice, "Sphinx Unrevealed Bottom", 91_131);
+    add_sphinx_library_card(&mut game, alice, "Sphinx Rest One", 91_132);
+    add_sphinx_library_card(&mut game, alice, "Sphinx Rest Two", 91_133);
+    add_sphinx_library_card(&mut game, alice, "Sphinx Rest Three", 91_134);
+    add_sphinx_library_card(&mut game, alice, "Sphinx Split Beta", 91_135);
+    add_sphinx_library_card(&mut game, alice, "Sphinx Split Alpha", 91_136);
+
+    let mut dm = SphinxOfUthuunDecisionMaker {
+        caster: alice,
+        opponent: bob,
+        split_names: &["Sphinx Split Alpha", "Sphinx Split Beta"],
+        choose_split_pile: true,
+    };
+    resolve_sphinx_of_uthuun_etb(&mut game, &sphinx, source_id, alice, &mut dm);
+
+    let alice_zones = game.player(alice).expect("alice exists");
+    assert!(zone_contains_named(&game, &alice_zones.hand, "Sphinx Split Alpha"));
+    assert!(zone_contains_named(&game, &alice_zones.hand, "Sphinx Split Beta"));
+    assert!(zone_contains_named(&game, &alice_zones.graveyard, "Sphinx Rest One"));
+    assert!(zone_contains_named(&game, &alice_zones.graveyard, "Sphinx Rest Two"));
+    assert!(zone_contains_named(&game, &alice_zones.graveyard, "Sphinx Rest Three"));
+    assert!(zone_contains_named(
+        &game,
+        &alice_zones.library,
+        "Sphinx Unrevealed Bottom"
+    ));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sphinx_of_uthuun_can_put_the_other_pile_into_hand() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let sphinx = sphinx_of_uthuun_definition();
+    let source_id = game.create_object_from_definition(&sphinx, alice, Zone::Battlefield);
+
+    add_sphinx_library_card(&mut game, alice, "Sphinx Other Unrevealed Bottom", 91_141);
+    add_sphinx_library_card(&mut game, alice, "Sphinx Other Rest One", 91_142);
+    add_sphinx_library_card(&mut game, alice, "Sphinx Other Rest Two", 91_143);
+    add_sphinx_library_card(&mut game, alice, "Sphinx Other Rest Three", 91_144);
+    add_sphinx_library_card(&mut game, alice, "Sphinx Other Split Beta", 91_145);
+    add_sphinx_library_card(&mut game, alice, "Sphinx Other Split Alpha", 91_146);
+
+    let mut dm = SphinxOfUthuunDecisionMaker {
+        caster: alice,
+        opponent: bob,
+        split_names: &["Sphinx Other Split Alpha", "Sphinx Other Split Beta"],
+        choose_split_pile: false,
+    };
+    resolve_sphinx_of_uthuun_etb(&mut game, &sphinx, source_id, alice, &mut dm);
+
+    let alice_zones = game.player(alice).expect("alice exists");
+    assert!(zone_contains_named(
+        &game,
+        &alice_zones.graveyard,
+        "Sphinx Other Split Alpha"
+    ));
+    assert!(zone_contains_named(
+        &game,
+        &alice_zones.graveyard,
+        "Sphinx Other Split Beta"
+    ));
+    assert!(zone_contains_named(
+        &game,
+        &alice_zones.hand,
+        "Sphinx Other Rest One"
+    ));
+    assert!(zone_contains_named(
+        &game,
+        &alice_zones.hand,
+        "Sphinx Other Rest Two"
+    ));
+    assert!(zone_contains_named(
+        &game,
+        &alice_zones.hand,
+        "Sphinx Other Rest Three"
+    ));
+    assert!(zone_contains_named(
+        &game,
+        &alice_zones.library,
+        "Sphinx Other Unrevealed Bottom"
+    ));
+}
+
 #[test]
 fn test_dash_grants_haste_and_returns_to_hand_at_next_end_step() {
     use crate::cards::CardDefinitionBuilder;

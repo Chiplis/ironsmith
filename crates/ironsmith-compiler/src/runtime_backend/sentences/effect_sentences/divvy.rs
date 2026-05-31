@@ -1,6 +1,6 @@
 use super::super::grammar::primitives::TokenWordView;
 use super::super::lexer::{OwnedLexToken, split_lexed_sentences, word_slice_starts_with};
-use super::dispatch_entry::SentenceInput;
+use super::dispatch_entry::{SentenceInput, parse_prefixed_top_of_your_library_count};
 use super::dispatch_inner::parse_effect_sentence_lexed;
 use crate::cards::builders::{
     CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, ReturnControllerAst,
@@ -843,6 +843,118 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             },
         ]);
         return Ok(Some(effects));
+    }
+
+    if sentences.len() == 3
+        && let Some((_, count)) = parse_prefixed_top_of_your_library_count(
+            sentences[0].lowered(),
+            &[
+                (&["reveal", "the", "top"][..], ()),
+                (&["reveal", "top"][..], ()),
+            ],
+        )
+        && matches_sentence(
+            &sentence_words[1],
+            &[
+                "an",
+                "opponent",
+                "separates",
+                "those",
+                "cards",
+                "into",
+                "two",
+                "piles",
+            ],
+        )
+        && matches_sentence(
+            &sentence_words[2],
+            &[
+                "put",
+                "one",
+                "pile",
+                "into",
+                "your",
+                "hand",
+                "and",
+                "the",
+                "other",
+                "into",
+                "your",
+                "graveyard",
+            ],
+        )
+    {
+        let source_tag = TagKey::from("divvy_source");
+        let pile_tag = TagKey::from("divvy_pile");
+        return Ok(Some(vec![
+            EffectAst::subject_verb_reveal_top_cards(
+                PlayerAst::You,
+                Value::Fixed(count as i32),
+                source_tag.clone(),
+            ),
+            EffectAst::ChooseObjectsAcrossZones {
+                filter: ObjectFilter::tagged(source_tag.clone()),
+                count: ChoiceCount::any_number(),
+                count_value: None,
+                player: PlayerAst::Opponent,
+                tag: pile_tag.clone(),
+                zones: vec![Zone::Library],
+                search_mode: None,
+            },
+            EffectAst::UnlessAction {
+                player: PlayerAst::You,
+                effects: vec![
+                    EffectAst::subject_verb_move_to_zone(
+                        TargetAst::Tagged(pile_tag.clone(), None),
+                        Zone::Graveyard,
+                        false,
+                        ReturnControllerAst::Preserve,
+                        false,
+                        None,
+                    ),
+                    EffectAst::ForEachTagged {
+                        tag: source_tag.clone(),
+                        effects: vec![EffectAst::Conditional {
+                            predicate: membership_predicate_for_iterated_object(pile_tag.as_str()),
+                            if_true: Vec::new(),
+                            if_false: vec![EffectAst::subject_verb_move_to_zone(
+                                TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                                Zone::Hand,
+                                false,
+                                ReturnControllerAst::Preserve,
+                                false,
+                                None,
+                            )],
+                        }],
+                    },
+                ],
+                alternative: vec![
+                    EffectAst::subject_verb_move_to_zone(
+                        TargetAst::Tagged(pile_tag.clone(), None),
+                        Zone::Hand,
+                        false,
+                        ReturnControllerAst::Preserve,
+                        false,
+                        None,
+                    ),
+                    EffectAst::ForEachTagged {
+                        tag: source_tag.clone(),
+                        effects: vec![EffectAst::Conditional {
+                            predicate: membership_predicate_for_iterated_object(pile_tag.as_str()),
+                            if_true: Vec::new(),
+                            if_false: vec![EffectAst::subject_verb_move_to_zone(
+                                TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                                Zone::Graveyard,
+                                false,
+                                ReturnControllerAst::Preserve,
+                                false,
+                                None,
+                            )],
+                        }],
+                    },
+                ],
+            },
+        ]));
     }
 
     if first_sentence_has_prefix(

@@ -7015,6 +7015,81 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         ))
     }
 
+    fn describe_reveal_top_split_pile_choice_bundle(filtered: &[&Effect]) -> Option<String> {
+        let filtered = if let [first, rest @ ..] = filtered {
+            if first
+                .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+                .is_some()
+            {
+                rest
+            } else {
+                filtered
+            }
+        } else {
+            filtered
+        };
+
+        let [reveal_effect, choose_effect, unless_effect] = filtered else {
+            return None;
+        };
+
+        let reveal = reveal_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+        let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+        let unless_action = unless_effect.downcast_ref::<crate::effects::UnlessActionEffect>()?;
+
+        if !reveal.reveal
+            || reveal.player != PlayerFilter::You
+            || reveal.tag.as_str() != "divvy_source"
+            || choose.tag.as_str() != "divvy_pile"
+            || choose.chooser != PlayerFilter::Opponent
+            || choose_primary_zone(choose) != Some(Zone::Library)
+            || choose.is_search
+            || !choose.count.is_any_number()
+            || !filter_is_tagged_as(&choose.filter, reveal.tag.as_str())
+            || unless_action.player != PlayerFilter::You
+        {
+            return None;
+        }
+
+        let [main_selected, main_rest] = unless_action.effects.as_slice() else {
+            return None;
+        };
+        let [alt_selected, alt_rest] = unless_action.alternative.as_slice() else {
+            return None;
+        };
+
+        let main_selected = downcast_move_to_zone(main_selected)?;
+        let alt_selected = downcast_move_to_zone(alt_selected)?;
+        let (_, main_rest) = for_each_tagged_for_compaction(main_rest)?;
+        let (_, alt_rest) = for_each_tagged_for_compaction(alt_rest)?;
+
+        if !move_to_zone_uses_tag(main_selected, choose.tag.as_str(), Zone::Graveyard)
+            || !move_to_zone_uses_tag(alt_selected, choose.tag.as_str(), Zone::Hand)
+            || !for_each_moves_unselected_to_zone(
+                main_rest,
+                reveal.tag.as_str(),
+                choose.tag.as_str(),
+                Zone::Hand,
+            )
+            || !for_each_moves_unselected_to_zone(
+                alt_rest,
+                reveal.tag.as_str(),
+                choose.tag.as_str(),
+                Zone::Graveyard,
+            )
+        {
+            return None;
+        }
+
+        let count_text = match &reveal.count {
+            Value::Fixed(count) => number_word(*count).unwrap_or_else(|| count.to_string()),
+            value => describe_value(value),
+        };
+        Some(format!(
+            "Reveal the top {count_text} cards of your library. An opponent separates those cards into two piles. Put one pile into your hand and the other into your graveyard."
+        ))
+    }
+
     fn filter_has_not_tagged_constraint(filter: &ObjectFilter, tag: &str) -> bool {
         filter.tagged_constraints.iter().any(|constraint| {
             constraint.relation == crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
@@ -8929,6 +9004,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     }
 
     if let Some(compact) = describe_exile_split_pile_opponent_choice_bundle(&filtered) {
+        return compact;
+    }
+    if let Some(compact) = describe_reveal_top_split_pile_choice_bundle(&filtered) {
         return compact;
     }
     if let Some(compact) = describe_creature_pile_destroy_bundle(&filtered) {
