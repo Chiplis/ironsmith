@@ -24493,6 +24493,162 @@ fn demon_of_fates_design_life_cost_casts_only_enchantments_once_during_your_turn
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn eye_of_duskmantle_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(92_210), "Eye of Duskmantle")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 8))
+        .parse_text(
+            "Flying, lifelink\n\
+             You may play lands and cast spells from among cards in your graveyard you've surveilled this turn. If you cast a spell this way, you pay life equal to its mana value rather than paying its mana cost.",
+        )
+        .expect("Eye of Duskmantle should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn eye_of_duskmantle_casts_only_surveilled_graveyard_spells_for_life() {
+    use crate::alternative_cast::CastingMethod;
+    use crate::decision::{LegalAction, compute_legal_actions};
+    use crate::events::{KeywordActionEvent, KeywordActionKind, RawEvent};
+    use crate::provenance::ProvNodeId;
+    use crate::snapshot::ObjectSnapshot;
+    use crate::tag::{SURVEILLED_THIS_TURN_TAG, TagKey};
+    use std::collections::HashMap;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice).expect("Alice exists").life = 20;
+
+    let eye_id = game.create_object_from_definition(
+        &eye_of_duskmantle_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    let spell_card = CardBuilder::new(CardId::from_raw(92_211), "Seen Graveyard Spell")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let seen_spell_id = game.create_object_from_card(&spell_card, alice, Zone::Graveyard);
+    let unseen_spell_id = game.create_object_from_card(&spell_card, alice, Zone::Graveyard);
+    let land_card = CardBuilder::new(CardId::from_raw(92_212), "Seen Graveyard Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let seen_land_id = game.create_object_from_card(&land_card, alice, Zone::Graveyard);
+
+    let mut object_tags = HashMap::new();
+    object_tags.insert(
+        TagKey::from(SURVEILLED_THIS_TURN_TAG),
+        vec![
+            ObjectSnapshot::from_object(game.object(seen_spell_id).unwrap(), &game),
+            ObjectSnapshot::from_object(game.object(seen_land_id).unwrap(), &game),
+        ],
+    );
+    let event = RawEvent::new(
+        KeywordActionEvent::new(KeywordActionKind::Surveil, alice, eye_id, 2)
+            .with_object_tags(object_tags),
+        ProvNodeId::default(),
+    );
+    game.turn_store
+        .turn_history
+        .record_event(&event, None, None);
+
+    let actions = compute_legal_actions(&game, alice);
+    let seen_spell_casts = actions
+        .iter()
+        .filter(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Graveyard,
+                    ..
+                } if *spell_id == seen_spell_id
+            )
+        })
+        .count();
+    assert_eq!(
+        seen_spell_casts, 1,
+        "Eye should offer exactly one graveyard cast for a surveilled spell"
+    );
+
+    let cast_action = actions
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Graveyard,
+                    casting_method: CastingMethod::PlayFrom {
+                        source,
+                        zone: Zone::Graveyard,
+                        use_alternative: Some(_),
+                    },
+                } if *spell_id == seen_spell_id && *source == eye_id
+            )
+        })
+        .expect("Eye should offer the surveilled spell with the life alternative");
+
+    assert!(
+        !compute_legal_actions(&game, alice).iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                casting_method: CastingMethod::PlayFrom {
+                    source,
+                    use_alternative: None,
+                    ..
+                },
+                ..
+            } if *spell_id == seen_spell_id && *source == eye_id
+        )),
+        "Eye should not also allow the surveilled spell for its normal mana cost"
+    );
+    assert!(
+        !compute_legal_actions(&game, alice).iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell { spell_id, .. } if *spell_id == unseen_spell_id
+        )),
+        "Eye should not allow non-surveilled graveyard spells"
+    );
+    assert!(
+        compute_legal_actions(&game, alice).iter().any(|action| matches!(
+            action,
+            LegalAction::PlayLand { land_id } if *land_id == seen_land_id
+        )),
+        "Eye should allow surveilled graveyard lands to be played"
+    );
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(cast_action),
+    )
+    .expect("Eye life-cost graveyard cast should succeed");
+
+    assert_eq!(
+        game.player(alice).expect("Alice exists").life,
+        17,
+        "casting the three-mana-value spell this way should cost 3 life"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn demon_of_fates_design_life_cost_requires_enough_life() {
     let mut game = setup_game();

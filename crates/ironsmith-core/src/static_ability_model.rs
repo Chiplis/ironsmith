@@ -679,6 +679,9 @@ where
                 DerivedAlternativeCast::LifeEqualManaValueFromHand { usage_limit } => {
                     DerivedAlternativeCast::LifeEqualManaValueFromHand { usage_limit }
                 }
+                DerivedAlternativeCast::LifeEqualManaValueFromZone { zone, usage_limit } => {
+                    DerivedAlternativeCast::LifeEqualManaValueFromZone { zone, usage_limit }
+                }
                 DerivedAlternativeCast::GraveyardCastFromCardManaCost {
                     additional_costs,
                     usage_limit,

@@ -378,6 +378,10 @@ fn static_ability_rule_head_hints(rule_id: &'static str) -> Vec<StaticAbilityLin
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
         ],
+        "parse_surveilled_graveyard_play_life_cost_line" => vec![
+            StaticAbilityLineHeadHint::Single("you"),
+            StaticAbilityLineHeadHint::Pair("you", "may"),
+        ],
         "parse_fixed_mana_cost_instead_of_mana_cost_grant_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
@@ -770,6 +774,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_rule!(
             parse_you_may_cast_exile_counter_cards_with_mana_permission_line
         ),
+        multi_static_ability_ast_rule!(parse_surveilled_graveyard_play_life_cost_line),
         single_static_ability_ast_rule!(parse_you_may_static_grant_line),
         single_static_ability_ast_rule!(parse_grant_flash_to_noncreature_spells_line),
         single_static_ability_ast_rule!(parse_cast_this_spell_as_though_it_had_flash_line),
@@ -7896,6 +7901,90 @@ pub(crate) fn parse_you_may_cast_exile_counter_cards_with_mana_permission_line(
         StaticAbility::mana_spend_permission(permission, render_token_slice(tokens));
 
     Ok(Some(vec![grant, mana_permission]))
+}
+
+pub(crate) fn parse_surveilled_graveyard_play_life_cost_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let words = parser_token_word_refs(tokens);
+    let normalized = words
+        .iter()
+        .map(|word| word.replace(['\'', '’'], ""))
+        .collect::<Vec<_>>();
+    let refs = normalized.iter().map(String::as_str).collect::<Vec<_>>();
+    if !matches!(
+        refs.as_slice(),
+        [
+            "you",
+            "may",
+            "play",
+            "lands",
+            "and",
+            "cast",
+            "spells",
+            "from",
+            "among",
+            "cards",
+            "in",
+            "your",
+            "graveyard",
+            "youve",
+            "surveilled",
+            "this",
+            "turn",
+            "if",
+            "you",
+            "cast",
+            "a",
+            "spell",
+            "this",
+            "way",
+            "you",
+            "pay",
+            "life",
+            "equal",
+            "to",
+            "its",
+            "mana",
+            "value",
+            "rather",
+            "than",
+            "paying",
+            "its",
+            "mana",
+            "cost"
+        ]
+    ) {
+        return Ok(None);
+    }
+
+    let base_filter = ObjectFilter {
+        zone: Some(Zone::Graveyard),
+        owner: Some(PlayerFilter::You),
+        surveilled_this_turn: true,
+        ..ObjectFilter::default()
+    };
+    let mut spell_filter = base_filter.clone();
+    spell_filter.excluded_card_types.push(CardType::Land);
+
+    Ok(Some(vec![
+        StaticAbility::grants(
+            crate::grant::GrantSpec::new(
+                crate::grant::Grantable::play_from(),
+                base_filter,
+                Zone::Graveyard,
+            )
+            .with_beneficiary(PlayerFilter::You),
+        ),
+        StaticAbility::grants(
+            crate::grant::GrantSpec::new(
+                crate::grant::Grantable::life_equal_mana_value_from_zone(Zone::Graveyard, None),
+                spell_filter,
+                Zone::Graveyard,
+            )
+            .with_beneficiary(PlayerFilter::You),
+        ),
+    ]))
 }
 
 pub(crate) fn parse_you_may_static_grant_line(

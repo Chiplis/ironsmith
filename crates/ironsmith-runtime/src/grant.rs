@@ -174,6 +174,25 @@ impl DerivedAlternativeCastRuntimeExt for DerivedAlternativeCast {
                     ],
                 ))
             }
+            Self::LifeEqualManaValueFromZone { zone, .. } => {
+                if card.zone != *zone {
+                    return None;
+                }
+                Some(AlternativeCastingMethod::cast_from_zone_with_total_cost(
+                    "Pay life equal to mana value",
+                    *zone,
+                    TotalCost::from_costs(vec![
+                        Cost::try_from_runtime_effect(crate::effect::Effect::new(
+                            crate::effects::LoseLifeEffect::you(crate::effect::Value::ManaValueOf(
+                                Box::new(crate::target::ChooseSpec::Source),
+                            )),
+                        ))
+                        .expect("mana-value life payment should be cost-capable"),
+                    ]),
+                    None,
+                    false,
+                ))
+            }
             Self::GraveyardCastFromCardManaCost {
                 additional_costs,
                 usage_limit,

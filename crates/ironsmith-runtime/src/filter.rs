@@ -1709,6 +1709,15 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
 
+        if self.surveilled_this_turn
+            && !game
+                .turn_store
+                .turn_history
+                .object_was_surveilled_this_turn(object.stable_id)
+        {
+            return false;
+        }
+
         if self.was_dealt_damage_this_turn && !game.creature_was_damaged_this_turn(object.id) {
             return false;
         }
