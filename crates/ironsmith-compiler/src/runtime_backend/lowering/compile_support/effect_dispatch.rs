@@ -19,6 +19,23 @@ fn describe_value_for_mode(value: &Value) -> String {
     }
 }
 
+fn retarget_it_mana_value_to_spec(value: &Value, spec: &ChooseSpec) -> Value {
+    match value {
+        Value::SurfaceHinted { value, hints } => Value::SurfaceHinted {
+            value: Box::new(retarget_it_mana_value_to_spec(value, spec)),
+            hints: hints.clone(),
+        },
+        Value::ManaValueOf(target) => {
+            if matches!(target.as_ref(), ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG) {
+                Value::ManaValueOf(Box::new(spec.clone()))
+            } else {
+                value.clone()
+            }
+        }
+        _ => value.clone(),
+    }
+}
+
 fn resolve_tagged_top_library_condition(
     condition: &crate::ConditionExpr,
     ctx: &EffectLoweringContext,
@@ -2569,14 +2586,16 @@ fn compile_subject_verb_effect(
             let granted_modifications =
                 lower_granted_ability_grant_modifications(granted_abilities)?;
             compile_tagged_effect_for_target(target, ctx, "animated_creature", |spec| {
+                let power = retarget_it_mana_value_to_spec(power, &spec);
+                let toughness = retarget_it_mana_value_to_spec(toughness, &spec);
                 let mut apply = crate::effects::ApplyContinuousEffect::with_spec(
                     spec,
                     crate::continuous::Modification::AddCardTypes(card_types.clone()),
                     duration.clone(),
                 )
                 .with_additional_modification(crate::continuous::Modification::SetPowerToughness {
-                    power: power.clone(),
-                    toughness: toughness.clone(),
+                    power,
+                    toughness,
                     sublayer: crate::continuous::PtSublayer::Setting,
                 })
                 .resolve_set_pt_values_at_resolution();

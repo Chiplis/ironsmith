@@ -1291,6 +1291,234 @@ fn vastwood_animist_activation_animates_only_your_land_using_ally_count_until_en
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn karn_silver_golem_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(21_287), "Karn, Silver Golem")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(5)]]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Golem])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Whenever Karn blocks or becomes blocked, it gets -4/+4 until end of turn.\n\
+             {1}: Target noncreature artifact becomes an artifact creature with power and toughness each equal to its mana value until end of turn.",
+        )
+        .expect("Karn, Silver Golem should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_artifact_with_mana_value(
+    game: &mut GameState,
+    name: &str,
+    controller: PlayerId,
+    mana_value: u8,
+    creature: bool,
+) -> ObjectId {
+    let mut builder = CardBuilder::new(CardId::new(), name).mana_cost(ManaCost::from_pips(vec![
+        vec![ManaSymbol::Generic(mana_value)],
+    ]));
+    builder = if creature {
+        builder
+            .card_types(vec![CardType::Artifact, CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+    } else {
+        builder.card_types(vec![CardType::Artifact])
+    };
+    let card = builder.build();
+    game.create_object_from_card(&card, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn karn_silver_golem_activation_animates_noncreature_artifact_by_mana_value_until_cleanup() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let karn_def = karn_silver_golem_definition();
+    let karn_id = game.create_object_from_definition(&karn_def, alice, Zone::Battlefield);
+    let artifact_creature = create_artifact_with_mana_value(
+        &mut game,
+        "Artifact Creature Target Probe",
+        alice,
+        2,
+        true,
+    );
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    assert!(
+        !crate::decision::compute_legal_actions(&game, alice)
+            .into_iter()
+            .any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, .. }
+                    if source == karn_id
+            )),
+        "Karn should not be activatable while only artifact creatures are available as targets"
+    );
+    assert!(game.current_is_creature(artifact_creature));
+
+    let target_id =
+        create_artifact_with_mana_value(&mut game, "Karn Animation Target", alice, 3, false);
+    assert!(!game.current_is_creature(target_id));
+    assert_eq!(game.current_power(target_id), None);
+
+    let ability_index = game
+        .object(karn_id)
+        .expect("Karn should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Karn should have an activated ability");
+    let activate_action = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == karn_id && *idx == ability_index
+            )
+        })
+        .expect("Karn activation should be legal with a noncreature artifact target and mana");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Karn activation should start and pay the generic cost");
+    match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::Targets(_),
+        ) => {}
+        other => panic!("expected target selection for Karn activation, got {other:?}"),
+    }
+
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Object(target_id)]),
+        &mut dm,
+    )
+    .expect("choosing a noncreature artifact should complete Karn activation");
+    assert_eq!(
+        game.player(alice)
+            .expect("Alice should exist")
+            .mana_pool
+            .total(),
+        0,
+        "Karn activation should spend one generic mana"
+    );
+
+    resolve_stack_entry(&mut game).expect("Karn activation should resolve");
+    assert!(game.current_is_creature(target_id));
+    assert!(
+        game.current_card_types(target_id).is_some_and(|types| {
+            types.contains(&CardType::Artifact) && types.contains(&CardType::Creature)
+        }),
+        "animated target should be both artifact and creature"
+    );
+    assert_eq!(game.calculated_power(target_id), Some(3));
+    assert_eq!(game.calculated_toughness(target_id), Some(3));
+
+    execute_cleanup_step(&mut game);
+    game.refresh_continuous_state();
+
+    assert!(!game.current_is_creature(target_id));
+    assert_eq!(game.current_power(target_id), None);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_karn_block_trigger(
+    game: &mut GameState,
+    combat: &mut CombatState,
+    declarations: &[BlockerDeclaration],
+    defending_player: PlayerId,
+) {
+    let mut trigger_queue = TriggerQueue::new();
+    apply_blocker_declarations(game, combat, &mut trigger_queue, declarations, defending_player)
+        .expect("Karn block declaration should be legal");
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Karn should trigger exactly once for this block event"
+    );
+    put_triggers_on_stack(game, &mut trigger_queue).expect("Karn block trigger should go on stack");
+    resolve_stack_entry(game).expect("Karn block trigger should resolve");
+    game.refresh_continuous_state();
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn karn_silver_golem_trigger_applies_when_it_becomes_blocked() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let karn_def = karn_silver_golem_definition();
+    let karn_id = game.create_object_from_definition(&karn_def, alice, Zone::Battlefield);
+    let blocker = create_creature(&mut game, "Karn Blocker", bob, 2, 2);
+    let mut combat = CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: karn_id,
+        target: AttackTarget::Player(bob),
+    });
+
+    resolve_karn_block_trigger(
+        &mut game,
+        &mut combat,
+        &[BlockerDeclaration {
+            blocker,
+            blocking: karn_id,
+        }],
+        bob,
+    );
+
+    assert_eq!(game.calculated_power(karn_id), Some(0));
+    assert_eq!(game.calculated_toughness(karn_id), Some(8));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn karn_silver_golem_trigger_applies_when_it_blocks() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let karn_def = karn_silver_golem_definition();
+    let karn_id = game.create_object_from_definition(&karn_def, alice, Zone::Battlefield);
+    let attacker = create_creature(&mut game, "Attacker Into Karn", bob, 2, 2);
+    let mut combat = CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: attacker,
+        target: AttackTarget::Player(alice),
+    });
+
+    resolve_karn_block_trigger(
+        &mut game,
+        &mut combat,
+        &[BlockerDeclaration {
+            blocker: karn_id,
+            blocking: attacker,
+        }],
+        alice,
+    );
+
+    assert_eq!(game.calculated_power(karn_id), Some(0));
+    assert_eq!(game.calculated_toughness(karn_id), Some(8));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn cho_arrim_alchemist_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(19647), "Cho-Arrim Alchemist")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White]]))

@@ -9106,6 +9106,22 @@ fn plural_non_target_land_animation_target(
     Some(format!("all {}", pluralize_noun_phrase(rest)))
 }
 
+fn value_is_mana_value(value: &Value) -> bool {
+    match value {
+        Value::SurfaceHinted { value, .. } => value_is_mana_value(value),
+        Value::ManaValueOf(_) => true,
+        _ => false,
+    }
+}
+
+fn value_is_target_mana_value(value: &Value) -> bool {
+    match value {
+        Value::SurfaceHinted { value, .. } => value_is_target_mana_value(value),
+        Value::ManaValueOf(spec) => matches!(spec.as_ref(), ChooseSpec::Target(_)),
+        _ => false,
+    }
+}
+
 pub(super) fn describe_apply_continuous_animation_effect(
     effect: &crate::effects::ApplyContinuousEffect,
     target: &str,
@@ -9211,28 +9227,56 @@ pub(super) fn describe_apply_continuous_animation_effect(
     } else {
         false
     };
+    let mana_value_equal_pt = if let (Some(power), Some(toughness)) = (power, toughness) {
+        power == toughness && value_is_mana_value(power)
+    } else {
+        false
+    };
     let pt_where_clause = if let (Some(power), _) = (power, toughness) {
-        (dynamic_equal_pt && !matches!(power, Value::X)).then(|| describe_value(power))
+        (dynamic_equal_pt && !mana_value_equal_pt && !matches!(power, Value::X))
+            .then(|| describe_value(power))
     } else {
         None
     };
 
     let mut text = if let (Some(power), Some(toughness)) = (power, toughness) {
-        let pt = if dynamic_equal_pt {
-            "X/X".to_string()
+        if mana_value_equal_pt {
+            let value_text = if value_is_target_mana_value(power) && !plural_target {
+                "its mana value".to_string()
+            } else {
+                describe_value(power)
+            };
+            let pt_noun_phrase = format!(
+                "{noun_phrase} with power and toughness each equal to {}",
+                value_text
+            );
+            if returned_permanent_animation {
+                format!("{target_text} are {pt_noun_phrase}")
+            } else if plural_target {
+                format!("{target_text} become {pt_noun_phrase}")
+            } else {
+                format!(
+                    "{target_text} becomes {}",
+                    with_indefinite_article(&pt_noun_phrase)
+                )
+            }
         } else {
-            format!("{}/{}", describe_value(power), describe_value(toughness))
-        };
-        let pt_noun_phrase = format!("{pt} {noun_phrase}");
-        if returned_permanent_animation {
-            format!("{target_text} are {pt_noun_phrase}")
-        } else if plural_target {
-            format!("{target_text} become {pt_noun_phrase}")
-        } else {
-            format!(
-                "{target_text} becomes {}",
-                with_indefinite_article(&pt_noun_phrase)
-            )
+            let pt = if dynamic_equal_pt {
+                "X/X".to_string()
+            } else {
+                format!("{}/{}", describe_value(power), describe_value(toughness))
+            };
+            let pt_noun_phrase = format!("{pt} {noun_phrase}");
+            if returned_permanent_animation {
+                format!("{target_text} are {pt_noun_phrase}")
+            } else if plural_target {
+                format!("{target_text} become {pt_noun_phrase}")
+            } else {
+                format!(
+                    "{target_text} becomes {}",
+                    with_indefinite_article(&pt_noun_phrase)
+                )
+            }
         }
     } else if power.is_none() && toughness.is_none() {
         if plural_target {

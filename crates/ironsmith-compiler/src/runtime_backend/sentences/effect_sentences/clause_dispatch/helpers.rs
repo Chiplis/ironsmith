@@ -171,6 +171,28 @@ pub(super) fn parse_become_base_pt_tail<'a>(
         return Ok(None);
     };
     let tail = &become_words[with_idx + 1..];
+    let tagged_object_mana_value = || {
+        Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
+            TagKey::from(crate::host::IT_TAG),
+        )))
+    };
+    if tail == ["power", "and", "toughness", "each", "equal", "to", "its", "mana", "value"]
+        || tail == [
+            "base",
+            "power",
+            "and",
+            "toughness",
+            "each",
+            "equal",
+            "to",
+            "its",
+            "mana",
+            "value",
+        ]
+    {
+        let value = tagged_object_mana_value();
+        return Ok(Some((&become_words[..with_idx], value.clone(), value)));
+    }
     if tail.len() != 5
         || !crate::runtime_backend::lexer::word_slice_eq(
             &tail[..4],

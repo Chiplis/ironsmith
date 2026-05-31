@@ -21755,6 +21755,38 @@ fn parse_loses_all_abilities_and_becomes_static_fails_instead_of_partial_parse()
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_karn_silver_golem_mana_value_animation_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(21287), "Karn, Silver Golem")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(5)]]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Golem])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Whenever Karn blocks or becomes blocked, it gets -4/+4 until end of turn.\n\
+             {1}: Target noncreature artifact becomes an artifact creature with power and toughness each equal to its mana value until end of turn.",
+        )
+        .expect("Karn, Silver Golem should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains(
+            "Target noncreature artifact becomes an artifact creature with power and toughness each equal to its mana value until end of turn"
+        ),
+        "expected Karn's mana-value animation clause in compiled text, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("AddCardTypes")
+            && debug.contains("SetPowerToughness")
+            && debug.contains("ManaValueOf"),
+        "expected structural artifact-creature animation using target mana value, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_each_player_exile_sacrifice_return_this_way_fails_instead_of_partial_parse() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Living Death Variant")
             .parse_text(
