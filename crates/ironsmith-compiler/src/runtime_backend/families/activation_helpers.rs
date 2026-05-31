@@ -156,6 +156,29 @@ pub(crate) fn parse_add_mana(
     }
     if word_slice_starts_with(
         &clause_words,
+        &["one", "mana", "of", "that", "color"],
+    ) {
+        let tail_start = clause_word_view.token_index_after_words(5).unwrap_or(tokens.len());
+        let tail_tokens = trim_leading_commas(&tokens[tail_start..]);
+        if tail_tokens.is_empty() || is_mana_pool_tail_tokens(tail_tokens) {
+            return Ok(EffectAst::subject_verb_add_mana_chosen_color(
+                player,
+                Value::Fixed(1),
+                None,
+            ));
+        }
+        if let Some(amount) = parse_dynamic_cost_modifier_value(tail_tokens)? {
+            return Ok(EffectAst::subject_verb_add_mana_chosen_color(
+                player, amount, None,
+            ));
+        }
+        return Err(CardTextError::ParseError(format!(
+            "unsupported dynamic chosen-color mana amount (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+    if word_slice_starts_with(
+        &clause_words,
         &["an", "amount", "of", "mana", "of", "that", "color"],
     ) {
         let amount = parse_devotion_value_from_add_clause(tokens)?

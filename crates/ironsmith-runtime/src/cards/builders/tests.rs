@@ -17731,6 +17731,30 @@ fn parse_add_mana_chosen_color_tail() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_chosen_color_mana_for_each_different_power() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Selvala Mana Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "{T}: Choose a color. Add one mana of that color for each different power among creatures you control.",
+        )
+        .expect("chosen-color mana scaled by distinct powers should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "Choose a color. Add one mana of that color for each different power among creatures you control"
+        ),
+        "expected distinct-power chosen-color mana render, got {rendered}"
+    );
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("AddManaOfChosenColorEffect") && debug.contains("DistinctPowers"),
+        "expected chosen-color mana effect scaled by distinct powers, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_urzas_tower_conditional_mana_output() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Urza's Tower Variant")
         .card_types(vec![CardType::Land])
@@ -39377,6 +39401,190 @@ fn alena_kessig_trapper_mana_runtime_uses_only_your_creatures_that_entered_this_
 
     assert_eq!(result.value, crate::effect::OutcomeValue::ManaAdded(vec![]));
     assert_eq!(game.player(alice).expect("alice").mana_pool.red, 0);
+}
+
+#[test]
+fn selvala_eager_trailblazer_strict_parser_text_and_structure_regression() {
+    let def = parse_oracle_card_definition("Selvala, Eager Trailblazer");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains("Vigilance")
+            && rendered.contains("Whenever you cast a creature spell")
+            && rendered.contains(
+                "Choose a color. Add one mana of that color for each different power among creatures you control"
+            ),
+        "expected Selvala's keyword, token trigger, and distinct-power mana clause to render, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("ChooseColorEffect")
+            && ability_debug.contains("AddManaOfChosenColorEffect")
+            && ability_debug.contains("DistinctPowers"),
+        "expected Selvala's mana ability to choose a color and scale by distinct powers, got {ability_debug}"
+    );
+}
+
+#[test]
+fn selvala_eager_trailblazer_mana_runtime_counts_distinct_controlled_powers() {
+    fn selvala_definition() -> CardDefinition {
+        let oracle = oracle_text_by_name()
+            .get("Selvala, Eager Trailblazer")
+            .expect("Selvala oracle text should be present")
+            .clone();
+        CardDefinitionBuilder::new(CardId::new(), "Selvala, Eager Trailblazer")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(4, 5))
+            .parse_text(oracle)
+            .expect("Selvala should parse for runtime regression")
+    }
+
+    fn create_creature(
+        game: &mut crate::game_state::GameState,
+        controller: PlayerId,
+        name: &str,
+        power: i32,
+    ) {
+        let def = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(power, 1))
+            .build();
+        game.create_object_from_definition(&def, controller, Zone::Battlefield);
+    }
+
+    let def = selvala_definition();
+    let add_chosen = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) if activated.is_mana_ability() => activated
+                .effects
+                .iter()
+                .find_map(|effect| {
+                    effect.downcast_ref::<crate::effects::AddManaOfChosenColorEffect>()
+                }),
+            _ => None,
+        })
+        .expect("Selvala should have a chosen-color mana effect");
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let selvala_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    create_creature(&mut game, alice, "One-Power Scout", 1);
+    create_creature(&mut game, alice, "Duplicate-Power Ally", 4);
+    create_creature(&mut game, bob, "Opposing Giant", 7);
+    game.set_chosen_color(selvala_id, Color::Blue);
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(selvala_id, alice, &mut dm);
+    let result = add_chosen
+        .execute(&mut game, &mut ctx)
+        .expect("Selvala's mana effect should resolve");
+
+    assert_eq!(
+        result.value,
+        crate::effect::OutcomeValue::Count(2),
+        "Selvala should add one mana for each distinct controlled power, ignoring duplicates and opponents"
+    );
+    assert_eq!(game.player(alice).expect("alice").mana_pool.blue, 2);
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let selvala_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.set_chosen_color(selvala_id, Color::Red);
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(selvala_id, alice, &mut dm);
+    let result = add_chosen
+        .execute(&mut game, &mut ctx)
+        .expect("Selvala's mana effect should count Selvala herself");
+
+    assert_eq!(
+        result.value,
+        crate::effect::OutcomeValue::Count(1),
+        "Selvala should count her own power when she is the only creature you control"
+    );
+    assert_eq!(game.player(alice).expect("alice").mana_pool.red, 1);
+}
+
+#[test]
+fn selvala_eager_trailblazer_creature_spell_trigger_creates_mercenary_token() {
+    fn spell_def(name: &str, card_types: Vec<CardType>) -> CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(card_types)
+            .build()
+    }
+
+    fn spell_cast_event(spell: ObjectId, caster: PlayerId) -> crate::triggers::TriggerEvent {
+        crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::spells::SpellCastEvent::new(spell, caster, Zone::Hand),
+            crate::provenance::ProvNodeId::default(),
+        )
+    }
+
+    let def = parse_oracle_card_definition("Selvala, Eager Trailblazer");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let selvala_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let instant = spell_def("Not a Creature", vec![CardType::Instant]);
+    let instant_id = game.create_object_from_definition(&instant, alice, Zone::Stack);
+    let instant_event = spell_cast_event(instant_id, alice);
+    assert!(
+        crate::triggers::check_triggers(&game, &instant_event).is_empty(),
+        "Selvala should not trigger from your noncreature spell"
+    );
+
+    let opponent_creature = spell_def("Opponent Creature", vec![CardType::Creature]);
+    let opponent_creature_id =
+        game.create_object_from_definition(&opponent_creature, bob, Zone::Stack);
+    let opponent_event = spell_cast_event(opponent_creature_id, bob);
+    assert!(
+        crate::triggers::check_triggers(&game, &opponent_event).is_empty(),
+        "Selvala should not trigger from an opponent's creature spell"
+    );
+
+    let creature = spell_def("Your Creature", vec![CardType::Creature]);
+    let creature_id = game.create_object_from_definition(&creature, alice, Zone::Stack);
+    let creature_event = spell_cast_event(creature_id, alice);
+    let triggered = crate::triggers::check_triggers(&game, &creature_event);
+    assert_eq!(
+        triggered.len(),
+        1,
+        "Selvala should trigger once from your creature spell"
+    );
+
+    let entry = &triggered[0];
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(selvala_id, alice, &mut dm)
+        .with_triggering_event(entry.triggering_event.clone());
+    for effect in &entry.ability.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Selvala's token trigger should resolve");
+    }
+
+    let mercenaries = game
+        .objects_in_zone(Zone::Battlefield)
+        .into_iter()
+        .filter(|&id| id != selvala_id)
+        .filter_map(|id| game.object(id))
+        .filter(|object| {
+            object.card_types == [CardType::Creature]
+                && object.subtypes == [Subtype::Mercenary]
+                && object.color_override == Some(crate::color::ColorSet::RED)
+                && object.base_power == Some(crate::card::PtValue::Fixed(1))
+                && object.base_toughness == Some(crate::card::PtValue::Fixed(1))
+                && game.controller_of(object) == alice
+                && object.abilities.iter().any(|ability| {
+                    matches!(ability.kind, AbilityKind::Activated(_))
+                })
+        })
+        .count();
+    assert_eq!(
+        mercenaries, 1,
+        "Selvala should create one 1/1 red Mercenary token with an activated ability"
+    );
 }
 
 #[test]
