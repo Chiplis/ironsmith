@@ -41770,6 +41770,164 @@ fn wild_roads_pilot_token_power_bonus_applies_to_saddle_and_crew_costs() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_deathless_pilot_strict_regression() {
+    assert_oracle_card_parses_strict("Deathless Pilot");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn deathless_pilot_compiled_text_keeps_saddle_crew_and_graveyard_return() {
+    let def = parse_oracle_card_definition("Deathless Pilot");
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("saddles mounts and crews vehicles as though its power were 2 greater"),
+        "expected Deathless Pilot compiled text to preserve saddle/crew power clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("{3}{b}: return this card from your graveyard to your hand"),
+        "expected Deathless Pilot compiled text to preserve graveyard self-return activation, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn deathless_pilot_power_bonus_applies_to_saddle_and_crew_costs() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Deathless Pilot")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Zombie, Subtype::Pilot])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            oracle_text_by_name()
+                .get("Deathless Pilot")
+                .expect("Deathless Pilot oracle text should be available")
+                .clone(),
+        )
+        .expect("Deathless Pilot should parse for runtime cost test");
+    let alice = PlayerId::from_index(0);
+
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let vehicle = CardDefinitionBuilder::new(CardId::new(), "Vehicle Probe")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Vehicle])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    let vehicle_id = game.create_object_from_definition(&vehicle, alice, Zone::Battlefield);
+    let crew_cost = crate::effects::CrewCostEffect { required_power: 4 };
+    crate::effects::CostExecutableEffect::can_execute_as_cost(&crew_cost, &game, vehicle_id, alice)
+        .expect("Deathless Pilot should crew 4 as though its power were 2 greater");
+
+    let mount = CardDefinitionBuilder::new(CardId::new(), "Mount Probe")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Mount])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    let mount_id = game.create_object_from_definition(&mount, alice, Zone::Battlefield);
+    let saddle_cost = crate::effects::SaddleCostEffect::new(4);
+    crate::effects::CostExecutableEffect::can_execute_as_cost(&saddle_cost, &game, mount_id, alice)
+        .expect("Deathless Pilot should saddle 4 as though its power were 2 greater");
+
+    let vanilla = CardDefinitionBuilder::new(CardId::new(), "Vanilla 2/2")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let mut baseline_crew = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    baseline_crew.create_object_from_definition(&vanilla, alice, Zone::Battlefield);
+    let baseline_vehicle =
+        baseline_crew.create_object_from_definition(&vehicle, alice, Zone::Battlefield);
+    assert!(
+        crate::effects::CostExecutableEffect::can_execute_as_cost(
+            &crew_cost,
+            &baseline_crew,
+            baseline_vehicle,
+            alice,
+        )
+        .is_err(),
+        "baseline 2/2 without Deathless Pilot marker should not satisfy crew 4"
+    );
+
+    let mut baseline_saddle = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    baseline_saddle.create_object_from_definition(&vanilla, alice, Zone::Battlefield);
+    let baseline_mount =
+        baseline_saddle.create_object_from_definition(&mount, alice, Zone::Battlefield);
+    assert!(
+        crate::effects::CostExecutableEffect::can_execute_as_cost(
+            &saddle_cost,
+            &baseline_saddle,
+            baseline_mount,
+            alice,
+        )
+        .is_err(),
+        "baseline 2/2 without Deathless Pilot marker should not satisfy saddle 4"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn deathless_pilot_graveyard_activation_returns_only_from_graveyard() {
+    let def = parse_oracle_card_definition("Deathless Pilot");
+    let (ability, activated) = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some((ability, activated)),
+            _ => None,
+        })
+        .expect("Deathless Pilot should have a graveyard self-return activated ability");
+    assert_eq!(ability.functional_zones, vec![Zone::Graveyard]);
+    assert_eq!(
+        activated.mana_cost.display(),
+        "{3}{B}",
+        "Deathless Pilot self-return should keep its activation cost"
+    );
+
+    let alice = PlayerId::from_index(0);
+    let mut graveyard_game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let graveyard_pilot =
+        graveyard_game.create_object_from_definition(&def, alice, Zone::Graveyard);
+    let mut graveyard_ctx = crate::effects::ExecutionContext::new_default(graveyard_pilot, alice);
+    for effect in activated.effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut graveyard_game, effect, &mut graveyard_ctx)
+            .expect("Deathless Pilot graveyard activation should resolve");
+    }
+    assert_eq!(
+        graveyard_game.player(alice).expect("Alice").graveyard.len(),
+        0,
+        "Deathless Pilot should leave the graveyard when its activated ability resolves"
+    );
+    assert_eq!(
+        graveyard_game.player(alice).expect("Alice").hand.len(),
+        1,
+        "Deathless Pilot should return to its owner's hand from the graveyard"
+    );
+
+    let mut battlefield_game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let battlefield_pilot =
+        battlefield_game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let mut battlefield_ctx =
+        crate::effects::ExecutionContext::new_default(battlefield_pilot, alice);
+    for effect in activated.effects.flattened_default_effects() {
+        let _ =
+            crate::effects::execute_effect(&mut battlefield_game, effect, &mut battlefield_ctx);
+    }
+    assert!(
+        battlefield_game
+            .objects_in_zone(Zone::Battlefield)
+            .contains(&battlefield_pilot),
+        "Deathless Pilot should not be returned by its graveyard ability while on the battlefield"
+    );
+    assert!(
+        battlefield_game.player(alice).expect("Alice").hand.is_empty(),
+        "Deathless Pilot graveyard ability should not move a battlefield object to hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_interface_ace_strict_regression() {
     assert_oracle_card_parses_strict("Interface Ace");
 }
