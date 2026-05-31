@@ -32221,6 +32221,135 @@ fn reveka_activation_runtime_keeps_source_tapped_for_next_untap() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn avizoa_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Avizoa");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains("flying")
+            && rendered_lower.contains("gets +2/+2 until end of turn")
+            && rendered_lower.contains("you skip your next untap step")
+            && rendered_lower.contains("activate only once each turn"),
+        "expected Avizoa to parse and render its pump, skip-untap clause, and activation cap, got {rendered}"
+    );
+
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Avizoa should have an activated ability");
+    assert_eq!(
+        activated.timing,
+        crate::ability::ActivationTiming::OncePerTurn,
+        "Avizoa's activation should be limited to once each turn"
+    );
+
+    let debug = format!("{:?}", activated.effects).to_ascii_lowercase();
+    assert!(
+        debug.contains("modifypowertoughness") && debug.contains("skipuntapstepeffect"),
+        "expected Avizoa activation to carry pump and skip-untap effects structurally, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn avizoa_activation_pumps_and_skips_only_the_next_untap_step() {
+    let oracle = oracle_text_by_name()
+        .get("Avizoa")
+        .expect("missing Avizoa oracle text")
+        .clone();
+    let def = CardDefinitionBuilder::new(CardId::new(), "Avizoa")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Jellyfish])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(oracle)
+        .expect("Avizoa should parse");
+    let (activated_index, activated) = def
+        .abilities
+        .iter()
+        .enumerate()
+        .find_map(|(index, ability)| match &ability.kind {
+            AbilityKind::Activated(activated) => Some((index, activated)),
+            _ => None,
+        })
+        .expect("Avizoa should have an activated ability");
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+    let avizoa_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let can_activate_avizoa = |game: &crate::game_state::GameState| {
+        crate::decision::compute_legal_actions(game, alice)
+            .iter()
+            .any(|action| {
+                matches!(
+                    action,
+                    crate::decision::LegalAction::ActivateAbility {
+                        source,
+                        ability_index
+                    } if *source == avizoa_id && *ability_index == activated_index
+                )
+            })
+    };
+    assert!(
+        can_activate_avizoa(&game),
+        "Avizoa's activation should be legal before it is used this turn"
+    );
+    game.record_ability_activation(avizoa_id, activated_index);
+    assert!(
+        !can_activate_avizoa(&game),
+        "Avizoa's activation should not be legal after it was used this turn"
+    );
+
+    game.tap(avizoa_id);
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(avizoa_id, alice);
+    for effect in &activated.effects.segments[0].default_effects {
+        effect
+            .0
+            .execute(&mut game, &mut ctx)
+            .expect("Avizoa activation effect should resolve");
+    }
+
+    assert_eq!(game.current_power(avizoa_id), Some(4));
+    assert_eq!(game.current_toughness(avizoa_id), Some(4));
+    assert!(
+        game.turn_store.skip_next_untap_step.contains(&alice),
+        "Avizoa activation should mark its controller's next untap step to be skipped"
+    );
+
+    game.turn.active_player = alice;
+    game.turn.phase = crate::game_state::Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Untap);
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    crate::turn::execute_untap_step_with(&mut game, &mut dm);
+
+    assert!(
+        game.is_tapped(avizoa_id),
+        "Avizoa should stay tapped while its controller's next untap step is skipped"
+    );
+    assert!(
+        !game.turn_store.skip_next_untap_step.contains(&alice),
+        "the skip marker should be consumed by the skipped untap step"
+    );
+
+    crate::turn::execute_untap_step_with(&mut game, &mut dm);
+    assert!(
+        !game.is_tapped(avizoa_id),
+        "Avizoa should untap normally after the skipped untap step has been consumed"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn mad_dog_trigger_checks_attack_or_entered_this_turn_before_sacrificing() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Mad Dog Variant")
         .card_types(vec![CardType::Creature])

@@ -31059,6 +31059,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             describe_player_filter(&skip_draw.player)
         );
     }
+    if let Some(skip_untap) = effect.downcast_ref::<crate::effects::SkipUntapStepEffect>() {
+        if matches!(skip_untap.player, PlayerFilter::You | PlayerFilter::EffectController) {
+            return "you skip your next untap step".to_string();
+        }
+        return format!(
+            "{} skips their next untap step",
+            describe_player_filter(&skip_untap.player)
+        );
+    }
     if let Some(end_turn) = effect.downcast_ref::<crate::effects::EndTurnEffect>() {
         if matches!(
             end_turn.player,

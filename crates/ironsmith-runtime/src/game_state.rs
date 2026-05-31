@@ -243,6 +243,9 @@ pub struct TurnStore {
     /// Players who will skip their next draw step.
     /// Checked and cleared when a player would draw in draw step.
     pub skip_next_draw_step: HashSet<PlayerId>,
+    /// Players who will skip their next untap step.
+    /// Checked and cleared when a player would begin their untap step.
+    pub skip_next_untap_step: HashSet<PlayerId>,
     /// The active player whose draw step is currently being tracked for draw-count-sensitive triggers.
     pub tracked_draw_step_player: Option<PlayerId>,
     /// Cards the tracked player has already drawn in the current draw step.

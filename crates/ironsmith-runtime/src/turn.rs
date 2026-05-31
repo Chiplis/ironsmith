@@ -294,6 +294,11 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
     use crate::static_abilities::StaticAbilityId;
 
     let active_player = game.turn.active_player;
+    if game.turn_store.skip_next_untap_step.remove(&active_player) {
+        game.turn.priority_player = None;
+        return;
+    }
+
     let had_restriction_effects = !game.effect_store.restriction_effects.is_empty();
     game.update_cant_effects();
 

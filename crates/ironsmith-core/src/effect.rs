@@ -4051,6 +4051,21 @@ impl SkipDrawStepEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct SkipUntapStepEffect {
+    pub player: PlayerFilter,
+}
+
+impl SkipUntapStepEffect {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
+    }
+
+    pub fn you() -> Self {
+        Self::new(PlayerFilter::You)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct SkipNextCombatPhaseThisTurnEffect {
     pub player: PlayerFilter,
 }

@@ -165,6 +165,9 @@ pub(crate) fn parse_skip(
     if word_slice_contains_word(&words, "draw") && word_slice_contains_word(&words, "step") {
         return Ok(EffectAst::subject_verb_skip_draw_step(player));
     }
+    if word_slice_contains_word(&words, "untap") && word_slice_contains_word(&words, "step") {
+        return Ok(EffectAst::subject_verb_skip_untap_step(player));
+    }
     if word_slice_contains_word(&words, "turn") {
         return Ok(EffectAst::subject_verb_skip_turn(player));
     }

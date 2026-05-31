@@ -1353,6 +1353,11 @@ where
             payload.player.clone(),
         )));
     }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::SkipUntapStepEffect>(&effect) {
+        return Ok(Effect::new(crate::effects::SkipUntapStepEffect::new(
+            payload.player.clone(),
+        )));
+    }
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::SkipNextCombatPhaseThisTurnEffect>(&effect)
     {

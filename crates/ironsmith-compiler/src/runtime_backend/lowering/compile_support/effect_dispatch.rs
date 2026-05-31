@@ -5187,6 +5187,11 @@ fn compile_subject_verb_effect(
                 Effect::skip_draw_step_player(subject.into_player_filter())
             })
         }
+        SubjectVerbActionAst::SkipUntapStep => {
+            compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
+                Effect::skip_untap_step_player(subject.into_player_filter())
+            })
+        }
         SubjectVerbActionAst::AdditionalPhases { phases } => {
             Ok((vec![Effect::additional_phases(phases.clone())], Vec::new()))
         }

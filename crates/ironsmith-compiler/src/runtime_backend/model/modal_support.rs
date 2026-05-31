@@ -354,6 +354,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::SkipCombatPhases
             | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
             | SubjectVerbActionAst::SkipDrawStep
+            | SubjectVerbActionAst::SkipUntapStep
             | SubjectVerbActionAst::PlayFromGraveyardUntilEot
             | SubjectVerbActionAst::ControlPlayer { .. }
             | SubjectVerbActionAst::ReduceNextSpellCostThisTurn { .. }

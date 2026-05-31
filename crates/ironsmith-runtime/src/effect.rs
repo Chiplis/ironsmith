@@ -3599,6 +3599,18 @@ impl Effect {
         Self::new(SkipDrawStepEffect::new(player))
     }
 
+    /// Create a "skip next untap step" effect for the controller.
+    pub fn skip_untap_step() -> Self {
+        use crate::effects::SkipUntapStepEffect;
+        Self::new(SkipUntapStepEffect::you())
+    }
+
+    /// Create a "skip next untap step" effect for a specific player.
+    pub fn skip_untap_step_player(player: PlayerFilter) -> Self {
+        use crate::effects::SkipUntapStepEffect;
+        Self::new(SkipUntapStepEffect::new(player))
+    }
+
     // === Control Effects ===
 
     /// Create a "gain control" effect with a specific duration.

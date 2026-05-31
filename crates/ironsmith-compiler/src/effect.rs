@@ -1771,6 +1771,10 @@ impl Effect {
         Self::new(crate::effects::SkipDrawStepEffect::new(player))
     }
 
+    pub fn skip_untap_step_player(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::SkipUntapStepEffect::new(player))
+    }
+
     pub fn mill(count: impl Into<Value>) -> Self {
         Self::new(crate::effects::MillEffect::you(count))
     }
