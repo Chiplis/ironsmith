@@ -988,6 +988,23 @@ fn tom_bombadil_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn interface_ace_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_925), "Interface Ace")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Robot, Subtype::Pilot])
+        .power_toughness(PowerToughness::fixed(0, 4))
+        .from_text_with_metadata(
+            "This creature saddles Mounts and crews Vehicles using its toughness rather than its power.\n\
+             Whenever this creature becomes tapped during your turn, untap it. This ability triggers only once each turn.",
+        )
+        .expect("Interface Ace should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn merfolk_cave_diver_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(72_930), "Merfolk Cave-Diver")
         .mana_cost(ManaCost::from_pips(vec![
@@ -39164,6 +39181,81 @@ fn tom_bombadil_strict_parser_and_compiled_text_regression() {
         triggered.intervening_if,
         Some(crate::ConditionExpr::MaxTimesEachTurn(1))
     ));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn interface_ace_tap_trigger_untaps_once_and_only_during_your_turn() {
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let ace_id =
+        game.create_object_from_definition(&interface_ace_definition(), alice, Zone::Battlefield);
+    game.turn.active_player = alice;
+
+    game.tap(ace_id);
+    let first_tap = TriggerEvent::new_with_provenance(
+        crate::events::PermanentTappedEvent::new(ace_id),
+        crate::provenance::ProvNodeId::default(),
+    );
+    queue_triggers_from_event(&mut game, &mut trigger_queue, first_tap, false);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Interface Ace should trigger when tapped during its controller's turn");
+    assert_eq!(game.stack.len(), 1, "first tap during your turn should trigger");
+    resolve_stack_entry(&mut game).expect("Interface Ace untap trigger should resolve");
+    assert!(
+        !game.is_tapped(ace_id),
+        "Interface Ace trigger should untap it after the first tap"
+    );
+
+    game.tap(ace_id);
+    let second_tap = TriggerEvent::new_with_provenance(
+        crate::events::PermanentTappedEvent::new(ace_id),
+        crate::provenance::ProvNodeId::default(),
+    );
+    queue_triggers_from_event(&mut game, &mut trigger_queue, second_tap, false);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("second same-turn Interface Ace tap should be processed cleanly");
+    assert!(
+        game.stack.is_empty(),
+        "Interface Ace should not trigger a second time in the same turn"
+    );
+    assert!(
+        game.is_tapped(ace_id),
+        "second same-turn tap should remain tapped because the once-per-turn trigger is capped"
+    );
+
+    let mut opponent_turn_game = setup_game();
+    let mut opponent_turn_queue = TriggerQueue::new();
+    let opponent_turn_ace = opponent_turn_game.create_object_from_definition(
+        &interface_ace_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    opponent_turn_game.turn.active_player = bob;
+    opponent_turn_game.tap(opponent_turn_ace);
+    let opponent_turn_tap = TriggerEvent::new_with_provenance(
+        crate::events::PermanentTappedEvent::new(opponent_turn_ace),
+        crate::provenance::ProvNodeId::default(),
+    );
+    queue_triggers_from_event(
+        &mut opponent_turn_game,
+        &mut opponent_turn_queue,
+        opponent_turn_tap,
+        false,
+    );
+    put_triggers_on_stack(&mut opponent_turn_game, &mut opponent_turn_queue)
+        .expect("opponent-turn Interface Ace tap should be processed cleanly");
+    assert!(
+        opponent_turn_game.stack.is_empty(),
+        "Interface Ace should not trigger when tapped during an opponent's turn"
+    );
+    assert!(
+        opponent_turn_game.is_tapped(opponent_turn_ace),
+        "opponent-turn tap should stay tapped because the trigger condition is not met"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

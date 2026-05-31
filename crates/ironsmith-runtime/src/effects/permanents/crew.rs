@@ -92,7 +92,10 @@ fn crew_power_bonus_from_marker(marker: &str) -> Option<i32> {
 fn crew_value(game: &GameState, object_id: ObjectId) -> i32 {
     let markers = keyword_marker_texts(game, object_id);
     let use_toughness = markers.iter().any(|marker| {
-        marker == "this creature crews vehicles using its toughness rather than its power."
+        let marker = marker.trim_end_matches('.');
+        marker == "this creature crews vehicles using its toughness rather than its power"
+            || marker
+                == "this creature saddles mounts and crews vehicles using its toughness rather than its power"
     });
     let base = if use_toughness {
         object_toughness(game, object_id)

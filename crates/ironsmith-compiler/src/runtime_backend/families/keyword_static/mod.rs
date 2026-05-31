@@ -202,6 +202,8 @@ fn supported_keyword_marker_text(text: &str) -> bool {
         || text.starts_with("splice onto ")
         || is_ticket_sticker_marker_line(&text)
         || text == "this creature crews vehicles using its toughness rather than its power."
+        || text
+            == "this creature saddles mounts and crews vehicles using its toughness rather than its power."
         || is_power_greater_marker("this creature crews vehicles as though its power were ")
         || is_power_greater_marker(
             "this creature saddles mounts and crews vehicles as though its power were ",
@@ -1001,6 +1003,24 @@ fn parse_static_ability_ast_line_early_lexed(
         [
             "this",
             "creature",
+            "crews",
+            "vehicles",
+            "using",
+            "its",
+            "toughness",
+            "rather",
+            "than",
+            "its",
+            "power"
+        ]
+    ) || matches!(
+        words.as_slice(),
+        [
+            "this",
+            "creature",
+            "saddles",
+            "mounts",
+            "and",
             "crews",
             "vehicles",
             "using",
