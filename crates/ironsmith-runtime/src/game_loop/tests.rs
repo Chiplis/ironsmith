@@ -1018,6 +1018,21 @@ fn rise_from_the_grave_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn necromantic_summons_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_945), "Necromantic Summons")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Put target creature card from a graveyard onto the battlefield under your control.\n\
+             Spell mastery — If there are two or more instant and/or sorcery cards in your graveyard, that creature enters with two additional +1/+1 counters on it.",
+        )
+        .expect("Necromantic Summons should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn keeper_of_the_flame_activation_requires_higher_life_opponent_and_damages_that_player() {
     let mut game = setup_game();
@@ -2456,6 +2471,135 @@ fn rise_from_the_grave_targets_only_creature_cards_in_graveyards() {
         requirements.len(),
         1,
         "Rise should have one target requirement"
+    );
+    let legal_targets = &requirements[0].legal_targets;
+    assert!(
+        legal_targets.contains(&Target::Object(graveyard_creature)),
+        "creature cards in graveyards should be legal targets, got {legal_targets:?}"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Object(graveyard_artifact)),
+        "noncreature cards in graveyards should not be legal targets, got {legal_targets:?}"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Object(battlefield_creature)),
+        "battlefield creatures should not be legal targets, got {legal_targets:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn necromantic_summons_returns_creature_without_counters_below_spell_mastery() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let spell = necromantic_summons_definition();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Stack);
+    let target_card = CardBuilder::new(CardId::from_raw(72_946), "Graveyard Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let target_id = game.create_object_from_card(&target_card, bob, Zone::Graveyard);
+    let target_stable = game.object(target_id).expect("target exists").stable_id;
+
+    game.push_to_stack(
+        StackEntry::new(spell_id, alice).with_targets(vec![Target::Object(target_id)]),
+    );
+    resolve_stack_entry(&mut game).expect("Necromantic Summons should resolve");
+
+    let returned_id = game
+        .find_object_by_stable_id(target_stable)
+        .expect("returned creature should still exist");
+    let returned = game.object(returned_id).expect("returned creature exists");
+    assert_eq!(returned.zone, Zone::Battlefield);
+    assert_eq!(game.controller_of(returned), alice);
+    assert_eq!(
+        returned
+            .counters
+            .get(&crate::object::CounterType::PlusOnePlusOne)
+            .copied()
+            .unwrap_or(0),
+        0,
+        "without spell mastery the returned creature should not get +1/+1 counters"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn necromantic_summons_spell_mastery_returns_creature_with_two_counters() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let spell = necromantic_summons_definition();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Stack);
+    for (idx, card_type) in [CardType::Instant, CardType::Sorcery].into_iter().enumerate() {
+        let card = CardBuilder::new(CardId::from_raw(72_947 + idx as u32), "Spell Mastery Fuel")
+            .card_types(vec![card_type])
+            .build();
+        game.create_object_from_card(&card, alice, Zone::Graveyard);
+    }
+    let target_card = CardBuilder::new(CardId::from_raw(72_949), "Mastered Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let target_id = game.create_object_from_card(&target_card, bob, Zone::Graveyard);
+    let target_stable = game.object(target_id).expect("target exists").stable_id;
+
+    game.push_to_stack(
+        StackEntry::new(spell_id, alice).with_targets(vec![Target::Object(target_id)]),
+    );
+    resolve_stack_entry(&mut game).expect("Necromantic Summons should resolve");
+
+    let returned_id = game
+        .find_object_by_stable_id(target_stable)
+        .expect("returned creature should still exist");
+    let returned = game.object(returned_id).expect("returned creature exists");
+    assert_eq!(returned.zone, Zone::Battlefield);
+    assert_eq!(game.controller_of(returned), alice);
+    assert_eq!(
+        returned
+            .counters
+            .get(&crate::object::CounterType::PlusOnePlusOne)
+            .copied()
+            .unwrap_or(0),
+        2,
+        "with spell mastery the returned creature should get two +1/+1 counters"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn necromantic_summons_targets_only_creature_cards_in_graveyards() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let spell = necromantic_summons_definition();
+    let effects = spell.spell_effect.as_ref().expect("expected spell effects");
+
+    let graveyard_creature = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(72_950), "Graveyard Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        bob,
+        Zone::Graveyard,
+    );
+    let graveyard_artifact = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(72_951), "Graveyard Relic")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Graveyard,
+    );
+    let battlefield_creature = create_creature(&mut game, "Battlefield Creature", bob, 2, 2);
+
+    let requirements = extract_target_requirements(&game, effects, alice, None);
+    assert_eq!(
+        requirements.len(),
+        1,
+        "Necromantic Summons should have one target requirement"
     );
     let legal_targets = &requirements[0].legal_targets;
     assert!(

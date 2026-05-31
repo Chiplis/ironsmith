@@ -346,6 +346,10 @@ fn join_english_list(items: &[String]) -> String {
 pub(super) fn describe_resolution_program(
     program: &crate::resolution::ResolutionProgram,
 ) -> String {
+    if let Some(rendered) = describe_spell_mastery_reanimation_program(program) {
+        return rendered;
+    }
+
     let mut rendered_segments = Vec::new();
     for segment in &program.segments {
         if segment.self_replacements.len() == 1 {

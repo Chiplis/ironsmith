@@ -78,6 +78,18 @@ pub(crate) const IF_ENTERS_WITH_ADDITIONAL_COUNTER_PATTERN_ATOMS: &[LexPatternAt
         LexCaptureKind::OneOrMoreWords,
     ),
 ];
+const TAGGED_ENTERS_WITH_ADDITIONAL_COUNTER_PREFIXES: &[&[&str]] = &[
+    &["that", "card", "enters", "with"],
+    &["that", "creature", "enters", "with"],
+    &["that", "object", "enters", "with"],
+    &["that", "permanent", "enters", "with"],
+    &["it", "enters", "with"],
+];
+pub(crate) const TAGGED_ENTERS_WITH_ADDITIONAL_COUNTER_PATTERN_ATOMS: &[LexPatternAtom<'static>] =
+    &[
+        LexPattern::any_phrase(TAGGED_ENTERS_WITH_ADDITIONAL_COUNTER_PREFIXES),
+        LexPattern::role_capture("counter", LexCaptureRole::Amount, LexCaptureKind::Rest),
+    ];
 pub(crate) const PUT_ONTO_BATTLEFIELD_WITH_ADDITIONAL_COUNTERS_PATTERN_ATOMS: &[LexPatternAtom<
     'static,
 >] = &[
@@ -1181,6 +1193,40 @@ pub(crate) fn parse_if_enters_with_additional_counter_sentence_matched(
         predicate: IfResultPredicate::Did,
         effects: vec![apply_only_if_creature],
     }]))
+}
+
+pub(crate) fn parse_tagged_enters_with_additional_counter_sentence(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let pattern = LexPattern::new(TAGGED_ENTERS_WITH_ADDITIONAL_COUNTER_PATTERN_ATOMS);
+    let Some(matched) = clause.match_pattern(pattern) else {
+        return Ok(None);
+    };
+    parse_tagged_enters_with_additional_counter_sentence_matched(clause, &matched)
+}
+
+pub(crate) fn parse_tagged_enters_with_additional_counter_sentence_matched(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    _matched: &LexPatternMatch<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((_, counter_clause)) =
+        clause.strip_any_prefix_clause(TAGGED_ENTERS_WITH_ADDITIONAL_COUNTER_PREFIXES)
+    else {
+        return Ok(None);
+    };
+    let Some((count, counter_type)) =
+        parse_additional_counter_descriptor_on_target(counter_clause, &[&["it"]])?
+    else {
+        return Ok(None);
+    };
+
+    Ok(Some(vec![EffectAst::subject_verb_put_counters(
+        counter_type,
+        Value::Fixed(count as i32),
+        TargetAst::Tagged(TagKey::from(IT_TAG), clause.span()),
+        None,
+        false,
+    )]))
 }
 
 pub(crate) fn parse_put_onto_battlefield_with_additional_counters_sentence(
