@@ -1059,6 +1059,9 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
         }
         crate::ConditionExpr::SourceMatches(filter) => describe_source_matches_condition(filter)
             .unwrap_or_else(|| format!("as long as {filter:?}")),
+        crate::ConditionExpr::SourceMatchesWithDisplay { display, .. } => {
+            format!("as long as {display}")
+        }
         crate::ConditionExpr::PlayerHasCardTypesInGraveyardOrMore { player, count } => {
             let graveyard_owner = match player {
                 crate::target::PlayerFilter::You => "your".to_string(),

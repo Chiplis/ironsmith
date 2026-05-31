@@ -11261,6 +11261,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 format!("this permanent is {}", ensure_indefinite_article(&desc))
             }
         }
+        Condition::SourceMatchesWithDisplay { display, .. } => display.clone(),
         Condition::SourceHasNoCounter(counter_type) => {
             format!("there are no {} counters on it", counter_type.description())
         }

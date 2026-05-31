@@ -880,6 +880,13 @@ fn evaluate_condition_shared_core(
                     .is_some_and(|obj| filter.matches(obj, &filter_ctx, game)),
             )
         }
+        Condition::SourceMatchesWithDisplay { filter, .. } => {
+            let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
+            Some(
+                game.object(ctx.source)
+                    .is_some_and(|obj| filter.matches(obj, &filter_ctx, game)),
+            )
+        }
         Condition::SourceCameUnderYourControlThisTurn => {
             Some(game.object(ctx.source).is_some_and(|obj| {
                 game.turn_store
@@ -983,7 +990,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::SourceDevouredCreaturesOrMore(..) => {}
         Condition::SourceIsMonstrous => {}
         Condition::SourceIsFaceDown => {}
-        Condition::SourceMatches(..) => {}
+        Condition::SourceMatches(..) | Condition::SourceMatchesWithDisplay { .. } => {}
         Condition::SourceHasNoCounter(..) => {}
         Condition::SourceHasCounterAtLeast { .. } => {}
         Condition::SourceHasCountersAtLeast(..) => {}
@@ -1764,6 +1771,11 @@ pub fn evaluate_condition_external(
             game.object(ctx.source)
                 .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
         }
+        Condition::SourceMatchesWithDisplay { filter, .. } => {
+            let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
+            game.object(ctx.source)
+                .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
+        }
         Condition::TargetMatches(filter) => {
             let filter_ctx = condition_filter_context(
                 game,
@@ -2526,6 +2538,7 @@ fn evaluate_condition_simple(
         | Condition::SourceIsMonstrous
         | Condition::SourceIsFaceDown
         | Condition::SourceMatches(_)
+        | Condition::SourceMatchesWithDisplay { .. }
         | Condition::SourcePowerAtLeast(_) => false,
         Condition::Custom(_)
         | Condition::LifeTotalOrLess(_)
@@ -3286,6 +3299,12 @@ fn evaluate_condition(
         Condition::SourceIsMonstrous => Ok(game.is_monstrous(ctx.source)),
         Condition::SourceIsFaceDown => Ok(source_is_face_down_or_alternate_face(game, ctx.source)),
         Condition::SourceMatches(filter) => {
+            let filter_ctx = ctx.filter_context(game);
+            Ok(game
+                .object(ctx.source)
+                .is_some_and(|obj| filter.matches(obj, &filter_ctx, game)))
+        }
+        Condition::SourceMatchesWithDisplay { filter, .. } => {
             let filter_ctx = ctx.filter_context(game);
             Ok(game
                 .object(ctx.source)

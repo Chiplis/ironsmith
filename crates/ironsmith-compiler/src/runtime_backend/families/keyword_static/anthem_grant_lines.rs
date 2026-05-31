@@ -2973,11 +2973,6 @@ fn parse_source_is_descriptor_static_condition(
 
     let descriptor = descriptor_words[0];
     let mut filter = ObjectFilter::source();
-    if subject_words.len() == 2
-        && let Some(card_type) = parse_card_type(subject_words[1])
-    {
-        filter.all_card_types.push(card_type);
-    }
     if let Some(card_type) = parse_card_type(descriptor) {
         filter.all_card_types.push(card_type);
     } else if let Some(color) = parse_color(descriptor) {
@@ -2988,7 +2983,10 @@ fn parse_source_is_descriptor_static_condition(
         return Ok(None);
     }
 
-    Ok(Some(crate::ConditionExpr::SourceMatches(filter)))
+    Ok(Some(crate::ConditionExpr::SourceMatchesWithDisplay {
+        filter,
+        display: clause_words.join(" "),
+    }))
 }
 
 fn parse_devotion_static_condition(

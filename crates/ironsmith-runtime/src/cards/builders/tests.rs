@@ -38986,8 +38986,7 @@ fn foriysian_totem_strict_parser_and_text_regression() {
     let ability_debug = format!("{:#?}", def.abilities);
     assert!(
         ability_debug.contains("CanBlockAdditionalCreatureEachCombat")
-            && ability_debug.contains("SourceMatches")
-            && ability_debug.contains("Artifact")
+            && ability_debug.contains("SourceMatchesWithDisplay")
             && ability_debug.contains("Creature"),
         "expected Foriysian Totem to lower to a conditional additional-block static ability, got {ability_debug}"
     );
@@ -39115,6 +39114,57 @@ fn foriysian_totem_animation_and_conditional_additional_blocker_runtime() {
         bob,
     )
     .expect("creature Foriysian Totem should block two attackers with its conditional ability");
+
+    let artifact_type_eraser = CardDefinitionBuilder::new(CardId::new(), "Artifact Type Eraser")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::new(
+                crate::static_abilities::RemoveCardTypesForFilter::new(
+                    crate::target::ObjectFilter::specific(totem),
+                    vec![CardType::Artifact],
+                ),
+            ),
+        ))
+        .build();
+    game.create_object_from_definition(&artifact_type_eraser, alice, Zone::Battlefield);
+
+    assert!(
+        !game.current_has_card_type(totem, CardType::Artifact),
+        "a later type-changing effect should remove Foriysian Totem's artifact type"
+    );
+    assert!(
+        game.current_has_card_type(totem, CardType::Creature),
+        "Foriysian Totem should remain a creature after losing artifact"
+    );
+    assert!(
+        game.current_has_static_ability_id(
+            totem,
+            StaticAbilityId::CanBlockAdditionalCreatureEachCombat
+        ),
+        "the conditional extra-blocker ability should depend on being a creature, not still being an artifact"
+    );
+
+    let (mut combat, attacker_one, attacker_two) = combat_with_two_attackers(&mut game, alice, bob);
+    let declarations = vec![
+        crate::decision::BlockerDeclaration {
+            blocker: totem,
+            blocking: attacker_one,
+        },
+        crate::decision::BlockerDeclaration {
+            blocker: totem,
+            blocking: attacker_two,
+        },
+    ];
+    crate::game_loop::apply_blocker_declarations(
+        &mut game,
+        &mut combat,
+        &mut crate::triggers::TriggerQueue::new(),
+        &declarations,
+        bob,
+    )
+    .expect(
+        "creature Foriysian Totem should still block two attackers after losing artifact type",
+    );
 }
 
 #[test]

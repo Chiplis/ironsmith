@@ -748,6 +748,10 @@ pub enum Condition {
     SourceIsMonstrous,
     SourceIsFaceDown,
     SourceMatches(ObjectFilter),
+    SourceMatchesWithDisplay {
+        filter: ObjectFilter,
+        display: String,
+    },
     SourceHasNoCounter(CounterType),
     SourceHasCounterAtLeast {
         counter_type: CounterType,
