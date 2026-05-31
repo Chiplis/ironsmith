@@ -26467,6 +26467,59 @@ pub(super) fn describe_tap_or_untap_mode(
     None
 }
 
+pub(super) fn describe_put_counter_choice_mode(
+    choose_mode: &crate::effects::ChooseModeEffect,
+) -> Option<String> {
+    if choose_mode.modes.len() < 2
+        || choose_mode.choose_count != Value::Fixed(1)
+        || choose_mode.min_choose_count != Value::Fixed(1)
+        || choose_mode.allow_repeated_modes
+    {
+        return None;
+    }
+
+    let mut counter_names = Vec::new();
+    let mut shared_target: Option<String> = None;
+    for mode in &choose_mode.modes {
+        let [effect] = mode.effects.as_slice() else {
+            return None;
+        };
+        let put = effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
+        if !matches!(put.amount, Value::Fixed(1))
+            || put.target_count.is_some()
+            || put.distributed
+        {
+            return None;
+        }
+        let target = mode
+            .description
+            .trim()
+            .trim_end_matches('.')
+            .rsplit_once(" counter on ")
+            .map(|(_, target)| target.to_string())
+            .unwrap_or_else(|| describe_choose_spec(&put.target));
+        if let Some(existing) = &shared_target {
+            if existing != &target {
+                return None;
+            }
+        } else {
+            shared_target = Some(target);
+        }
+        counter_names.push(put.counter_type.description().into_owned());
+    }
+
+    let target = shared_target?;
+    let first = counter_names.first()?.clone();
+    let first = with_indefinite_article(&first);
+    let mut options = Vec::with_capacity(counter_names.len());
+    options.push(first);
+    options.extend(counter_names.into_iter().skip(1));
+    Some(format!(
+        "Put your choice of {} counter on {target}",
+        join_with_or(&options)
+    ))
+}
+
 pub(super) fn describe_put_or_remove_counter_mode(
     choose_mode: &crate::effects::ChooseModeEffect,
 ) -> Option<String> {
@@ -30276,6 +30329,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return compact;
         }
         if let Some(compact) = describe_tap_or_untap_mode(choose_mode) {
+            return compact;
+        }
+        if let Some(compact) = describe_put_counter_choice_mode(choose_mode) {
             return compact;
         }
         if let Some(compact) = describe_put_or_remove_counter_mode(choose_mode) {

@@ -1964,6 +1964,7 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
             | SubjectVerbActionAst::Counter { target }
             | SubjectVerbActionAst::CounterUnlessPays { target, .. }
             | SubjectVerbActionAst::PutCounters { target, .. }
+            | SubjectVerbActionAst::PutCounterChoice { target, .. }
             | SubjectVerbActionAst::ReturnToHand { target, .. }
             | SubjectVerbActionAst::Detain { target }
             | SubjectVerbActionAst::Goad { target }
@@ -2282,6 +2283,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::PreventDamageEach { amount, .. }
             | SubjectVerbActionAst::CopySpell { count: amount, .. }
             | SubjectVerbActionAst::PutCounters { count: amount, .. }
+            | SubjectVerbActionAst::PutCounterChoice { count: amount, .. }
             | SubjectVerbActionAst::PutCountersAll { count: amount, .. }
             | SubjectVerbActionAst::RemoveUpToAnyCounters { amount, .. }
             | SubjectVerbActionAst::RemoveCountersAll { amount, .. }
@@ -2698,6 +2700,10 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
                 ..
             }
             | SubjectVerbActionAst::PutCounters {
+                target: effect_target,
+                ..
+            }
+            | SubjectVerbActionAst::PutCounterChoice {
                 target: effect_target,
                 ..
             }

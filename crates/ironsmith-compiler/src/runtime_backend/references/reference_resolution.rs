@@ -511,7 +511,8 @@ fn advance_reference_frame_for_effect(
                 | SubjectVerbActionAst::CounterUnlessPays { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "countered")?;
                 }
-                SubjectVerbActionAst::PutCounters { target, .. } => {
+                SubjectVerbActionAst::PutCounters { target, .. }
+                | SubjectVerbActionAst::PutCounterChoice { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "counters")?;
                 }
                 SubjectVerbActionAst::RemoveUpToAnyCounters { target, .. }
@@ -1475,6 +1476,7 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
         | SubjectVerbActionAst::PreventDamageEach { amount: count, .. }
         | SubjectVerbActionAst::CopySpell { count, .. }
         | SubjectVerbActionAst::PutCounters { count, .. }
+        | SubjectVerbActionAst::PutCounterChoice { count, .. }
         | SubjectVerbActionAst::PutCountersAll { count, .. }
         | SubjectVerbActionAst::RemoveUpToAnyCounters { amount: count, .. }
         | SubjectVerbActionAst::RemoveCountersAll { amount: count, .. }
@@ -1814,6 +1816,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::PreventDamageEach { amount, .. }
             | SubjectVerbActionAst::CopySpell { count: amount, .. }
             | SubjectVerbActionAst::PutCounters { count: amount, .. }
+            | SubjectVerbActionAst::PutCounterChoice { count: amount, .. }
             | SubjectVerbActionAst::PutCountersAll { count: amount, .. }
             | SubjectVerbActionAst::RemoveUpToAnyCounters { amount, .. }
             | SubjectVerbActionAst::RemoveCountersAll { amount, .. }
@@ -2538,7 +2541,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::ReorderTopOfLibrary { tag } => {
                 bind_unresolved_it_in_tag(tag, seed_tag)
             }
-            SubjectVerbActionAst::PutCounters { count, target, .. } => {
+            SubjectVerbActionAst::PutCounters { count, target, .. }
+            | SubjectVerbActionAst::PutCounterChoice { count, target, .. } => {
                 bind_unresolved_it_in_value(count, seed_tag)
                     + bind_unresolved_it_in_target(target, seed_tag)
             }

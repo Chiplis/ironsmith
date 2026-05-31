@@ -162,10 +162,97 @@ fn subject_verb_put_counters_target(effect: &EffectAst) -> Option<TargetAst> {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
             SubjectVerbActionAst::PutCounters { target, .. } => Some(target.clone()),
+            SubjectVerbActionAst::PutCounterChoice { target, .. } => Some(target.clone()),
             _ => None,
         },
         _ => None,
     }
+}
+
+fn counter_type_from_choice_segment(
+    segment: SubjectVerbPrimitiveClause<'_>,
+) -> Option<crate::object::CounterType> {
+    let mut words = segment.word_refs();
+    while words
+        .first()
+        .is_some_and(|word| matches!(*word, "and" | "or" | "a" | "an" | "one"))
+    {
+        words.remove(0);
+    }
+    while words
+        .last()
+        .is_some_and(|word| matches!(*word, "counter" | "counters"))
+    {
+        words.pop();
+    }
+
+    match words.as_slice() {
+        ["first", "strike"] => Some(crate::object::CounterType::FirstStrike),
+        ["double", "strike"] => Some(crate::object::CounterType::DoubleStrike),
+        [word] => crate::runtime_backend::util::parse_counter_type_word(word),
+        _ => None,
+    }
+}
+
+fn parse_put_counter_choice_sequence(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((descriptor_clause, target_clause)) = clause.split_once_on_word("on") else {
+        return Ok(None);
+    };
+    let descriptor_clause = descriptor_clause.from(1).trimmed();
+    let target_clause = target_clause.trimmed();
+    if descriptor_clause.is_empty()
+        || target_clause.is_empty()
+        || !descriptor_clause.contains_phrase(&["your", "choice", "of"])
+        || descriptor_clause.contains_no_words(&["counter", "counters"])
+    {
+        return Ok(None);
+    }
+
+    let Some(choice_clause) = descriptor_clause.strip_prefix_clause(&["your", "choice", "of"])
+    else {
+        return Ok(None);
+    };
+
+    let mut counter_types = Vec::new();
+    for segment in choice_clause.trimmed_comma_segments() {
+        let segment = segment.trimmed();
+        if segment.is_empty() {
+            continue;
+        }
+        let Some(counter_type) = counter_type_from_choice_segment(segment) else {
+            return Ok(None);
+        };
+        counter_types.push(counter_type);
+    }
+
+    if counter_types.len() < 2 {
+        return Ok(None);
+    }
+
+    let target = parse_target_phrase(target_clause.tokens())?;
+    let target_phrase = target_clause.word_refs().join(" ");
+    let mode_texts = counter_types
+        .iter()
+        .map(|counter_type| {
+            format!(
+                "Put {} on {target_phrase}",
+                super::super::zone_counter_helpers::describe_counter_phrase_for_mode(
+                    1,
+                    *counter_type,
+                )
+            )
+        })
+        .collect();
+
+    Ok(Some(vec![EffectAst::subject_verb_put_counter_choice(
+        counter_types,
+        Value::Fixed(1),
+        mode_texts,
+        target,
+        None,
+    )]))
 }
 
 pub(crate) fn parse_sentence_sacrifice_at_end_of_combat(
@@ -360,6 +447,10 @@ pub(crate) fn parse_sentence_put_counter_sequence_matched(
     }
 
     if let Some(effects) = parse_put_counter_ladder_segments(clause)? {
+        return Ok(Some(effects));
+    }
+
+    if let Some(effects) = parse_put_counter_choice_sequence(clause)? {
         return Ok(Some(effects));
     }
 

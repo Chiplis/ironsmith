@@ -4697,6 +4697,41 @@ fn compile_subject_verb_effect(
             };
             Ok((vec![effect], choices))
         }
+        SubjectVerbActionAst::PutCounterChoice {
+            counter_types,
+            count,
+            mode_texts,
+            target,
+            target_count,
+        } => {
+            use crate::effect::EffectMode;
+
+            let (base_spec, _) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let mut spec = base_spec;
+            if let Some(target_count) = target_count {
+                spec = spec.with_count(*target_count);
+            }
+
+            let modes = counter_types
+                .iter()
+                .enumerate()
+                .map(|(idx, counter_type)| EffectMode {
+                    description: mode_texts.get(idx).cloned().unwrap_or_else(|| {
+                        format!("Put a {} counter", counter_type.description())
+                    }),
+                    effects: vec![Effect::put_counters(*counter_type, count.clone(), spec.clone())],
+                })
+                .collect();
+
+            let effect = tag_object_target_effect(Effect::choose_one(modes), &spec, ctx, "counters");
+            let choices = if spec.is_target() {
+                vec![spec.clone()]
+            } else {
+                Vec::new()
+            };
+            Ok((vec![effect], choices))
+        }
         SubjectVerbActionAst::PutCountersAll {
             counter_type,
             count,
