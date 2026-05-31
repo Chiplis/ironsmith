@@ -2411,6 +2411,146 @@ fn open_the_way_reveals_x_lands_to_battlefield_tapped_and_bottoms_rest() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn covenant_of_minds_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(416_862), "Covenant of Minds")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Reveal the top three cards of your library. Target opponent may choose to put those cards into your hand. If they don't, put those cards into your graveyard and draw five cards.",
+        )
+        .expect("Covenant of Minds should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct CovenantOfMindsDecisionMaker {
+    accept_opponent_choice: bool,
+    expected_decider: PlayerId,
+    prompts: usize,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for CovenantOfMindsDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        self.prompts += 1;
+        assert_eq!(
+            ctx.player, self.expected_decider,
+            "Covenant of Minds choice should be made by the targeted opponent"
+        );
+        self.accept_opponent_choice
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_covenant_library_card(game: &mut GameState, owner: PlayerId, name: &str) -> ObjectId {
+    let card = CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Instant])
+        .build();
+    game.create_object_from_card(&card, owner, Zone::Library)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn setup_covenant_of_minds_stack(
+    game: &mut GameState,
+    alice: PlayerId,
+    bob: PlayerId,
+) -> (ObjectId, Vec<crate::ids::StableId>) {
+    let covenant = covenant_of_minds_definition();
+    let spell_id = game.create_object_from_definition(&covenant, alice, Zone::Stack);
+    for idx in 0..5 {
+        create_covenant_library_card(game, alice, &format!("Covenant Draw Filler {idx}"));
+    }
+    let mut revealed = Vec::new();
+    for name in ["Covenant Revealed A", "Covenant Revealed B", "Covenant Revealed C"] {
+        let id = create_covenant_library_card(game, alice, name);
+        revealed.push(game.object(id).expect("revealed card exists").stable_id);
+    }
+
+    game.push_to_stack(StackEntry::new(spell_id, alice).with_targets(vec![Target::Player(bob)]));
+    (spell_id, revealed)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn covenant_of_minds_opponent_accepts_puts_revealed_cards_into_your_hand() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let (_spell_id, revealed) = setup_covenant_of_minds_stack(&mut game, alice, bob);
+
+    let mut dm = CovenantOfMindsDecisionMaker {
+        accept_opponent_choice: true,
+        expected_decider: bob,
+        prompts: 0,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Covenant of Minds should resolve");
+    assert_eq!(dm.prompts, 1, "Covenant should ask exactly one may-choice");
+
+    for stable_id in revealed {
+        let id = game
+            .find_object_by_stable_id(stable_id)
+            .expect("revealed card should still exist");
+        assert!(
+            game.player(alice).expect("alice exists").hand.contains(&id),
+            "accepted opponent choice should put revealed card {id:?} into Alice's hand"
+        );
+    }
+    assert_eq!(
+        game.player(alice).expect("alice exists").hand.len(),
+        3,
+        "accepting should not draw the fallback five cards"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").library.len(),
+        5,
+        "accepting should leave the five unrevealed library cards in place"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn covenant_of_minds_opponent_declines_graveyards_revealed_cards_and_draws_five() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let (_spell_id, revealed) = setup_covenant_of_minds_stack(&mut game, alice, bob);
+
+    let mut dm = CovenantOfMindsDecisionMaker {
+        accept_opponent_choice: false,
+        expected_decider: bob,
+        prompts: 0,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Covenant of Minds should resolve");
+    assert_eq!(dm.prompts, 1, "Covenant should ask exactly one may-choice");
+
+    for stable_id in revealed {
+        let id = game
+            .find_object_by_stable_id(stable_id)
+            .expect("revealed card should still exist");
+        assert!(
+            game.player(alice).expect("alice exists").graveyard.contains(&id),
+            "declining should put revealed card {id:?} into Alice's graveyard"
+        );
+    }
+    assert_eq!(
+        game.player(alice).expect("alice exists").hand.len(),
+        5,
+        "declining should draw the remaining five library cards"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").library.len(),
+        0,
+        "declining should draw the five unrevealed library cards after moving the revealed cards"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn rise_from_the_grave_returns_creature_under_your_control_black_zombie() {
     let mut game = setup_game();

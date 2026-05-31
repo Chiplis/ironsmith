@@ -3492,6 +3492,78 @@ fn describe_choose_color_then_chosen_color_mana(effects: &[&Effect]) -> Option<S
     None
 }
 
+fn describe_revealed_cards_opponent_may_put_or_draw(effects: &[&Effect]) -> Option<String> {
+    let [look_effect, may_effect, fallback_effect] = effects else {
+        return None;
+    };
+    let look = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    if !look.reveal || look.player != PlayerFilter::You {
+        return None;
+    }
+
+    let with_id = may_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let may = with_id
+        .effect
+        .downcast_ref::<crate::effects::MayEffect>()?;
+    if !matches!(
+        may.decider.as_ref(),
+        Some(PlayerFilter::Target(inner)) if matches!(inner.as_ref(), PlayerFilter::Opponent)
+    ) {
+        return None;
+    }
+    let [target_effect, hand_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let target = target_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    if !matches!(target.target.base(), ChooseSpec::Player(PlayerFilter::Opponent)) {
+        return None;
+    }
+    let move_to_hand = hand_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_hand.zone != Zone::Hand
+        || !matches!(move_to_hand.target.base(), ChooseSpec::Tagged(tag) if tag == &look.tag)
+    {
+        return None;
+    }
+
+    let if_effect = fallback_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    if if_effect.condition != with_id.id
+        || if_effect.predicate != EffectPredicate::DidNotHappen
+        || !if_effect.else_.is_empty()
+    {
+        return None;
+    }
+    let [graveyard_effect, draw_effect] = if_effect.then.as_slice() else {
+        return None;
+    };
+    let move_to_graveyard = unwrap_basic_tag_wrappers(graveyard_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_graveyard.zone != Zone::Graveyard
+        || !matches!(move_to_graveyard.target.base(), ChooseSpec::Tagged(tag) if tag == &look.tag)
+    {
+        return None;
+    }
+    let draw = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    if draw.player != PlayerFilter::You {
+        return None;
+    }
+
+    let is_single_card = matches!(look.count, Value::Fixed(1));
+    let count_text = if is_single_card {
+        "card".to_string()
+    } else {
+        describe_card_count(&look.count)
+    };
+    let object_text = if is_single_card {
+        "that card"
+    } else {
+        "those cards"
+    };
+    Some(format!(
+        "Reveal the top {count_text} of your library. Target opponent may choose to put {object_text} into your hand. If they don't, put {object_text} into your graveyard and draw {}",
+        describe_card_count(&draw.count)
+    ))
+}
+
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     if let Some(compact) = describe_structural_multisentence_effect_list(effects) {
         return compact;
@@ -3499,6 +3571,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
 
     let raw_effects = effects.iter().collect::<Vec<_>>();
     if let Some(compact) = describe_choose_color_then_chosen_color_mana(&raw_effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_revealed_cards_opponent_may_put_or_draw(&raw_effects) {
         return compact;
     }
     if let Some(compact) = describe_kicked_additional_targets_put_counters(&raw_effects) {

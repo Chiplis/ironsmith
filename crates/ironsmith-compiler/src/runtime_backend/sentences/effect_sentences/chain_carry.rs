@@ -384,6 +384,9 @@ pub(crate) fn parse_effect_chain_lexed(
         {
             stripped.remove(0);
         }
+        if word_slice_starts_with(&token_word_refs(&stripped), &["choose", "to"]) {
+            stripped = remove_through_first_word_tokens(&stripped, "to");
+        }
         let mut effects = parse_effect_chain_lexed(&stripped)?;
         for effect in &mut effects {
             bind_implicit_player_context(effect, player);
