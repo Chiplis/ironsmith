@@ -28277,6 +28277,286 @@ fn test_split_the_spoils_opponent_can_take_the_other_pile_into_hand() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn unesh_criosphinx_sovereign_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(91_130), "Unesh, Criosphinx Sovereign")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Sphinx])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Flying\n\
+             Sphinx spells you cast cost {2} less to cast.\n\
+             Whenever Unesh or another Sphinx you control enters, reveal the top four cards of your library. An opponent separates those cards into two piles. Put one pile into your hand and the other into your graveyard.",
+        )
+        .expect("Unesh, Criosphinx Sovereign should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn unesh_library_card(id: u32, name: &str) -> crate::card::Card {
+    CardBuilder::new(CardId::from_raw(id), name)
+        .card_types(vec![CardType::Sorcery])
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct UneshPileDecisionMaker {
+    opponent: PlayerId,
+    split_names: &'static [&'static str],
+    choose_split_pile: bool,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for UneshPileDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        self.choose_split_pile
+    }
+
+    fn decide_objects(
+        &mut self,
+        game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        assert_eq!(
+            ctx.player, self.opponent,
+            "only the opponent should separate Unesh's revealed cards into a pile"
+        );
+        let legal = ctx
+            .candidates
+            .iter()
+            .filter(|candidate| candidate.legal)
+            .collect::<Vec<_>>();
+        self.split_names
+            .iter()
+            .map(|wanted_name| {
+                legal
+                    .iter()
+                    .find(|candidate| {
+                        game.object(candidate.id)
+                            .is_some_and(|object| object.name == *wanted_name)
+                    })
+                    .map(|candidate| candidate.id)
+                    .unwrap_or_else(|| panic!("expected to find {wanted_name} in Unesh's pile"))
+            })
+            .collect()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn execute_unesh_trigger_with_pile_choice(
+    choose_split_pile: bool,
+) -> (GameState, Vec<&'static str>, Vec<&'static str>) {
+    use crate::effects::{ExecutionContext, execute_effect};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let unesh = unesh_criosphinx_sovereign_definition();
+    let source_id = game.create_object_from_definition(&unesh, alice, Zone::Battlefield);
+    let triggered = unesh
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Unesh should have an enters trigger");
+
+    game.create_object_from_card(
+        &unesh_library_card(91_131, "Unesh Bottom Card"),
+        alice,
+        Zone::Library,
+    );
+    for (id, name) in [
+        (91_132, "Unesh Gamma"),
+        (91_133, "Unesh Delta"),
+        (91_134, "Unesh Beta"),
+        (91_135, "Unesh Alpha"),
+    ] {
+        game.create_object_from_card(&unesh_library_card(id, name), alice, Zone::Library);
+    }
+
+    let mut dm = UneshPileDecisionMaker {
+        opponent: bob,
+        split_names: &["Unesh Alpha", "Unesh Beta"],
+        choose_split_pile,
+    };
+    let entering_event = TriggerEvent::new_with_provenance(
+        EnterBattlefieldEvent::new(source_id, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut ctx = ExecutionContext::new(source_id, alice, &mut dm)
+        .with_triggering_event(entering_event);
+    for effect in &triggered.effects {
+        execute_effect(&mut game, effect, &mut ctx).expect("Unesh trigger effect should resolve");
+    }
+
+    if choose_split_pile {
+        (game, vec!["Unesh Gamma", "Unesh Delta"], vec!["Unesh Alpha", "Unesh Beta"])
+    } else {
+        (game, vec!["Unesh Alpha", "Unesh Beta"], vec!["Unesh Gamma", "Unesh Delta"])
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn unesh_criosphinx_sovereign_reduces_only_sphinx_spell_costs() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let unesh = unesh_criosphinx_sovereign_definition();
+    game.create_object_from_definition(&unesh, alice, Zone::Battlefield);
+
+    let sphinx_spell = CardDefinitionBuilder::new(CardId::from_raw(91_136), "Runtime Sphinx")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Sphinx])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let bear_spell = CardDefinitionBuilder::new(CardId::from_raw(91_137), "Runtime Bear")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Bear])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let sphinx_id = game.create_object_from_definition(&sphinx_spell, alice, Zone::Hand);
+    let bear_id = game.create_object_from_definition(&bear_spell, alice, Zone::Hand);
+
+    let sphinx = game.object(sphinx_id).expect("sphinx spell exists");
+    let sphinx_cost = crate::decision::calculate_effective_mana_cost(
+        &game,
+        alice,
+        sphinx,
+        sphinx.mana_cost.as_ref().expect("sphinx mana cost"),
+    );
+    assert_eq!(sphinx_cost.to_oracle(), "{2}");
+
+    let bear = game.object(bear_id).expect("bear spell exists");
+    let bear_cost = crate::decision::calculate_effective_mana_cost(
+        &game,
+        alice,
+        bear,
+        bear.mana_cost.as_ref().expect("bear mana cost"),
+    );
+    assert_eq!(bear_cost.to_oracle(), "{4}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn unesh_criosphinx_sovereign_trigger_matches_self_and_other_sphinx_only() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let unesh = unesh_criosphinx_sovereign_definition();
+    let unesh_id = game.create_object_from_definition(&unesh, alice, Zone::Battlefield);
+    let other_sphinx = CardDefinitionBuilder::new(CardId::from_raw(91_138), "Other Runtime Sphinx")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Sphinx])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let other_sphinx_id = game.create_object_from_definition(&other_sphinx, alice, Zone::Battlefield);
+    let bear = CardDefinitionBuilder::new(CardId::from_raw(91_139), "Other Runtime Bear")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Bear])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let bear_id = game.create_object_from_definition(&bear, alice, Zone::Battlefield);
+
+    let entering_event = |object_id| {
+        crate::events::RawEvent::new(
+            crate::events::ZoneChangeEvent::with_cause(
+                object_id,
+                Zone::Stack,
+                Zone::Battlefield,
+                crate::events::cause::EventCause::from_game_rule(),
+                None,
+            ),
+            crate::provenance::ProvNodeId::default(),
+        )
+    };
+
+    let self_triggers = crate::triggers::check_triggers(&game, &entering_event(unesh_id));
+    assert!(
+        self_triggers.iter().any(|trigger| trigger.source == unesh_id),
+        "Unesh should trigger when it enters"
+    );
+    let sphinx_triggers = crate::triggers::check_triggers(&game, &entering_event(other_sphinx_id));
+    assert!(
+        sphinx_triggers.iter().any(|trigger| trigger.source == unesh_id),
+        "Unesh should trigger when another Sphinx you control enters"
+    );
+    let bear_triggers = crate::triggers::check_triggers(&game, &entering_event(bear_id));
+    assert!(
+        !bear_triggers.iter().any(|trigger| trigger.source == unesh_id),
+        "Unesh should not trigger for a non-Sphinx entering"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn unesh_criosphinx_sovereign_puts_opponent_split_pile_into_hand() {
+    let (game, expected_hand, expected_graveyard) = execute_unesh_trigger_with_pile_choice(false);
+    let alice = PlayerId::from_index(0);
+    let hand = game.player(alice).expect("alice exists").hand.clone();
+    let graveyard = game.player(alice).expect("alice exists").graveyard.clone();
+
+    for name in expected_hand {
+        assert!(
+            hand.iter()
+                .any(|&id| game.object(id).is_some_and(|object| object.name == name)),
+            "{name} should be in hand when the caster chooses the opponent-created pile"
+        );
+    }
+    for name in expected_graveyard {
+        assert!(
+            graveyard
+                .iter()
+                .any(|&id| game.object(id).is_some_and(|object| object.name == name)),
+            "{name} should be in graveyard as part of the other pile"
+        );
+    }
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .library
+            .iter()
+            .any(|&id| game.object(id).is_some_and(|object| object.name == "Unesh Bottom Card")),
+        "Unesh should reveal only the top four cards"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn unesh_criosphinx_sovereign_can_choose_the_other_pile_for_hand() {
+    let (game, expected_hand, expected_graveyard) = execute_unesh_trigger_with_pile_choice(true);
+    let alice = PlayerId::from_index(0);
+    let hand = game.player(alice).expect("alice exists").hand.clone();
+    let graveyard = game.player(alice).expect("alice exists").graveyard.clone();
+
+    for name in expected_hand {
+        assert!(
+            hand.iter()
+                .any(|&id| game.object(id).is_some_and(|object| object.name == name)),
+            "{name} should be in hand when the caster chooses the other pile"
+        );
+    }
+    for name in expected_graveyard {
+        assert!(
+            graveyard
+                .iter()
+                .any(|&id| game.object(id).is_some_and(|object| object.name == name)),
+            "{name} should be in graveyard when the caster declines the opponent-created pile"
+        );
+    }
+}
+
 #[test]
 fn test_dash_grants_haste_and_returns_to_hand_at_next_end_step() {
     use crate::cards::CardDefinitionBuilder;
