@@ -38798,6 +38798,95 @@ fn voices_from_the_void_discards_one_card_per_basic_land_type() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn careful_consideration_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Careful Consideration")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Target player draws four cards, then discards three cards. If you cast this spell during your main phase, instead that player draws four cards, then discards two cards.",
+        )
+        .expect("Careful Consideration should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_careful_consideration_targeting_bob(main_phase: bool) -> GameState {
+    use crate::cost::OptionalCostsPaid;
+    use crate::game_loop::resolve_stack_entry_with_dm_and_triggers;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let def = careful_consideration_definition();
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+
+    put_test_cards_in_zone(&mut game, bob, Zone::Library, 4);
+    put_test_cards_in_zone(&mut game, bob, Zone::Hand, 3);
+
+    let mut entry = StackEntry::new(spell_id, alice).with_targets(vec![Target::Player(bob)]);
+    if main_phase {
+        let mut paid = OptionalCostsPaid::default();
+        paid.mark_label_paid("CastDuringYourMainPhase");
+        game.object_mut(spell_id)
+            .expect("Careful Consideration spell should exist")
+            .optional_costs_paid = paid.clone();
+        entry = entry.with_optional_costs_paid(paid);
+    }
+    game.push_to_stack(entry);
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("Careful Consideration should resolve");
+    game
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn careful_consideration_non_main_phase_target_draws_four_discards_three() {
+    let game = resolve_careful_consideration_targeting_bob(false);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    assert_eq!(
+        game.player(bob).expect("bob exists").hand.len(),
+        4,
+        "Bob should net one card after drawing four and discarding three"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").graveyard.len(),
+        3,
+        "Bob should discard three cards outside Alice's main phase"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").hand.len(),
+        0,
+        "Careful Consideration should affect the targeted player, not its controller"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn careful_consideration_main_phase_replacement_discards_two_instead() {
+    let game = resolve_careful_consideration_targeting_bob(true);
+    let bob = PlayerId::from_index(1);
+
+    assert_eq!(
+        game.player(bob).expect("bob exists").hand.len(),
+        5,
+        "Bob should net two cards when the main-phase replacement applies"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").graveyard.len(),
+        2,
+        "the main-phase branch should discard two cards instead of three"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn tromp_the_domains_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Tromp the Domains")
         .mana_cost(ManaCost::from_pips(vec![

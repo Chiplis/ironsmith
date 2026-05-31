@@ -470,6 +470,13 @@ fn describe_single_self_replacement_segment(
     ) {
         return Some(count_override_text);
     }
+    if let Some(draw_discard_text) = describe_target_player_draw_discard_self_replacement(
+        &segment.default_effects,
+        &branch.replacement_effects,
+        &condition_text,
+    ) {
+        return Some(draw_discard_text);
+    }
     if let Some(damage_text) =
         describe_rendered_damage_self_replacement(&default_text, &replacement_text, &condition_text)
     {
@@ -740,6 +747,67 @@ fn describe_rendered_count_override_self_replacement(
     Some(format!(
         "{default_intro}. {default_choice}. If {condition_text}, {} instead. {default_rest}",
         super::normalize_common::lowercase_first(replacement_choice)
+    ))
+}
+
+fn target_player_draw_discard_counts(effects: &[Effect]) -> Option<(&Value, &Value)> {
+    let [target_effect, draw_effect, discard_effect] = effects else {
+        return None;
+    };
+    let target = target_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    if target.target != target_any_player_spec() {
+        return None;
+    }
+
+    let draw = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    let discard = discard_effect.downcast_ref::<crate::effects::DiscardEffect>()?;
+    if draw.player != target_any_player_filter()
+        || discard.player != target_any_player_filter()
+        || discard.random
+        || discard.any_number
+        || discard.card_filter.is_some()
+    {
+        return None;
+    }
+    Some((&draw.count, &discard.count))
+}
+
+fn card_count_noun(count: &Value) -> &'static str {
+    if matches!(count.unhinted(), Value::Fixed(1)) {
+        "card"
+    } else {
+        "cards"
+    }
+}
+
+fn card_count_text(count: &Value) -> String {
+    match count.unhinted() {
+        Value::Fixed(n) => number_word(*n).unwrap_or_else(|| n.to_string()),
+        _ => describe_value(count),
+    }
+}
+
+fn describe_target_player_draw_discard_self_replacement(
+    default_effects: &[Effect],
+    replacement_effects: &[Effect],
+    condition_text: &str,
+) -> Option<String> {
+    let (default_draw, default_discard) = target_player_draw_discard_counts(default_effects)?;
+    let (replacement_draw, replacement_discard) =
+        target_player_draw_discard_counts(replacement_effects)?;
+    if default_draw != replacement_draw {
+        return None;
+    }
+
+    let draw_count = card_count_text(default_draw);
+    let default_discard_count = card_count_text(default_discard);
+    let replacement_discard_count = card_count_text(replacement_discard);
+    Some(format!(
+        "Target player draws {draw_count} {}, then discards {default_discard_count} {}. If {condition_text}, instead that player draws {draw_count} {}, then discards {replacement_discard_count} {}",
+        card_count_noun(default_draw),
+        card_count_noun(default_discard),
+        card_count_noun(replacement_draw),
+        card_count_noun(replacement_discard),
     ))
 }
 

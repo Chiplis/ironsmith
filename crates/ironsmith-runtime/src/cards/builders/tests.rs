@@ -44568,6 +44568,40 @@ fn return_to_dust_main_phase_paid_label_condition_branches() {
     );
 }
 
+#[test]
+fn parse_oracle_careful_consideration_strictly_parses_and_renders_main_phase_replacement() {
+    let def = parse_oracle_card_definition("Careful Consideration");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        !lower.contains("unsupported") && !lower.contains("unimplemented"),
+        "expected Careful Consideration to parse without unsupported placeholders, got {rendered}"
+    );
+    assert!(
+        lower.contains("target player draws four cards, then discards three cards"),
+        "expected default draw/discard clause to render, got {rendered}"
+    );
+    assert!(
+        lower.contains(
+            "if you cast this spell during your main phase, instead that player draws four cards, then discards two cards"
+        ),
+        "expected main-phase replacement clause to render with that-player binding, got {rendered}"
+    );
+
+    let raw = format!("{:#?}", def.spell_effect);
+    let compact_raw: String = raw.chars().filter(|ch| !ch.is_whitespace()).collect();
+    assert!(
+        raw.contains("SelfReplacementBranch")
+            && raw.contains("CastDuringYourMainPhase")
+            && raw.contains("DiscardEffect")
+            && compact_raw.contains("Fixed(3,")
+            && compact_raw.contains("Fixed(2,")
+            && !raw.contains("IteratedPlayer"),
+        "expected Careful Consideration to lower as a target-player self-replacement without unbound that-player refs, got {raw}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn undercellar_sweep_attack_trigger_creates_tokens_when_you_have_initiative() {

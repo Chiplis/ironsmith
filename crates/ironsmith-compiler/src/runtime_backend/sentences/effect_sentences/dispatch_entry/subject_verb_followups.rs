@@ -1,3 +1,4 @@
+use crate::cards::builders::SubjectVerbSubjectAst;
 use crate::runtime_backend::grammar::structure::parse_trailing_if_predicate_lexed;
 
 use super::*;
@@ -907,6 +908,11 @@ fn post_rule_future_zone_and_self_replacement(
             mut if_false,
         }) = sentence_effects.pop()
         {
+            let (default_effects, carried_player) =
+                default_effects_for_self_replacement(state.effects, previous);
+            if let Some(player) = carried_player {
+                bind_that_player_subjects_in_effects(&mut if_true, player);
+            }
             if let Some(target) = previous_target {
                 replace_it_target_in_effects(&mut if_true, &target);
             }
@@ -914,7 +920,9 @@ fn post_rule_future_zone_and_self_replacement(
                 replace_it_damage_target_in_effects(&mut if_true, &target);
                 replace_placeholder_damage_target_in_effects(&mut if_true, &target);
             }
-            if_false.insert(0, previous);
+            for effect in default_effects.into_iter().rev() {
+                if_false.insert(0, effect);
+            }
             state.effects.push(EffectAst::SelfReplacement {
                 predicate,
                 if_true,
@@ -926,6 +934,86 @@ fn post_rule_future_zone_and_self_replacement(
         }
     }
     Ok(None)
+}
+
+fn carried_player_from_effect(effect: &EffectAst) -> Option<PlayerAst> {
+    let Some(CarryContext::Player(player)) = explicit_player_for_carry(effect) else {
+        return None;
+    };
+    if matches!(player, PlayerAst::That | PlayerAst::Implicit) {
+        None
+    } else {
+        Some(player)
+    }
+}
+
+fn effect_has_that_player_subject(effect: &EffectAst) -> bool {
+    if matches!(
+        effect,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject: SubjectVerbSubjectAst {
+                player: PlayerAst::That,
+                ..
+            },
+            ..
+        })
+    ) {
+        return true;
+    }
+
+    let mut found = false;
+    for_each_nested_effects(effect, true, |nested| {
+        if !found {
+            found = nested.iter().any(effect_has_that_player_subject);
+        }
+    });
+    found
+}
+
+fn bind_that_player_subjects(effect: &mut EffectAst, player: PlayerAst) {
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst { subject, .. }) = effect
+        && subject.player == PlayerAst::That
+    {
+        subject.player = player;
+    }
+
+    for_each_nested_effects_mut(effect, true, |nested| {
+        for nested_effect in nested {
+            bind_that_player_subjects(nested_effect, player);
+        }
+    });
+}
+
+fn bind_that_player_subjects_in_effects(effects: &mut [EffectAst], player: PlayerAst) {
+    for effect in effects {
+        bind_that_player_subjects(effect, player);
+    }
+}
+
+fn default_effects_for_self_replacement(
+    prior_effects: &mut Vec<EffectAst>,
+    previous: EffectAst,
+) -> (Vec<EffectAst>, Option<PlayerAst>) {
+    let mut default_effects = vec![previous];
+    let mut carried_player = default_effects.iter().rev().find_map(carried_player_from_effect);
+
+    if carried_player.is_none()
+        && default_effects.iter().any(effect_has_that_player_subject)
+        && let Some(anchor_idx) = prior_effects
+            .iter()
+            .rposition(|effect| carried_player_from_effect(effect).is_some())
+    {
+        carried_player = carried_player_from_effect(&prior_effects[anchor_idx]);
+        let mut anchored_default_effects = prior_effects.split_off(anchor_idx);
+        anchored_default_effects.append(&mut default_effects);
+        default_effects = anchored_default_effects;
+    }
+
+    if let Some(player) = carried_player {
+        bind_that_player_subjects_in_effects(&mut default_effects, player);
+    }
+
+    (default_effects, carried_player)
 }
 
 fn post_rule_delayed_trigger_result_followup(
