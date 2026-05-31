@@ -541,13 +541,26 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
             parts.push(card.name.clone());
         } else {
             let name_lower = card.name.to_ascii_lowercase();
-            let subtype_words_lower = card
+            let has_changeling_keyword = token.abilities.iter().any(|ability| {
+                matches!(
+                    &ability.kind,
+                    AbilityKind::Static(static_ability)
+                        if static_ability.is_keyword()
+                            && static_ability.display().eq_ignore_ascii_case("changeling")
+                )
+            });
+            let displayed_subtypes = card
                 .subtypes
+                .iter()
+                .filter(|subtype| {
+                    !(has_changeling_keyword && **subtype == crate::types::Subtype::Changeling)
+                })
+                .collect::<Vec<_>>();
+            let subtype_words_lower = displayed_subtypes
                 .iter()
                 .map(|subtype| subtype.to_string().to_ascii_lowercase())
                 .collect::<Vec<_>>();
-            let subtype_text = card
-                .subtypes
+            let subtype_text = displayed_subtypes
                 .iter()
                 .map(std::string::ToString::to_string)
                 .collect::<Vec<_>>()
@@ -847,9 +860,7 @@ fn token_quoted_ability_needs_terminal_period(text: &str) -> bool {
         && !trimmed.ends_with('!')
         && !trimmed.ends_with('?')
         && (trimmed.starts_with('{')
-            || trimmed.contains("Sacrifice this token:")
-            || trimmed.starts_with("When this token ")
-            || trimmed.starts_with("Whenever this token "))
+            || trimmed.contains("Sacrifice this token:"))
 }
 
 pub(super) fn normalize_token_quoted_ability_surfaces(line: &str) -> String {
@@ -4878,6 +4889,9 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if lower == "counter target sorcery spell spell" {
         return "Counter target sorcery spell".to_string();
+    }
+    if lower == "counter target colorless spell or ability" {
+        return "Counter target triggered ability or colorless spell".to_string();
     }
     if lower == "destroy target artifact or enchantment or creature with flying" {
         return "Destroy target artifact, enchantment, or creature with flying".to_string();

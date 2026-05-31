@@ -1319,20 +1319,22 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
     let word_refs = words.to_word_refs();
 
     if word_refs.first().copied() == Some("activate") {
-        let (count, used) = parse_less_than_or_equal_quantity_prefix(
+        if let Some((count, used)) = parse_less_than_or_equal_quantity_prefix(
             tokens.get(1..).unwrap_or_default(),
             false,
             false,
             "activation frequency condition",
         )
         .ok()
-        .flatten()?;
-        let mut index = 1 + used;
-        if words.at_is_any(index, &["time", "times"]) {
-            index += 1;
-        }
-        if words.starts_with_at(index, &["each", "turn"]) {
-            return Some(ConditionExpr::MaxActivationsPerTurn(count));
+        .flatten()
+        {
+            let mut index = 1 + used;
+            if words.at_is_any(index, &["time", "times"]) {
+                index += 1;
+            }
+            if words.starts_with_at(index, &["each", "turn"]) {
+                return Some(ConditionExpr::MaxActivationsPerTurn(count));
+            }
         }
     }
 

@@ -893,8 +893,10 @@ pub(super) fn run_additional_combat_after_this_phase_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     let needle = "there is an additional combat phase after this phase, followed by an additional main phase";
+    let direct = "after this main phase, there is an additional combat phase followed by an additional main phase";
     let raw = ctx.line.info.raw_line.trim();
-    if !str_contains(raw.to_ascii_lowercase().as_str(), needle) {
+    let lower = raw.to_ascii_lowercase();
+    if !str_contains(lower.as_str(), needle) && !str_contains(lower.as_str(), direct) {
         return Ok(None);
     }
 

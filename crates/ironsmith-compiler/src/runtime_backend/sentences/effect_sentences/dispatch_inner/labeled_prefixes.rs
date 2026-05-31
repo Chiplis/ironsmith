@@ -570,11 +570,22 @@ fn parse_matching_spell_cost_reduction_this_turn_sentence_lexed(
         filter.owner = Some(PlayerFilter::You);
     }
 
-    Some(EffectAst::subject_verb_reduce_matching_spell_cost_this_turn(
-        PlayerAst::You,
-        filter,
-        reduction,
-    ))
+    if word_slice_starts_with(clause_words.as_slice(), &["the", "next"])
+        && let Some((mana_reduction, used)) = parse_cost_modifier_mana_cost(&reduction_tokens)
+        && used == reduction_tokens.len()
+    {
+        Some(EffectAst::subject_verb_reduce_next_spell_cost_this_turn(
+            PlayerAst::You,
+            filter,
+            mana_reduction,
+        ))
+    } else {
+        Some(EffectAst::subject_verb_reduce_matching_spell_cost_this_turn(
+            PlayerAst::You,
+            filter,
+            reduction,
+        ))
+    }
 }
 
 fn parse_exile_replacement_subject_verb_sentence(

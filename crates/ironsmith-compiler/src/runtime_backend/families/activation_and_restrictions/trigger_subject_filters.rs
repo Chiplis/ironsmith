@@ -754,6 +754,8 @@ pub(crate) fn parse_attack_trigger_subject_filter(
     // expressed only as a subtype ("a Sliver", "one or more Goblins", etc.).
     if filter.card_types.is_empty() {
         filter.card_types.push(crate::types::CardType::Creature);
+    } else if filter.card_types.len() > 1 && filter.all_card_types.is_empty() {
+        filter.all_card_types = std::mem::take(&mut filter.card_types);
     }
 
     Ok(Some(filter))
@@ -965,6 +967,8 @@ pub(crate) fn parse_attack_trigger_subject_filter_lexed(
 
     if filter.card_types.is_empty() {
         filter.card_types.push(crate::types::CardType::Creature);
+    } else if filter.card_types.len() > 1 && filter.all_card_types.is_empty() {
+        filter.all_card_types = std::mem::take(&mut filter.card_types);
     }
 
     Ok(Some(filter))

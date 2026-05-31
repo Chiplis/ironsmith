@@ -143,8 +143,6 @@ const CREATE_ATTACK_TARGET_PLAYER_OR_PLANESWALKER_PATTERN: ClauseShape<'static> 
             &["that", "player", "or", "planeswalker", "their", "control"],
         ]]
 );
-const CREATE_EQUAL_TO_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["equal", "to"]]);
 const CREATE_TOKEN_RULES_TEXT_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
     contains_any_phrases
         & [&[
@@ -710,11 +708,10 @@ fn parse_create_equal_to_dynamic_count(
     tail_tokens: &[OwnedLexToken],
 ) -> Result<Option<(Value, usize)>, CardTextError> {
     let tail_words = token_word_refs(tail_tokens);
-    let Some(equal_word_idx) = tail_words.iter().enumerate().find_map(|(idx, _)| {
-        CREATE_EQUAL_TO_PATTERN
-            .matches_words(&tail_words[idx..])
-            .then_some(idx)
-    }) else {
+    let Some(equal_word_idx) = tail_words
+        .windows(2)
+        .position(|words| words == ["equal", "to"])
+    else {
         return Ok(None);
     };
     let Some(equal_token_idx) = token_index_for_word_index(tail_tokens, equal_word_idx) else {

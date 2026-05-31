@@ -192,7 +192,7 @@ const MORE_VOTES_OR_TIED_TAIL_PATTERN: ClauseShape<'static> =
 const NO_WORDS_GOT_VOTES_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["no"]; suffix & ["got", "votes"]);
 const MELD_ATTACKING_OWN_CONTROL_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact
+    prefix
         & [
             "are",
             "attacking",
@@ -1856,7 +1856,7 @@ fn parse_colors_among_predicate(words: &[&str]) -> Option<PredicateAst> {
 
 fn parse_card_types_among_predicate(words: &[&str]) -> Option<PredicateAst> {
     if words.len() >= 9
-        && THERE_ARE_PREFIX_PATTERN.matches_words(words)
+        && THERE_ARE_OR_WERE_PREFIX_PATTERN.matches_words(words)
         && let Some((count, rest_start)) = predicate_at_least_quantity_prefix(&words[2..])
         && words
             .get(2 + rest_start)
@@ -1883,7 +1883,7 @@ fn parse_card_types_among_predicate(words: &[&str]) -> Option<PredicateAst> {
     }
 
     if words.len() >= 13
-        && THERE_ARE_PREFIX_PATTERN.matches_words(words)
+        && THERE_ARE_OR_WERE_PREFIX_PATTERN.matches_words(words)
         && let Some((count, rest_start)) = predicate_at_least_quantity_prefix(&words[2..])
         && words
             .get(2 + rest_start)
@@ -2045,6 +2045,14 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     let raw_words = raw_words_view.to_word_refs();
     let mut filtered = non_article_word_refs(&raw_words);
 
+    if filtered.is_empty() {
+        return Err(CardTextError::ParseError(
+            "empty predicate in if clause".to_string(),
+        ));
+    }
+    if filtered.first().copied() == Some("if") {
+        filtered.remove(0);
+    }
     if filtered.is_empty() {
         return Err(CardTextError::ParseError(
             "empty predicate in if clause".to_string(),
@@ -2693,7 +2701,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                 return Ok(PredicateAst::SourceHasCountersAtLeast(count));
             }
             if counter_idx > 0
-                && let Some(counter_type) = parse_counter_type_from_tokens(&rest[..counter_idx])
+                && let Some(counter_type) = parse_counter_type_from_tokens(&rest[..=counter_idx])
                 && consumed_source_tail
             {
                 return Ok(PredicateAst::SourceHasCounterAtLeast {
@@ -2713,7 +2721,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         })
         && counter_idx > 0
         && let Some(counter_type) = parse_counter_type_from_tokens(
-            &tokens[prefix_len + used..prefix_len + used + counter_idx],
+            &tokens[prefix_len + used..=prefix_len + used + counter_idx],
         )
         && raw_words
             .get(prefix_len + used + counter_idx + 1..)
@@ -2744,8 +2752,9 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if filtered.len() >= 10 && THERE_ARE_PREFIX_PATTERN.matches_words(&filtered) {
-        if let Some((count, idx)) = predicate_at_least_quantity_prefix(&filtered[2..])
-            .map(|(count, used)| (count, 2 + used))
+        if let Some((comparison, idx)) = predicate_quantity_prefix(&filtered[2..])
+            .map(|(comparison, used)| (comparison, 2 + used))
+            && let Some(count) = comparison_to_at_least_threshold(&comparison)
         {
             let looks_like_basic_land_type_clause =
                 BASIC_LAND_TYPES_AMONG_LANDS_PREFIX_PATTERN.matches_words(&filtered[idx..]);
@@ -3084,6 +3093,9 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         && HAND_WORD_PATTERN.matches_word_at(&filtered, subject_len + 3 + used)
         && filtered.len() == subject_len + 4 + used
     {
+        if YOU_HAVE_NO_CARDS_IN_HAND_PATTERN.matches_words(&filtered) {
+            return Ok(PredicateAst::YouHaveNoCardsInHand);
+        }
         match comparison {
             crate::effect::Comparison::GreaterThanOrEqual(count) if count >= 0 => {
                 return Ok(PredicateAst::PlayerCardsInHandOrMore {

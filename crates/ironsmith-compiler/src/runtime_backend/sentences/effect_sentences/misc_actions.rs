@@ -720,7 +720,7 @@ pub(crate) fn parse_get(
             0usize
         };
     if modifier_start > 0
-        && let Some(mod_token) = tokens.get(modifier_start).and_then(OwnedLexToken::as_word)
+        && let Some(mod_token) = tokens.get(modifier_start).map(OwnedLexToken::parser_text)
         && let Ok((power_per, toughness_per)) = parse_pt_modifier(mod_token)
     {
         let tail_tokens = tokens.get(modifier_start + 1..).unwrap_or_default();
@@ -735,7 +735,7 @@ pub(crate) fn parse_get(
         }
     }
 
-    if let Some(mod_token) = tokens.first().and_then(OwnedLexToken::as_word)
+    if let Some(mod_token) = tokens.first().map(OwnedLexToken::parser_text)
         && let Ok((power, toughness)) = parse_pt_modifier_values(mod_token)
     {
         if let (Value::Fixed(power_per), Value::Fixed(toughness_per)) = (&power, &toughness)
@@ -765,7 +765,7 @@ pub(crate) fn parse_get(
     }
 
     if let Some(collapsed_tokens) = collapse_leading_signed_pt_modifier_tokens(tokens)
-        && let Some(mod_token) = collapsed_tokens.first().and_then(OwnedLexToken::as_word)
+        && let Some(mod_token) = collapsed_tokens.first().map(OwnedLexToken::parser_text)
         && let Ok((power, toughness)) = parse_pt_modifier_values(mod_token)
     {
         if let (Value::Fixed(power_per), Value::Fixed(toughness_per)) = (&power, &toughness)

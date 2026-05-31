@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime_backend::ast::TriggerIntroSurfaceAst;
 use crate::runtime_backend::condition_antecedent::{
     ConditionAntecedentBinding, bind_condition_antecedent_in_effects,
     predicate_contains_source_match, predicate_object_filter_antecedent,
@@ -22,6 +23,63 @@ fn is_stack_object_targeting_filter(filter: &ObjectFilter) -> bool {
         || filter.targets_only_player.is_some()
         || filter.targets_only_object.is_some()
         || filter.target_count.is_some()
+}
+
+fn trigger_intro_surface_from_text(text: &str) -> Option<TriggerIntroSurfaceAst> {
+    let trimmed = text.trim_start();
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.starts_with("when ") {
+        Some(TriggerIntroSurfaceAst::When)
+    } else if lower.starts_with("whenever ") {
+        Some(TriggerIntroSurfaceAst::Whenever)
+    } else if lower.starts_with("at ") {
+        Some(TriggerIntroSurfaceAst::At)
+    } else if lower.contains(" — when ") || lower.contains(" - when ") {
+        Some(TriggerIntroSurfaceAst::When)
+    } else if lower.contains(" — whenever ") || lower.contains(" - whenever ") {
+        Some(TriggerIntroSurfaceAst::Whenever)
+    } else if lower.contains(": when ") {
+        Some(TriggerIntroSurfaceAst::When)
+    } else if lower.contains(": whenever ") {
+        Some(TriggerIntroSurfaceAst::Whenever)
+    } else {
+        None
+    }
+}
+
+fn apply_trigger_intro_surface(trigger: TriggerSpec, full_text: &str) -> TriggerSpec {
+    let Some(intro) = trigger_intro_surface_from_text(full_text) else {
+        return trigger;
+    };
+    match trigger {
+        TriggerSpec::ThisAttacks
+        | TriggerSpec::ThisAttacksWithNOthers { .. }
+        | TriggerSpec::ThisAttacksWithExactlyNOthers(_)
+        | TriggerSpec::ThisAttacksAndIsntBlocked
+        | TriggerSpec::ThisAttacksWhileSaddled
+        | TriggerSpec::Attacks(_)
+        | TriggerSpec::AttacksAndIsntBlocked(_)
+        | TriggerSpec::AttacksWhileSaddled(_)
+        | TriggerSpec::AttacksOneOrMore(_)
+        | TriggerSpec::PlayersAttackedOneOrMore(_)
+        | TriggerSpec::AttacksOneOrMoreWithMinTotal { .. }
+        | TriggerSpec::AttacksAlone(_)
+        | TriggerSpec::AttacksYouOrPlaneswalkerYouControl(_)
+        | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_)
+            if intro == TriggerIntroSurfaceAst::When =>
+        {
+            trigger
+        }
+        TriggerSpec::ThisMutates if intro == TriggerIntroSurfaceAst::Whenever => trigger,
+        TriggerSpec::KeywordAction { .. }
+        | TriggerSpec::KeywordActionTaggedObject { .. }
+        | TriggerSpec::KeywordActionFromSource { .. } => trigger,
+        TriggerSpec::WithIntro { .. } => trigger,
+        trigger => TriggerSpec::WithIntro {
+            intro,
+            trigger: Box::new(trigger),
+        },
+    }
 }
 
 fn is_stack_object_targeting_predicate(predicate: &PredicateAst) -> bool {
@@ -439,6 +497,7 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
             effects,
             max_triggers_per_turn: chunk_max_triggers_per_turn,
         } => {
+            let trigger = apply_trigger_intro_surface(trigger, full_text);
             let merged_max_condition = chunk_max_triggers_per_turn
                 .or(max_triggers_per_turn)
                 .and_then(|count| {
@@ -475,6 +534,17 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
             )))
         }
         LineAst::Ability(mut parsed) => {
+            if let AbilityKind::Triggered(triggered) = parsed.kind_mut()
+                && let Some(intro) = trigger_intro_surface_from_text(full_text)
+            {
+                triggered.trigger = triggered.trigger.clone().with_intro_surface(match intro {
+                    TriggerIntroSurfaceAst::When => crate::triggers::TriggerIntroSurface::When,
+                    TriggerIntroSurfaceAst::Whenever => {
+                        crate::triggers::TriggerIntroSurface::Whenever
+                    }
+                    TriggerIntroSurfaceAst::At => crate::triggers::TriggerIntroSurface::At,
+                });
+            }
             if let AbilityKind::Triggered(triggered) = parsed.kind_mut() {
                 rewrite_do_this_trigger_frequency_surface(full_text, triggered);
             }

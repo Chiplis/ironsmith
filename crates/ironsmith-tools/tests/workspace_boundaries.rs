@@ -670,6 +670,7 @@ fn raw_text_checks_in_lower_module_are_legacy_allowlisted() {
         .collect::<BTreeSet<_>>();
 
     let expected = [
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> becomes tapped during your turn",
         "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> clash with an opponent",
         "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> creature died this turn",
         "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> do this only once each turn",
@@ -683,6 +684,13 @@ fn raw_text_checks_in_lower_module_are_legacy_allowlisted() {
         "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> put that card onto the battlefield instead of putting it into your hand",
         "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> put two of those cards into your hand instead",
         "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/line_lowering.rs -> search your library and/or graveyard for up to five doctor cards",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/normalization_support.rs ->  - when ",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/normalization_support.rs ->  - whenever ",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/normalization_support.rs ->  — when ",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/normalization_support.rs ->  — whenever ",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/normalization_support.rs -> : when ",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/normalization_support.rs -> : whenever ",
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/normalization_support.rs -> becomes tapped during your turn",
         "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/normalization_support.rs -> do this only once each turn",
         "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/normalization_support.rs -> do this only twice each turn",
         "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/parser_semantic_lowering.rs ->  rather than pay the equip cost of the first equip ability you activate",
@@ -690,7 +698,6 @@ fn raw_text_checks_in_lower_module_are_legacy_allowlisted() {
         "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/parser_semantic_lowering.rs -> as this object enters",
         "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/parser_semantic_lowering.rs -> as this permanent enters",
         "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/parser_semantic_lowering.rs -> becomes day",
-        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/parser_semantic_lowering.rs -> booster pack",
         "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/parser_semantic_lowering.rs -> neither day nor night",
     ]
     .into_iter()

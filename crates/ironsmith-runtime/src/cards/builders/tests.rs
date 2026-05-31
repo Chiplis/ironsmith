@@ -3239,11 +3239,14 @@ fn test_parse_leonardo_the_balance_strictly_parses_character_select_partner_line
             .iter()
             .any(|line| line.starts_with("Partner—Character select"))
             && rendered.contains("Do this only once each turn")
-            && rendered.contains("Creatures you control gain menace")
-            && rendered.contains("gain trample")
-            && rendered.contains("gain lifelink until end of turn")
+            && rendered.contains(
+                "Creatures you control gain menace, trample, and lifelink until end of turn"
+            )
             && debug.contains("id: Some(\n                            Partner,")
             && debug.contains("DoThisMaxTimesEachTurn")
+            && debug.contains("Menace")
+            && debug.contains("Trample")
+            && debug.contains("Lifelink")
             && !debug.contains("id: Some(\n                            PartnerWith,"),
         "expected Leonardo output to preserve the partner variant label and keep once-per-turn and grant semantics, got rendered={rendered}; debug={debug}"
     );
@@ -21476,7 +21479,9 @@ fn parse_teferis_time_twist_text_parses_typed_counter_followup() {
 
     let debug = format!("{:?}", def.spell_effect);
     assert!(
-        debug.contains("IfEffect") && debug.contains("PutCountersEffect"),
+        debug.contains("ConditionalEffect")
+            && debug.contains("TaggedObjectMatches")
+            && debug.contains("PutCountersEffect"),
         "expected typed delayed conditional put-counters followup, got {debug}"
     );
     let static_ids: Vec<_> = def
@@ -40016,7 +40021,14 @@ fn parse_put_onto_battlefield_under_your_control_tapped_preserves_behavior() {
 
 #[test]
 fn parse_oracle_ilharg_tapped_attacking_stays_deferred() {
-    assert_oracle_card_fails_strict("Ilharg, the Raze-Boar");
+    let def = parse_oracle_card_definition("Ilharg, the Raze-Boar");
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("tapped and attacking") && rendered.contains("third from the top"),
+        "expected Ilharg's strict parse to preserve tapped-attacking and library placement, got {rendered}"
+    );
 }
 
 #[test]

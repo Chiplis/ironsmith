@@ -108,8 +108,6 @@ const REVEAL_CARD_MARKER_PATTERN: ClauseShape<'static> =
 const REVEAL_CARDS_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["cards"]);
 const REVEAL_HAND_OWNER_MARKER_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_any_words & [&["their"], &["your"]]);
-const REVEAL_LIBRARY_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_words & [&["library"], &["libraries"]]);
 const THAT_MUCH_LIFE_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["that", "much", "life"]);
 const EQUAL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["equal"]);
@@ -623,11 +621,21 @@ pub(crate) fn parse_reveal(
         return Ok(EffectAst::subject_verb_reveal_hand(player));
     }
 
-    let has_card = REVEAL_CARD_MARKER_PATTERN.matches_words(&words);
-    let has_library = REVEAL_LIBRARY_MARKER_PATTERN.matches_words(&words);
-    let explicit_top_card = EXPLICIT_TOP_CARD_PATTERN.matches_words(&words);
+    let has_card = words.iter().any(|word| matches!(*word, "card" | "cards"));
+    let has_library = words
+        .iter()
+        .any(|word| matches!(*word, "library" | "libraries"));
+    let explicit_top_card = EXPLICIT_TOP_CARD_PATTERN.matches_words(&words)
+        || (TOP_THE_TOP_PREFIX_PATTERN.matched_prefix_len(&words).is_some()
+            && has_card
+            && has_library);
+    let top_library_reveal = TOP_THE_TOP_PREFIX_PATTERN
+        .matched_prefix_len(&words)
+        .is_some_and(|_| has_library);
 
-    if !has_card || (!has_library && !explicit_top_card) {
+    if (!has_card && !top_library_reveal)
+        || (!has_library && !explicit_top_card && !top_library_reveal)
+    {
         return Err(CardTextError::ParseError(format!(
             "unsupported reveal clause (clause: '{}')",
             words.join(" ")

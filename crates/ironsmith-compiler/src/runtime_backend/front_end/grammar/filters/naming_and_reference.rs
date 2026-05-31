@@ -421,6 +421,13 @@ pub(super) fn try_apply_color_count_phrase(
         return Ok(false);
     };
 
+    if count >= 3 {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported color-count object filter '{}'",
+            all_words[color_count_idx..color_count_idx + consumed].join(" ")
+        )));
+    }
+
     if count == 1 {
         let any_color: ColorSet = Color::ALL.into_iter().collect();
         filter.colors = Some(any_color);

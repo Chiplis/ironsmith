@@ -3212,9 +3212,7 @@ pub(crate) fn parse_static_condition_clause(
         });
     }
 
-    let has_counter_on_source = ON_SOURCE_COUNTER_TAIL_PATTERN.matches_words(&clause_words);
-    if has_counter_on_source
-        && let Some(has_idx) = HAS_OR_HAVE_WORD_PATTERN.find_word(&clause_words)
+    if let Some(has_idx) = HAS_OR_HAVE_WORD_PATTERN.find_word(&clause_words)
     {
         let subject_words = &clause_words[..has_idx];
         let source_pronoun_subject =

@@ -93,7 +93,8 @@ pub(crate) fn interpret_trigger_model(
 ) -> Result<crate::triggers::Trigger, TriggerModelConversionError> {
     use ironsmith_core::trigger_model::{DamagedBySource, TriggerKind};
 
-    Ok(match trigger.kind {
+    let intro_surface = trigger.intro_surface;
+    let interpreted = match trigger.kind {
         TriggerKind::StateBased { display } => crate::triggers::Trigger::state_based(display),
         TriggerKind::ThisAttacks => crate::triggers::Trigger::this_attacks(),
         TriggerKind::ThisAttacksPlayerWithMostLife => {
@@ -462,6 +463,18 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::CounterRemovedFrom(counter_removed_from) => {
             convert_counter_removed_from_trigger(counter_removed_from)
         }
+    };
+    Ok(match intro_surface {
+        Some(ironsmith_core::trigger_model::TriggerIntroSurface::When) => {
+            interpreted.with_intro_surface(crate::triggers::TriggerIntroSurface::When)
+        }
+        Some(ironsmith_core::trigger_model::TriggerIntroSurface::Whenever) => {
+            interpreted.with_intro_surface(crate::triggers::TriggerIntroSurface::Whenever)
+        }
+        Some(ironsmith_core::trigger_model::TriggerIntroSurface::At) => {
+            interpreted.with_intro_surface(crate::triggers::TriggerIntroSurface::At)
+        }
+        None => interpreted,
     })
 }
 

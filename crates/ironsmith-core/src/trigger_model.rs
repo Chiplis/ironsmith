@@ -329,10 +329,28 @@ pub enum TriggerKind {
     CounterRemovedFrom(CounterRemovedFromTrigger),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TriggerIntroSurface {
+    When,
+    Whenever,
+    At,
+}
+
+impl TriggerIntroSurface {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::When => "When",
+            Self::Whenever => "Whenever",
+            Self::At => "At",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Trigger {
     pub label: String,
     pub kind: TriggerKind,
+    pub intro_surface: Option<TriggerIntroSurface>,
 }
 
 impl Trigger {
@@ -349,7 +367,13 @@ impl Trigger {
         Self {
             label: label.into(),
             kind,
+            intro_surface: None,
         }
+    }
+
+    pub fn with_intro_surface(mut self, intro: TriggerIntroSurface) -> Self {
+        self.intro_surface = Some(intro);
+        self
     }
 
     pub fn this_attacks() -> Self {
@@ -1075,7 +1099,14 @@ impl Trigger {
         )
     }
     pub fn display(&self) -> String {
-        self.label.clone()
+        let Some(intro) = self.intro_surface else {
+            return self.label.clone();
+        };
+        ["Whenever ", "When ", "At "]
+            .into_iter()
+            .find_map(|prefix| self.label.strip_prefix(prefix))
+            .map(|rest| format!("{} {rest}", intro.as_str()))
+            .unwrap_or_else(|| self.label.clone())
     }
 }
 

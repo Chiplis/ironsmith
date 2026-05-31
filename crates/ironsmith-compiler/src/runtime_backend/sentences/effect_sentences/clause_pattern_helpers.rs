@@ -190,11 +190,11 @@ impl<'p> ClauseShape<'p> {
     }
 
     pub(crate) fn matches_token(self, token: &OwnedLexToken) -> bool {
-        token.as_word().is_some_and(|word| self.matches_word(word))
+        token.as_word().is_some_and(|_| self.matches_word(token.parser_text()))
     }
 
     pub(crate) fn matches_lex_token(self, token: &LexToken) -> bool {
-        token.as_word().is_some_and(|word| self.matches_word(word))
+        token.as_word().is_some_and(|_| self.matches_word(token.parser_text()))
     }
 
     pub(crate) fn matches_word_at(self, words: &[&str], idx: usize) -> bool {
@@ -2150,7 +2150,7 @@ pub(crate) fn parse_can_block_additional_creature_this_turn_clause(
     let tail_clause = clause.after_words(can_idx).unwrap_or(clause).trimmed();
     let tail_words = tail_clause.word_refs();
     if !CLAUSE_CAN_BLOCK_PREFIX_PATTERN.matches_words(&tail_words)
-        || !CLAUSE_THIS_TURN_PATTERN.matches_words(&tail_words)
+        || !word_slice_ends_with(&tail_words, &["this", "turn"])
     {
         return Ok(None);
     }
@@ -2201,7 +2201,8 @@ pub(crate) fn parse_win_the_game_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
-    if clause.word_len() < 4 || !CLAUSE_YOU_WIN_GAME_PATTERN.matches(clause) {
+    let clause_words = clause.word_refs();
+    if clause.word_len() < 4 || !CLAUSE_YOU_WIN_GAME_PATTERN.matches_words(&clause_words[..4]) {
         return Ok(None);
     }
 
@@ -2211,7 +2212,8 @@ pub(crate) fn parse_win_the_game_clause(
 
     if let Some(trailing_if) = split_trailing_if_clause_lexed(tokens) {
         let leading_clause = LexedClause::new(trailing_if.leading_tokens);
-        if CLAUSE_YOU_WIN_GAME_PATTERN.matches(leading_clause) {
+        let leading_words = leading_clause.word_refs();
+        if leading_words.len() == 4 && CLAUSE_YOU_WIN_GAME_PATTERN.matches_words(&leading_words) {
             return Ok(Some(EffectAst::Conditional {
                 predicate: trailing_if.predicate,
                 if_true: vec![EffectAst::subject_verb_win_game(PlayerAst::You)],

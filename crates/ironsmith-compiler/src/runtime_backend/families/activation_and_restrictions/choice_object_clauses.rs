@@ -307,6 +307,8 @@ pub(crate) fn parse_target_player_choose_objects_clause(
 pub(crate) fn parse_you_choose_objects_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(PlayerAst, ObjectFilter, ChoiceCount)>, CardTextError> {
+    let trimmed_tokens = trim_edge_punctuation(tokens);
+    let tokens = trimmed_tokens.as_slice();
     let clause_words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
     if clause_words.is_empty() {
         return Ok(None);

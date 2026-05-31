@@ -11,8 +11,8 @@ use super::super::token_primitives::{
     parse_simple_restriction_duration_suffix, rfind_index as rfind_token_index,
 };
 use super::super::util::{
-    helper_tag_for_tokens, is_article, parse_number, parse_subject, parse_target_phrase,
-    parse_zone_word, possessive_normalized_word_refs, span_from_tokens,
+    helper_tag_for_tokens, is_article, parse_number, parse_number_word_u32, parse_subject,
+    parse_target_phrase, parse_zone_word, possessive_normalized_word_refs, span_from_tokens,
     strip_leading_token_words_any, token_index_for_word_index, trim_commas, words,
 };
 use super::clause_pattern_helpers::{ClauseShape, clause_shape};
@@ -1279,6 +1279,7 @@ pub(crate) fn parse_earthbend_sentence(
 
     let count = parse_number(tokens.get(1..).unwrap_or_default())
         .map(|(value, _)| value)
+        .or_else(|| words.get(1).and_then(|word| parse_number_word_u32(word)))
         .ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "missing earthbend count (clause: '{}')",

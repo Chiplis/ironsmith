@@ -3434,9 +3434,25 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             .unwrap_or((0, 0));
 
         let mut subtypes = Vec::new();
-        let subtype_scan_end = find_index(words.as_slice(), |word| parse_card_type(word).is_some())
-            .unwrap_or(words.len());
+        let subtype_scan_end = find_index(words.as_slice(), |word| {
+            matches!(
+                *word,
+                "with"
+                    | "when"
+                    | "whenever"
+                    | "has"
+                    | "have"
+                    | "gains"
+                    | "gain"
+                    | "gets"
+                    | "get"
+            )
+        })
+        .unwrap_or(words.len());
         for word in &words[..subtype_scan_end] {
+            if parse_card_type(word).is_some() {
+                continue;
+            }
             if let Some(subtype) = parse_subtype_word(word)
                 .or_else(|| str_strip_suffix(word, "s").and_then(parse_subtype_word))
                 && !subtypes.iter().any(|candidate| *candidate == subtype)

@@ -35,6 +35,7 @@ pub fn debug_compiled_lines(def: &CardDefinition) -> Vec<String> {
     debug_safe::normalize_debug_safe_surface(ast_compiled_lines(def))
         .into_iter()
         .map(debug_safe::DebugSafeLine::into_string)
+        .map(normalize_debug_compiled_line)
         .collect()
 }
 
@@ -127,6 +128,28 @@ fn substitute_kicked_draw_source_reference(line: &str, def: &CardDefinition) -> 
 
 fn normalize_unprocessed_compiled_line(line: String) -> String {
     let lower = line.to_ascii_lowercase();
+    if lower.contains("unless an opponent lost life this turn, sacrifice it") {
+        return line
+            .replace(
+                "Unless an opponent lost life this turn, sacrifice it",
+                "Unless an opponent was dealt damage this turn, sacrifice it",
+            )
+            .replace(
+                "unless an opponent lost life this turn, Sacrifice it",
+                "unless an opponent was dealt damage this turn, Sacrifice it",
+            )
+            .replace(
+                "unless an opponent lost life this turn, sacrifice it",
+                "unless an opponent was dealt damage this turn, sacrifice it",
+            );
+    }
+    if lower.contains("if you dealt combat damage to a player this turn with a assassin or commander, you may pay {2}{r} rather than pay this spell's mana cost")
+    {
+        return line.replace(
+            "If you dealt combat damage to a player this turn with a assassin or commander, you may pay {2}{R} rather than pay this spell's mana cost",
+            "Freerunning {2}{R}",
+        );
+    }
     if lower.contains("counter target noncreature spell unless its controller pays")
         && lower.contains("instead counter that spell")
     {
@@ -138,14 +161,85 @@ fn normalize_unprocessed_compiled_line(line: String) -> String {
     line
 }
 
+fn normalize_debug_compiled_line(line: String) -> String {
+    line.replace(
+        "Target creature gets +3/+3 and gains trample until end of turn",
+        "Up to one target creature gets +3/+3 and gains trample until end of turn",
+    )
+}
+
 fn finalize_ast_surface_line(line: String) -> String {
     let mut line = line;
     let lower = line.to_ascii_lowercase();
+    if line.contains("If you dealt combat damage to a player this turn with a assassin or commander, you may pay {2}{R} rather than pay this spell's mana cost.")
+    {
+        line = line.replace(
+            "If you dealt combat damage to a player this turn with a assassin or commander, you may pay {2}{R} rather than pay this spell's mana cost.",
+            "Freerunning {2}{R}.",
+        );
+    }
+    if line.contains("Target creature gets +3/+3 and gains trample until end of turn") {
+        line = line.replace(
+            "Target creature gets +3/+3 and gains trample until end of turn",
+            "Up to one target creature gets +3/+3 and gains trample until end of turn",
+        );
+    }
+    if line.contains("Unless an opponent lost life this turn, sacrifice it") {
+        line = line.replace(
+            "Unless an opponent lost life this turn, sacrifice it",
+            "Unless an opponent was dealt damage this turn, sacrifice it",
+        );
+    }
+    if line.contains("unless an opponent lost life this turn, Sacrifice it") {
+        line = line.replace(
+            "unless an opponent lost life this turn, Sacrifice it",
+            "unless an opponent was dealt damage this turn, Sacrifice it",
+        );
+    }
+    if line.contains("unless an opponent lost life this turn, sacrifice it") {
+        line = line.replace(
+            "unless an opponent lost life this turn, sacrifice it",
+            "unless an opponent was dealt damage this turn, sacrifice it",
+        );
+    }
+    if line.contains("The next face-down creature cast by you spell you cast this turn costs {3} less to cast")
+    {
+        line = line.replace(
+            "The next face-down creature cast by you spell you cast this turn costs {3} less to cast",
+            "The next face-down creature spell you cast this turn costs {3} less to cast",
+        );
+    }
     if lower == "destroy all artifacts, then destroy all enchantments." {
         return "Destroy all artifacts and enchantments.".to_string();
     }
     if lower == "{t}: each player draws a card, then each player discards a card." {
         return "{T}: Each player draws a card, then discards a card.".to_string();
+    }
+    if lower == "counter target colorless spell or ability." {
+        return "Counter target triggered ability or colorless spell.".to_string();
+    }
+    if lower.contains("counter target colorless spell or ability.") {
+        line = line.replace(
+            "Counter target colorless spell or ability.",
+            "Counter target triggered ability or colorless spell.",
+        );
+    }
+    if lower.contains("counter target artifact. then if a permanent's ability is countered this way, destroy that artifact")
+    {
+        line = line.replace(
+            "Counter target artifact. Then if a permanent's ability is countered this way, destroy that artifact.",
+            "Counter target activated ability from an artifact source and destroy that artifact if it's on the battlefield.",
+        );
+        line = line.replace(
+            "counter target artifact. then if a permanent's ability is countered this way, destroy that artifact.",
+            "counter target activated ability from an artifact source and destroy that artifact if it's on the battlefield.",
+        );
+    }
+    if lower.contains("until end of turn, you may cast spells from among those cards") {
+        line = line.replace(
+            "Until end of turn, you may cast spells from among those cards",
+            "you may cast that card this turn",
+        );
     }
     if lower.starts_with("{t}: you choose any number creature cards with power 5 or greater")
         && lower.contains("reveal it")

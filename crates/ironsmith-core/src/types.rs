@@ -558,6 +558,7 @@ impl Subtype {
             Subtype::Ox,
             Subtype::Oyster,
             Subtype::Peasant,
+            Subtype::Pest,
             Subtype::Pegasus,
             Subtype::Phyrexian,
             Subtype::Phoenix,
@@ -768,6 +769,7 @@ impl Subtype {
                 | Subtype::Avatar
                 | Subtype::Barbarian
                 | Subtype::Bard
+                | Subtype::Bat
                 | Subtype::Bear
                 | Subtype::Beast
                 | Subtype::Berserker
@@ -875,6 +877,7 @@ impl Subtype {
                 | Subtype::Ox
                 | Subtype::Oyster
                 | Subtype::Peasant
+                | Subtype::Pest
                 | Subtype::Pegasus
                 | Subtype::Phyrexian
                 | Subtype::Phoenix
@@ -1075,6 +1078,8 @@ mod tests {
         assert!(Subtype::Human.is_creature_type());
         assert!(Subtype::Elf.is_creature_type());
         assert!(Subtype::Goblin.is_creature_type());
+        assert!(Subtype::Bat.is_creature_type());
+        assert!(Subtype::Pest.is_creature_type());
         assert!(!Subtype::Plains.is_creature_type());
         assert!(!Subtype::Equipment.is_creature_type());
     }

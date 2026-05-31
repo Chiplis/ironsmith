@@ -1945,8 +1945,16 @@ pub(crate) fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) 
                 .push(crate::filter::TaggedObjectConstraint {
                     tag: TagKey::from(IT_TAG),
                     relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
-                });
+            });
         }
+    }
+    if filter_words
+        .iter()
+        .any(|word| matches!(*word, "permanent" | "permanents"))
+        && filter.card_types.is_empty()
+        && filter.all_card_types.is_empty()
+    {
+        filter.card_types = ObjectFilter::permanent_card().card_types;
     }
 
     match (aggregate, value_kind) {
@@ -2735,6 +2743,24 @@ fn parse_enters_tapped_unless_control_quantity_condition(
     })
 }
 
+fn parse_legacy_enters_tapped_unless_control_quantity_static_ability(
+    condition_tokens: &[OwnedLexToken],
+) -> Option<StaticAbility> {
+    let condition_words = crate::runtime_backend::lexer::token_word_refs(condition_tokens);
+    match condition_words.as_slice() {
+        ["you", "control", "two", "or", "more", "other", "lands"] => {
+            Some(StaticAbility::enters_tapped_unless_control_two_or_more_other_lands())
+        }
+        ["you", "control", "two", "or", "fewer", "other", "lands"] => {
+            Some(StaticAbility::enters_tapped_unless_control_two_or_fewer_other_lands())
+        }
+        ["you", "control", "two", "or", "more", "basic", "lands"] => {
+            Some(StaticAbility::enters_tapped_unless_control_two_or_more_basic_lands())
+        }
+        _ => None,
+    }
+}
+
 fn parse_enters_tapped_unless_a_player_has_13_or_less_life_condition(
     condition_tokens: &[OwnedLexToken],
 ) -> Option<()> {
@@ -2797,6 +2823,11 @@ pub(crate) fn parse_conditional_enters_tapped_unless_line(
     };
     let condition_tokens = trim_edge_punctuation(&tokens[unless_idx + 1..]);
     let condition_words = crate::runtime_backend::token_word_refs(&condition_tokens);
+    if let Some(ability) =
+        parse_legacy_enters_tapped_unless_control_quantity_static_ability(&condition_tokens)
+    {
+        return Ok(Some(ability));
+    }
     if let Some(condition) =
         parse_enters_tapped_unless_control_quantity_condition(&condition_tokens)
     {

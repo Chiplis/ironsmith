@@ -1171,6 +1171,31 @@ pub(crate) fn strip_leading_trigger_intro(tokens: &[OwnedLexToken]) -> &[OwnedLe
     }
 }
 
+fn leading_trigger_intro_surface(tokens: &[OwnedLexToken]) -> Option<TriggerIntroSurfaceAst> {
+    if token_slice_at_is_any(tokens, 0, &["when"]) {
+        Some(TriggerIntroSurfaceAst::When)
+    } else if token_slice_at_is_any(tokens, 0, &["whenever"]) {
+        Some(TriggerIntroSurfaceAst::Whenever)
+    } else if token_slice_at_is_any(tokens, 0, &["at"]) {
+        Some(TriggerIntroSurfaceAst::At)
+    } else {
+        None
+    }
+}
+
+fn apply_leading_trigger_intro_surface(
+    trigger: TriggerSpec,
+    tokens: &[OwnedLexToken],
+) -> TriggerSpec {
+    let Some(intro) = leading_trigger_intro_surface(tokens) else {
+        return trigger;
+    };
+    TriggerSpec::WithIntro {
+        intro,
+        trigger: Box::new(trigger),
+    }
+}
+
 fn source_reference_surface_for_trigger_subject(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::target::SourceReferenceSurface> {
@@ -1682,8 +1707,10 @@ pub(crate) fn parse_trigger_clause_lexed(
             .get(and_idx + 1)
             .is_some_and(|token| TRIGGER_INTRO_WORD_PATTERN.matches_token(token))
     {
-        let left_tokens = strip_leading_trigger_intro(&tokens[..and_idx]);
-        let right_tokens = strip_leading_trigger_intro(&tokens[and_idx + 1..]);
+        let left_raw_tokens = &tokens[..and_idx];
+        let right_raw_tokens = &tokens[and_idx + 1..];
+        let left_tokens = strip_leading_trigger_intro(left_raw_tokens);
+        let right_tokens = strip_leading_trigger_intro(right_raw_tokens);
         if !left_tokens.is_empty()
             && !right_tokens.is_empty()
             && let (Ok(left), Ok(right)) = (
@@ -1691,7 +1718,10 @@ pub(crate) fn parse_trigger_clause_lexed(
                 parse_trigger_clause_lexed(right_tokens),
             )
         {
-            return Ok(TriggerSpec::Either(Box::new(left), Box::new(right)));
+            return Ok(TriggerSpec::Either(
+                Box::new(apply_leading_trigger_intro_surface(left, left_raw_tokens)),
+                Box::new(apply_leading_trigger_intro_surface(right, right_raw_tokens)),
+            ));
         }
     }
 

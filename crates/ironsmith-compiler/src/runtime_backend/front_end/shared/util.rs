@@ -3244,7 +3244,10 @@ pub(crate) fn span_from_tokens(tokens: &[OwnedLexToken]) -> Option<TextSpan> {
 
 pub(crate) fn parse_number(tokens: &[OwnedLexToken]) -> Option<(u32, usize)> {
     let token = tokens.first()?;
-    let word = token.as_word()?.to_ascii_lowercase();
+    let word = token
+        .as_word()
+        .unwrap_or_else(|| token.parser_text())
+        .to_ascii_lowercase();
 
     if let Ok(value) = word.parse::<u32>() {
         return Some((value, 1));
@@ -3270,9 +3273,10 @@ pub(crate) fn parse_number(tokens: &[OwnedLexToken]) -> Option<(u32, usize)> {
 
     let mut words = Vec::new();
     for token in tokens {
-        let Some(word) = token.as_word() else {
+        let word = token.as_word().unwrap_or_else(|| token.parser_text());
+        if word.is_empty() {
             break;
-        };
+        }
         words.push(word);
     }
     let (value, used) = ironsmith_core::parse_cardinal_words(&words)?;
@@ -6599,6 +6603,16 @@ pub(crate) fn parse_if_conditional_alternative_cost_line(
     let Some(method) = parse_you_may_rather_than_spell_cost_line(&tail_tokens, line)? else {
         return Ok(None);
     };
+    if line.trim_start().to_ascii_lowercase().starts_with("freerunning ")
+        && let Some(cost) = method.mana_cost().cloned()
+    {
+        return Ok(Some(AlternativeCastingMethod::alternative_cost_with_condition(
+            "Freerunning",
+            Some(cost),
+            method.non_mana_costs(),
+            condition,
+        )));
+    }
     let method = method.with_cast_condition(condition);
     if let Some(trap_condition) = method
         .cast_condition()

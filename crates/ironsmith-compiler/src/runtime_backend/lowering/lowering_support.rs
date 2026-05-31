@@ -54,6 +54,9 @@ fn target_can_establish_local_object_reference(target: &TargetAst) -> bool {
 }
 
 fn phase_step_trigger_has_no_object_reference(trigger: &TriggerSpec) -> bool {
+    if let TriggerSpec::WithIntro { trigger, .. } = trigger {
+        return phase_step_trigger_has_no_object_reference(trigger);
+    }
     matches!(
         trigger,
         TriggerSpec::BeginningOfUpkeep(_)
@@ -66,6 +69,9 @@ fn phase_step_trigger_has_no_object_reference(trigger: &TriggerSpec) -> bool {
 }
 
 fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<&'static str> {
+    if let TriggerSpec::WithIntro { trigger, .. } = trigger {
+        return default_trigger_last_object_tag(trigger);
+    }
     if phase_step_trigger_has_no_object_reference(trigger) {
         return None;
     }
@@ -377,6 +383,10 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
         has_local_target_prelude || has_prior_effect_before_it_reference(&normalized);
     let mut body_effects = normalized.clone();
     let mut intervening_if = match &trigger {
+        TriggerSpec::WithIntro { trigger, .. } => match &**trigger {
+            TriggerSpec::StateBased { condition, .. } => Some(condition.clone()),
+            _ => None,
+        },
         TriggerSpec::StateBased { condition, .. } => Some(condition.clone()),
         _ => None,
     };
@@ -391,7 +401,17 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
         && predicate_can_promote_to_intervening_if(predicate)
         // "Whenever this attacks, you win the game if ..." checks on resolution;
         // it is not an intervening-if trigger gate.
-        && !(matches!(trigger, TriggerSpec::ThisAttacks) && is_win_the_game_effect(if_true))
+        && !(
+            (
+                matches!(trigger, TriggerSpec::ThisAttacks)
+                    || matches!(
+                        trigger,
+                        TriggerSpec::WithIntro { ref trigger, .. }
+                            if matches!(**trigger, TriggerSpec::ThisAttacks)
+                    )
+            )
+                && is_win_the_game_effect(if_true)
+        )
     {
         body_effects = if_true.clone();
         intervening_if = merge_intervening_predicates(intervening_if, Some(predicate.clone()));
@@ -420,7 +440,12 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
         retarget_it_animations_to_source(&mut body_effects);
     }
 
-    if matches!(trigger, TriggerSpec::ThisAttacks)
+    if (matches!(trigger, TriggerSpec::ThisAttacks)
+        || matches!(
+            trigger,
+            TriggerSpec::WithIntro { ref trigger, .. }
+                if matches!(**trigger, TriggerSpec::ThisAttacks)
+        ))
         && let Some(predicate) = intervening_if.take()
     {
         let (exact_other_count, remainder) = extract_exact_other_attack_predicate(predicate);
@@ -433,7 +458,13 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
     let default_last_object_tag = if !has_local_target_prelude
         && (effects_reference_it_tag(&normalized) || effects_reference_its_controller(&normalized))
     {
-        let default_tag = if matches!(&trigger, TriggerSpec::ThisAttacksWithExactlyNOthers(1)) {
+        let default_tag = if matches!(&trigger, TriggerSpec::ThisAttacksWithExactlyNOthers(1))
+            || matches!(
+                &trigger,
+                TriggerSpec::WithIntro { trigger, .. }
+                    if matches!(**trigger, TriggerSpec::ThisAttacksWithExactlyNOthers(1))
+            )
+        {
             // Exact single-partner attack triggers can bind "that creature"
             // to the other attacker snapshot captured at trigger time.
             Some("other_attacker")

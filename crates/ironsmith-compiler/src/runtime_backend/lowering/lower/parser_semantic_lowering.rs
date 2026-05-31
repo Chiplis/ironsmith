@@ -81,6 +81,12 @@ fn triggered_line_source_text(line: &RewriteTriggeredLine) -> &str {
     }
 }
 
+fn has_trigger_intro_surface(text: &str) -> bool {
+    let trimmed = text.trim_start();
+    let lower = trimmed.to_ascii_lowercase();
+    lower.starts_with("when ") || lower.starts_with("whenever ") || lower.starts_with("at ")
+}
+
 fn presentation_label_from_raw_trigger_line(raw_line: &str) -> Option<&str> {
     let (label, body) = raw_line.trim().split_once('—')?;
     let label = label.trim();
@@ -611,6 +617,13 @@ fn lower_rewrite_triggered_to_chunk_impl(
     effect_parse_tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
     let source_text = triggered_line_source_text(line);
+    let trigger_surface_text = if has_trigger_intro_surface(source_text)
+        || !has_trigger_intro_surface(&line.info.raw_line)
+    {
+        source_text
+    } else {
+        line.info.raw_line.trim()
+    };
     let chosen_option_label =
         effective_chosen_option_label(&line.info.raw_line, line.chosen_option_label.as_deref());
     let presentation_label = line
@@ -627,7 +640,7 @@ fn lower_rewrite_triggered_to_chunk_impl(
     {
         return apply_chosen_option_to_triggered_chunk(
             apply_explicit_intervening_if_to_triggered_chunk(chunk, line.intervening_if.clone())?,
-            source_text,
+            trigger_surface_text,
             inferred_max_triggers_per_turn,
             chosen_option_label,
             presentation_label,
@@ -660,7 +673,7 @@ fn lower_rewrite_triggered_to_chunk_impl(
                     },
                     line.intervening_if.clone(),
                 )?,
-                source_text,
+                trigger_surface_text,
                 inferred_max_triggers_per_turn,
                 chosen_option_label,
                 presentation_label,
@@ -679,15 +692,15 @@ fn lower_rewrite_triggered_to_chunk_impl(
         && let Ok(first_triggered) = parse_triggered_line_lexed(full_sentences[0])
     {
         let mut chunks = Vec::with_capacity(full_sentences.len());
-        chunks.push(apply_chosen_option_to_triggered_chunk(
-            apply_explicit_intervening_if_to_triggered_chunk(
-                first_triggered,
-                line.intervening_if.clone(),
-            )?,
-            source_text,
-            inferred_max_triggers_per_turn,
-            chosen_option_label.clone(),
-            presentation_label,
+            chunks.push(apply_chosen_option_to_triggered_chunk(
+                apply_explicit_intervening_if_to_triggered_chunk(
+                    first_triggered,
+                    line.intervening_if.clone(),
+                )?,
+                trigger_surface_text,
+                inferred_max_triggers_per_turn,
+                chosen_option_label.clone(),
+                presentation_label,
         )?);
 
         let mut parsed_all_static = true;
@@ -743,7 +756,7 @@ fn lower_rewrite_triggered_to_chunk_impl(
                     },
                     line.intervening_if.clone(),
                 )?,
-                source_text,
+                trigger_surface_text,
                 inferred_max_triggers_per_turn,
                 chosen_option_label.clone(),
                 presentation_label,
@@ -789,7 +802,7 @@ fn lower_rewrite_triggered_to_chunk_impl(
                     },
                     line.intervening_if.clone(),
                 )?,
-                source_text,
+                trigger_surface_text,
                 inferred_max_triggers_per_turn,
                 chosen_option_label,
                 presentation_label,
@@ -803,7 +816,7 @@ fn lower_rewrite_triggered_to_chunk_impl(
     )?;
     apply_chosen_option_to_triggered_chunk(
         parsed,
-        source_text,
+        trigger_surface_text,
         inferred_max_triggers_per_turn,
         chosen_option_label,
         presentation_label,
@@ -836,6 +849,9 @@ pub(super) fn infer_rewrite_triggered_functional_zones(
     normalized_line: &str,
 ) -> Vec<Zone> {
     let mut zones = match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => {
+            return infer_rewrite_triggered_functional_zones(trigger, normalized_line);
+        }
         TriggerSpec::YouCastThisSpell => vec![Zone::Stack],
         TriggerSpec::KeywordActionFromSource {
             action: crate::events::KeywordActionKind::Cycle,
@@ -880,6 +896,7 @@ pub(super) fn infer_rewrite_triggered_functional_zones(
 
 fn trigger_references_attached_object(trigger: &TriggerSpec) -> bool {
     match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => trigger_references_attached_object(trigger),
         TriggerSpec::PutIntoGraveyard(filter) | TriggerSpec::PutIntoGraveyardOneOrMore(filter) => {
             filter_references_tag(filter, "enchanted") || filter_references_tag(filter, "equipped")
         }

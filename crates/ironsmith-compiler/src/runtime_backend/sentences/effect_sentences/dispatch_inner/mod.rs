@@ -14,7 +14,8 @@ use super::super::grammar::structure::{
     LeadingResultPrefixKind, split_leading_result_prefix_lexed,
 };
 use super::super::keyword_static::{
-    parse_ability_line, parse_pt_modifier, parse_value_binding_clause,
+    parse_ability_line, parse_cost_modifier_mana_cost, parse_pt_modifier,
+    parse_value_binding_clause,
     parse_value_binding_clause_lexed,
 };
 use super::super::lexer::{

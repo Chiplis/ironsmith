@@ -105,6 +105,52 @@ impl OrTrigger {
             "Whenever {subject} enters or transforms into {destination}"
         ))
     }
+
+    fn this_or_another_enters_display(&self) -> Option<String> {
+        let [first, second] = self.triggers.as_slice() else {
+            return None;
+        };
+        let (this_enters, another_enters) = if let (Some(first_zone), Some(second_zone)) = (
+            first.downcast_ref::<ZoneChangeTrigger>(),
+            second.downcast_ref::<ZoneChangeTrigger>(),
+        ) {
+            if first_zone.this_object && !second_zone.this_object {
+                (first_zone, second_zone)
+            } else if second_zone.this_object && !first_zone.this_object {
+                (second_zone, first_zone)
+            } else {
+                return None;
+            }
+        } else {
+            return None;
+        };
+
+        let both_enter_battlefield = |zone_change: &ZoneChangeTrigger| {
+            zone_change.from == ZonePattern::Any
+                && zone_change.to == ZonePattern::Specific(Zone::Battlefield)
+                && zone_change.player == crate::triggers::PlayerRelation::Any
+                && zone_change.cause_filter.is_none()
+        };
+        if !both_enter_battlefield(this_enters)
+            || !both_enter_battlefield(another_enters)
+            || !another_enters.object_filter.other
+        {
+            return None;
+        }
+
+        let this_subject = this_enters.this_subject_text("creature");
+        let mut other_filter = another_enters.object_filter.clone();
+        other_filter.other = false;
+        let other_description = other_filter.description();
+        let other_subject = other_description
+            .strip_prefix("a ")
+            .or_else(|| other_description.strip_prefix("an "))
+            .map(str::to_string)
+            .unwrap_or(other_description);
+        Some(format!(
+            "Whenever {this_subject} or another {other_subject} enters"
+        ))
+    }
 }
 
 impl TriggerMatcher for OrTrigger {
@@ -146,18 +192,49 @@ impl TriggerMatcher for OrTrigger {
         if let Some(display) = self.self_enters_or_transforms_display() {
             return display;
         }
-        // Combine displays with "or", stripping leading "When"/"Whenever" from
-        // subsequent triggers to avoid "When X or When Y" → "When X or Y".
+        if let Some(display) = self.this_or_another_enters_display() {
+            return display;
+        }
         let displays: Vec<String> = self.triggers.iter().map(|t| t.display()).collect();
         let mut parts = vec![displays[0].clone()];
-        for d in &displays[1..] {
-            let stripped = d
+        for (idx, d) in displays[1..].iter().enumerate() {
+            let first_intro = displays[0]
                 .strip_prefix("When ")
-                .or_else(|| d.strip_prefix("Whenever "))
-                .unwrap_or(d);
-            parts.push(stripped.to_string());
+                .map(|_| "When")
+                .or_else(|| displays[0].strip_prefix("Whenever ").map(|_| "Whenever"));
+            let next_intro = d
+                .strip_prefix("When ")
+                .map(|_| "When")
+                .or_else(|| d.strip_prefix("Whenever ").map(|_| "Whenever"));
+            if self.triggers[idx + 1].intro_surface().is_some()
+                && first_intro.is_some()
+                && next_intro.is_some()
+                && first_intro != next_intro
+            {
+                let mut chars = d.chars();
+                let lowered = chars
+                    .next()
+                    .map(|first| first.to_lowercase().collect::<String>() + chars.as_str())
+                    .unwrap_or_default();
+                parts.push(lowered);
+            } else {
+                let stripped = d
+                    .strip_prefix("When ")
+                    .or_else(|| d.strip_prefix("Whenever "))
+                    .unwrap_or(d);
+                parts.push(stripped.to_string());
+            }
         }
-        parts.join(" or ")
+        let joiner = if parts
+            .iter()
+            .skip(1)
+            .any(|part| part.starts_with("when ") || part.starts_with("whenever "))
+        {
+            " and "
+        } else {
+            " or "
+        };
+        parts.join(joiner)
     }
 
     fn uses_snapshot(&self) -> bool {

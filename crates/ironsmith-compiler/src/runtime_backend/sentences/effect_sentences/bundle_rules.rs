@@ -512,9 +512,11 @@ fn bundle_strip_prefix_value<'a, T: Copy>(
     prefixes: &[(&[&str], T)],
 ) -> Option<(T, &'a [&'a str])> {
     prefixes.iter().find_map(|(prefix, value)| {
-        words
-            .starts_with(prefix)
-            .then_some((*value, &words[prefix.len()..]))
+        if words.starts_with(prefix) {
+            Some((*value, &words[prefix.len()..]))
+        } else {
+            None
+        }
     })
 }
 

@@ -997,6 +997,10 @@ pub(crate) fn parse_search_library_count_prefix_lexed(
             crate::cards::builders::IT_TAG,
         )));
         count_used = 2;
+    } else if token_slice_starts_with(count_tokens, &["up", "to", "x"]) {
+        count = ChoiceCount::up_to_dynamic_x();
+        search_mode = SearchSelectionMode::Optional;
+        count_used = 3;
     } else if token_slice_first_is(count_tokens, "all") {
         count = ChoiceCount::any_number();
         search_mode = SearchSelectionMode::AllMatching;

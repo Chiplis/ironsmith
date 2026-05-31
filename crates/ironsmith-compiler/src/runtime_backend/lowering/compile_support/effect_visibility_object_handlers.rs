@@ -1,5 +1,18 @@
 use super::*;
 
+fn mark_choose_effects_reveal(mut effects: Vec<Effect>) -> Vec<Effect> {
+    for effect in &mut effects {
+        let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() else {
+            continue;
+        };
+        if choose.reveal {
+            continue;
+        }
+        *effect = Effect::new(choose.clone().reveal());
+    }
+    effects
+}
+
 pub(super) fn compile_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom_of_library(
     player: PlayerAst,
     order: crate::cards::builders::LibraryBottomOrderAst,
@@ -177,6 +190,12 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 resolved_filter.zone = None;
             }
             normalize_hand_or_graveyard_cross_zone_filter(&mut resolved_filter);
+            let chooses_revealed_pool = ctx.last_revealed_tag.as_deref().is_some_and(|tag| {
+                resolved_filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.tag.as_str() == tag
+                        && matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
+                })
+            });
             let cross_zone_choices = hand_or_graveyard_choice_zones(&resolved_filter);
             if let Some(zones) = &cross_zone_choices {
                 strip_choice_zones_from_filter(&mut resolved_filter, zones);
@@ -184,7 +203,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             let followup_player = choose_followup_player_filter(&resolved_filter, &chooser)
                 .unwrap_or_else(|| chooser.clone());
             let chooses_tagged_pool = chooses_tagged_object_pool(&resolved_filter);
-            let (effects, choices) = if let Some(zones) = cross_zone_choices {
+            let (mut effects, choices) = if let Some(zones) = cross_zone_choices {
                 compile_choose_objects_across_zones_with_subject(
                     subject,
                     resolved_filter,
@@ -217,6 +236,9 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                     choice_zone,
                 )
             };
+            if chooses_revealed_pool {
+                effects = mark_choose_effects_reveal(effects);
+            }
             let extends_existing_it_choice_set = ctx
                 .last_object_tag
                 .as_deref()

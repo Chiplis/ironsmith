@@ -656,7 +656,15 @@ pub(crate) fn parse_equal_to_aggregate_filter_value(tokens: &[OwnedLexToken]) ->
     if let Some(value) = pending_aggregate_metric_value(aggregate, value_kind, object_words) {
         return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
     }
-    let filter = parse_object_filter(filter_tokens, false).ok()?;
+    let mut filter = parse_object_filter(filter_tokens, false).ok()?;
+    if object_words
+        .iter()
+        .any(|word| matches!(*word, "permanent" | "permanents"))
+        && filter.card_types.is_empty()
+        && filter.all_card_types.is_empty()
+    {
+        filter.card_types = ObjectFilter::permanent_card().card_types;
+    }
 
     match (aggregate, value_kind) {
         ("total", "power") => Some(Value::TotalPower(filter)),
@@ -756,7 +764,15 @@ pub(crate) fn parse_equal_to_number_of_filter_value_lexed(
         let filter = parse_object_filter_lexed(scope_tokens, false).ok()?;
         return Some(Value::ColorsAmong(filter));
     }
-    let filter = parse_object_filter_lexed(filter_tokens, false).ok()?;
+    let mut filter = parse_object_filter_lexed(filter_tokens, false).ok()?;
+    if filter_words
+        .iter()
+        .any(|word| matches!(*word, "permanent" | "permanents"))
+        && filter.card_types.is_empty()
+        && filter.all_card_types.is_empty()
+    {
+        filter.card_types = ObjectFilter::permanent_card().card_types;
+    }
     Some(Value::Count(filter).with_surface_hint(ValueSurfaceHint::EqualTo))
 }
 
@@ -773,7 +789,10 @@ pub(crate) fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value_lexed(
     if clause_words.at_is(number_word_idx, "the") {
         number_word_idx += 1;
     }
-    if !NUMBER_OF_PATTERN.matches_words(&clause_refs[number_word_idx..]) {
+    if !clause_refs
+        .get(number_word_idx..number_word_idx + 2)
+        .is_some_and(|words| NUMBER_OF_PATTERN.matches_words(words))
+    {
         return None;
     }
 
@@ -952,7 +971,15 @@ pub(crate) fn parse_equal_to_aggregate_filter_value_lexed(
     if let Some(value) = pending_aggregate_metric_value(aggregate, value_kind, object_words) {
         return Some(value);
     }
-    let filter = parse_object_filter_lexed(filter_tokens, false).ok()?;
+    let mut filter = parse_object_filter_lexed(filter_tokens, false).ok()?;
+    if object_words
+        .iter()
+        .any(|word| matches!(*word, "permanent" | "permanents"))
+        && filter.card_types.is_empty()
+        && filter.all_card_types.is_empty()
+    {
+        filter.card_types = ObjectFilter::permanent_card().card_types;
+    }
 
     match (aggregate, value_kind) {
         ("total", "power") => Some(Value::TotalPower(filter)),

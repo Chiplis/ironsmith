@@ -1187,6 +1187,18 @@ pub(crate) fn parse_gain_ability_sentence(
     let Some(gain_idx) = gain_idx else {
         return Ok(None);
     };
+    let gain_idx = if HAS_OR_HAVE_WORD_PATTERN.matches_word(word_list[gain_idx]) {
+        let after_has = &word_list[gain_idx + 1..];
+        if BASE_POWER_TOUGHNESS_PREFIX_PATTERN.matches_words(after_has) {
+            gain_find_any_phrase_start(after_has, SHARED_GAIN_TAIL_PATTERNS)
+                .map(|(_, shared_idx)| gain_idx + 1 + shared_idx + 1)
+                .unwrap_or(gain_idx)
+        } else {
+            gain_idx
+        }
+    } else {
+        gain_idx
+    };
     let Some(gain_token_idx) = token_index_for_word_index(tokens, gain_idx) else {
         return Ok(None);
     };

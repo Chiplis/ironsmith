@@ -1265,6 +1265,7 @@ fn compile_subject_verb_effect(
                 ctx.last_object_tag = Some(explicit.clone());
                 explicit
             };
+            ctx.last_revealed_tag = Some(resolved_tag.clone());
             Ok((
                 vec![Effect::new(crate::effects::RevealTaggedEffect::new(
                     resolved_tag,

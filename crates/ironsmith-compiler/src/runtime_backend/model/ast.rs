@@ -96,8 +96,19 @@ impl From<StaticAbility> for StaticAbilityAst {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TriggerIntroSurfaceAst {
+    When,
+    Whenever,
+    At,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum TriggerSpec {
+    WithIntro {
+        intro: TriggerIntroSurfaceAst,
+        trigger: Box<TriggerSpec>,
+    },
     StateBased {
         condition: PredicateAst,
         display: String,

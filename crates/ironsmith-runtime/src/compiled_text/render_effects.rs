@@ -28834,6 +28834,21 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(counter_spell) = effect.downcast_ref::<crate::effects::CounterEffect>() {
+        if let ChooseSpec::Target(inner) = &counter_spell.target
+            && let ChooseSpec::Object(filter) = inner.as_ref()
+            && filter.any_of.len() == 2
+            && filter.any_of.iter().any(|candidate| {
+                candidate.zone == Some(Zone::Stack)
+                    && candidate.stack_kind == Some(StackObjectKind::TriggeredAbility)
+            })
+            && filter.any_of.iter().any(|candidate| {
+                candidate.zone == Some(Zone::Stack)
+                    && candidate.stack_kind == Some(StackObjectKind::Spell)
+                    && candidate.colorless
+            })
+        {
+            return "Counter target triggered ability or colorless spell".to_string();
+        }
         return format!("Counter {}", describe_choose_spec(&counter_spell.target));
     }
     if let Some(unless_pays) = effect.downcast_ref::<crate::effects::UnlessPaysEffect>() {
@@ -33432,7 +33447,10 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "looked")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "chosen")
             || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "searched");
-        let object_text = if grant_play_tagged.tag.as_str().starts_with("targeted_")
+        let helper_exiled = crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "exiled");
+        let object_text = if grant_play_tagged.allow_land && helper_exiled {
+            "those cards".to_string()
+        } else if grant_play_tagged.tag.as_str().starts_with("targeted_")
             || grant_play_tagged.tag.as_str().starts_with("__source_")
             || grant_play_tagged.tag.as_str() == "__it__"
             || matches!(
@@ -33485,6 +33503,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             && grant_play_tagged.duration == crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
             && matches!(grant_play_tagged.player, PlayerFilter::You)
         {
+            if helper_exiled {
+                return "you may cast that card this turn".to_string();
+            }
             let cards_text = if grant_play_tagged.tag.as_str() == "exiled"
                 || crate::cards::is_sentence_helper_tag(grant_play_tagged.tag.as_str(), "exiled")
             {
@@ -33544,12 +33565,19 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 grant_tagged_spell_free_cast.tag.as_str(),
                 "searched",
             );
-        let object_text = if helper_tag {
+        let helper_exiled =
+            crate::cards::is_sentence_helper_tag(grant_tagged_spell_free_cast.tag.as_str(), "exiled")
+                || grant_tagged_spell_free_cast.tag.as_str() == "exiled";
+        let object_text = if helper_exiled {
+            "those exiled cards"
+        } else if helper_tag {
             "that card"
         } else {
             "those spells"
         };
-        let cost_text = if helper_tag {
+        let cost_text = if helper_exiled {
+            "their mana costs"
+        } else if helper_tag {
             "its mana cost"
         } else {
             "their mana costs"

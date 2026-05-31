@@ -3119,7 +3119,7 @@ CardDefinition {
         assert_eq!(
             fallback_snapshot.compiled_text.as_deref(),
             Some(
-                "Reach\nThe allagan eye — Whenever one or more a creature or artifact you control other than this is put into a graveyard from the battlefield, draw a card. This ability triggers only once each turn."
+                "Reach\nThe allagan eye — Whenever one or more other creature or artifact you control is put into a graveyard from the battlefield, draw a card. This ability triggers only once each turn."
             )
         );
     }
@@ -3827,7 +3827,7 @@ CardDefinition {
             .expect("stored compiled text");
         assert_eq!(
             compiled,
-            "Reach\nThe allagan eye — Whenever one or more a creature or artifact you control other than this is put into a graveyard from the battlefield, draw a card. This ability triggers only once each turn."
+            "Reach\nThe allagan eye — Whenever one or more other creature or artifact you control is put into a graveyard from the battlefield, draw a card. This ability triggers only once each turn."
         );
         let _ = fs::remove_file(path);
     }

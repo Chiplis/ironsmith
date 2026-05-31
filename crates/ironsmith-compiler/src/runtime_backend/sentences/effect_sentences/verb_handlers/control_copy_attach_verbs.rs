@@ -37,9 +37,9 @@ const CCA_DESTINATION_IGNORED_WORD_PATTERN: ClauseShape<'static> =
 const CCA_ATTACHED_TO_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["attached", "to"]);
 const CCA_UNDER_YOUR_CONTROL_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["under", "your", "control"]);
+    clause_shape!(prefix & ["under", "your", "control"]);
 const CCA_OWNER_CONTROL_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
+    prefix_any
         & [
             &["under", "its", "owners", "control"],
             &["under", "his", "owners", "control"],
@@ -895,6 +895,17 @@ pub(crate) fn parse_put_into_hand(
             .first()
             .is_some_and(|token| CCA_ATTACHED_WORD_PATTERN.matches_token(token))
         {
+            if target_tokens
+                .first()
+                .is_some_and(|token| CCA_ALL_OR_EACH_WORD_PATTERN.matches_token(token))
+            {
+                let filter = parse_object_filter(&target_tokens[1..], false)?;
+                return Ok(EffectAst::subject_verb_return_all_to_battlefield(
+                    filter,
+                    battlefield_tapped,
+                    battlefield_controller,
+                ));
+            }
             let mut rewritten = target_tokens;
             rewritten.push(OwnedLexToken::word("onto".to_string(), tokens[0].span()));
             rewritten.extend_from_slice(&tokens[1..idx]);

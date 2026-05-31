@@ -72,6 +72,9 @@ pub(super) fn infer_triggered_ability_functional_zones(
     normalized_line: &str,
 ) -> Vec<Zone> {
     let mut zones = match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => {
+            return infer_triggered_ability_functional_zones(trigger, normalized_line);
+        }
         TriggerSpec::YouCastThisSpell => vec![Zone::Stack],
         TriggerSpec::KeywordActionFromSource {
             action: crate::events::KeywordActionKind::Cycle,
@@ -115,6 +118,7 @@ pub(super) fn infer_triggered_ability_functional_zones(
 
 fn trigger_references_attached_object(trigger: &TriggerSpec) -> bool {
     match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => trigger_references_attached_object(trigger),
         TriggerSpec::PutIntoGraveyard(filter) | TriggerSpec::PutIntoGraveyardOneOrMore(filter) => {
             filter_references_tag(filter, "enchanted") || filter_references_tag(filter, "equipped")
         }

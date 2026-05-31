@@ -248,9 +248,13 @@ fn dispatch_strip_prefix_value<'a>(
     words: &'a [&'a str],
     phrases: &[&[&str]],
 ) -> Option<&'a [&'a str]> {
-    phrases
-        .iter()
-        .find_map(|phrase| words.starts_with(phrase).then_some(&words[phrase.len()..]))
+    phrases.iter().find_map(|phrase| {
+        if words.starts_with(phrase) {
+            Some(&words[phrase.len()..])
+        } else {
+            None
+        }
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -169,12 +169,35 @@ pub(crate) fn describe_player_filter_possessive(filter: &PlayerFilter) -> String
 ///
 /// This struct provides factory methods for creating common trigger types
 /// and implements the TriggerMatcher trait by delegating to the inner matcher.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TriggerIntroSurface {
+    When,
+    Whenever,
+    At,
+}
+
+impl TriggerIntroSurface {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::When => "When",
+            Self::Whenever => "Whenever",
+            Self::At => "At",
+        }
+    }
+}
+
 #[derive(Debug)]
-pub struct Trigger(pub Arc<dyn TriggerMatcher>);
+pub struct Trigger {
+    matcher: Arc<dyn TriggerMatcher>,
+    intro_surface: Option<TriggerIntroSurface>,
+}
 
 impl Clone for Trigger {
     fn clone(&self) -> Self {
-        Self(Arc::clone(&self.0))
+        Self {
+            matcher: Arc::clone(&self.matcher),
+            intro_surface: self.intro_surface,
+        }
     }
 }
 
@@ -187,43 +210,63 @@ impl PartialEq for Trigger {
 impl Trigger {
     /// Create a new Trigger wrapping a TriggerMatcher implementation.
     pub fn new<T: TriggerMatcher + 'static>(matcher: T) -> Self {
-        Self(Arc::new(matcher))
+        Self {
+            matcher: Arc::new(matcher),
+            intro_surface: None,
+        }
+    }
+
+    pub fn with_intro_surface(mut self, intro: TriggerIntroSurface) -> Self {
+        self.intro_surface = Some(intro);
+        self
+    }
+
+    pub fn intro_surface(&self) -> Option<TriggerIntroSurface> {
+        self.intro_surface
     }
 
     /// Check if this trigger matches a game event.
     pub fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
-        self.0.matches(event, ctx)
+        self.matcher.matches(event, ctx)
     }
 
     /// Get the display text for this trigger.
     pub fn display(&self) -> String {
-        self.0.display()
+        let display = self.matcher.display();
+        let Some(intro) = self.intro_surface else {
+            return display;
+        };
+        ["Whenever ", "When ", "At "]
+            .into_iter()
+            .find_map(|prefix| display.strip_prefix(prefix))
+            .map(|rest| format!("{} {rest}", intro.as_str()))
+            .unwrap_or(display)
     }
 
     pub fn downcast_ref<T: TriggerMatcher + 'static>(&self) -> Option<&T> {
-        (self.0.as_ref() as &dyn std::any::Any).downcast_ref::<T>()
+        (self.matcher.as_ref() as &dyn std::any::Any).downcast_ref::<T>()
     }
 
     /// Whether this trigger uses snapshot-based matching.
     pub fn uses_snapshot(&self) -> bool {
-        self.0.uses_snapshot()
+        self.matcher.uses_snapshot()
     }
 
     pub fn trigger_count(&self, event: &TriggerEvent) -> u32 {
-        self.0.trigger_count(event)
+        self.matcher.trigger_count(event)
     }
 
     pub fn trigger_count_with_context(&self, event: &TriggerEvent, ctx: &TriggerContext) -> u32 {
-        self.0.trigger_count_with_context(event, ctx)
+        self.matcher.trigger_count_with_context(event, ctx)
     }
 
     pub fn event_value_amount(&self, event: &TriggerEvent, ctx: &TriggerContext) -> Option<i32> {
-        self.0.event_value_amount(event, ctx)
+        self.matcher.event_value_amount(event, ctx)
     }
 
     /// Saga chapter numbers for saga chapter triggers.
     pub fn saga_chapters(&self) -> Option<&[u32]> {
-        self.0.saga_chapters()
+        self.matcher.saga_chapters()
     }
 
     // === Zone Change Triggers ===
@@ -1115,27 +1158,27 @@ impl Trigger {
 
 impl TriggerMatcher for Trigger {
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
-        self.0.matches(event, ctx)
+        self.matcher.matches(event, ctx)
     }
 
     fn display(&self) -> String {
-        self.0.display()
+        Trigger::display(self)
     }
 
     fn uses_snapshot(&self) -> bool {
-        self.0.uses_snapshot()
+        self.matcher.uses_snapshot()
     }
 
     fn trigger_count(&self, event: &TriggerEvent) -> u32 {
-        self.0.trigger_count(event)
+        self.matcher.trigger_count(event)
     }
 
     fn trigger_count_with_context(&self, event: &TriggerEvent, ctx: &TriggerContext) -> u32 {
-        self.0.trigger_count_with_context(event, ctx)
+        self.matcher.trigger_count_with_context(event, ctx)
     }
 
     fn event_value_amount(&self, event: &TriggerEvent, ctx: &TriggerContext) -> Option<i32> {
-        self.0.event_value_amount(event, ctx)
+        self.matcher.event_value_amount(event, ctx)
     }
 }
 

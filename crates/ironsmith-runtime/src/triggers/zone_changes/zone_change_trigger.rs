@@ -275,19 +275,21 @@ impl ZoneChangeTrigger {
         }
 
         fn subject_description_for_zone_change(filter: &ObjectFilter) -> String {
-            if filter.other && !subject_is_always_creature(filter) {
+            if filter.other {
                 let mut explicit_other = filter.clone();
                 explicit_other.other = false;
-                return format!("{} other than this", explicit_other.description());
-            }
-            if filter.other && subject_is_always_creature(filter) {
-                let mut explicit_other = filter.clone();
-                explicit_other.other = false;
-                let subject = explicit_other
-                    .description()
+                let description = explicit_other.description();
+                if !description.contains("creature") {
+                    return format!("{description} other than this");
+                }
+                let mut subject = description
                     .strip_prefix("a ")
+                    .or_else(|| description.strip_prefix("an "))
                     .map(str::to_string)
-                    .unwrap_or_else(|| explicit_other.description());
+                    .unwrap_or(description);
+                if subject == "object" {
+                    subject = "object other than this".to_string();
+                }
                 return format!("another {subject}");
             }
             filter.description()

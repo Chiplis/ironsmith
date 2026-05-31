@@ -152,7 +152,6 @@ const REPLACE_ADDITIONAL_COMBAT_AFTER_THIS_PHASE_PATTERN: ClauseShape<'static> =
                 "this",
                 "combat",
                 "phase",
-                "phase",
                 "there",
                 "is",
                 "an",
@@ -239,23 +238,43 @@ const REPLACE_TWO_ADDITIONAL_COMBATS_PATTERN: ClauseShape<'static> = clause_shap
         ]
 );
 const REPLACE_ADDITIONAL_COMBAT_THEN_MAIN_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact
+    exact_any
         & [
-            "after",
-            "this",
-            "phase",
-            "there",
-            "is",
-            "an",
-            "additional",
-            "combat",
-            "phase",
-            "followed",
-            "by",
-            "an",
-            "additional",
-            "main",
-            "phase",
+            &[
+                "after",
+                "this",
+                "phase",
+                "there",
+                "is",
+                "an",
+                "additional",
+                "combat",
+                "phase",
+                "followed",
+                "by",
+                "an",
+                "additional",
+                "main",
+                "phase",
+            ],
+            &[
+                "after",
+                "this",
+                "main",
+                "phase",
+                "there",
+                "is",
+                "an",
+                "additional",
+                "combat",
+                "phase",
+                "followed",
+                "by",
+                "an",
+                "additional",
+                "main",
+                "phase",
+            ],
         ]
 );
 

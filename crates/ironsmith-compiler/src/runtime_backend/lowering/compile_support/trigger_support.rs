@@ -3,6 +3,7 @@ use crate::cards::builders::{
 };
 use crate::effect::{Effect, EventValueSpec};
 use crate::filter::ObjectRef;
+use crate::runtime_backend::ast::TriggerIntroSurfaceAst;
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::triggers::Trigger;
 
@@ -10,6 +11,13 @@ use super::LoweredEffects;
 
 pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
     match trigger {
+        TriggerSpec::WithIntro { intro, trigger } => {
+            compile_trigger_spec(*trigger).with_intro_surface(match intro {
+                TriggerIntroSurfaceAst::When => crate::triggers::TriggerIntroSurface::When,
+                TriggerIntroSurfaceAst::Whenever => crate::triggers::TriggerIntroSurface::Whenever,
+                TriggerIntroSurfaceAst::At => crate::triggers::TriggerIntroSurface::At,
+            })
+        }
         TriggerSpec::StateBased { display, .. } => Trigger::state_based(display),
         TriggerSpec::ThisAttacks => Trigger::this_attacks(),
         TriggerSpec::ThisAttacksWithNOthers {
@@ -311,9 +319,22 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         ),
         TriggerSpec::SpellCopied { filter, copier } => Trigger::spell_copied(filter, copier),
         TriggerSpec::EntersBattlefield {
-            filter,
+            mut filter,
             cause_filter,
-        } => Trigger::enters_battlefield(filter, cause_filter),
+        } => {
+            if filter.source {
+                filter.source = false;
+                Trigger::new(
+                    crate::triggers::zone_changes::ZoneChangeTrigger::new()
+                        .to(crate::zone::Zone::Battlefield)
+                        .filter(filter)
+                        .this()
+                        .cause_filter(cause_filter),
+                )
+            } else {
+                Trigger::enters_battlefield(filter, cause_filter)
+            }
+        }
         TriggerSpec::EntersBattlefieldOneOrMore {
             filter,
             cause_filter,
@@ -441,6 +462,7 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
 
 pub(crate) fn ensure_concrete_trigger_spec(trigger: &TriggerSpec) -> Result<(), CardTextError> {
     match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => ensure_concrete_trigger_spec(trigger),
         TriggerSpec::Either(left, right) => {
             ensure_concrete_trigger_spec(left)?;
             ensure_concrete_trigger_spec(right)?;
@@ -452,6 +474,7 @@ pub(crate) fn ensure_concrete_trigger_spec(trigger: &TriggerSpec) -> Result<(), 
 
 fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
     match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => trigger_binds_iterated_player(trigger),
         TriggerSpec::SpellCast { .. }
         | TriggerSpec::SpellCopied { .. }
         | TriggerSpec::PlayerLosesLife(_)
@@ -500,7 +523,9 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
 
 pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<PlayerFilter> {
     match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => inferred_trigger_player_filter(trigger),
         TriggerSpec::StateBased { .. } | TriggerSpec::DayNightChanged => None,
+        TriggerSpec::EntersBattlefield { filter, .. } if filter.source => None,
         TriggerSpec::EntersBattlefield { .. }
         | TriggerSpec::EntersBattlefieldOneOrMore { .. }
         | TriggerSpec::EntersBattlefieldFromZone { .. }
@@ -602,6 +627,7 @@ pub(crate) fn trigger_binds_player_reference_context(trigger: &TriggerSpec) -> b
 pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventValueSpec) -> bool {
     match spec {
         EventValueSpec::Amount | EventValueSpec::LifeAmount => match trigger {
+            TriggerSpec::WithIntro { trigger, .. } => trigger_supports_event_value(trigger, spec),
             TriggerSpec::YouGainLife
             | TriggerSpec::YouGainLifeDuringTurn(_)
             | TriggerSpec::PlayerLosesLife(_)
@@ -639,6 +665,7 @@ pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventVa
             _ => false,
         },
         EventValueSpec::BlockersBeyondFirst { .. } => match trigger {
+            TriggerSpec::WithIntro { trigger, .. } => trigger_supports_event_value(trigger, spec),
             TriggerSpec::ThisBecomesBlocked => true,
             TriggerSpec::Either(left, right) => {
                 trigger_supports_event_value(left, spec)
