@@ -39480,10 +39480,15 @@ fn parse_oracle_expand_the_sphere_compiles_strictly_and_renders_difference_claus
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
-fn execute_expand_the_sphere_with_library(land_count: usize) -> (usize, u32, u32) {
-    struct ChooseMaximum;
+fn execute_expand_the_sphere_with_library_and_choice(
+    land_count: usize,
+    choice_limit: Option<usize>,
+) -> (usize, u32, u32) {
+    struct ChooseLimited {
+        limit: Option<usize>,
+    }
 
-    impl crate::decision::DecisionMaker for ChooseMaximum {
+    impl crate::decision::DecisionMaker for ChooseLimited {
         fn decide_objects(
             &mut self,
             _game: &crate::game_state::GameState,
@@ -39492,7 +39497,8 @@ fn execute_expand_the_sphere_with_library(land_count: usize) -> (usize, u32, u32
             let count = ctx
                 .max
                 .unwrap_or(ctx.candidates.len())
-                .min(ctx.candidates.len());
+                .min(ctx.candidates.len())
+                .min(self.limit.unwrap_or(usize::MAX));
             ctx.candidates
                 .iter()
                 .take(count)
@@ -39546,7 +39552,9 @@ fn execute_expand_the_sphere_with_library(land_count: usize) -> (usize, u32, u32
         game.create_object_from_definition(&builder.build(), alice, Zone::Library);
     }
 
-    let mut dm = ChooseMaximum;
+    let mut dm = ChooseLimited {
+        limit: choice_limit,
+    };
     let mut ctx = crate::effects::ExecutionContext::new(source_id, alice, &mut dm);
     for effect in def.spell_effect.as_ref().expect("Expand the Sphere spell effects") {
         crate::effects::execute_effect(&mut game, effect, &mut ctx)
@@ -39574,12 +39582,29 @@ fn execute_expand_the_sphere_with_library(land_count: usize) -> (usize, u32, u32
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn execute_expand_the_sphere_with_library(land_count: usize) -> (usize, u32, u32) {
+    execute_expand_the_sphere_with_library_and_choice(land_count, None)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn expand_the_sphere_two_lands_enter_and_do_not_proliferate() {
     let (lands, poison, counters) = execute_expand_the_sphere_with_library(2);
     assert_eq!(lands, 2, "two eligible lands should enter tapped");
     assert_eq!(poison, 1, "putting two lands should not proliferate");
     assert_eq!(counters, 1, "putting two lands should not add permanent counters");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn expand_the_sphere_choosing_fewer_lands_proliferates_for_choice_shortfall() {
+    let (lands, poison, counters) = execute_expand_the_sphere_with_library_and_choice(2, Some(1));
+    assert_eq!(lands, 1, "only the chosen land should enter tapped");
+    assert_eq!(poison, 2, "choosing one fewer land should proliferate once");
+    assert_eq!(
+        counters, 2,
+        "choosing one fewer land should add one permanent counter"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
