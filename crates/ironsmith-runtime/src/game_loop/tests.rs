@@ -776,6 +776,148 @@ fn create_vanilla_creature(
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn vastwood_animist_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_956), "Vastwood Animist")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elf, Subtype::Shaman, Subtype::Ally])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "{T}: Target land you control becomes an X/X Elemental creature until end of turn, where X is the number of Allies you control. It's still a land.",
+        )
+        .expect("Vastwood Animist should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_test_land(game: &mut GameState, name: &str, controller: PlayerId) -> ObjectId {
+    let card = CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Land])
+        .build();
+    game.create_object_from_card(&card, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn vastwood_animist_activation_animates_only_your_land_using_ally_count_until_end_of_turn() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let animist_def = vastwood_animist_definition();
+    let animist_id = game.create_object_from_definition(&animist_def, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(animist_id);
+    let other_ally = CardBuilder::new(CardId::new(), "Ally Helper")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Ally])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    game.create_object_from_card(&other_ally, alice, Zone::Battlefield);
+    let _opponent_land_id = create_test_land(&mut game, "Bob's Forest", bob);
+
+    assert!(
+        !crate::decision::compute_legal_actions(&game, alice)
+            .into_iter()
+            .any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, .. }
+                    if source == animist_id
+            )),
+        "Vastwood Animist should not be activatable without a land you control to target"
+    );
+
+    let land_id = create_test_land(&mut game, "Alice's Forest", alice);
+    assert!(!game.current_is_creature(land_id));
+
+    let ability_index = game
+        .object(animist_id)
+        .expect("Vastwood Animist should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Vastwood Animist should have an activated ability");
+    let activate_action = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == animist_id && *idx == ability_index
+            )
+        })
+        .expect("Vastwood Animist activation should be legal with a land you control");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Vastwood Animist activation should start and pay the tap cost");
+    match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::Targets(_),
+        ) => {}
+        other => panic!("expected target selection for Vastwood Animist, got {other:?}"),
+    }
+
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Object(land_id)]),
+        &mut dm,
+    )
+    .expect("choosing a land you control should complete Vastwood Animist activation");
+    assert!(
+        game.is_tapped(animist_id),
+        "activation should tap Vastwood Animist"
+    );
+    resolve_stack_entry(&mut game).expect("Vastwood Animist ability should resolve");
+
+    assert!(game.current_is_creature(land_id));
+    assert!(
+        game.current_card_types(land_id).is_some_and(|types| {
+            types.contains(&CardType::Land) && types.contains(&CardType::Creature)
+        }),
+        "animated land should remain a land and gain creature"
+    );
+    assert!(
+        game.current_has_subtype(land_id, Subtype::Elemental),
+        "animated land should become an Elemental"
+    );
+    assert_eq!(
+        game.current_power(land_id),
+        Some(2),
+        "X should be the number of Allies Alice controls at resolution"
+    );
+    assert_eq!(game.current_toughness(land_id), Some(2));
+
+    execute_cleanup_step(&mut game);
+    game.refresh_continuous_state();
+
+    assert!(!game.current_is_creature(land_id));
+    assert_eq!(game.current_power(land_id), None);
+    assert!(
+        game.current_card_types(land_id)
+            .is_some_and(|types| types.contains(&CardType::Land)
+                && !types.contains(&CardType::Creature)),
+        "animation should expire at end of turn while leaving the permanent a land"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn cho_arrim_alchemist_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(19647), "Cho-Arrim Alchemist")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White]]))

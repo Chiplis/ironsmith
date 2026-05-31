@@ -1,5 +1,5 @@
 use super::super::super::keyword_static::{
-    keyword_action_to_static_ability, parse_ability_line, parse_pt_modifier,
+    keyword_action_to_static_ability, parse_ability_line, parse_pt_modifier_values,
 };
 use super::super::super::lexer::{
     LexedClause, OwnedLexToken, word_slice_eq, word_slice_eq_any, word_slice_starts_with,
@@ -284,12 +284,12 @@ pub(crate) fn parse_become_clause(
     }
 
     if let Some(pt_word) = become_words.first().copied()
-        && let Ok((power, toughness)) = parse_pt_modifier(pt_word)
+        && let Ok((power, toughness)) = parse_pt_modifier_values(pt_word)
     {
         if subject_targets_base_pt || become_words.len() == 1 {
             return Ok(EffectAst::subject_verb_set_base_power_toughness(
-                Value::Fixed(power),
-                Value::Fixed(toughness),
+                power,
+                toughness,
                 target,
                 duration,
             ));
@@ -374,8 +374,8 @@ pub(crate) fn parse_become_clause(
             };
             if !all_prefix_words_supported || !suffix_supported {
                 return Ok(EffectAst::subject_verb_become_base_pt_creature(
-                    Value::Fixed(power),
-                    Value::Fixed(toughness),
+                    power,
+                    toughness,
                     target,
                     vec![CardType::Creature],
                     Vec::new(),
@@ -386,8 +386,8 @@ pub(crate) fn parse_become_clause(
                 ));
             }
             return Ok(EffectAst::subject_verb_become_base_pt_creature(
-                Value::Fixed(power),
-                Value::Fixed(toughness),
+                power,
+                toughness,
                 target,
                 card_types,
                 subtypes,
@@ -404,8 +404,8 @@ pub(crate) fn parse_become_clause(
             parse_become_creature_descriptor_words(descriptor_words)
     {
         return Ok(EffectAst::subject_verb_become_base_pt_creature(
-            Value::Fixed(power),
-            Value::Fixed(toughness),
+            power,
+            toughness,
             target,
             card_types,
             subtypes,

@@ -40254,6 +40254,22 @@ fn xanthic_statue_activation_sets_base_pt_and_trample_on_source_artifact() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn vastwood_animist_strict_parse_and_compiled_text_include_dynamic_land_animation() {
+    let def = parse_oracle_card_definition("Vastwood Animist");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower
+            .contains("target land you control becomes an x/x elemental creature until end of turn")
+            && rendered_lower.contains("where x is the number of allies you control")
+            && rendered_lower.contains("it's still a land"),
+        "expected Vastwood Animist compiled text to preserve dynamic X/X land animation, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_oran_rief_the_vastwood_strict_regression() {
     assert_oracle_card_parses_strict("Oran-Rief, the Vastwood");
 }
