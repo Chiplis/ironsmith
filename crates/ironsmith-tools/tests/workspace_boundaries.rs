@@ -213,6 +213,7 @@ fn migrated_effect_payloads_are_core_owned() {
         "SetBasePowerToughnessEffect",
         "ShuffleLibraryEffect",
         "ShuffleObjectsIntoLibraryEffect",
+        "SneakCostEffect",
         "TagAttachedToSourceEffect",
         "TagTriggeringObjectEffect",
         "TransformEffect",

@@ -39536,6 +39536,39 @@ fn assert_oracle_card_fails_strict(name: &str) {
 }
 
 #[test]
+fn michelangelos_technique_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Michelangelo's Technique");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let ability_debug = format!("{:#?}", def.spell_effect);
+
+    assert!(
+        def.alternative_casts
+            .iter()
+            .any(|method| method.name() == "Sneak"
+                && method.non_mana_costs().iter().any(|cost| cost
+                    .effect_ref()
+                    .and_then(|effect| {
+                        effect.downcast_ref::<crate::effects::SneakCostEffect>()
+                    })
+                    .is_some())),
+        "Michelangelo's Technique should expose Sneak as an alternative cost with an unblocked-attacker return cost"
+    );
+    assert!(
+        ability_debug.contains("ChooseObjectsEffect")
+            && ability_debug.contains("max_total_mana_value: Some")
+            && ability_debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+        "Michelangelo's Technique should structurally keep the looked-card selection, total mana-value cap, and remainder-bottom effects, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains("Sneak {3}{G}.")
+            && rendered.contains(
+                "Put up to two creature cards with total mana value 6 or less from among them onto the battlefield and the rest on the bottom of your library in a random order"
+            ),
+        "Michelangelo's Technique compiled text should preserve Sneak and the total mana-value selection text, got {rendered}"
+    );
+}
+
+#[test]
 fn alena_kessig_trapper_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("Alena, Kessig Trapper");
     let rendered = canonical_compiled_lines(&def).join(" ");

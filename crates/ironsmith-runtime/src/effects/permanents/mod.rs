@@ -211,7 +211,7 @@ pub use flip::FlipEffect;
 pub use grant_object_ability::GrantObjectAbilityEffect;
 pub use meld::MeldEffect;
 pub use monstrosity::MonstrosityEffect;
-pub use ninjutsu::{NinjutsuCostEffect, NinjutsuEffect};
+pub use ninjutsu::{NinjutsuCostEffect, NinjutsuEffect, SneakCostEffect};
 pub use phase_in::PhaseInEffect;
 pub use phase_out::PhaseOutEffect;
 pub use put_sticker::PutStickerEffect;

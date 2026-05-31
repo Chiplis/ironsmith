@@ -737,6 +737,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { .. }
         | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. }
         | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
+        | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldRestOnBottomOfLibrary { .. }
         | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
         | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary { .. }
         | SubjectVerbActionAst::RetargetStackObject { .. }
@@ -992,6 +993,7 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
                 filter_references_tag(filter, IT_TAG)
             }
             SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { .. }
+            | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary { .. } => true,
             SubjectVerbActionAst::PreventDamageToTargetPutCounters {

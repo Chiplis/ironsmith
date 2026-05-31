@@ -1547,6 +1547,7 @@ pub struct ChooseObjectsEffect {
     pub search_mode: SearchSelectionMode,
     pub top_only: bool,
     pub replace_tagged_objects: bool,
+    pub max_total_mana_value: Option<u32>,
 }
 
 impl ChooseObjectsEffect {
@@ -1570,6 +1571,7 @@ impl ChooseObjectsEffect {
             search_mode: SearchSelectionMode::Exact,
             top_only: false,
             replace_tagged_objects: false,
+            max_total_mana_value: None,
         }
     }
 
@@ -1603,6 +1605,11 @@ impl ChooseObjectsEffect {
 
     pub fn with_count_value_opt(mut self, count_value: Option<Value>) -> Self {
         self.count_value = count_value;
+        self
+    }
+
+    pub fn with_max_total_mana_value(mut self, value: u32) -> Self {
+        self.max_total_mana_value = Some(value);
         self
     }
 
@@ -3753,6 +3760,15 @@ impl UnearthEffect {
 pub struct NinjutsuCostEffect;
 
 impl NinjutsuCostEffect {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct SneakCostEffect;
+
+impl SneakCostEffect {
     pub fn new() -> Self {
         Self
     }

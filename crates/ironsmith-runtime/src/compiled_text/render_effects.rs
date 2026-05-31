@@ -3425,7 +3425,113 @@ fn describe_choose_color_then_chosen_color_mana(effects: &[&Effect]) -> Option<S
     None
 }
 
+fn describe_look_choose_to_battlefield_rest_bottom_direct(effects: &[Effect]) -> Option<String> {
+    let [look_effect, choose_effect, move_effect, remainder_effect] = effects else {
+        return None;
+    };
+    let look = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if look.player != PlayerFilter::You
+        || choose.chooser != PlayerFilter::You
+        || choose.is_search
+        || choose_primary_zone(choose) != Some(Zone::Library)
+        || !choose.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag == look.tag
+        })
+    {
+        return None;
+    }
+
+    let (kept_tag, put) = if let Some(tag_all) =
+        move_effect.downcast_ref::<crate::effects::TagAllEffect>()
+    {
+        (
+            &tag_all.tag,
+            tag_all
+                .effect
+                .downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()?,
+        )
+    } else {
+        let tagged = move_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+        (
+            &tagged.tag,
+            tagged
+                .effect
+                .downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()?,
+        )
+    };
+    if put.tapped
+        || put.controller != PlayerFilter::You
+        || !matches!(put.target.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+    {
+        return None;
+    }
+
+    let remainder = remainder_effect
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+    if remainder.tag != look.tag
+        || remainder.keep_tagged.as_ref() != Some(kept_tag)
+        || remainder.player != PlayerFilter::You
+    {
+        return None;
+    }
+
+    let order_text = match remainder.order {
+        crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
+        crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => "",
+    };
+    let mut filter = choose.filter.clone();
+    filter.zone = None;
+    filter.tagged_constraints.retain(|constraint| {
+        !(constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag == look.tag)
+    });
+    let mut filter_text = filter.description();
+    if !filter_text.contains("card") {
+        if let Some(rest) = filter_text.strip_prefix("creature with ") {
+            filter_text = if let Some(limit) = choose.max_total_mana_value {
+                let rest = rest.trim_start_matches("mana value ");
+                if rest == format!("{limit} or less") {
+                    format!("creature cards with total mana value {rest}")
+                } else {
+                    format!("creature cards with total mana value {limit} or less")
+                }
+            } else {
+                format!("creature cards with {rest}")
+            };
+        } else {
+            filter_text.push_str(if choose.count.max == Some(1) {
+                " card"
+            } else {
+                " cards"
+            });
+        }
+    }
+    let selection = if choose.count.max == Some(1) {
+        with_indefinite_article(&filter_text)
+    } else {
+        let count_text = match (choose.count.min, choose.count.max) {
+            (0, Some(max)) => {
+                let max_text = number_word(max as i32).unwrap_or_else(|| max.to_string());
+                format!("up to {max_text}")
+            }
+            _ => describe_choice_count(&choose.count),
+        };
+        format!("{count_text} {filter_text}")
+    };
+
+    Some(format!(
+        "{}. Put {selection} from among them onto the battlefield and the rest on the bottom of your library{order_text}",
+        describe_effect(look_effect)
+    ))
+}
+
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
+    if let Some(compact) = describe_look_choose_to_battlefield_rest_bottom_direct(effects) {
+        return compact;
+    }
+
     if let Some(compact) = describe_structural_multisentence_effect_list(effects) {
         return compact;
     }
@@ -10793,6 +10899,111 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             ))
         }
 
+        fn describe_look_choose_to_battlefield_rest_bottom(
+            effects: &[&Effect],
+        ) -> Option<(String, usize)> {
+            let look = effects
+                .first()?
+                .downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+            let choose = effects
+                .get(1)?
+                .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+            if look.player != PlayerFilter::You
+                || choose.chooser != PlayerFilter::You
+                || choose.is_search
+                || choose_primary_zone(choose) != Some(Zone::Library)
+                || !choose_references_revealed_tag(choose, &look.tag)
+            {
+                return None;
+            }
+
+            let move_effect = effects.get(2)?;
+            let (kept_tag, put) = if let Some(tag_all) =
+                move_effect.downcast_ref::<crate::effects::TagAllEffect>()
+            {
+                (
+                    &tag_all.tag,
+                    tag_all
+                        .effect
+                        .downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()?,
+                )
+            } else {
+                let tagged = move_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+                (
+                    &tagged.tag,
+                    tagged
+                        .effect
+                        .downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()?,
+                )
+            };
+            if put.tapped
+                || put.controller != PlayerFilter::You
+                || !matches!(put.target.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+            {
+                return None;
+            }
+
+            let remainder = effects
+                .get(3)?
+                .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+            if remainder.tag != look.tag
+                || remainder.keep_tagged.as_ref() != Some(kept_tag)
+                || remainder.player != PlayerFilter::You
+            {
+                return None;
+            }
+
+            let order_text = match remainder.order {
+                crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
+                crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => "",
+            };
+            let mut filter = choose.filter.clone();
+            filter.zone = None;
+            filter.tagged_constraints.retain(|constraint| {
+                !(constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    && constraint.tag == look.tag)
+            });
+            let mut filter_text = filter.description();
+            if !filter_text.contains("card") {
+                if let Some(rest) = filter_text.strip_prefix("creature with ") {
+                    filter_text = if choose.max_total_mana_value.is_some() {
+                        format!(
+                            "creature cards with total {}",
+                            rest.trim_start_matches("mana value ")
+                        )
+                    } else {
+                        format!("creature cards with {rest}")
+                    };
+                } else {
+                    filter_text.push_str(if choose.count.max == Some(1) {
+                        " card"
+                    } else {
+                        " cards"
+                    });
+                }
+            }
+            let selection = if choose.count.max == Some(1) {
+                with_indefinite_article(&filter_text)
+            } else {
+                let count_text = match (choose.count.min, choose.count.max) {
+                    (0, Some(max)) => {
+                        let max_text = number_word(max as i32).unwrap_or_else(|| max.to_string());
+                        format!("up to {max_text}")
+                    }
+                    _ => describe_choice_count(&choose.count),
+                };
+                format!("{count_text} {filter_text}")
+            };
+
+            Some((
+                format!(
+                    "{}. Put {selection} from among them onto the battlefield and the rest on the bottom of your library{order_text}",
+                    describe_effect(effects[0])
+                ),
+                4,
+            ))
+        }
+
         struct TaggedLookMove<'a> {
             tag: &'a crate::TagKey,
             move_to_zone: &'a crate::effects::MoveToZoneEffect,
@@ -11359,6 +11570,14 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
 
         if let Some((rendered, consumed)) =
             describe_look_choose_reveal_to_hand_rest_bottom(&filtered[idx..])
+        {
+            parts.push(rendered);
+            idx += consumed;
+            continue;
+        }
+
+        if let Some((rendered, consumed)) =
+            describe_look_choose_to_battlefield_rest_bottom(&filtered[idx..])
         {
             parts.push(rendered);
             idx += consumed;
@@ -13614,6 +13833,10 @@ pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
 
     let effect_refs = effects.iter().collect::<Vec<_>>();
     if let Some(compact) = describe_choose_color_then_chosen_color_mana(&effect_refs) {
+        return Some(compact);
+    }
+
+    if let Some(compact) = describe_look_choose_to_battlefield_rest_bottom_direct(effects) {
         return Some(compact);
     }
 
@@ -33537,6 +33760,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if effect
         .downcast_ref::<crate::effects::NinjutsuCostEffect>()
         .is_some()
+        || effect
+            .downcast_ref::<crate::effects::SneakCostEffect>()
+            .is_some()
     {
         return "Return an unblocked attacker you control to its owner's hand".to_string();
     }

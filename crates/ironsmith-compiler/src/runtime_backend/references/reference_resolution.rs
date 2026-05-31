@@ -401,6 +401,7 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { .. }
                 | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. }
                 | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
+                | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldRestOnBottomOfLibrary { .. }
                 | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
                 | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary { .. } => {
                     track_effect_player(subject_verb.subject.player, frame, true, true)?;
@@ -1992,6 +1993,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
+            | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::RetargetStackObject { .. }
@@ -2693,6 +2695,10 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary {
                 ..
             } => 0,
+            SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldRestOnBottomOfLibrary {
+                battlefield_filter,
+                ..
+            } => bind_unresolved_it_in_filter(battlefield_filter, seed_tag),
             SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary {
                 battlefield_filter,
                 ..

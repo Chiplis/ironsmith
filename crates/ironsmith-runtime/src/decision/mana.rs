@@ -999,10 +999,31 @@ fn casting_method_grants_flash_timing(
         }
         _ => None,
     };
+    if method
+        .as_ref()
+        .is_some_and(alternative_method_has_unblocked_attacker_cost)
+    {
+        return true;
+    }
     matches!(
         method,
         Some(crate::alternative_cast::AlternativeCastingMethod::FlashWithAdditionalCost { .. })
     )
+}
+
+fn alternative_method_has_unblocked_attacker_cost(
+    method: &crate::alternative_cast::AlternativeCastingMethod,
+) -> bool {
+    method.non_mana_costs().iter().any(|cost| {
+        cost.effect_ref().is_some_and(|effect| {
+            effect
+                .downcast_ref::<crate::effects::NinjutsuCostEffect>()
+                .is_some()
+                || effect
+                    .downcast_ref::<crate::effects::SneakCostEffect>()
+                    .is_some()
+        })
+    })
 }
 
 fn casting_method_grants_library_search_timing(

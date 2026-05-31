@@ -1397,6 +1397,13 @@ pub(crate) enum SubjectVerbActionAst {
     ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary {
         order: LibraryBottomOrderAst,
     },
+    ChooseFromLookedCardsOntoBattlefieldRestOnBottomOfLibrary {
+        battlefield_filter: ObjectFilter,
+        count: ChoiceCount,
+        total_mana_value_limit: Option<u32>,
+        tapped: bool,
+        order: LibraryBottomOrderAst,
+    },
     ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary {
         battlefield_filter: ObjectFilter,
         tapped: bool,
@@ -2812,6 +2819,20 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .finish(),
             Self::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { order } => f
                 .debug_struct("ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary")
+                .field("order", order)
+                .finish(),
+            Self::ChooseFromLookedCardsOntoBattlefieldRestOnBottomOfLibrary {
+                battlefield_filter,
+                count,
+                total_mana_value_limit,
+                tapped,
+                order,
+            } => f
+                .debug_struct("ChooseFromLookedCardsOntoBattlefieldRestOnBottomOfLibrary")
+                .field("battlefield_filter", battlefield_filter)
+                .field("count", count)
+                .field("total_mana_value_limit", total_mana_value_limit)
+                .field("tapped", tapped)
                 .field("order", order)
                 .finish(),
             Self::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary {
@@ -4712,6 +4733,27 @@ impl EffectAst {
             SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary {
                 battlefield_filter,
                 tapped,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_choose_from_looked_cards_onto_battlefield_rest_on_bottom_of_library(
+        player: PlayerAst,
+        battlefield_filter: ObjectFilter,
+        count: ChoiceCount,
+        total_mana_value_limit: Option<u32>,
+        tapped: bool,
+        order: LibraryBottomOrderAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            player,
+            SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldRestOnBottomOfLibrary {
+                battlefield_filter,
+                count,
+                total_mana_value_limit,
+                tapped,
+                order,
             },
         )
     }

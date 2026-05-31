@@ -559,6 +559,69 @@ pub(crate) fn parse_put_into_hand(
     let has_hand = grammar::contains_word(tokens, "hand");
     let has_into = grammar::contains_word(tokens, "into");
 
+    // "Put up to two creature cards with mana value 6 or less from among them
+    // onto the battlefield and the rest on the bottom of your library."
+    if grammar::contains_word(tokens, "among")
+        && grammar::contains_word(tokens, "battlefield")
+        && grammar::contains_word(tokens, "rest")
+        && grammar::contains_word(tokens, "bottom")
+        && grammar::contains_word(tokens, "library")
+    {
+        let mut up_to = false;
+        let (count, used) = if token_slice_first_is(tokens, "up")
+            && token_slice_at_is(tokens, 1, "to")
+        {
+            up_to = true;
+            parse_number(&tokens[2..]).map(|(value, used)| (value, used + 2))
+        } else {
+            parse_number(tokens)
+        }
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing put count (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
+        let from_idx = find_index(tokens, |token| token.is_word("from")).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing from-among clause (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
+        if !token_slice_at_is(tokens, from_idx + 1, "among") {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported from-among clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        let filter_tokens = trim_commas(&tokens[used..from_idx]);
+        let total_mana_value_limit = find_window_by(&filter_tokens, 3, |window| {
+            token_slice_starts_with(window, &["total", "mana", "value"])
+        })
+        .and_then(|idx| parse_number(filter_tokens.get(idx + 3..).unwrap_or_default()))
+        .map(|(limit, _)| limit as u32);
+        let mut filter = parse_object_filter(&filter_tokens, false)?;
+        filter.zone = Some(Zone::Library);
+        let choice_count = if up_to {
+            ChoiceCount::up_to(count as usize)
+        } else {
+            ChoiceCount::exactly(count as usize)
+        };
+        let order = if grammar::contains_word(tokens, "random") {
+            crate::cards::builders::LibraryBottomOrderAst::Random
+        } else {
+            crate::cards::builders::LibraryBottomOrderAst::ChooserChooses
+        };
+        return Ok(EffectAst::subject_verb_choose_from_looked_cards_onto_battlefield_rest_on_bottom_of_library(
+            player,
+            filter,
+            choice_count,
+            total_mana_value_limit,
+            false,
+            order,
+        ));
+    }
+
     // "Put one of those cards on top of your library and the rest on the bottom of your library"
     if grammar::contains_word(tokens, "rest")
         && grammar::contains_word(tokens, "top")

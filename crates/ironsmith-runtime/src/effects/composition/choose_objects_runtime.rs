@@ -937,6 +937,50 @@ fn snapshot_chosen_objects(game: &GameState, chosen: &[ObjectId]) -> Vec<ObjectS
         .collect()
 }
 
+fn object_mana_value(game: &GameState, id: ObjectId) -> u32 {
+    game.object(id)
+        .and_then(|object| object.mana_cost.as_ref())
+        .map_or(0, |cost| cost.mana_value())
+}
+
+fn enforce_total_mana_value_limit(
+    effect: &ChooseObjectsEffect,
+    game: &GameState,
+    candidates: &[ObjectId],
+    chosen: Vec<ObjectId>,
+    min: usize,
+    max: usize,
+) -> Vec<ObjectId> {
+    let Some(limit) = effect.max_total_mana_value else {
+        return chosen;
+    };
+
+    let mut total = 0;
+    let mut limited = Vec::new();
+    for id in chosen {
+        let mana_value = object_mana_value(game, id);
+        if total + mana_value <= limit && limited.len() < max {
+            total += mana_value;
+            limited.push(id);
+        }
+    }
+
+    if limited.len() < min {
+        for id in candidates {
+            if limited.len() >= min || limited.len() >= max || limited.contains(id) {
+                continue;
+            }
+            let mana_value = object_mana_value(game, *id);
+            if total + mana_value <= limit {
+                total += mana_value;
+                limited.push(*id);
+            }
+        }
+    }
+
+    limited
+}
+
 pub(crate) fn run_choose_objects(
     effect: &ChooseObjectsEffect,
     game: &mut GameState,
@@ -1227,6 +1271,7 @@ pub(crate) fn run_choose_objects(
         } else {
             chosen
         };
+        let chosen = enforce_total_mana_value_limit(effect, game, &candidates, chosen, min, max);
         if effect.reveal && !chosen.is_empty() {
             view_hidden_candidate_objects(
                 game,

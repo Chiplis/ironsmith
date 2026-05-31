@@ -39327,6 +39327,311 @@ fn covert_technician_combat_damage_trigger_puts_only_artifact_with_mana_value_up
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn michelangelos_technique_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Michelangelo's Technique")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Sneak {3}{G}\n\
+             Look at the top eight cards of your library. Put up to two creature cards with total mana value 6 or less from among them onto the battlefield and the rest on the bottom of your library in a random order.",
+        )
+        .expect("Michelangelo's Technique should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn test_creature_card(name: &str, mana_value: u8) -> crate::card::Card {
+    CardBuilder::new(CardId::new(), name)
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(mana_value)]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn setup_michelangelo_sneak_combat(
+    game: &mut GameState,
+    attacker: ObjectId,
+    step: crate::game_state::Step,
+) {
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(step);
+    game.combat = Some(crate::combat_state::CombatState {
+        attackers: vec![crate::combat_state::AttackerInfo {
+            creature: attacker,
+            target: AttackTarget::Player(bob),
+        }],
+        ..crate::combat_state::CombatState::default()
+    });
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn michelangelos_technique_sneak_is_castable_only_after_unblocked_attackers_exist() {
+    use crate::alternative_cast::CastingMethod;
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let def = michelangelos_technique_definition();
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Hand);
+    let attacker = game.create_object_from_card(
+        &test_creature_card("Unblocked Student", 1),
+        alice,
+        Zone::Battlefield,
+    );
+    game.remove_summoning_sickness(attacker);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Green, 4);
+
+    setup_michelangelo_sneak_combat(
+        &mut game,
+        attacker,
+        crate::game_state::Step::DeclareAttackers,
+    );
+    let pre_blocker_actions = compute_legal_actions(&game, alice);
+    assert!(
+        !pre_blocker_actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id: id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Alternative(0),
+            } if *id == spell_id
+        )),
+        "Sneak should not be offered before blockers are declared; actions: {pre_blocker_actions:#?}"
+    );
+
+    setup_michelangelo_sneak_combat(
+        &mut game,
+        attacker,
+        crate::game_state::Step::DeclareBlockers,
+    );
+    let post_blocker_actions = compute_legal_actions(&game, alice);
+    assert!(
+        post_blocker_actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id: id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Alternative(0),
+            } if *id == spell_id
+        )),
+        "Sneak should be offered for a sorcery in hand once an unblocked attacker exists; actions: {post_blocker_actions:#?}"
+    );
+
+    setup_michelangelo_sneak_combat(
+        &mut game,
+        attacker,
+        crate::game_state::Step::CombatDamage,
+    );
+    let combat_damage_actions = compute_legal_actions(&game, alice);
+    assert!(
+        !combat_damage_actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id: id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Alternative(0),
+            } if *id == spell_id
+        )),
+        "Sneak should not be offered after the declare blockers step; actions: {combat_damage_actions:#?}"
+    );
+
+    setup_michelangelo_sneak_combat(
+        &mut game,
+        attacker,
+        crate::game_state::Step::DeclareBlockers,
+    );
+
+    if let Some(combat) = game.combat.as_mut() {
+        combat.blockers.insert(attacker, vec![attacker]);
+    }
+    let blocked_actions = compute_legal_actions(&game, alice);
+    assert!(
+        !blocked_actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id: id,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Alternative(0),
+            } if *id == spell_id
+        )),
+        "Sneak should not be offered when no attacker is unblocked; actions: {blocked_actions:#?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn michelangelos_technique_sneak_cost_returns_the_unblocked_attacker() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let def = michelangelos_technique_definition();
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Hand);
+    let attacker = game.create_object_from_card(
+        &test_creature_card("Unblocked Student", 1),
+        alice,
+        Zone::Battlefield,
+    );
+    game.remove_summoning_sickness(attacker);
+    setup_michelangelo_sneak_combat(
+        &mut game,
+        attacker,
+        crate::game_state::Step::DeclareBlockers,
+    );
+
+    let sneak_cost = def.alternative_casts[0]
+        .non_mana_costs()
+        .into_iter()
+        .find(|cost| cost
+            .effect_ref()
+            .and_then(|effect| effect.downcast_ref::<crate::effects::SneakCostEffect>())
+            .is_some())
+        .expect("Sneak should include an unblocked-attacker return cost");
+
+    let mut dm = SelectFirstDecisionMaker;
+    let mut ctx = crate::costs::CostContext::new(spell_id, alice, &mut dm)
+        .with_reason(crate::costs::PaymentReason::CastSpell);
+    sneak_cost
+        .can_pay(&game, &ctx)
+        .expect("Sneak cost should be payable with an unblocked attacker");
+    sneak_cost
+        .pay(&mut game, &mut ctx)
+        .expect("Sneak cost should return the chosen attacker");
+
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .hand
+            .iter()
+            .filter_map(|&id| game.object(id))
+            .any(|object| object.name == "Unblocked Student"),
+        "paying Sneak should return the unblocked attacker to hand"
+    );
+    assert!(
+        game.combat
+            .as_ref()
+            .is_some_and(|combat| combat.attackers.is_empty()),
+        "paying Sneak should remove the returned creature from combat"
+    );
+    assert!(
+        !game.ninjutsu_attack_targets.contains_key(&spell_id),
+        "Sneak should not leave ninjutsu attack-target bookkeeping behind for the spell"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn michelangelos_technique_respects_total_mana_value_for_looked_creatures() {
+    use crate::effects::{ExecutionContext, execute_effect};
+
+    struct ChooseNamedCreaturesDecisionMaker {
+        names: Vec<&'static str>,
+    }
+
+    impl DecisionMaker for ChooseNamedCreaturesDecisionMaker {
+        fn decide_objects(
+            &mut self,
+            game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            self.names
+                .iter()
+                .filter_map(|wanted| {
+                    ctx.candidates
+                        .iter()
+                        .find(|candidate| {
+                            candidate.legal
+                                && game
+                                    .object(candidate.id)
+                                    .is_some_and(|object| object.name == *wanted)
+                        })
+                        .map(|candidate| candidate.id)
+                })
+                .collect()
+        }
+    }
+
+    fn resolve_technique_with_choices(
+        chosen_names: Vec<&'static str>,
+    ) -> (Vec<String>, Vec<String>) {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let def = michelangelos_technique_definition();
+        let source_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+
+        game.create_object_from_card(
+            &test_creature_card("Unseen Filler", 1),
+            alice,
+            Zone::Library,
+        );
+        game.create_object_from_card(&test_creature_card("Two Drop", 2), alice, Zone::Library);
+        game.create_object_from_card(&test_creature_card("Three Drop", 3), alice, Zone::Library);
+        game.create_object_from_card(&test_creature_card("Four Drop", 4), alice, Zone::Library);
+
+        let mut dm = ChooseNamedCreaturesDecisionMaker {
+            names: chosen_names,
+        };
+        let mut ctx = ExecutionContext::new_default(source_id, alice).with_decision_maker(&mut dm);
+        for effect in def.spell_effect.as_ref().expect("spell effects") {
+            execute_effect(&mut game, effect, &mut ctx)
+                .expect("Michelangelo's Technique spell effect should resolve");
+        }
+
+        let battlefield_names = game
+            .battlefield
+            .iter()
+            .filter_map(|&id| game.object(id).map(|object| object.name.clone()))
+            .collect::<Vec<_>>();
+        let library_names = game
+            .player(alice)
+            .expect("alice exists")
+            .library
+            .iter()
+            .filter_map(|&id| game.object(id).map(|object| object.name.clone()))
+            .collect::<Vec<_>>();
+
+        (battlefield_names, library_names)
+    }
+
+    let (battlefield_names, library_names) =
+        resolve_technique_with_choices(vec!["Four Drop", "Two Drop"]);
+    assert!(
+        battlefield_names.contains(&"Four Drop".to_string())
+            && battlefield_names.contains(&"Two Drop".to_string()),
+        "creatures totaling mana value 6 should both enter, got battlefield {battlefield_names:?}"
+    );
+    assert!(
+        library_names.contains(&"Three Drop".to_string())
+            && library_names.contains(&"Unseen Filler".to_string()),
+        "unchosen looked cards should remain in the library, got {library_names:?}"
+    );
+
+    let (battlefield_names, library_names) =
+        resolve_technique_with_choices(vec!["Four Drop", "Three Drop"]);
+    let four_entered = battlefield_names.contains(&"Four Drop".to_string());
+    let three_entered = battlefield_names.contains(&"Three Drop".to_string());
+    assert!(
+        four_entered ^ three_entered,
+        "a choice over total mana value 6 should put only one of the two chosen creatures onto the battlefield, got {battlefield_names:?}"
+    );
+    assert!(
+        library_names.contains(&"Four Drop".to_string())
+            || library_names.contains(&"Three Drop".to_string()),
+        "the creature over the total mana-value cap should go to the library bottom with the rest, got {library_names:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn quandrix_apprentice_magecraft_puts_only_a_looked_land_into_hand() {
     let mut game = setup_game();

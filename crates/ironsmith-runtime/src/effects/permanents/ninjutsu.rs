@@ -3,6 +3,7 @@
 //! Ninjutsu is modeled as:
 //! - a cost effect (`NinjutsuCostEffect`) that returns an unblocked attacker you control
 //!   to hand and records that attack target.
+//! - a Sneak cost effect that uses the same return action, but only during declare blockers.
 //! - a resolution effect (`NinjutsuEffect`) that puts the source card from hand onto the
 //!   battlefield tapped and attacking the recorded target.
 
@@ -19,7 +20,7 @@ use crate::game_state::{GameState, Phase, Step};
 use crate::ids::{ObjectId, PlayerId};
 use crate::types::CardType;
 use crate::zone::Zone;
-pub use ironsmith_core::{NinjutsuCostEffect, NinjutsuEffect};
+pub use ironsmith_core::{NinjutsuCostEffect, NinjutsuEffect, SneakCostEffect};
 
 fn in_ninjutsu_window(game: &GameState) -> bool {
     if game.turn.phase != Phase::Combat {
@@ -29,6 +30,10 @@ fn in_ninjutsu_window(game: &GameState) -> bool {
         game.turn.step,
         Some(Step::DeclareBlockers | Step::CombatDamage | Step::EndCombat)
     )
+}
+
+fn in_sneak_window(game: &GameState) -> bool {
+    game.turn.phase == Phase::Combat && matches!(game.turn.step, Some(Step::DeclareBlockers))
 }
 
 fn unblocked_attackers(game: &GameState, controller: PlayerId) -> Vec<ObjectId> {
@@ -53,66 +58,62 @@ fn unblocked_attackers(game: &GameState, controller: PlayerId) -> Vec<ObjectId> 
         .collect()
 }
 
-impl EffectExecutor for NinjutsuCostEffect {
-    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
-        Some(self)
+fn execute_unblocked_attacker_return_cost(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    keyword: &str,
+    in_window: fn(&GameState) -> bool,
+    window_error: &str,
+    record_attack_target: bool,
+) -> Result<EffectOutcome, ExecutionError> {
+    if !in_window(game) {
+        return Err(ExecutionError::Impossible(window_error.to_string()));
     }
 
-    fn execute(
-        &self,
-        game: &mut GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<EffectOutcome, ExecutionError> {
-        if !in_ninjutsu_window(game) {
-            return Err(ExecutionError::Impossible(
-                "Ninjutsu can only be activated during combat after blockers are declared"
-                    .to_string(),
-            ));
-        }
+    let Some(source_obj) = game.object(ctx.source) else {
+        return Err(ExecutionError::ObjectNotFound(ctx.source));
+    };
+    if source_obj.zone != Zone::Hand {
+        return Err(ExecutionError::Impossible(format!(
+            "{keyword} source must be in hand"
+        )));
+    }
 
-        let Some(source_obj) = game.object(ctx.source) else {
-            return Err(ExecutionError::ObjectNotFound(ctx.source));
-        };
-        if source_obj.zone != Zone::Hand {
-            return Err(ExecutionError::Impossible(
-                "Ninjutsu source must be in hand".to_string(),
-            ));
-        }
+    let candidates = unblocked_attackers(game, ctx.controller);
+    if candidates.is_empty() {
+        return Err(ExecutionError::Impossible(
+            "No unblocked attacker you control to return".to_string(),
+        ));
+    }
 
-        let candidates = unblocked_attackers(game, ctx.controller);
-        if candidates.is_empty() {
-            return Err(ExecutionError::Impossible(
-                "No unblocked attacker you control to return".to_string(),
-            ));
-        }
+    let chosen = {
+        let spec = ChooseObjectsSpec::new(
+            ctx.source,
+            "Choose an unblocked attacker you control to return to hand",
+            candidates.clone(),
+            1,
+            Some(1),
+        );
+        make_decision(
+            game,
+            ctx.decision_maker,
+            ctx.controller,
+            Some(ctx.source),
+            spec,
+        )
+    };
 
-        let chosen = {
-            let spec = ChooseObjectsSpec::new(
-                ctx.source,
-                "Choose an unblocked attacker you control to return to hand",
-                candidates.clone(),
-                1,
-                Some(1),
-            );
-            make_decision(
-                game,
-                ctx.decision_maker,
-                ctx.controller,
-                Some(ctx.source),
-                spec,
-            )
-        };
+    let chosen_attacker = chosen
+        .into_iter()
+        .find(|id| candidates.contains(id))
+        .or_else(|| candidates.first().copied())
+        .ok_or_else(|| {
+            ExecutionError::Impossible(format!(
+                "No valid unblocked attacker was chosen for {keyword}"
+            ))
+        })?;
 
-        let chosen_attacker = chosen
-            .into_iter()
-            .find(|id| candidates.contains(id))
-            .or_else(|| candidates.first().copied())
-            .ok_or_else(|| {
-                ExecutionError::Impossible(
-                    "No valid unblocked attacker was chosen for ninjutsu".to_string(),
-                )
-            })?;
-
+    let attack_target = if record_attack_target {
         let attack_target = game
             .combat
             .as_ref()
@@ -123,39 +124,97 @@ impl EffectExecutor for NinjutsuCostEffect {
                     "Chosen attacker has no combat attack target".to_string(),
                 )
             })?;
+        Some(attack_target)
+    } else {
+        None
+    };
 
-        if let Some(combat) = game.combat.as_mut() {
-            combat
-                .attackers
-                .retain(|info| info.creature != chosen_attacker);
-            combat.blockers.remove(&chosen_attacker);
-            combat.damage_assignment_order.remove(&chosen_attacker);
-            for blockers in combat.blockers.values_mut() {
-                blockers.retain(|id| *id != chosen_attacker);
-            }
-            for order in combat.damage_assignment_order.values_mut() {
-                order.retain(|id| *id != chosen_attacker);
-            }
+    if let Some(combat) = game.combat.as_mut() {
+        combat
+            .attackers
+            .retain(|info| info.creature != chosen_attacker);
+        combat.blockers.remove(&chosen_attacker);
+        combat.damage_assignment_order.remove(&chosen_attacker);
+        for blockers in combat.blockers.values_mut() {
+            blockers.retain(|id| *id != chosen_attacker);
         }
+        for order in combat.damage_assignment_order.values_mut() {
+            order.retain(|id| *id != chosen_attacker);
+        }
+    }
 
-        let _new_id = game
-            .move_object_with_commander_options(
-                chosen_attacker,
-                Zone::Hand,
-                ctx.cause.clone(),
-                &mut *ctx.decision_maker,
-            )
-            .map(|(new_id, _)| new_id)
-            .ok_or_else(|| {
-                ExecutionError::Impossible("Failed to return chosen attacker to hand".to_string())
-            })?;
+    let _new_id = game
+        .move_object_with_commander_options(
+            chosen_attacker,
+            Zone::Hand,
+            ctx.cause.clone(),
+            &mut *ctx.decision_maker,
+        )
+        .map(|(new_id, _)| new_id)
+        .ok_or_else(|| {
+            ExecutionError::Impossible("Failed to return chosen attacker to hand".to_string())
+        })?;
 
+    if let Some(attack_target) = attack_target {
         game.ninjutsu_attack_targets
             .entry(ctx.source)
             .or_default()
             .push(attack_target);
+    }
 
-        Ok(EffectOutcome::resolved())
+    Ok(EffectOutcome::resolved())
+}
+
+fn validate_unblocked_attacker_return_cost(
+    game: &GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    keyword: &str,
+    in_window: fn(&GameState) -> bool,
+    window_error: &str,
+) -> Result<(), CostValidationError> {
+    if !in_window(game) {
+        return Err(CostValidationError::Other(window_error.to_string()));
+    }
+
+    let Some(source_obj) = game.object(source) else {
+        return Err(CostValidationError::Other(format!(
+            "{keyword} source does not exist"
+        )));
+    };
+    if source_obj.zone != Zone::Hand {
+        return Err(CostValidationError::Other(format!(
+            "{keyword} source must be in hand"
+        )));
+    }
+
+    if unblocked_attackers(game, controller).is_empty() {
+        return Err(CostValidationError::Other(
+            "No unblocked attacker you control to return".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
+impl EffectExecutor for NinjutsuCostEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        execute_unblocked_attacker_return_cost(
+            game,
+            ctx,
+            "Ninjutsu",
+            in_ninjutsu_window,
+            "Ninjutsu can only be activated during combat after blockers are declared",
+            true,
+        )
     }
 
     fn cost_description(&self) -> Option<String> {
@@ -170,31 +229,57 @@ impl CostExecutableEffect for NinjutsuCostEffect {
         source: ObjectId,
         controller: PlayerId,
     ) -> Result<(), CostValidationError> {
-        if !in_ninjutsu_window(game) {
-            return Err(CostValidationError::Other(
-                "Ninjutsu can only be activated during combat after blockers are declared"
-                    .to_string(),
-            ));
-        }
+        validate_unblocked_attacker_return_cost(
+            game,
+            source,
+            controller,
+            "Ninjutsu",
+            in_ninjutsu_window,
+            "Ninjutsu can only be activated during combat after blockers are declared",
+        )
+    }
+}
 
-        let Some(source_obj) = game.object(source) else {
-            return Err(CostValidationError::Other(
-                "Ninjutsu source does not exist".to_string(),
-            ));
-        };
-        if source_obj.zone != Zone::Hand {
-            return Err(CostValidationError::Other(
-                "Ninjutsu source must be in hand".to_string(),
-            ));
-        }
+impl EffectExecutor for SneakCostEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
 
-        if unblocked_attackers(game, controller).is_empty() {
-            return Err(CostValidationError::Other(
-                "No unblocked attacker you control to return".to_string(),
-            ));
-        }
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        execute_unblocked_attacker_return_cost(
+            game,
+            ctx,
+            "Sneak",
+            in_sneak_window,
+            "Sneak can only be used during the declare blockers step",
+            false,
+        )
+    }
 
-        Ok(())
+    fn cost_description(&self) -> Option<String> {
+        Some("Return an unblocked attacker you control to its owner's hand".to_string())
+    }
+}
+
+impl CostExecutableEffect for SneakCostEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Result<(), CostValidationError> {
+        validate_unblocked_attacker_return_cost(
+            game,
+            source,
+            controller,
+            "Sneak",
+            in_sneak_window,
+            "Sneak can only be used during the declare blockers step",
+        )
     }
 }
 
