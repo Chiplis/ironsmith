@@ -2742,6 +2742,14 @@ fn compile_subject_verb_effect(
                 duration.clone(),
             ))
         }),
+        SubjectVerbActionAst::BecomeSaddledUntilEndOfTurn { target } => {
+            compile_tagged_effect_for_target(target, ctx, "saddled", |spec| {
+                Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+                    spec,
+                    Effect::new(crate::effects::BecomeSaddledUntilEotEffect::new()),
+                ))
+            })
+        }
         SubjectVerbActionAst::AddColors {
             target,
             colors,

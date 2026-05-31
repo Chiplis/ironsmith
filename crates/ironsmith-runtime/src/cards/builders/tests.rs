@@ -371,6 +371,166 @@ fn king_darien_xlviii_sacrifice_ability_grants_keywords_only_to_your_tokens_runt
     );
 }
 
+fn alacrian_armory_trigger(def: &CardDefinition) -> &crate::ability::TriggeredAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Triggered(triggered) = &ability.kind else {
+                return None;
+            };
+            Some(triggered)
+        })
+        .expect("Alacrian Armory should have a beginning-of-combat triggered ability")
+}
+
+fn resolve_alacrian_armory_trigger_for_target(
+    game: &mut crate::game_state::GameState,
+    armory_id: ObjectId,
+    controller: PlayerId,
+    target: ObjectId,
+    triggered: &crate::ability::TriggeredAbility,
+) {
+    let mut ctx = crate::effects::ExecutionContext::new_default(armory_id, controller)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: triggered
+                .choices
+                .first()
+                .expect("Alacrian Armory should declare an optional target")
+                .clone(),
+            range: 0..1,
+        }]);
+    ctx.snapshot_targets(game);
+
+    for effect in triggered.effects.flattened_default_effects() {
+        crate::effects::execute_effect(game, effect, &mut ctx)
+            .expect("Alacrian Armory combat trigger effect should resolve");
+    }
+}
+
+#[test]
+fn alacrian_armory_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Alacrian Armory");
+    let def = parse_oracle_card_definition("Alacrian Armory");
+    let triggered = alacrian_armory_trigger(&def);
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let debug = format!("{:#?}", triggered);
+    let choice_debug = format!("{:?}", triggered.choices);
+
+    assert!(
+        triggered.choices.len() == 1
+            && choice_debug.contains("min: 0")
+            && choice_debug.contains("max: Some(1)")
+            && choice_debug.contains("Mount")
+            && choice_debug.contains("Vehicle"),
+        "Alacrian Armory should choose up to one target Mount or Vehicle, got {choice_debug}"
+    );
+    assert!(
+        debug.contains("BecomeSaddledUntilEotEffect")
+            && debug.contains("AddCardTypes")
+            && debug.contains("TaggedObjectMatches"),
+        "expected structural Mount/Vehicle conditional become effects, got {debug}"
+    );
+    assert!(
+        rendered.contains("Until end of turn, that permanent becomes saddled if it's a Mount and becomes an artifact creature if it's a Vehicle"),
+        "expected Alacrian Armory conditional become text to render oracle-like, got {rendered}"
+    );
+}
+
+#[test]
+fn alacrian_armory_mount_branch_becomes_saddled_runtime() {
+    let def = parse_oracle_card_definition("Alacrian Armory");
+    let triggered = alacrian_armory_trigger(&def);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let armory_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let mount = CardDefinitionBuilder::new(CardId::from_raw(92_030), "Test Mount")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Mount])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let mount_id = game.create_object_from_definition(&mount, alice, Zone::Battlefield);
+
+    resolve_alacrian_armory_trigger_for_target(&mut game, armory_id, alice, mount_id, triggered);
+
+    assert!(
+        game.is_saddled(mount_id),
+        "a Mount target should become saddled until end of turn"
+    );
+    assert!(
+        !game.current_has_card_type(mount_id, CardType::Artifact),
+        "a non-Vehicle Mount should not gain artifact from the Vehicle branch"
+    );
+}
+
+#[test]
+fn alacrian_armory_vehicle_branch_becomes_artifact_creature_runtime() {
+    let def = parse_oracle_card_definition("Alacrian Armory");
+    let triggered = alacrian_armory_trigger(&def);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let armory_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let vehicle = CardDefinitionBuilder::new(CardId::from_raw(92_031), "Test Vehicle")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Vehicle])
+        .build();
+    let vehicle_id = game.create_object_from_definition(&vehicle, alice, Zone::Battlefield);
+
+    assert!(!game.current_has_card_type(vehicle_id, CardType::Artifact));
+    assert!(!game.current_is_creature(vehicle_id));
+
+    resolve_alacrian_armory_trigger_for_target(&mut game, armory_id, alice, vehicle_id, triggered);
+
+    assert!(
+        game.current_has_card_type(vehicle_id, CardType::Artifact)
+            && game.current_is_creature(vehicle_id),
+        "a Vehicle target should become an artifact creature until end of turn"
+    );
+    assert!(
+        !game.is_saddled(vehicle_id),
+        "a non-Mount Vehicle should not become saddled from the Mount branch"
+    );
+}
+
+#[test]
+fn alacrian_armory_mount_vehicle_target_gets_both_branches_runtime() {
+    let def = parse_oracle_card_definition("Alacrian Armory");
+    let triggered = alacrian_armory_trigger(&def);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let armory_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let mount_vehicle = CardDefinitionBuilder::new(CardId::from_raw(92_032), "Test Mount Vehicle")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Mount, Subtype::Vehicle])
+        .build();
+    let target_id = game.create_object_from_definition(&mount_vehicle, alice, Zone::Battlefield);
+
+    resolve_alacrian_armory_trigger_for_target(&mut game, armory_id, alice, target_id, triggered);
+
+    assert!(
+        game.is_saddled(target_id),
+        "a Mount Vehicle should become saddled"
+    );
+    assert!(
+        game.current_has_card_type(target_id, CardType::Artifact)
+            && game.current_is_creature(target_id),
+        "a Mount Vehicle should also become an artifact creature"
+    );
+
+    crate::turn::execute_cleanup_step(&mut game);
+    assert!(
+        !game.current_is_creature(target_id),
+        "artifact creature effect should expire at end of turn"
+    );
+
+    game.next_turn();
+
+    assert!(
+        !game.is_saddled(target_id),
+        "saddled state should expire by the next turn"
+    );
+}
+
 #[test]
 fn vampire_socialite_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Vampire Socialite");

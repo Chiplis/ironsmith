@@ -1382,6 +1382,11 @@ fn apply_carried_effect_duration(effect: &mut EffectAst, duration: &Until) {
         }) if matches!(effect_duration, Until::Forever) => {
             *effect_duration = duration.clone();
         }
+        EffectAst::Conditional { if_true, if_false, .. } => {
+            for nested in if_true.iter_mut().chain(if_false.iter_mut()) {
+                apply_carried_effect_duration(nested, duration);
+            }
+        }
         _ => {}
     }
 }
@@ -1519,6 +1524,7 @@ fn trailing_if_predicate_supported(predicate: &PredicateAst) -> bool {
         PredicateAst::ManaSpentToCastThisSpellAtLeast { .. }
             | PredicateAst::SameColorManaSpentToCastThisSpellAtLeast(_)
             | PredicateAst::ItMatches(_)
+            | PredicateAst::TargetMatches(_)
             | PredicateAst::PlayerControlsMoreThanYou { .. }
             | PredicateAst::PlayerControls { .. }
             | PredicateAst::PlayerControlsAtLeast { .. }

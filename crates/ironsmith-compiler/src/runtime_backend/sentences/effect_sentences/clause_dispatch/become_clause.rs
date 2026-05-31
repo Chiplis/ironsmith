@@ -234,6 +234,12 @@ pub(crate) fn parse_become_clause(
         return Ok(EffectAst::subject_verb_make_colorless(target, duration));
     }
 
+    if word_slice_eq(become_words, &["saddled"]) && duration == Until::EndOfTurn {
+        return Ok(EffectAst::subject_verb_become_saddled_until_end_of_turn(
+            target,
+        ));
+    }
+
     let aura_with_enchant_creature_words = if word_slice_starts_with(
         &become_words,
         &["aura", "enchantment", "with", "enchant", "creature"],

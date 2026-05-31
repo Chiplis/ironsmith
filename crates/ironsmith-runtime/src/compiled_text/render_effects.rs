@@ -3673,6 +3673,85 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         ))
     }
 
+    fn conditional_tagged_subtype(
+        conditional: &crate::effects::ConditionalEffect,
+    ) -> Option<(&crate::TagKey, Subtype)> {
+        let Condition::TaggedObjectMatches(tag, filter) = &conditional.condition else {
+            return None;
+        };
+        if filter.zone.is_none()
+            && filter.controller.is_none()
+            && filter.card_types.is_empty()
+            && filter.subtypes.len() == 1
+        {
+            return Some((tag, filter.subtypes[0]));
+        }
+        None
+    }
+
+    fn describe_choose_then_mount_vehicle_become(effects: &[&Effect]) -> Option<String> {
+        let [target_effect, first_conditional, second_conditional] = effects else {
+            return None;
+        };
+        let target_tag = effect_tag(target_effect)?;
+        unwrap_wrapped_effect(target_effect).downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+
+        let first = first_conditional.downcast_ref::<crate::effects::ConditionalEffect>()?;
+        let second = second_conditional.downcast_ref::<crate::effects::ConditionalEffect>()?;
+        if !first.if_false.is_empty()
+            || !second.if_false.is_empty()
+            || first.if_true.len() != 1
+            || second.if_true.len() != 1
+        {
+            return None;
+        }
+        let (first_tag, first_subtype) = conditional_tagged_subtype(first)?;
+        let (second_tag, second_subtype) = conditional_tagged_subtype(second)?;
+        if first_tag != target_tag || second_tag != target_tag {
+            return None;
+        }
+
+        let saddled_source = unwrap_wrapped_effect(&first.if_true[0])
+            .downcast_ref::<crate::effects::ExecuteWithSourceEffect>()?;
+        if !matches!(&saddled_source.source, ChooseSpec::Tagged(tag) if tag == target_tag)
+            || saddled_source
+                .effect
+                .downcast_ref::<crate::effects::BecomeSaddledUntilEotEffect>()
+                .is_none()
+        {
+            return None;
+        }
+
+        let vehicle_apply = tagged_apply_continuous(&second.if_true[0])?;
+        if vehicle_apply.until != Until::EndOfTurn
+            || vehicle_apply.condition.is_some()
+            || !vehicle_apply.additional_modifications.is_empty()
+            || !vehicle_apply.runtime_modifications.is_empty()
+            || !matches!(vehicle_apply.target_spec.as_ref(), Some(ChooseSpec::Tagged(tag)) if tag == target_tag)
+        {
+            return None;
+        }
+        let Some(crate::continuous::Modification::AddCardTypes(card_types)) = &vehicle_apply.modification else {
+            return None;
+        };
+        if first_subtype != Subtype::Mount
+            || second_subtype != Subtype::Vehicle
+            || card_types.len() != 2
+            || !card_types.contains(&CardType::Artifact)
+            || !card_types.contains(&CardType::Creature)
+        {
+            return None;
+        }
+
+        Some(format!(
+            "{}. Until end of turn, that permanent becomes saddled if it's a Mount and becomes an artifact creature if it's a Vehicle",
+            describe_effect(target_effect).trim_end_matches('.')
+        ))
+    }
+
+    if let Some(compact) = describe_choose_then_mount_vehicle_become(&raw_effects) {
+        return compact;
+    }
     if let Some(compact) = describe_tagged_pump_then_conditional_keyword(&raw_effects) {
         return compact;
     }
@@ -28494,6 +28573,19 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         return format!("Destroy {}", describe_choose_spec(&destroy.spec));
     }
     if let Some(with_source) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>() {
+        if with_source
+            .effect
+            .downcast_ref::<crate::effects::BecomeSaddledUntilEotEffect>()
+            .is_some()
+        {
+            let mut subject = describe_choose_spec(&with_source.source);
+            if subject == "it" {
+                subject = "that permanent".to_string();
+            } else if subject == "this source" {
+                subject = "this permanent".to_string();
+            }
+            return format!("{subject} becomes saddled until end of turn");
+        }
         if let Some(deal_damage) = with_source
             .effect
             .downcast_ref::<crate::effects::DealDamageEffect>()

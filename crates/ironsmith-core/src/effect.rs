@@ -1200,6 +1200,15 @@ impl CrewCostEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct BecomeSaddledUntilEotEffect;
+
+impl BecomeSaddledUntilEotEffect {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct MillEffect {
     pub count: Value,
     pub player: PlayerFilter,
