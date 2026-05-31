@@ -817,6 +817,26 @@ pub(crate) fn parse_life_equal_to_value(
     ) {
         return Ok(Some(Value::LifeLostThisTurn(PlayerFilter::IteratedPlayer)));
     }
+    if matches!(
+        amount_words.as_slice(),
+        [
+            "equal", "to", "the", "damage", "already", "dealt", "to", "that", "player",
+            "this", "turn"
+        ] | [
+            "equal", "to", "damage", "already", "dealt", "to", "that", "player", "this",
+            "turn"
+        ] | [
+            "equal", "to", "the", "amount", "of", "damage", "already", "dealt", "to",
+            "that", "player", "this", "turn"
+        ] | [
+            "equal", "to", "amount", "of", "damage", "already", "dealt", "to", "that",
+            "player", "this", "turn"
+        ]
+    ) {
+        return Ok(Some(Value::DamageDealtToPlayersThisTurn(
+            PlayerFilter::target_player(),
+        )));
+    }
     if let Some(value) = parse_dynamic_cost_modifier_value(amount_tokens)? {
         return Ok(Some(value));
     }

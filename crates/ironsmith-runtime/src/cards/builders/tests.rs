@@ -11407,6 +11407,29 @@ fn parse_oracle_tainted_sigil_strictly_parses_and_renders_total_life_lost() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_final_punishment_strictly_parses_and_renders_damage_dealt_this_turn() {
+    assert_oracle_card_parses_strict("Final Punishment");
+
+    let def = parse_oracle_card_definition("Final Punishment");
+    let rendered_lines = canonical_compiled_lines(&def);
+    assert_eq!(
+        rendered_lines,
+        vec![
+            "Target player loses life equal to the damage already dealt to that player this turn."
+                .to_string(),
+        ],
+        "expected Final Punishment to render its target player's prior damage amount"
+    );
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("DamageDealtToPlayersThisTurn") && debug.contains("Target"),
+        "expected Final Punishment to structurally use damage dealt to the target player this turn, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_one_or_more_etb_trigger_binds_that_much_to_zone_change_count() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Artillerist Variant")
         .card_types(vec![CardType::Creature])

@@ -94,6 +94,7 @@ pub enum Value {
     LifeGainedThisTurn(PlayerFilter),
     LifeLostThisTurn(PlayerFilter),
     CardsDiscardedThisTurn(PlayerFilter),
+    DamageDealtToPlayersThisTurn(PlayerFilter),
     NoncombatDamageDealtToPlayersThisTurn(PlayerFilter),
     NoncombatDamageDealtBySourcesControlledThisTurn {
         player: PlayerFilter,

@@ -1182,6 +1182,16 @@ pub fn resolve_value(
             Ok(total as i32)
         }
 
+        Value::DamageDealtToPlayersThisTurn(player_spec) => {
+            let player_ids =
+                resolve_player_filter_to_list(game, player_spec, &ctx.filter_context(game), ctx)?;
+            let total = game
+                .turn_store
+                .turn_history
+                .total_damage_to_players(&player_ids);
+            Ok(total as i32)
+        }
+
         Value::NoncombatDamageDealtToPlayersThisTurn(player_spec) => {
             let player_ids =
                 resolve_player_filter_to_list(game, player_spec, &ctx.filter_context(game), ctx)?;
