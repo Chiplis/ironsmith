@@ -3338,6 +3338,32 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         matches!(apply.target_spec.as_ref(), Some(ChooseSpec::Tagged(candidate)) if candidate == tag)
     }
 
+    fn describe_return_then_conditional_animation(effects: &[Effect]) -> Option<String> {
+        let [return_effect, conditional_effect] = effects else {
+            return None;
+        };
+        let returned_tag = effect_tag(return_effect)?;
+        unwrap_wrapped_effect(return_effect)
+            .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()?;
+        let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+        if !conditional.if_false.is_empty() || conditional.if_true.len() != 1 {
+            return None;
+        }
+        let apply = tagged_apply_continuous(&conditional.if_true[0])?;
+        if !apply_targets_tag(apply, returned_tag) {
+            return None;
+        }
+
+        let return_text = describe_effect(return_effect);
+        let animation_text = describe_effect(&conditional.if_true[0]);
+        Some(format!(
+            "{}. If {}, {}",
+            return_text.trim_end_matches('.'),
+            describe_condition(&conditional.condition),
+            lowercase_first(animation_text.trim_end_matches('.'))
+        ))
+    }
+
     fn filter_is_tagged_object(filter: &ObjectFilter, tag: &crate::TagKey) -> bool {
         filter.tagged_constraints.iter().any(|constraint| {
             constraint.tag == *tag
@@ -3448,6 +3474,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     }
 
     if let Some(compact) = describe_tagged_pump_then_conditional_keyword(&raw_effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_return_then_conditional_animation(effects) {
         return compact;
     }
 

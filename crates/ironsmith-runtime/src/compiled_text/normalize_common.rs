@@ -7116,11 +7116,18 @@ pub(super) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
                     }
                 };
                 if let Some(stripped) = text.strip_suffix(&suffix) {
-                    return ensure_indefinite_article(stripped);
+                    return ensure_indefinite_article(
+                        &render_artifact_non_aura_enchantment_text(filter, stripped),
+                    );
                 }
-                return ensure_indefinite_article(&text);
+                return ensure_indefinite_article(&render_artifact_non_aura_enchantment_text(
+                    filter, &text,
+                ));
             }
-            ensure_indefinite_article(&filter.description())
+            ensure_indefinite_article(&render_artifact_non_aura_enchantment_text(
+                filter,
+                &filter.description(),
+            ))
         }
         ChooseSpec::PlayerOrPlaneswalker(filter) => match filter {
             PlayerFilter::Opponent => "target opponent or planeswalker".to_string(),
@@ -7164,7 +7171,10 @@ pub(super) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
                 if let ChooseSpec::Target(target_inner) = inner.as_ref() {
                     let target_desc = describe_choose_spec_without_graveyard_zone(target_inner);
                     let base = strip_leading_article(&target_desc);
-                    let plural = pluralize_noun_phrase(base);
+                    let plural = render_counted_artifact_non_aura_enchantment_text(
+                        target_inner,
+                        &pluralize_noun_phrase(base),
+                    );
                     let count_text =
                         |n: usize| number_word(n as i32).unwrap_or_else(|| n.to_string());
                     if count.is_up_to_dynamic_x() {
@@ -7242,6 +7252,58 @@ pub(super) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
         }
         _ => describe_choose_spec(spec),
     }
+}
+
+fn is_artifact_non_aura_enchantment_mana_value_filter(filter: &ObjectFilter) -> bool {
+    let has_artifact_enchantment_types = filter.card_types.len() == 2
+        && filter.card_types.contains(&CardType::Artifact)
+        && filter.card_types.contains(&CardType::Enchantment);
+    if !has_artifact_enchantment_types
+        || filter.excluded_subtypes != [Subtype::Aura]
+        || filter.mana_value.is_none()
+    {
+        return false;
+    }
+
+    let mut remaining = filter.clone();
+    remaining.zone = None;
+    remaining.owner = None;
+    remaining.single_graveyard = false;
+    remaining.card_types.clear();
+    remaining.excluded_subtypes.clear();
+    remaining.mana_value = None;
+    remaining == ObjectFilter::default()
+}
+
+fn render_artifact_non_aura_enchantment_text(filter: &ObjectFilter, text: &str) -> String {
+    if !is_artifact_non_aura_enchantment_mana_value_filter(filter) {
+        return text.to_string();
+    }
+
+    let Some((_, mana_value_text)) = text.split_once(" with mana value ") else {
+        return text.to_string();
+    };
+    let mana_value_text = mana_value_text.trim();
+    if text.contains("artifacts or enchantment cards with mana value") {
+        format!("artifact and/or non-Aura enchantment cards each with mana value {mana_value_text}")
+    } else if text.contains("artifact or enchantment card with mana value") {
+        format!("artifact and/or non-Aura enchantment card with mana value {mana_value_text}")
+    } else {
+        text.to_string()
+    }
+}
+
+fn render_counted_artifact_non_aura_enchantment_text(spec: &ChooseSpec, text: &str) -> String {
+    let ChooseSpec::Object(filter) = spec else {
+        return text.to_string();
+    };
+    if !is_artifact_non_aura_enchantment_mana_value_filter(filter) {
+        return text.to_string();
+    }
+    text.replace(
+        "artifact and/or non-Aura enchantment cards with mana value",
+        "artifact and/or non-Aura enchantment cards each with mana value",
+    )
 }
 
 pub(super) fn describe_choice_count(count: &ChoiceCount) -> String {
@@ -9077,6 +9139,11 @@ pub(super) fn describe_apply_continuous_animation_effect(
         }
     }
 
+    let returned_permanent_animation = effect.until == Until::Forever
+        && matches!(
+            effect.target_spec.as_ref(),
+            Some(ChooseSpec::Tagged(tag)) if tag.as_str().starts_with("returned_")
+        );
     let preserves_land_types = effect
         .target_spec
         .as_ref()
@@ -9085,6 +9152,8 @@ pub(super) fn describe_apply_continuous_animation_effect(
     let (target_text, plural_target) =
         if let Some(target_text) = plural_non_target_land_animation_target(effect) {
             (target_text, true)
+        } else if returned_permanent_animation {
+            ("those permanents".to_string(), true)
         } else {
             (target.to_string(), plural_target)
         };
@@ -9127,7 +9196,9 @@ pub(super) fn describe_apply_continuous_animation_effect(
     let mut text = if let (Some(power), Some(toughness)) = (power, toughness) {
         let pt = format!("{}/{}", describe_value(power), describe_value(toughness));
         let pt_noun_phrase = format!("{pt} {noun_phrase}");
-        if plural_target {
+        if returned_permanent_animation {
+            format!("{target_text} are {pt_noun_phrase}")
+        } else if plural_target {
             format!("{target_text} become {pt_noun_phrase}")
         } else {
             format!(
@@ -9160,7 +9231,8 @@ pub(super) fn describe_apply_continuous_animation_effect(
         .is_some_and(choose_spec_guarantees_artifact);
     let artifact_type_is_redundant = target_is_guaranteed_artifact && adds_artifact_type;
     let render_as_addition_to_other_types =
-        (!preserves_land_types && !ability_text.is_empty() && !has_generic_ability)
+        returned_permanent_animation
+            || (!preserves_land_types && !ability_text.is_empty() && !has_generic_ability)
             || (preserves_land_types
                 && adds_named_types
                 && effect
