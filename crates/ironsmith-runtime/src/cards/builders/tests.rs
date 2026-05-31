@@ -279,6 +279,30 @@ fn kin_tree_nurturer_endure_effect(def: &CardDefinition) -> &Effect {
 }
 
 #[test]
+fn tromp_the_domains_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Tromp the Domains");
+    let effect_debug = format!("{:#?}", def.spell_effect);
+    let compiled = unprocessed_compiled_lines(&def);
+    let rendered = compiled.join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        effect_debug.contains("ApplyContinuousEffect")
+            && effect_debug.contains("AddAbility")
+            && effect_debug.contains("Trample")
+            && effect_debug.contains("ModifyPowerToughness")
+            && effect_debug.contains("BasicLandTypesAmong"),
+        "Tromp the Domains should structurally grant trample and scale P/T by domain, got {effect_debug}"
+    );
+    assert!(
+        rendered_lower.contains("creatures you control")
+            && rendered_lower.contains("gain trample")
+            && rendered_lower.contains("get +1/+1 for each basic land type among lands you control"),
+        "expected Tromp the Domains compiled text to preserve the domain P/T clause, got {rendered}"
+    );
+}
+
+#[test]
 fn kin_tree_nurturer_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Kin-Tree Nurturer");
     let ability_debug = format!("{:#?}", def.abilities);
