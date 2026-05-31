@@ -2109,6 +2109,65 @@ fn glamdring_equipped_creature_gets_first_strike_and_graveyard_scaled_power() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn spider_man_no_more_attached_creature_becomes_citizen_defender_only() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let host = CardDefinitionBuilder::new(CardId::from_raw(72_120), "Heroic Bearer")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Advisor])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text("Flying\nTrample")
+        .expect("host creature should parse");
+    let aura = CardDefinitionBuilder::new(CardId::from_raw(72_121), "Spider-Man No More")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(
+            "Enchant creature\nEnchanted creature is a Citizen with base power and toughness 1/1. It has defender and loses all other abilities.",
+        )
+        .expect("Spider-Man No More should parse");
+
+    let host_id = game.create_object_from_definition(&host, alice, Zone::Battlefield);
+    let aura_id = game.create_object_from_definition(&aura, alice, Zone::Battlefield);
+    if let Some(aura_object) = game.object_mut(aura_id) {
+        aura_object.attached_to = Some(crate::object::AttachmentTarget::Object(host_id));
+    }
+    if let Some(host_object) = game.object_mut(host_id) {
+        host_object.attachments.push(aura_id);
+    }
+
+    let characteristics = game
+        .calculated_characteristics(host_id)
+        .expect("enchanted creature should have calculated characteristics");
+    assert_eq!(
+        (characteristics.power, characteristics.toughness),
+        (Some(1), Some(1)),
+        "Spider-Man No More should set the enchanted creature's base power/toughness to 1/1"
+    );
+    assert!(
+        characteristics.subtypes.contains(&Subtype::Citizen),
+        "Spider-Man No More should make the enchanted creature a Citizen, got {:?}",
+        characteristics.subtypes
+    );
+    assert!(
+        !characteristics.subtypes.contains(&Subtype::Human)
+            && !characteristics.subtypes.contains(&Subtype::Advisor),
+        "Spider-Man No More should remove other creature types, got {:?}",
+        characteristics.subtypes
+    );
+    assert!(
+        game.object_has_ability(host_id, &StaticAbility::defender()),
+        "Spider-Man No More should grant defender after removing other abilities"
+    );
+    assert!(
+        !game.object_has_ability(host_id, &StaticAbility::flying())
+            && !game.object_has_ability(host_id, &StaticAbility::trample()),
+        "Spider-Man No More should remove the enchanted creature's previous abilities"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn frontier_warmonger_grants_menace_only_to_qualifying_attackers_until_cleanup() {
     let mut game = setup_three_player_game();
     let alice = PlayerId::from_index(0);

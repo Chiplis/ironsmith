@@ -45,6 +45,56 @@ fn parse_attached_with_base_power_toughness_clause(
     Ok(Some((power, toughness, preserve_other_types)))
 }
 
+fn parse_attached_transform_loss_removes_all_abilities(tokens: &[OwnedLexToken]) -> bool {
+    let loss_words = crate::runtime_backend::lexer::token_word_refs(tokens);
+    matches!(
+        loss_words.as_slice(),
+        ["lose", "all", "other", "abilities"]
+            | ["loses", "all", "other", "abilities"]
+            | ["lose", "all", "other", "card", "types", "and", "abilities"]
+            | ["loses", "all", "other", "card", "types", "and", "abilities"]
+    )
+}
+
+fn split_attached_transform_base_pt_and_keyword_grant(
+    tokens: &[OwnedLexToken],
+) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
+    for idx in 1..tokens.len() {
+        let Some(word) = tokens[idx].as_word() else {
+            continue;
+        };
+        if !matches!(word, "has" | "have") {
+            continue;
+        }
+
+        let prev_word = tokens[..idx]
+            .iter()
+            .rev()
+            .find_map(OwnedLexToken::as_word)?;
+        if !matches!(prev_word, "it" | "they" | "and") {
+            continue;
+        }
+
+        let prev_idx = tokens[..idx]
+            .iter()
+            .rposition(|token| token.as_word().is_some())?;
+        let base_end = if matches!(prev_word, "it" | "they" | "and") {
+            prev_idx
+        } else {
+            idx
+        };
+        let base_tokens = trim_edge_punctuation(&tokens[..base_end]);
+        let keyword_tokens = trim_edge_punctuation(&tokens[idx + 1..]);
+        if base_tokens.is_empty() || keyword_tokens.is_empty() {
+            continue;
+        }
+
+        return Some((base_tokens, keyword_tokens));
+    }
+
+    None
+}
+
 pub(crate) fn display_text_for_tokens(
     tokens: &[OwnedLexToken],
     capitalize_effect_start: bool,
@@ -909,6 +959,7 @@ pub(crate) fn parse_attached_type_transform_line(
 
     let mut out = Vec::new();
     let mut preserve_other_types = false;
+    let mut loss_consumed = false;
 
     if let Some(with_idx) = with_idx {
         let ability_end = lose_idx.unwrap_or(remainder.len());
@@ -927,11 +978,63 @@ pub(crate) fn parse_attached_type_transform_line(
             )));
         }
 
-        if let Some((power, toughness, with_preserve_other_types)) =
+        if let Some((base_tokens, keyword_tokens)) =
+            split_attached_transform_base_pt_and_keyword_grant(&ability_tokens)
+        {
+            let Some((power, toughness, with_preserve_other_types)) =
+                parse_attached_with_base_power_toughness_clause(&base_tokens)?
+            else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported attached transform granted ability (clause: '{}')",
+                    line_words.join(" ")
+                )));
+            };
+            preserve_other_types = with_preserve_other_types;
+            out.push(
+                StaticAbility::set_base_power_toughness(filter.clone(), power, toughness).into(),
+            );
+
+            if let Some(lose_idx) = lose_idx {
+                let loss_tokens = trim_commas(&remainder[lose_idx..]);
+                if parse_attached_transform_loss_removes_all_abilities(&loss_tokens) {
+                    out.push(StaticAbility::remove_all_abilities(filter.clone()).into());
+                    loss_consumed = true;
+                }
+            }
+
+            let Some(actions) = parse_ability_line(&keyword_tokens) else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported attached transform granted ability (clause: '{}')",
+                    line_words.join(" ")
+                )));
+            };
+            for action in actions {
+                reject_unimplemented_keyword_actions(
+                    std::slice::from_ref(&action),
+                    &line_words.join(" "),
+                )?;
+                if !action.lowers_to_static_ability() {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported attached transform granted ability (clause: '{}')",
+                        line_words.join(" ")
+                    )));
+                }
+                out.push(StaticAbilityAst::AttachedKeywordActionGrant {
+                    display: format!(
+                        "{subject_text} has {}",
+                        action.display_text().to_ascii_lowercase()
+                    ),
+                    action,
+                    condition: None,
+                });
+            }
+        } else if let Some((power, toughness, with_preserve_other_types)) =
             parse_attached_with_base_power_toughness_clause(&ability_tokens)?
         {
             preserve_other_types = with_preserve_other_types;
-            out.push(StaticAbility::set_base_power_toughness(filter.clone(), power, toughness).into());
+            out.push(
+                StaticAbility::set_base_power_toughness(filter.clone(), power, toughness).into(),
+            );
         } else if let Some(parsed) = parse_attached_granted_activated_line(&ability_tokens)? {
             out.push(StaticAbilityAst::AttachedObjectAbilityGrant {
                 ability: parsed,
@@ -957,7 +1060,8 @@ pub(crate) fn parse_attached_type_transform_line(
         }
     }
 
-    if !set_card_types.is_empty() {
+    let descriptor_has_card_types = !set_card_types.is_empty();
+    if descriptor_has_card_types {
         if preserve_other_types {
             out.push(StaticAbility::add_card_types(filter.clone(), set_card_types).into());
         } else {
@@ -965,7 +1069,15 @@ pub(crate) fn parse_attached_type_transform_line(
         }
     }
     if !add_subtypes.is_empty() {
-        out.push(StaticAbility::add_subtypes(filter.clone(), add_subtypes).into());
+        if !preserve_other_types
+            && !descriptor_has_card_types
+            && add_subtypes.iter().all(crate::types::Subtype::is_creature_type)
+            && word_slice_starts_with(&line_words, &["enchanted", "creature"])
+        {
+            out.push(StaticAbility::set_creature_subtypes(filter.clone(), add_subtypes).into());
+        } else {
+            out.push(StaticAbility::add_subtypes(filter.clone(), add_subtypes).into());
+        }
     }
     if !set_colors.is_empty() {
         out.push(StaticAbility::set_colors(filter.clone(), set_colors).into());
@@ -974,16 +1086,12 @@ pub(crate) fn parse_attached_type_transform_line(
         out.push(StaticAbility::make_colorless(filter.clone()).into());
     }
 
-    if let Some(lose_idx) = lose_idx {
+    if let Some(lose_idx) = lose_idx
+        && !loss_consumed
+    {
         let loss_tokens = trim_commas(&remainder[lose_idx..]);
         let loss_words = crate::runtime_backend::lexer::token_word_refs(&loss_tokens);
-        if matches!(
-            loss_words.as_slice(),
-            ["lose", "all", "other", "abilities"]
-                | ["loses", "all", "other", "abilities"]
-                | ["lose", "all", "other", "card", "types", "and", "abilities"]
-                | ["loses", "all", "other", "card", "types", "and", "abilities"]
-        ) {
+        if parse_attached_transform_loss_removes_all_abilities(&loss_tokens) {
             out.push(StaticAbility::remove_all_abilities(filter.clone()).into());
         } else if !matches!(
             loss_words.as_slice(),
