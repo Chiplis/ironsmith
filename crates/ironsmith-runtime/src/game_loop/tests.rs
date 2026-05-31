@@ -17429,6 +17429,125 @@ fn test_tainted_sigil_gains_no_life_when_no_player_lost_life_this_turn() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn final_punishment_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(90_018), "Final Punishment")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Target player loses life equal to the damage already dealt to that player this turn.",
+        )
+        .expect("Final Punishment should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn record_player_damage_this_turn(
+    game: &mut GameState,
+    source: ObjectId,
+    player: PlayerId,
+    amount: u32,
+    is_combat: bool,
+) {
+    let event = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            source,
+            crate::events::DamageTarget::Player(player),
+            amount,
+            is_combat,
+            crate::events::cause::EventCause::effect(),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    game.record_turn_history_event(&event);
+    game.player_mut(player)
+        .expect("damaged player should exist")
+        .life -= amount as i32;
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn final_punishment_makes_target_player_lose_life_equal_to_all_prior_damage_this_turn() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let damage_source = ObjectId::from_raw(90_019);
+
+    record_player_damage_this_turn(&mut game, damage_source, bob, 3, true);
+    record_player_damage_this_turn(&mut game, damage_source, bob, 4, false);
+    record_player_damage_this_turn(&mut game, damage_source, alice, 5, false);
+    game.player_mut(bob)
+        .expect("Bob should exist")
+        .life -= 2;
+
+    let creature = create_creature(&mut game, "Irrelevant Target", bob, 1, 1);
+    let creature_damage = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            damage_source,
+            crate::events::DamageTarget::Object(creature),
+            9,
+            false,
+            crate::events::cause::EventCause::effect(),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    game.record_turn_history_event(&creature_damage);
+
+    let final_punishment = final_punishment_definition();
+    let spell_id = game.create_object_from_definition(&final_punishment, alice, Zone::Stack);
+    game.stack.push(
+        crate::game_state::StackEntry::new(spell_id, alice)
+            .with_targets(vec![crate::game_state::Target::Player(bob)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: crate::target::ChooseSpec::target_player(),
+                range: 0..1,
+            }]),
+    );
+
+    let bob_life_before = game.player(bob).expect("Bob should exist").life;
+    resolve_stack_entry(&mut game).expect("Final Punishment should resolve");
+
+    assert_eq!(
+        game.player(bob).expect("Bob should exist").life,
+        bob_life_before - 7,
+        "Final Punishment should count combat and noncombat damage already dealt to its target player, and ignore other life loss or other targets"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn final_punishment_makes_target_player_lose_no_life_when_they_were_not_damaged_this_turn() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let damage_source = ObjectId::from_raw(90_020);
+
+    record_player_damage_this_turn(&mut game, damage_source, alice, 6, false);
+
+    let final_punishment = final_punishment_definition();
+    let spell_id = game.create_object_from_definition(&final_punishment, alice, Zone::Stack);
+    game.stack.push(
+        crate::game_state::StackEntry::new(spell_id, alice)
+            .with_targets(vec![crate::game_state::Target::Player(bob)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: crate::target::ChooseSpec::target_player(),
+                range: 0..1,
+            }]),
+    );
+
+    let bob_life_before = game.player(bob).expect("Bob should exist").life;
+    resolve_stack_entry(&mut game).expect("Final Punishment should resolve");
+
+    assert_eq!(
+        game.player(bob).expect("Bob should exist").life,
+        bob_life_before,
+        "Final Punishment should use the target player's damage total, not damage dealt to another player"
+    );
+}
+
 #[test]
 fn test_source_lki_refreshes_when_exile_source_moves_it() {
     let mut game = setup_game();

@@ -8076,6 +8076,19 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 describe_player_filter(filter)
             ),
         },
+        Value::DamageDealtToPlayersThisTurn(filter) => match filter {
+            PlayerFilter::You => "the damage already dealt to you this turn".to_string(),
+            PlayerFilter::Opponent => {
+                "the damage already dealt to your opponents this turn".to_string()
+            }
+            PlayerFilter::Target(_) => {
+                "the damage already dealt to that player this turn".to_string()
+            }
+            _ => format!(
+                "the damage already dealt to {} this turn",
+                describe_player_filter(filter)
+            ),
+        },
         Value::NoncombatDamageDealtToPlayersThisTurn(filter) => match filter {
             PlayerFilter::You => {
                 "the total amount of noncombat damage dealt to you this turn".to_string()

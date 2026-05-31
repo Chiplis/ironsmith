@@ -4360,6 +4360,7 @@ fn resolve_value_with_context(
         | Value::LifeGainedThisTurn(_)
         | Value::LifeLostThisTurn(_)
         | Value::CardsDiscardedThisTurn(_)
+        | Value::DamageDealtToPlayersThisTurn(_)
         | Value::NoncombatDamageDealtToPlayersThisTurn(_)
         | Value::NoncombatDamageDealtBySourcesControlledThisTurn { .. }
         | Value::MaxCardsDrawnThisTurn(_)

@@ -1756,6 +1756,7 @@ fn describe_life_amount_phrase(amount: &Value) -> String {
             | Value::Speed(_)
             | Value::LifeGainedThisTurn(_)
             | Value::LifeLostThisTurn(_)
+            | Value::DamageDealtToPlayersThisTurn(_)
     ) {
         return format!("life equal to {}", describe_value(amount));
     }
@@ -28601,6 +28602,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 | Value::Speed(_)
                 | Value::LifeGainedThisTurn(_)
                 | Value::LifeLostThisTurn(_)
+                | Value::DamageDealtToPlayersThisTurn(_)
                 | Value::CardsDiscardedThisTurn(_)
                 | Value::EffectMetric { .. }
                 | Value::EffectMetricOffset { .. }
@@ -28752,6 +28754,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 | Value::Speed(_)
                 | Value::LifeGainedThisTurn(_)
                 | Value::LifeLostThisTurn(_)
+                | Value::DamageDealtToPlayersThisTurn(_)
         ) {
             return format!(
                 "{} {} life equal to {}",

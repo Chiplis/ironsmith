@@ -280,6 +280,13 @@ impl TurnHistory {
             .sum()
     }
 
+    pub fn total_damage_to_players(&self, players: &[PlayerId]) -> u32 {
+        players
+            .iter()
+            .map(|player| self.total_damage_to_player(*player))
+            .sum()
+    }
+
     pub fn total_creature_damage_to_player(&self, player: PlayerId) -> u32 {
         self.projected_records()
             .filter_map(|record| {

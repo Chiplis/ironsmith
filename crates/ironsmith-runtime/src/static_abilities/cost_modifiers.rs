@@ -305,6 +305,22 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
             };
             ("{X}".to_string(), Some(format!("where X is {phrase}")))
         }
+        Value::DamageDealtToPlayersThisTurn(player) => {
+            let phrase = match player {
+                PlayerFilter::You => "the damage already dealt to you this turn".to_string(),
+                PlayerFilter::Opponent => {
+                    "the damage already dealt to your opponents this turn".to_string()
+                }
+                PlayerFilter::Target(_) => {
+                    "the damage already dealt to that player this turn".to_string()
+                }
+                _ => format!(
+                    "the damage already dealt to {} this turn",
+                    describe_player_filter_for_spell_target(player)
+                ),
+            };
+            ("{X}".to_string(), Some(format!("where X is {phrase}")))
+        }
         Value::NoncombatDamageDealtBySourcesControlledThisTurn { player, colors } => {
             let source = match (player, colors) {
                 (PlayerFilter::You, Some(colors))

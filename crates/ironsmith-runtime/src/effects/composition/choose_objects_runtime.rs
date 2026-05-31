@@ -122,6 +122,7 @@ fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
         | crate::effect::Value::DevotionToChosenColor(player)
         | crate::effect::Value::LifeGainedThisTurn(player)
         | crate::effect::Value::LifeLostThisTurn(player)
+        | crate::effect::Value::DamageDealtToPlayersThisTurn(player)
         | crate::effect::Value::NoncombatDamageDealtToPlayersThisTurn(player)
         | crate::effect::Value::MaxCardsDrawnThisTurn(player)
         | crate::effect::Value::LandsEnteredBattlefieldThisTurn(player)
