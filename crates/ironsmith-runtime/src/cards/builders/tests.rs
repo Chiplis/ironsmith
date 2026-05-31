@@ -23127,6 +23127,40 @@ fn parse_terrapact_intimidator_preserves_have_you_create_branch() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_covenant_of_minds_preserves_opponent_choice_and_decline_branch() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(416_862), "Covenant of Minds")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Reveal the top three cards of your library. Target opponent may choose to put those cards into your hand. If they don't, put those cards into your graveyard and draw five cards.",
+        )
+        .expect("Covenant of Minds oracle text should parse strictly");
+
+    let expected = concat!(
+        "Reveal the top three cards of your library. ",
+        "Target opponent may choose to put those cards into your hand. ",
+        "If they don't, put those cards into your graveyard and draw five cards."
+    );
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec![expected.to_string()],
+        "expected exact Covenant of Minds compiled text"
+    );
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("LookAtTopCardsEffect")
+            && debug.contains("MayEffect")
+            && debug.contains("IfEffect"),
+        "expected reveal, optional opponent choice, and decline conditional effects, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_trigger_target_opponent_may_draw_card() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Target Opponent May Draw Variant")
         .parse_text("At the beginning of your end step, target opponent may draw a card.")
