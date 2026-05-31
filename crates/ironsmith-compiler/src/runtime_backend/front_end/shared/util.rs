@@ -1495,6 +1495,10 @@ pub(crate) enum FilterKeywordConstraint {
 fn keyword_action_to_filter_constraint(action: KeywordAction) -> Option<FilterKeywordConstraint> {
     use FilterKeywordConstraint::{Marker, Static};
 
+    if matches!(action, KeywordAction::Decayed) {
+        return Some(Marker("decayed"));
+    }
+
     if let KeywordAction::Landwalk(kind) = action {
         let constraint = match kind {
             crate::static_abilities::LandwalkKind::Subtype {

@@ -1738,6 +1738,9 @@ fn lower_granted_ability_grant_modifications(
             }
             GrantedAbilityAst::KeywordAction(crate::KeywordAction::Decayed) => {
                 modifications.push(crate::continuous::Modification::AddAbility(
+                    StaticAbility::keyword_marker("decayed"),
+                ));
+                modifications.push(crate::continuous::Modification::AddAbility(
                     StaticAbility::cant_block(),
                 ));
                 modifications.push(crate::continuous::Modification::AddAbilityGeneric(

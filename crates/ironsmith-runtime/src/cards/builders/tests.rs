@@ -538,6 +538,196 @@ fn vampire_socialite_static_replacement_requires_opponent_life_loss() {
 }
 
 #[test]
+fn jadar_ghoulcaller_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Jadar, Ghoulcaller of Nephalia");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Triggered(triggered) = &ability.kind else {
+                return None;
+            };
+            format!("{:?}", triggered.effects)
+                .contains("CreateTokenEffect")
+                .then_some(triggered)
+        })
+        .expect("Jadar should have a token-creating end-step trigger");
+    let condition_debug = format!("{:?}", triggered.intervening_if);
+
+    assert!(
+        condition_debug.contains("PlayerControls")
+            && condition_debug.contains("Not")
+            && condition_debug.contains("decayed"),
+        "Jadar should structurally keep the no-creatures-with-decayed gate, got {condition_debug}"
+    );
+    assert!(
+        rendered.contains(
+            "At the beginning of your end step, if you control no creatures with decayed, create a 2/2 black Zombie creature token with decayed."
+        ),
+        "expected Jadar compiled text to preserve the full condition and decayed token creation, got {rendered}"
+    );
+}
+
+fn jadar_end_step_event(player: PlayerId) -> crate::triggers::TriggerEvent {
+    crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfEndStepEvent::new(player),
+        crate::provenance::ProvNodeId::default(),
+    )
+}
+
+fn jadar_decayed_creature_definition() -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(92_003), "Decayed Zombie")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Zombie])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::keyword_marker("decayed"),
+        ))
+        .with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::cant_block(),
+        ))
+        .build()
+}
+
+#[test]
+fn jadar_end_step_creates_decayed_zombie_when_you_control_none() {
+    let def = parse_oracle_card_definition("Jadar, Ghoulcaller of Nephalia");
+    let alice = PlayerId::from_index(0);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let jadar_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.turn.active_player = alice;
+
+    let event = jadar_end_step_event(alice);
+    let triggers = crate::triggers::check_triggers(&game, &event);
+    assert_eq!(
+        triggers
+            .iter()
+            .filter(|entry| entry.source == jadar_id)
+            .count(),
+        1,
+        "Jadar should trigger when you control no creatures with decayed"
+    );
+
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for trigger in triggers {
+        trigger_queue.add(trigger);
+    }
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Jadar trigger should go on the stack");
+    crate::game_loop::resolve_stack_entry(&mut game).expect("Jadar trigger should resolve");
+
+    let zombie_tokens = game
+        .battlefield
+        .iter()
+        .filter_map(|&id| game.object(id).map(|object| (id, object)))
+        .filter(|(_, object)| {
+            matches!(object.kind, crate::object::ObjectKind::Token)
+                && object.subtypes.contains(&Subtype::Zombie)
+                && game.controller_of(object) == alice
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(zombie_tokens.len(), 1, "Jadar should create one Zombie token");
+
+    let (token_id, token) = zombie_tokens[0];
+    assert_eq!(game.current_power(token_id), Some(2));
+    assert_eq!(game.current_toughness(token_id), Some(2));
+    assert_eq!(token.colors(), ColorSet::from(Color::Black));
+    assert!(
+        game.object_has_static_ability_id(token_id, StaticAbilityId::CantBlock),
+        "Jadar's token should have decayed's can't-block ability"
+    );
+    let token_abilities = format!("{:?}", token.abilities);
+    assert!(
+        token_abilities.contains("KeywordMarker") && token_abilities.contains("decayed"),
+        "Jadar's token should carry a decayed marker for future no-decayed checks, got {token_abilities}"
+    );
+    assert!(
+        token
+            .abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, AbilityKind::Triggered(_))),
+        "Jadar's token should have decayed's sacrifice trigger"
+    );
+}
+
+#[test]
+fn jadar_end_step_does_not_trigger_while_you_control_decayed_creature() {
+    let def = parse_oracle_card_definition("Jadar, Ghoulcaller of Nephalia");
+    let alice = PlayerId::from_index(0);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let jadar_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.create_object_from_definition(
+        &jadar_decayed_creature_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    game.turn.active_player = alice;
+
+    let event = jadar_end_step_event(alice);
+    let triggers = crate::triggers::check_triggers(&game, &event);
+    assert_eq!(
+        triggers
+            .iter()
+            .filter(|entry| entry.source == jadar_id)
+            .count(),
+        0,
+        "Jadar should not queue its intervening-if trigger while you control a decayed creature"
+    );
+}
+
+#[test]
+fn jadar_end_step_trigger_does_not_create_token_if_condition_fails_on_resolution() {
+    let def = parse_oracle_card_definition("Jadar, Ghoulcaller of Nephalia");
+    let alice = PlayerId::from_index(0);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let jadar_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.turn.active_player = alice;
+
+    let event = jadar_end_step_event(alice);
+    let triggers = crate::triggers::check_triggers(&game, &event);
+    assert_eq!(
+        triggers
+            .iter()
+            .filter(|entry| entry.source == jadar_id)
+            .count(),
+        1,
+        "Jadar should initially queue when you control no decayed creatures"
+    );
+
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for trigger in triggers {
+        trigger_queue.add(trigger);
+    }
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Jadar trigger should go on the stack");
+    game.create_object_from_definition(
+        &jadar_decayed_creature_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    crate::game_loop::resolve_stack_entry(&mut game).expect("Jadar trigger should resolve");
+
+    let jadar_created_tokens = game
+        .battlefield
+        .iter()
+        .filter_map(|&id| game.object(id))
+        .filter(|object| {
+            matches!(object.kind, crate::object::ObjectKind::Token)
+                && object.subtypes.contains(&Subtype::Zombie)
+                && game.controller_of(object) == alice
+        })
+        .count();
+    assert_eq!(
+        jadar_created_tokens, 0,
+        "Jadar should not create a token if the decayed-creature condition is false on resolution"
+    );
+}
+
+#[test]
 fn party_dude_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Party Dude");
     let ability_debug = format!("{:#?}", def.abilities);
