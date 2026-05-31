@@ -1503,6 +1503,13 @@ pub(crate) enum SubjectVerbActionAst {
         target_count: Option<ChoiceCount>,
         distributed: bool,
     },
+    PutCounterChoice {
+        counter_types: Vec<CounterType>,
+        count: Value,
+        mode_texts: Vec<String>,
+        target: TargetAst,
+        target_count: Option<ChoiceCount>,
+    },
     PutOrRemoveCounters {
         put_counter_type: CounterType,
         put_count: Value,
@@ -2927,6 +2934,20 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("target", target)
                 .field("target_count", target_count)
                 .field("distributed", distributed)
+                .finish(),
+            Self::PutCounterChoice {
+                counter_types,
+                count,
+                mode_texts,
+                target,
+                target_count,
+            } => f
+                .debug_struct("PutCounterChoice")
+                .field("counter_types", counter_types)
+                .field("count", count)
+                .field("mode_texts", mode_texts)
+                .field("target", target)
+                .field("target_count", target_count)
                 .finish(),
             Self::PutOrRemoveCounters {
                 put_counter_type,
@@ -5809,6 +5830,26 @@ impl EffectAst {
                 target,
                 target_count,
                 distributed,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_put_counter_choice(
+        counter_types: Vec<CounterType>,
+        count: Value,
+        mode_texts: Vec<String>,
+        target: TargetAst,
+        target_count: Option<ChoiceCount>,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::PutCounterChoice {
+                counter_types,
+                count,
+                mode_texts,
+                target,
+                target_count,
             },
         )
     }

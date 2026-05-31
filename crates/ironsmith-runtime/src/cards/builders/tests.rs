@@ -24857,6 +24857,43 @@ fn parse_gain_choice_of_three_keywords_clause_compiles_to_mode_choice() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn assaultron_dominator_parses_counter_choice_attack_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Assaultron Dominator")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Robot])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "When this creature enters, you get {E}{E} (two energy counters).\n\
+             Whenever an artifact creature you control attacks, you may pay {E}. If you do, put your choice of a +1/+1, first strike, or trample counter on that creature.",
+        )
+        .expect("Assaultron Dominator should parse strictly");
+
+    let ability_debug = format!("{:#?}", def.abilities);
+    assert!(
+        ability_debug.contains("ChooseModeEffect")
+            && ability_debug.contains("PlusOnePlusOne")
+            && ability_debug.contains("FirstStrike")
+            && ability_debug.contains("Trample"),
+        "expected modal counter choice in Assaultron Dominator, got {ability_debug}"
+    );
+
+    let joined = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        joined.contains(
+            "put your choice of a +1/+1, first strike, or trample counter on that creature"
+        ),
+        "expected compact counter-choice text for Assaultron Dominator, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_gain_choice_of_keywords_preserves_protection_qualifier() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Jodah Choice Variant")
         .card_types(vec![CardType::Creature])

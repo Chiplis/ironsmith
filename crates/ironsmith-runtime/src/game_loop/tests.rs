@@ -192,6 +192,170 @@ fn rampaging_aetherhood_declining_payment_gets_energy_without_counters() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn assaultron_dominator_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(74_260), "Assaultron Dominator")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Robot])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "When this creature enters, you get {E}{E} (two energy counters).\n\
+             Whenever an artifact creature you control attacks, you may pay {E}. If you do, put your choice of a +1/+1, first strike, or trample counter on that creature.",
+        )
+        .expect("Assaultron Dominator should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct AssaultronDecisionMaker {
+    pay_energy: bool,
+    mode_index: usize,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for AssaultronDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        self.pay_energy
+    }
+
+    fn decide_options(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        vec![self.mode_index.min(ctx.options.len().saturating_sub(1))]
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn attack_with_assaultron_creature(game: &mut GameState, attacker_id: ObjectId) -> TriggerQueue {
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.remove_summoning_sickness(attacker_id);
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    apply_attacker_declarations(
+        game,
+        &mut combat,
+        &mut trigger_queue,
+        &[AttackerDeclaration {
+            creature: attacker_id,
+            target: AttackTarget::Player(bob),
+        }],
+    )
+    .expect("Assaultron attacker should be legal");
+    trigger_queue
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn assaultron_dominator_attack_trigger_pays_energy_and_chooses_each_counter_mode() {
+    for (mode_index, counter_type) in [
+        (0, crate::object::CounterType::PlusOnePlusOne),
+        (1, crate::object::CounterType::FirstStrike),
+        (2, crate::object::CounterType::Trample),
+    ] {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let assaultron = assaultron_dominator_definition();
+        let assaultron_id = game.create_object_from_definition(&assaultron, alice, Zone::Battlefield);
+        game.player_mut(alice)
+            .expect("alice exists")
+            .energy_counters = 1;
+
+        let mut trigger_queue = attack_with_assaultron_creature(&mut game, assaultron_id);
+        assert_eq!(
+            trigger_queue.entries.len(),
+            1,
+            "Assaultron Dominator should trigger when it attacks as an artifact creature"
+        );
+        put_triggers_on_stack(&mut game, &mut trigger_queue)
+            .expect("Assaultron Dominator attack trigger should go on the stack");
+
+        let mut dm = AssaultronDecisionMaker {
+            pay_energy: true,
+            mode_index,
+        };
+        resolve_stack_entry_with(&mut game, &mut dm)
+            .expect("Assaultron Dominator attack trigger should resolve");
+
+        assert_eq!(
+            game.player(alice).expect("alice exists").energy_counters,
+            0,
+            "Assaultron Dominator should spend one energy when the payment is accepted"
+        );
+        assert_eq!(
+            game.counter_count(assaultron_id, counter_type),
+            1,
+            "Assaultron Dominator should receive the selected counter mode"
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn assaultron_dominator_declining_energy_payment_adds_no_counter() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let assaultron = assaultron_dominator_definition();
+    let assaultron_id = game.create_object_from_definition(&assaultron, alice, Zone::Battlefield);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .energy_counters = 1;
+
+    let mut trigger_queue = attack_with_assaultron_creature(&mut game, assaultron_id);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Assaultron Dominator attack trigger should go on the stack");
+
+    let mut dm = AssaultronDecisionMaker {
+        pay_energy: false,
+        mode_index: 0,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Assaultron Dominator attack trigger should resolve when payment is declined");
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").energy_counters,
+        1,
+        "declining the optional payment should leave the energy unspent"
+    );
+    assert_eq!(
+        game.counter_count(assaultron_id, crate::object::CounterType::PlusOnePlusOne)
+            + game.counter_count(assaultron_id, crate::object::CounterType::FirstStrike)
+            + game.counter_count(assaultron_id, crate::object::CounterType::Trample),
+        0,
+        "declining the optional payment should add no counter"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn assaultron_dominator_ignores_nonartifact_attackers() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let assaultron = assaultron_dominator_definition();
+    game.create_object_from_definition(&assaultron, alice, Zone::Battlefield);
+    let nonartifact = create_creature(&mut game, "Nonartifact Attacker", alice, 2, 2);
+
+    let trigger_queue = attack_with_assaultron_creature(&mut game, nonartifact);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        0,
+        "Assaultron Dominator should not trigger for a nonartifact creature attacking"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn twenty_toed_toad_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(72_950), "Twenty-Toed Toad")
         .mana_cost(ManaCost::from_pips(vec![
