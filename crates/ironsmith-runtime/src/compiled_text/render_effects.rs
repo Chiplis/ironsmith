@@ -33129,6 +33129,28 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             }
             return format!("When that creature dies this turn, {delayed_text}");
         }
+        if schedule.target_tag.is_some()
+            && trigger_lower.contains("leaves the battlefield")
+        {
+            let subject = schedule
+                .target_filter
+                .as_ref()
+                .map(|filter| {
+                    let mut base = filter.clone();
+                    base.tagged_constraints.retain(|constraint| {
+                        !(constraint.relation
+                            == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                            && schedule.target_tag.as_ref().is_some_and(|tag| {
+                                constraint.tag.as_str() == tag.as_str()
+                                    || constraint.tag.as_str() == "__it__"
+                            }))
+                    });
+                    let desc = base.description();
+                    format!("that {}", strip_leading_article(&desc))
+                })
+                .unwrap_or_else(|| "that permanent".to_string());
+            return format!("When {subject} leaves the battlefield this turn, {delayed_text}");
+        }
         if trigger_lower.starts_with("when ")
             || trigger_lower.starts_with("whenever ")
             || trigger_lower.starts_with("if ")

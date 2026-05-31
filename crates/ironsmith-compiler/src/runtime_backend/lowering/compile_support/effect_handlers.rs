@@ -40,6 +40,9 @@ fn compile_delayed_trigger_spec(
             },
         ),
         TriggerSpec::ThisDies => Ok(ironsmith_core::DelayedTriggerSpec::ThisDies),
+        TriggerSpec::ThisLeavesBattlefield => {
+            Ok(ironsmith_core::DelayedTriggerSpec::ThisLeavesBattlefield)
+        }
         TriggerSpec::ThisAttacksAndIsntBlocked => {
             Ok(ironsmith_core::DelayedTriggerSpec::ThisAttacksAndIsntBlocked)
         }
@@ -55,6 +58,9 @@ fn compile_delayed_trigger_spec(
         TriggerSpec::Blocks(filter) => {
             Ok(ironsmith_core::DelayedTriggerSpec::Blocks(filter.clone()))
         }
+        TriggerSpec::LeavesBattlefield(filter) => Ok(
+            ironsmith_core::DelayedTriggerSpec::LeavesBattlefield(filter.clone()),
+        ),
         TriggerSpec::Dies(filter) | TriggerSpec::DiesOneOrMore(filter) => {
             Ok(ironsmith_core::DelayedTriggerSpec::Dies(filter.clone()))
         }
@@ -377,6 +383,50 @@ pub(super) fn try_compile_timing_and_control_effect(
                         let effect = Effect::new(
                             crate::effects::ScheduleDelayedTriggerEffect::new(
                                 ironsmith_core::DelayedTriggerSpec::Dies(resolved_filter),
+                                delayed_effects,
+                                *one_shot,
+                                Vec::new(),
+                                PlayerFilter::You,
+                            )
+                            .until_end_of_turn(),
+                        );
+                        (vec![effect], choices)
+                    }
+                }
+                TriggerSpec::LeavesBattlefield(filter) => {
+                    let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+                    let watched_tag = watch_tag_from_filter(&resolved_filter).or_else(|| {
+                        filter_references_tag(filter, IT_TAG)
+                            .then(|| TagKey::from("targeted_0"))
+                    });
+                    if let Some(watched_tag) = watched_tag {
+                        let lowered = compile_trigger_effects_with_imports(
+                            Some(trigger),
+                            effects,
+                            &ReferenceImports {
+                                last_object_tag: Some(watched_tag.clone()),
+                                ..Default::default()
+                            },
+                        )?;
+                        let delayed_effects = lowered.effects.to_vec();
+                        let delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
+                            watched_tag.clone().into(),
+                            ironsmith_core::DelayedTriggerSpec::ThisLeavesBattlefield,
+                            delayed_effects,
+                            *one_shot,
+                            Vec::new(),
+                            PlayerFilter::You,
+                        );
+                        let delayed = delayed
+                            .with_target_filter(resolved_filter)
+                            .until_end_of_turn();
+                        (vec![Effect::new(delayed)], choices)
+                    } else {
+                        let effect = Effect::new(
+                            crate::effects::ScheduleDelayedTriggerEffect::new(
+                                ironsmith_core::DelayedTriggerSpec::LeavesBattlefield(
+                                    resolved_filter,
+                                ),
                                 delayed_effects,
                                 *one_shot,
                                 Vec::new(),
