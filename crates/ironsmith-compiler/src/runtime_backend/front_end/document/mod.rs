@@ -1264,6 +1264,9 @@ fn source_name_aliases_for_builder(builder: &CardDefinitionBuilder) -> Vec<Strin
         if let Some(stripped) = strip_leading_digital_variant_marker(full_name.as_str()) {
             push_unique_source_name_alias(&mut full_names, stripped);
         }
+        if let Some(stripped) = strip_trailing_roman_numeral(full_name.as_str()) {
+            push_unique_source_name_alias(&mut full_names, stripped);
+        }
     }
 
     for full_name in &full_names {
@@ -1302,6 +1305,22 @@ fn strip_leading_digital_variant_marker(name: &str) -> Option<&str> {
         }
     }
     None
+}
+
+fn strip_trailing_roman_numeral(name: &str) -> Option<&str> {
+    let trimmed = name.trim();
+    let (prefix, suffix) = trimmed.rsplit_once(char::is_whitespace)?;
+    let suffix = suffix.trim_matches(|ch: char| !ch.is_ascii_alphabetic());
+    if suffix.len() < 2 || !suffix.bytes().all(|byte| {
+        matches!(
+            byte.to_ascii_uppercase(),
+            b'I' | b'V' | b'X' | b'L' | b'C' | b'D' | b'M'
+        )
+    }) {
+        return None;
+    }
+    let prefix = prefix.trim();
+    (!prefix.is_empty()).then_some(prefix)
 }
 
 fn strip_non_keyword_label_prefix(text: &str) -> &str {

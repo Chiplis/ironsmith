@@ -30,6 +30,7 @@ use super::token_primitives::{
     find_index as find_token_index, str_ends_with, str_starts_with, str_strip_prefix,
     str_strip_suffix,
 };
+use super::util::is_source_reference_words;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ActivationCostCst {
@@ -617,6 +618,9 @@ fn parse_sacrifice_segment_tokens(
             &["this", "card"],
         ],
     ) {
+        return Ok(ActivationCostSegmentCst::SacrificeSelf);
+    }
+    if is_source_reference_words(tail) {
         return Ok(ActivationCostSegmentCst::SacrificeSelf);
     }
     if word_slice_eq(tail, &["a", "creature"]) {

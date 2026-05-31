@@ -9002,6 +9002,20 @@ pub(super) fn describe_apply_continuous_clauses(
         }
     }
 
+    if clauses.len() > 1 {
+        let shared_gain_prefix = if plural_target { "gain " } else { "gains " };
+        if clauses
+            .iter()
+            .all(|clause| clause.starts_with(shared_gain_prefix))
+        {
+            let gained = clauses
+                .iter()
+                .map(|clause| clause[shared_gain_prefix.len()..].to_string())
+                .collect::<Vec<_>>();
+            return vec![format!("{shared_gain_prefix}{}", join_with_and(&gained))];
+        }
+    }
+
     clauses
 }
 
