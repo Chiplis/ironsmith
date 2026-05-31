@@ -27810,6 +27810,49 @@ fn parse_spells_cost_modifier_supports_colored_mana_increase() {
     );
 }
 
+#[test]
+fn parse_oracle_defiler_of_instinct_optional_life_cost_reduction_regression() {
+    let def = parse_oracle_card_definition("Defiler of Instinct");
+    let raw = format!("{def:#?}");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    let reduction = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => static_ability.cost_reduction_mana_cost(),
+            _ => None,
+        })
+        .expect("Defiler of Instinct should have a mana-symbol cost reduction");
+
+    assert_eq!(reduction.filter.cast_by, Some(PlayerFilter::You));
+    assert!(
+        reduction.filter.card_types.contains(&CardType::Creature)
+            && reduction.filter.card_types.contains(&CardType::Artifact)
+            && reduction.filter.card_types.contains(&CardType::Enchantment)
+            && reduction.filter.card_types.contains(&CardType::Planeswalker)
+            && reduction.filter.card_types.contains(&CardType::Battle),
+        "Defiler cost reduction should apply to red permanent spells, got {:?}",
+        reduction.filter
+    );
+    assert!(
+        reduction.optional_life_additional_cost.is_some(),
+        "Defiler cost reduction should be gated by its optional life additional cost, got {raw}"
+    );
+    assert!(
+        rendered_lower.contains("as an additional cost to cast red permanent spells, you may pay 2 life")
+            && rendered_lower.contains("those spells cost {r} less to cast if you paid life this way")
+            && rendered_lower.contains("this effect reduces only the amount of red mana you pay"),
+        "Defiler compiled text should preserve the optional additional cost and gated colored reduction, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("whenever you cast a red permanent spell")
+            && rendered_lower.contains("deals 1 damage to any target"),
+        "Defiler compiled text should preserve its red-permanent cast trigger, got {rendered}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_spells_cost_modifier_supports_where_x_differently_named_lands() {

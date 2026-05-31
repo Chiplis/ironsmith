@@ -680,6 +680,9 @@ fn parse_simple_object_filter_lexed(tokens: &[OwnedLexToken], other: bool) -> Op
         return None;
     }
 
+    if saw_spell && saw_permanent && filter.card_types.is_empty() {
+        filter.card_types = ObjectFilter::permanent_card().card_types;
+    }
     if filter.zone.is_none() {
         if saw_spell {
             filter.zone = Some(Zone::Stack);
@@ -690,6 +693,7 @@ fn parse_simple_object_filter_lexed(tokens: &[OwnedLexToken], other: bool) -> Op
         }
     }
     if saw_spell {
+        filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
         filter.has_mana_cost = true;
     }
 

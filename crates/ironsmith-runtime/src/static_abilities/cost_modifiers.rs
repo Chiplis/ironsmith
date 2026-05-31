@@ -490,6 +490,16 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
     if filter.source {
         return "this spell".to_string();
     }
+    fn is_permanent_card_type_set(types: &[CardType]) -> bool {
+        types.len() == 6
+            && types.contains(&CardType::Artifact)
+            && types.contains(&CardType::Creature)
+            && types.contains(&CardType::Enchantment)
+            && types.contains(&CardType::Land)
+            && types.contains(&CardType::Planeswalker)
+            && types.contains(&CardType::Battle)
+    }
+
     let mut qualifiers = Vec::<String>::new();
     if let Some(colors) = filter.colors {
         let color_text = describe_colors(colors);
@@ -509,12 +519,16 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
         qualifiers.push(join_with_and(&subtypes));
     }
     if !filter.card_types.is_empty() {
-        let types = filter
-            .card_types
-            .iter()
-            .map(|card_type| describe_card_type(*card_type).to_string())
-            .collect::<Vec<_>>();
-        qualifiers.push(join_with_and(&types));
+        if is_permanent_card_type_set(&filter.card_types) {
+            qualifiers.push("permanent".to_string());
+        } else {
+            let types = filter
+                .card_types
+                .iter()
+                .map(|card_type| describe_card_type(*card_type).to_string())
+                .collect::<Vec<_>>();
+            qualifiers.push(join_with_and(&types));
+        }
     }
 
     let mut description = if qualifiers.is_empty() {
@@ -1854,6 +1868,7 @@ pub struct CostReductionManaCost {
     pub filter: ObjectFilter,
     pub reduction: ManaCost,
     pub condition: Option<crate::ConditionExpr>,
+    pub optional_life_additional_cost: Option<ironsmith_core::OptionalLifeAdditionalCost>,
 }
 
 impl CostReductionManaCost {
@@ -1862,7 +1877,19 @@ impl CostReductionManaCost {
             filter,
             reduction,
             condition: None,
+            optional_life_additional_cost: None,
         }
+    }
+
+    pub fn with_optional_life_additional_cost(
+        mut self,
+        label: impl Into<String>,
+        life_cost: u32,
+    ) -> Self {
+        self.optional_life_additional_cost = Some(ironsmith_core::OptionalLifeAdditionalCost::new(
+            label, life_cost,
+        ));
+        self
     }
 
     pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
@@ -1877,6 +1904,26 @@ impl StaticAbilityKind for CostReductionManaCost {
     }
 
     fn display(&self) -> String {
+        if let Some(optional) = &self.optional_life_additional_cost {
+            let mut subject_filter = self.filter.clone();
+            subject_filter.cast_by = None;
+            let subject = describe_spell_filter(&subject_filter);
+            let mut line = format!(
+                "As an additional cost to cast {subject}, you may pay {} life. Those spells cost {} less to cast if you paid life this way",
+                optional.life_cost,
+                describe_cost_modifier_mana_cost(&self.reduction)
+            );
+            if mana_cost_contains_colored_symbol(&self.reduction) {
+                if let Some(color) = single_colored_mana_word(&self.reduction) {
+                    line.push_str(&format!(
+                        ". This effect reduces only the amount of {color} mana you pay"
+                    ));
+                } else {
+                    line.push_str(". This effect reduces only the amount of colored mana you pay");
+                }
+            }
+            return describe_cost_modifier_with_condition(line, &self.condition);
+        }
         let mut line = format!(
             "{} cost {} less to cast",
             describe_spell_filter(&self.filter),
@@ -1920,6 +1967,24 @@ fn mana_cost_contains_colored_symbol(cost: &ManaCost) -> bool {
                 | ManaSymbol::Green
         )
     })
+}
+
+fn single_colored_mana_word(cost: &ManaCost) -> Option<&'static str> {
+    let pips = cost.pips();
+    let [pip] = pips else {
+        return None;
+    };
+    let [symbol] = pip.as_slice() else {
+        return None;
+    };
+    match symbol {
+        ManaSymbol::White => Some("white"),
+        ManaSymbol::Blue => Some("blue"),
+        ManaSymbol::Black => Some("black"),
+        ManaSymbol::Red => Some("red"),
+        ManaSymbol::Green => Some("green"),
+        _ => None,
+    }
 }
 
 /// Mana-symbol cost increase: "Spells cost {B} more to cast"
