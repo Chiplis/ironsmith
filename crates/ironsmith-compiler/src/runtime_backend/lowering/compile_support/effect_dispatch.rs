@@ -2006,7 +2006,9 @@ fn compile_subject_verb_effect(
                         player_filter,
                     );
                 if *while_on_top_of_library {
-                    grant_free_cast = grant_free_cast.while_on_top_of_library();
+                    grant_free_cast = grant_free_cast
+                        .while_on_top_of_library()
+                        .from_current_zone();
                 }
                 effects.push(Effect::new(grant_free_cast));
             }

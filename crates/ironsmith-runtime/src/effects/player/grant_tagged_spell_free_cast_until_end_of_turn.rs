@@ -45,6 +45,9 @@ impl EffectExecutor for GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
                 continue;
             }
             let zone = object.zone;
+            if self.zone.is_some_and(|required_zone| required_zone != zone) {
+                continue;
+            }
             let source = if self.while_on_top_of_library {
                 GrantSource::EffectWhileStableCardOnTopOfLibrary {
                     source_id: ctx.source,

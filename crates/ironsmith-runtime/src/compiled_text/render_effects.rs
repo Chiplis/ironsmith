@@ -32943,8 +32943,19 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         } else {
             "their mana costs"
         };
+        let zone_text = match grant_tagged_spell_free_cast.zone {
+            Some(crate::zone::Zone::Exile) => " from exile",
+            Some(crate::zone::Zone::Library) => " from a library",
+            Some(crate::zone::Zone::Graveyard) => " from a graveyard",
+            Some(crate::zone::Zone::Hand) => " from hand",
+            Some(crate::zone::Zone::Battlefield) => " from the battlefield",
+            Some(crate::zone::Zone::Stack) => " from the stack",
+            Some(crate::zone::Zone::Command) => " from the command zone",
+            Some(crate::zone::Zone::OutsideGame) => " from outside the game",
+            None => "",
+        };
         return format!(
-            "{} may cast {object_text} this turn without paying {cost_text}",
+            "{} may cast {object_text}{zone_text} this turn without paying {cost_text}",
             describe_player_filter(&grant_tagged_spell_free_cast.player),
         );
     }

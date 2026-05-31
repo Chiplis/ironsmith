@@ -752,6 +752,11 @@ where
                 filter: spec.filter,
                 zone: spec.zone,
                 beneficiary: spec.beneficiary,
+                cast_this_way_grants: spec
+                    .cast_this_way_grants
+                    .into_iter()
+                    .map(|ability| map_static_ability(ability, map_trigger, map_effect, map_cost))
+                    .collect::<Result<Vec<_>, _>>()?,
             })
         }
 

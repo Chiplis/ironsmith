@@ -2514,7 +2514,7 @@ impl GameState {
             self.players[index].library.shuffle(&mut rng);
         }
         let after_order = self.players[index].library.clone();
-        if before_order != after_order {
+        if before_order.last() != after_order.last() {
             self.bump_library_top_revision(player_id);
         }
         self.push_hidden_info_operation(HiddenInfoOperation::LibraryShuffle {
@@ -2579,7 +2579,7 @@ impl GameState {
         if let Some(player_state) = self.player_mut(player) {
             player_state.library = after_order.clone();
         }
-        if before_order != after_order {
+        if before_order.last() != after_order.last() {
             self.bump_library_top_revision(player);
         }
         self.record_library_reorder(player, before_order, after_order, reason);
@@ -2687,7 +2687,7 @@ impl GameState {
         } else {
             return false;
         };
-        if before_order != after_order {
+        if before_order.last() != after_order.last() {
             self.bump_library_top_revision(player);
         }
         self.record_library_reorder(player, before_order, after_order, reason);
@@ -4772,10 +4772,16 @@ impl GameState {
             Zone::Command => self.command_zone.retain(|&x| x != id),
             Zone::Exile => self.exile.retain(|&x| x != id),
             Zone::Library => {
+                let was_top = self
+                    .player(owner)
+                    .and_then(|player| player.library.last().copied())
+                    == Some(id);
                 if let Some(player) = self.player_mut(owner) {
                     player.library.retain(|&x| x != id);
                 }
-                self.bump_library_top_revision(owner);
+                if was_top {
+                    self.bump_library_top_revision(owner);
+                }
             }
             Zone::Hand => {
                 if let Some(player) = self.player_mut(owner) {
@@ -6124,6 +6130,7 @@ impl GameState {
             .entry(player)
             .or_insert(0);
         *revision = revision.saturating_add(1);
+        self.mark_continuous_state_dirty();
     }
 
     /// Check if a player may spend mana as though it were mana of any color.

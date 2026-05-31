@@ -142,6 +142,23 @@ fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn thundermane_dragon_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Thundermane Dragon");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        ability_debug.contains("PlayFrom") && ability_debug.contains("cast_this_way_grants"),
+        "Thundermane Dragon should structurally grant top-library casting with a cast-this-way ability, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains("from the top of your library")
+            && rendered.contains("If you cast a creature spell this way, it gains haste until end of turn"),
+        "Thundermane Dragon compiled text should preserve the top-library cast and haste clause, got {rendered}"
+    );
+}
+
+#[test]
 fn party_dude_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Party Dude");
     let ability_debug = format!("{:#?}", def.abilities);
@@ -35583,11 +35600,31 @@ fn temporal_aperture_runtime_grants_free_cast_only_while_revealed_card_is_top_li
     game.turn.priority_player = Some(alice);
 
     let temporal_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let lower_spell_a = CardBuilder::new(CardId::from_raw(77_003), "Lower Library Spell A")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let lower_spell_a_id = game.create_object_from_card(&lower_spell_a, alice, Zone::Library);
+    let lower_spell_b = CardBuilder::new(CardId::from_raw(77_004), "Lower Library Spell B")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let lower_spell_b_id = game.create_object_from_card(&lower_spell_b, alice, Zone::Library);
     let expensive_spell = CardBuilder::new(CardId::from_raw(77_001), "Expensive Spell")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
         .card_types(vec![CardType::Sorcery])
         .build();
     let spell_id = game.create_object_from_card(&expensive_spell, alice, Zone::Library);
+    let pre_shuffle_order = game
+        .player(alice)
+        .expect("alice exists")
+        .library
+        .clone();
+    game.queue_transcript_library_shuffle_order(
+        alice,
+        pre_shuffle_order.clone(),
+        pre_shuffle_order,
+    );
 
     assert!(
         !game.effect_store.grant_registry.card_can_play_from_zone(
@@ -35628,6 +35665,39 @@ fn temporal_aperture_runtime_grants_free_cast_only_while_revealed_card_is_top_li
             crate::static_abilities::StaticAbilityId::AllPlayersLookAtYourTopLibraryCard,
         ),
         "Temporal Aperture should reveal the top card while the tagged card remains on top"
+    );
+
+    assert!(
+        game.set_player_library_order_with_audit(
+            alice,
+            vec![lower_spell_b_id, lower_spell_a_id, spell_id],
+            "test reorder below Temporal Aperture top card",
+        ),
+        "test should be able to reorder lower library cards without moving the revealed top card"
+    );
+    assert!(
+        game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            spell_id,
+            Zone::Library,
+            alice
+        ),
+        "Temporal Aperture's play permission should survive reorder below the revealed top card"
+    );
+    assert!(
+        !game
+            .effect_store
+            .grant_registry
+            .granted_alternative_casts_for_card(&game, spell_id, Zone::Library, alice)
+            .is_empty(),
+        "Temporal Aperture's free-cast permission should survive reorder below the revealed top card"
+    );
+    assert!(
+        game.current_has_static_ability_id(
+            temporal_id,
+            crate::static_abilities::StaticAbilityId::AllPlayersLookAtYourTopLibraryCard,
+        ),
+        "Temporal Aperture should keep revealing while the revealed card remains on top"
     );
 
     let actions = compute_legal_actions(&game, alice);

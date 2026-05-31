@@ -31353,6 +31353,116 @@ fn test_library_play_from_grant_offers_top_creature_card() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn thundermane_dragon_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Thundermane Dragon")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(5)]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Dragon])
+        .power_toughness(PowerToughness::fixed(5, 5))
+        .parse_text(
+            "Flying\nYou may cast creature spells with power 4 or greater from the top of your library. If you cast a creature spell this way, it gains haste until end of turn.",
+        )
+        .expect("Thundermane Dragon should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn thundermane_dragon_casts_top_power_four_creature_and_grants_haste_until_eot() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let thundermane = thundermane_dragon_definition();
+    let source_id = game.create_object_from_definition(&thundermane, alice, Zone::Battlefield);
+    let top_creature = CardBuilder::new(CardId::new(), "Top Power Four")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    let top_id = game.create_object_from_card(&top_creature, alice, Zone::Library);
+
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let casting_method = actions
+        .iter()
+        .find_map(|action| match action {
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Library,
+                casting_method: method @ CastingMethod::PlayFrom {
+                        source,
+                        zone: Zone::Library,
+                        ..
+                    },
+            } if *spell_id == top_id && *source == source_id => Some(method.clone()),
+            _ => None,
+        })
+        .expect("Thundermane Dragon should let Alice cast the top power-4 creature");
+
+    let stack_id = super::priority_mana::propose_spell_cast(
+        &mut game,
+        top_id,
+        Zone::Library,
+        alice,
+        &casting_method,
+    )
+    .expect("top creature should move to the stack");
+    let battlefield_id = game
+        .move_object_by_effect(stack_id, Zone::Battlefield)
+        .expect("creature spell should resolve to the battlefield");
+    game.refresh_continuous_state();
+
+    assert!(
+        game.object_has_static_ability_id(battlefield_id, crate::static_abilities::StaticAbilityId::Haste),
+        "creature cast from the top with Thundermane Dragon should gain haste"
+    );
+
+    crate::turn::execute_cleanup_step(&mut game);
+    game.refresh_continuous_state();
+    assert!(
+        !game.object_has_static_ability_id(battlefield_id, crate::static_abilities::StaticAbilityId::Haste),
+        "Thundermane Dragon's haste grant should expire at end of turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn thundermane_dragon_does_not_cast_top_creature_below_power_four() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let thundermane = thundermane_dragon_definition();
+    game.create_object_from_definition(&thundermane, alice, Zone::Battlefield);
+    let small_creature = CardBuilder::new(CardId::new(), "Top Power Three")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let small_id = game.create_object_from_card(&small_creature, alice, Zone::Library);
+
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+    assert!(
+        !actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id,
+                from_zone: Zone::Library,
+                casting_method: CastingMethod::PlayFrom { .. },
+            } if *spell_id == small_id
+        )),
+        "Thundermane Dragon should not let Alice cast a top creature with power below 4"
+    );
+}
+
 #[test]
 fn test_library_play_from_grant_offers_adventure_half_when_linked_face_matches() {
     let mut game = setup_game();

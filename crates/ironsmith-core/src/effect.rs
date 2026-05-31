@@ -2971,6 +2971,7 @@ pub struct GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
     pub tag: crate::tag::TagKey,
     pub player: PlayerFilter,
     pub while_on_top_of_library: bool,
+    pub zone: Option<crate::zone::Zone>,
 }
 
 impl GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
@@ -2979,11 +2980,17 @@ impl GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
             tag: tag.into(),
             player,
             while_on_top_of_library: false,
+            zone: Some(crate::zone::Zone::Exile),
         }
     }
 
     pub fn while_on_top_of_library(mut self) -> Self {
         self.while_on_top_of_library = true;
+        self
+    }
+
+    pub fn from_current_zone(mut self) -> Self {
+        self.zone = None;
         self
     }
 }

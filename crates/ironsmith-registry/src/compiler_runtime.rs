@@ -204,6 +204,11 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
             filter: spec.filter,
             zone: spec.zone,
             beneficiary: spec.beneficiary,
+            cast_this_way_grants: spec
+                .cast_this_way_grants
+                .into_iter()
+                .map(|ability| self.runtime_static_ability_hook(ability))
+                .collect::<Result<Vec<_>, _>>()?,
         })
     }
 
