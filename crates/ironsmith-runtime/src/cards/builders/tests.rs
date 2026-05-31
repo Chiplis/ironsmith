@@ -32285,6 +32285,26 @@ fn avizoa_activation_pumps_and_skips_only_the_next_untap_step() {
     game.turn.phase = crate::game_state::Phase::FirstMain;
     game.turn.step = None;
     let avizoa_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let mana_dork_def = CardDefinitionBuilder::new(CardId::new(), "Skipped-Untap Mana Dork")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elf, Subtype::Druid])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .taps_for(ManaSymbol::Green)
+        .build();
+    let attacker_def = CardDefinitionBuilder::new(CardId::new(), "Skipped-Untap Attacker")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Bear])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let mana_dork_id =
+        game.create_object_from_definition(&mana_dork_def, alice, Zone::Battlefield);
+    let attacker_id = game.create_object_from_definition(&attacker_def, alice, Zone::Battlefield);
+    game.set_summoning_sick(mana_dork_id);
+    game.set_summoning_sick(attacker_id);
+    assert!(
+        game.is_summoning_sick(mana_dork_id) && game.is_summoning_sick(attacker_id),
+        "new creatures should start marked as not controlled since turn start"
+    );
 
     let can_activate_avizoa = |game: &crate::game_state::GameState| {
         crate::decision::compute_legal_actions(game, alice)
@@ -32340,7 +32360,37 @@ fn avizoa_activation_pumps_and_skips_only_the_next_untap_step() {
         !game.turn_store.skip_next_untap_step.contains(&alice),
         "the skip marker should be consumed by the skipped untap step"
     );
+    assert!(
+        !game.is_summoning_sick(mana_dork_id) && !game.is_summoning_sick(attacker_id),
+        "a skipped untap step should still mark the active player's permanents as controlled since turn start"
+    );
+    assert!(
+        crate::rules::combat::can_attack(
+            game.object(attacker_id).expect("attacker should exist"),
+            &game
+        ),
+        "a creature controlled since turn start should be able to attack after an Avizoa-skipped untap step"
+    );
 
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+    assert!(
+        crate::decision::compute_legal_actions(&game, alice)
+            .iter()
+            .any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateManaAbility {
+                    source,
+                    ability_index
+                } if *source == mana_dork_id && *ability_index == 0
+            )),
+        "a creature controlled since turn start should be able to use a tap mana ability after an \
+         Avizoa-skipped untap step"
+    );
+
+    game.turn.phase = crate::game_state::Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Untap);
     crate::turn::execute_untap_step_with(&mut game, &mut dm);
     assert!(
         !game.is_tapped(avizoa_id),

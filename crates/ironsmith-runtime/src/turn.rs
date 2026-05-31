@@ -295,6 +295,9 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
 
     let active_player = game.turn.active_player;
     if game.turn_store.skip_next_untap_step.remove(&active_player) {
+        for id in game.permanents_controlled_by(active_player) {
+            game.remove_summoning_sickness(id);
+        }
         game.turn.priority_player = None;
         return;
     }
