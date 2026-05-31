@@ -8836,8 +8836,11 @@ impl GameState {
                 .options
                 .iter()
                 .enumerate()
-                .map(|(idx, (power, toughness))| {
-                    crate::decisions::spec::DisplayOption::new(idx, format!("{power}/{toughness}"))
+                .map(|(idx, option)| {
+                    crate::decisions::spec::DisplayOption::new(
+                        idx,
+                        format!("{}/{}", option.power, option.toughness),
+                    )
                 })
                 .collect::<Vec<_>>();
             let choice_spec =
@@ -8850,10 +8853,16 @@ impl GameState {
                 choice_spec,
             );
             if let Some(chosen_idx) = chosen.pop().filter(|idx| *idx < spec.options.len()) {
-                let (power, toughness) = spec.options[chosen_idx];
+                let option = &spec.options[chosen_idx];
                 if let Some(object) = self.object_mut(permanent_id) {
-                    object.base_power = Some(crate::card::PtValue::Fixed(power));
-                    object.base_toughness = Some(crate::card::PtValue::Fixed(toughness));
+                    object.base_power = Some(crate::card::PtValue::Fixed(option.power));
+                    object.base_toughness = Some(crate::card::PtValue::Fixed(option.toughness));
+                    for granted in &option.abilities {
+                        let ability = crate::ability::Ability::static_ability(granted.clone());
+                        if !object.abilities.contains(&ability) {
+                            object.abilities.push(ability);
+                        }
+                    }
                     self.mark_continuous_state_dirty();
                 }
             }

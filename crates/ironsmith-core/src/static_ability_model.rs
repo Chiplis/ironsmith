@@ -154,6 +154,35 @@ pub struct StaticAbility<T, E, C, Cond> {
     pub payload: StaticAbilityPayload<T, E, C, Cond>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct PowerToughnessChoiceOption<T, E, C, Cond> {
+    pub power: i32,
+    pub toughness: i32,
+    pub abilities: Vec<StaticAbility<T, E, C, Cond>>,
+}
+
+impl<T, E, C, Cond> PowerToughnessChoiceOption<T, E, C, Cond> {
+    pub fn new(power: i32, toughness: i32) -> Self {
+        Self {
+            power,
+            toughness,
+            abilities: Vec::new(),
+        }
+    }
+
+    pub fn with_abilities(
+        power: i32,
+        toughness: i32,
+        abilities: Vec<StaticAbility<T, E, C, Cond>>,
+    ) -> Self {
+        Self {
+            power,
+            toughness,
+            abilities,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum StaticAbilityPayload<T, E, C, Cond> {
     #[default]
@@ -358,7 +387,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         display: String,
     },
     ChoosePowerToughnessAsEntersOrTurnsFaceUp {
-        options: Vec<(i32, i32)>,
+        options: Vec<PowerToughnessChoiceOption<T, E, C, Cond>>,
         display: String,
     },
     EnterAsCopyAsEnters {
@@ -1161,7 +1190,22 @@ where
                 options,
                 display,
             } => StaticAbilityPayload::ChoosePowerToughnessAsEntersOrTurnsFaceUp {
-                options,
+                options: options
+                    .into_iter()
+                    .map(|option| {
+                        Ok(PowerToughnessChoiceOption {
+                            power: option.power,
+                            toughness: option.toughness,
+                            abilities: option
+                                .abilities
+                                .into_iter()
+                                .map(|ability| {
+                                    map_static_ability(ability, map_trigger, map_effect, map_cost)
+                                })
+                                .collect::<Result<Vec<_>, _>>()?,
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
                 display,
             },
             StaticAbilityPayload::EnterAsCopyAsEnters { spec, display } => {
@@ -3017,6 +3061,17 @@ impl<
 
     pub fn choose_power_toughness_as_enters_or_turns_face_up(
         options: Vec<(i32, i32)>,
+        display: impl Into<String>,
+    ) -> Self {
+        let options = options
+            .into_iter()
+            .map(|(power, toughness)| PowerToughnessChoiceOption::new(power, toughness))
+            .collect();
+        Self::choose_power_toughness_options_as_enters_or_turns_face_up(options, display)
+    }
+
+    pub fn choose_power_toughness_options_as_enters_or_turns_face_up(
+        options: Vec<PowerToughnessChoiceOption<T, E, C, Cond>>,
         display: impl Into<String>,
     ) -> Self {
         let display = display.into();

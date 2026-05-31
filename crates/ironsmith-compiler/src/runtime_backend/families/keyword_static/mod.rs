@@ -2,6 +2,7 @@ use super::activation_and_restrictions::parse_cycling_line;
 use super::activation_and_restrictions::{
     normalize_cant_words, parse_ability_phrase, parse_activated_line, parse_activation_cost,
     parse_choose_land_type_phrase_words, parse_payment_clause_as_total_cost,
+    parse_single_word_keyword_action,
 };
 use super::effect_sentences::parse_granted_abilities_for_gain_clause;
 use super::grammar::abilities::{
@@ -86,7 +87,9 @@ use super::lexer::{
 use super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
 use super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::rule_engine::{LexRuleHeadHint, LexRuleHintIndex, build_lex_rule_hint_index};
-use super::static_ability_helpers::lower_granted_abilities_ast_to_object_abilities;
+use super::static_ability_helpers::{
+    lower_granted_abilities_ast_to_object_abilities, static_ability_for_keyword_action,
+};
 use super::token_primitives::{
     find_index, find_window_by, lexed_head_words, rfind_index, slice_contains, slice_strip_prefix,
     slice_strip_suffix, split_em_dash_label_prefix, str_strip_prefix, str_strip_suffix,
@@ -124,7 +127,8 @@ use crate::mana::{ManaCost, ManaSymbol};
 use crate::object::CounterType;
 #[allow(unused_imports)]
 use crate::static_abilities::{
-    Anthem, AnthemCountExpression, AnthemValue, GrantAbility, StaticAbility,
+    Anthem, AnthemCountExpression, AnthemValue, GrantAbility, PowerToughnessChoiceOption,
+    StaticAbility,
 };
 #[allow(unused_imports)]
 use crate::target::{ChooseSpec, ChooseSpecSurfaceHint, ObjectFilter, PlayerFilter};

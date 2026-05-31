@@ -7,9 +7,9 @@ use super::{
     ChooseColorAsEntersSpec, ChooseCreatureTypeAsEntersSpec, ChooseLandTypeAsEntersSpec,
     ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec,
     ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec, ConditionalSpellKeywordKind,
-    ConditionalSpellKeywordSpec, EnterAsCopyAsEntersSpec, GraveyardCountMetric, StaticAbilityId,
-    StaticAbility, StaticAbilityKind, ThisSpellCastRestrictionKind, TriggerDuplicationSpec,
-    TriggerSuppressionSpec,
+    ConditionalSpellKeywordSpec, EnterAsCopyAsEntersSpec, GraveyardCountMetric,
+    PowerToughnessChoiceOption, StaticAbilityId, StaticAbility, StaticAbilityKind,
+    ThisSpellCastRestrictionKind, TriggerDuplicationSpec, TriggerSuppressionSpec,
     text_utils::{capitalize_first, join_with_and, number_word_u32},
 };
 use crate::ability::{Ability, AbilityKind, LevelAbility};
@@ -1617,12 +1617,20 @@ impl StaticAbilityKind for ChooseNamedOptionAsEnters {
 /// "As this enters or is turned face up, choose a power/toughness."
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChoosePowerToughnessAsEntersOrTurnsFaceUp {
-    pub options: Vec<(i32, i32)>,
+    pub options: Vec<PowerToughnessChoiceOption>,
     pub display: String,
 }
 
 impl ChoosePowerToughnessAsEntersOrTurnsFaceUp {
     pub fn new(options: Vec<(i32, i32)>, display: String) -> Self {
+        let options = options
+            .into_iter()
+            .map(|(power, toughness)| PowerToughnessChoiceOption::new(power, toughness))
+            .collect();
+        Self { options, display }
+    }
+
+    pub fn new_with_options(options: Vec<PowerToughnessChoiceOption>, display: String) -> Self {
         Self { options, display }
     }
 }

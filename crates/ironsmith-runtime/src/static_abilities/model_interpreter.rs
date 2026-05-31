@@ -1176,8 +1176,22 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::ChoosePowerToughnessAsEntersOrTurnsFaceUp {
                 options,
                 display,
-            } => StaticAbility::choose_power_toughness_as_enters_or_turns_face_up(
-                options.clone(),
+            } => StaticAbility::choose_power_toughness_options_as_enters_or_turns_face_up(
+                options
+                    .iter()
+                    .map(|option| {
+                        super::PowerToughnessChoiceOption::with_abilities(
+                            option.power,
+                            option.toughness,
+                            option
+                                .abilities
+                                .iter()
+                                .cloned()
+                                .map(StaticAbility::from_model)
+                                .collect(),
+                        )
+                    })
+                    .collect(),
                 display.clone(),
             ),
             ironsmith_core::StaticAbilityPayload::EnterAsCopyAsEnters { spec, display } => {
@@ -1885,7 +1899,21 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
                 options,
                 ..
             } => Some(super::ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec {
-                options: options.clone(),
+                options: options
+                    .iter()
+                    .map(|option| {
+                        super::PowerToughnessChoiceOption::with_abilities(
+                            option.power,
+                            option.toughness,
+                            option
+                                .abilities
+                                .iter()
+                                .cloned()
+                                .map(StaticAbility::from_model)
+                                .collect(),
+                        )
+                    })
+                    .collect(),
             }),
             _ => None,
         }
