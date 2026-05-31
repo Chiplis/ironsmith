@@ -548,6 +548,9 @@ impl CardDefinitionBuilder {
 
     pub fn decayed(self) -> Self {
         self.with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::keyword_marker("decayed"),
+        ))
+        .with_ability(crate::ability::Ability::static_ability(
             crate::static_abilities::StaticAbility::cant_block(),
         ))
         .with_ability(crate::runtime_backend::static_ability_helpers::decayed_triggered_ability())

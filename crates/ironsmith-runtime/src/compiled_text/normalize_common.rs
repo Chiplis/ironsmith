@@ -602,10 +602,22 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
     let mut keyword_texts = Vec::new();
     let mut extra_ability_texts = Vec::new();
     let has_non_toxic_poison_trigger = token_has_non_toxic_poison_trigger(token);
+    let has_decayed_marker = token_has_decayed_marker(token);
     for ability in &token.abilities {
         match &ability.kind {
             AbilityKind::Static(static_ability) => {
                 if static_ability.id() == crate::static_abilities::StaticAbilityId::MakeColorless {
+                    continue;
+                }
+                if static_ability.id() == crate::static_abilities::StaticAbilityId::KeywordMarker
+                    && static_ability.display().eq_ignore_ascii_case("decayed")
+                {
+                    keyword_texts.push("decayed".to_string());
+                    continue;
+                }
+                if has_decayed_marker
+                    && static_ability.id() == crate::static_abilities::StaticAbilityId::CantBlock
+                {
                     continue;
                 }
                 if static_ability.is_keyword() {
@@ -624,6 +636,9 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
                 ));
             }
             AbilityKind::Triggered(triggered) => {
+                if has_decayed_marker && is_decayed_sacrifice_trigger(triggered) {
+                    continue;
+                }
                 if !has_non_toxic_poison_trigger
                     && let Some(keyword) = describe_structural_toxic_keyword(triggered)
                 {
@@ -667,6 +682,55 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
     }
 
     text
+}
+
+fn token_has_decayed_marker(token: &CardDefinition) -> bool {
+    token.abilities.iter().any(|ability| {
+        matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == crate::static_abilities::StaticAbilityId::KeywordMarker
+                    && static_ability.display().eq_ignore_ascii_case("decayed")
+        )
+    })
+}
+
+fn is_decayed_sacrifice_trigger(triggered: &crate::ability::TriggeredAbility) -> bool {
+    if triggered.intervening_if.is_some()
+        || !triggered.choices.is_empty()
+        || triggered
+            .trigger
+            .downcast_ref::<crate::triggers::combat::ThisAttacksTrigger>()
+            .is_none()
+    {
+        return false;
+    }
+
+    let effects = triggered.effects.flattened_default_effects();
+    if effects.len() != 1 {
+        return false;
+    }
+    let effect = &effects[0];
+    let Some(schedule) = effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+    else {
+        return false;
+    };
+    if !schedule.one_shot
+        || schedule
+            .trigger
+            .downcast_ref::<crate::triggers::EndOfCombatTrigger>()
+            .is_none()
+    {
+        return false;
+    }
+
+    if schedule.effects.len() != 1 {
+        return false;
+    }
+    let delayed_effect = &schedule.effects[0];
+    delayed_effect
+        .downcast_ref::<crate::effects::SacrificeTargetEffect>()
+        .is_some_and(|sacrifice| sacrifice.target == ChooseSpec::Source)
 }
 
 fn token_extra_abilities_prefer_with_clause(abilities: &[String]) -> bool {
@@ -12250,6 +12314,8 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                     // "You control no other permanents" is substantially closer to oracle text than
                     // the ungrammatical "You control no another permanent".
                     object_text = format!("other {}", pluralize_noun_phrase(rest));
+                } else {
+                    object_text = pluralize_noun_phrase(&object_text);
                 }
                 let references_tagged_object =
                     described_filter.tagged_constraints.iter().any(|constraint| {
