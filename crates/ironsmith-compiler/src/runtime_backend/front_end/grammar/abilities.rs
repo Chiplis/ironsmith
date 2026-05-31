@@ -2739,6 +2739,21 @@ pub(crate) fn is_prevent_all_noncombat_damage_to_other_creatures_you_control_lin
     )
 }
 
+pub(crate) fn is_prevent_all_combat_damage_to_matching_permanents_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    let words = TokenWordView::new(tokens).to_word_refs();
+    let prefix = [
+        "prevent", "all", "combat", "damage", "that", "would", "be", "dealt", "to",
+    ];
+    word_slice_starts_with(&words, &prefix)
+        && words.len() > prefix.len()
+        && !word_slice_eq(&words[prefix.len()..], &["this", "creature"])
+        && !word_slice_eq(&words[prefix.len()..], &["this", "permanent"])
+        && !word_slice_eq(&words[prefix.len()..], &["it"])
+        && !word_slice_contains_any_word(&words, &["turn"])
+}
+
 pub(crate) fn is_prevent_all_damage_to_source_by_creatures_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {

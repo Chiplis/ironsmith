@@ -27,7 +27,7 @@ use crate::events::damage::matchers::{
     DamageFromSelfCombatMatcher, DamageFromSelfMatcher, DamageFromSourceToObjectMatcher,
     DamageFromSourceToPlayerMatcher, DamageToObjectMatcher, DamageToOtherCreatureYouControlMatcher,
     DamageToPlayerOrObjectMatcher, DamageToSelfCombatMatcher, DamageToSelfConstraintMatcher,
-    DamageToSelfFromSourceFilterMatcher,
+    DamageToSelfFromSourceFilterMatcher, PreventableCombatDamageToObjectMatcher,
 };
 use crate::events::permanents::matchers::AttachedPermanentWouldBeDestroyedMatcher;
 use crate::events::traits::{
@@ -62,6 +62,27 @@ fn pluralize(word: &str) -> String {
     } else {
         format!("{word}s")
     }
+}
+
+fn pluralize_filter_description(description: &str) -> String {
+    let base = description
+        .trim()
+        .strip_prefix("a ")
+        .or_else(|| description.trim().strip_prefix("an "))
+        .unwrap_or_else(|| description.trim());
+    for suffix in [
+        " you control",
+        " you own",
+        " an opponent controls",
+        " an opponent owns",
+        " that player controls",
+        " that player owns",
+    ] {
+        if let Some(head) = base.strip_suffix(suffix) {
+            return format!("{}{}", pluralize(head.trim_end()), suffix);
+        }
+    }
+    pluralize(base)
 }
 
 fn indefinite_article(text: &str) -> &'static str {
@@ -1830,6 +1851,44 @@ impl StaticAbilityKind for PreventAllCombatDamageToSelf {
             source,
             controller,
             DamageToSelfCombatMatcher::new(),
+            ReplacementAction::Prevent,
+        ))
+    }
+}
+
+/// "Prevent all combat damage that would be dealt to [matching permanents]."
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreventAllCombatDamageToPermanentsMatching {
+    pub filter: ObjectFilter,
+}
+
+impl PreventAllCombatDamageToPermanentsMatching {
+    pub fn new(filter: ObjectFilter) -> Self {
+        Self { filter }
+    }
+}
+
+impl StaticAbilityKind for PreventAllCombatDamageToPermanentsMatching {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PreventAllCombatDamageToPermanentsMatching
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "Prevent all combat damage that would be dealt to {}.",
+            pluralize_filter_description(&self.filter.description())
+        )
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            PreventableCombatDamageToObjectMatcher::new(self.filter.clone()),
             ReplacementAction::Prevent,
         ))
     }
