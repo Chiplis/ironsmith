@@ -1,3 +1,45 @@
+const WHEN_OR_WHENEVER_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["when"], &["whenever"]]);
+const ATTACKS_AND_ISNT_BLOCKED_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    suffix_any
+        & [
+            &["attacks", "and", "isn't", "blocked"],
+            &["attacks", "and", "isnt", "blocked"],
+        ]
+);
+const TARGET_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["target"]);
+const THIS_TURN_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(suffix & ["this", "turn"]);
+const COPY_NEXT_THIS_TURN_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["this", "turn"]);
+const TAGGED_DEALT_DAMAGE_TRIGGER_CORE_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["that", "creature", "is", "dealt", "damage"],
+            &["that", "permanent", "is", "dealt", "damage"],
+            &["that", "creature", "is", "dealt", "combat", "damage"],
+            &["that", "permanent", "is", "dealt", "combat", "damage"],
+        ]
+);
+const CREATURE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["creature"]);
+const COMBAT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["combat"]);
+const DIES_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["dies"]);
+const THAT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["that"]);
+const DEALT_DAMAGE_THIS_WAY_DIES_THIS_TURN_WORDS: &[&str] =
+    &["dealt", "damage", "this", "way", "dies", "this", "turn"];
+const DEALT_DAMAGE_THIS_WAY_DIES_THIS_TURN_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & DEALT_DAMAGE_THIS_WAY_DIES_THIS_TURN_WORDS);
+const DEALT_DAMAGE_THIS_WAY_WOULD_DIE_THIS_TURN_WORDS: &[&str] = &[
+    "dealt", "damage", "this", "way", "would", "die", "this", "turn",
+];
+const DEALT_DAMAGE_THIS_WAY_WOULD_DIE_THIS_TURN_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & DEALT_DAMAGE_THIS_WAY_WOULD_DIE_THIS_TURN_WORDS);
+
+fn copy_next_find_phrase_start(words: &[&str], phrase: &[&str], shape: ClauseShape<'static>) -> Option<usize> {
+    words
+        .windows(phrase.len())
+        .position(|window| shape.matches_words(window))
+}
+
 pub(crate) fn parse_delayed_until_next_end_step_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -121,7 +163,9 @@ pub(crate) fn parse_delayed_until_next_end_step_sentence(
 pub(crate) fn parse_sentence_delayed_trigger_this_turn(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if grammar::words_match_prefix(tokens, &["this", "turn"]).is_some() {
+    if COPY_NEXT_THIS_TURN_PREFIX_PATTERN.matches_words(&crate::runtime_backend::token_word_refs(
+        tokens,
+    )) {
         let Some((_duration, delayed_clause)) =
             super::super::grammar::primitives::split_lexed_once_on_delimiter(
                 tokens,
@@ -133,7 +177,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
         let delayed_clause = trim_commas(delayed_clause);
         if !delayed_clause
             .first()
-            .is_some_and(|token| token.is_word("when") || token.is_word("whenever"))
+            .is_some_and(|token| WHEN_OR_WHENEVER_WORD_PATTERN.matches_token(token))
         {
             return Ok(None);
         }
@@ -149,7 +193,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
         let mut trigger_tokens = trim_commas(trigger_part);
         if trigger_tokens
             .first()
-            .is_some_and(|token| token.is_word("when") || token.is_word("whenever"))
+            .is_some_and(|token| WHEN_OR_WHENEVER_WORD_PATTERN.matches_token(token))
         {
             trigger_tokens = trigger_tokens[1..].to_vec();
         }
@@ -170,15 +214,11 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
 
         let trigger_words = crate::runtime_backend::token_word_refs(&trigger_tokens);
         let attack_unblocked_suffix =
-            word_slice_ends_with(trigger_words.as_slice(), &["attacks", "and", "isn't", "blocked"])
-                || word_slice_ends_with(
-                    trigger_words.as_slice(),
-                    &["attacks", "and", "isnt", "blocked"],
-                );
+            ATTACKS_AND_ISNT_BLOCKED_SUFFIX_PATTERN.matches_words(trigger_words.as_slice());
         if attack_unblocked_suffix
             && trigger_words
                 .first()
-                .is_some_and(|word| *word == "target")
+                .is_some_and(|word| TARGET_WORD_PATTERN.matches_word(word))
         {
             let subject_len = trigger_words.len().saturating_sub(4);
             let subject_tokens = trim_commas(&trigger_tokens[1..subject_len]);
@@ -225,7 +265,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
 
     if !tokens
         .first()
-        .is_some_and(|token| token.is_word("when") || token.is_word("whenever"))
+        .is_some_and(|token| WHEN_OR_WHENEVER_WORD_PATTERN.matches_token(token))
     {
         return Ok(None);
     }
@@ -242,7 +282,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
     let mut trigger_tokens = trim_commas(before_comma);
     if trigger_tokens
         .first()
-        .is_some_and(|token| token.is_word("when") || token.is_word("whenever"))
+        .is_some_and(|token| WHEN_OR_WHENEVER_WORD_PATTERN.matches_token(token))
     {
         trigger_tokens = trigger_tokens[1..].to_vec();
     }
@@ -255,8 +295,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
 
     let trigger_word_storage = DispatchInnerNormalizedWords::new(&trigger_tokens);
     let trigger_words = trigger_word_storage.to_word_refs();
-    if trigger_words.len() < 3
-        || !word_slice_ends_with(trigger_words.as_slice(), &["this", "turn"])
+    if trigger_words.len() < 3 || !THIS_TURN_SUFFIX_PATTERN.matches_words(trigger_words.as_slice())
     {
         return Ok(None);
     }
@@ -272,20 +311,17 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
         )));
     }
     let trigger_core_words = crate::runtime_backend::token_word_refs(&trigger_core_tokens);
-    let trigger = if matches!(
-        trigger_core_words.as_slice(),
-        ["that", "creature", "is", "dealt", "damage"]
-            | ["that", "permanent", "is", "dealt", "damage"]
-            | ["that", "creature", "is", "dealt", "combat", "damage"]
-            | ["that", "permanent", "is", "dealt", "combat", "damage"]
-    ) {
-        let mut filter = if trigger_core_words[1] == "creature" {
+    let trigger = if TAGGED_DEALT_DAMAGE_TRIGGER_CORE_PATTERN.matches_words(&trigger_core_words) {
+        let mut filter = if trigger_core_words
+            .get(1)
+            .is_some_and(|word| CREATURE_WORD_PATTERN.matches_word(word))
+        {
             ObjectFilter::creature()
         } else {
             ObjectFilter::permanent()
         };
         filter = filter.match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
-        if word_slice_contains_word(&trigger_core_words, "combat") {
+        if COMBAT_WORD_PATTERN.matches_words(&trigger_core_words) {
             TriggerSpec::IsDealtCombatDamage(filter)
         } else {
             TriggerSpec::IsDealtDamage(filter)
@@ -329,17 +365,26 @@ pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
         return Ok(None);
     }
     let mut delayed_filter: Option<ObjectFilter> = None;
-    let split_after_word_idx = if word_slice_at_is(&clause_words, 1, "that") {
-        let Some(dies_idx) = find_index(clause_words.as_slice(), |word| *word == "dies") else {
+    let split_after_word_idx = if clause_words
+        .get(1)
+        .is_some_and(|word| THAT_WORD_PATTERN.matches_word(word))
+    {
+        let Some(dies_idx) = find_index(clause_words.as_slice(), |word| {
+            DIES_WORD_PATTERN.matches_word(word)
+        }) else {
             return Ok(None);
         };
-        if !word_slice_starts_with_at(&clause_words, dies_idx + 1, &["this", "turn"]) {
+        if !clause_words
+            .get(dies_idx + 1..)
+            .is_some_and(|words| COPY_NEXT_THIS_TURN_PREFIX_PATTERN.matches_words(words))
+        {
             return Ok(None);
         }
         dies_idx + 2
-    } else if let Some(dealt_idx) = crate::runtime_backend::lexer::word_slice_find_phrase_start(
+    } else if let Some(dealt_idx) = copy_next_find_phrase_start(
         &clause_words,
-        &["dealt", "damage", "this", "way", "dies", "this", "turn"],
+        DEALT_DAMAGE_THIS_WAY_DIES_THIS_TURN_WORDS,
+        DEALT_DAMAGE_THIS_WAY_DIES_THIS_TURN_PATTERN,
     ) {
         if dealt_idx <= 1 {
             return Ok(None);
@@ -366,11 +411,10 @@ pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
             ))
         })?);
         dealt_idx + 6
-    } else if let Some(dealt_idx) = crate::runtime_backend::lexer::word_slice_find_phrase_start(
+    } else if let Some(dealt_idx) = copy_next_find_phrase_start(
         &clause_words,
-        &[
-            "dealt", "damage", "this", "way", "would", "die", "this", "turn",
-        ],
+        DEALT_DAMAGE_THIS_WAY_WOULD_DIE_THIS_TURN_WORDS,
+        DEALT_DAMAGE_THIS_WAY_WOULD_DIE_THIS_TURN_PATTERN,
     ) {
         if dealt_idx <= 1 {
             return Ok(None);

@@ -1,5 +1,6 @@
 use winnow::Parser;
 
+use super::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::grammar::primitives::{self as grammar, TokenWordView};
 use super::keyword_registry as registry;
 use super::lexer::OwnedLexToken;
@@ -60,6 +61,12 @@ pub(super) enum KeywordDispatchHint {
     Warp,
     Exploit,
 }
+
+const BASIC_LANDCYCLING_FALLBACK_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["basic", "landcycling"]);
+const ENCORE_FALLBACK_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["encore"]);
+const JUMP_START_FALLBACK_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix_any & [&["jumpstart"], &["jump-start"], &["jump", "start"]]);
 
 mod additional_costs {
     use super::*;
@@ -377,22 +384,21 @@ pub(super) fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<Ke
     }
 
     let word_view = TokenWordView::new(tokens);
-    let first = word_view.get(0)?;
-    if first == "basic" {
-        if word_view.at_is(1, "landcycling") {
-            return Some(KeywordDispatchHint::Cycling);
-        }
+    let word_refs = word_view.to_word_refs();
+    let first = word_refs.first().copied()?;
+    if BASIC_LANDCYCLING_FALLBACK_PATTERN.matches_words(&word_refs) {
+        return Some(KeywordDispatchHint::Cycling);
+    }
+    if word_view.at_is(0, "basic") {
         return None;
     }
     if str_strip_suffix(first, "cycling").is_some() {
         return Some(KeywordDispatchHint::Cycling);
     }
-    if first == "encore" {
+    if ENCORE_FALLBACK_PATTERN.matches_words(&word_refs) {
         return Some(KeywordDispatchHint::AlternativeOrExertFamily);
     }
-    if matches!(first, "jumpstart" | "jump-start")
-        || (first == "jump" && word_view.at_is(1, "start"))
-    {
+    if JUMP_START_FALLBACK_PATTERN.matches_words(&word_refs) {
         return Some(KeywordDispatchHint::AlternativeOrExertFamily);
     }
 

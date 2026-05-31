@@ -34,8 +34,8 @@ use super::super::token_primitives::{
 };
 use super::super::util::{
     is_article, is_source_reference_words, non_article_token_word_refs, parse_card_type,
-    parse_color, parse_filter_counter_constraint_words, parse_subject, parse_target_phrase,
-    parse_value, token_index_for_word_index, words,
+    parse_choice_count_before_target_prefix, parse_color, parse_filter_counter_constraint_words,
+    parse_subject, parse_target_phrase, parse_value, token_index_for_word_index, words,
 };
 pub(crate) use super::super::util::{strip_leading_articles, trim_commas, trim_edge_punctuation};
 use super::sentence_helpers::*;
@@ -52,6 +52,7 @@ use crate::cards::builders::{
 };
 use crate::effect::{ChoiceCount, EventValueSpec, Until, Value};
 use crate::object::CounterType;
+use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use crate::target::{
     ChooseSpec, ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation,
 };
@@ -59,7 +60,6 @@ use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 use ironsmith_core::ValueSurfaceHint;
 
-const EXILE_ALL_CARDS_FROM_PREFIXES: &[&[&str]] = &[&["exile", "all", "cards", "from"]];
 include!("sentence_shape_predicates.rs");
 include!("generic_subject_verb_programs.rs");
 include!("labeled_prefixes.rs");

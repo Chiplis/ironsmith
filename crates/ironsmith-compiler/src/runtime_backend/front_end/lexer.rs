@@ -1782,6 +1782,17 @@ pub(crate) fn token_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
     tokens.iter().filter_map(OwnedLexToken::as_word).collect()
 }
 
+pub(crate) fn synthetic_word_tokens<I, W>(words: I) -> Vec<OwnedLexToken>
+where
+    I: IntoIterator<Item = W>,
+    W: AsRef<str>,
+{
+    words
+        .into_iter()
+        .map(|word| OwnedLexToken::synthetic_word(word.as_ref()))
+        .collect()
+}
+
 pub(crate) fn parser_token_word_refs<'a>(tokens: &'a [OwnedLexToken]) -> Vec<&'a str> {
     let mut words = Vec::new();
     for token in tokens {

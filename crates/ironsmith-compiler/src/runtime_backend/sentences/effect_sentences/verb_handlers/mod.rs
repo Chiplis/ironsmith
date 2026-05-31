@@ -36,8 +36,10 @@ use super::super::lexer::{
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{find_index, find_window_by, rfind_index, str_strip_suffix};
 use super::super::util::{
-    is_article, is_source_reference_words, mana_pips_from_token, parse_card_type,
-    parse_mana_symbol, parse_number, parse_number_word_u32, parse_target_count_range_prefix,
+    comparison_to_strict_at_least_threshold, is_article, is_source_reference_words,
+    mana_pips_from_token, parse_card_type, parse_choice_count_before_target_prefix,
+    parse_choice_count_token_prefix_consumed, parse_mana_symbol, parse_number,
+    parse_number_word_u32, parse_quantity_comparison_prefix, parse_target_count_range_prefix,
     parse_target_phrase, parse_value, parse_value_expr_words, replace_unbound_x_with_value,
     span_from_tokens, strip_leading_article_word_refs, token_index_for_word_index, trim_commas,
     value_contains_unbound_x, words, wrap_target_count,
@@ -47,7 +49,7 @@ use super::super::value_helpers::{
     parse_equal_to_number_of_filter_plus_or_minus_fixed_value,
     parse_equal_to_number_of_filter_value, parse_equal_to_number_of_opponents_you_have_value,
 };
-use super::clause_pattern_helpers::extract_subject_player;
+use super::clause_pattern_helpers::{ClauseShape, clause_shape, extract_subject_player};
 use super::creation_handlers::{parse_create, parse_incubate, parse_investigate};
 use super::for_each_helpers::parse_who_did_this_way_predicate;
 use super::subject_verb_primitives::{SubjectVerbPrimitiveClause, try_build_unless};

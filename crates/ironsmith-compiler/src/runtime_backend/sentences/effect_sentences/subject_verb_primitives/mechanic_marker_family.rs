@@ -30,11 +30,297 @@ macro_rules! primitive_with_pattern {
     };
 }
 
-const ANY_CLAUSE_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[LexPattern::role_capture(
-    "clause",
-    LexCaptureRole::Tail,
-    LexCaptureKind::Rest,
-)];
+const IMPLICIT_BECOME_HEADS: &[&[&str]] = &[
+    &["it"],
+    &["its"],
+    &["it's"],
+    &["it’s"],
+    &["they"],
+    &["they're"],
+    &["they’re"],
+    &["this"],
+    &["each"],
+    &["it", "is"],
+    &["they", "are"],
+    &["this", "creature"],
+    &["this", "permanent"],
+    &["this", "land"],
+    &["each", "of"],
+];
+const IMPLICIT_BECOME_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::any_phrase(IMPLICIT_BECOME_HEADS),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const FALLBACK_MECHANIC_MARKER_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::any_phrase(MECHANIC_MARKER_PREFIXES),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const IF_TAGGED_CARDS_SHARE_TYPE_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::phrase(&["if", "any", "of", "those", "cards"]),
+    LexPattern::any_word(&["share", "shares"]),
+    LexPattern::phrase(&["a", "card", "type", "with", "that", "spell"]),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const PUT_MULTIPLE_COUNTERS_ON_TARGET_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::word("put"),
+    LexPattern::role_capture(
+        "counters",
+        LexCaptureRole::Object,
+        LexCaptureKind::UntilLastPhrase(&["on"]),
+    ),
+    LexPattern::word("on"),
+    LexPattern::role_capture(
+        "target",
+        LexCaptureRole::Tail,
+        LexCaptureKind::OneOrMoreWords,
+    ),
+];
+const TARGET_PLAYER_CHOOSES_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::phrase(&["target", "player"]),
+    LexPattern::any_word(&["choose", "chooses"]),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const COUNTER_TARGET_SPELL_TURN_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::phrase(&["counter", "target", "spell"]),
+    LexPattern::role_capture("condition", LexCaptureRole::Condition, LexCaptureKind::Rest),
+];
+const EXILE_TARGET_CREATURE_GREATEST_POWER_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::phrase(&["exile", "target", "creature"]),
+    LexPattern::role_capture("condition", LexCaptureRole::Condition, LexCaptureKind::Rest),
+];
+const COMMA_THEN_CHAIN_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::role_capture(
+        "head",
+        LexCaptureRole::Action,
+        LexCaptureKind::UntilPhrase(&["then"]),
+    ),
+    LexPattern::word("then"),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const DRAW_THEN_CONNIVE_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::role_capture(
+        "draw_subject",
+        LexCaptureRole::Subject,
+        LexCaptureKind::UntilAnyPhrase(&[&["draw"], &["draws"]]),
+    ),
+    LexPattern::any_word(&["draw", "draws"]),
+    LexPattern::role_capture(
+        "draw_amount",
+        LexCaptureRole::Amount,
+        LexCaptureKind::UntilPhrase(&["then"]),
+    ),
+    LexPattern::word("then"),
+    LexPattern::role_capture(
+        "connive_subject",
+        LexCaptureRole::Subject,
+        LexCaptureKind::UntilAnyPhrase(&[&["connive"], &["connives"]]),
+    ),
+    LexPattern::any_word(&["connive", "connives"]),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const GETS_THEN_FIGHTS_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::role_capture(
+        "subject",
+        LexCaptureRole::Subject,
+        LexCaptureKind::UntilAnyPhrase(&[&["get"], &["gets"]]),
+    ),
+    LexPattern::any_word(&["get", "gets"]),
+    LexPattern::role_capture(
+        "pump",
+        LexCaptureRole::Modifier,
+        LexCaptureKind::UntilAnyPhrase(&[&["fight"], &["fights"]]),
+    ),
+    LexPattern::any_word(&["fight", "fights"]),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const TRANSFORM_WITH_FOLLOWUP_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::any_word(&["transform", "convert"]),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const CANT_EFFECT_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::word("cant"),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const COMPOUND_DAMAGE_FANOUT_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::role_capture(
+        "source",
+        LexCaptureRole::Subject,
+        LexCaptureKind::UntilAnyPhrase(&[&["deal"], &["deals"]]),
+    ),
+    LexPattern::any_word(&["deal", "deals"]),
+    LexPattern::role_capture("damage", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const TARGET_AND_EACH_OTHER_FANOUT_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::role_capture(
+        "head",
+        LexCaptureRole::Object,
+        LexCaptureKind::UntilAnyPhrase(&[&["and", "each", "other"], &["and", "all", "other"]]),
+    ),
+    LexPattern::any_phrase(&[&["and", "each", "other"], &["and", "all", "other"]]),
+    LexPattern::role_capture("fanout_target", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const TARGET_PLAYER_EXILES_CREATURE_GRAVEYARD_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::any_phrase(&[&["target", "player"], &["target", "opponent"]]),
+    LexPattern::any_word(&["exile", "exiles"]),
+    LexPattern::role_capture(
+        "creature_clause",
+        LexCaptureRole::Object,
+        LexCaptureKind::UntilAnyPhrase(&[&["graveyard"], &["graveyards"]]),
+    ),
+    LexPattern::any_word(&["graveyard", "graveyards"]),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const SAME_NAME_GETS_FANOUT_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::role_capture(
+        "subject",
+        LexCaptureRole::Subject,
+        LexCaptureKind::UntilAnyPhrase(&[&["get"], &["gets"]]),
+    ),
+    LexPattern::any_word(&["get", "gets"]),
+    LexPattern::role_capture("modifier", LexCaptureRole::Modifier, LexCaptureKind::Rest),
+];
+const GAIN_X_PLUS_LIFE_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::word("gain"),
+    LexPattern::role_capture(
+        "base_amount",
+        LexCaptureRole::Amount,
+        LexCaptureKind::UntilPhrase(&["plus"]),
+    ),
+    LexPattern::word("plus"),
+    LexPattern::role_capture("bonus", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const GAIN_LIFE_EQUAL_TO_AGE_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::phrase(&["gain", "life"]),
+    LexPattern::role_capture(
+        "amount",
+        LexCaptureRole::Amount,
+        LexCaptureKind::UntilAnyPhrase(&[&["age", "counter"], &["age", "counters"]]),
+    ),
+    LexPattern::any_phrase(&[&["age", "counter"], &["age", "counters"]]),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const DELAYED_NEXT_END_STEP_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::phrase(&["at", "the", "beginning", "of"]),
+    LexPattern::role_capture(
+        "step_owner",
+        LexCaptureRole::Subject,
+        LexCaptureKind::UntilPhrase(&["next", "end", "step"]),
+    ),
+    LexPattern::phrase(&["next", "end", "step"]),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const SEARCH_LIBRARY_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::word("search"),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const EXILE_THEN_SHUFFLE_GRAVEYARD_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::word("exile"),
+    LexPattern::role_capture(
+        "exile_clause",
+        LexCaptureRole::Object,
+        LexCaptureKind::UntilPhrase(&["then", "shuffle"]),
+    ),
+    LexPattern::phrase(&["then", "shuffle"]),
+    LexPattern::role_capture("shuffle_clause", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const SHUFFLE_OBJECT_INTO_LIBRARY_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::role_capture(
+        "subject",
+        LexCaptureRole::Subject,
+        LexCaptureKind::UntilAnyPhrase(&[&["shuffle"], &["shuffles"]]),
+    ),
+    LexPattern::any_word(&["shuffle", "shuffles"]),
+    LexPattern::role_capture(
+        "object",
+        LexCaptureRole::Object,
+        LexCaptureKind::UntilPhrase(&["into"]),
+    ),
+    LexPattern::word("into"),
+    LexPattern::role_capture("library", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const SHUFFLE_GRAVEYARD_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::role_capture(
+        "subject",
+        LexCaptureRole::Subject,
+        LexCaptureKind::UntilAnyPhrase(&[&["shuffle"], &["shuffles"]]),
+    ),
+    LexPattern::any_word(&["shuffle", "shuffles"]),
+    LexPattern::role_capture(
+        "graveyard",
+        LexCaptureRole::Object,
+        LexCaptureKind::UntilPhrase(&["into"]),
+    ),
+    LexPattern::word("into"),
+    LexPattern::role_capture("library", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const EXILE_HAND_GRAVEYARD_BUNDLE_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::word("exile"),
+    LexPattern::role_capture(
+        "hand_clause",
+        LexCaptureRole::Object,
+        LexCaptureKind::UntilAnyPhrase(&[&["graveyard"], &["graveyards"]]),
+    ),
+    LexPattern::any_word(&["graveyard", "graveyards"]),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const LOOK_AT_TOP_THEN_EXILE_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::phrase(&["look", "at"]),
+    LexPattern::role_capture(
+        "look_clause",
+        LexCaptureRole::Object,
+        LexCaptureKind::UntilPhrase(&["exile"]),
+    ),
+    LexPattern::word("exile"),
+    LexPattern::role_capture("exile_clause", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const LOOK_AT_HAND_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::phrase(&["look", "at"]),
+    LexPattern::role_capture(
+        "player",
+        LexCaptureRole::Object,
+        LexCaptureKind::UntilAnyPhrase(&[&["hand"], &["hands"]]),
+    ),
+    LexPattern::any_word(&["hand", "hands"]),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const FOR_OR_EACH_PLAYER_DOESNT_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::any_phrase(&[&["for"], &["then"], &["each"]]),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const DELAYED_TRIGGER_HEADS: &[&[&str]] = &[&["if"], &["this"], &["when"], &["whenever"]];
+const DELAYED_TRIGGER_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::any_phrase(DELAYED_TRIGGER_HEADS),
+    LexPattern::role_capture("tail", LexCaptureRole::Tail, LexCaptureKind::Rest),
+];
+const DESTROY_OR_EXILE_ALL_SPLIT_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::any_word(&["destroy", "exile"]),
+    LexPattern::word("all"),
+    LexPattern::role_capture("objects", LexCaptureRole::Object, LexCaptureKind::Rest),
+];
+const EXILE_UP_TO_ONE_EACH_TARGET_TYPE_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::phrase(&["exile", "up", "to", "one", "target"]),
+    LexPattern::role_capture("targets", LexCaptureRole::Object, LexCaptureKind::Rest),
+];
+const EXILE_MULTI_TARGET_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::word("exile"),
+    LexPattern::role_capture(
+        "prefix",
+        LexCaptureRole::Modifier,
+        LexCaptureKind::UntilPhrase(&["target"]),
+    ),
+    LexPattern::word("target"),
+    LexPattern::role_capture("targets", LexCaptureRole::Object, LexCaptureKind::Rest),
+];
+const DESTROY_MULTI_TARGET_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::word("destroy"),
+    LexPattern::role_capture(
+        "prefix",
+        LexCaptureRole::Modifier,
+        LexCaptureKind::UntilPhrase(&["target"]),
+    ),
+    LexPattern::word("target"),
+    LexPattern::role_capture("targets", LexCaptureRole::Object, LexCaptureKind::Rest),
+];
 
 const EACH_OPPONENT_LOSES_X_AND_YOU_GAIN_X_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
     LexPattern::any_phrase(EACH_OPPONENT_PREFIXES),
@@ -226,7 +512,7 @@ pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive
             LexRuleHeadHint::Pair("this", "land"),
             LexRuleHeadHint::Pair("each", "of"),
         ],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        IMPLICIT_BECOME_PATTERN_ATOMS,
         parse_sentence_implicit_become_clause
     ),
     primitive_with_pattern!(
@@ -238,7 +524,7 @@ pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive
             LexRuleHeadHint::Single("stand"),
             LexRuleHeadHint::Single("it"),
         ],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        FALLBACK_MECHANIC_MARKER_PATTERN_ATOMS,
         parse_sentence_fallback_mechanic_marker
     ),
     primitive_with_pattern_parser!(
@@ -262,7 +548,7 @@ pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive
             LexRuleHeadHint::Single("creatures"),
             LexRuleHeadHint::Single("target"),
         ],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        PUMP_CREATURE_TYPE_OF_CHOICE_PATTERN_ATOMS,
         parse_sentence_pump_creature_type_of_choice
     ),
     primitive_with_pattern_parser!(
@@ -301,13 +587,14 @@ pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive
         parse_if_enters_with_additional_counter_sentence,
         parse_if_enters_with_additional_counter_sentence_matched
     ),
-    primitive_with_pattern!(
+    primitive_with_pattern_parser!(
         "if-any-tagged-cards-share-card-type-with-triggering-spell",
         55,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("if")],
-        ANY_CLAUSE_PATTERN_ATOMS,
-        parse_if_any_tagged_cards_share_card_type_with_triggering_spell
+        IF_TAGGED_CARDS_SHARE_TYPE_PATTERN_ATOMS,
+        parse_if_any_tagged_cards_share_card_type_with_triggering_spell,
+        parse_if_any_tagged_cards_share_card_type_with_triggering_spell_matched
     ),
     primitive_with_pattern_parser!(
         "put-onto-battlefield-with-additional-counters",
@@ -323,7 +610,7 @@ pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive
         70,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("put")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        PUT_MULTIPLE_COUNTERS_ON_TARGET_PATTERN_ATOMS,
         parse_sentence_put_multiple_counters_on_target
     ),
     primitive_with_pattern_parser!(
@@ -405,7 +692,7 @@ pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive
         160,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("target")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        TARGET_PLAYER_CHOOSES_PATTERN_ATOMS,
         parse_sentence_target_player_chooses_then_puts_on_top_of_library
     ),
     primitive_with_pattern!(
@@ -413,7 +700,7 @@ pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive
         170,
         PreDiagnostic,
         &[LexRuleHeadHint::Single("target")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        TARGET_PLAYER_CHOOSES_PATTERN_ATOMS,
         parse_sentence_target_player_chooses_then_you_put_it_onto_battlefield
     ),
     primitive_with_pattern_parser!(
@@ -447,7 +734,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         10,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("exile")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        EXILE_TARGET_CREATURE_GREATEST_POWER_PATTERN_ATOMS,
         parse_sentence_exile_target_creature_with_greatest_power
     ),
     primitive_with_pattern!(
@@ -455,7 +742,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         20,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("counter")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        COUNTER_TARGET_SPELL_TURN_PATTERN_ATOMS,
         parse_sentence_counter_target_spell_thats_second_cast_this_turn
     ),
     primitive_with_pattern!(
@@ -463,7 +750,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         30,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("counter")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        COUNTER_TARGET_SPELL_TURN_PATTERN_ATOMS,
         parse_sentence_counter_target_spell_if_it_was_kicked
     ),
     primitive_with_pattern_parser!(
@@ -523,7 +810,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         80,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("choose")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        CHOOSE_ALL_BATTLEFIELD_GRAVEYARD_PATTERN_ATOMS,
         parse_sentence_choose_all_from_battlefield_and_graveyard_to_hand
     ),
     primitive_with_pattern!(
@@ -531,7 +818,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         90,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("for")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        FOR_EACH_TARGET_OBJECTS_PATTERN_ATOMS,
         parse_sentence_for_each_of_target_objects
     ),
     primitive_with_pattern_parser!(
@@ -548,7 +835,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         110,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("distribute")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        DISTRIBUTE_COUNTERS_PATTERN_ATOMS,
         parse_sentence_distribute_counters
     ),
     primitive_with_pattern_parser!(
@@ -583,7 +870,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         150,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("exile")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        EXILE_THEN_SHUFFLE_GRAVEYARD_PATTERN_ATOMS,
         parse_exile_then_shuffle_graveyard_into_library_sentence
     ),
     primitive_with_pattern!(
@@ -591,7 +878,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         160,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("exile")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        EXILE_SOURCE_WITH_COUNTERS_PATTERN_ATOMS,
         parse_sentence_exile_source_with_counters
     ),
     primitive_with_pattern_parser!(
@@ -608,7 +895,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         180,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("target")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        COMMA_THEN_CHAIN_PATTERN_ATOMS,
         parse_sentence_comma_then_chain_special
     ),
     primitive_with_pattern!(
@@ -616,7 +903,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         190,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("destroy")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        DESTROY_THEN_LAND_GRAVEYARD_DAMAGE_PATTERN_ATOMS,
         parse_sentence_destroy_then_land_controller_graveyard_count_damage
     ),
     primitive_with_pattern!(
@@ -624,7 +911,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         200,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("draw")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        DRAW_THEN_CONNIVE_PATTERN_ATOMS,
         parse_sentence_draw_then_connive
     ),
     primitive_with_pattern_parser!(
@@ -680,7 +967,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         250,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("gets")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        GETS_THEN_FIGHTS_PATTERN_ATOMS,
         parse_sentence_gets_then_fights
     ),
     primitive_with_pattern_parser!(
@@ -739,7 +1026,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
             LexRuleHeadHint::Single("transform"),
             LexRuleHeadHint::Single("convert"),
         ],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        TRANSFORM_WITH_FOLLOWUP_PATTERN_ATOMS,
         parse_sentence_transform_with_followup
     ),
     primitive_with_pattern!(
@@ -747,7 +1034,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         370,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("cant")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        CANT_EFFECT_PATTERN_ATOMS,
         parse_sentence_cant_effect
     ),
     primitive_with_pattern!(
@@ -760,7 +1047,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
             LexRuleHeadHint::Single("this"),
             LexRuleHeadHint::Single("target"),
         ],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        COMPOUND_DAMAGE_FANOUT_PATTERN_ATOMS,
         parse_sentence_compound_damage_fanout
     ),
     primitive_with_pattern!(
@@ -771,7 +1058,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
             LexRuleHeadHint::Single("target"),
             LexRuleHeadHint::Pair("target", "radiance"),
         ],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        TARGET_AND_EACH_OTHER_FANOUT_PATTERN_ATOMS,
         parse_sentence_shared_color_target_fanout
     ),
     primitive_with_pattern!(
@@ -779,7 +1066,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         440,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("gain")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        GAIN_X_PLUS_LIFE_PATTERN_ATOMS,
         parse_sentence_gain_x_plus_life
     ),
     primitive_with_pattern_parser!(
@@ -821,7 +1108,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         480,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("each")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        EACH_PLAYER_REVEALS_TOP_PUT_PERMANENTS_PATTERN_ATOMS,
         parse_sentence_each_player_reveals_top_count_put_permanents_onto_battlefield_rest_graveyard
     ),
     primitive_with_pattern!(
@@ -829,7 +1116,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         490,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("each")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        EACH_PLAYER_PUT_PERMANENT_CARDS_EXILED_PATTERN_ATOMS,
         parse_sentence_each_player_put_permanent_cards_exiled_with_source
     ),
     primitive_with_pattern_parser!(
@@ -846,7 +1133,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         510,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("at")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        DELAYED_NEXT_STEP_UNLESS_PAYS_PATTERN_ATOMS,
         parse_sentence_delayed_next_step_unless_pays
     ),
     primitive_with_pattern!(
@@ -854,7 +1141,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         520,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("search")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        SEARCH_DELAYED_NEXT_UPKEEP_LOSE_GAME_PATTERN_ATOMS,
         parse_sentence_delayed_next_upkeep_unless_pays_lose_game
     ),
     primitive_with_pattern!(
@@ -862,7 +1149,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         540,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("search")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        SEARCH_LIBRARY_PATTERN_ATOMS,
         parse_sentence_search_library
     ),
     primitive_with_pattern!(
@@ -870,7 +1157,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         550,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("shuffle")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        SHUFFLE_GRAVEYARD_PATTERN_ATOMS,
         parse_sentence_shuffle_graveyard_into_library
     ),
     primitive_with_pattern!(
@@ -878,7 +1165,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         560,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("shuffle")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        SHUFFLE_OBJECT_INTO_LIBRARY_PATTERN_ATOMS,
         parse_sentence_shuffle_object_into_library
     ),
     primitive_with_pattern!(
@@ -886,7 +1173,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         570,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("exile")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        EXILE_HAND_GRAVEYARD_BUNDLE_PATTERN_ATOMS,
         parse_sentence_exile_hand_and_graveyard_bundle
     ),
     primitive_with_pattern!(
@@ -894,7 +1181,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         580,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("target")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        TARGET_PLAYER_EXILES_CREATURE_GRAVEYARD_PATTERN_ATOMS,
         parse_sentence_target_player_exiles_creature_and_graveyard
     ),
     primitive_with_pattern!(
@@ -902,7 +1189,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         600,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("look")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        LOOK_AT_TOP_THEN_EXILE_PATTERN_ATOMS,
         parse_sentence_look_at_top_then_exile_one
     ),
     primitive_with_pattern!(
@@ -910,7 +1197,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         610,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("look")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        LOOK_AT_HAND_PATTERN_ATOMS,
         parse_sentence_look_at_hand
     ),
     primitive_with_pattern!(
@@ -918,7 +1205,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         620,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("gain")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        GAIN_LIFE_EQUAL_TO_AGE_PATTERN_ATOMS,
         parse_sentence_gain_life_equal_to_age
     ),
     primitive_with_pattern!(
@@ -930,7 +1217,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
             LexRuleHeadHint::Single("then"),
             LexRuleHeadHint::Single("each"),
         ],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        FOR_OR_EACH_PLAYER_DOESNT_PATTERN_ATOMS,
         parse_sentence_for_each_player_doesnt
     ),
     primitive_with_pattern_parser!(
@@ -947,7 +1234,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         700,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("target")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        TARGET_AND_EACH_OTHER_FANOUT_PATTERN_ATOMS,
         parse_sentence_same_name_target_fanout
     ),
     primitive_with_pattern!(
@@ -955,7 +1242,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         710,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("target")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        SAME_NAME_GETS_FANOUT_PATTERN_ATOMS,
         parse_sentence_same_name_gets_fanout
     ),
     primitive_with_pattern!(
@@ -963,7 +1250,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         720,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("at")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        DELAYED_NEXT_END_STEP_PATTERN_ATOMS,
         parse_sentence_delayed_until_next_end_step
     ),
     primitive_with_pattern!(
@@ -971,7 +1258,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         730,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("when")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        DELAYED_TRIGGER_PATTERN_ATOMS,
         parse_delayed_when_that_dies_this_turn_sentence
     ),
     primitive_with_pattern!(
@@ -984,7 +1271,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
             LexRuleHeadHint::Single("when"),
             LexRuleHeadHint::Single("whenever"),
         ],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        DELAYED_TRIGGER_PATTERN_ATOMS,
         parse_sentence_delayed_trigger_this_turn
     ),
     primitive_with_pattern!(
@@ -992,7 +1279,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         750,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("destroy")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        DESTROY_OR_EXILE_ALL_SPLIT_PATTERN_ATOMS,
         parse_sentence_destroy_or_exile_all_split
     ),
     primitive_with_pattern!(
@@ -1000,7 +1287,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         760,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("exile")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        EXILE_UP_TO_ONE_EACH_TARGET_TYPE_PATTERN_ATOMS,
         parse_sentence_exile_up_to_one_each_target_type
     ),
     primitive_with_pattern!(
@@ -1008,7 +1295,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         770,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("exile")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        EXILE_MULTI_TARGET_PATTERN_ATOMS,
         parse_sentence_exile_multi_target
     ),
     primitive_with_pattern!(
@@ -1016,7 +1303,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         780,
         PostDiagnostic,
         &[LexRuleHeadHint::Single("destroy")],
-        ANY_CLAUSE_PATTERN_ATOMS,
+        DESTROY_MULTI_TARGET_PATTERN_ATOMS,
         parse_sentence_destroy_multi_target
     ),
     primitive_with_pattern_parser!(

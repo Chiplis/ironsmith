@@ -11,24 +11,132 @@ use super::super::grammar::primitives as grammar;
 use super::super::keyword_static::{
     parse_pt_modifier, parse_pt_modifier_values, parse_value_binding_clause,
 };
-use super::super::lexer::{
-    LexedClause, contains_token_word, token_slice_starts_with, token_word_refs, word_slice_at_is,
-    word_slice_at_is_any, word_slice_contains_any_phrase_or_empty, word_slice_contains_any_word,
-    word_slice_contains_phrase_or_empty, word_slice_contains_word, word_slice_eq,
-    word_slice_find_phrase_start_or_zero, word_slice_first_is, word_slice_first_is_any,
-    word_slice_starts_with, word_slice_starts_with_any, word_slice_strip_first_word_value,
-};
+use super::super::lexer::{LexedClause, contains_token_word, token_word_refs};
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::find_index as find_token_index;
 use super::super::util::{
-    contains_until_end_of_turn, is_until_end_of_turn, parse_for_each_count_value_words,
-    parse_number, parse_target_count_range_prefix, parse_target_phrase, parse_value,
+    contains_until_end_of_turn, is_until_end_of_turn,
+    parse_choice_or_range_count_token_prefix_consumed, parse_for_each_count_value_words,
+    parse_greater_than_or_equal_quantity_prefix, parse_number, parse_target_phrase, parse_value,
     replace_unbound_x_with_value, starts_with_until_end_of_turn, value_contains_unbound_x,
 };
 use super::chain_carry::bind_implicit_player_context;
 use super::chain_carry::{parse_effect_chain, parse_effect_chain_inner, remove_first_word};
+use super::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::conditionals::negated_action_word_index;
 use super::{Verb, find_verb};
+
+const FOR_EACH_LIFE_TOTAL_BECOMES_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["life", "total", "becomes"]);
+const FOR_EACH_TO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["to"]);
+const FOR_EACH_X_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["x"]);
+const FOR_EACH_OF_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["of"]);
+const FOR_EACH_TARGET_PLAYER_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix_any & [&["target", "player"], &["target", "players"]]);
+const FOR_EACH_ATTACHED_TO_CREATURE_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix_any & [&["creature"], &["a", "creature"]]);
+const FOR_EACH_THIS_TURN_DAMAGE_BY_THIS_CREATURE_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_phrases
+        & [
+            &["dealt", "damage", "by", "this", "creature", "this"],
+            &["this", "turn"],
+        ]
+);
+const FOR_EACH_MANA_REPLACEMENT_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_phrases & [&["for", "mana"]];
+    contains_words & ["if", "instead"];
+    contains_any_words & [&["tap", "taps"], &["produce", "produces"]]
+);
+const FOR_EACH_MANA_TRIGGER_ADDITIONAL_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_phrases & [&["for", "mana"]];
+    contains_words & ["whenever", "additional"];
+    contains_any_words & [&["tap", "taps"], &["add", "adds"]]
+);
+const FOR_EACH_BASE_POWER_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["base", "power"]);
+const FOR_EACH_BASE_POWER_TOUGHNESS_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["base", "power", "and", "toughness"]);
+const FOR_EACH_UNTIL_YOUR_NEXT_TURN_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["until", "your", "next", "turn"]);
+const FOR_EACH_INSTEAD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["instead"]);
+const FOR_EACH_MUST_BE_BLOCKED_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["and", "must", "be", "blocked", "this", "turn", "if", "able"]);
+const FOR_EACH_CANT_BE_BLOCKED_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["and", "cant", "be", "blocked", "this", "turn"]);
+const FOR_EACH_MAY_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["may"]);
+const FOR_EACH_AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
+const FOR_EACH_OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
+const FOR_EACH_GAIN_HAS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["gain"], &["gains"], &["has"], &["have"]]);
+const FOR_EACH_COMBAT_KEYWORD_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_words
+        & [
+            &["trample"],
+            &["haste"],
+            &["first"],
+            &["strike"],
+            &["infect"]
+        ]
+);
+const FOR_EACH_CONTROL_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["control"], &["controls"]]);
+const FOR_EACH_CHOOSE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["choose"]);
+const FOR_EACH_THEN_RETURN_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["then", "return"]);
+const FOR_EACH_UNLESS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["unless"]);
+const FOR_EACH_CONTROLLER_DRAW_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["its", "controller", "has", "you", "draw", "a"]);
+const FOR_EACH_CARD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["card"]);
+const FOR_EACH_WHO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["who"]);
+const FOR_EACH_HAS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["has"]);
+const FOR_EACH_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this", "way"]);
+const FOR_EACH_POISON_COUNTERS_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["poison", "counter"], &["poison", "counters"]]);
+const FOR_EACH_WHO_CONTROLS_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["who", "controls"]);
+const FOR_EACH_MOST_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix_any & [&["the", "most"], &["most"]]);
+const FOR_EACH_THEN_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["then"]);
+const FOR_EACH_TEMPORAL_TURN_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_phrases & [&[&["this", "turn"], &["next", "turn"],]]);
+const FOR_EACH_WHERE_X_IS_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["where", "x", "is"]);
+const FOR_EACH_OTHER_THAN_DEFENDING_PLAYER_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["other", "than", "defending", "player"]);
+const FOR_EACH_TAPPED_A_LAND_FOR_MANA_THIS_TURN_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["tapped", "a", "land", "for", "mana", "this", "turn"]);
+const FOR_EACH_TAPPED_LAND_FOR_MANA_THIS_TURN_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["tapped", "land", "for", "mana", "this", "turn"]);
+const FOR_EACH_SCRY_SURVEIL_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["scries"], &["scry"], &["surveils"], &["surveil"]]);
+const FOR_EACH_TARGET_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["target"]);
+const FOR_EACH_PLAYER_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["player"], &["players"]]);
+const FOR_EACH_EACH_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["each"]);
+const FOR_EACH_TAGGED_ACTION_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["sacrificed"], &["destroyed"], &["exiled"], &["discarded"]]);
+const FOR_EACH_DISCARD_OR_DISCARDED_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["discard"], &["discarded"]]);
+
+fn for_each_words_start_with_who(words: &[&str]) -> bool {
+    words
+        .first()
+        .is_some_and(|word| FOR_EACH_WHO_WORD_PATTERN.matches_word(word))
+}
+
+fn for_each_this_way_index(words: &[&str]) -> Option<usize> {
+    FOR_EACH_THIS_WAY_PATTERN.find_exact_window(words, 2)
+}
+
+fn for_each_strip_prefix_shape_clause<'a>(
+    clause: LexedClause<'a>,
+    shape: &ClauseShape<'static>,
+) -> Option<LexedClause<'a>> {
+    let words = clause.word_refs();
+    let prefix_len = shape.matched_prefix_len(&words)?;
+    let token_idx = clause.token_index_for_word_or_end(prefix_len)?;
+    Some(clause.from(token_idx))
+}
 
 fn trimmed_tail_from_word(clause: LexedClause<'_>, word_idx: usize) -> LexedClause<'_> {
     let token_idx = clause
@@ -39,7 +147,7 @@ fn trimmed_tail_from_word(clause: LexedClause<'_>, word_idx: usize) -> LexedClau
 
 fn prepend_that_player_life_total_subject(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let words = token_word_refs(tokens);
-    if !word_slice_starts_with(&words, &["life", "total", "becomes"]) {
+    if !FOR_EACH_LIFE_TOTAL_BECOMES_PATTERN.matches_words(&words) {
         return tokens.to_vec();
     }
 
@@ -85,8 +193,6 @@ const FOR_EACH_PLAYER_PREFIXES: &[&[&str]] = &[
 const WHO_ACTION_PREFIXES: &[&[&str]] = &[&["who", "does"], &["who", "do"], &["who", "did"]];
 const INSTEAD_IF_PREFIXES: &[&[&str]] = &[&["instead", "if"]];
 const FOR_AS_LONG_AS_PREFIXES: &[&[&str]] = &[&["for", "as", "long", "as"]];
-const ANY_NUMBER_OF_PREFIXES: &[&[&str]] = &[&["any", "number", "of"]];
-const UP_TO_PREFIXES: &[&[&str]] = &[&["up", "to"]];
 const DEMONSTRATIVE_OBJECT_REFERENCE_PHRASES: &[&[&str]] = &[
     &["that", "creature"],
     &["that", "creatures"],
@@ -113,20 +219,20 @@ const DEMONSTRATIVE_OBJECT_REFERENCE_PHRASES: &[&[&str]] = &[
     &["those", "tokens"],
     &["those", "spells"],
 ];
+const DEMONSTRATIVE_OBJECT_REFERENCE_PHRASE_GROUPS: &[&[&[&str]]] =
+    &[DEMONSTRATIVE_OBJECT_REFERENCE_PHRASES];
+const FOR_EACH_DEMONSTRATIVE_OBJECT_REFERENCE_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_phrases & DEMONSTRATIVE_OBJECT_REFERENCE_PHRASE_GROUPS);
 
 fn find_tapped_land_for_mana_this_turn_end(words: &[&str]) -> Option<usize> {
-    word_slice_find_phrase_start_or_zero(
-        words,
-        &["tapped", "a", "land", "for", "mana", "this", "turn"],
-    )
-    .map(|idx| idx + 6)
-    .or_else(|| {
-        word_slice_find_phrase_start_or_zero(
-            words,
-            &["tapped", "land", "for", "mana", "this", "turn"],
-        )
-        .map(|idx| idx + 5)
-    })
+    FOR_EACH_TAPPED_A_LAND_FOR_MANA_THIS_TURN_PATTERN
+        .find_exact_window(words, 7)
+        .map(|idx| idx + 6)
+        .or_else(|| {
+            FOR_EACH_TAPPED_LAND_FOR_MANA_THIS_TURN_PATTERN
+                .find_exact_window(words, 6)
+                .map(|idx| idx + 5)
+        })
 }
 
 pub(crate) fn parse_for_each_object_subject(
@@ -141,7 +247,9 @@ pub(crate) fn parse_for_each_object_subject(
     else {
         return Ok(None);
     };
-    if let Some(after_of) = filter_clause.strip_prefix_clause(&["of"]) {
+    if let Some(after_of) =
+        for_each_strip_prefix_shape_clause(filter_clause, &FOR_EACH_OF_PREFIX_PATTERN)
+    {
         filter_clause = after_of;
     }
     if filter_clause.is_empty() {
@@ -153,12 +261,12 @@ pub(crate) fn parse_for_each_object_subject(
         && filter_clause
             .tokens()
             .get(attached_idx + 1)
-            .is_some_and(|token| token.is_word("to"))
+            .is_some_and(|token| FOR_EACH_TO_WORD_PATTERN.matches_token(token))
         && attached_idx > 0
     {
         let attached_tail_clause = filter_clause.from(attached_idx + 2);
-        let attached_to_creature =
-            attached_tail_clause.starts_with_any(&[&["creature"], &["a", "creature"]]);
+        let attached_to_creature = FOR_EACH_ATTACHED_TO_CREATURE_TAIL_PATTERN
+            .matches_words(&attached_tail_clause.word_refs());
         if attached_to_creature {
             normalized_filter_clause = filter_clause.before(attached_idx).trimmed();
         }
@@ -190,7 +298,9 @@ pub(crate) fn parse_for_each_targeted_object_subject(
     else {
         return Ok(None);
     };
-    if let Some(after_of) = target_clause.strip_prefix_clause(&["of"]) {
+    if let Some(after_of) =
+        for_each_strip_prefix_shape_clause(target_clause, &FOR_EACH_OF_PREFIX_PATTERN)
+    {
         target_clause = after_of;
     }
     if target_clause.is_empty() {
@@ -211,38 +321,25 @@ pub(crate) fn parse_for_each_targeted_object_subject(
 }
 
 pub(crate) fn has_demonstrative_object_reference(words: &[&str]) -> bool {
-    word_slice_contains_any_phrase_or_empty(words, DEMONSTRATIVE_OBJECT_REFERENCE_PHRASES)
+    FOR_EACH_DEMONSTRATIVE_OBJECT_REFERENCE_PATTERN.matches_words(words)
 }
 
 pub(crate) fn is_target_player_dealt_damage_by_this_turn_subject(words: &[&str]) -> bool {
     if words.len() < 8 {
         return false;
     }
-    if !word_slice_starts_with_any(words, &[&["target", "player"], &["target", "players"]]) {
+    if !FOR_EACH_TARGET_PLAYER_PREFIX_PATTERN.matches_words(words) {
         return false;
     }
-    word_slice_contains_phrase_or_empty(
-        words,
-        &["dealt", "damage", "by", "this", "creature", "this"],
-    ) && word_slice_contains_phrase_or_empty(words, &["this", "turn"])
+    FOR_EACH_THIS_TURN_DAMAGE_BY_THIS_CREATURE_PATTERN.matches_words(words)
 }
 
 pub(crate) fn is_mana_replacement_clause_words(words: &[&str]) -> bool {
-    let has_if = word_slice_contains_word(words, "if");
-    let has_tap = word_slice_contains_any_word(words, &["tap", "taps"]);
-    let has_for_mana = word_slice_contains_phrase_or_empty(words, &["for", "mana"]);
-    let has_produce = word_slice_contains_any_word(words, &["produce", "produces"]);
-    let has_instead = word_slice_contains_word(words, "instead");
-    has_if && has_tap && has_for_mana && has_produce && has_instead
+    FOR_EACH_MANA_REPLACEMENT_PATTERN.matches_words(words)
 }
 
 pub(crate) fn is_mana_trigger_additional_clause_words(words: &[&str]) -> bool {
-    let has_whenever = word_slice_contains_word(words, "whenever");
-    let has_tap = word_slice_contains_any_word(words, &["tap", "taps"]);
-    let has_for_mana = word_slice_contains_phrase_or_empty(words, &["for", "mana"]);
-    let has_add = word_slice_contains_any_word(words, &["add", "adds"]);
-    let has_additional = word_slice_contains_word(words, "additional");
-    has_whenever && has_tap && has_for_mana && has_add && has_additional
+    FOR_EACH_MANA_TRIGGER_ADDITIONAL_PATTERN.matches_words(words)
 }
 
 pub(crate) fn parse_has_base_power_clause(
@@ -262,12 +359,10 @@ pub(crate) fn parse_has_base_power_clause(
     let subject_words = subject_clause.word_refs();
 
     let rest_words = &words_all[has_idx + 1..];
-    if rest_words.len() < 3
-        || !crate::runtime_backend::lexer::word_slice_starts_with(&rest_words, &["base", "power"])
-    {
+    if rest_words.len() < 3 || !FOR_EACH_BASE_POWER_PREFIX_PATTERN.matches_words(rest_words) {
         return Ok(None);
     }
-    if word_slice_at_is(rest_words, 2, "and") {
+    if FOR_EACH_AND_WORD_PATTERN.matches_word_at(rest_words, 2) {
         return Ok(None);
     }
 
@@ -308,8 +403,7 @@ pub(crate) fn parse_has_base_power_clause(
         let has_target_subject = subject_clause.contains_word("target");
         let has_leading_until_eot = starts_with_until_end_of_turn(&subject_words);
         let has_temporal_words = contains_until_end_of_turn(&words_all)
-            || clause.contains_phrase(&["this", "turn"])
-            || clause.contains_phrase(&["next", "turn"]);
+            || FOR_EACH_TEMPORAL_TURN_MARKER_PATTERN.matches(clause);
         if !has_target_subject && !has_leading_until_eot && !has_temporal_words {
             return Ok(None);
         }
@@ -359,10 +453,7 @@ pub(crate) fn parse_has_base_power_toughness_clause(
 
     let rest_words = &words_all[has_idx + 1..];
     if rest_words.len() < 5
-        || !crate::runtime_backend::lexer::word_slice_starts_with(
-            &rest_words,
-            &["base", "power", "and", "toughness"],
-        )
+        || !FOR_EACH_BASE_POWER_TOUGHNESS_PREFIX_PATTERN.matches_words(rest_words)
     {
         return Ok(None);
     }
@@ -379,8 +470,7 @@ pub(crate) fn parse_has_base_power_toughness_clause(
         let has_target_subject = subject_clause.contains_word("target");
         let has_leading_until_eot = starts_with_until_end_of_turn(&subject_words);
         let has_temporal_words = contains_until_end_of_turn(&words_all)
-            || clause.contains_phrase(&["this", "turn"])
-            || clause.contains_phrase(&["next", "turn"]);
+            || FOR_EACH_TEMPORAL_TURN_MARKER_PATTERN.matches(clause);
         if !has_target_subject && !has_leading_until_eot && !has_temporal_words {
             return Ok(None);
         }
@@ -465,7 +555,7 @@ pub(crate) fn parse_get_modifier_values_with_tail(
         &["until", "your", "next", "turn"],
         &["until", "end", "of", "combat"],
     ]) {
-        duration = if word_slice_eq(phrase, &["until", "your", "next", "turn"]) {
+        duration = if FOR_EACH_UNTIL_YOUR_NEXT_TURN_PATTERN.matches_words(phrase) {
             Until::YourNextTurn
         } else {
             Until::EndOfCombat
@@ -484,7 +574,7 @@ pub(crate) fn parse_get_modifier_values_with_tail(
     }
 
     let tail_words = tail_clause.word_refs();
-    if word_slice_eq(&tail_words, &["instead"]) {
+    if FOR_EACH_INSTEAD_PATTERN.matches_words(&tail_words) {
         return Ok((out_power, out_toughness, duration, condition));
     }
     if tail_clause
@@ -508,46 +598,44 @@ pub(crate) fn parse_get_modifier_values_with_tail(
             condition,
         ));
     }
-    if word_slice_eq(
-        &tail_words,
-        &["and", "must", "be", "blocked", "this", "turn", "if", "able"],
-    ) {
+    if FOR_EACH_MUST_BE_BLOCKED_TAIL_PATTERN.matches_words(&tail_words) {
         return Ok((out_power, out_toughness, duration, condition));
     }
-    if word_slice_eq(
-        &tail_words,
-        &["and", "cant", "be", "blocked", "this", "turn"],
-    ) {
+    if FOR_EACH_CANT_BE_BLOCKED_TAIL_PATTERN.matches_words(&tail_words) {
         return Ok((out_power, out_toughness, duration, condition));
     }
-    if word_slice_first_is(&tail_words, "and")
-        && word_slice_at_is_any(&tail_words, 1, &["gain", "gains", "has", "have"])
-        && tail_words
-            .iter()
-            .any(|word| matches!(*word, "trample" | "haste" | "first" | "strike" | "infect"))
+    if tail_words
+        .first()
+        .is_some_and(|word| FOR_EACH_AND_WORD_PATTERN.matches_word(word))
+        && FOR_EACH_GAIN_HAS_WORD_PATTERN.matches_word_at(&tail_words, 1)
+        && FOR_EACH_COMBAT_KEYWORD_MARKER_PATTERN.matches_words(&tail_words)
         && contains_until_end_of_turn(&tail_words)
     {
         return Ok((out_power, out_toughness, duration, condition));
     }
-    if word_slice_first_is(&tail_words, "and")
+    if tail_words
+        .first()
+        .is_some_and(|word| FOR_EACH_AND_WORD_PATTERN.matches_word(word))
         && tail_words
             .iter()
-            .any(|word| matches!(*word, "gain" | "gains" | "has" | "have"))
-        && tail_words
-            .iter()
-            .any(|word| matches!(*word, "trample" | "haste" | "first" | "strike" | "infect"))
+            .any(|word| FOR_EACH_GAIN_HAS_WORD_PATTERN.matches_word(word))
+        && FOR_EACH_COMBAT_KEYWORD_MARKER_PATTERN.matches_words(&tail_words)
         && contains_until_end_of_turn(&tail_words)
     {
         return Ok((out_power, out_toughness, duration, condition));
     }
-    if word_slice_first_is(&tail_words, "and")
+    if tail_words
+        .first()
+        .is_some_and(|word| FOR_EACH_AND_WORD_PATTERN.matches_word(word))
         && tail_words
             .iter()
-            .any(|word| matches!(*word, "control" | "controls"))
+            .any(|word| FOR_EACH_CONTROL_WORD_PATTERN.matches_word(word))
     {
         return Ok((out_power, out_toughness, duration, condition));
     }
-    if word_slice_first_is(&tail_words, "or")
+    if tail_words
+        .first()
+        .is_some_and(|word| FOR_EACH_OR_WORD_PATTERN.matches_word(word))
         && let Some(alt_mod) = tail_words.get(1).copied()
         && parse_pt_modifier_values(alt_mod).is_ok()
     {
@@ -579,7 +667,7 @@ pub(crate) fn parse_get_modifier_values_with_tail(
         out_toughness = scale_modifier(out_toughness)?;
         return Ok((out_power, out_toughness, duration, condition));
     }
-    if !tail_clause.starts_with(&["where", "x", "is"]) {
+    if !FOR_EACH_WHERE_X_IS_PREFIX_PATTERN.matches_words(&tail_clause.word_refs()) {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing gets clause (clause: '{}')",
             clause
@@ -630,7 +718,9 @@ pub(crate) fn parse_for_each_opponent_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let mut clause = LexedClause::new(tokens);
-    if let Some(after_then) = clause.strip_prefix_clause(&["then"]) {
+    if let Some(after_then) =
+        for_each_strip_prefix_shape_clause(clause, &FOR_EACH_THEN_PREFIX_PATTERN)
+    {
         clause = after_then;
     }
     let clause_text = clause.text();
@@ -646,9 +736,10 @@ pub(crate) fn parse_for_each_opponent_clause(
 
     let mut inner_clause = after_prefix_clause.trimmed();
     let mut iteration_filter = PlayerFilter::Opponent;
-    if let Some(after_defending_player) =
-        inner_clause.strip_prefix_clause(&["other", "than", "defending", "player"])
-    {
+    if let Some(after_defending_player) = for_each_strip_prefix_shape_clause(
+        inner_clause,
+        &FOR_EACH_OTHER_THAN_DEFENDING_PLAYER_PREFIX_PATTERN,
+    ) {
         inner_clause = after_defending_player.trimmed();
         iteration_filter = PlayerFilter::excluding(PlayerFilter::Opponent, PlayerFilter::Defending);
     }
@@ -667,27 +758,28 @@ pub(crate) fn parse_for_each_opponent_clause(
     if find_verb(inner_tokens).is_some_and(|(verb, idx)| {
         idx == 0
             && matches!(verb, Verb::Scry | Verb::Surveil)
-            && word_slice_strip_first_word_value(
-                &inner_words,
-                &[
-                    ("scries", ()),
-                    ("scry", ()),
-                    ("surveils", ()),
-                    ("surveil", ()),
-                ],
-            )
-            .is_some_and(|(_, rest)| rest.len() == 1 && rest[0] != "x")
+            && inner_words
+                .split_first()
+                .filter(|(word, _)| FOR_EACH_SCRY_SURVEIL_WORD_PATTERN.matches_word(word))
+                .is_some_and(|(_, rest)| {
+                    rest.len() == 1 && !FOR_EACH_X_WORD_PATTERN.matches_words(rest)
+                })
     }) {
         return Ok(None);
     }
-    if word_slice_first_is(&inner_words, "choose")
+    if inner_words
+        .first()
+        .is_some_and(|word| FOR_EACH_CHOOSE_WORD_PATTERN.matches_word(word))
         && let Some(then_return_idx) =
-            word_slice_find_phrase_start_or_zero(&inner_words, &["then", "return"])
-        && let Some(unless_idx) = word_slice_find_phrase_start_or_zero(&inner_words, &["unless"])
+            FOR_EACH_THEN_RETURN_PATTERN.find_exact_window(&inner_words, 2)
+        && let Some(unless_idx) = inner_words
+            .iter()
+            .position(|word| FOR_EACH_UNLESS_WORD_PATTERN.matches_word(word))
         && unless_idx > then_return_idx
-        && inner_words.get(unless_idx + 1..unless_idx + 7)
-            == Some(["its", "controller", "has", "you", "draw", "a"].as_slice())
-        && word_slice_at_is(&inner_words, unless_idx + 7, "card")
+        && inner_words
+            .get(unless_idx + 1..unless_idx + 7)
+            .is_some_and(|words| FOR_EACH_CONTROLLER_DRAW_TAIL_PATTERN.matches_words(words))
+        && FOR_EACH_CARD_WORD_PATTERN.matches_word_at(&inner_words, unless_idx + 7)
     {
         let target_token_end = inner_clause
             .token_index_for_word_or_end(then_return_idx)
@@ -740,17 +832,23 @@ pub(crate) fn parse_for_each_opponent_clause(
         }])));
     }
     if inner_words.len() >= 7
-        && word_slice_first_is(&inner_words, "who")
-        && word_slice_at_is(&inner_words, 1, "has")
-        && let Some((count, used)) = parse_number(&inner_tokens[2..])
+        && inner_words
+            .first()
+            .is_some_and(|word| FOR_EACH_WHO_WORD_PATTERN.matches_word(word))
+        && FOR_EACH_HAS_WORD_PATTERN.matches_word_at(&inner_words, 1)
+        && let Ok(Some((count, used))) = parse_greater_than_or_equal_quantity_prefix(
+            &inner_tokens[2..],
+            false,
+            false,
+            "for-each poison-counter predicate",
+        )
     {
         let cmp_idx = 2 + used;
-        if word_slice_at_is(&inner_words, cmp_idx, "or")
-            && word_slice_at_is(&inner_words, cmp_idx + 1, "more")
-            && word_slice_at_is(&inner_words, cmp_idx + 2, "poison")
-            && word_slice_at_is_any(&inner_words, cmp_idx + 3, &["counter", "counters"])
+        if inner_words
+            .get(cmp_idx..cmp_idx + 2)
+            .is_some_and(|words| FOR_EACH_POISON_COUNTERS_PATTERN.matches_words(words))
         {
-            let effect_start = cmp_idx + 4;
+            let effect_start = cmp_idx + 2;
             let effect_clause = trimmed_tail_from_word(inner_clause, effect_start);
             let effect_tokens = effect_clause.tokens();
             if effect_tokens.is_empty() {
@@ -771,15 +869,13 @@ pub(crate) fn parse_for_each_opponent_clause(
             }])));
         }
     }
-    if word_slice_first_is(&inner_words, "who")
+    if for_each_words_start_with_who(&inner_words)
         && let Some((negation_idx, negation_len)) = negated_action_word_index(&inner_words)
     {
         let effect_token_start =
             if let Some(comma_idx) = find_token_index(&inner_tokens, |token| token.is_comma()) {
                 comma_idx + 1
-            } else if let Some(this_way_idx) =
-                word_slice_find_phrase_start_or_zero(&inner_words, &["this", "way"])
-            {
+            } else if let Some(this_way_idx) = for_each_this_way_index(&inner_words) {
                 inner_clause
                     .token_index_for_word_or_end(this_way_idx + 2)
                     .unwrap_or(inner_clause.len())
@@ -803,9 +899,8 @@ pub(crate) fn parse_for_each_opponent_clause(
         }));
     }
 
-    if word_slice_first_is(&inner_words, "who")
-        && let Some(this_way_idx) =
-            word_slice_find_phrase_start_or_zero(&inner_words, &["this", "way"])
+    if for_each_words_start_with_who(&inner_words)
+        && let Some(this_way_idx) = for_each_this_way_index(&inner_words)
     {
         let effect_start = this_way_idx + 2;
         let effect_clause = trimmed_tail_from_word(inner_clause, effect_start);
@@ -852,7 +947,7 @@ pub(crate) fn parse_for_each_opponent_clause(
     }
 
     let inner_words = token_word_refs(&inner_tokens);
-    if word_slice_first_is(&inner_words, "who") {
+    if for_each_words_start_with_who(&inner_words) {
         let tapped_land_turn_idx = find_tapped_land_for_mana_this_turn_end(&inner_words);
         if let Some(turn_idx) = tapped_land_turn_idx {
             let effect_clause = trimmed_tail_from_word(inner_clause, turn_idx + 1);
@@ -883,15 +978,13 @@ pub(crate) fn parse_for_each_opponent_clause(
             }));
         }
     }
-    if word_slice_first_is(&inner_words, "who")
+    if for_each_words_start_with_who(&inner_words)
         && let Some((negation_idx, negation_len)) = negated_action_word_index(&inner_words)
     {
         let effect_token_start =
             if let Some(comma_idx) = find_token_index(&inner_tokens, |token| token.is_comma()) {
                 comma_idx + 1
-            } else if let Some(this_way_idx) =
-                word_slice_find_phrase_start_or_zero(&inner_words, &["this", "way"])
-            {
+            } else if let Some(this_way_idx) = for_each_this_way_index(&inner_words) {
                 inner_clause
                     .token_index_for_word_or_end(this_way_idx + 2)
                     .unwrap_or(inner_clause.len())
@@ -911,9 +1004,8 @@ pub(crate) fn parse_for_each_opponent_clause(
         let predicate = parse_negated_who_this_way_predicate(&inner_tokens)?;
         return Ok(Some(EffectAst::ForEachPlayerDoesNot { effects, predicate }));
     }
-    if word_slice_first_is(&inner_words, "who")
-        && let Some(this_way_idx) =
-            word_slice_find_phrase_start_or_zero(&inner_words, &["this", "way"])
+    if for_each_words_start_with_who(&inner_words)
+        && let Some(this_way_idx) = for_each_this_way_index(&inner_words)
     {
         let effect_start = this_way_idx + 2;
         let effect_clause = trimmed_tail_from_word(inner_clause, effect_start);
@@ -960,7 +1052,7 @@ pub(crate) fn parse_for_each_opponent_clause(
     }
 
     let inner_words = token_word_refs(&inner_tokens);
-    if word_slice_first_is(&inner_words, "who") {
+    if for_each_words_start_with_who(&inner_words) {
         let tapped_land_turn_idx = find_tapped_land_for_mana_this_turn_end(&inner_words);
         if let Some(turn_idx) = tapped_land_turn_idx {
             let effect_clause = trimmed_tail_from_word(inner_clause, turn_idx + 1);
@@ -991,15 +1083,13 @@ pub(crate) fn parse_for_each_opponent_clause(
             }));
         }
     }
-    if word_slice_first_is(&inner_words, "who")
+    if for_each_words_start_with_who(&inner_words)
         && let Some((negation_idx, negation_len)) = negated_action_word_index(&inner_words)
     {
         let effect_token_start =
             if let Some(comma_idx) = find_token_index(&inner_tokens, |token| token.is_comma()) {
                 comma_idx + 1
-            } else if let Some(this_way_idx) =
-                word_slice_find_phrase_start_or_zero(&inner_words, &["this", "way"])
-            {
+            } else if let Some(this_way_idx) = for_each_this_way_index(&inner_words) {
                 inner_clause
                     .token_index_for_word_or_end(this_way_idx + 2)
                     .unwrap_or(inner_clause.len())
@@ -1019,9 +1109,8 @@ pub(crate) fn parse_for_each_opponent_clause(
         let predicate = parse_negated_who_this_way_predicate(&inner_tokens)?;
         return Ok(Some(EffectAst::ForEachPlayerDoesNot { effects, predicate }));
     }
-    if word_slice_first_is(&inner_words, "who")
-        && let Some(this_way_idx) =
-            word_slice_find_phrase_start_or_zero(&inner_words, &["this", "way"])
+    if for_each_words_start_with_who(&inner_words)
+        && let Some(this_way_idx) = for_each_this_way_index(&inner_words)
     {
         let effect_start = this_way_idx + 2;
         let effect_clause = trimmed_tail_from_word(inner_clause, effect_start);
@@ -1070,7 +1159,7 @@ pub(crate) fn parse_for_each_opponent_clause(
     let normalized_inner_tokens = prepend_that_player_life_total_subject(&inner_tokens);
     let effects = if normalized_inner_tokens
         .iter()
-        .any(|token| token.is_word("may"))
+        .any(|token| FOR_EACH_MAY_WORD_PATTERN.matches_token(token))
     {
         let stripped = remove_first_word(&normalized_inner_tokens, "may");
         let inner_effects = parse_effect_chain_inner(&stripped)?;
@@ -1087,7 +1176,9 @@ pub(crate) fn parse_for_each_target_players_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let mut clause = LexedClause::new(tokens);
-    if let Some(after_then) = clause.strip_prefix_clause(&["then"]) {
+    if let Some(after_then) =
+        for_each_strip_prefix_shape_clause(clause, &FOR_EACH_THEN_PREFIX_PATTERN)
+    {
         clause = after_then;
     }
     let clause_tokens = clause.tokens();
@@ -1097,43 +1188,29 @@ pub(crate) fn parse_for_each_target_players_clause(
         return Ok(None);
     }
 
-    let mut start = 0usize;
-    let mut count = ChoiceCount::exactly(1);
-    if grammar::words_match_any_prefix(clause_tokens, ANY_NUMBER_OF_PREFIXES).is_some() {
-        count = ChoiceCount::any_number();
-        start = 3;
-    } else if grammar::words_match_any_prefix(clause_tokens, UP_TO_PREFIXES).is_some()
-        && let Some((value, used)) = parse_number(&clause_tokens[2..])
-    {
-        count = ChoiceCount::up_to(value as usize);
-        start = 2 + used;
-    } else if let Some((range_count, used)) = parse_target_count_range_prefix(clause_tokens) {
-        count = range_count;
-        start = used;
-    } else if let Some((value, used)) = parse_number(clause_tokens)
-        && clause_tokens
-            .get(used)
-            .is_some_and(|token| token.is_word("target"))
-    {
-        count = ChoiceCount::exactly(value as usize);
-        start = used;
-    }
+    let (count, start) = parse_choice_or_range_count_token_prefix_consumed(clause_tokens)
+        .filter(|(_, used)| {
+            clause_tokens
+                .get(*used)
+                .is_some_and(|token| FOR_EACH_TARGET_WORD_PATTERN.matches_token(token))
+        })
+        .unwrap_or((ChoiceCount::exactly(1), 0));
 
     let Some(target_token) = clause_tokens.get(start) else {
         return Ok(None);
     };
-    if !target_token.is_word("target") {
+    if !FOR_EACH_TARGET_WORD_PATTERN.matches_token(target_token) {
         return Ok(None);
     }
     if !clause_tokens
         .get(start + 1)
-        .is_some_and(|token| token.is_word("player") || token.is_word("players"))
+        .is_some_and(|token| FOR_EACH_PLAYER_WORD_PATTERN.matches_token(token))
     {
         return Ok(None);
     }
     if !clause_tokens
         .get(start + 2)
-        .is_some_and(|token| token.is_word("each"))
+        .is_some_and(|token| FOR_EACH_EACH_WORD_PATTERN.matches_token(token))
     {
         return Ok(None);
     }
@@ -1164,15 +1241,14 @@ pub(crate) fn parse_who_did_this_way_predicate(
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let inner_clause = LexedClause::new(inner_tokens);
     let inner_words = inner_clause.word_refs();
-    if !word_slice_first_is(&inner_words, "who") {
+    if !for_each_words_start_with_who(&inner_words) {
         return Ok(None);
     }
-    let Some(this_way_idx) = word_slice_find_phrase_start_or_zero(&inner_words, &["this", "way"])
-    else {
+    let Some(this_way_idx) = for_each_this_way_index(&inner_words) else {
         return Ok(None);
     };
     let verb = inner_words.get(1).copied().unwrap_or("");
-    let supports_tag = matches!(verb, "sacrificed" | "destroyed" | "exiled" | "discarded");
+    let supports_tag = FOR_EACH_TAGGED_ACTION_WORD_PATTERN.matches_word(verb);
     if !supports_tag || this_way_idx <= 2 {
         return Ok(None);
     }
@@ -1205,11 +1281,10 @@ fn parse_negated_who_this_way_predicate(
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let inner_clause = LexedClause::new(inner_tokens);
     let inner_words = inner_clause.word_refs();
-    if !word_slice_first_is(&inner_words, "who") {
+    if !for_each_words_start_with_who(&inner_words) {
         return Ok(None);
     }
-    let Some(this_way_idx) = word_slice_find_phrase_start_or_zero(&inner_words, &["this", "way"])
-    else {
+    let Some(this_way_idx) = for_each_this_way_index(&inner_words) else {
         return Ok(None);
     };
     let Some((negation_idx, negation_len)) = negated_action_word_index(&inner_words) else {
@@ -1217,7 +1292,9 @@ fn parse_negated_who_this_way_predicate(
     };
     let verb_idx = negation_idx + negation_len;
     let verb = inner_words.get(verb_idx).copied().unwrap_or("");
-    if !matches!(verb, "discard" | "discarded") || this_way_idx <= verb_idx + 1 {
+    if !FOR_EACH_DISCARD_OR_DISCARDED_WORD_PATTERN.matches_word(verb)
+        || this_way_idx <= verb_idx + 1
+    {
         return Ok(None);
     }
 
@@ -1252,7 +1329,9 @@ pub(crate) fn parse_for_each_player_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let mut clause = LexedClause::new(tokens);
-    if let Some(after_then) = clause.strip_prefix_clause(&["then"]) {
+    if let Some(after_then) =
+        for_each_strip_prefix_shape_clause(clause, &FOR_EACH_THEN_PREFIX_PATTERN)
+    {
         clause = after_then;
     }
     let clause_text = clause.text();
@@ -1267,11 +1346,13 @@ pub(crate) fn parse_for_each_player_clause(
 
     let inner_clause = inner_clause.trimmed();
     let inner_tokens = inner_clause.tokens();
-    if inner_tokens.len() > 3 && token_slice_starts_with(inner_tokens, &["who", "controls"]) {
+    if inner_tokens.len() > 3
+        && FOR_EACH_WHO_CONTROLS_PREFIX_PATTERN.matches_words(&inner_clause.word_refs())
+    {
         let mut effect_start = None;
         for idx in 2..inner_tokens.len() {
             if let Some(word) = inner_tokens[idx].as_word()
-                && (word == "may"
+                && (FOR_EACH_MAY_WORD_PATTERN.matches_word(word)
                     || super::find_verb(&inner_tokens[idx..])
                         .is_some_and(|(_, verb_idx)| verb_idx == 0))
             {
@@ -1294,14 +1375,13 @@ pub(crate) fn parse_for_each_player_clause(
             )));
         }
         let filter_clause = LexedClause::new(&filter_tokens);
-        let (controls_most, normalized_filter_tokens) =
-            if let Some(rest) = filter_clause.strip_prefix_clause(&["the", "most"]) {
-                (true, rest.trimmed().tokens().to_vec())
-            } else if let Some(rest) = filter_clause.strip_prefix_clause(&["most"]) {
-                (true, rest.trimmed().tokens().to_vec())
-            } else {
-                (false, filter_tokens)
-            };
+        let (controls_most, normalized_filter_tokens) = if let Some(rest) =
+            for_each_strip_prefix_shape_clause(filter_clause, &FOR_EACH_MOST_PREFIX_PATTERN)
+        {
+            (true, rest.trimmed().tokens().to_vec())
+        } else {
+            (false, filter_tokens)
+        };
         if normalized_filter_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing object filter after 'most' (clause: '{}')",
@@ -1341,7 +1421,7 @@ pub(crate) fn parse_for_each_player_clause(
     }
 
     let inner_words = token_word_refs(&inner_tokens);
-    if word_slice_first_is(&inner_words, "who") {
+    if for_each_words_start_with_who(&inner_words) {
         let tapped_land_turn_idx = find_tapped_land_for_mana_this_turn_end(&inner_words);
         if let Some(turn_idx) = tapped_land_turn_idx {
             let effect_clause = trimmed_tail_from_word(inner_clause, turn_idx + 1);
@@ -1372,15 +1452,13 @@ pub(crate) fn parse_for_each_player_clause(
             }));
         }
     }
-    if word_slice_first_is(&inner_words, "who")
+    if for_each_words_start_with_who(&inner_words)
         && let Some((negation_idx, negation_len)) = negated_action_word_index(&inner_words)
     {
         let effect_token_start =
             if let Some(comma_idx) = find_token_index(&inner_tokens, |token| token.is_comma()) {
                 comma_idx + 1
-            } else if let Some(this_way_idx) =
-                word_slice_find_phrase_start_or_zero(&inner_words, &["this", "way"])
-            {
+            } else if let Some(this_way_idx) = for_each_this_way_index(&inner_words) {
                 inner_clause
                     .token_index_for_word_or_end(this_way_idx + 2)
                     .unwrap_or(inner_clause.len())
@@ -1400,9 +1478,8 @@ pub(crate) fn parse_for_each_player_clause(
         let predicate = parse_negated_who_this_way_predicate(&inner_tokens)?;
         return Ok(Some(EffectAst::ForEachPlayerDoesNot { effects, predicate }));
     }
-    if word_slice_first_is(&inner_words, "who")
-        && let Some(this_way_idx) =
-            word_slice_find_phrase_start_or_zero(&inner_words, &["this", "way"])
+    if for_each_words_start_with_who(&inner_words)
+        && let Some(this_way_idx) = for_each_this_way_index(&inner_words)
     {
         let effect_start = this_way_idx + 2;
         let effect_clause = trimmed_tail_from_word(inner_clause, effect_start);
@@ -1451,7 +1528,7 @@ pub(crate) fn parse_for_each_player_clause(
     let normalized_inner_tokens = prepend_that_player_life_total_subject(&inner_tokens);
     let effects = if normalized_inner_tokens
         .iter()
-        .any(|token| token.is_word("may"))
+        .any(|token| FOR_EACH_MAY_WORD_PATTERN.matches_token(token))
     {
         let stripped = remove_first_word(&normalized_inner_tokens, "may");
         let inner_effects = parse_effect_chain_inner(&stripped)?;

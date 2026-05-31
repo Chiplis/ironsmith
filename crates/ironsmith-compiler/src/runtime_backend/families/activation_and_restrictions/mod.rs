@@ -11,6 +11,7 @@ use super::activation_helpers::{
     word_refs_at_is_article, word_refs_except,
 };
 use super::effect_ast_traversal::{for_each_nested_effects, for_each_nested_effects_mut};
+use super::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::effect_sentences::find_verb;
 use super::effect_sentences::{
     is_beginning_of_end_step_words, is_end_of_combat_words, is_negated_untap_clause,
@@ -46,10 +47,12 @@ use super::token_primitives::{
 };
 use super::util::{
     current_source_reference_name, is_source_reference_words, mana_pips_from_token,
-    parse_card_type, parse_color, parse_counter_type_from_tokens, parse_non_type, parse_number,
-    parse_number_word_u32, parse_subject, parse_target_count_range_prefix, parse_target_phrase,
-    parse_value_expr_words, source_reference_surface_for_span, source_reference_surface_for_words,
-    span_from_tokens, token_index_for_word_index, trim_commas, words,
+    parse_card_type, parse_choice_count_token_prefix, parse_choice_count_token_prefix_consumed,
+    parse_choice_count_word_prefix, parse_color, parse_counter_type_from_tokens,
+    parse_greater_than_or_equal_quantity_prefix, parse_non_type, parse_number, parse_subject,
+    parse_target_count_range_prefix, parse_target_phrase, parse_value_expr_words,
+    source_reference_surface_for_span, source_reference_surface_for_words, span_from_tokens,
+    token_index_for_word_index, trim_commas, words,
 };
 #[allow(unused_imports)]
 use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming};

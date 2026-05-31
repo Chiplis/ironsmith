@@ -1,3 +1,189 @@
+const LABELED_ROUND_UP_EACH_TIME_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["round", "up", "each", "time"]);
+const LABELED_CAST_FROM_AMONG_FREE_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix & ["you", "may", "cast"];
+    contains_phrases & [
+        &["from", "among", "them"],
+        &["without", "paying", "its", "mana", "cost"],
+    ]
+);
+const LABELED_CAST_HAND_FREE_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix & ["you", "may", "cast", "a", "spell", "from", "your", "hand"];
+    contains_phrases & [&["without", "paying", "its", "mana", "cost"]]
+);
+const LABELED_EXILE_ALL_CARDS_FROM_HAND_GRAVEYARD_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix & ["exile", "all", "cards", "from"];
+    contains_any_words & [&["hand", "hands"], &["graveyard", "graveyards"]]
+);
+const LABELED_UNLESS_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["unless"]);
+const LABELED_GAIN_LOSE_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_words & [&["gain", "gains", "lose", "loses"]]);
+const LABELED_VOTE_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_words & [&["vote", "votes"]]);
+const LABELED_RETURN_ROUNDED_UP_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["return"]; contains_words & ["rounded", "up"]);
+const LABELED_CHOOSE_DO_SAME_FOR_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["choose"]; contains_phrases & [&["do", "the", "same", "for"]]);
+const LABELED_EACH_PLAYER_CHOOSE_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix_any & [&["each", "player", "choose"], &["each", "player", "chooses"]]);
+const LABELED_CAST_ANY_NUMBER_GRAVEYARD_FREE_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix & ["cast", "any", "number", "of"];
+    contains_phrases & [
+        &["from", "your", "graveyard"],
+        &["without", "paying", "their", "mana", "costs"],
+    ]
+);
+const LABELED_TAP_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["tap"]);
+const LABELED_PREVENT_TAKE_MONSTROSITY_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["prevent"], &["take"], &["monstrosity"]]);
+const LABELED_ENCHANT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["enchant"]);
+const LABELED_EARTHBEND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["earthbend"]);
+const LABELED_SACRIFICE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["sacrifice"]);
+const LABELED_ALL_OR_EACH_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["all"], &["each"]]);
+const LABELED_IS_OR_ARE_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["is"], &["are"]]);
+const LABELED_ARTICLE_AND_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["a"], &["an"], &["and"]]);
+const LABELED_GAIN_OR_GAINS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["gain"], &["gains"]]);
+const LABELED_GAIN_HAS_LOSE_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["gain"], &["gains"], &["has"], &["have"], &["lose"], &["loses"]]);
+const LABELED_HAS_HAVE_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["has"], &["have"]]);
+const LABELED_SIMPLE_ABILITY_TAIL_STOP_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["and"], &["then"], &["if"]]);
+const LABELED_TRIGGER_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["when"], &["whenever"]]);
+const LABELED_OR_UNTAP_ALL_EACH_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_phrases & [&[&["or", "untap", "all"], &["or", "untap", "each"]]]);
+const LABELED_SIMPLE_ABILITY_EXCLUSION_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_words & [&["shares", "choice"]]);
+const LABELED_ANOTHER_HASTE_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["another", "haste"]);
+const LABELED_LIFE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["life"]);
+
+fn labeled_mana_value_or_less_bound(words: &[&str]) -> Option<u32> {
+    for idx in 0..words.len().saturating_sub(2) {
+        if words.get(idx..idx + 2) != Some(&["mana", "value"])
+        {
+            continue;
+        }
+        let tail = words.get(idx + 2..)?;
+        let count_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(tail);
+        let Some((count, used)) =
+            crate::runtime_backend::util::parse_less_than_or_equal_quantity_prefix(
+                &count_tokens,
+                false,
+                false,
+                "mana value bound",
+            )
+            .ok()
+            .flatten()
+        else {
+            continue;
+        };
+        if used == tail.len() {
+            return Some(count);
+        }
+    }
+    None
+}
+
+const LABELED_SIMPLE_ABILITY_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_words
+        & [&[
+            "indestructible",
+            "haste",
+            "flying",
+            "vigilance",
+            "lifelink",
+            "trample",
+            "reach",
+            "menace",
+            "fear",
+            "deathtouch",
+            "horsemanship",
+            "hexproof",
+            "shroud",
+            "shadow",
+            "strike",
+            "protection",
+            "blocked",
+            "abilities",
+            "when",
+            "whenever",
+        ]]
+);
+const LABELED_TOKEN_SACRIFICE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["sacrifice", "it"],
+            &["sacrifice", "them"],
+            &["sacrifice", "that", "token"],
+            &["sacrifice", "those", "tokens"],
+        ]
+);
+const LABELED_TOKEN_EXILE_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix_any & [&["exile", "it"], &["exile", "them"]]);
+const LABELED_NEXT_END_STEP_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["at", "beginning", "of", "next", "end", "step"]]);
+const LABELED_DELAYED_END_STEP_SACRIFICE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "the",
+                "end",
+                "step",
+                "sacrifice",
+            ],
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "the",
+                "next",
+                "end",
+                "step",
+                "sacrifice",
+            ],
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "next",
+                "end",
+                "step",
+                "sacrifice",
+            ],
+        ]
+);
+const LABELED_DELAYED_END_STEP_EXILE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["at", "the", "beginning", "of", "the", "end", "step", "exile"],
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "the",
+                "next",
+                "end",
+                "step",
+                "exile",
+            ],
+            &["at", "the", "beginning", "of", "next", "end", "step", "exile"],
+        ]
+);
+
+
 pub(crate) fn parse_effect_sentence_inner_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
@@ -27,7 +213,7 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
     if is_trigger_only_restriction_sentence_lexed(tokens) {
         return Ok(Vec::new());
     }
-    if word_slice_starts_with(sentence_words.as_slice(), &["round", "up", "each", "time"]) {
+    if LABELED_ROUND_UP_EACH_TIME_PATTERN.matches_words(sentence_words.as_slice()) {
         return Ok(Vec::new());
     }
 
@@ -53,7 +239,7 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
     if let Some(effects) = parse_next_spell_grant_sentence_lexed(tokens)? {
         return Ok(effects);
     }
-    if word_slice_first_is_any(&sentence_words, &["prevent", "take", "monstrosity"])
+    if LABELED_PREVENT_TAKE_MONSTROSITY_WORD_PATTERN.matches_word_at(&sentence_words, 0)
         && let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)?
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
@@ -95,13 +281,7 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
             },
         }]);
     }
-    if word_slice_starts_with(sentence_words.as_slice(), &["you", "may", "cast"])
-        && word_slice_contains_phrase(&sentence_words, &["from", "among", "them"])
-        && word_slice_contains_phrase(
-            &sentence_words,
-            &["without", "paying", "its", "mana", "cost"],
-        )
-    {
+    if LABELED_CAST_FROM_AMONG_FREE_PATTERN.matches_words(sentence_words.as_slice()) {
         let mut filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
         filter.card_types.push(CardType::Instant);
         filter.card_types.push(CardType::Sorcery);
@@ -111,8 +291,8 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         filter.card_types.push(CardType::Planeswalker);
         filter.card_types.push(CardType::Battle);
         filter.type_or_subtype_union = true;
-        if word_slice_contains_phrase(&sentence_words, &["mana", "value", "3", "or", "less"]) {
-            filter.mana_value = Some(crate::filter::Comparison::LessThanOrEqual(3));
+        if let Some(bound) = labeled_mana_value_or_less_bound(sentence_words.as_slice()) {
+            filter.mana_value = Some(crate::filter::Comparison::LessThanOrEqual(bound as i32));
         }
         let chosen = TagKey::from("__chosen_cast_from_among");
         return Ok(vec![
@@ -139,14 +319,7 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
             }),
         ]);
     }
-    if word_slice_starts_with(
-        sentence_words.as_slice(),
-        &["you", "may", "cast", "a", "spell", "from", "your", "hand"],
-    ) && word_slice_contains_phrase(
-        &sentence_words,
-        &["without", "paying", "its", "mana", "cost"],
-    )
-    {
+    if LABELED_CAST_HAND_FREE_PATTERN.matches_words(sentence_words.as_slice()) {
         let chosen = TagKey::from("__chosen_hand_spell_to_cast");
         let filter = ObjectFilter::nonland()
             .in_zone(Zone::Hand)
@@ -181,11 +354,8 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if word_slice_starts_with(
-        sentence_words.as_slice(),
-        &["exile", "all", "cards", "from"],
-    ) && word_slice_contains_any_word(sentence_words.as_slice(), &["hand", "hands"])
-        && word_slice_contains_any_word(sentence_words.as_slice(), &["graveyard", "graveyards"])
+    if LABELED_EXILE_ALL_CARDS_FROM_HAND_GRAVEYARD_PATTERN
+        .matches_words(sentence_words.as_slice())
         && let Some(mut effects) = run_subject_verb_primitives_lexed(
             tokens,
             POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
@@ -195,26 +365,26 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if word_slice_first_is(&sentence_words, "enchant")
+    if LABELED_ENCHANT_WORD_PATTERN.matches_word_at(&sentence_words, 0)
         && let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)?
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if word_slice_first_is(&sentence_words, "earthbend")
+    if LABELED_EARTHBEND_WORD_PATTERN.matches_word_at(&sentence_words, 0)
         && let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)?
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if word_slice_contains_word(sentence_words.as_slice(), "unless")
+    if LABELED_UNLESS_PATTERN.matches_words(sentence_words.as_slice())
         && let Some(mut effects) =
             super::parse_sentence_unless_pays(super::SubjectVerbPrimitiveClause::new(tokens))?
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if word_slice_contains_word(sentence_words.as_slice(), "unless")
+    if LABELED_UNLESS_PATTERN.matches_words(sentence_words.as_slice())
         && let Some(mut effects) = run_subject_verb_primitives_lexed(
             tokens,
             POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
@@ -224,10 +394,7 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if sentence_words
-        .iter()
-        .any(|word| matches!(*word, "gain" | "gains" | "lose" | "loses"))
-    {
+    if LABELED_GAIN_LOSE_WORD_PATTERN.matches_words(sentence_words.as_slice()) {
         if let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)? {
             apply_where_x_to_damage_amounts(tokens, &mut effects)?;
             return Ok(effects);
@@ -249,17 +416,13 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
             return Ok(effects);
         }
     }
-    if sentence_words
-        .iter()
-        .any(|word| *word == "vote" || *word == "votes")
+    if LABELED_VOTE_WORD_PATTERN.matches_words(sentence_words.as_slice())
         && let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)?
     {
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if word_slice_first_is(&sentence_words, "return")
-        && word_slice_contains_word(sentence_words.as_slice(), "rounded")
-        && word_slice_contains_word(sentence_words.as_slice(), "up")
+    if LABELED_RETURN_ROUNDED_UP_PATTERN.matches_words(sentence_words.as_slice())
         && let Some(mut effects) = run_subject_verb_primitives_lexed(
             tokens,
             POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
@@ -269,11 +432,7 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if word_slice_first_is(&sentence_words, "choose")
-        && crate::runtime_backend::lexer::word_slice_contains_phrase(
-            sentence_words.as_slice(),
-            &["do", "the", "same", "for"],
-        )
+    if LABELED_CHOOSE_DO_SAME_FOR_PATTERN.matches_words(sentence_words.as_slice())
         && let Some(mut effects) = run_subject_verb_primitives_lexed(
             tokens,
             POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
@@ -283,29 +442,13 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if word_slice_starts_with_any(
-        sentence_words.as_slice(),
-        &[
-            &["each", "player", "choose"],
-            &["each", "player", "chooses"],
-        ],
-    ) {
+    if LABELED_EACH_PLAYER_CHOOSE_PATTERN.matches_words(sentence_words.as_slice()) {
         if let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)? {
             apply_where_x_to_damage_amounts(tokens, &mut effects)?;
             return Ok(effects);
         }
     }
-    if word_slice_starts_with(
-        sentence_words.as_slice(),
-        &["cast", "any", "number", "of"],
-    ) && crate::runtime_backend::lexer::word_slice_contains_phrase(
-        sentence_words.as_slice(),
-        &["from", "your", "graveyard"],
-    ) && crate::runtime_backend::lexer::word_slice_contains_phrase(
-        sentence_words.as_slice(),
-        &["without", "paying", "their", "mana", "costs"],
-    )
-    {
+    if LABELED_CAST_ANY_NUMBER_GRAVEYARD_FREE_PATTERN.matches_words(sentence_words.as_slice()) {
         let mut filter = ObjectFilter::default();
         filter.card_types.push(CardType::Instant);
         filter.card_types.push(CardType::Sorcery);
@@ -350,7 +493,9 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         sentence_words.as_slice(),
         ["sacrifice", "any", "number", ..] | ["sacrifice", "one", "or", "more", ..]
     );
-    if word_slice_first_is(&sentence_words, "sacrifice") && !sacrifice_counted_prefix {
+    if LABELED_SACRIFICE_WORD_PATTERN.matches_word_at(&sentence_words, 0)
+        && !sacrifice_counted_prefix
+    {
         let mut effects = parse_effect_chain_lexed(tokens)?;
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
@@ -359,10 +504,9 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(effects);
     }
-    if word_slice_first_is(&sentence_words, "tap")
-        && word_slice_at_is_any(&sentence_words, 1, &["all", "each"])
-        && (word_slice_contains_phrase(&sentence_words, &["or", "untap", "all"])
-            || word_slice_contains_phrase(&sentence_words, &["or", "untap", "each"]))
+    if LABELED_TAP_PREFIX_PATTERN.matches_words(sentence_words.as_slice())
+        && LABELED_ALL_OR_EACH_WORD_PATTERN.matches_word_at(&sentence_words, 1)
+        && LABELED_OR_UNTAP_ALL_EACH_PATTERN.matches_words(sentence_words.as_slice())
     {
         let mut effects = super::parse_effect_chain_with_subject_verb_primitives_lexed(tokens)?;
         apply_where_x_to_damage_amounts(tokens, &mut effects)?;
@@ -441,10 +585,7 @@ fn parse_passive_color_type_addition_sentence(
     let Some((tail_len, adds_colors)) = passive_addition_tail_len(&words) else {
         return Ok(None);
     };
-    let Some(is_word_idx) = crate::runtime_backend::lexer::word_slice_find_word_where(
-        &words,
-        |word| matches!(word, "is" | "are"),
-    ) else {
+    let Some(is_word_idx) = LABELED_IS_OR_ARE_WORD_PATTERN.find_word(&words) else {
         return Ok(None);
     };
     if is_word_idx + 1 >= words.len().saturating_sub(tail_len) {
@@ -481,7 +622,7 @@ fn parse_passive_color_type_addition_sentence(
     let mut card_types = Vec::new();
     let mut subtypes = Vec::<Subtype>::new();
     for word in TokenWordView::new(descriptor_tokens).to_word_refs() {
-        if matches!(word, "a" | "an" | "and") {
+        if LABELED_ARTICLE_AND_WORD_PATTERN.matches_word(word) {
             continue;
         }
         if let Some(color) = parse_color(word) {
@@ -670,7 +811,7 @@ fn parse_gain_ability_subject_verb_sentence(
 
 fn is_simple_source_gain_ability_candidate(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(gain_idx) = find_index(words.as_slice(), |word| matches!(*word, "gain" | "gains"))
+    let Some(gain_idx) = LABELED_GAIN_OR_GAINS_WORD_PATTERN.find_word(&words)
     else {
         return false;
     };
@@ -678,60 +819,33 @@ fn is_simple_source_gain_ability_candidate(tokens: &[OwnedLexToken]) -> bool {
         && is_source_reference_words(&words[..gain_idx])
         && !words[gain_idx + 1..]
             .iter()
-            .any(|word| matches!(*word, "and" | "then" | "if"))
+            .any(|word| LABELED_SIMPLE_ABILITY_TAIL_STOP_WORD_PATTERN.matches_word(word))
 }
 
 fn is_simple_gain_ability_candidate(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(gain_idx) = find_index(words.as_slice(), |word| {
-        matches!(*word, "gain" | "gains" | "has" | "have" | "lose" | "loses")
-    }) else {
+    let Some(gain_idx) = LABELED_GAIN_HAS_LOSE_WORD_PATTERN.find_word(&words)
+    else {
         return false;
     };
 
     let ability_words = &words[gain_idx + 1..];
-    if matches!(words[gain_idx], "has" | "have")
+    if LABELED_HAS_HAVE_WORD_PATTERN.matches_word(words[gain_idx])
         && !ability_words
             .iter()
-            .any(|word| matches!(*word, "when" | "whenever"))
+            .any(|word| LABELED_TRIGGER_WORD_PATTERN.matches_word(word))
     {
         return false;
     }
-    if words[..gain_idx]
-        .iter()
-        .any(|word| matches!(*word, "shares" | "choice"))
-        || (crate::runtime_backend::lexer::word_slice_contains_word(&words[..gain_idx], "another")
-            && crate::runtime_backend::lexer::word_slice_contains_word(ability_words, "haste"))
+    if LABELED_SIMPLE_ABILITY_EXCLUSION_PATTERN.matches_words(&words[..gain_idx])
+        || LABELED_ANOTHER_HASTE_PATTERN.matches_words(&words)
     {
         return false;
     }
     !ability_words.is_empty()
-        && !crate::runtime_backend::lexer::word_slice_contains_word(ability_words, "life")
-        && (ability_words.iter().any(|word| {
-            matches!(
-                *word,
-                "indestructible"
-                    | "haste"
-                    | "flying"
-                    | "vigilance"
-                    | "lifelink"
-                    | "trample"
-                    | "reach"
-                    | "menace"
-                    | "fear"
-                    | "deathtouch"
-                    | "horsemanship"
-                    | "hexproof"
-                    | "shroud"
-                    | "shadow"
-                    | "strike"
-                    | "protection"
-                    | "blocked"
-                    | "abilities"
-                    | "when"
-                    | "whenever"
-            )
-        }) || contains_token_kind(tokens, TokenKind::Quote)
+        && !LABELED_LIFE_WORD_PATTERN.matches_words(ability_words)
+        && (LABELED_SIMPLE_ABILITY_WORD_PATTERN.matches_words(ability_words)
+            || contains_token_kind(tokens, TokenKind::Quote)
             || contains_token_kind(tokens, TokenKind::Colon))
 }
 
@@ -749,176 +863,19 @@ pub(crate) fn parse_token_copy_modifier_sentence(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenCopyFollowup> {
     let filtered = crate::runtime_backend::util::non_article_token_word_refs(tokens);
-
-    let is_gain_haste_until_eot = matches!(
-        filtered.as_slice(),
-        ["it", "gains", "haste", "until", "end", "of", "turn"]
-            | ["they", "gain", "haste", "until", "end", "of", "turn"]
-    );
-    if is_gain_haste_until_eot {
-        return Some(TokenCopyFollowup::GainHasteUntilEndOfTurn);
-    }
-
-    let is_has_haste = matches!(
-        filtered.as_slice(),
-        ["it", "has", "haste"]
-            | ["they", "have", "haste"]
-            | ["token", "created", "this", "way", "has", "haste"]
-            | ["tokens", "created", "this", "way", "have", "haste"]
-            | ["token", "created", "this", "way", "gains", "haste"]
-            | ["tokens", "created", "this", "way", "gain", "haste"]
-    );
-    if is_has_haste {
-        return Some(TokenCopyFollowup::HasHaste);
-    }
-
-    let enters_tapped_and_attacking = matches!(
-        filtered.as_slice(),
-        ["it", "enters", "tapped", "and", "attacking"]
-            | ["they", "enter", "tapped", "and", "attacking"]
-            | ["token", "enters", "tapped", "and", "attacking"]
-            | ["tokens", "enter", "tapped", "and", "attacking"]
-            | [
-                "token",
-                "created",
-                "this",
-                "way",
-                "enters",
-                "tapped",
-                "and",
-                "attacking"
-            ]
-            | [
-                "tokens",
-                "created",
-                "this",
-                "way",
-                "enter",
-                "tapped",
-                "and",
-                "attacking"
-            ]
-    );
-    if enters_tapped_and_attacking {
-        return Some(TokenCopyFollowup::EnterTappedAndAttacking);
-    }
-
-    if word_slice_starts_with_any(
-        filtered.as_slice(),
-        &[
-            &["sacrifice", "it"],
-            &["sacrifice", "them"],
-            &["sacrifice", "that", "token"],
-            &["sacrifice", "those", "tokens"],
-        ],
-    ) {
-        let has_next_end_step = crate::runtime_backend::lexer::word_slice_contains_phrase(
-            filtered.as_slice(),
-            &["at", "beginning", "of", "next", "end", "step"],
-        );
-        if has_next_end_step {
-            return Some(TokenCopyFollowup::SacrificeAtNextEndStep);
-        }
-    }
-    if word_slice_starts_with_any(filtered.as_slice(), &[&["exile", "it"], &["exile", "them"]]) {
-        let has_next_end_step = crate::runtime_backend::lexer::word_slice_contains_phrase(
-            filtered.as_slice(),
-            &["at", "beginning", "of", "next", "end", "step"],
-        );
-        if has_next_end_step {
-            return Some(TokenCopyFollowup::ExileAtNextEndStep);
-        }
-    }
-
-    let starts_delayed_end_step_sacrifice = word_slice_starts_with_any(
-        filtered.as_slice(),
-        &[
-            &[
-                "at",
-                "the",
-                "beginning",
-                "of",
-                "the",
-                "end",
-                "step",
-                "sacrifice",
-            ],
-            &[
-                "at",
-                "the",
-                "beginning",
-                "of",
-                "the",
-                "next",
-                "end",
-                "step",
-                "sacrifice",
-            ],
-            &[
-                "at",
-                "the",
-                "beginning",
-                "of",
-                "next",
-                "end",
-                "step",
-                "sacrifice",
-            ],
-        ],
-    );
-    if starts_delayed_end_step_sacrifice {
-        return Some(TokenCopyFollowup::SacrificeAtNextEndStep);
-    }
-    let starts_delayed_end_step_exile = word_slice_starts_with_any(
-        filtered.as_slice(),
-        &[
-            &[
-                "at",
-                "the",
-                "beginning",
-                "of",
-                "the",
-                "end",
-                "step",
-                "exile",
-            ],
-            &[
-                "at",
-                "the",
-                "beginning",
-                "of",
-                "the",
-                "next",
-                "end",
-                "step",
-                "exile",
-            ],
-            &[
-                "at",
-                "the",
-                "beginning",
-                "of",
-                "next",
-                "end",
-                "step",
-                "exile",
-            ],
-        ],
-    );
-    if starts_delayed_end_step_exile {
-        return Some(TokenCopyFollowup::ExileAtNextEndStep);
-    }
-
-    None
+    parse_token_copy_modifier_words(filtered.as_slice())
 }
 
 pub(crate) fn parse_token_copy_modifier_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<TokenCopyFollowup> {
     let filtered = crate::runtime_backend::util::non_article_token_word_refs(tokens);
+    parse_token_copy_modifier_words(filtered.as_slice())
+}
 
+fn parse_token_copy_modifier_words(filtered: &[&str]) -> Option<TokenCopyFollowup> {
     let is_gain_haste_until_eot = matches!(
-        filtered.as_slice(),
+        filtered,
         ["it", "gains", "haste", "until", "end", "of", "turn"]
             | ["they", "gain", "haste", "until", "end", "of", "turn"]
     );
@@ -927,7 +884,7 @@ pub(crate) fn parse_token_copy_modifier_sentence_lexed(
     }
 
     let is_has_haste = matches!(
-        filtered.as_slice(),
+        filtered,
         ["it", "has", "haste"]
             | ["they", "have", "haste"]
             | ["token", "created", "this", "way", "has", "haste"]
@@ -940,7 +897,7 @@ pub(crate) fn parse_token_copy_modifier_sentence_lexed(
     }
 
     let enters_tapped_and_attacking = matches!(
-        filtered.as_slice(),
+        filtered,
         ["it", "enters", "tapped", "and", "attacking"]
             | ["they", "enter", "tapped", "and", "attacking"]
             | ["token", "enters", "tapped", "and", "attacking"]
@@ -970,109 +927,21 @@ pub(crate) fn parse_token_copy_modifier_sentence_lexed(
         return Some(TokenCopyFollowup::EnterTappedAndAttacking);
     }
 
-    if word_slice_starts_with_any(
-        filtered.as_slice(),
-        &[
-            &["sacrifice", "it"],
-            &["sacrifice", "them"],
-            &["sacrifice", "that", "token"],
-            &["sacrifice", "those", "tokens"],
-        ],
-    ) {
-        let has_next_end_step = crate::runtime_backend::lexer::word_slice_contains_phrase(
-            filtered.as_slice(),
-            &["at", "beginning", "of", "next", "end", "step"],
-        );
-        if has_next_end_step {
-            return Some(TokenCopyFollowup::SacrificeAtNextEndStep);
-        }
-    }
-    if word_slice_starts_with_any(filtered.as_slice(), &[&["exile", "it"], &["exile", "them"]]) {
-        let has_next_end_step = crate::runtime_backend::lexer::word_slice_contains_phrase(
-            filtered.as_slice(),
-            &["at", "beginning", "of", "next", "end", "step"],
-        );
-        if has_next_end_step {
-            return Some(TokenCopyFollowup::ExileAtNextEndStep);
-        }
-    }
-
-    let starts_delayed_end_step_sacrifice = word_slice_starts_with_any(
-        filtered.as_slice(),
-        &[
-            &[
-                "at",
-                "the",
-                "beginning",
-                "of",
-                "the",
-                "end",
-                "step",
-                "sacrifice",
-            ],
-            &[
-                "at",
-                "the",
-                "beginning",
-                "of",
-                "the",
-                "next",
-                "end",
-                "step",
-                "sacrifice",
-            ],
-            &[
-                "at",
-                "the",
-                "beginning",
-                "of",
-                "next",
-                "end",
-                "step",
-                "sacrifice",
-            ],
-        ],
-    );
-    if starts_delayed_end_step_sacrifice {
+    if LABELED_TOKEN_SACRIFICE_PREFIX_PATTERN.matches_words(filtered)
+        && LABELED_NEXT_END_STEP_PATTERN.matches_words(filtered)
+    {
         return Some(TokenCopyFollowup::SacrificeAtNextEndStep);
     }
-    let starts_delayed_end_step_exile = word_slice_starts_with_any(
-        filtered.as_slice(),
-        &[
-            &[
-                "at",
-                "the",
-                "beginning",
-                "of",
-                "the",
-                "end",
-                "step",
-                "exile",
-            ],
-            &[
-                "at",
-                "the",
-                "beginning",
-                "of",
-                "the",
-                "next",
-                "end",
-                "step",
-                "exile",
-            ],
-            &[
-                "at",
-                "the",
-                "beginning",
-                "of",
-                "next",
-                "end",
-                "step",
-                "exile",
-            ],
-        ],
-    );
-    if starts_delayed_end_step_exile {
+    if LABELED_TOKEN_EXILE_PREFIX_PATTERN.matches_words(filtered)
+        && LABELED_NEXT_END_STEP_PATTERN.matches_words(filtered)
+    {
+        return Some(TokenCopyFollowup::ExileAtNextEndStep);
+    }
+
+    if LABELED_DELAYED_END_STEP_SACRIFICE_PREFIX_PATTERN.matches_words(filtered) {
+        return Some(TokenCopyFollowup::SacrificeAtNextEndStep);
+    }
+    if LABELED_DELAYED_END_STEP_EXILE_PREFIX_PATTERN.matches_words(filtered) {
         return Some(TokenCopyFollowup::ExileAtNextEndStep);
     }
 

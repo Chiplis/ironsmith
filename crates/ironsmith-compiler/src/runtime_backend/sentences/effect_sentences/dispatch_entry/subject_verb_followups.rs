@@ -2,6 +2,27 @@ use crate::runtime_backend::grammar::structure::parse_trailing_if_predicate_lexe
 
 use super::*;
 
+const OF_THOSE_TOKENS_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["of", "those", "tokens"]);
+const CREATE_THOSE_TOKENS_TRAILING_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["instead"],
+            &["onto", "the", "battlefield"],
+            &["onto", "the", "battlefield", "instead"],
+        ]
+);
+const TOKEN_REMINDER_LIFECYCLE_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["exile"], &["sacrifice"]]);
+const UNTIL_END_OF_TURN_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["until", "end", "of", "turn"]]);
+const WHEN_ONE_OR_MORE_CARDS_MILLED_THIS_WAY_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix
+        & [
+            "when", "one", "or", "more", "cards", "are", "milled", "this", "way",
+        ]
+);
+
 pub(super) enum PreParseFollowupResult {
     Handled {
         consumed_sentences: usize,
@@ -450,7 +471,7 @@ pub(super) fn previous_sentence_is_temporary_land_animation(
             let previous_clause = LexedClause::new(previous_sentence.lowered());
             previous_clause.contains_any_word(&["become", "becomes"])
                 && previous_clause.contains_any_word(&["creature", "creatures"])
-                && previous_clause.contains_phrase(&["until", "end", "of", "turn"])
+                && UNTIL_END_OF_TURN_MARKER_PATTERN.matches(previous_clause)
         })
 }
 
@@ -615,10 +636,11 @@ fn pre_rule_token_followups(
     }
     if is_generic_token_reminder_sentence(sentence_tokens) {
         let reminder_words = LexedClause::new(sentence_tokens).word_refs();
-        let delayed_pronoun_lifecycle =
-            word_slice_first_is_any(&reminder_words, &["exile", "sacrifice"])
-                && (grammar::contains_word(sentence_tokens, "it")
-                    || grammar::contains_word(sentence_tokens, "them"));
+        let delayed_pronoun_lifecycle = reminder_words
+            .first()
+            .is_some_and(|word| TOKEN_REMINDER_LIFECYCLE_WORD_PATTERN.matches_word(word))
+            && (grammar::contains_word(sentence_tokens, "it")
+                || grammar::contains_word(sentence_tokens, "them"));
         let pronoun_followup_clause =
             grammar::words_match_any_prefix(sentence_tokens, PRONOUN_TRIGGER_PREFIXES).is_some();
         if !delayed_pronoun_lifecycle && !pronoun_followup_clause {
@@ -680,24 +702,12 @@ fn parse_create_more_of_prior_tokens(
     let after_create = &sentence_tokens[create_idx + 1..];
     let (count, used) = parse_number(after_create)?;
     let tail_words = LexedClause::new(&after_create[used..]).word_refs();
-    if tail_words.len() < 3
-        || !crate::runtime_backend::lexer::word_slice_eq(
-            &tail_words[..3],
-            &["of", "those", "tokens"],
-        )
-    {
+    if tail_words.len() < 3 || !OF_THOSE_TOKENS_PREFIX_PATTERN.matches_words(&tail_words) {
         return None;
     }
     let trailing_words = &tail_words[3..];
     let trailing_is_supported = trailing_words.is_empty()
-        || crate::runtime_backend::lexer::word_slice_eq_any(
-            trailing_words,
-            &[
-                &["instead"],
-                &["onto", "the", "battlefield"],
-                &["onto", "the", "battlefield", "instead"],
-            ],
-        );
+        || CREATE_THOSE_TOKENS_TRAILING_PATTERN.matches_words(trailing_words);
     if !trailing_is_supported {
         return None;
     }
@@ -801,9 +811,9 @@ fn pre_rule_when_milled_this_way_followup(
     _sentence_idx: usize,
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
-    if !LexedClause::new(sentence_tokens).starts_with(&[
-        "when", "one", "or", "more", "cards", "are", "milled", "this", "way",
-    ]) {
+    if !WHEN_ONE_OR_MORE_CARDS_MILLED_THIS_WAY_PREFIX_PATTERN
+        .matches(LexedClause::new(sentence_tokens))
+    {
         return Ok(None);
     }
     let Some((_before, after)) =

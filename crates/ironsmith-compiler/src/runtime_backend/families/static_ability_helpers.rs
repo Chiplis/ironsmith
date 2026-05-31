@@ -5,6 +5,7 @@ use crate::effect::Effect;
 use crate::filter::ObjectFilter;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::resolution::ResolutionProgram;
+use crate::runtime_backend::token_primitives::is_static_keyword_marker_text;
 use crate::static_abilities::StaticAbility;
 use crate::target::PlayerFilter;
 use crate::triggers::Trigger;
@@ -197,31 +198,7 @@ pub(crate) fn static_ability_for_keyword_action(action: KeywordAction) -> Option
 }
 
 fn supported_keyword_marker_text(text: &str) -> bool {
-    let text = text.trim_start().to_ascii_lowercase();
-    text == "compleated"
-        || text.starts_with("prototype ")
-        || text.starts_with("more than meets the eye ")
-        || text.starts_with("splice onto ")
-        || is_ticket_sticker_marker_line(&text)
-        || text.starts_with("dredge ")
-}
-
-fn is_ticket_sticker_marker_line(text: &str) -> bool {
-    let Some((cost, body_text)) = text.split_once('—') else {
-        return false;
-    };
-
-    let mut saw_ticket_symbol = false;
-    let mut remainder = cost.trim();
-    while let Some(next) = remainder.strip_prefix("{tk}") {
-        saw_ticket_symbol = true;
-        remainder = next.trim_start();
-    }
-    if !saw_ticket_symbol || !remainder.is_empty() {
-        return false;
-    }
-
-    !body_text.trim().is_empty()
+    is_static_keyword_marker_text(text)
 }
 
 fn lower_keyword_action_or_err(action: KeywordAction) -> Result<StaticAbility, CardTextError> {

@@ -11,20 +11,24 @@ use winnow::token::one_of;
 use crate::cards::builders::{CardTextError, IT_TAG, TagKey};
 use crate::effect::{Value, ValueComparisonOperator};
 use crate::mana::{ManaCost, ManaSymbol};
+use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
+    ClauseShape, clause_shape,
+};
 use crate::target::{ChooseSpec, ChooseSpecSurfaceHint, PlayerFilter};
 use crate::types::{CardType, Subtype, Supertype};
 use ironsmith_core::ValueSurfaceHint;
 
 use super::super::lexer::{
     LexStream, OwnedLexToken, TokenKind, contains_token_word, lex_line, parser_token_word_refs,
-    word_slice_at_is, word_slice_contains_word, word_slice_eq, word_slice_eq_any,
-    word_slice_find_phrase_start, word_slice_find_phrase_start_or_zero, word_slice_last_is,
-    word_slice_starts_with, word_slice_starts_with_any,
 };
 use super::super::object_filters::parse_object_filter_lexed;
 use super::super::token_primitives::find_index;
 #[cfg(test)]
 use super::super::util::parse_subtype_word;
+#[cfg(test)]
+use super::super::util::{
+    parse_card_type as parse_shared_card_type, parse_supertype_word as parse_shared_supertype_word,
+};
 use super::super::util::{
     parse_number_word_i32, parse_value_expr_words, source_reference_surface_for_possessive_words,
     token_index_for_word_index, trim_edge_punctuation_tokens,
@@ -32,6 +36,170 @@ use super::super::util::{
 use super::primitives;
 
 type LexedInput<'a> = LexStream<'a>;
+
+const X_VALUE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["x"]);
+
+const WHERE_X_IS_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["where", "x", "is"]);
+const SCRYFALL_EMPTY_MANA_COST_MARKERS: &[&str] = &["—"];
+const THE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["the"]);
+const NUMBER_OF_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["number", "of"]);
+const PLAYERS_WHO_CONTROL_MORE_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["players", "who", "control", "more"]);
+const THAN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["than"]);
+const THAN_YOU_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["than", "you"]);
+const EQUAL_TO_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["equal", "to"]);
+const POWER_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["power"]);
+const TOUGHNESS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["toughness"]);
+const SOURCE_POWER_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["this", "power"],
+            &["thiss", "power"],
+            &["this", "creature", "power"],
+            &["this", "creatures", "power"],
+            &["thiss", "creature", "power"],
+            &["thiss", "creatures", "power"],
+            &["its", "power"],
+        ]
+);
+const SOURCE_TOUGHNESS_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["this", "toughness"],
+            &["thiss", "toughness"],
+            &["this", "creature", "toughness"],
+            &["this", "creatures", "toughness"],
+            &["thiss", "creature", "toughness"],
+            &["thiss", "creatures", "toughness"],
+            &["its", "toughness"],
+        ]
+);
+const TAGGED_POWER_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["that", "creature", "power"],
+            &["that", "creatures", "power"],
+            &["that", "objects", "power"],
+        ]
+);
+const TAGGED_TOUGHNESS_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["that", "creature", "toughness"],
+            &["that", "creatures", "toughness"],
+            &["that", "objects", "toughness"],
+        ]
+);
+const SACRIFICED_POWER_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["the", "sacrificed", "creature", "power"],
+            &["the", "sacrificed", "creatures", "power"],
+            &["sacrificed", "creature", "power"],
+            &["sacrificed", "creatures", "power"],
+        ]
+);
+const SACRIFICED_TOUGHNESS_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["the", "sacrificed", "creature", "toughness"],
+            &["the", "sacrificed", "creatures", "toughness"],
+            &["sacrificed", "creature", "toughness"],
+            &["sacrificed", "creatures", "toughness"],
+        ]
+);
+const EXPLOITED_POWER_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["the", "exploited", "creature", "power"],
+            &["the", "exploited", "creatures", "power"],
+            &["exploited", "creature", "power"],
+            &["exploited", "creatures", "power"],
+        ]
+);
+const EXPLOITED_TOUGHNESS_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["the", "exploited", "creature", "toughness"],
+            &["the", "exploited", "creatures", "toughness"],
+            &["exploited", "creature", "toughness"],
+            &["exploited", "creatures", "toughness"],
+        ]
+);
+const TAGGED_SPELL_MANA_VALUE_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["that", "spell", "mana", "value"],
+            &["that", "spell's", "mana", "value"],
+            &["that", "spells", "mana", "value"],
+        ]
+);
+const TAGGED_CARD_OR_SACRIFICED_MANA_VALUE_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["that", "card", "mana", "value"],
+            &["that", "card's", "mana", "value"],
+            &["that", "cards", "mana", "value"],
+            &[
+                "the",
+                "mana",
+                "value",
+                "of",
+                "the",
+                "sacrificed",
+                "creature"
+            ],
+            &[
+                "the",
+                "mana",
+                "value",
+                "of",
+                "the",
+                "sacrificed",
+                "artifact"
+            ],
+            &[
+                "the",
+                "mana",
+                "value",
+                "of",
+                "the",
+                "sacrificed",
+                "permanent"
+            ],
+            &["mana", "value", "of", "the", "sacrificed", "creature"],
+            &["mana", "value", "of", "the", "sacrificed", "artifact"],
+            &["mana", "value", "of", "the", "sacrificed", "permanent"],
+            &["the", "sacrificed", "creature", "mana", "value"],
+            &["the", "sacrificed", "artifact", "mana", "value"],
+            &["the", "sacrificed", "permanent", "mana", "value"],
+            &["the", "sacrificed", "creatures", "mana", "value"],
+            &["the", "sacrificed", "artifacts", "mana", "value"],
+            &["the", "sacrificed", "permanents", "mana", "value"],
+            &["sacrificed", "creature", "mana", "value"],
+            &["sacrificed", "artifact", "mana", "value"],
+            &["sacrificed", "permanent", "mana", "value"],
+            &["sacrificed", "creatures", "mana", "value"],
+            &["sacrificed", "artifacts", "mana", "value"],
+            &["sacrificed", "permanents", "mana", "value"],
+            &["its", "mana", "value"],
+        ]
+);
+const SOURCE_MANA_VALUE_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["this", "spell", "mana", "value"],
+            &["this", "creature", "mana", "value"],
+            &["this", "permanent", "mana", "value"],
+            &["this", "card", "mana", "value"],
+        ]
+);
+const THAT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["that"]);
+const MANA_VALUE_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(suffix & ["mana", "value"]);
+const PLUS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["plus"]);
+const SACRIFICED_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["sacrificed"]);
 
 #[cfg(test)]
 #[derive(Debug, Clone, PartialEq)]
@@ -122,48 +290,33 @@ pub(crate) fn parse_players_who_control_more_than_you_value_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    let mut idx = if word_slice_starts_with(&words, &["where", "x", "is"]) {
+    let mut idx = if WHERE_X_IS_PREFIX_PATTERN.matches_words(&words) {
         3usize
     } else {
         0usize
     };
 
-    if word_slice_at_is(&words, idx, "the") {
+    if words
+        .get(idx)
+        .is_some_and(|word| THE_WORD_PATTERN.matches_word(word))
+    {
         idx += 1;
     }
-    if word_slice_at_is(&words, idx, "number") {
-        if !word_slice_at_is(&words, idx + 1, "of") {
-            return None;
-        }
+    if NUMBER_OF_PREFIX_PATTERN.matches_words(&words[idx..]) {
         idx += 2;
     }
 
-    if words.get(idx).copied() != Some("players") {
+    if !PLAYERS_WHO_CONTROL_MORE_PREFIX_PATTERN.matches_words(&words[idx..]) {
         return None;
     }
-    idx += 1;
+    idx += 4;
 
-    if words.get(idx).copied() != Some("who") {
-        return None;
-    }
-    idx += 1;
-
-    if words.get(idx).copied() != Some("control") {
-        return None;
-    }
-    idx += 1;
-
-    if words.get(idx).copied() != Some("more") {
-        return None;
-    }
-    idx += 1;
-
-    let Some(than_offset) = word_slice_find_phrase_start(&words[idx..], &["than"]) else {
+    let Some(than_offset) = THAN_WORD_PATTERN.find_word(&words[idx..]) else {
         return None;
     };
     let than_idx = idx + than_offset;
     let tail = &words[than_idx..];
-    if !word_slice_eq(tail, &["than", "you"]) {
+    if !THAN_YOU_TAIL_PATTERN.matches_words(tail) {
         return None;
     }
 
@@ -251,12 +404,16 @@ pub(crate) fn parse_count_word_tokens(tokens: &[OwnedLexToken]) -> Result<u32, C
 
 fn parse_mana_cost_tokens_text(raw: &str, allow_empty: bool) -> Result<ManaCost, CardTextError> {
     let trimmed = raw.trim();
-    if allow_empty && (trimmed.is_empty() || trimmed == "—") {
+    if allow_empty && is_empty_scryfall_mana_cost_text(trimmed) {
         return Ok(ManaCost::new());
     }
 
     let tokens = lex_line(trimmed, 0)?;
     parse_mana_cost_tokens(&tokens)
+}
+
+fn is_empty_scryfall_mana_cost_text(trimmed: &str) -> bool {
+    trimmed.is_empty() || SCRYFALL_EMPTY_MANA_COST_MARKERS.contains(&trimmed)
 }
 
 pub(crate) fn parse_scryfall_mana_cost(raw: &str) -> Result<ManaCost, CardTextError> {
@@ -297,7 +454,7 @@ pub(crate) fn parse_mana_cost_tokens(tokens: &[OwnedLexToken]) -> Result<ManaCos
 
 fn parse_modal_value_token<'a>(input: &mut LexedInput<'a>) -> WResult<Value> {
     let word = primitives::word_text.parse_next(input)?;
-    if word.eq_ignore_ascii_case("x") {
+    if X_VALUE_WORD_PATTERN.matches_word(&word) {
         return Ok(Value::X);
     }
     if let Ok(value) = word.parse::<i32>() {
@@ -474,29 +631,12 @@ pub(crate) fn parse_type_line_with(
 
 #[cfg(test)]
 fn parse_card_type_word_for_rewrite(word: &str) -> Option<CardType> {
-    match word.to_ascii_lowercase().as_str() {
-        "creature" | "creatures" => Some(CardType::Creature),
-        "artifact" | "artifacts" => Some(CardType::Artifact),
-        "enchantment" | "enchantments" => Some(CardType::Enchantment),
-        "land" | "lands" => Some(CardType::Land),
-        "planeswalker" | "planeswalkers" => Some(CardType::Planeswalker),
-        "instant" | "instants" => Some(CardType::Instant),
-        "sorcery" | "sorceries" => Some(CardType::Sorcery),
-        "battle" | "battles" => Some(CardType::Battle),
-        "kindred" => Some(CardType::Kindred),
-        _ => None,
-    }
+    parse_shared_card_type(&word.to_ascii_lowercase())
 }
 
 #[cfg(test)]
 fn parse_supertype_word_for_rewrite(word: &str) -> Option<Supertype> {
-    match word.to_ascii_lowercase().as_str() {
-        "basic" => Some(Supertype::Basic),
-        "legendary" => Some(Supertype::Legendary),
-        "snow" => Some(Supertype::Snow),
-        "world" => Some(Supertype::World),
-        _ => None,
-    }
+    parse_shared_supertype_word(word)
 }
 
 #[cfg(test)]
@@ -551,43 +691,26 @@ pub(crate) fn parse_value_from_lexed(tokens: &[OwnedLexToken]) -> Option<(Value,
 
 pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) -> Option<Value> {
     let words_all = parser_token_word_refs(tokens);
-    let equal_idx = word_slice_find_phrase_start_or_zero(&words_all, &["equal", "to"])?;
+    let equal_idx = EQUAL_TO_PATTERN.find_exact_window(&words_all, 2)?;
     let tail = &words_all[equal_idx + 2..];
     if tail.is_empty() {
         return None;
     }
 
-    let is_source_power_segment = |segment: &[&str]| {
-        matches!(
-            segment,
-            ["this", "power"]
-                | ["thiss", "power"]
-                | ["this", "creature", "power"]
-                | ["this", "creatures", "power"]
-                | ["thiss", "creature", "power"]
-                | ["thiss", "creatures", "power"]
-                | ["its", "power"]
-        )
-    };
-    let is_source_toughness_segment = |segment: &[&str]| {
-        matches!(
-            segment,
-            ["this", "toughness"]
-                | ["thiss", "toughness"]
-                | ["this", "creature", "toughness"]
-                | ["this", "creatures", "toughness"]
-                | ["thiss", "creature", "toughness"]
-                | ["thiss", "creatures", "toughness"]
-                | ["its", "toughness"]
-        )
-    };
+    let is_source_power_segment =
+        |segment: &[&str]| SOURCE_POWER_SEGMENT_PATTERN.matches_words(segment);
+    let is_source_toughness_segment =
+        |segment: &[&str]| SOURCE_TOUGHNESS_SEGMENT_PATTERN.matches_words(segment);
 
     let parse_power_or_toughness_segment = |segment: &[&str]| -> Option<Value> {
         let tagged_it_power = Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))));
         let tagged_it_toughness =
             Value::ToughnessOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))));
 
-        if segment.len() >= 2 && word_slice_last_is(segment, "power") {
+        if segment
+            .last()
+            .is_some_and(|word| POWER_WORD_PATTERN.matches_word(word))
+        {
             if let Some(surface) =
                 source_reference_surface_for_possessive_words(&segment[..segment.len() - 1])
             {
@@ -597,7 +720,10 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
                 )));
             }
         }
-        if segment.len() >= 2 && word_slice_last_is(segment, "toughness") {
+        if segment
+            .last()
+            .is_some_and(|word| TOUGHNESS_WORD_PATTERN.matches_word(word))
+        {
             if let Some(surface) =
                 source_reference_surface_for_possessive_words(&segment[..segment.len() - 1])
             {
@@ -614,70 +740,24 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
         if is_source_toughness_segment(segment) {
             return Some(Value::ToughnessOf(Box::new(ChooseSpec::Source)));
         }
-        if word_slice_eq_any(
-            segment,
-            &[
-                &["that", "creature", "power"],
-                &["that", "creatures", "power"],
-                &["that", "objects", "power"],
-            ],
-        ) {
+        if TAGGED_POWER_SEGMENT_PATTERN.matches_words(segment) {
             return Some(tagged_it_power.clone());
         }
-        if word_slice_eq_any(
-            segment,
-            &[
-                &["that", "creature", "toughness"],
-                &["that", "creatures", "toughness"],
-                &["that", "objects", "toughness"],
-            ],
-        ) {
+        if TAGGED_TOUGHNESS_SEGMENT_PATTERN.matches_words(segment) {
             return Some(tagged_it_toughness.clone());
         }
-        if word_slice_eq_any(
-            segment,
-            &[
-                &["the", "sacrificed", "creature", "power"],
-                &["the", "sacrificed", "creatures", "power"],
-                &["sacrificed", "creature", "power"],
-                &["sacrificed", "creatures", "power"],
-            ],
-        ) {
+        if SACRIFICED_POWER_SEGMENT_PATTERN.matches_words(segment) {
             return Some(tagged_it_power);
         }
-        if word_slice_eq_any(
-            segment,
-            &[
-                &["the", "exploited", "creature", "power"],
-                &["the", "exploited", "creatures", "power"],
-                &["exploited", "creature", "power"],
-                &["exploited", "creatures", "power"],
-            ],
-        ) {
+        if EXPLOITED_POWER_SEGMENT_PATTERN.matches_words(segment) {
             return Some(Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(
                 crate::tag::EXPLOITED_TAG,
             )))));
         }
-        if word_slice_eq_any(
-            segment,
-            &[
-                &["the", "sacrificed", "creature", "toughness"],
-                &["the", "sacrificed", "creatures", "toughness"],
-                &["sacrificed", "creature", "toughness"],
-                &["sacrificed", "creatures", "toughness"],
-            ],
-        ) {
+        if SACRIFICED_TOUGHNESS_SEGMENT_PATTERN.matches_words(segment) {
             return Some(tagged_it_toughness);
         }
-        if word_slice_eq_any(
-            segment,
-            &[
-                &["the", "exploited", "creature", "toughness"],
-                &["the", "exploited", "creatures", "toughness"],
-                &["exploited", "creature", "toughness"],
-                &["exploited", "creatures", "toughness"],
-            ],
-        ) {
+        if EXPLOITED_TOUGHNESS_SEGMENT_PATTERN.matches_words(segment) {
             return Some(Value::ToughnessOf(Box::new(ChooseSpec::Tagged(
                 TagKey::from(crate::tag::EXPLOITED_TAG),
             ))));
@@ -685,84 +765,11 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
         None
     };
 
-    const TAGGED_SPELL_MANA_VALUE_PREFIXES: &[&[&str]] = &[
-        &["that", "spell", "mana", "value"],
-        &["that", "spell's", "mana", "value"],
-        &["that", "spells", "mana", "value"],
-    ];
-    const TAGGED_CARD_OR_SACRIFICED_MANA_VALUE_PREFIXES: &[&[&str]] = &[
-        &["that", "card", "mana", "value"],
-        &["that", "card's", "mana", "value"],
-        &["that", "cards", "mana", "value"],
-        &[
-            "the",
-            "mana",
-            "value",
-            "of",
-            "the",
-            "sacrificed",
-            "creature",
-        ],
-        &[
-            "the",
-            "mana",
-            "value",
-            "of",
-            "the",
-            "sacrificed",
-            "artifact",
-        ],
-        &[
-            "the",
-            "mana",
-            "value",
-            "of",
-            "the",
-            "sacrificed",
-            "permanent",
-        ],
-        &["mana", "value", "of", "the", "sacrificed", "creature"],
-        &["mana", "value", "of", "the", "sacrificed", "artifact"],
-        &["mana", "value", "of", "the", "sacrificed", "permanent"],
-        &["the", "sacrificed", "creature", "mana", "value"],
-        &["the", "sacrificed", "artifact", "mana", "value"],
-        &["the", "sacrificed", "permanent", "mana", "value"],
-        &["the", "sacrificed", "creatures", "mana", "value"],
-        &["the", "sacrificed", "artifacts", "mana", "value"],
-        &["the", "sacrificed", "permanents", "mana", "value"],
-        &["sacrificed", "creature", "mana", "value"],
-        &["sacrificed", "artifact", "mana", "value"],
-        &["sacrificed", "permanent", "mana", "value"],
-        &["sacrificed", "creatures", "mana", "value"],
-        &["sacrificed", "artifacts", "mana", "value"],
-        &["sacrificed", "permanents", "mana", "value"],
-        &["its", "mana", "value"],
-    ];
-    const TAGGED_POWER_PREFIXES: &[&[&str]] = &[
-        &["that", "creature", "power"],
-        &["that", "creatures", "power"],
-        &["that", "objects", "power"],
-        &["the", "sacrificed", "creature", "power"],
-        &["the", "sacrificed", "creatures", "power"],
-        &["sacrificed", "creature", "power"],
-        &["sacrificed", "creatures", "power"],
-    ];
-    const TAGGED_TOUGHNESS_PREFIXES: &[&[&str]] = &[
-        &["that", "creature", "toughness"],
-        &["that", "creatures", "toughness"],
-        &["that", "objects", "toughness"],
-        &["the", "sacrificed", "creature", "toughness"],
-        &["the", "sacrificed", "creatures", "toughness"],
-        &["sacrificed", "creature", "toughness"],
-        &["sacrificed", "creatures", "toughness"],
-    ];
-
     let parse_mana_value_segment = |segment: &[&str]| -> Option<Value> {
         let is_tagged_that_object_mana_value = || {
             if segment.len() < 4
-                || segment[0] != "that"
-                || segment[segment.len() - 2] != "mana"
-                || segment[segment.len() - 1] != "value"
+                || !THAT_WORD_PATTERN.matches_word(segment[0])
+                || !MANA_VALUE_SUFFIX_PATTERN.matches_words(segment)
             {
                 return false;
             }
@@ -770,25 +777,19 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
             !segment[1..segment.len() - 2].is_empty()
         };
 
-        if word_slice_starts_with_any(segment, TAGGED_SPELL_MANA_VALUE_PREFIXES) {
+        if TAGGED_SPELL_MANA_VALUE_SEGMENT_PATTERN.matches_words(segment) {
             return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
                 TagKey::from(IT_TAG),
             ))));
         }
-        if word_slice_starts_with_any(segment, TAGGED_CARD_OR_SACRIFICED_MANA_VALUE_PREFIXES)
+        if TAGGED_CARD_OR_SACRIFICED_MANA_VALUE_SEGMENT_PATTERN.matches_words(segment)
             || is_tagged_that_object_mana_value()
         {
             return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
                 TagKey::from(IT_TAG),
             ))));
         }
-        if matches!(
-            segment,
-            ["this", "spell", "mana", "value"]
-                | ["this", "creature", "mana", "value"]
-                | ["this", "permanent", "mana", "value"]
-                | ["this", "card", "mana", "value"]
-        ) {
+        if SOURCE_MANA_VALUE_SEGMENT_PATTERN.matches_words(segment) {
             return Some(Value::ManaValueOf(Box::new(ChooseSpec::Source)));
         }
         None
@@ -806,7 +807,7 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
             .or_else(|| parse_mana_value_segment(segment))
     };
 
-    if let Some(plus_idx) = find_index(tail, |word| *word == "plus")
+    if let Some(plus_idx) = find_index(tail, |word| PLUS_WORD_PATTERN.matches_word(word))
         && plus_idx > 0
         && plus_idx + 1 < tail.len()
         && let Some(left) = parse_amount_segment(&tail[..plus_idx])
@@ -819,8 +820,13 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
         return Some(value);
     }
 
-    if is_source_power_segment(tail) || word_slice_starts_with_any(tail, TAGGED_POWER_PREFIXES) {
-        let source = if tail[0] == "that" || word_slice_contains_word(&tail, "sacrificed") {
+    if is_source_power_segment(tail)
+        || TAGGED_POWER_SEGMENT_PATTERN.matches_words(tail)
+        || SACRIFICED_POWER_SEGMENT_PATTERN.matches_words(tail)
+    {
+        let source = if THAT_WORD_PATTERN.matches_word(tail[0])
+            || SACRIFICED_MARKER_PATTERN.matches_words(tail)
+        {
             ChooseSpec::Tagged(TagKey::from(IT_TAG))
         } else {
             ChooseSpec::Source
@@ -829,9 +835,12 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
     }
 
     if is_source_toughness_segment(tail)
-        || word_slice_starts_with_any(tail, TAGGED_TOUGHNESS_PREFIXES)
+        || TAGGED_TOUGHNESS_SEGMENT_PATTERN.matches_words(tail)
+        || SACRIFICED_TOUGHNESS_SEGMENT_PATTERN.matches_words(tail)
     {
-        let source = if tail[0] == "that" || word_slice_contains_word(&tail, "sacrificed") {
+        let source = if THAT_WORD_PATTERN.matches_word(tail[0])
+            || SACRIFICED_MARKER_PATTERN.matches_words(tail)
+        {
             ChooseSpec::Tagged(TagKey::from(IT_TAG))
         } else {
             ChooseSpec::Source
@@ -839,23 +848,17 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
         return Some(Value::ToughnessOf(Box::new(source)));
     }
 
-    if word_slice_starts_with_any(tail, TAGGED_SPELL_MANA_VALUE_PREFIXES) {
+    if TAGGED_SPELL_MANA_VALUE_SEGMENT_PATTERN.matches_words(tail) {
         return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
             TagKey::from(IT_TAG),
         ))));
     }
-    if word_slice_starts_with_any(tail, TAGGED_CARD_OR_SACRIFICED_MANA_VALUE_PREFIXES) {
+    if TAGGED_CARD_OR_SACRIFICED_MANA_VALUE_SEGMENT_PATTERN.matches_words(tail) {
         return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
             TagKey::from(IT_TAG),
         ))));
     }
-    if matches!(
-        tail,
-        ["this", "spell", "mana", "value"]
-            | ["this", "creature", "mana", "value"]
-            | ["this", "permanent", "mana", "value"]
-            | ["this", "card", "mana", "value"]
-    ) {
+    if SOURCE_MANA_VALUE_SEGMENT_PATTERN.matches_words(tail) {
         return Some(Value::ManaValueOf(Box::new(ChooseSpec::Source)));
     }
 

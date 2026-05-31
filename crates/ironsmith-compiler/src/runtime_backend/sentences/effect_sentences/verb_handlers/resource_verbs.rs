@@ -17,7 +17,6 @@ const EACH_OPPONENT_WHO_PREFIXES: &[&[&str]] =
     &[&["each", "opponent", "who"], &["each", "opponents", "who"]];
 const EACH_PLAYER_WHO_PREFIXES: &[&[&str]] =
     &[&["each", "player", "who"], &["each", "players", "who"]];
-const THAT_PLAYER_PREFIXES: &[&[&str]] = &[&["that", "player"], &["that", "players"]];
 const EVENT_AMOUNT_PREFIXES: &[&[&str]] = &[
     &["that", "amount", "of"],
     &["that", "much"],
@@ -25,11 +24,152 @@ const EVENT_AMOUNT_PREFIXES: &[&[&str]] = &[
 ];
 const DAMAGE_TO_EACH_OPPONENT_PREFIXES: &[&[&str]] = &[&["damage", "to", "each", "opponent"]];
 const EACH_OF_PREFIXES: &[&[&str]] = &[&["each", "of"]];
-const ANY_NUMBER_OF_PREFIXES: &[&[&str]] = &[&["any", "number", "of"]];
 const YOU_CONTROL_PREFIXES: &[&[&str]] = &[&["you", "control"], &["you", "controlled"]];
 const FOR_EACH_PREFIXES: &[&[&str]] = &[&["for", "each"]];
 const EACH_OPPONENT_AND_EACH_PREFIXES: &[&[&str]] = &[&["each", "opponent", "and", "each"]];
-const FIRST_CARD_YOU_DRAW_PREFIXES: &[&[&str]] = &[&["the", "first", "card", "you", "draw"]];
+
+const TAKE_EXTRA_TURN_AFTER_THIS_ONE_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["an", "extra", "turn", "after", "this", "one"]);
+const PROLIFERATE_TRAILING_OK_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["time"],
+            &["times"],
+            &["instead"],
+            &["time", "instead"],
+            &["times", "instead"],
+        ]
+);
+const NTH_FROM_TOP_DESTINATION_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["from", "top"]);
+const THAT_LIBRARY_AMOUNT_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["of", "that", "library"]);
+const RESOURCE_LIBRARY_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["library"], &["libraries"]]);
+const RESOURCE_AT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["at"]);
+const RESOURCE_ARTICLE_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["the"], &["a"], &["an"]]);
+const RESOURCE_PLAY_THOSE_EXILED_PATTERN: ClauseShape<'static> = clause_shape!(exact & [
+    "and", "play", "those", "cards", "for", "as", "long", "as", "they", "remain", "exiled",
+]);
+const RESOURCE_TOP_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["top"]);
+const RESOURCE_CARD_OR_CARDS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["card"], &["cards"]]);
+const RESOURCE_AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
+const RESOURCE_ANY_OR_ALL_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["any"], &["all"]]);
+const RESOURCE_OF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["of"]);
+const RESOURCE_AS_YOU_CHOOSE_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["as", "you", "choose"]);
+const RESOURCE_INTO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["into"]);
+const RESOURCE_THE_REST_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["the", "rest"]);
+const RESOURCE_ALL_OTHER_REVEALED_OR_EXILED_CARDS_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix & ["all", "other"];
+    contains_words & ["cards"];
+    contains_any_words & [&["revealed", "exiled"]]
+);
+const RESOURCE_ITS_OWNER_LIBRARY_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["them", "into", "their", "libraries"],
+            &["them", "into", "their", "library"],
+            &["those", "cards", "into", "their", "libraries"],
+            &["those", "cards", "into", "their", "library"],
+        ]
+);
+const RESOURCE_UNSUPPORTED_SHUFFLE_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_words & [&["graveyard"], &["cards"], &["card"], &["into"], &["from"]]);
+const RESOURCE_IT_OR_THEM_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["it"], &["them"]]);
+const RESOURCE_WITH_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["with"]);
+const RESOURCE_NAME_OR_NAMES_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["name"], &["names"]]);
+const RESOURCE_CHOSEN_NAME_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["chosen", "for", "this"]);
+const RESOURCE_CHOSEN_NAME_OBJECT_NOUN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["artifact"],
+            &["card"],
+            &["creature"],
+            &["enchantment"],
+            &["permanent"],
+            &["source"],
+        ]
+);
+
+const LOOK_YOUR_HAND_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["your", "hand"]);
+const LOOK_EACH_PLAYER_HAND_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix_any & [&["each", "player", "hand"], &["each", "players", "hand"]]);
+const LOOK_THEIR_HAND_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["their", "hand"]);
+const LOOK_THAT_PLAYER_HAND_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix_any & [&["that", "player", "hand"], &["that", "players", "hand"]]);
+const LOOK_TARGET_PLAYER_HAND_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["target", "player", "hand"],
+            &["target", "players", "hand"]
+        ]
+);
+const LOOK_TARGET_OPPONENT_HAND_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["target", "opponent", "hand"],
+            &["target", "opponents", "hand"]
+        ]
+);
+const LOOK_OPPONENT_HAND_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix_any & [&["opponent", "hand"], &["opponents", "hand"]]);
+const LOOK_HIS_OR_HER_HAND_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["his", "or", "her", "hand"]);
+
+const LOOK_YOUR_LIBRARY_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["your", "library"]);
+const LOOK_EACH_PLAYER_LIBRARY_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["each", "player", "library"],
+            &["each", "players", "library"]
+        ]
+);
+const LOOK_THEIR_LIBRARY_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["their", "library"]);
+const LOOK_THAT_PLAYER_LIBRARY_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["that", "player", "library"],
+            &["that", "players", "library"]
+        ]
+);
+const LOOK_TARGET_PLAYER_LIBRARY_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["target", "player", "library"],
+            &["target", "players", "library"]
+        ]
+);
+const LOOK_TARGET_OPPONENT_LIBRARY_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["target", "opponent", "library"],
+            &["target", "opponents", "library"]
+        ]
+);
+const LOOK_ITS_OWNER_LIBRARY_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix_any & [&["its", "owner", "library"], &["its", "owners", "library"]]);
+const LOOK_HIS_OR_HER_LIBRARY_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["his", "or", "her", "library"]);
+const LOOK_TOP_THAT_PLAYER_LIBRARY_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["the", "top", "card", "of", "that", "player", "library"],
+            &["the", "top", "card", "of", "that", "players", "library"],
+            &["top", "card", "of", "that", "player", "library"],
+            &["top", "card", "of", "that", "players", "library"],
+            &["the", "top", "card", "of", "their", "library"],
+            &["top", "card", "of", "their", "library"],
+        ]
+);
 
 fn subject_verb_player_resource_effect(
     role: SubjectVerbRoleAst,
@@ -137,7 +277,7 @@ fn parse_take(
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if word_slice_eq(&words, &["an", "extra", "turn", "after", "this", "one"]) {
+    if TAKE_EXTRA_TURN_AFTER_THIS_ONE_PATTERN.matches_words(&words) {
         return Ok(EffectAst::subject_verb_extra_turn_after_turn(
             extract_subject_player(subject).unwrap_or(PlayerAst::You),
             ExtraTurnAnchorAst::CurrentTurn,
@@ -175,17 +315,8 @@ fn parse_proliferate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
 
     let trailing = trim_commas(&tokens[used..]);
     let trailing_words = crate::runtime_backend::token_word_refs(&trailing);
-    let trailing_ok = trailing_words.is_empty()
-        || crate::runtime_backend::lexer::word_slice_eq_any(
-            &trailing_words,
-            &[
-                &["time"],
-                &["times"],
-                &["instead"],
-                &["time", "instead"],
-                &["times", "instead"],
-            ],
-        );
+    let trailing_ok =
+        trailing_words.is_empty() || PROLIFERATE_TRAILING_OK_PATTERN.matches_words(&trailing_words);
     if !trailing_ok {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing proliferate clause (clause: '{}')",
@@ -198,7 +329,7 @@ fn parse_proliferate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
 
 fn parse_library_nth_from_top_destination(tokens: &[OwnedLexToken]) -> Option<Value> {
     let library_idx = find_index(tokens, |token: &OwnedLexToken| {
-        token.is_word("library") || token.is_word("libraries")
+        RESOURCE_LIBRARY_WORD_PATTERN.matches_token(token)
     })?;
     let tail_tokens = trim_commas(&tokens[library_idx + 1..]);
     if tail_tokens.is_empty() {
@@ -209,7 +340,7 @@ fn parse_library_nth_from_top_destination(tokens: &[OwnedLexToken]) -> Option<Va
     if let Some((position, used)) = ironsmith_core::parse_ordinal_words(&filtered_tail)
         && filtered_tail
             .get(used..)
-            .is_some_and(|tail| word_slice_eq(tail, &["from", "top"]))
+            .is_some_and(|tail| NTH_FROM_TOP_DESTINATION_TAIL_PATTERN.matches_words(tail))
     {
         return Some(Value::Fixed(position as i32));
     }
@@ -218,22 +349,16 @@ fn parse_library_nth_from_top_destination(tokens: &[OwnedLexToken]) -> Option<Va
         &filtered_tail,
         &[(&["just", "beneath", "top"], ()), (&["beneath", "top"], ())],
     )?;
-    let amount_tokens = amount_words
-        .iter()
-        .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
-        .collect::<Vec<_>>();
+    let amount_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(amount_words);
     let (amount, used) = parse_value(&amount_tokens)?;
     let amount_words = crate::runtime_backend::token_word_refs(&amount_tokens);
-    if !word_slice_at_is_any(&amount_words, used, &["card", "cards"]) {
+    if !RESOURCE_CARD_OR_CARDS_WORD_PATTERN.matches_word_at(&amount_words, used) {
         return None;
     }
     if used + 1 > amount_words.len() {
         return None;
     }
-    if !crate::runtime_backend::lexer::word_slice_eq(
-        &amount_words[used + 1..],
-        &["of", "that", "library"],
-    ) {
+    if !THAT_LIBRARY_AMOUNT_TAIL_PATTERN.matches_words(&amount_words[used + 1..]) {
         return None;
     }
 
@@ -245,116 +370,65 @@ pub(crate) fn parse_look(
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
     fn parse_hand_owner(words: &[&str]) -> Option<(PlayerAst, usize)> {
-        if word_slice_starts_with(&words, &["your", "hand"]) {
+        if LOOK_YOUR_HAND_PATTERN.matches_words(words) {
             return Some((PlayerAst::You, 2));
         }
-        if word_slice_starts_with_any(
-            &words,
-            &[&["each", "player", "hand"], &["each", "players", "hand"]],
-        ) {
+        if LOOK_EACH_PLAYER_HAND_PATTERN.matches_words(words) {
             return Some((PlayerAst::Any, 3));
         }
-        if word_slice_starts_with(&words, &["their", "hand"]) {
+        if LOOK_THEIR_HAND_PATTERN.matches_words(words) {
             return Some((PlayerAst::That, 2));
         }
-        if word_slice_starts_with_any(
-            &words,
-            &[&["that", "player", "hand"], &["that", "players", "hand"]],
-        ) {
+        if LOOK_THAT_PLAYER_HAND_PATTERN.matches_words(words) {
             return Some((PlayerAst::That, 3));
         }
-        if word_slice_starts_with_any(
-            &words,
-            &[&["target", "player", "hand"], &["target", "players", "hand"]],
-        ) {
+        if LOOK_TARGET_PLAYER_HAND_PATTERN.matches_words(words) {
             return Some((PlayerAst::Target, 3));
         }
-        if word_slice_starts_with_any(
-            &words,
-            &[
-                &["target", "opponent", "hand"],
-                &["target", "opponents", "hand"],
-            ],
-        ) {
+        if LOOK_TARGET_OPPONENT_HAND_PATTERN.matches_words(words) {
             return Some((PlayerAst::TargetOpponent, 3));
         }
-        if word_slice_starts_with_any(
-            &words,
-            &[&["opponent", "hand"], &["opponents", "hand"]],
-        ) {
+        if LOOK_OPPONENT_HAND_PATTERN.matches_words(words) {
             return Some((PlayerAst::Opponent, 2));
         }
-        if word_slice_starts_with(&words, &["his", "or", "her", "hand"]) {
+        if LOOK_HIS_OR_HER_HAND_PATTERN.matches_words(words) {
             return Some((PlayerAst::That, 4));
         }
         None
     }
 
     fn parse_library_owner(words: &[&str]) -> Option<(PlayerAst, usize)> {
-        if word_slice_starts_with(&words, &["your", "library"]) {
+        if LOOK_YOUR_LIBRARY_PATTERN.matches_words(words) {
             return Some((PlayerAst::You, 2));
         }
-        if word_slice_starts_with_any(
-            &words,
-            &[
-                &["each", "player", "library"],
-                &["each", "players", "library"],
-            ],
-        ) {
+        if LOOK_EACH_PLAYER_LIBRARY_PATTERN.matches_words(words) {
             return Some((PlayerAst::Any, 3));
         }
-        if word_slice_starts_with(&words, &["their", "library"]) {
+        if LOOK_THEIR_LIBRARY_PATTERN.matches_words(words) {
             return Some((PlayerAst::That, 2));
         }
-        if word_slice_starts_with_any(
-            &words,
-            &[&["that", "player", "library"], &["that", "players", "library"]],
-        ) {
+        if LOOK_THAT_PLAYER_LIBRARY_PATTERN.matches_words(words) {
             return Some((PlayerAst::That, 3));
         }
-        if word_slice_starts_with_any(
-            &words,
-            &[
-                &["target", "player", "library"],
-                &["target", "players", "library"],
-            ],
-        ) {
+        if LOOK_TARGET_PLAYER_LIBRARY_PATTERN.matches_words(words) {
             return Some((PlayerAst::Target, 3));
         }
-        if word_slice_starts_with_any(
-            &words,
-            &[
-                &["target", "opponent", "library"],
-                &["target", "opponents", "library"],
-            ],
-        ) {
+        if LOOK_TARGET_OPPONENT_LIBRARY_PATTERN.matches_words(words) {
             return Some((PlayerAst::TargetOpponent, 3));
         }
-        if word_slice_starts_with_any(
-            &words,
-            &[&["its", "owner", "library"], &["its", "owners", "library"]],
-        ) {
+        if LOOK_ITS_OWNER_LIBRARY_PATTERN.matches_words(words) {
             return Some((PlayerAst::ItsOwner, 3));
         }
-        if word_slice_starts_with(&words, &["his", "or", "her", "library"]) {
+        if LOOK_HIS_OR_HER_LIBRARY_PATTERN.matches_words(words) {
             return Some((PlayerAst::That, 4));
         }
         None
     }
 
     fn parse_look_tail_at_same_player(words: &[&str]) -> Option<Vec<EffectAst>> {
-        let top_library_prefixes: &[&[&str]] = &[
-            &["the", "top", "card", "of", "that", "player", "library"],
-            &["the", "top", "card", "of", "that", "players", "library"],
-            &["top", "card", "of", "that", "player", "library"],
-            &["top", "card", "of", "that", "players", "library"],
-            &["the", "top", "card", "of", "their", "library"],
-            &["top", "card", "of", "their", "library"],
-        ];
-        let (top_prefix, _) = top_library_prefixes
-            .iter()
-            .find_map(|prefix| word_slice_starts_with(&words, prefix).then_some((*prefix, ())))?;
-        let mut rest = &words[top_prefix.len()..];
+        let top_prefix_len = LOOK_TOP_THAT_PLAYER_LIBRARY_PREFIX_PATTERN
+            .matched_prefix_len(words)?;
+        let mut rest = &words[top_prefix_len..];
         let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
             PlayerAst::That,
             Value::Fixed(1),
@@ -364,10 +438,10 @@ pub(crate) fn parse_look(
         if rest.is_empty() {
             return Some(effects);
         }
-        if word_slice_first_is(rest, "and") {
+        if RESOURCE_AND_WORD_PATTERN.matches_first_word(rest) {
             rest = &rest[1..];
         }
-        if word_slice_first_is_any(rest, &["any", "all"]) {
+        if RESOURCE_ANY_OR_ALL_WORD_PATTERN.matches_first_word(rest) {
             rest = &rest[1..];
         }
         if matches!(
@@ -393,7 +467,7 @@ pub(crate) fn parse_look(
     let mut clause_tokens = trim_commas(tokens);
     if clause_tokens
         .first()
-        .is_some_and(|token| token.is_word("at"))
+        .is_some_and(|token| RESOURCE_AT_WORD_PATTERN.matches_token(token))
     {
         clause_tokens = trim_commas(&clause_tokens[1..]);
     }
@@ -403,35 +477,21 @@ pub(crate) fn parse_look(
         .map(String::as_str)
         .collect::<Vec<_>>();
 
-    if crate::runtime_backend::lexer::word_slice_eq(
-        &clause_words,
-        &[
-            "and",
-            "play",
-            "those",
-            "cards",
-            "for",
-            "as",
-            "long",
-            "as",
-            "they",
-            "remain",
-            "exiled",
-        ],
-    )
-    {
-        return Ok(EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
-            TagKey::from(IT_TAG),
-            PlayerAst::You,
-            true,
-            false,
-        ));
+    if RESOURCE_PLAY_THOSE_EXILED_PATTERN.matches_words(&clause_words) {
+        return Ok(
+            EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
+                TagKey::from(IT_TAG),
+                PlayerAst::You,
+                true,
+                false,
+            ),
+        );
     }
 
     let mut hand_tokens = clause_tokens.clone();
     while hand_tokens
         .first()
-        .is_some_and(|token| token.is_word("the") || token.is_word("a") || token.is_word("an"))
+        .is_some_and(|token| RESOURCE_ARTICLE_WORD_PATTERN.matches_token(token))
     {
         hand_tokens = hand_tokens[1..].to_vec();
     }
@@ -448,10 +508,9 @@ pub(crate) fn parse_look(
                 PlayerFilter::target_player(),
                 span_from_tokens(&hand_tokens),
             ),
-            PlayerAst::TargetOpponent => TargetAst::Player(
-                PlayerFilter::Opponent,
-                span_from_tokens(&hand_tokens),
-            ),
+            PlayerAst::TargetOpponent => {
+                TargetAst::Player(PlayerFilter::Opponent, span_from_tokens(&hand_tokens))
+            }
             PlayerAst::That => TargetAst::Player(PlayerFilter::IteratedPlayer, None),
             PlayerAst::Any => {
                 return Ok(EffectAst::ForEachPlayer {
@@ -484,7 +543,9 @@ pub(crate) fn parse_look(
         return Ok(EffectAst::subject_verb_look_at_hand(target));
     }
 
-    let Some(top_idx) = find_index(&clause_tokens, |t| t.is_word("top")) else {
+    let Some(top_idx) = find_index(&clause_tokens, |t| {
+        RESOURCE_TOP_WORD_PATTERN.matches_token(t)
+    }) else {
         return Err(CardTextError::ParseError(format!(
             "unsupported look clause (clause: '{}')",
             clause_words.join(" ")
@@ -501,7 +562,7 @@ pub(crate) fn parse_look(
     let count = if clause_tokens
         .get(idx)
         .and_then(OwnedLexToken::as_word)
-        .is_some_and(|w| w == "card" || w == "cards")
+        .is_some_and(|w| RESOURCE_CARD_OR_CARDS_WORD_PATTERN.matches_word(w))
     {
         Value::Fixed(1)
     } else {
@@ -519,7 +580,7 @@ pub(crate) fn parse_look(
     if clause_tokens
         .get(idx)
         .and_then(OwnedLexToken::as_word)
-        .is_some_and(|w| w == "card" || w == "cards")
+        .is_some_and(|w| RESOURCE_CARD_OR_CARDS_WORD_PATTERN.matches_word(w))
     {
         idx += 1;
     } else {
@@ -530,7 +591,10 @@ pub(crate) fn parse_look(
     }
 
     // Consume "of <player> library"
-    if !clause_tokens.get(idx).is_some_and(|t| t.is_word("of")) {
+    if !clause_tokens
+        .get(idx)
+        .is_some_and(|t| RESOURCE_OF_WORD_PATTERN.matches_token(t))
+    {
         return Err(CardTextError::ParseError(format!(
             "missing 'of' in look clause (clause: '{}')",
             clause_words.join(" ")
@@ -540,7 +604,7 @@ pub(crate) fn parse_look(
     let mut owner_tokens = &clause_tokens[idx..];
     while owner_tokens
         .first()
-        .is_some_and(|t| t.is_word("the") || t.is_word("a") || t.is_word("an"))
+        .is_some_and(|t| RESOURCE_ARTICLE_WORD_PATTERN.matches_token(t))
     {
         owner_tokens = &owner_tokens[1..];
     }
@@ -616,7 +680,7 @@ pub(crate) fn parse_reorder(
     let rest = &clause_words[consumed..];
 
     if !rest.is_empty()
-        && !crate::runtime_backend::lexer::word_slice_eq(rest, &["as", "you", "choose"])
+        && !RESOURCE_AS_YOU_CHOOSE_PATTERN.matches_words(rest)
     {
         return Err(CardTextError::ParseError(format!(
             "unsupported reorder clause tail (clause: '{clause}')"
@@ -630,63 +694,102 @@ pub(crate) fn parse_shuffle(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
+    #[derive(Clone, Copy)]
+    enum LibraryDestinationPlayer {
+        Default,
+        You,
+        DefaultOrController,
+        That,
+        ItsOwner,
+    }
+
+    const LIBRARY_DESTINATION_PLAYER_PHRASES: &[(&[&str], LibraryDestinationPlayer)] = &[
+        (&["library"], LibraryDestinationPlayer::Default),
+        (&["your", "library"], LibraryDestinationPlayer::You),
+        (
+            &["their", "library"],
+            LibraryDestinationPlayer::DefaultOrController,
+        ),
+        (
+            &["that", "player", "library"],
+            LibraryDestinationPlayer::That,
+        ),
+        (
+            &["that", "players", "library"],
+            LibraryDestinationPlayer::That,
+        ),
+        (&["its", "owner", "library"], LibraryDestinationPlayer::ItsOwner),
+        (
+            &["its", "owners", "library"],
+            LibraryDestinationPlayer::ItsOwner,
+        ),
+        (
+            &["his", "or", "her", "library"],
+            LibraryDestinationPlayer::DefaultOrController,
+        ),
+    ];
+
+    const SUPPORTED_SHUFFLE_SOURCE_TAILS: &[&[&str]] = &[
+        &[],
+        &["from", "graveyard"],
+        &["from", "your", "graveyard"],
+        &["from", "their", "graveyard"],
+        &["from", "that", "player", "graveyard"],
+        &["from", "that", "players", "graveyard"],
+        &["from", "its", "owner", "graveyard"],
+        &["from", "its", "owners", "graveyard"],
+        &["from", "his", "or", "her", "graveyard"],
+    ];
+
+    fn default_or_controller_player(default_player: PlayerAst) -> PlayerAst {
+        if matches!(default_player, PlayerAst::Implicit) {
+            PlayerAst::ItsController
+        } else {
+            default_player
+        }
+    }
+
+    fn resolve_library_destination_player(
+        player: LibraryDestinationPlayer,
+        default_player: PlayerAst,
+    ) -> PlayerAst {
+        match player {
+            LibraryDestinationPlayer::Default => default_player,
+            LibraryDestinationPlayer::You => PlayerAst::You,
+            LibraryDestinationPlayer::DefaultOrController => {
+                default_or_controller_player(default_player)
+            }
+            LibraryDestinationPlayer::That => PlayerAst::That,
+            LibraryDestinationPlayer::ItsOwner => PlayerAst::ItsOwner,
+        }
+    }
+
     fn parse_library_destination_player(
         words: &[&str],
         default_player: PlayerAst,
     ) -> Option<(PlayerAst, usize)> {
-        match words {
-            ["library", ..] => Some((default_player, 1)),
-            ["your", "library", ..] => Some((PlayerAst::You, 2)),
-            ["their", "library", ..] => Some((
-                if matches!(default_player, PlayerAst::Implicit) {
-                    PlayerAst::ItsController
-                } else {
-                    default_player
-                },
-                2,
-            )),
-            ["that", "player", "library", ..] => Some((PlayerAst::That, 3)),
-            ["that", "players", "library", ..] => Some((PlayerAst::That, 3)),
-            ["its", "owner", "library", ..] => Some((PlayerAst::ItsOwner, 3)),
-            ["its", "owners", "library", ..] => Some((PlayerAst::ItsOwner, 3)),
-            ["his", "or", "her", "library", ..] => Some((
-                if matches!(default_player, PlayerAst::Implicit) {
-                    PlayerAst::ItsController
-                } else {
-                    default_player
-                },
-                4,
-            )),
-            _ => None,
-        }
+        LIBRARY_DESTINATION_PLAYER_PHRASES
+            .iter()
+            .find_map(|(phrase, player)| {
+                words.starts_with(phrase).then(|| {
+                    (
+                        resolve_library_destination_player(*player, default_player),
+                        phrase.len(),
+                    )
+                })
+            })
     }
 
     fn is_supported_shuffle_source_tail(words: &[&str]) -> bool {
-        matches!(
-            words,
-            [] | ["from", "graveyard"]
-                | ["from", "your", "graveyard"]
-                | ["from", "their", "graveyard"]
-                | ["from", "that", "player", "graveyard"]
-                | ["from", "that", "players", "graveyard"]
-                | ["from", "its", "owner", "graveyard"]
-                | ["from", "its", "owners", "graveyard"]
-                | ["from", "his", "or", "her", "graveyard"]
-        )
+        SUPPORTED_SHUFFLE_SOURCE_TAILS
+            .iter()
+            .any(|tail| *tail == words)
     }
 
     fn is_simple_library_phrase(words: &[&str]) -> bool {
-        matches!(
-            words,
-            ["library"]
-                | ["your", "library"]
-                | ["their", "library"]
-                | ["that", "player", "library"]
-                | ["that", "players", "library"]
-                | ["its", "owner", "library"]
-                | ["its", "owners", "library"]
-                | ["his", "or", "her", "library"]
-        )
+        LIBRARY_DESTINATION_PLAYER_PHRASES
+            .iter()
+            .any(|(phrase, _)| *phrase == words)
     }
 
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
@@ -703,7 +806,9 @@ pub(crate) fn parse_shuffle(
     }
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if let Some(into_idx) = find_index(&clause_words, |word| *word == "into") {
+    if let Some(into_idx) = find_index(&clause_words, |word| {
+        RESOURCE_INTO_WORD_PATTERN.matches_word(word)
+    }) {
         let target_words = &clause_words[..into_idx];
         let destination_words =
             crate::runtime_backend::util::non_article_word_refs(&clause_words[into_idx + 1..]);
@@ -737,11 +842,8 @@ pub(crate) fn parse_shuffle(
         }
 
         let consult_style_remainder_shuffle =
-            word_slice_starts_with(&target_words, &["the", "rest"])
-                || (word_slice_starts_with(&target_words, &["all", "other"])
-                    && word_slice_contains_word(&target_words, "cards")
-                    && (word_slice_contains_word(&target_words, "revealed")
-                        || word_slice_contains_word(&target_words, "exiled")));
+            RESOURCE_THE_REST_PREFIX_PATTERN.matches_words(&target_words)
+                || RESOURCE_ALL_OTHER_REVEALED_OR_EXILED_CARDS_PATTERN.matches_words(&target_words);
         if consult_style_remainder_shuffle
             && let Some((destination_player, consumed)) =
                 parse_library_destination_player(&destination_words, player)
@@ -756,15 +858,7 @@ pub(crate) fn parse_shuffle(
     }
 
     if matches!(player, PlayerAst::ItsOwner)
-        && word_slice_eq_any(
-            &clause_words,
-            &[
-                &["them", "into", "their", "libraries"],
-                &["them", "into", "their", "library"],
-                &["those", "cards", "into", "their", "libraries"],
-                &["those", "cards", "into", "their", "library"],
-            ],
-        )
+        && RESOURCE_ITS_OWNER_LIBRARY_TARGET_PATTERN.matches_words(&clause_words)
     {
         return Ok(EffectAst::ForEachTagged {
             tag: TagKey::from(IT_TAG),
@@ -785,12 +879,7 @@ pub(crate) fn parse_shuffle(
             ],
         });
     }
-    if grammar::contains_word(tokens, "graveyard")
-        || grammar::contains_word(tokens, "cards")
-        || grammar::contains_word(tokens, "card")
-        || grammar::contains_word(tokens, "into")
-        || grammar::contains_word(tokens, "from")
-    {
+    if RESOURCE_UNSUPPORTED_SHUFFLE_MARKER_PATTERN.matches_words(&clause_words) {
         return Err(CardTextError::ParseError(format!(
             "unsupported shuffle clause (clause: '{}')",
             clause_words.join(" ")
@@ -820,7 +909,7 @@ pub(crate) fn parse_goad(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardText
     if let Some(target) = parse_chosen_name_goad_target(&target_tokens, &target_words)? {
         return Ok(EffectAst::subject_verb_goad(target));
     }
-    if crate::runtime_backend::lexer::word_slice_eq_any(&target_words, &[&["it"], &["them"]]) {
+    if RESOURCE_IT_OR_THEM_PATTERN.matches_words(&target_words) {
         return Ok(EffectAst::subject_verb_goad(TargetAst::Tagged(
             TagKey::from(IT_TAG),
             span_from_tokens(&target_tokens),
@@ -846,20 +935,15 @@ fn parse_chosen_name_goad_target(
     target_words: &[&str],
 ) -> Result<Option<TargetAst>, CardTextError> {
     for with_word_idx in 0..target_words.len() {
-        if target_words[with_word_idx] != "with" {
+        if !RESOURCE_WITH_WORD_PATTERN.matches_word(target_words[with_word_idx]) {
             continue;
         }
 
         let tail = strip_leading_article_word_refs(&target_words[with_word_idx + 1..]);
         let chosen_name_tail = tail.len() >= 5
-            && matches!(tail[0], "name" | "names")
-            && tail[1] == "chosen"
-            && tail[2] == "for"
-            && tail[3] == "this"
-            && matches!(
-                tail[4],
-                "artifact" | "card" | "creature" | "enchantment" | "permanent" | "source"
-            )
+            && RESOURCE_NAME_OR_NAMES_WORD_PATTERN.matches_word(tail[0])
+            && RESOURCE_CHOSEN_NAME_TAIL_PATTERN.matches_words(&tail[1..])
+            && RESOURCE_CHOSEN_NAME_OBJECT_NOUN_WORD_PATTERN.matches_word(tail[4])
             && word_slice_all_words_are_any(&tail[5..], &["this", "way"]);
         if !chosen_name_tail {
             continue;
@@ -905,7 +989,7 @@ pub(crate) fn parse_detain(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     }
 
     let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
-    if crate::runtime_backend::lexer::word_slice_eq_any(&target_words, &[&["it"], &["them"]]) {
+    if RESOURCE_IT_OR_THEM_PATTERN.matches_words(&target_words) {
         return Ok(EffectAst::subject_verb_detain(TargetAst::Tagged(
             TagKey::from(IT_TAG),
             span_from_tokens(&target_tokens),
@@ -926,7 +1010,7 @@ pub(crate) fn parse_suspect(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     }
 
     let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
-    if crate::runtime_backend::lexer::word_slice_eq_any(&target_words, &[&["it"], &["them"]]) {
+    if RESOURCE_IT_OR_THEM_PATTERN.matches_words(&target_words) {
         return Ok(EffectAst::subject_verb_suspect(TargetAst::Tagged(
             TagKey::from(IT_TAG),
             span_from_tokens(&target_tokens),

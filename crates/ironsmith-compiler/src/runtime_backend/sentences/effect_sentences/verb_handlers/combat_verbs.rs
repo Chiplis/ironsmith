@@ -1,3 +1,90 @@
+const ATTACH_TAGGED_OBJECT_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["it"], &["them"]]);
+const ATTACH_TAGGED_EQUIPMENT_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["that", "equipment"], &["those", "equipment"]]);
+const ATTACH_TAGGED_AURA_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["that", "aura"], &["those", "auras"]]);
+const ATTACH_TAGGED_ARTIFACT_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["that", "artifact"], &["those", "artifacts"]]);
+const ATTACH_TAGGED_ENCHANTMENT_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["that", "enchantment"]);
+const ATTACH_IT_TO_TOKEN_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["it"]);
+const ATTACH_TOKEN_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["the", "token"]);
+const DAMAGE_EACH_OPPONENT_HAND_SIZE_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix &["damage", "to", "each", "opponent", "equal", "to"];
+    contains_words &["number", "cards", "hand"]
+);
+const DIVIDED_DAMAGE_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["divided", "among"]);
+const DAMAGE_TO_EACH_OPPONENT_HAND_SIZE_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["number", "cards", "hand"]);
+const COMBAT_TARGET_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["target"]);
+const COMBAT_IT_OR_THEM_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["it"], &["them"]]);
+const COMBAT_TO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["to"]);
+const COMBAT_THE_RESULT_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["the", "result"]);
+const COMBAT_EACH_PLAYER_TARGET_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["each", "player"], &["each", "players"]]);
+const COMBAT_EACH_OPPONENT_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["each", "opponent"],
+            &["each", "opponents"],
+            &["each", "other", "player"],
+            &["each", "other", "players"],
+        ]
+);
+const COMBAT_EACH_OR_ALL_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["each"], &["all"]]);
+const COMBAT_DAMAGE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["damage"]);
+const COMBAT_AMONG_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["among"]);
+const COMBAT_TARGET_OR_TARGETS_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["target"], &["targets"]]);
+const COMBAT_PLAYER_OR_PLAYERS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["player"], &["players"]]);
+const COMBAT_NEGATION_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["does"], &["doesnt"], &["doesn"], &["dont"], &["not"]]);
+const COMBAT_INSTEAD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["instead"]);
+const COMBAT_IF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["if"]);
+const COMBAT_INSTEAD_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["instead"]);
+const COMBAT_CREATURE_CONTROLLER_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["the", "creatures", "controller"],
+            &["that", "creatures", "controller"],
+            &["the", "creature's", "controller"],
+            &["that", "creature's", "controller"],
+        ]
+);
+const COMBAT_THE_PLAYER_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["the", "player"]);
+const COMBAT_MAX_SPEED_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["max", "speed"]]);
+const COMBAT_DOES_NOT_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_phrases & [&[&["does", "not"]]]);
+const COMBAT_END_OF_COMBAT_TIMING_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["at", "end", "of", "combat"],
+            &["at", "the", "end", "of", "combat"],
+        ]
+);
+const COMBAT_AS_YOU_CAST_THIS_SPELL_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["as", "you", "cast", "this", "spell"]);
+const COMBAT_THIS_TURN_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this", "turn"]);
+const COMBAT_WITH_DIFFERENT_POWER_SUFFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(suffix_any & [&["with", "different", "powers"], &["with", "different", "power"]]);
+const COMBAT_AT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["at"]);
+const COMBAT_OTHER_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["another"], &["other"]]);
+
+fn combat_words_start_with_shape(words: &[&str], shape: &ClauseShape<'static>) -> bool {
+    words.first().is_some_and(|word| shape.matches_word(word))
+}
+
+fn combat_find_exact_window(words: &[&str], width: usize, shape: ClauseShape<'static>) -> Option<usize> {
+    find_window_by(words, width, |window| shape.matches_words(window))
+}
+
 pub(crate) fn parse_attach_object_phrase(
     tokens: &[OwnedLexToken],
 ) -> Result<TargetAst, CardTextError> {
@@ -15,33 +102,23 @@ pub(crate) fn parse_attach_object_phrase(
         return Ok(TargetAst::Source(object_span));
     }
 
-    if crate::runtime_backend::lexer::word_slice_eq_any(&object_words, &[&["it"], &["them"]]) {
+    if ATTACH_TAGGED_OBJECT_PATTERN.matches_words(&object_words) {
         return Ok(TargetAst::Tagged(TagKey::from(IT_TAG), object_span));
     }
 
     let mut tagged_filter = ObjectFilter::default();
-    if crate::runtime_backend::lexer::word_slice_eq_any(
-        &object_words,
-        &[&["that", "equipment"], &["those", "equipment"]],
-    ) {
+    if ATTACH_TAGGED_EQUIPMENT_PATTERN.matches_words(&object_words) {
         tagged_filter.zone = Some(Zone::Battlefield);
         tagged_filter.card_types.push(CardType::Artifact);
         tagged_filter.subtypes.push(Subtype::Equipment);
-    } else if crate::runtime_backend::lexer::word_slice_eq_any(
-        &object_words,
-        &[&["that", "aura"], &["those", "auras"]],
-    ) {
+    } else if ATTACH_TAGGED_AURA_PATTERN.matches_words(&object_words) {
         tagged_filter.zone = Some(Zone::Battlefield);
         tagged_filter.card_types.push(CardType::Enchantment);
         tagged_filter.subtypes.push(Subtype::Aura);
-    } else if crate::runtime_backend::lexer::word_slice_eq_any(
-        &object_words,
-        &[&["that", "artifact"], &["those", "artifacts"]],
-    ) {
+    } else if ATTACH_TAGGED_ARTIFACT_PATTERN.matches_words(&object_words) {
         tagged_filter.zone = Some(Zone::Battlefield);
         tagged_filter.card_types.push(CardType::Artifact);
-    } else if crate::runtime_backend::lexer::word_slice_eq(&object_words, &["that", "enchantment"])
-    {
+    } else if ATTACH_TAGGED_ENCHANTMENT_PATTERN.matches_words(&object_words) {
         tagged_filter.zone = Some(Zone::Battlefield);
         tagged_filter.card_types.push(CardType::Enchantment);
     }
@@ -73,7 +150,7 @@ pub(crate) fn parse_attach_object_phrase(
     }
 
     if object_words.len() >= 2
-        && !word_slice_contains_word(&object_words, "target")
+        && !COMBAT_TARGET_WORD_PATTERN.matches_words(&object_words)
         && object_words
             .iter()
             .all(|word| word.chars().all(|ch| ch.is_ascii_alphanumeric()))
@@ -100,7 +177,7 @@ pub(crate) fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                 clause_words.join(" ")
             )));
         };
-        if first.is_word("it") || first.is_word("them") {
+        if COMBAT_IT_OR_THEM_WORD_PATTERN.matches_token(first) {
             let target_tokens = vec![first.clone()];
             let object_tokens = trim_commas(&rest[1..]);
             if object_tokens.is_empty() {
@@ -115,7 +192,9 @@ pub(crate) fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         }
     }
 
-    let Some(to_idx) = rfind_index(tokens, |token| token.is_word("to")) else {
+    let Some(to_idx) = rfind_index(tokens, |token| {
+        COMBAT_TO_WORD_PATTERN.matches_token(token)
+    }) else {
         return Err(CardTextError::ParseError(format!(
             "attach clause missing destination (clause: '{}')",
             clause_words.join(" ")
@@ -140,18 +219,15 @@ pub(crate) fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     let object_words = crate::runtime_backend::token_word_refs(&object_tokens);
     let object = parse_attach_object_phrase(&object_tokens)?;
     let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
-    if crate::runtime_backend::lexer::word_slice_eq(&object_words, &["it"])
-        && crate::runtime_backend::lexer::word_slice_eq(&target_words, &["the", "token"])
+    if ATTACH_IT_TO_TOKEN_PATTERN.matches_words(&object_words)
+        && ATTACH_TOKEN_TARGET_PATTERN.matches_words(&target_words)
     {
         return Ok(EffectAst::subject_verb_attach(
             TargetAst::Tagged(TagKey::from("triggering"), span_from_tokens(&object_tokens)),
             TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&target_tokens)),
         ));
     }
-    let target = if crate::runtime_backend::lexer::word_slice_eq_any(
-        &target_words,
-        &[&["it"], &["them"]],
-    ) {
+    let target = if ATTACH_TAGGED_OBJECT_PATTERN.matches_words(&target_words) {
         TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&target_tokens))
     } else {
         parse_target_phrase(&target_tokens)?
@@ -168,12 +244,7 @@ pub(crate) fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, C
             tokens
         };
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if grammar::words_match_prefix(tokens, &["damage", "to", "each", "opponent", "equal", "to"])
-        .is_some()
-        && grammar::contains_word(tokens, "number")
-        && grammar::contains_word(tokens, "cards")
-        && grammar::contains_word(tokens, "hand")
-    {
+    if DAMAGE_EACH_OPPONENT_HAND_SIZE_PATTERN.matches_words(&clause_words) {
         return Ok(EffectAst::ForEachOpponent {
             effects: vec![EffectAst::subject_verb_damage(
                 Value::CardsInHand(PlayerFilter::IteratedPlayer),
@@ -181,9 +252,7 @@ pub(crate) fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, C
             )],
         });
     }
-    let is_divided_as_you_choose_clause =
-        grammar::contains_word(tokens, "divided") && grammar::contains_word(tokens, "among");
-    if is_divided_as_you_choose_clause {
+    if DIVIDED_DAMAGE_PATTERN.matches_words(&clause_words) {
         if let Some((value, used)) = parse_value(tokens) {
             return parse_divided_damage_with_amount(tokens, value, used);
         }
@@ -211,9 +280,7 @@ pub(crate) fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, C
     }
 
     if grammar::words_match_any_prefix(tokens, DAMAGE_TO_EACH_OPPONENT_PREFIXES).is_some()
-        && grammar::contains_word(tokens, "number")
-        && grammar::contains_word(tokens, "cards")
-        && grammar::contains_word(tokens, "hand")
+        && DAMAGE_TO_EACH_OPPONENT_HAND_SIZE_TAIL_PATTERN.matches_words(&clause_words)
     {
         let value = Value::CardsInHand(PlayerFilter::IteratedPlayer);
         return Ok(EffectAst::ForEachOpponent {
@@ -248,7 +315,7 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
     let mut target_tokens = trim_commas(&tokens[1..equal_token_idx]);
     if target_tokens
         .first()
-        .is_some_and(|token| token.is_word("to"))
+        .is_some_and(|token| COMBAT_TO_WORD_PATTERN.matches_token(token))
     {
         target_tokens.remove(0);
     }
@@ -266,7 +333,7 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
         .or_else(|| {
             let tail_words =
                 crate::runtime_backend::token_word_refs(&tokens[equal_token_idx + 2..]);
-            crate::runtime_backend::lexer::word_slice_eq(&tail_words, &["the", "result"])
+            COMBAT_THE_RESULT_PATTERN.matches_words(&tail_words)
                 .then_some(Value::EventValue(EventValueSpec::Amount))
         })
         .or(parse_dynamic_cost_modifier_value(tokens)?)
@@ -277,10 +344,7 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
             ))
         })?;
     let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
-    if crate::runtime_backend::lexer::word_slice_eq_any(
-        &target_words,
-        &[&["each", "player"], &["each", "players"]],
-    ) {
+    if COMBAT_EACH_PLAYER_TARGET_PATTERN.matches_words(&target_words) {
         return Ok(Some(EffectAst::ForEachPlayer {
             effects: vec![EffectAst::subject_verb_damage(
                 amount.clone(),
@@ -288,15 +352,7 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
             )],
         }));
     }
-    if crate::runtime_backend::lexer::word_slice_eq_any(
-        &target_words,
-        &[
-            &["each", "opponent"],
-            &["each", "opponents"],
-            &["each", "other", "player"],
-            &["each", "other", "players"],
-        ],
-    ) {
+    if COMBAT_EACH_OPPONENT_TARGET_PATTERN.matches_words(&target_words) {
         return Ok(Some(EffectAst::ForEachOpponent {
             effects: vec![EffectAst::subject_verb_damage(
                 amount.clone(),
@@ -304,7 +360,7 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
             )],
         }));
     }
-    if word_slice_first_is_any(&target_words, &["each", "all"]) {
+    if combat_words_start_with_shape(&target_words, &COMBAT_EACH_OR_ALL_WORD_PATTERN) {
         if target_tokens.len() < 2 {
             return Err(CardTextError::ParseError(
                 "missing damage target filter after 'each'".to_string(),
@@ -327,7 +383,7 @@ pub(crate) fn parse_deal_damage_equal_to_clause(
 
     let mut target_to_idx = None;
     for idx in 3..tokens.len() {
-        if !tokens[idx].is_word("to") {
+        if !COMBAT_TO_WORD_PATTERN.matches_token(&tokens[idx]) {
             continue;
         }
         let tail_words = crate::runtime_backend::token_word_refs(&tokens[idx + 1..]);
@@ -370,7 +426,7 @@ pub(crate) fn parse_deal_damage_equal_to_clause(
 
     let amount_tokens = if tokens
         .first()
-        .is_some_and(|token| token.is_word("damage"))
+        .is_some_and(|token| COMBAT_DAMAGE_WORD_PATTERN.matches_token(token))
     {
         &tokens[1..target_to_idx]
     } else {
@@ -462,7 +518,7 @@ fn parse_divided_damage_target(
     target_tokens: &[OwnedLexToken],
 ) -> Result<TargetAst, CardTextError> {
     let Some(among_idx) = find_index(target_tokens, |token: &OwnedLexToken| {
-        token.is_word("among")
+        COMBAT_AMONG_WORD_PATTERN.matches_token(token)
     }) else {
         return Err(CardTextError::ParseError(format!(
             "missing divided-damage targets after 'among' (clause: '{}')",
@@ -471,41 +527,28 @@ fn parse_divided_damage_target(
     };
     let among_tail = trim_commas(&target_tokens[among_idx + 1..]);
     let among_words = crate::runtime_backend::token_word_refs(&among_tail);
-    let Some(target_idx) = find_index(&among_words, |word| matches!(*word, "target" | "targets"))
-    else {
+    let Some(target_idx) = find_index(&among_words, |word| {
+        COMBAT_TARGET_OR_TARGETS_PATTERN.matches_word(word)
+    }) else {
         return Err(CardTextError::ParseError(format!(
             "missing divided-damage target phrase (clause: '{}')",
             crate::runtime_backend::token_word_refs(target_tokens).join(" ")
         )));
     };
 
-    let max_targets = among_words[..target_idx]
+    let count = if let Some((count, used)) = parse_choice_count_before_target_prefix(&among_tail) {
+        if used != target_idx {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported divided-damage target count (clause: '{}')",
+                crate::runtime_backend::token_word_refs(target_tokens).join(" ")
+            )));
+        }
+        count
+    } else if let Some(max_targets) = among_words[..target_idx]
         .iter()
         .filter_map(|word| parse_number_word_u32(word))
         .max()
-        .unwrap_or(0);
-    if max_targets == 0
-        && grammar::words_match_any_prefix(&among_tail, ANY_NUMBER_OF_PREFIXES).is_none()
     {
-        return Err(CardTextError::ParseError(format!(
-            "missing divided-damage target count (clause: '{}')",
-            crate::runtime_backend::token_word_refs(target_tokens).join(" ")
-        )));
-    }
-
-    let target_phrase_tokens = &among_tail[target_idx..];
-    let base_target =
-        if crate::runtime_backend::lexer::word_slice_eq_any(
-            &among_words[target_idx..],
-            &[&["target"], &["targets"]],
-        ) {
-            TargetAst::AnyTarget(span_from_tokens(target_phrase_tokens))
-        } else {
-            parse_target_phrase(target_phrase_tokens)?
-        };
-    let count = if grammar::words_match_any_prefix(&among_tail, ANY_NUMBER_OF_PREFIXES).is_some() {
-        ChoiceCount::any_number()
-    } else {
         ChoiceCount {
             min: 1,
             max: Some(max_targets as usize),
@@ -513,6 +556,19 @@ fn parse_divided_damage_target(
             up_to_x: false,
             random: false,
         }
+    } else {
+        return Err(CardTextError::ParseError(format!(
+            "missing divided-damage target count (clause: '{}')",
+            crate::runtime_backend::token_word_refs(target_tokens).join(" ")
+        )));
+    };
+
+    let target_phrase_tokens = &among_tail[target_idx..];
+    let base_target = if COMBAT_TARGET_OR_TARGETS_PATTERN.matches_words(&among_words[target_idx..])
+    {
+        TargetAst::AnyTarget(span_from_tokens(target_phrase_tokens))
+    } else {
+        parse_target_phrase(target_phrase_tokens)?
     };
     Ok(TargetAst::WithCount(Box::new(base_target), count))
 }
@@ -530,13 +586,12 @@ fn parse_divided_damage_with_amount(
         )));
     }
     let mut target_tokens = &rest[1..];
-    if crate::runtime_backend::lexer::token_slice_first_is(target_tokens, "to")
-    {
+    if crate::runtime_backend::lexer::token_slice_first_is(target_tokens, "to") {
         target_tokens = &target_tokens[1..];
     }
     if grammar::contains_word(target_tokens, "evenly")
         && let Some(among_idx) = find_index(target_tokens, |token: &OwnedLexToken| {
-            token.is_word("among")
+            COMBAT_AMONG_WORD_PATTERN.matches_token(token)
         })
     {
         let among_tail = trim_commas(&target_tokens[among_idx + 1..]);
@@ -564,7 +619,7 @@ pub(crate) fn parse_deal_damage_with_amount(
             "missing damage keyword".to_string(),
         ));
     };
-    if word != "damage" {
+    if !COMBAT_DAMAGE_WORD_PATTERN.matches_word(word) {
         return Err(CardTextError::ParseError(
             "missing damage keyword".to_string(),
         ));
@@ -573,12 +628,12 @@ pub(crate) fn parse_deal_damage_with_amount(
     let mut target_tokens = &rest[1..];
     if target_tokens
         .first()
-        .is_some_and(|token| token.is_word("to"))
+        .is_some_and(|token| COMBAT_TO_WORD_PATTERN.matches_token(token))
     {
         target_tokens = &target_tokens[1..];
     }
     if let Some(among_idx) = find_index(target_tokens, |token: &OwnedLexToken| {
-        token.is_word("among")
+        COMBAT_AMONG_WORD_PATTERN.matches_token(token)
     }) {
         let among_tail = &target_tokens[among_idx + 1..];
         if crate::runtime_backend::lexer::contains_token_word(among_tail, "target")
@@ -599,10 +654,10 @@ pub(crate) fn parse_deal_damage_with_amount(
     }
 
     if let Some(instead_idx) = find_index(target_tokens, |token: &OwnedLexToken| {
-        token.is_word("instead")
+        COMBAT_INSTEAD_WORD_PATTERN.matches_token(token)
     }) && target_tokens
         .get(instead_idx + 1)
-        .is_some_and(|token| token.is_word("if"))
+        .is_some_and(|token| COMBAT_IF_WORD_PATTERN.matches_token(token))
     {
         let pre_target_tokens = trim_commas(&target_tokens[..instead_idx]);
         let predicate = if let Some(predicate) =
@@ -642,7 +697,7 @@ pub(crate) fn parse_deal_damage_with_amount(
 
     if target_tokens
         .first()
-        .is_some_and(|token| token.is_word("if"))
+        .is_some_and(|token| COMBAT_IF_WORD_PATTERN.matches_token(token))
     {
         let predicate = parse_trailing_if_predicate_lexed(target_tokens).ok_or_else(|| {
             CardTextError::ParseError(format!(
@@ -662,7 +717,7 @@ pub(crate) fn parse_deal_damage_with_amount(
         });
     }
 
-    if find_index(&target_tokens, |token| token.is_word("if")).is_some() {
+    if find_index(&target_tokens, |token| COMBAT_IF_WORD_PATTERN.matches_token(token)).is_some() {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing if clause in damage effect (clause: '{}')",
             crate::runtime_backend::token_word_refs(tokens).join(" ")
@@ -670,21 +725,13 @@ pub(crate) fn parse_deal_damage_with_amount(
     }
 
     let target_words = crate::runtime_backend::token_word_refs(target_tokens);
-    if crate::runtime_backend::lexer::word_slice_eq(&target_words, &["instead"]) {
+    if COMBAT_INSTEAD_TARGET_PATTERN.matches_words(&target_words) {
         return Ok(EffectAst::subject_verb_damage(
             amount,
             TargetAst::PlayerOrPlaneswalker(PlayerFilter::Any, None),
         ));
     }
-    if crate::runtime_backend::lexer::word_slice_eq_any(
-        &target_words,
-        &[
-            &["the", "creatures", "controller"],
-            &["that", "creatures", "controller"],
-            &["the", "creature's", "controller"],
-            &["that", "creature's", "controller"],
-        ],
-    ) {
+    if COMBAT_CREATURE_CONTROLLER_TARGET_PATTERN.matches_words(&target_words) {
         return Ok(EffectAst::subject_verb_damage(
             amount,
             TargetAst::Player(
@@ -693,7 +740,7 @@ pub(crate) fn parse_deal_damage_with_amount(
             ),
         ));
     }
-    if crate::runtime_backend::lexer::word_slice_eq(&target_words, &["the", "player"]) {
+    if COMBAT_THE_PLAYER_PATTERN.matches_words(&target_words) {
         return Ok(EffectAst::subject_verb_damage(
             amount,
             TargetAst::Player(
@@ -704,15 +751,12 @@ pub(crate) fn parse_deal_damage_with_amount(
     }
     if grammar::words_match_any_prefix(target_tokens, EACH_OF_PREFIXES).is_some() {
         let each_of_tokens = &target_tokens[2..];
-        let each_of_words = crate::runtime_backend::token_word_refs(each_of_tokens);
-        if matches!(
-            each_of_words.as_slice(),
-            ["up", "to", _, "target"] | ["up", "to", _, "targets"]
-        ) && let Some(count) = parse_number_word_u32(each_of_words[2])
+        if let Some((count, used)) = parse_choice_count_before_target_prefix(each_of_tokens)
+            && each_of_tokens.len() == used + 1
         {
             let target = TargetAst::WithCount(
                 Box::new(TargetAst::AnyTarget(span_from_tokens(each_of_tokens))),
-                ChoiceCount::up_to(count as usize),
+                count,
             );
             return Ok(EffectAst::subject_verb_damage(amount, target));
         }
@@ -721,10 +765,7 @@ pub(crate) fn parse_deal_damage_with_amount(
             return Ok(EffectAst::subject_verb_damage(amount, target));
         }
     }
-    if crate::runtime_backend::lexer::word_slice_eq_any(
-        &target_words,
-        &[&["each", "player"], &["each", "players"]],
-    ) {
+    if COMBAT_EACH_PLAYER_TARGET_PATTERN.matches_words(&target_words) {
         return Ok(EffectAst::ForEachPlayer {
             effects: vec![EffectAst::subject_verb_damage(
                 amount.clone(),
@@ -734,19 +775,17 @@ pub(crate) fn parse_deal_damage_with_amount(
     }
     let normalized_target_words =
         crate::runtime_backend::lexer::parser_token_word_refs(target_tokens);
-    let each_player_max_speed_filter = word_slice_first_is(&normalized_target_words, "each")
+    let each_player_max_speed_filter =
+        combat_words_start_with_shape(&normalized_target_words, &COMBAT_EACH_OR_ALL_WORD_PATTERN)
         && normalized_target_words
             .iter()
-            .any(|word| matches!(*word, "player" | "players"))
-        && word_slice_contains_phrase(&normalized_target_words, &["max", "speed"]);
+            .any(|word| COMBAT_PLAYER_OR_PLAYERS_WORD_PATTERN.matches_word(word))
+        && COMBAT_MAX_SPEED_PATTERN.matches_words(&normalized_target_words);
     if each_player_max_speed_filter {
         let has_max_speed = !(normalized_target_words
             .iter()
-            .any(|word| matches!(*word, "does" | "doesnt" | "doesn" | "dont" | "not"))
-            || word_slice_contains_any_phrase(
-                &normalized_target_words,
-                &[&["does", "not"]],
-            ));
+            .any(|word| COMBAT_NEGATION_WORD_PATTERN.matches_word(word))
+            || COMBAT_DOES_NOT_PATTERN.matches_words(&normalized_target_words));
         let filter = if has_max_speed {
             PlayerFilter::with_max_speed(PlayerFilter::Any)
         } else {
@@ -760,10 +799,7 @@ pub(crate) fn parse_deal_damage_with_amount(
             )],
         });
     }
-    if crate::runtime_backend::lexer::word_slice_eq_any(
-        &target_words,
-        &[&["each", "opponent"], &["each", "opponents"]],
-    ) {
+    if COMBAT_EACH_OPPONENT_TARGET_PATTERN.matches_words(&target_words) {
         return Ok(EffectAst::ForEachOpponent {
             effects: vec![EffectAst::subject_verb_damage(
                 amount.clone(),
@@ -796,12 +832,11 @@ pub(crate) fn parse_deal_damage_with_amount(
         });
     }
 
-    if word_slice_first_is_any(&target_words, &["each", "all"])
+    if combat_words_start_with_shape(&target_words, &COMBAT_EACH_OR_ALL_WORD_PATTERN)
         && let Some(and_each_idx) = find_window_by(&target_words, 3, |window| {
-            crate::runtime_backend::lexer::word_slice_eq_any(
-                window,
-                &[&["and", "each", "player"], &["and", "each", "players"]],
-            )
+            ClauseShape::new()
+                .exact_any(&[&["and", "each", "player"], &["and", "each", "players"]])
+                .matches_words(window)
         })
         && and_each_idx >= 1
         && and_each_idx + 3 == target_words.len()
@@ -842,7 +877,7 @@ pub(crate) fn parse_deal_damage_with_amount(
         });
     }
 
-    if word_slice_first_is_any(&target_words, &["each", "all"]) {
+    if combat_words_start_with_shape(&target_words, &COMBAT_EACH_OR_ALL_WORD_PATTERN) {
         if target_tokens.len() < 2 {
             return Err(CardTextError::ParseError(
                 "missing damage target filter after 'each'".to_string(),
@@ -853,15 +888,11 @@ pub(crate) fn parse_deal_damage_with_amount(
         return Ok(EffectAst::subject_verb_damage_each(amount.clone(), filter));
     }
 
-    if let Some(at_idx) = find_index(&target_tokens, |token| token.is_word("at")) {
+    if let Some(at_idx) = find_index(&target_tokens, |token| {
+        COMBAT_AT_WORD_PATTERN.matches_token(token)
+    }) {
         let timing_words = crate::runtime_backend::token_word_refs(&target_tokens[at_idx..]);
-        let matches_end_of_combat = crate::runtime_backend::lexer::word_slice_eq_any(
-            &timing_words,
-            &[
-                &["at", "end", "of", "combat"],
-                &["at", "the", "end", "of", "combat"],
-            ],
-        );
+        let matches_end_of_combat = COMBAT_END_OF_COMBAT_TIMING_PATTERN.matches_words(&timing_words);
         if matches_end_of_combat && at_idx >= 1 {
             let pre_target_tokens = trim_commas(&target_tokens[..at_idx]);
             if !pre_target_tokens.is_empty() {
@@ -888,38 +919,27 @@ pub(crate) fn parse_instead_if_control_predicate(
 
     let mut filter_tokens = &tokens[2..];
     let mut min_count: Option<u32> = None;
-    if let Some((count, used)) = parse_number(filter_tokens)
-        && count > 1
+    if let Ok((comparison, used)) =
+        parse_quantity_comparison_prefix(filter_tokens, false, false, "control predicate")
     {
-        let tail = &filter_tokens[used..];
-        if token_slice_first_is(tail, "or")
-            && token_slice_at_is(tail, 1, "more")
-        {
+        if let Some(count) = comparison_to_strict_at_least_threshold(&comparison) {
             min_count = Some(count);
-            filter_tokens = &tail[2..];
-        } else if token_slice_first_is(tail, "or")
-            && token_slice_at_is(tail, 1, "fewer")
-        {
-            // Keep unsupported "or fewer" variants as plain control checks for now.
-            filter_tokens = &tail[2..];
+            filter_tokens = &filter_tokens[used..];
+        } else if matches!(
+            comparison,
+            crate::effect::Comparison::LessThan(_)
+                | crate::effect::Comparison::LessThanOrEqual(_)
+        ) {
+            // Keep unsupported upper-bound variants as plain control checks for now.
+            filter_tokens = &filter_tokens[used..];
         }
     }
-    if filter_tokens
-        .first()
-        .is_some_and(|token| token.is_word("at"))
-        && filter_tokens
-            .get(1)
-            .is_some_and(|token| token.is_word("least"))
-        && let Some((count, used)) = parse_number(&filter_tokens[2..])
-        && count > 1
-    {
-        min_count = Some(count);
-        filter_tokens = &filter_tokens[2 + used..];
-    }
-    let cut_markers: &[&[&str]] = &[&["as", "you", "cast", "this", "spell"], &["this", "turn"]];
-    for marker in cut_markers {
+    for (width, marker) in [
+        (5usize, COMBAT_AS_YOU_CAST_THIS_SPELL_MARKER_PATTERN),
+        (2usize, COMBAT_THIS_TURN_MARKER_PATTERN),
+    ] {
         let filter_words = crate::runtime_backend::token_word_refs(filter_tokens);
-        if let Some(idx) = find_window_by(&filter_words, marker.len(), |window| window == *marker) {
+        if let Some(idx) = combat_find_exact_window(&filter_words, width, marker) {
             let cut_idx =
                 token_index_for_word_index(filter_tokens, idx).unwrap_or(filter_tokens.len());
             filter_tokens = &filter_tokens[..cut_idx];
@@ -929,9 +949,7 @@ pub(crate) fn parse_instead_if_control_predicate(
     let mut filter_tokens = trim_commas(filter_tokens);
     let filter_words = crate::runtime_backend::token_word_refs(&filter_tokens);
     let mut requires_different_powers = false;
-    if grammar::words_match_suffix(&filter_tokens, &["with", "different", "powers"]).is_some()
-        || grammar::words_match_suffix(&filter_tokens, &["with", "different", "power"]).is_some()
-    {
+    if COMBAT_WITH_DIFFERENT_POWER_SUFFIX_PATTERN.matches_words(&filter_words) {
         requires_different_powers = true;
         let cut_word_idx = filter_words.len().saturating_sub(3);
         let cut_token_idx =
@@ -944,7 +962,7 @@ pub(crate) fn parse_instead_if_control_predicate(
 
     let other = filter_tokens
         .first()
-        .is_some_and(|token| token.is_word("another") || token.is_word("other"));
+        .is_some_and(|token| COMBAT_OTHER_WORD_PATTERN.matches_token(token));
     let filter = parse_object_filter(&filter_tokens, other)?;
     if let Some(count) = min_count {
         if requires_different_powers {

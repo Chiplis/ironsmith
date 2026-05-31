@@ -4,18 +4,15 @@ use crate::mana::ManaSymbol;
 use crate::target::ObjectFilter;
 
 use super::activation_and_restrictions::activated_line_core::parse_devotion_value_from_add_clause;
-use super::effect_sentences::clause_pattern_helpers::extract_subject_player;
+use super::effect_sentences::clause_pattern_helpers::{
+    ClauseShape, clause_shape, extract_subject_player,
+};
 use super::grammar::structure::parse_trailing_instead_if_predicate_lexed;
 use super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_add_mana_that_much_value,
     parse_dynamic_cost_modifier_value, parse_where_x_is_number_of_filter_value,
 };
-use super::lexer::{
-    TokenWordView, token_slice_at_is, token_slice_first_is, token_slice_starts_with_at,
-    token_word_refs, word_slice_at_is, word_slice_contains_word, word_slice_ends_with,
-    word_slice_eq, word_slice_find_any_phrase_start, word_slice_find_phrase_start,
-    word_slice_first_is, word_slice_starts_with,
-};
+use super::lexer::{TokenWordView, token_word_refs};
 pub(crate) use super::object_filters::is_comparison_or_delimiter;
 use super::object_filters::parse_object_filter;
 pub(crate) use super::util::{
@@ -41,6 +38,133 @@ fn first_non_comma_token_index(tokens: &[OwnedLexToken]) -> usize {
     crate::slice_primitives::find_index(tokens, |token| !token.is_comma()).unwrap_or(tokens.len())
 }
 
+const ADD_MANA_IMPRINTED_COLORS_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["exiled", "colors"]);
+
+const ADD_MANA_COMMANDER_IDENTITY_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_words &[&["commander", "commanders"]];
+    contains_words &["color", "identity"]
+);
+
+const ADD_MANA_THAT_COLOR_AMOUNT_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["an", "amount", "of", "mana", "of", "that", "color"]);
+
+const ADD_MANA_ANY_ONE_COLOR_OR_TYPE_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_phrases & [&[&["any", "one", "color"], &["any", "one", "type"]]]);
+const ADD_MANA_ANY_COLOR_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_phrases & [&[&["any", "color"], &["one", "color"]]]);
+const ADD_MANA_ANY_TYPE_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_phrases & [&[&["any", "type"], &["one", "type"]]]);
+const CARD_OR_CARDS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["card"], &["cards"]]);
+const MANA_OF_CHOSEN_COLOR_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(suffix_any & [&["mana", "of", "the"], &["mana", "of"]]);
+const COLOR_OR_TYPE_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["color"], &["type"]]);
+const COLOR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["color"]);
+const TYPE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["type"]);
+const FOR_EACH_REMOVED_THIS_WAY_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["for", "each"]; suffix & ["removed", "this", "way"]);
+const AMONG_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["among"]);
+const ADD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["add"]);
+const OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
+const OR_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["or"]);
+const WHERE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["where"]);
+const INSTEAD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["instead"]);
+const IF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["if"]);
+const INSTEAD_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["instead"]);
+const CHOSEN_COLOR_MANA_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["or", "one", "mana", "of", "the", "chosen", "color"]);
+const SIMPLE_MANA_POOL_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["mana", "pool"]);
+const MANA_POOL_START_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["to"]);
+const LAND_PRODUCE_SUBJECT_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["that"]);
+const PRODUCED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["produced"]);
+const CHOSEN_COLOR_PHRASE_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["chosen", "color"]);
+const CHOSEN_COLOR_PHRASE_LEN: usize = 2;
+const FOR_EACH_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["for", "each"]);
+const FOR_EACH_COLOR_AMONG_PHRASE_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["for", "each", "color", "among"]);
+const FOR_EACH_COLOR_AMONG_PHRASE_LEN: usize = 4;
+const ADD_ONE_MANA_OF_THAT_COLOR_PHRASE_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["add", "one", "mana", "of", "that", "color"]);
+const ADD_ONE_MANA_OF_THAT_COLOR_PHRASE_LEN: usize = 6;
+const ANY_COMBINATION_OF_PHRASE_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["any", "combination", "of"]);
+const ANY_COMBINATION_OF_PHRASE_LEN: usize = 3;
+const COULD_PRODUCE_PHRASE_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["could", "produce"]);
+const COULD_PRODUCE_PHRASE_LEN: usize = 2;
+const MANA_POOL_TAIL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["to"],
+            &["your"],
+            &["their"],
+            &["its"],
+            &["that"],
+            &["player"],
+            &["players"],
+            &["player's"],
+            &["players'"],
+            &["mana"],
+            &["pool"],
+        ]
+);
+const SIMPLE_MANA_FILLER_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["mana"], &["to"], &["your"], &["pool"]]);
+const MANA_CHOICE_TAIL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["to"],
+            &["your"],
+            &["their"],
+            &["its"],
+            &["mana"],
+            &["pool"],
+        ]
+);
+const MANA_OPTION_SEPARATOR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["and"],
+            &["or"],
+            &["and/or"],
+            &["mana"],
+            &["to"],
+            &["your"],
+            &["their"],
+            &["its"],
+            &["pool"],
+        ]
+);
+const COLOR_OR_COLORS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["color"], &["colors"]]);
+
+fn activation_find_phrase_start(
+    words: &[&str],
+    phrase_len: usize,
+    shape: &ClauseShape<'static>,
+) -> Option<usize> {
+    if phrase_len == 0 || words.len() < phrase_len {
+        return None;
+    }
+    words
+        .windows(phrase_len)
+        .position(|window| shape.matches_words(window))
+}
+
+fn activation_token_slice_prefix_at_matches_shape(
+    tokens: &[OwnedLexToken],
+    index: usize,
+    shape: &ClauseShape<'static>,
+) -> bool {
+    tokens
+        .get(index..)
+        .is_some_and(|tail| shape.matches_words(&TokenWordView::new(tail).to_word_refs()))
+}
+
 pub(crate) fn parse_add_mana(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
@@ -51,7 +175,9 @@ pub(crate) fn parse_add_mana(
     let wrap_instead_if_tail = |base_effect: EffectAst,
                                 tail_tokens: &[OwnedLexToken]|
      -> Result<Option<EffectAst>, CardTextError> {
-        if !token_slice_first_is(tail_tokens, "instead") || !token_slice_at_is(tail_tokens, 1, "if")
+        let tail_words = TokenWordView::new(tail_tokens).to_word_refs();
+        if !INSTEAD_WORD_PATTERN.matches_word_at(&tail_words, 0)
+            || !IF_WORD_PATTERN.matches_word_at(&tail_words, 1)
         {
             return Ok(None);
         }
@@ -71,25 +197,18 @@ pub(crate) fn parse_add_mana(
 
     let has_card_word = clause_words
         .iter()
-        .any(|word| *word == "card" || *word == "cards");
+        .any(|word| CARD_OR_CARDS_WORD_PATTERN.matches_word(word));
     if let Some(colors_among) = parse_add_mana_colors_among_filter(tokens)? {
         return Ok(EffectAst::subject_verb_add_mana_colors_among(
             player,
             colors_among,
         ));
     }
-    if word_slice_contains_word(&clause_words, "exiled")
-        && has_card_word
-        && word_slice_contains_word(&clause_words, "colors")
-    {
+    if has_card_word && ADD_MANA_IMPRINTED_COLORS_PATTERN.matches_words(&clause_words) {
         return Ok(EffectAst::subject_verb_add_mana_imprinted_colors());
     }
 
-    if (word_slice_contains_word(&clause_words, "commander")
-        || word_slice_contains_word(&clause_words, "commanders"))
-        && word_slice_contains_word(&clause_words, "color")
-        && word_slice_contains_word(&clause_words, "identity")
-    {
+    if ADD_MANA_COMMANDER_IDENTITY_PATTERN.matches_words(&clause_words) {
         let amount = parse_value(tokens)
             .map(|(value, _)| value)
             .unwrap_or(Value::Fixed(1));
@@ -121,29 +240,21 @@ pub(crate) fn parse_add_mana(
         .iter()
         .any(|token| mana_pips_from_token(token).is_some());
     if !has_explicit_symbol
-        && let Some(chosen_idx) = word_slice_find_phrase_start(&clause_words, &["chosen", "color"])
+        && let Some(chosen_idx) = activation_find_phrase_start(
+            &clause_words,
+            CHOSEN_COLOR_PHRASE_LEN,
+            &CHOSEN_COLOR_PHRASE_PATTERN,
+        )
     {
         let prefix = &clause_words[..chosen_idx];
-        let references_mana_of_chosen_color = word_slice_ends_with(prefix, &["mana", "of", "the"])
-            || word_slice_ends_with(prefix, &["mana", "of"]);
+        let references_mana_of_chosen_color =
+            MANA_OF_CHOSEN_COLOR_PREFIX_PATTERN.matches_words(prefix);
         if references_mana_of_chosen_color {
             let tail_words = &clause_words[chosen_idx + 2..];
             let has_only_pool_tail = tail_words.is_empty()
-                || tail_words.iter().all(|word| {
-                    matches!(
-                        *word,
-                        "to" | "your"
-                            | "their"
-                            | "its"
-                            | "player's"
-                            | "players'"
-                            | "that"
-                            | "player"
-                            | "players"
-                            | "mana"
-                            | "pool"
-                    )
-                });
+                || tail_words
+                    .iter()
+                    .all(|word| MANA_POOL_TAIL_WORD_PATTERN.matches_word(word));
             if has_only_pool_tail {
                 let amount = parse_value(tokens)
                     .map(|(value, _)| value)
@@ -154,10 +265,7 @@ pub(crate) fn parse_add_mana(
             }
         }
     }
-    if word_slice_starts_with(
-        &clause_words,
-        &["an", "amount", "of", "mana", "of", "that", "color"],
-    ) {
+    if ADD_MANA_THAT_COLOR_AMOUNT_PATTERN.matches_words(&clause_words) {
         let amount = parse_devotion_value_from_add_clause(tokens)?
             .or_else(|| parse_add_mana_equal_amount_value(tokens))
             .unwrap_or(Value::Fixed(1));
@@ -166,26 +274,20 @@ pub(crate) fn parse_add_mana(
         ));
     }
 
-    let any_one = word_slice_find_any_phrase_start(
-        &clause_words,
-        &[&["any", "one", "color"], &["any", "one", "type"]],
-    )
-    .is_some();
-    let any_color =
-        word_slice_find_any_phrase_start(&clause_words, &[&["any", "color"], &["one", "color"]])
-            .is_some();
-    let any_type =
-        word_slice_find_any_phrase_start(&clause_words, &[&["any", "type"], &["one", "type"]])
-            .is_some();
+    let any_one = ADD_MANA_ANY_ONE_COLOR_OR_TYPE_PATTERN.matches_words(&clause_words);
+    let any_color = ADD_MANA_ANY_COLOR_PATTERN.matches_words(&clause_words);
+    let any_type = ADD_MANA_ANY_TYPE_PATTERN.matches_words(&clause_words);
     if any_color || any_type {
         let mut amount = parse_value(tokens)
             .map(|(value, _)| value)
             .unwrap_or(Value::Fixed(1));
         let allow_colorless = any_type;
         let phrase_end = crate::slice_primitives::find_index(tokens, |token| {
-            token
-                .as_word()
-                .is_some_and(|word| (word == "color" && any_color) || (word == "type" && any_type))
+            token.as_word().is_some_and(|word| {
+                COLOR_OR_TYPE_WORD_PATTERN.matches_word(word)
+                    && ((COLOR_WORD_PATTERN.matches_word(word) && any_color)
+                        || (TYPE_WORD_PATTERN.matches_word(word) && any_type))
+            })
         })
         .map(|idx| idx + 1)
         .unwrap_or(tokens.len());
@@ -262,9 +364,7 @@ pub(crate) fn parse_add_mana(
                 player, amount, None,
             ));
         }
-        if word_slice_first_is(&tail_words, "for")
-            && word_slice_at_is(&tail_words, 1, "each")
-            && word_slice_ends_with(&tail_words, &["removed", "this", "way"])
+        if FOR_EACH_REMOVED_THIS_WAY_PATTERN.matches_words(&tail_words)
             && let Some(dynamic_amount) = parse_dynamic_cost_modifier_value(tail_tokens)?
         {
             amount = dynamic_amount;
@@ -284,7 +384,10 @@ pub(crate) fn parse_add_mana(
             ));
         }
 
-        if word_slice_first_is(&tail_words, "among") {
+        if tail_words
+            .first()
+            .is_some_and(|word| AMONG_WORD_PATTERN.matches_word(word))
+        {
             if any_type {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported any-type mana clause without producer filter (clause: '{}')",
@@ -319,7 +422,11 @@ pub(crate) fn parse_add_mana(
     let mut for_each_idx = None;
     let mut token_idx = 0usize;
     while token_idx + 1 < tokens.len() {
-        if token_slice_starts_with_at(tokens, token_idx, &["for", "each"]) {
+        if activation_token_slice_prefix_at_matches_shape(
+            tokens,
+            token_idx,
+            &FOR_EACH_PREFIX_PATTERN,
+        ) {
             for_each_idx = Some(token_idx);
             break;
         }
@@ -335,14 +442,11 @@ pub(crate) fn parse_add_mana(
             last_mana_idx = Some(idx);
             continue;
         }
-        if let Some(word) = token.as_word() {
-            if word.eq_ignore_ascii_case("mana")
-                || word.eq_ignore_ascii_case("to")
-                || word.eq_ignore_ascii_case("your")
-                || word.eq_ignore_ascii_case("pool")
-            {
-                continue;
-            }
+        if token
+            .as_word()
+            .is_some_and(|word| SIMPLE_MANA_FILLER_WORD_PATTERN.matches_word(word))
+        {
+            continue;
         }
     }
 
@@ -380,10 +484,7 @@ pub(crate) fn parse_add_mana(
             .map(|last_idx| token_word_refs(&tokens[last_idx + 1..]))
             .unwrap_or_default();
         if !trailing_words.is_empty() {
-            let chosen_color_tail = word_slice_starts_with(
-                &trailing_words,
-                &["or", "one", "mana", "of", "the", "chosen", "color"],
-            );
+            let chosen_color_tail = CHOSEN_COLOR_MANA_TAIL_PATTERN.matches_words(&trailing_words);
             let pool_tail = if chosen_color_tail {
                 trailing_words[7..].to_vec()
             } else {
@@ -393,7 +494,7 @@ pub(crate) fn parse_add_mana(
                 && (pool_tail.is_empty()
                     || pool_tail
                         .iter()
-                        .all(|word| matches!(*word, "to" | "your" | "mana" | "pool")));
+                        .all(|word| MANA_CHOICE_TAIL_WORD_PATTERN.matches_word(word)));
             if chosen_color_tail && has_only_pool_tail {
                 if mana.len() != 1 {
                     return Err(CardTextError::ParseError(format!(
@@ -417,8 +518,8 @@ pub(crate) fn parse_add_mana(
         let has_only_pool_tail = !trailing_words.is_empty()
             && trailing_words
                 .iter()
-                .all(|word| matches!(*word, "to" | "your" | "mana" | "pool"));
-        let has_only_instead_tail = word_slice_eq(&trailing_words, &["instead"]);
+                .all(|word| MANA_CHOICE_TAIL_WORD_PATTERN.matches_word(word));
+        let has_only_instead_tail = INSTEAD_TAIL_PATTERN.matches_words(&trailing_words);
         if !trailing_words.is_empty() && !has_only_pool_tail && !has_only_instead_tail {
             if let Some(last_idx) = last_mana_idx
                 && let Some(conditional) = wrap_instead_if_tail(
@@ -446,9 +547,18 @@ fn parse_add_mana_colors_among_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     let words = token_word_refs(tokens);
-    if word_slice_find_phrase_start(&words, &["for", "each", "color", "among"]).is_none()
-        || word_slice_find_phrase_start(&words, &["add", "one", "mana", "of", "that", "color"])
-            .is_none()
+    if activation_find_phrase_start(
+        &words,
+        FOR_EACH_COLOR_AMONG_PHRASE_LEN,
+        &FOR_EACH_COLOR_AMONG_PHRASE_PATTERN,
+    )
+    .is_none()
+        || activation_find_phrase_start(
+            &words,
+            ADD_ONE_MANA_OF_THAT_COLOR_PHRASE_LEN,
+            &ADD_ONE_MANA_OF_THAT_COLOR_PHRASE_PATTERN,
+        )
+        .is_none()
     {
         return Ok(None);
     }
@@ -456,10 +566,10 @@ fn parse_add_mana_colors_among_filter(
     let mut among_token_idx = None;
     let mut add_token_idx = None;
     for (idx, token) in tokens.iter().enumerate() {
-        if token.is_word("among") && among_token_idx.is_none() {
+        if AMONG_WORD_PATTERN.matches_token(token) && among_token_idx.is_none() {
             among_token_idx = Some(idx);
         }
-        if token.is_word("add") && add_token_idx.is_none() {
+        if ADD_WORD_PATTERN.matches_token(token) && add_token_idx.is_none() {
             add_token_idx = Some(idx);
         }
     }
@@ -494,14 +604,14 @@ pub(crate) fn parse_or_mana_color_choices(
 ) -> Result<Option<Vec<crate::color::Color>>, CardTextError> {
     let clause_word_view = TokenWordView::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
-    if !word_slice_contains_word(&clause_words, "or") {
+    if !OR_MARKER_PATTERN.matches_words(&clause_words) {
         return Ok(None);
     }
 
     let mut colors = Vec::new();
     let mut has_or = false;
     for token in tokens {
-        if token.is_word("or") {
+        if OR_WORD_PATTERN.matches_token(token) {
             has_or = true;
             continue;
         }
@@ -517,10 +627,7 @@ pub(crate) fn parse_or_mana_color_choices(
         let Some(word) = token.as_word() else {
             continue;
         };
-        if matches!(
-            word.to_ascii_lowercase().as_str(),
-            "to" | "your" | "their" | "its" | "mana" | "pool"
-        ) {
+        if MANA_CHOICE_TAIL_WORD_PATTERN.matches_word(word) {
             continue;
         }
         return Ok(None);
@@ -538,24 +645,23 @@ pub(crate) fn parse_any_combination_mana_colors(
 ) -> Result<Option<Vec<crate::color::Color>>, CardTextError> {
     let clause_word_view = TokenWordView::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
-    let Some(combination_idx) =
-        word_slice_find_phrase_start(&clause_words, &["any", "combination", "of"])
-    else {
+    let Some(combination_idx) = activation_find_phrase_start(
+        &clause_words,
+        ANY_COMBINATION_OF_PHRASE_LEN,
+        &ANY_COMBINATION_OF_PHRASE_PATTERN,
+    ) else {
         return Ok(None);
     };
 
     let mut colors = Vec::new();
     for word in &clause_words[combination_idx + 3..] {
-        if *word == "where" {
+        if WHERE_WORD_PATTERN.matches_word(word) {
             break;
         }
-        if matches!(
-            *word,
-            "and" | "or" | "and/or" | "mana" | "to" | "your" | "their" | "its" | "pool"
-        ) {
+        if MANA_OPTION_SEPARATOR_WORD_PATTERN.matches_word(word) {
             continue;
         }
-        if matches!(*word, "color" | "colors") {
+        if COLOR_OR_COLORS_WORD_PATTERN.matches_word(word) {
             for color in [
                 crate::color::Color::White,
                 crate::color::Color::Blue,
@@ -602,27 +708,14 @@ pub(crate) fn trim_leading_commas(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] 
 pub(crate) fn is_mana_pool_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
     let words_view = TokenWordView::new(tokens);
     let words = words_view.to_word_refs();
-    if !word_slice_first_is(&words, "to")
-        || !word_slice_contains_word(&words, "mana")
-        || !word_slice_contains_word(&words, "pool")
+    if !MANA_POOL_START_PATTERN.matches_words(&words)
+        || !SIMPLE_MANA_POOL_TAIL_PATTERN.matches_words(&words)
     {
         return false;
     }
-    words.iter().all(|word| {
-        matches!(
-            *word,
-            "to" | "your"
-                | "their"
-                | "its"
-                | "that"
-                | "player"
-                | "players"
-                | "player's"
-                | "players'"
-                | "mana"
-                | "pool"
-        )
-    })
+    words
+        .iter()
+        .all(|word| MANA_POOL_TAIL_WORD_PATTERN.matches_word(word))
 }
 
 pub(crate) fn parse_land_could_produce_filter(
@@ -630,40 +723,43 @@ pub(crate) fn parse_land_could_produce_filter(
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     let words_view = TokenWordView::new(tokens);
     let words = words_view.to_word_refs();
-    if words.len() < 3 || !word_slice_first_is(&words, "that") {
+    if words.len() < 3 || !LAND_PRODUCE_SUBJECT_PATTERN.matches_words(&words) {
         return Ok(None);
     }
 
-    let marker_word_idx =
-        if let Some(could_idx) = word_slice_find_phrase_start(&words, &["could", "produce"]) {
-            if could_idx + 2 != words.len() {
-                return Err(CardTextError::ParseError(format!(
-                    "unsupported trailing mana clause (tail: '{}')",
-                    words.join(" ")
-                )));
+    let marker_word_idx = if let Some(could_idx) = activation_find_phrase_start(
+        &words,
+        COULD_PRODUCE_PHRASE_LEN,
+        &COULD_PRODUCE_PHRASE_PATTERN,
+    ) {
+        if could_idx + 2 != words.len() {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported trailing mana clause (tail: '{}')",
+                words.join(" ")
+            )));
+        }
+        could_idx
+    } else {
+        let mut produced_idx = None;
+        let mut idx = 0usize;
+        while idx < words.len() {
+            if PRODUCED_WORD_PATTERN.matches_word(words[idx]) {
+                produced_idx = Some(idx);
+                break;
             }
-            could_idx
-        } else {
-            let mut produced_idx = None;
-            let mut idx = 0usize;
-            while idx < words.len() {
-                if words[idx] == "produced" {
-                    produced_idx = Some(idx);
-                    break;
-                }
-                idx += 1;
-            }
-            let Some(produced_idx) = produced_idx else {
-                return Ok(None);
-            };
-            if produced_idx + 1 != words.len() {
-                return Err(CardTextError::ParseError(format!(
-                    "unsupported trailing mana clause (tail: '{}')",
-                    words.join(" ")
-                )));
-            }
-            produced_idx
+            idx += 1;
+        }
+        let Some(produced_idx) = produced_idx else {
+            return Ok(None);
         };
+        if produced_idx + 1 != words.len() {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported trailing mana clause (tail: '{}')",
+                words.join(" ")
+            )));
+        }
+        produced_idx
+    };
 
     let marker_token_idx =
         token_index_for_word_index(tokens, marker_word_idx).ok_or_else(|| {

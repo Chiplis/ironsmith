@@ -1,8 +1,270 @@
+const REPLACE_AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
+const REPLACE_AND_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["and"]);
+const REPLACE_AND_OR_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["and"], &["or"]]);
+const REPLACE_EXCEPT_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["except"]);
+const REPLACE_UNTIL_END_TURN_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["until", "end", "turn"]);
+const REPLACE_THEN_RETURN_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["then", "return"]);
+const REPLACE_YOU_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["you"]);
+const REPLACE_EXILE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["exile"]);
+const REPLACE_SACRIFICE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["sacrifice"]);
+const REPLACE_DESTROY_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["destroy"]);
+const REPLACE_MONSTROSITY_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["monstrosity"]);
+const REPLACE_ALL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["all"]);
+const REPLACE_EXILE_ALL_CARDS_FROM_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["exile", "all", "cards", "from"]);
+const REPLACE_HAND_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_words & [&["hand"], &["hands"]]);
+const REPLACE_GRAVEYARD_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_words & [&["graveyard"], &["graveyards"]]);
+const REPLACE_FOR_EACH_COUNTER_REMOVED_THIS_WAY_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["for", "each", "counter", "removed", "this", "way"]);
+const REPLACE_VOTED_WITH_YOU_SCRY_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix
+        & [
+            "you",
+            "and",
+            "each",
+            "opponent",
+            "who",
+            "voted",
+            "for",
+            "a",
+            "choice",
+            "you",
+            "voted",
+            "for",
+            "may",
+            "scry",
+        ]
+);
+const REPLACE_VOTED_WITH_YOU_SCRY_PREFIX_LEN: usize = 14;
+const REPLACE_MAY_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["may"]);
+const REPLACE_WITH_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["with"]);
+const REPLACE_ON_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["on"]);
+const REPLACE_AT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["at"]);
+const REPLACE_THAT_THE_THOSE_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["that"], &["the"], &["those"]]);
+const REPLACE_TOKEN_OR_TOKENS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["token"], &["tokens"]]);
+const REPLACE_IT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["it"]);
+const REPLACE_IT_OR_THEM_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["it"], &["them"]]);
+const REPLACE_GET_OR_GETS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["get"], &["gets"]]);
+const REPLACE_END_OF_COMBAT_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["end", "of", "combat"], &["the", "end", "of", "combat"]]);
+const REPLACE_TARGET_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["target"]);
+const REPLACE_TOP_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["top"]);
+const REPLACE_LIBRARY_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["library"]);
+const REPLACE_LOOK_OPPONENT_HAND_THEN_CHOOSE_NAME_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact & [
+        "look",
+        "at",
+        "an",
+        "opponents",
+        "hand",
+        "then",
+        "choose",
+        "any",
+        "card",
+        "name",
+    ]
+);
+const REPLACE_LOOK_TARGET_PLAYER_HAND_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any & [
+        &["look", "at", "target", "players", "hand"],
+        &["look", "at", "target", "player", "hand"],
+    ]
+);
+const REPLACE_LOOK_TARGET_OPPONENT_HAND_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any & [
+        &["look", "at", "target", "opponent", "hand"],
+        &["look", "at", "target", "opponents", "hand"],
+    ]
+);
+const REPLACE_LOOK_OPPONENT_HAND_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any & [
+        &["look", "at", "an", "opponents", "hand"],
+        &["look", "at", "opponents", "hand"],
+    ]
+);
+const REPLACE_LOOK_THAT_PLAYER_HAND_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["look", "at", "that", "players", "hand"]);
+const REPLACE_LOOK_TOP_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix_any & [&["look", "at", "the", "top"], &["look", "at", "top"]]);
+const REPLACE_EXILE_ONE_OF_LOOKED_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any & [
+        &["exile", "one", "of", "them"],
+        &["exile", "one", "of", "those"],
+        &["exile", "one", "of", "those", "cards"],
+    ]
+);
+const REPLACE_ADDITIONAL_COMBAT_AFTER_THIS_PHASE_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &[
+                "after",
+                "this",
+                "phase",
+                "theres",
+                "an",
+                "additional",
+                "combat",
+                "phase",
+            ],
+            &[
+                "there",
+                "is",
+                "an",
+                "additional",
+                "combat",
+                "phase",
+                "after",
+                "this",
+                "phase",
+            ],
+            &[
+                "theres",
+                "an",
+                "additional",
+                "combat",
+                "phase",
+                "after",
+                "this",
+                "phase",
+            ],
+            &[
+                "after",
+                "this",
+                "phase",
+                "there",
+                "is",
+                "an",
+                "additional",
+                "combat",
+                "phase",
+            ],
+            &[
+                "after",
+                "this",
+                "combat",
+                "phase",
+                "phase",
+                "there",
+                "is",
+                "an",
+                "additional",
+                "combat",
+                "phase",
+            ],
+            &[
+                "after",
+                "this",
+                "main",
+                "phase",
+                "there",
+                "is",
+                "an",
+                "additional",
+                "combat",
+                "phase",
+            ],
+        ]
+);
+
+fn replace_up_to_one_target_prefix_len(tokens: &[OwnedLexToken]) -> Option<usize> {
+    let (count, used) = parse_choice_count_before_target_prefix(tokens)?;
+    (count == ChoiceCount::up_to(1)).then_some(used)
+}
+const REPLACE_TWO_ADDITIONAL_COMBATS_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &[
+                "after",
+                "this",
+                "phase",
+                "there",
+                "are",
+                "two",
+                "additional",
+                "combat",
+                "phases",
+            ],
+            &[
+                "after",
+                "this",
+                "phase",
+                "therere",
+                "two",
+                "additional",
+                "combat",
+                "phases",
+            ],
+            &[
+                "there",
+                "are",
+                "two",
+                "additional",
+                "combat",
+                "phases",
+                "after",
+                "this",
+                "phase",
+            ],
+            &[
+                "therere",
+                "two",
+                "additional",
+                "combat",
+                "phases",
+                "after",
+                "this",
+                "phase",
+            ],
+            &[
+                "after",
+                "this",
+                "main",
+                "phase",
+                "there",
+                "are",
+                "two",
+                "additional",
+                "combat",
+                "phases",
+            ],
+        ]
+);
+const REPLACE_ADDITIONAL_COMBAT_THEN_MAIN_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact
+        & [
+            "after",
+            "this",
+            "phase",
+            "there",
+            "is",
+            "an",
+            "additional",
+            "combat",
+            "phase",
+            "followed",
+            "by",
+            "an",
+            "additional",
+            "main",
+            "phase",
+        ]
+);
+
+
 pub(crate) fn parse_monstrosity_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let words = parser_token_word_refs(tokens);
-    if !word_slice_first_is(&words, "monstrosity") {
+    if !REPLACE_MONSTROSITY_WORD_PATTERN.matches_word_at(&words, 0) {
         return Ok(None);
     }
 
@@ -20,12 +282,8 @@ pub(crate) fn parse_monstrosity_sentence(
 pub(crate) fn parse_for_each_counter_removed_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    if grammar::words_match_prefix(
-        tokens,
-        &["for", "each", "counter", "removed", "this", "way"],
-    )
-    .is_none()
-    {
+    let words = parser_token_word_refs(tokens);
+    if !REPLACE_FOR_EACH_COUNTER_REMOVED_THIS_WAY_PREFIX_PATTERN.matches_words(&words) {
         return Ok(None);
     }
 
@@ -45,7 +303,7 @@ pub(crate) fn parse_for_each_counter_removed_sentence(
     }
 
     let gets_idx = find_index(remainder_words.as_slice(), |word| {
-        matches!(*word, "gets" | "get")
+        REPLACE_GET_OR_GETS_WORD_PATTERN.matches_word(word)
     });
     let Some(gets_idx) = gets_idx else {
         return Ok(None);
@@ -70,9 +328,8 @@ pub(crate) fn parse_for_each_counter_removed_sentence(
         })?;
     let (power, toughness) = parse_pt_modifier(modifier_token)?;
 
-    let duration = if grammar::contains_word(remainder, "until")
-        && grammar::contains_word(remainder, "end")
-        && grammar::contains_word(remainder, "turn")
+    let duration = if REPLACE_UNTIL_END_TURN_MARKER_PATTERN
+        .matches_words(&crate::runtime_backend::token_word_refs(remainder))
     {
         Until::EndOfTurn
     } else {
@@ -89,93 +346,46 @@ pub(crate) fn parse_for_each_counter_removed_sentence(
 
 pub(crate) fn is_exile_that_token_at_end_of_combat(tokens: &[OwnedLexToken]) -> bool {
     let words = parser_token_word_refs(tokens);
-    if !word_slice_first_is(&words, "exile") {
-        return false;
-    }
-
-    let at_idx = if word_slice_at_is_any(&words, 1, &["that", "the", "those"])
-        && word_slice_at_is_any(&words, 2, &["token", "tokens"])
-    {
-        3
-    } else if word_slice_at_is(&words, 1, "it") {
-        2
-    } else {
-        return false;
-    };
-    if !word_slice_at_is(&words, at_idx, "at") {
-        return false;
-    }
-    has_end_of_combat_tail(&words, at_idx)
+    has_token_at_end_of_combat_shape(&words, &REPLACE_EXILE_WORD_PATTERN)
 }
 
 pub(crate) fn is_exile_that_token_at_end_of_combat_lexed(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if !word_slice_first_is(&words, "exile") {
-        return false;
-    }
-
-    let at_idx = if word_slice_at_is_any(&words, 1, &["that", "the", "those"])
-        && word_slice_at_is_any(&words, 2, &["token", "tokens"])
-    {
-        3
-    } else if word_slice_at_is(&words, 1, "it") {
-        2
-    } else {
-        return false;
-    };
-    if !word_slice_at_is(&words, at_idx, "at") {
-        return false;
-    }
-    has_end_of_combat_tail(&words, at_idx)
+    has_token_at_end_of_combat_shape(&words, &REPLACE_EXILE_WORD_PATTERN)
 }
 
 pub(crate) fn is_sacrifice_that_token_at_end_of_combat(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if !word_slice_first_is(&words, "sacrifice") {
-        return false;
-    }
-
-    let at_idx = if word_slice_at_is_any(&words, 1, &["that", "the", "those"])
-        && word_slice_at_is_any(&words, 2, &["token", "tokens"])
-    {
-        3
-    } else if word_slice_at_is(&words, 1, "it") {
-        2
-    } else {
-        return false;
-    };
-    if !word_slice_at_is(&words, at_idx, "at") {
-        return false;
-    }
-    has_end_of_combat_tail(&words, at_idx)
+    has_token_at_end_of_combat_shape(&words, &REPLACE_SACRIFICE_WORD_PATTERN)
 }
 
 pub(crate) fn is_sacrifice_that_token_at_end_of_combat_lexed(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if !word_slice_first_is(&words, "sacrifice") {
+    has_token_at_end_of_combat_shape(&words, &REPLACE_SACRIFICE_WORD_PATTERN)
+}
+
+fn has_token_at_end_of_combat_shape(words: &[&str], verb: &ClauseShape<'static>) -> bool {
+    if !verb.matches_word_at(words, 0) {
         return false;
     }
 
-    let at_idx = if word_slice_at_is_any(&words, 1, &["that", "the", "those"])
-        && word_slice_at_is_any(&words, 2, &["token", "tokens"])
+    let at_idx = if REPLACE_THAT_THE_THOSE_WORD_PATTERN.matches_word_at(words, 1)
+        && REPLACE_TOKEN_OR_TOKENS_WORD_PATTERN.matches_word_at(words, 2)
     {
         3
-    } else if word_slice_at_is(&words, 1, "it") {
+    } else if REPLACE_IT_WORD_PATTERN.matches_word_at(words, 1) {
         2
     } else {
         return false;
     };
-    if !word_slice_at_is(&words, at_idx, "at") {
-        return false;
-    }
-    has_end_of_combat_tail(&words, at_idx)
+    REPLACE_AT_WORD_PATTERN.matches_word_at(words, at_idx)
+        && has_end_of_combat_tail(words, at_idx)
 }
 
 fn has_end_of_combat_tail(words: &[&str], at_idx: usize) -> bool {
-    matches!(
-        words.get(at_idx + 1..),
-        Some(["end", "of", "combat"] | ["the", "end", "of", "combat"])
-    )
+    words
+        .get(at_idx + 1..)
+        .is_some_and(|tail| REPLACE_END_OF_COMBAT_TAIL_PATTERN.matches_words(tail))
 }
 
 pub(crate) fn parse_take_extra_turn_sentence(
@@ -218,131 +428,15 @@ pub(crate) fn parse_additional_phase_sentence(tokens: &[OwnedLexToken]) -> Optio
     }
 
     let words = parser_token_word_refs(tokens);
-    let pattern = word_slice_matching_value(
-        &words,
-        &[
-            (
-                &[
-                    "after",
-                    "this",
-                    "phase",
-                    "theres",
-                    "an",
-                    "additional",
-                    "combat",
-                    "phase",
-                ],
-                AdditionalPhasePattern::OneCombat,
-            ),
-            (
-                &[
-                    "there",
-                    "is",
-                    "an",
-                    "additional",
-                    "combat",
-                    "phase",
-                    "after",
-                    "this",
-                    "phase",
-                ],
-                AdditionalPhasePattern::OneCombat,
-            ),
-            (
-                &[
-                    "theres",
-                    "an",
-                    "additional",
-                    "combat",
-                    "phase",
-                    "after",
-                    "this",
-                    "phase",
-                ],
-                AdditionalPhasePattern::OneCombat,
-            ),
-            (
-                &[
-                    "after",
-                    "this",
-                    "phase",
-                    "there",
-                    "is",
-                    "an",
-                    "additional",
-                    "combat",
-                    "phase",
-                ],
-                AdditionalPhasePattern::OneCombat,
-            ),
-            (
-                &[
-                    "after",
-                    "this",
-                    "combat",
-                    "phase",
-                    "there",
-                    "is",
-                    "an",
-                    "additional",
-                    "combat",
-                    "phase",
-                ],
-                AdditionalPhasePattern::OneCombat,
-            ),
-            (
-                &[
-                    "after",
-                    "this",
-                    "main",
-                    "phase",
-                    "there",
-                    "is",
-                    "an",
-                    "additional",
-                    "combat",
-                    "phase",
-                ],
-                AdditionalPhasePattern::OneCombat,
-            ),
-            (
-                &[
-                    "after",
-                    "this",
-                    "main",
-                    "phase",
-                    "there",
-                    "are",
-                    "two",
-                    "additional",
-                    "combat",
-                    "phases",
-                ],
-                AdditionalPhasePattern::TwoCombats,
-            ),
-            (
-                &[
-                    "after",
-                    "this",
-                    "main",
-                    "phase",
-                    "there",
-                    "is",
-                    "an",
-                    "additional",
-                    "combat",
-                    "phase",
-                    "followed",
-                    "by",
-                    "an",
-                    "additional",
-                    "main",
-                    "phase",
-                ],
-                AdditionalPhasePattern::CombatThenMain,
-            ),
-        ],
-    )?;
+    let pattern = if REPLACE_ADDITIONAL_COMBAT_AFTER_THIS_PHASE_PATTERN.matches_words(&words) {
+        AdditionalPhasePattern::OneCombat
+    } else if REPLACE_TWO_ADDITIONAL_COMBATS_PATTERN.matches_words(&words) {
+        AdditionalPhasePattern::TwoCombats
+    } else if REPLACE_ADDITIONAL_COMBAT_THEN_MAIN_PATTERN.matches_words(&words) {
+        AdditionalPhasePattern::CombatThenMain
+    } else {
+        return None;
+    };
     let phases = match pattern {
         AdditionalPhasePattern::OneCombat => vec![AdditionalPhase::Combat],
         AdditionalPhasePattern::TwoCombats => {
@@ -363,9 +457,9 @@ pub(crate) fn parse_destroy_or_exile_all_split_sentence(
         return Ok(None);
     }
 
-    let verb = if word_slice_first_is(&words, "destroy") {
+    let verb = if REPLACE_DESTROY_WORD_PATTERN.matches_word_at(&words, 0) {
         Some(Verb::Destroy)
-    } else if word_slice_first_is(&words, "exile") {
+    } else if REPLACE_EXILE_WORD_PATTERN.matches_word_at(&words, 0) {
         Some(Verb::Exile)
     } else {
         None
@@ -373,16 +467,15 @@ pub(crate) fn parse_destroy_or_exile_all_split_sentence(
     let Some(verb) = verb else {
         return Ok(None);
     };
-    if !word_slice_at_is(&words, 1, "all")
-        || !grammar::contains_word(tokens, "and")
-        || grammar::contains_word(tokens, "except")
+    if !REPLACE_ALL_WORD_PATTERN.matches_word_at(&words, 1)
+        || !REPLACE_AND_MARKER_PATTERN.matches_words(&words)
+        || REPLACE_EXCEPT_MARKER_PATTERN.matches_words(&words)
     {
         return Ok(None);
     }
-    if grammar::words_match_any_prefix(tokens, EXILE_ALL_CARDS_FROM_PREFIXES).is_some()
-        && (grammar::contains_word(tokens, "hand") || grammar::contains_word(tokens, "hands"))
-        && (grammar::contains_word(tokens, "graveyard")
-            || grammar::contains_word(tokens, "graveyards"))
+    if REPLACE_EXILE_ALL_CARDS_FROM_PREFIX_PATTERN.matches_words(&words)
+        && REPLACE_HAND_MARKER_PATTERN.matches_words(&words)
+        && REPLACE_GRAVEYARD_MARKER_PATTERN.matches_words(&words)
     {
         return Ok(None);
     }
@@ -390,7 +483,7 @@ pub(crate) fn parse_destroy_or_exile_all_split_sentence(
     let mut raw_segments = Vec::new();
     let mut current = Vec::new();
     for token in &tokens[2..] {
-        if token.is_word("and") || token.is_comma() {
+        if REPLACE_AND_WORD_PATTERN.matches_token(token) || token.is_comma() {
             if !current.is_empty() {
                 raw_segments.push(std::mem::take(&mut current));
             }
@@ -454,29 +547,28 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
     let mut clause_tokens = tokens;
     if clause_tokens
         .first()
-        .is_some_and(|token| token.is_word("you"))
+        .is_some_and(|token| REPLACE_YOU_WORD_PATTERN.matches_token(token))
         && clause_tokens
             .get(1)
-            .is_some_and(|token| token.is_word("exile"))
+            .is_some_and(|token| REPLACE_EXILE_WORD_PATTERN.matches_token(token))
     {
         clause_tokens = &clause_tokens[1..];
     } else if clause_tokens
         .first()
-        .is_some_and(|token| token.is_word("you"))
+        .is_some_and(|token| REPLACE_YOU_WORD_PATTERN.matches_token(token))
         && clause_tokens
             .get(1)
-            .is_some_and(|token| token.is_word("may"))
+            .is_some_and(|token| REPLACE_MAY_WORD_PATTERN.matches_token(token))
         && clause_tokens
             .get(2)
-            .is_some_and(|token| token.is_word("exile"))
+            .is_some_and(|token| REPLACE_EXILE_WORD_PATTERN.matches_token(token))
     {
         clause_tokens = &clause_tokens[2..];
     }
 
     let words_all = crate::runtime_backend::token_word_refs(clause_tokens);
-    if !word_slice_first_is(&words_all, "exile")
-        || !grammar::contains_word(clause_tokens, "then")
-        || !grammar::contains_word(clause_tokens, "return")
+    if !REPLACE_EXILE_WORD_PATTERN.matches_word_at(&words_all, 0)
+        || !REPLACE_THEN_RETURN_MARKER_PATTERN.matches_words(&words_all)
     {
         return Ok(None);
     }
@@ -545,15 +637,19 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
         )
     });
     if !has_counter_followup
-        && let Some(with_idx) = find_index(second_clause, |token| token.is_word("with"))
+        && let Some(with_idx) = find_index(second_clause, |token| {
+            REPLACE_WITH_WORD_PATTERN.matches_token(token)
+        })
         && let Some(on_rel_idx) = rfind_index(&second_clause[with_idx + 1..], |token| {
-            token.is_word("on")
+            REPLACE_ON_WORD_PATTERN.matches_token(token)
         })
     {
         let on_idx = with_idx + 1 + on_rel_idx;
         let counter_tokens = trim_commas(&second_clause[with_idx + 1..on_idx]);
         let on_tail_words = crate::runtime_backend::token_word_refs(&second_clause[on_idx + 1..]);
-        if word_slice_first_is_any(&on_tail_words, &["it", "them"]) && !counter_tokens.is_empty() {
+        if REPLACE_IT_OR_THEM_WORD_PATTERN.matches_word_at(&on_tail_words, 0)
+            && !counter_tokens.is_empty()
+        {
             let (count, counter_type) =
                 super::zone_counter_helpers::parse_counter_descriptor(&counter_tokens)?;
             second_effects.push(EffectAst::subject_verb_put_counters(
@@ -607,10 +703,10 @@ pub(crate) fn parse_exile_up_to_one_each_target_type_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if words.len() < 6 || words[0] != "exile" {
+    if words.len() < 6 || !REPLACE_EXILE_WORD_PATTERN.matches_words(&words[..1]) {
         return Ok(None);
     }
-    if grammar::words_match_prefix(tokens, &["exile", "up", "to", "one", "target"]).is_none() {
+    if replace_up_to_one_target_prefix_len(tokens.get(1..).unwrap_or_default()).is_none() {
         return Ok(None);
     }
     // This primitive is for repeated clauses like:
@@ -620,16 +716,16 @@ pub(crate) fn parse_exile_up_to_one_each_target_type_sentence(
     let target_positions: Vec<usize> = tokens
         .iter()
         .enumerate()
-        .filter_map(|(idx, token)| token.is_word("target").then_some(idx))
+        .filter_map(|(idx, token)| {
+            REPLACE_TARGET_WORD_PATTERN.matches_token(token).then_some(idx)
+        })
         .collect();
     if target_positions.len() < 2 {
         return Ok(None);
     }
     for pos in target_positions.iter().skip(1) {
         if *pos < 3
-            || !tokens[*pos - 3].is_word("up")
-            || !tokens[*pos - 2].is_word("to")
-            || !tokens[*pos - 1].is_word("one")
+            || replace_up_to_one_target_prefix_len(&tokens[*pos - 3..=*pos]).is_none()
         {
             return Ok(None);
         }
@@ -638,7 +734,8 @@ pub(crate) fn parse_exile_up_to_one_each_target_type_sentence(
     let mut raw_segments: Vec<Vec<OwnedLexToken>> = Vec::new();
     let mut current: Vec<OwnedLexToken> = Vec::new();
     for token in &tokens[1..] {
-        if token.is_comma() || token.is_word("and") || token.is_word("or") {
+        if token.is_comma() || REPLACE_AND_OR_WORD_PATTERN.matches_token(token)
+        {
             if !current.is_empty() {
                 raw_segments.push(std::mem::take(&mut current));
             }
@@ -653,12 +750,8 @@ pub(crate) fn parse_exile_up_to_one_each_target_type_sentence(
     let mut filters = Vec::new();
     for segment in raw_segments {
         let mut slice: &[OwnedLexToken] = &segment;
-        if slice.len() >= 3
-            && slice[0].is_word("up")
-            && slice[1].is_word("to")
-            && slice[2].is_word("one")
-        {
-            slice = &slice[3..];
+        if let Some(used) = replace_up_to_one_target_prefix_len(slice) {
+            slice = &slice[used..];
         }
         if token_slice_first_is(slice, "target") {
             slice = &slice[1..];
@@ -704,58 +797,26 @@ pub(crate) fn parse_look_at_hand_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if word_slice_eq(
-        &words,
-        &[
-            "look",
-            "at",
-            "an",
-            "opponents",
-            "hand",
-            "then",
-            "choose",
-            "any",
-            "card",
-            "name",
-        ],
-    ) {
+    if REPLACE_LOOK_OPPONENT_HAND_THEN_CHOOSE_NAME_PATTERN.matches_words(&words) {
         return Ok(Some(vec![
             EffectAst::subject_verb_look_at_hand(TargetAst::Player(PlayerFilter::Opponent, None)),
             EffectAst::subject_verb_choose_card_name(PlayerAst::You, None, TagKey::from(IT_TAG)),
         ]));
     }
-    if word_slice_eq_any(
-        &words,
-        &[
-            &["look", "at", "target", "players", "hand"],
-            &["look", "at", "target", "player", "hand"],
-        ],
-    ) {
+    if REPLACE_LOOK_TARGET_PLAYER_HAND_PATTERN.matches_words(&words) {
         let target = TargetAst::Player(PlayerFilter::target_player(), Some(TextSpan::synthetic()));
         return Ok(Some(vec![EffectAst::subject_verb_look_at_hand(target)]));
     }
-    if word_slice_eq_any(
-        &words,
-        &[
-            &["look", "at", "target", "opponent", "hand"],
-            &["look", "at", "target", "opponents", "hand"],
-        ],
-    ) {
+    if REPLACE_LOOK_TARGET_OPPONENT_HAND_PATTERN.matches_words(&words) {
         let target =
             TargetAst::Player(PlayerFilter::target_opponent(), Some(TextSpan::synthetic()));
         return Ok(Some(vec![EffectAst::subject_verb_look_at_hand(target)]));
     }
-    if word_slice_eq_any(
-        &words,
-        &[
-            &["look", "at", "an", "opponents", "hand"],
-            &["look", "at", "opponents", "hand"],
-        ],
-    ) {
+    if REPLACE_LOOK_OPPONENT_HAND_PATTERN.matches_words(&words) {
         let target = TargetAst::Player(PlayerFilter::Opponent, None);
         return Ok(Some(vec![EffectAst::subject_verb_look_at_hand(target)]));
     }
-    if word_slice_eq(&words, &["look", "at", "that", "players", "hand"]) {
+    if REPLACE_LOOK_THAT_PLAYER_HAND_PATTERN.matches_words(&words) {
         let target = TargetAst::Player(PlayerFilter::IteratedPlayer, None);
         return Ok(Some(vec![EffectAst::subject_verb_look_at_hand(target)]));
     }
@@ -766,15 +827,13 @@ pub(crate) fn parse_look_at_top_then_exile_one_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let starts_with_look_top = word_slice_starts_with_any(
-        &clause_words,
-        &[&["look", "at", "the", "top"], &["look", "at", "top"]],
-    );
-    if !starts_with_look_top {
+    if !REPLACE_LOOK_TOP_PREFIX_PATTERN.matches_words(&clause_words) {
         return Ok(None);
     }
 
-    let Some(top_idx) = find_index(tokens, |token| token.is_word("top")) else {
+    let Some(top_idx) = find_index(tokens, |token| {
+        REPLACE_TOP_WORD_PATTERN.matches_token(token)
+    }) else {
         return Ok(None);
     };
     let Some((count, used_count)) = parse_number(&tokens[top_idx + 1..]) else {
@@ -789,8 +848,10 @@ pub(crate) fn parse_look_at_top_then_exile_one_sentence(
     }
     idx += 1;
 
-    let Some(library_idx) =
-        find_index(&tokens[idx..], |token| token.is_word("library")).map(|offset| idx + offset)
+    let Some(library_idx) = find_index(&tokens[idx..], |token| {
+        REPLACE_LIBRARY_WORD_PATTERN.matches_token(token)
+    })
+    .map(|offset| idx + offset)
     else {
         return Ok(None);
     };
@@ -811,15 +872,7 @@ pub(crate) fn parse_look_at_top_then_exile_one_sentence(
         )
         .to_vec();
     let tail_words = crate::runtime_backend::token_word_refs(&tail_tokens);
-    let looks_like_exile_one_of_looked = word_slice_starts_with_any(
-        &tail_words,
-        &[
-            &["exile", "one", "of", "them"],
-            &["exile", "one", "of", "those"],
-            &["exile", "one", "of", "those", "cards"],
-        ],
-    );
-    if !looks_like_exile_one_of_looked {
+    if !REPLACE_EXILE_ONE_OF_LOOKED_PREFIX_PATTERN.matches_words(&tail_words) {
         return Ok(None);
     }
 
@@ -854,20 +907,15 @@ pub(crate) fn parse_you_and_each_opponent_voted_with_you_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    let pattern = [
-        "you", "and", "each", "opponent", "who", "voted", "for", "a", "choice", "you", "voted",
-        "for", "may", "scry",
-    ];
-
-    if words.len() < pattern.len() {
+    if words.len() < REPLACE_VOTED_WITH_YOU_SCRY_PREFIX_LEN {
         return Ok(None);
     }
 
-    if grammar::words_match_prefix(tokens, &pattern).is_none() {
+    if !REPLACE_VOTED_WITH_YOU_SCRY_PREFIX_PATTERN.matches_words(&words) {
         return Ok(None);
     }
 
-    let scry_index = pattern.len() - 1;
+    let scry_index = REPLACE_VOTED_WITH_YOU_SCRY_PREFIX_LEN - 1;
     let value_tokens = &tokens[(scry_index + 1)..];
     let Some((count, _)) = parse_value(value_tokens) else {
         return Err(CardTextError::ParseError(format!(

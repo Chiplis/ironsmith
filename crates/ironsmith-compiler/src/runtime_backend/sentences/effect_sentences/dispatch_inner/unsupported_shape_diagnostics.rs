@@ -1,20 +1,33 @@
+const UNSUPPORTED_GAIN_LIFE_EQUAL_TO_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["life", "equal", "to"]);
+const UNSUPPORTED_ITS_POWER_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["its", "power"]]);
+const UNSUPPORTED_X_PLUS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["x", "plus"]);
+const UNSUPPORTED_GAIN_OR_GAINS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["gain"], &["gains"]]);
+const UNSUPPORTED_NEGATION_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["cant"], &["cannot"], &["doesnt"], &["don't"], &["dont"]]);
+const UNSUPPORTED_LIFE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["life"]);
+
 pub(crate) fn parse_gain_life_equal_to_power_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(gain_idx) = find_index(words.as_slice(), |word| matches!(*word, "gain" | "gains"))
-    else {
+    let Some(gain_idx) = find_index(words.as_slice(), |word| {
+        UNSUPPORTED_GAIN_OR_GAINS_WORD_PATTERN.matches_word(word)
+    }) else {
         return Ok(None);
     };
 
-    if !word_slice_starts_with_at(&words, gain_idx + 1, &["life", "equal", "to"]) {
+    if !words
+        .get(gain_idx + 1..)
+        .is_some_and(|words| UNSUPPORTED_GAIN_LIFE_EQUAL_TO_PREFIX_PATTERN.matches_words(words))
+    {
         return Ok(None);
     }
 
     let tail = &words[gain_idx + 4..];
-    let has_its_power =
-        crate::runtime_backend::lexer::word_slice_contains_phrase(tail, &["its", "power"]);
-    if !has_its_power {
+    if !UNSUPPORTED_ITS_POWER_MARKER_PATTERN.matches_words(tail) {
         return Ok(None);
     }
 
@@ -49,15 +62,13 @@ pub(crate) fn parse_gain_x_plus_life_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(gain_idx) = find_index(words.as_slice(), |word| matches!(*word, "gain" | "gains"))
-    else {
+    let Some(gain_idx) = find_index(words.as_slice(), |word| {
+        UNSUPPORTED_GAIN_OR_GAINS_WORD_PATTERN.matches_word(word)
+    }) else {
         return Ok(None);
     };
     if gain_idx > 0
-        && matches!(
-            words[gain_idx - 1],
-            "cant" | "cannot" | "doesnt" | "don't" | "dont"
-        )
+        && UNSUPPORTED_NEGATION_WORD_PATTERN.matches_word(words[gain_idx - 1])
     {
         return Ok(None);
     }
@@ -66,7 +77,7 @@ pub(crate) fn parse_gain_x_plus_life_sentence(
         return Ok(None);
     }
 
-    if words[gain_idx + 1] != "x" || words[gain_idx + 2] != "plus" {
+    if !UNSUPPORTED_X_PLUS_PREFIX_PATTERN.matches_words(&words[gain_idx + 1..]) {
         return Ok(None);
     }
 
@@ -79,7 +90,7 @@ pub(crate) fn parse_gain_x_plus_life_sentence(
     let life_idx = gain_idx + 3 + number_used;
     if !tokens
         .get(life_idx)
-        .is_some_and(|token| token.is_word("life"))
+        .is_some_and(|token| UNSUPPORTED_LIFE_WORD_PATTERN.matches_token(token))
     {
         return Err(CardTextError::ParseError(format!(
             "missing life keyword in gain-x-plus-life clause (clause: '{}')",

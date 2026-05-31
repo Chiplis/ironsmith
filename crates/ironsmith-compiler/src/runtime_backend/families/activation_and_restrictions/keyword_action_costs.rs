@@ -9,6 +9,374 @@ use crate::runtime_backend::value_helpers::{
 };
 
 const PAYMENT_FOR_EACH_PREFIXES: &[&[&str]] = &[&["for", "each"], &["each"]];
+const UNTAP_ONLY_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["untap"], &["untaps"]]);
+const UNTAP_RESTRICTION_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any & [&["untap"], &["untaps"]];
+    contains_words & ["during"];
+    contains_any_words & [&["step", "steps"]]
+);
+const CUMULATIVE_UPKEEP_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["cumulative", "upkeep"]);
+const ADD_MANA_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["add"]);
+const PAY_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix_any & [&["pay"], &["pays"]]);
+const MANA_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["mana"]);
+const WHERE_X_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix_any & [&["where", "x", "is"], &["where", "x", "equals"]]);
+const SAME_NAME_AS_TRIGGERING_SPELL_GRAVEYARD_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &["same", "name", "as", "the", "spell"],
+            &["same", "name", "as", "that", "spell"],
+        ]];
+    contains_any_words & [&["graveyard", "graveyards"]]
+);
+const CREW_SORCERY_SPEED_REMINDER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["activate", "only", "as", "a", "sorcery"]]);
+const ONCE_PER_TURN_REMINDER_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &["activate", "only", "once", "each", "turn"],
+            &["activate", "only", "once", "per", "turn"],
+        ]]
+);
+const AURA_SWAP_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["aura", "swap"]);
+const EMERGE_FROM_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["emerge", "from"]);
+const UMBRA_ARMOR_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["umbra", "armor"]);
+const JOB_SELECT_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["job", "select"]);
+const TOXIC_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["toxic"]);
+const FIRST_STRIKE_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["first", "strike"]);
+const DOUBLE_STRIKE_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["double", "strike"]);
+const PROTECTION_FROM_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["protection", "from"]);
+const AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["and"]);
+const AND_EXACT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
+const OR_EXACT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
+const CAN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["can"]);
+const YOU_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["you"]);
+const T_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["t"]);
+const VE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["ve"]);
+const CANT_CONTRACTION_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["cannot"], &["can't"]]);
+const YOUVE_CONTRACTION_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["you've"]);
+const COST_OR_COSTS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["cost"], &["costs"]]);
+const SUNBURST_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["sunburst"]);
+const IT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["it"]);
+const DEAL_OR_DEALS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["deal"], &["deals"]]);
+const OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["or"]);
+const AND_OR_CONNECTOR_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["and"], &["or"]]);
+const LIFE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["life"]);
+const ENCHANTED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["enchanted"]);
+const CONTROLLER_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["controller"]);
+const ATTACHED_CONTROLLER_OBJECT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["creature"],
+            &["creatures"],
+            &["permanent"],
+            &["permanents"],
+            &["artifact"],
+            &["artifacts"],
+            &["enchantment"],
+            &["enchantments"],
+            &["land"],
+            &["lands"],
+        ]
+);
+const DISCARD_OR_DISCARDS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_words & [&["discard", "discards"]]);
+const CARD_OR_CARDS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_words & [&["card", "cards"]]);
+const SPELL_OR_SPELLS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_words & [&["spell", "spells"]]);
+const EVERYTHING_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["everything"]);
+const CANT_BE_BLOCKED_SUFFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(suffix_any & [&["cant", "be", "blocked"], &["cannot", "be", "blocked"]]);
+
+const SIMPLE_HEAD_KEYWORD_ACTIONS: &[(&str, KeywordAction)] = &[
+    ("evolve", KeywordAction::Evolve),
+    ("mentor", KeywordAction::Mentor),
+    ("training", KeywordAction::Training),
+    ("soulbond", KeywordAction::Soulbond),
+    ("sunburst", KeywordAction::Sunburst),
+    ("cascade", KeywordAction::Cascade),
+    ("demonstrate", KeywordAction::Demonstrate),
+];
+
+#[derive(Debug, Clone, Copy)]
+enum KeywordAmountKind {
+    Afterlife,
+    Backup,
+    Fabricate,
+    Fading,
+    Graft,
+    Modular,
+    Renown,
+    Soulshift,
+    Vanishing,
+    Ward,
+}
+
+const NUMERIC_KEYWORD_ACTIONS: &[(&str, KeywordAmountKind)] = &[
+    ("afterlife", KeywordAmountKind::Afterlife),
+    ("backup", KeywordAmountKind::Backup),
+    ("fabricate", KeywordAmountKind::Fabricate),
+    ("fading", KeywordAmountKind::Fading),
+    ("graft", KeywordAmountKind::Graft),
+    ("modular", KeywordAmountKind::Modular),
+    ("renown", KeywordAmountKind::Renown),
+    ("soulshift", KeywordAmountKind::Soulshift),
+    ("vanishing", KeywordAmountKind::Vanishing),
+    ("ward", KeywordAmountKind::Ward),
+];
+
+const MARKER_KEYWORD_FALLBACK_HEADS: &[&str] = &[
+    "fabricate",
+    "foretell",
+    "bestow",
+    "dash",
+    "overload",
+    "soulshift",
+    "adapt",
+    "bolster",
+    "disturb",
+    "embalm",
+    "emerge",
+    "echo",
+    "modular",
+    "ninjutsu",
+    "outlast",
+    "suspend",
+    "vanishing",
+    "offering",
+    "specialize",
+    "spectacle",
+    "graft",
+    "backup",
+    "fading",
+    "fuse",
+    "plot",
+    "disguise",
+    "tribute",
+    "buyback",
+    "flashback",
+];
+const MARKER_KEYWORD_IDS: &[&str] = &[
+    "banding",
+    "fabricate",
+    "foretell",
+    "bestow",
+    "dash",
+    "overload",
+    "soulshift",
+    "adapt",
+    "bolster",
+    "disturb",
+    "embalm",
+    "emerge",
+    "echo",
+    "modular",
+    "ninjutsu",
+    "outlast",
+    "scavenge",
+    "suspend",
+    "vanishing",
+    "offering",
+    "soulbond",
+    "unearth",
+    "specialize",
+    "squad",
+    "spectacle",
+    "graft",
+    "backup",
+    "saddle",
+    "fading",
+    "fuse",
+    "plot",
+    "disguise",
+    "tribute",
+    "buyback",
+    "flashback",
+    "rebound",
+];
+const AMOUNT_MARKER_KEYWORDS: &[&str] = &[
+    "soulshift",
+    "adapt",
+    "bolster",
+    "modular",
+    "vanishing",
+    "backup",
+    "saddle",
+    "fading",
+    "graft",
+    "tribute",
+];
+const COST_MARKER_KEYWORDS: &[&str] = &[
+    "bestow",
+    "dash",
+    "disturb",
+    "embalm",
+    "emerge",
+    "ninjutsu",
+    "outlast",
+    "scavenge",
+    "unearth",
+    "specialize",
+    "spectacle",
+    "plot",
+    "disguise",
+    "flashback",
+    "foretell",
+    "overload",
+];
+const ECHO_MARKER_KEYWORD: &str = "echo";
+const BUYBACK_MARKER_KEYWORD: &str = "buyback";
+const SUSPEND_MARKER_KEYWORD: &str = "suspend";
+const REBOUND_MARKER_KEYWORD: &str = "rebound";
+const SQUAD_MARKER_KEYWORD: &str = "squad";
+const SINGLE_WORD_KEYWORD_ACTIONS: &[(&str, KeywordAction)] = &[
+    ("flying", KeywordAction::Flying),
+    ("menace", KeywordAction::Menace),
+    ("banding", KeywordAction::Banding),
+    ("hexproof", KeywordAction::Hexproof),
+    ("haste", KeywordAction::Haste),
+    ("improvise", KeywordAction::Improvise),
+    ("convoke", KeywordAction::Convoke),
+    ("delve", KeywordAction::Delve),
+    ("deathtouch", KeywordAction::Deathtouch),
+    ("lifelink", KeywordAction::Lifelink),
+    ("vigilance", KeywordAction::Vigilance),
+    ("trample", KeywordAction::Trample),
+    ("reach", KeywordAction::Reach),
+    ("defender", KeywordAction::Defender),
+    ("decayed", KeywordAction::Decayed),
+    ("flash", KeywordAction::Flash),
+    ("phasing", KeywordAction::Phasing),
+    ("indestructible", KeywordAction::Indestructible),
+    ("shroud", KeywordAction::Shroud),
+    ("assist", KeywordAction::Assist),
+    ("backup", KeywordAction::Marker("backup")),
+    ("cipher", KeywordAction::Cipher),
+    ("devoid", KeywordAction::Devoid),
+    ("dethrone", KeywordAction::Dethrone),
+    ("enlist", KeywordAction::Enlist),
+    ("evolve", KeywordAction::Evolve),
+    ("extort", KeywordAction::Extort),
+    ("haunt", KeywordAction::Haunt),
+    ("ingest", KeywordAction::Ingest),
+    ("mentor", KeywordAction::Mentor),
+    ("melee", KeywordAction::Melee),
+    ("training", KeywordAction::Training),
+    ("myriad", KeywordAction::Myriad),
+    ("partner", KeywordAction::Partner),
+    ("provoke", KeywordAction::Provoke),
+    ("ravenous", KeywordAction::Ravenous),
+    ("riot", KeywordAction::Riot),
+    ("skulk", KeywordAction::Skulk),
+    ("sunburst", KeywordAction::Sunburst),
+    ("undaunted", KeywordAction::Undaunted),
+    ("unleash", KeywordAction::Unleash),
+    ("wither", KeywordAction::Wither),
+    ("infect", KeywordAction::Infect),
+    ("undying", KeywordAction::Undying),
+    ("persist", KeywordAction::Persist),
+    ("prowess", KeywordAction::Prowess),
+    ("exalted", KeywordAction::Exalted),
+    ("cascade", KeywordAction::Cascade),
+    ("storm", KeywordAction::Storm),
+    ("demonstrate", KeywordAction::Demonstrate),
+    ("rebound", KeywordAction::Rebound),
+    ("ascend", KeywordAction::Ascend),
+    ("compleated", KeywordAction::Marker("compleated")),
+    ("daybound", KeywordAction::Daybound),
+    ("nightbound", KeywordAction::Nightbound),
+    (
+        "islandwalk",
+        KeywordAction::Landwalk(crate::static_abilities::LandwalkKind::Subtype {
+            subtype: Subtype::Island,
+            snow: false,
+        }),
+    ),
+    (
+        "swampwalk",
+        KeywordAction::Landwalk(crate::static_abilities::LandwalkKind::Subtype {
+            subtype: Subtype::Swamp,
+            snow: false,
+        }),
+    ),
+    (
+        "mountainwalk",
+        KeywordAction::Landwalk(crate::static_abilities::LandwalkKind::Subtype {
+            subtype: Subtype::Mountain,
+            snow: false,
+        }),
+    ),
+    (
+        "forestwalk",
+        KeywordAction::Landwalk(crate::static_abilities::LandwalkKind::Subtype {
+            subtype: Subtype::Forest,
+            snow: false,
+        }),
+    ),
+    (
+        "plainswalk",
+        KeywordAction::Landwalk(crate::static_abilities::LandwalkKind::Subtype {
+            subtype: Subtype::Plains,
+            snow: false,
+        }),
+    ),
+    ("fear", KeywordAction::Fear),
+    ("intimidate", KeywordAction::Intimidate),
+    ("shadow", KeywordAction::Shadow),
+    ("horsemanship", KeywordAction::Horsemanship),
+    ("flanking", KeywordAction::Flanking),
+    ("changeling", KeywordAction::Changeling),
+];
+
+fn keyword_head_is(head: &str, keyword: &str) -> bool {
+    head == keyword
+}
+
+fn simple_keyword_action_for_head(head: &str) -> Option<KeywordAction> {
+    SIMPLE_HEAD_KEYWORD_ACTIONS
+        .iter()
+        .find_map(|(keyword, action)| keyword_head_is(head, keyword).then(|| action.clone()))
+}
+
+fn numeric_keyword_action(head: &str, amount: &str) -> Option<KeywordAction> {
+    let value = parse_named_number(amount)?;
+    NUMERIC_KEYWORD_ACTIONS
+        .iter()
+        .find_map(|(keyword, kind)| keyword_head_is(head, keyword).then_some(*kind))
+        .map(|kind| match kind {
+            KeywordAmountKind::Afterlife => KeywordAction::Afterlife(value),
+            KeywordAmountKind::Backup => KeywordAction::Backup(value),
+            KeywordAmountKind::Fabricate => KeywordAction::Fabricate(value),
+            KeywordAmountKind::Fading => KeywordAction::Fading(value),
+            KeywordAmountKind::Graft => KeywordAction::Graft(value),
+            KeywordAmountKind::Modular => KeywordAction::Modular(value),
+            KeywordAmountKind::Renown => KeywordAction::Renown(value),
+            KeywordAmountKind::Soulshift => KeywordAction::Soulshift(value),
+            KeywordAmountKind::Vanishing => KeywordAction::Vanishing(value),
+            KeywordAmountKind::Ward => KeywordAction::Ward(value),
+        })
+}
+
+fn is_marker_keyword_fallback_head(head: &str) -> bool {
+    MARKER_KEYWORD_FALLBACK_HEADS
+        .iter()
+        .any(|keyword| keyword_head_is(head, keyword))
+}
+
+fn marker_keyword_set_contains(set: &[&str], keyword: &str) -> bool {
+    set.iter()
+        .any(|candidate| keyword_head_is(keyword, candidate))
+}
 
 pub(crate) fn target_ast_to_object_filter(target: TargetAst) -> Option<ObjectFilter> {
     match target {
@@ -25,14 +393,11 @@ pub(crate) fn target_ast_to_object_filter(target: TargetAst) -> Option<ObjectFil
 }
 
 pub(crate) fn is_supported_untap_restriction_tail(words: &[&str]) -> bool {
-    if words.is_empty() {
-        return false;
-    }
-    if !(words[0] == "untap" || words[0] == "untaps") {
-        return false;
-    }
-    if words.len() == 1 {
+    if UNTAP_ONLY_TAIL_PATTERN.matches_words(words) {
         return true;
+    }
+    if !UNTAP_RESTRICTION_TAIL_PATTERN.matches_words(words) {
+        return false;
     }
 
     let allowed = [
@@ -54,8 +419,7 @@ pub(crate) fn is_supported_untap_restriction_tail(words: &[&str]) -> bool {
         return false;
     }
 
-    word_slice_contains_word(&words, "during")
-        && (word_slice_contains_word(&words, "step") || word_slice_contains_word(&words, "steps"))
+    true
 }
 
 pub(crate) fn normalize_cant_words(tokens: &[OwnedLexToken]) -> Vec<String> {
@@ -63,27 +427,25 @@ pub(crate) fn normalize_cant_words(tokens: &[OwnedLexToken]) -> Vec<String> {
     let mut normalized = Vec::with_capacity(words.len());
     let mut idx = 0;
     while idx < words.len() {
-        match words[idx] {
-            "cannot" | "can't" => {
-                normalized.push("cant".to_string());
-                idx += 1;
-            }
-            "can" if word_slice_at_is(&words, idx + 1, "t") => {
-                normalized.push("cant".to_string());
-                idx += 2;
-            }
-            "you've" => {
-                normalized.push("youve".to_string());
-                idx += 1;
-            }
-            "you" if word_slice_at_is(&words, idx + 1, "ve") => {
-                normalized.push("youve".to_string());
-                idx += 2;
-            }
-            word => {
-                normalized.push(word.to_string());
-                idx += 1;
-            }
+        if CANT_CONTRACTION_WORD_PATTERN.matches_word_at(&words, idx) {
+            normalized.push("cant".to_string());
+            idx += 1;
+        } else if CAN_WORD_PATTERN.matches_word_at(&words, idx)
+            && T_WORD_PATTERN.matches_word_at(&words, idx + 1)
+        {
+            normalized.push("cant".to_string());
+            idx += 2;
+        } else if YOUVE_CONTRACTION_WORD_PATTERN.matches_word_at(&words, idx) {
+            normalized.push("youve".to_string());
+            idx += 1;
+        } else if YOU_WORD_PATTERN.matches_word_at(&words, idx)
+            && VE_WORD_PATTERN.matches_word_at(&words, idx + 1)
+        {
+            normalized.push("youve".to_string());
+            idx += 2;
+        } else {
+            normalized.push(words[idx].to_string());
+            idx += 1;
         }
     }
     normalized
@@ -133,7 +495,7 @@ fn cumulative_upkeep_text(words: &[&str]) -> String {
         return text;
     }
 
-    if word_slice_first_is(tail, "add")
+    if ADD_MANA_PREFIX_PATTERN.matches_words(tail)
         && let Some((cost, consumed)) = leading_mana_symbols_to_oracle(&tail[1..])
         && consumed + 1 == tail.len()
     {
@@ -145,7 +507,7 @@ fn cumulative_upkeep_text(words: &[&str]) -> String {
         return format!("Cumulative upkeep {cost}");
     }
     if tail.len() == 3
-        && tail[1] == "or"
+        && OR_EXACT_WORD_PATTERN.matches_word(tail[1])
         && let (Some((left, 1)), Some((right, 1))) = (
             leading_mana_symbols_to_oracle(&tail[..1]),
             leading_mana_symbols_to_oracle(&tail[2..3]),
@@ -251,7 +613,7 @@ fn parse_payment_clause_as_effects(
 
 fn find_payment_alternative_or(tokens: &[OwnedLexToken]) -> Option<usize> {
     find_index_with(tokens, |idx, token| {
-        token.is_word("or") && !is_comparison_or_delimiter(tokens, idx)
+        OR_EXACT_WORD_PATTERN.matches_token(token) && !is_comparison_or_delimiter(tokens, idx)
     })
 }
 
@@ -301,10 +663,8 @@ pub(crate) fn parse_payment_clause_as_total_cost(
 fn parse_dynamic_payment_clause_as_total_cost(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TotalCost>, CardTextError> {
-    let tokens = if tokens
-        .first()
-        .is_some_and(|token| token.is_word("pay") || token.is_word("pays"))
-    {
+    let words_before_pay_strip = words(tokens);
+    let tokens = if PAY_PREFIX_PATTERN.matches_words(&words_before_pay_strip) {
         &tokens[1..]
     } else {
         tokens
@@ -314,7 +674,7 @@ fn parse_dynamic_payment_clause_as_total_cost(
         return Ok(None);
     }
     let token_words = words(&tokens);
-    if word_slice_first_is(&token_words, "mana")
+    if MANA_PREFIX_PATTERN.matches_words(&token_words)
         && let Some(value) = parse_equal_to_aggregate_filter_value(&tokens)
             .or_else(|| parse_equal_to_number_of_filter_value(&tokens))
     {
@@ -366,7 +726,7 @@ fn parse_dynamic_payment_clause_as_total_cost(
         if let Some((amount, used)) = parse_value(&life_tokens)
             && life_tokens
                 .get(used)
-                .is_some_and(|token| token.is_word("life"))
+                .is_some_and(|token| LIFE_WORD_PATTERN.matches_token(token))
             && trim_edge_punctuation(&trim_commas(&life_tokens[used + 1..])).is_empty()
         {
             return Ok(Some(TotalCost::from_costs(vec![
@@ -375,12 +735,7 @@ fn parse_dynamic_payment_clause_as_total_cost(
             ])));
         }
         return Ok(None);
-    } else if grammar::words_match_any_prefix(
-        &trailing,
-        &[&["where", "x", "is"], &["where", "x", "equals"]],
-    )
-    .is_some()
-    {
+    } else if WHERE_X_PREFIX_PATTERN.matches_words(&trailing_words) {
         if !mana_cost.has_x() {
             return Err(CardTextError::ParseError(format!(
                 "where-X payment clause has no X mana symbol (clause: '{}')",
@@ -388,17 +743,7 @@ fn parse_dynamic_payment_clause_as_total_cost(
             )));
         }
         x_value = parse_value_binding_clause(&trailing).or_else(|| {
-            if trailing_words
-                .iter()
-                .any(|word| matches!(*word, "graveyard" | "graveyards"))
-                && (word_slice_contains_phrase(
-                    &trailing_words,
-                    &["same", "name", "as", "the", "spell"],
-                ) || word_slice_contains_phrase(
-                    &trailing_words,
-                    &["same", "name", "as", "that", "spell"],
-                ))
-            {
+            if SAME_NAME_AS_TRIGGERING_SPELL_GRAVEYARD_PATTERN.matches_words(&trailing_words) {
                 Some(Value::Count(
                     ObjectFilter::default()
                         .in_zone(Zone::Graveyard)
@@ -437,100 +782,70 @@ fn parse_dynamic_payment_clause_as_total_cost(
 }
 
 pub(crate) fn marker_keyword_id(keyword: &str) -> Option<&'static str> {
-    match keyword {
-        "banding" => Some("banding"),
-        "fabricate" => Some("fabricate"),
-        "foretell" => Some("foretell"),
-        "bestow" => Some("bestow"),
-        "dash" => Some("dash"),
-        "overload" => Some("overload"),
-        "soulshift" => Some("soulshift"),
-        "adapt" => Some("adapt"),
-        "bolster" => Some("bolster"),
-        "disturb" => Some("disturb"),
-        "embalm" => Some("embalm"),
-        "emerge" => Some("emerge"),
-        "echo" => Some("echo"),
-        "modular" => Some("modular"),
-        "ninjutsu" => Some("ninjutsu"),
-        "outlast" => Some("outlast"),
-        "scavenge" => Some("scavenge"),
-        "suspend" => Some("suspend"),
-        "vanishing" => Some("vanishing"),
-        "offering" => Some("offering"),
-        "soulbond" => Some("soulbond"),
-        "unearth" => Some("unearth"),
-        "specialize" => Some("specialize"),
-        "squad" => Some("squad"),
-        "spectacle" => Some("spectacle"),
-        "graft" => Some("graft"),
-        "backup" => Some("backup"),
-        "saddle" => Some("saddle"),
-        "fading" => Some("fading"),
-        "fuse" => Some("fuse"),
-        "plot" => Some("plot"),
-        "disguise" => Some("disguise"),
-        "tribute" => Some("tribute"),
-        "buyback" => Some("buyback"),
-        "flashback" => Some("flashback"),
-        "rebound" => Some("rebound"),
-        _ => None,
-    }
+    MARKER_KEYWORD_IDS
+        .iter()
+        .copied()
+        .find(|candidate| keyword_head_is(keyword, candidate))
 }
 
 pub(crate) fn marker_keyword_display(words: &[&str]) -> Option<String> {
     let keyword = words.first().copied()?;
     let title = keyword_title(keyword);
 
-    match keyword {
-        "soulshift" | "adapt" | "bolster" | "modular" | "vanishing" | "backup" | "saddle"
-        | "fading" | "graft" | "tribute" => {
-            let amount = words.get(1)?.parse::<u32>().ok()?;
-            Some(format!("{title} {amount}"))
-        }
-        "bestow" | "dash" | "disturb" | "embalm" | "emerge" | "ninjutsu" | "outlast"
-        | "scavenge" | "unearth" | "specialize" | "spectacle" | "plot" | "disguise"
-        | "flashback" | "foretell" | "overload" => {
-            let (cost, _) = leading_mana_symbols_to_oracle(&words[1..])?;
-            Some(format!("{title} {cost}"))
-        }
-        "echo" => {
-            if let Some((cost, _)) = leading_mana_symbols_to_oracle(&words[1..]) {
-                return Some(format!("Echo {cost}"));
-            }
-            if words.len() > 1 {
-                let payload = words[1..].join(" ");
-                let mut chars = payload.chars();
-                let Some(first) = chars.next() else {
-                    return Some("Echo".to_string());
-                };
-                let mut normalized = String::new();
-                normalized.push(first.to_ascii_uppercase());
-                normalized.push_str(chars.as_str());
-                return Some(format!("Echo—{normalized}"));
-            }
-            Some("Echo".to_string())
-        }
-        "buyback" => {
-            if let Some((cost, _)) = leading_mana_symbols_to_oracle(&words[1..]) {
-                Some(format!("Buyback {cost}"))
-            } else if words.len() > 1 {
-                Some(format!("Buyback—{}", words[1..].join(" ")))
-            } else {
-                Some("Buyback".to_string())
-            }
-        }
-        "suspend" => {
-            let time = words.get(1)?.parse::<u32>().ok()?;
-            let (cost, _) = leading_mana_symbols_to_oracle(&words[2..])?;
-            Some(format!("Suspend {time}—{cost}"))
-        }
-        "rebound" => Some("Rebound".to_string()),
-        "squad" => {
-            let (cost, _) = leading_mana_symbols_to_oracle(&words[1..])?;
-            Some(format!("Squad {cost}"))
-        }
-        _ => None,
+    if marker_keyword_set_contains(AMOUNT_MARKER_KEYWORDS, keyword) {
+        let amount = words.get(1).and_then(|word| parse_named_number(word))?;
+        return Some(format!("{title} {amount}"));
+    }
+    if marker_keyword_set_contains(COST_MARKER_KEYWORDS, keyword) {
+        let (cost, _) = leading_mana_symbols_to_oracle(&words[1..])?;
+        return Some(format!("{title} {cost}"));
+    }
+    if keyword_head_is(keyword, ECHO_MARKER_KEYWORD) {
+        return echo_marker_keyword_display(words);
+    }
+    if keyword_head_is(keyword, BUYBACK_MARKER_KEYWORD) {
+        return buyback_marker_keyword_display(words);
+    }
+    if keyword_head_is(keyword, SUSPEND_MARKER_KEYWORD) {
+        let time = words.get(1).and_then(|word| parse_named_number(word))?;
+        let (cost, _) = leading_mana_symbols_to_oracle(&words[2..])?;
+        return Some(format!("Suspend {time}—{cost}"));
+    }
+    if keyword_head_is(keyword, REBOUND_MARKER_KEYWORD) {
+        return Some("Rebound".to_string());
+    }
+    if keyword_head_is(keyword, SQUAD_MARKER_KEYWORD) {
+        let (cost, _) = leading_mana_symbols_to_oracle(&words[1..])?;
+        return Some(format!("Squad {cost}"));
+    }
+    None
+}
+
+fn echo_marker_keyword_display(words: &[&str]) -> Option<String> {
+    if let Some((cost, _)) = leading_mana_symbols_to_oracle(&words[1..]) {
+        return Some(format!("Echo {cost}"));
+    }
+    if words.len() > 1 {
+        let payload = words[1..].join(" ");
+        let mut chars = payload.chars();
+        let Some(first) = chars.next() else {
+            return Some("Echo".to_string());
+        };
+        let mut normalized = String::new();
+        normalized.push(first.to_ascii_uppercase());
+        normalized.push_str(chars.as_str());
+        return Some(format!("Echo—{normalized}"));
+    }
+    Some("Echo".to_string())
+}
+
+fn buyback_marker_keyword_display(words: &[&str]) -> Option<String> {
+    if let Some((cost, _)) = leading_mana_symbols_to_oracle(&words[1..]) {
+        Some(format!("Buyback {cost}"))
+    } else if words.len() > 1 {
+        Some(format!("Buyback—{}", words[1..].join(" ")))
+    } else {
+        Some("Buyback".to_string())
     }
 }
 
@@ -552,10 +867,10 @@ pub(crate) fn parse_numeric_keyword_action<F>(
 where
     F: FnOnce(u32) -> KeywordAction,
 {
-    if !word_slice_first_is(words, keyword) {
+    if words.first().copied() != Some(keyword) {
         return None;
     }
-    if let Some(amount) = words.get(1).and_then(|word| word.parse::<u32>().ok()) {
+    if let Some(amount) = words.get(1).and_then(|word| parse_named_number(word)) {
         return Some(build(amount));
     }
     Some(KeywordAction::Marker(keyword))
@@ -564,6 +879,15 @@ where
 pub(crate) enum KeywordCostFallback {
     MarkerOnly,
     MarkerOrText,
+}
+
+impl KeywordCostFallback {
+    fn allows_marker_text(self) -> bool {
+        match self {
+            Self::MarkerOnly => false,
+            Self::MarkerOrText => true,
+        }
+    }
 }
 
 pub(crate) fn parse_cost_keyword_action<F>(
@@ -575,10 +899,10 @@ pub(crate) fn parse_cost_keyword_action<F>(
 where
     F: FnOnce(ManaCost) -> KeywordAction,
 {
-    if !word_slice_first_is(words, keyword) {
+    if words.first().copied() != Some(keyword) {
         return None;
     }
-    if word_slice_at_is_any(words, 1, &["cost", "costs"]) {
+    if COST_OR_COSTS_WORD_PATTERN.matches_word_at(words, 1) {
         return None;
     }
     if let Some((cost_text, _consumed)) = leading_mana_symbols_to_oracle(&words[1..])
@@ -586,7 +910,7 @@ where
     {
         return Some(build(cost));
     }
-    if matches!(fallback, KeywordCostFallback::MarkerOrText) && words.len() > 1 {
+    if fallback.allows_marker_text() && words.len() > 1 {
         if let Some(display) = marker_keyword_display(words) {
             return Some(KeywordAction::MarkerText(display));
         }
@@ -595,107 +919,191 @@ where
 }
 
 pub(crate) fn parse_single_word_keyword_action(word: &str) -> Option<KeywordAction> {
-    match word {
-        "flying" => Some(KeywordAction::Flying),
-        "menace" => Some(KeywordAction::Menace),
-        "banding" => Some(KeywordAction::Banding),
-        "hexproof" => Some(KeywordAction::Hexproof),
-        "haste" => Some(KeywordAction::Haste),
-        "improvise" => Some(KeywordAction::Improvise),
-        "convoke" => Some(KeywordAction::Convoke),
-        "delve" => Some(KeywordAction::Delve),
-        "deathtouch" => Some(KeywordAction::Deathtouch),
-        "lifelink" => Some(KeywordAction::Lifelink),
-        "vigilance" => Some(KeywordAction::Vigilance),
-        "trample" => Some(KeywordAction::Trample),
-        "reach" => Some(KeywordAction::Reach),
-        "defender" => Some(KeywordAction::Defender),
-        "decayed" => Some(KeywordAction::Decayed),
-        "flash" => Some(KeywordAction::Flash),
-        "phasing" => Some(KeywordAction::Phasing),
-        "indestructible" => Some(KeywordAction::Indestructible),
-        "shroud" => Some(KeywordAction::Shroud),
-        "assist" => Some(KeywordAction::Assist),
-        "backup" => Some(KeywordAction::Marker("backup")),
-        "cipher" => Some(KeywordAction::Cipher),
-        "devoid" => Some(KeywordAction::Devoid),
-        "dethrone" => Some(KeywordAction::Dethrone),
-        "enlist" => Some(KeywordAction::Enlist),
-        "evolve" => Some(KeywordAction::Evolve),
-        "extort" => Some(KeywordAction::Extort),
-        "haunt" => Some(KeywordAction::Haunt),
-        "ingest" => Some(KeywordAction::Ingest),
-        "mentor" => Some(KeywordAction::Mentor),
-        "melee" => Some(KeywordAction::Melee),
-        "training" => Some(KeywordAction::Training),
-        "myriad" => Some(KeywordAction::Myriad),
-        "partner" => Some(KeywordAction::Partner),
-        "provoke" => Some(KeywordAction::Provoke),
-        "ravenous" => Some(KeywordAction::Ravenous),
-        "riot" => Some(KeywordAction::Riot),
-        "skulk" => Some(KeywordAction::Skulk),
-        "sunburst" => Some(KeywordAction::Sunburst),
-        "undaunted" => Some(KeywordAction::Undaunted),
-        "unleash" => Some(KeywordAction::Unleash),
-        "wither" => Some(KeywordAction::Wither),
-        "infect" => Some(KeywordAction::Infect),
-        "undying" => Some(KeywordAction::Undying),
-        "persist" => Some(KeywordAction::Persist),
-        "prowess" => Some(KeywordAction::Prowess),
-        "exalted" => Some(KeywordAction::Exalted),
-        "cascade" => Some(KeywordAction::Cascade),
-        "storm" => Some(KeywordAction::Storm),
-        "demonstrate" => Some(KeywordAction::Demonstrate),
-        "rebound" => Some(KeywordAction::Rebound),
-        "ascend" => Some(KeywordAction::Ascend),
-        "compleated" => Some(KeywordAction::Marker("compleated")),
-        "daybound" => Some(KeywordAction::Daybound),
-        "nightbound" => Some(KeywordAction::Nightbound),
-        "islandwalk" => Some(KeywordAction::Landwalk(
-            crate::static_abilities::LandwalkKind::Subtype {
-                subtype: Subtype::Island,
-                snow: false,
-            },
-        )),
-        "swampwalk" => Some(KeywordAction::Landwalk(
-            crate::static_abilities::LandwalkKind::Subtype {
-                subtype: Subtype::Swamp,
-                snow: false,
-            },
-        )),
-        "mountainwalk" => Some(KeywordAction::Landwalk(
-            crate::static_abilities::LandwalkKind::Subtype {
-                subtype: Subtype::Mountain,
-                snow: false,
-            },
-        )),
-        "forestwalk" => Some(KeywordAction::Landwalk(
-            crate::static_abilities::LandwalkKind::Subtype {
-                subtype: Subtype::Forest,
-                snow: false,
-            },
-        )),
-        "plainswalk" => Some(KeywordAction::Landwalk(
-            crate::static_abilities::LandwalkKind::Subtype {
-                subtype: Subtype::Plains,
-                snow: false,
-            },
-        )),
-        "fear" => Some(KeywordAction::Fear),
-        "intimidate" => Some(KeywordAction::Intimidate),
-        "shadow" => Some(KeywordAction::Shadow),
-        "horsemanship" => Some(KeywordAction::Horsemanship),
-        "flanking" => Some(KeywordAction::Flanking),
-        "changeling" => Some(KeywordAction::Changeling),
-        _ => None,
+    SINGLE_WORD_KEYWORD_ACTIONS
+        .iter()
+        .find_map(|(keyword, action)| keyword_head_is(word, keyword).then(|| action.clone()))
+}
+
+#[derive(Clone, Copy)]
+enum SpecialAbilityPhrase {
+    VariableCasualtyPlaneswalkerCopy,
+    StartYourEngines,
+    AnyLandwalk,
+    NonbasicLandwalk,
+    ArtifactLandwalk,
+}
+
+const VARIABLE_CASUALTY_PLANESWALKER_COPY_PREFIX: &[&str] = &[
+    "casualty",
+    "x",
+    "the",
+    "copy",
+    "isnt",
+    "legendary",
+    "and",
+    "has",
+    "starting",
+    "loyalty",
+    "x",
+];
+
+const EXACT_SPECIAL_ABILITY_PHRASES: &[(&[&str], SpecialAbilityPhrase)] = &[
+    (
+        &["start", "your", "engines"],
+        SpecialAbilityPhrase::StartYourEngines,
+    ),
+    (&["landwalk"], SpecialAbilityPhrase::AnyLandwalk),
+    (
+        &["nonbasic", "landwalk"],
+        SpecialAbilityPhrase::NonbasicLandwalk,
+    ),
+    (
+        &["artifact", "landwalk"],
+        SpecialAbilityPhrase::ArtifactLandwalk,
+    ),
+];
+
+fn special_ability_phrase_action(kind: SpecialAbilityPhrase) -> KeywordAction {
+    match kind {
+        SpecialAbilityPhrase::VariableCasualtyPlaneswalkerCopy => {
+            KeywordAction::VariableCasualtyPlaneswalkerCopy
+        }
+        SpecialAbilityPhrase::StartYourEngines => KeywordAction::StartYourEngines,
+        SpecialAbilityPhrase::AnyLandwalk => {
+            KeywordAction::Landwalk(crate::static_abilities::LandwalkKind::AnyLand)
+        }
+        SpecialAbilityPhrase::NonbasicLandwalk => {
+            KeywordAction::Landwalk(crate::static_abilities::LandwalkKind::NonbasicLand)
+        }
+        SpecialAbilityPhrase::ArtifactLandwalk => {
+            KeywordAction::Landwalk(crate::static_abilities::LandwalkKind::ArtifactLand)
+        }
     }
+}
+
+fn parse_special_ability_phrase(words: &[&str]) -> Option<KeywordAction> {
+    if words.starts_with(VARIABLE_CASUALTY_PLANESWALKER_COPY_PREFIX) {
+        return Some(special_ability_phrase_action(
+            SpecialAbilityPhrase::VariableCasualtyPlaneswalkerCopy,
+        ));
+    }
+    EXACT_SPECIAL_ABILITY_PHRASES
+        .iter()
+        .find_map(|(phrase, kind)| (*phrase == words).then(|| special_ability_phrase_action(*kind)))
+}
+
+fn parse_snow_landwalk_phrase(words: &[&str]) -> Option<KeywordAction> {
+    let ["snow", subtype_walk] = words else {
+        return None;
+    };
+    let action = parse_single_word_keyword_action(subtype_walk)?;
+    let KeywordAction::Landwalk(crate::static_abilities::LandwalkKind::Subtype { subtype, .. }) =
+        action
+    else {
+        return None;
+    };
+    Some(KeywordAction::Landwalk(
+        crate::static_abilities::LandwalkKind::Subtype {
+            subtype,
+            snow: true,
+        },
+    ))
+}
+
+#[derive(Clone, Copy)]
+enum ExactAbilityPhrase {
+    AffinityForArtifacts,
+    FirstStrike,
+    DoubleStrike,
+    ForMirrodin,
+    LivingWeapon,
+    ModularSunburst,
+    ProtectionFromAllColors,
+    ProtectionFromColorless,
+    ProtectionFromEverything,
+    ProtectionFromColoredSpells,
+}
+
+const EXACT_ABILITY_PHRASES: &[(&[&str], ExactAbilityPhrase)] = &[
+    (
+        &["affinity", "for", "artifacts"],
+        ExactAbilityPhrase::AffinityForArtifacts,
+    ),
+    (&["first", "strike"], ExactAbilityPhrase::FirstStrike),
+    (&["double", "strike"], ExactAbilityPhrase::DoubleStrike),
+    (&["for", "mirrodin"], ExactAbilityPhrase::ForMirrodin),
+    (&["living", "weapon"], ExactAbilityPhrase::LivingWeapon),
+    (
+        &["modular", "sunburst"],
+        ExactAbilityPhrase::ModularSunburst,
+    ),
+    (
+        &["protection", "from", "all", "colors"],
+        ExactAbilityPhrase::ProtectionFromAllColors,
+    ),
+    (
+        &["protection", "from", "all", "color"],
+        ExactAbilityPhrase::ProtectionFromAllColors,
+    ),
+    (
+        &["protection", "from", "colorless"],
+        ExactAbilityPhrase::ProtectionFromColorless,
+    ),
+    (
+        &["protection", "from", "everything"],
+        ExactAbilityPhrase::ProtectionFromEverything,
+    ),
+    (
+        &[
+            "protection",
+            "from",
+            "spells",
+            "that",
+            "are",
+            "one",
+            "or",
+            "more",
+            "colors",
+        ],
+        ExactAbilityPhrase::ProtectionFromColoredSpells,
+    ),
+];
+
+fn exact_ability_phrase_action(kind: ExactAbilityPhrase) -> KeywordAction {
+    match kind {
+        ExactAbilityPhrase::AffinityForArtifacts => KeywordAction::AffinityForArtifacts,
+        ExactAbilityPhrase::FirstStrike => KeywordAction::FirstStrike,
+        ExactAbilityPhrase::DoubleStrike => KeywordAction::DoubleStrike,
+        ExactAbilityPhrase::ForMirrodin => KeywordAction::ForMirrodin,
+        ExactAbilityPhrase::LivingWeapon => KeywordAction::LivingWeapon,
+        ExactAbilityPhrase::ModularSunburst => KeywordAction::ModularSunburst,
+        ExactAbilityPhrase::ProtectionFromAllColors => KeywordAction::ProtectionFromAllColors,
+        ExactAbilityPhrase::ProtectionFromColorless => KeywordAction::ProtectionFromColorless,
+        ExactAbilityPhrase::ProtectionFromEverything => KeywordAction::ProtectionFromEverything,
+        ExactAbilityPhrase::ProtectionFromColoredSpells => {
+            let all_colors = crate::color::ColorSet::WHITE
+                .union(crate::color::ColorSet::BLUE)
+                .union(crate::color::ColorSet::BLACK)
+                .union(crate::color::ColorSet::RED)
+                .union(crate::color::ColorSet::GREEN);
+            let mut filter = ObjectFilter::spell();
+            filter.colors = Some(all_colors);
+            KeywordAction::ProtectionFromFilter(filter)
+        }
+    }
+}
+
+fn parse_exact_ability_phrase(words: &[&str]) -> Option<KeywordAction> {
+    EXACT_ABILITY_PHRASES
+        .iter()
+        .find_map(|(phrase, kind)| (*phrase == words).then(|| exact_ability_phrase_action(*kind)))
 }
 
 pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
     let mut phrase_tokens = tokens;
     if phrase_tokens
         .first()
-        .is_some_and(|token| token.is_word("and"))
+        .is_some_and(|token| AND_EXACT_WORD_PATTERN.matches_token(token))
     {
         phrase_tokens = &phrase_tokens[1..];
     }
@@ -708,60 +1116,13 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
 
     let (head, second) = lexed_head_words(phrase_tokens).unwrap_or(("", None));
 
-    match words.as_slice() {
-        [
-            "casualty",
-            "x",
-            "the",
-            "copy",
-            "isnt",
-            "legendary",
-            "and",
-            "has",
-            "starting",
-            "loyalty",
-            "x",
-            ..,
-        ] => {
-            return Some(KeywordAction::VariableCasualtyPlaneswalkerCopy);
-        }
-        ["start", "your", "engines"] => {
-            return Some(KeywordAction::StartYourEngines);
-        }
-        ["landwalk"] => {
-            return Some(KeywordAction::Landwalk(
-                crate::static_abilities::LandwalkKind::AnyLand,
-            ));
-        }
-        ["nonbasic", "landwalk"] => {
-            return Some(KeywordAction::Landwalk(
-                crate::static_abilities::LandwalkKind::NonbasicLand,
-            ));
-        }
-        ["artifact", "landwalk"] => {
-            return Some(KeywordAction::Landwalk(
-                crate::static_abilities::LandwalkKind::ArtifactLand,
-            ));
-        }
-        ["snow", subtype_walk] => {
-            if let Some(action) = parse_single_word_keyword_action(subtype_walk)
-                && let KeywordAction::Landwalk(crate::static_abilities::LandwalkKind::Subtype {
-                    subtype,
-                    ..
-                }) = action
-            {
-                return Some(KeywordAction::Landwalk(
-                    crate::static_abilities::LandwalkKind::Subtype {
-                        subtype,
-                        snow: true,
-                    },
-                ));
-            }
-        }
-        _ => {}
+    if let Some(action) =
+        parse_special_ability_phrase(&words).or_else(|| parse_snow_landwalk_phrase(&words))
+    {
+        return Some(action);
     }
 
-    if token_slice_strip_word_prefix(phrase_tokens, &["cumulative", "upkeep"]).is_some() {
+    if CUMULATIVE_UPKEEP_PREFIX_PATTERN.matches_words(&words) {
         let reminder_start =
             find_index(phrase_tokens, |token| token.is_period()).unwrap_or(phrase_tokens.len());
         let cost_tokens = trim_commas(&phrase_tokens[2..reminder_start]).to_vec();
@@ -799,30 +1160,20 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
     {
         return Some(action);
     }
-    if head == "dredge"
+    if keyword_head_is(head, "dredge")
         && let Some(amount) = second
-        && amount.parse::<u32>().is_ok()
+        && parse_named_number(amount).is_some()
     {
         return Some(KeywordAction::MarkerText(format!("Dredge {amount}")));
     }
 
     // Crew appears as "Crew N" and is often followed by inline restrictions/reminder text.
-    if head == "crew" {
+    if keyword_head_is(head, "crew") {
         if words.len() >= 2
-            && let Ok(amount) = words[1].parse::<u32>()
+            && let Some(amount) = parse_named_number(words[1])
         {
-            let has_sorcery_speed = word_slice_contains_phrase_or_empty(
-                &words,
-                &["activate", "only", "as", "a", "sorcery"],
-            );
-
-            let has_once_per_turn = word_slice_contains_any_phrase_or_empty(
-                &words,
-                &[
-                    &["activate", "only", "once", "each", "turn"],
-                    &["activate", "only", "once", "per", "turn"],
-                ],
-            );
+            let has_sorcery_speed = CREW_SORCERY_SPEED_REMINDER_PATTERN.matches_words(&words);
+            let has_once_per_turn = ONCE_PER_TURN_REMINDER_PATTERN.matches_words(&words);
 
             let mut additional_restrictions = Vec::new();
             let timing = if has_sorcery_speed {
@@ -851,17 +1202,11 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
 
     // Saddle appears as "Saddle N" and is often followed by reminder text.
     // Per CR 702.171a, Saddle can be activated only as a sorcery.
-    if head == "saddle" {
+    if keyword_head_is(head, "saddle") {
         if words.len() >= 2
-            && let Ok(amount) = words[1].parse::<u32>()
+            && let Some(amount) = parse_named_number(words[1])
         {
-            let has_once_per_turn = word_slice_contains_any_phrase_or_empty(
-                &words,
-                &[
-                    &["activate", "only", "once", "each", "turn"],
-                    &["activate", "only", "once", "per", "turn"],
-                ],
-            );
+            let has_once_per_turn = ONCE_PER_TURN_REMINDER_PATTERN.matches_words(&words);
 
             let mut additional_restrictions = Vec::new();
             let timing = ActivationTiming::SorcerySpeed;
@@ -893,20 +1238,8 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         return Some(action);
     }
 
-    if head == "evolve" {
-        return Some(KeywordAction::Evolve);
-    }
-
-    if head == "mentor" {
-        return Some(KeywordAction::Mentor);
-    }
-
-    if head == "training" {
-        return Some(KeywordAction::Training);
-    }
-
-    if head == "soulbond" {
-        return Some(KeywordAction::Soulbond);
+    if let Some(action) = simple_keyword_action_for_head(head) {
+        return Some(action);
     }
 
     if let Some(action) = parse_numeric_keyword_action(&words, "renown", KeywordAction::Renown) {
@@ -918,17 +1251,16 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         return Some(action);
     }
 
-    if word_slice_first_is(&words, "aura")
-        && word_slice_at_is(&words, 1, "swap")
+    if AURA_SWAP_PREFIX_PATTERN.matches_words(&words)
         && let Some((cost_text, _consumed)) = leading_mana_symbols_to_oracle(&words[2..])
         && let Ok(cost) = parse_scryfall_mana_cost(&cost_text)
     {
         return Some(KeywordAction::AuraSwap(cost));
     }
 
-    if head == "awaken"
+    if keyword_head_is(head, "awaken")
         && let Some(amount_word) = words.get(1)
-        && let Ok(amount) = amount_word.parse::<u32>()
+        && let Some(amount) = parse_named_number(amount_word)
         && let Some((cost_text, _consumed)) = leading_mana_symbols_to_oracle(&words[2..])
         && let Ok(cost) = parse_scryfall_mana_cost(&cost_text)
     {
@@ -980,7 +1312,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         return Some(action);
     }
 
-    if !(head == "emerge" && second == Some("from"))
+    if !(keyword_head_is(head, "emerge") && second == Some("from"))
         && let Some(action) = parse_cost_keyword_action(
             &words,
             "emerge",
@@ -1036,9 +1368,9 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         return Some(action);
     }
 
-    if head == "suspend" {
+    if keyword_head_is(head, "suspend") {
         if let Some(time_word) = words.get(1)
-            && let Ok(time) = time_word.parse::<u32>()
+            && let Some(time) = parse_named_number(time_word)
             && let Some((cost_text, _consumed)) = leading_mana_symbols_to_oracle(&words[2..])
             && let Ok(cost) = parse_scryfall_mana_cost(&cost_text)
         {
@@ -1080,16 +1412,16 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         return Some(action);
     }
 
-    if head == "hideaway" {
+    if keyword_head_is(head, "hideaway") {
         if words.len() == 1 {
             return Some(KeywordAction::MarkerText("Hideaway".to_string()));
         }
         return marker_text_from_words(&words).map(KeywordAction::MarkerText);
     }
 
-    if head == "mobilize" {
+    if keyword_head_is(head, "mobilize") {
         if let Some(amount_word) = words.get(1)
-            && let Ok(amount) = amount_word.parse::<u32>()
+            && let Some(amount) = parse_named_number(amount_word)
         {
             return Some(KeywordAction::Mobilize(amount));
         }
@@ -1099,30 +1431,28 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         return marker_text_from_words(&words).map(KeywordAction::MarkerText);
     }
 
-    if head == "impending" {
+    if keyword_head_is(head, "impending") {
         if words.len() == 1 {
             return Some(KeywordAction::MarkerText("Impending".to_string()));
         }
         return marker_text_from_words(&words).map(KeywordAction::MarkerText);
     }
 
-    if let Some((matched_phrase, _)) = token_slice_strip_any_word_prefix(
-        phrase_tokens,
-        &[&["emerge", "from"], &["job", "select"], &["umbra", "armor"]],
-    ) {
-        return match matched_phrase {
-            ["emerge", "from"] => marker_text_from_words(&words).map(KeywordAction::MarkerText),
-            ["job", "select"] => Some(KeywordAction::MarkerText("Job select".to_string())),
-            ["umbra", "armor"] => Some(KeywordAction::UmbraArmor),
-            _ => None,
-        };
+    if EMERGE_FROM_PREFIX_PATTERN.matches_words(&words) {
+        return marker_text_from_words(&words).map(KeywordAction::MarkerText);
+    }
+    if JOB_SELECT_PREFIX_PATTERN.matches_words(&words) {
+        return Some(KeywordAction::MarkerText("Job select".to_string()));
+    }
+    if UMBRA_ARMOR_PREFIX_PATTERN.matches_words(&words) {
+        return Some(KeywordAction::UmbraArmor);
     }
 
-    if head == "exert" {
+    if keyword_head_is(head, "exert") {
         return marker_text_from_words(&words).map(KeywordAction::MarkerText);
     }
 
-    if head == "airbend" {
+    if keyword_head_is(head, "airbend") {
         return marker_text_from_words(&words).map(KeywordAction::MarkerText);
     }
 
@@ -1135,7 +1465,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         return Some(action);
     }
 
-    if head == "echo" {
+    if keyword_head_is(head, "echo") {
         let reminder_start = find_index(phrase_tokens, |token| {
             token.is_period() || token.kind == TokenKind::LParen
         })
@@ -1165,39 +1495,39 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         return Some(KeywordAction::Marker("echo"));
     }
 
-    if head == "modular" {
-        if word_slice_at_is(&words, 1, "sunburst") {
+    if keyword_head_is(head, "modular") {
+        if SUNBURST_WORD_PATTERN.matches_word_at(&words, 1) {
             return Some(KeywordAction::ModularSunburst);
         }
         if words.len() >= 2
-            && let Ok(amount) = words[1].parse::<u32>()
+            && let Some(amount) = parse_named_number(words[1])
         {
             return Some(KeywordAction::Modular(amount));
         }
         return Some(KeywordAction::Marker("modular"));
     }
 
-    if head == "graft" {
+    if keyword_head_is(head, "graft") {
         if words.len() >= 2
-            && let Ok(amount) = words[1].parse::<u32>()
+            && let Some(amount) = parse_named_number(words[1])
         {
             return Some(KeywordAction::Graft(amount));
         }
         return Some(KeywordAction::Marker("graft"));
     }
 
-    if head == "fading" {
+    if keyword_head_is(head, "fading") {
         if words.len() >= 2
-            && let Ok(amount) = words[1].parse::<u32>()
+            && let Some(amount) = parse_named_number(words[1])
         {
             return Some(KeywordAction::Fading(amount));
         }
         return Some(KeywordAction::Marker("fading"));
     }
 
-    if head == "vanishing" {
+    if keyword_head_is(head, "vanishing") {
         if words.len() >= 2
-            && let Ok(amount) = words[1].parse::<u32>()
+            && let Some(amount) = parse_named_number(words[1])
         {
             return Some(KeywordAction::Vanishing(amount));
         }
@@ -1207,7 +1537,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         return Some(KeywordAction::Marker("vanishing"));
     }
 
-    if head == "harness" {
+    if keyword_head_is(head, "harness") {
         if words.len() > 1 {
             return Some(KeywordAction::MarkerText(format!(
                 "Harness {}",
@@ -1217,8 +1547,8 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         return Some(KeywordAction::MarkerText("Harness".to_string()));
     }
 
-    if head == "sunburst" {
-        return Some(KeywordAction::Sunburst);
+    if let Some(action) = simple_keyword_action_for_head(head) {
+        return Some(action);
     }
     if let Some((matched_phrase, _)) = token_slice_strip_any_word_prefix(
         phrase_tokens,
@@ -1241,17 +1571,14 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
             _ => unreachable!("matched phrase must be one of the declared keyword heads"),
         });
     }
-    if head == "cascade" {
-        return Some(KeywordAction::Cascade);
-    }
-    if head == "demonstrate" {
-        return Some(KeywordAction::Demonstrate);
+    if let Some(action) = simple_keyword_action_for_head(head) {
+        return Some(action);
     }
 
     // Casualty N - "as you cast this spell, you may sacrifice a creature with power N or greater"
-    if head == "casualty" {
+    if keyword_head_is(head, "casualty") {
         if words.len() == 2 {
-            if let Ok(power) = words[1].parse::<u32>() {
+            if let Some(power) = parse_named_number(words[1]) {
                 return Some(KeywordAction::Casualty(power));
             }
         }
@@ -1262,14 +1589,14 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
     }
 
     // Conspire - "as you cast this spell, you may tap two untapped creatures..."
-    if head == "conspire" && words.len() == 1 {
+    if keyword_head_is(head, "conspire") && words.len() == 1 {
         return Some(KeywordAction::Conspire);
     }
 
     // Amplify N - "as this enters, reveal any number of matching creature-type cards..."
-    if head == "amplify" {
+    if keyword_head_is(head, "amplify") {
         if words.len() == 2 {
-            if let Ok(amount) = words[1].parse::<u32>() {
+            if let Some(amount) = parse_named_number(words[1]) {
                 return Some(KeywordAction::Amplify(amount));
             }
         }
@@ -1280,9 +1607,9 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
     }
 
     // Devour N - "as this enters, you may sacrifice any number of creatures..."
-    if head == "devour" {
+    if keyword_head_is(head, "devour") {
         if words.len() == 2 {
-            if let Ok(multiplier) = words[1].parse::<u32>() {
+            if let Some(multiplier) = parse_named_number(words[1]) {
                 return Some(KeywordAction::Devour(multiplier));
             }
         }
@@ -1293,38 +1620,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
     }
 
     if let Some(first) = (!head.is_empty()).then_some(head)
-        && matches!(
-            first,
-            "fabricate"
-                | "foretell"
-                | "bestow"
-                | "dash"
-                | "overload"
-                | "soulshift"
-                | "adapt"
-                | "bolster"
-                | "disturb"
-                | "embalm"
-                | "emerge"
-                | "echo"
-                | "modular"
-                | "ninjutsu"
-                | "outlast"
-                | "suspend"
-                | "vanishing"
-                | "offering"
-                | "specialize"
-                | "spectacle"
-                | "graft"
-                | "backup"
-                | "fading"
-                | "fuse"
-                | "plot"
-                | "disguise"
-                | "tribute"
-                | "buyback"
-                | "flashback"
-        )
+        && is_marker_keyword_fallback_head(first)
     {
         if let Some(display) = marker_keyword_display(&words) {
             return Some(KeywordAction::MarkerText(display));
@@ -1343,141 +1639,61 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         return Some(action);
     }
 
-    let action = match words.as_slice() {
-        ["affinity", "for", "artifacts"] => KeywordAction::AffinityForArtifacts,
-        ["first", "strike"] => KeywordAction::FirstStrike,
-        ["double", "strike"] => KeywordAction::DoubleStrike,
-        ["for", "mirrodin"] => KeywordAction::ForMirrodin,
-        ["living", "weapon"] => KeywordAction::LivingWeapon,
-        ["fading", amount] => {
-            let value = amount.parse::<u32>().ok()?;
-            KeywordAction::Fading(value)
-        }
-        ["vanishing", amount] => {
-            let value = amount.parse::<u32>().ok()?;
-            KeywordAction::Vanishing(value)
-        }
-        ["modular", "sunburst"] => KeywordAction::ModularSunburst,
-        ["modular", amount] => {
-            let value = amount.parse::<u32>().ok()?;
-            KeywordAction::Modular(value)
-        }
-        ["graft", amount] => {
-            let value = amount.parse::<u32>().ok()?;
-            KeywordAction::Graft(value)
-        }
-        ["soulshift", amount] => {
-            let value = amount.parse::<u32>().ok()?;
-            KeywordAction::Soulshift(value)
-        }
-        ["outlast", cost] => {
-            let parsed_cost = parse_scryfall_mana_cost(cost).ok()?;
-            KeywordAction::Outlast(parsed_cost)
-        }
-        ["ward", amount] => {
-            let value = amount.parse::<u32>().ok()?;
-            KeywordAction::Ward(value)
-        }
-        ["afterlife", amount] => {
-            let value = amount.parse::<u32>().ok()?;
-            KeywordAction::Afterlife(value)
-        }
-        ["backup", amount] => {
-            let value = amount.parse::<u32>().ok()?;
-            KeywordAction::Backup(value)
-        }
-        ["fabricate", amount] => {
-            let value = amount.parse::<u32>().ok()?;
-            KeywordAction::Fabricate(value)
-        }
-        ["renown", amount] => {
-            let value = amount.parse::<u32>().ok()?;
-            KeywordAction::Renown(value)
-        }
-        ["protection", "from", "all", "colors"] => KeywordAction::ProtectionFromAllColors,
-        ["protection", "from", "all", "color"] => KeywordAction::ProtectionFromAllColors,
-        ["protection", "from", "colorless"] => KeywordAction::ProtectionFromColorless,
-        ["protection", "from", "everything"] => KeywordAction::ProtectionFromEverything,
-        [
-            "protection",
-            "from",
-            "spells",
-            "that",
-            "are",
-            "one",
-            "or",
-            "more",
-            "colors",
-        ] => {
-            let all_colors = crate::color::ColorSet::WHITE
-                .union(crate::color::ColorSet::BLUE)
-                .union(crate::color::ColorSet::BLACK)
-                .union(crate::color::ColorSet::RED)
-                .union(crate::color::ColorSet::GREEN);
-            let mut filter = ObjectFilter::spell();
-            filter.colors = Some(all_colors);
-            KeywordAction::ProtectionFromFilter(filter)
-        }
-        ["protection", "from", value] => {
-            if let Some(color) = parse_color(value) {
-                KeywordAction::ProtectionFrom(color)
-            } else if let Some(card_type) = parse_card_type(value) {
-                KeywordAction::ProtectionFromCardType(card_type)
-            } else if let Some(subtype) = parse_subtype_flexible(value) {
-                KeywordAction::ProtectionFromSubtype(subtype)
-            } else {
+    if let Some(action) = parse_exact_ability_phrase(&words) {
+        return Some(action);
+    }
+
+    if words.len() == 2
+        && words.first().copied() == Some("outlast")
+        && let Some(cost) = words.get(1)
+    {
+        let parsed_cost = parse_scryfall_mana_cost(cost).ok()?;
+        return Some(KeywordAction::Outlast(parsed_cost));
+    }
+
+    if words.len() == 2
+        && let (Some(keyword), Some(amount)) = (words.first(), words.get(1))
+        && let Some(action) = numeric_keyword_action(keyword, amount)
+    {
+        return Some(action);
+    }
+
+    if words.len() == 3 && PROTECTION_FROM_PREFIX_PATTERN.matches_words(&words) {
+        let value = words[2];
+        return if let Some(color) = parse_color(value) {
+            Some(KeywordAction::ProtectionFrom(color))
+        } else if EVERYTHING_PATTERN.matches_words(&[value]) {
+            Some(KeywordAction::ProtectionFromEverything)
+        } else {
+            parse_card_type(value)
+                .map(KeywordAction::ProtectionFromCardType)
+                .or_else(|| parse_subtype_flexible(value).map(KeywordAction::ProtectionFromSubtype))
+        };
+    }
+
+    // "toxic N" needs exactly 2 words
+    if words.len() == 2 && TOXIC_PREFIX_PATTERN.matches_words(&words) {
+        let amount = parse_named_number(words[1]).unwrap_or(1);
+        return Some(KeywordAction::Toxic(amount));
+    }
+    if words.len() >= 2 {
+        if FIRST_STRIKE_PREFIX_PATTERN.matches_words(&words) {
+            if words.len() > 2 && AND_WORD_PATTERN.matches_words(&words) {
                 return None;
             }
+            return Some(KeywordAction::FirstStrike);
         }
-        _ => {
-            // "toxic N" needs exactly 2 words
-            if words.len() == 2 && words[0] == "toxic" {
-                let amount = words[1].parse::<u32>().ok().unwrap_or(1);
-                return Some(KeywordAction::Toxic(amount));
+        if DOUBLE_STRIKE_PREFIX_PATTERN.matches_words(&words) {
+            if words.len() > 2 && AND_WORD_PATTERN.matches_words(&words) {
+                return None;
             }
-            if words.len() >= 2 {
-                if matches!((head, second), ("first", Some("strike"))) {
-                    if words.len() > 2 && word_slice_contains_word(&words, "and") {
-                        return None;
-                    }
-                    return Some(KeywordAction::FirstStrike);
-                }
-                if matches!((head, second), ("double", Some("strike"))) {
-                    if words.len() > 2 && word_slice_contains_word(&words, "and") {
-                        return None;
-                    }
-                    return Some(KeywordAction::DoubleStrike);
-                }
-                if matches!((head, second), ("protection", Some("from"))) && words.len() >= 3 {
-                    let value = words[2];
-                    return if let Some(color) = parse_color(value) {
-                        Some(KeywordAction::ProtectionFrom(color))
-                    } else if value == "everything" {
-                        Some(KeywordAction::ProtectionFromEverything)
-                    } else {
-                        parse_card_type(value)
-                            .map(KeywordAction::ProtectionFromCardType)
-                            .or_else(|| {
-                                parse_subtype_flexible(value)
-                                    .map(KeywordAction::ProtectionFromSubtype)
-                            })
-                    };
-                }
-            }
-            if words.len() >= 3 {
-                let suffix = &words[words.len() - 3..];
-                if word_slice_eq_any(
-                    suffix,
-                    &[&["cant", "be", "blocked"], &["cannot", "be", "blocked"]],
-                ) {
-                    return Some(KeywordAction::Unblockable);
-                }
-            }
-            return None;
+            return Some(KeywordAction::DoubleStrike);
         }
-    };
-
-    Some(action)
+    }
+    if CANT_BE_BLOCKED_SUFFIX_PATTERN.matches_words(&words) {
+        return Some(KeywordAction::Unblockable);
+    }
+    None
 }
 
 pub(crate) fn rewrite_attached_controller_trigger_effect_tokens(
@@ -1486,21 +1702,9 @@ pub(crate) fn rewrite_attached_controller_trigger_effect_tokens(
 ) -> Vec<OwnedLexToken> {
     let trigger_words = crate::runtime_backend::token_word_refs(trigger_tokens);
     let references_enchanted_controller = find_window_by(&trigger_words, 3, |window| {
-        window[0] == "enchanted"
-            && matches!(
-                window[1],
-                "creature"
-                    | "creatures"
-                    | "permanent"
-                    | "permanents"
-                    | "artifact"
-                    | "artifacts"
-                    | "enchantment"
-                    | "enchantments"
-                    | "land"
-                    | "lands"
-            )
-            && window[2] == "controller"
+        ENCHANTED_WORD_PATTERN.matches_word(window[0])
+            && ATTACHED_CONTROLLER_OBJECT_WORD_PATTERN.matches_word(window[1])
+            && CONTROLLER_WORD_PATTERN.matches_word(window[2])
     })
     .is_some();
     if !references_enchanted_controller {
@@ -1541,12 +1745,14 @@ pub(crate) fn maybe_strip_leading_damage_subject_tokens(
         return None;
     }
 
-    if word_slice_first_is(&words, "it") && word_slice_at_is_any(&words, 1, &["deal", "deals"]) {
+    if IT_WORD_PATTERN.matches_word_at(&words, 0)
+        && DEAL_OR_DEALS_WORD_PATTERN.matches_word_at(&words, 1)
+    {
         return Some(&tokens[1..]);
     }
 
     for subject_len in 1..tokens.len() {
-        if !word_slice_at_is_any(&words, subject_len, &["deal", "deals"]) {
+        if !DEAL_OR_DEALS_WORD_PATTERN.matches_word_at(&words, subject_len) {
             continue;
         }
         if crate::runtime_backend::front_end::shared::util::is_source_reference_words(
@@ -1568,7 +1774,7 @@ pub(crate) fn looks_like_trigger_object_list_tail(tokens: &[OwnedLexToken]) -> b
         return false;
     }
 
-    let starts_with_or = word_slice_first_is(&words, "or");
+    let starts_with_or = OR_EXACT_WORD_PATTERN.matches_word_at(&words, 0);
     let first_candidate = if starts_with_or {
         words.get(1).copied()
     } else {
@@ -1599,9 +1805,7 @@ pub(crate) fn looks_like_trigger_discard_qualifier_tail(
     }
 
     let prefix_words = crate::runtime_backend::token_word_refs(trigger_prefix_tokens);
-    if !(word_slice_contains_word(&prefix_words, "discard")
-        || word_slice_contains_word(&prefix_words, "discards"))
-    {
+    if !DISCARD_OR_DISCARDS_WORD_PATTERN.matches_words(&prefix_words) {
         return false;
     }
 
@@ -1615,15 +1819,14 @@ pub(crate) fn looks_like_trigger_discard_qualifier_tail(
     };
     let typeish = parse_card_type(first_word).is_some()
         || parse_non_type(first_word).is_some()
-        || matches!(first_word, "and" | "or");
+        || AND_OR_CONNECTOR_PATTERN.matches_word(first_word);
     if !typeish {
         return false;
     }
 
     find_index(tail_tokens, |token| token.is_comma()).is_some_and(|comma_idx| {
         let before_words = crate::runtime_backend::token_word_refs(&tail_tokens[..comma_idx]);
-        word_slice_contains_word(&before_words, "card")
-            || word_slice_contains_word(&before_words, "cards")
+        CARD_OR_CARDS_WORD_PATTERN.matches_words(&before_words)
     })
 }
 
@@ -1641,8 +1844,8 @@ pub(crate) fn looks_like_trigger_type_list_tail(tokens: &[OwnedLexToken]) -> boo
             parse_card_type(word).is_some() || parse_subtype_word(word).is_some()
         });
     first_is_card_type
-        && word_slice_contains_any_word(&words, &["spell", "spells"])
-        && word_slice_contains_word(&words, "or")
+        && SPELL_OR_SPELLS_WORD_PATTERN.matches_words(&words)
+        && OR_WORD_PATTERN.matches_words(&words)
         && contains_token_kind(tokens, TokenKind::Comma)
 }
 
@@ -1655,7 +1858,7 @@ pub(crate) fn looks_like_trigger_color_list_tail(tokens: &[OwnedLexToken]) -> bo
         return false;
     }
     is_basic_color_word(words[0])
-        && word_slice_contains_word(&words, "or")
+        && OR_WORD_PATTERN.matches_words(&words)
         && contains_token_kind(tokens, TokenKind::Comma)
 }
 
@@ -1671,7 +1874,7 @@ pub(crate) fn looks_like_trigger_numeric_list_tail(tokens: &[OwnedLexToken]) -> 
         return false;
     }
     let has_second_number = words.iter().skip(1).any(|word| word.parse::<i32>().is_ok());
-    has_second_number && word_slice_contains_word(&words, "or")
+    has_second_number && OR_WORD_PATTERN.matches_words(&words)
 }
 
 pub(crate) fn is_trigger_objectish_word(word: &str) -> bool {

@@ -9,6 +9,7 @@ use super::activation_and_restrictions::{
 };
 use super::clause_support::parse_effect_sentences_lexed;
 use super::cst::{KeywordLineCst, KeywordLineKindCst};
+use super::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::grammar::abilities::{
     additional_cost_tail_tokens_lexed, is_additional_cost_choice_line_lexed,
     is_standard_gift_keyword_tokens_lexed,
@@ -20,16 +21,16 @@ use super::keyword_families::{
 };
 use super::keyword_static::parse_if_this_spell_costs_less_to_cast_line_lexed;
 use super::lexer::{
-    OwnedLexToken, TokenKind, lex_line, render_token_slice, token_slice_at_is,
-    token_slice_first_is, token_slice_starts_with, token_slice_starts_with_any, trim_lexed_commas,
+    OwnedLexToken, TokenKind, lex_line, parser_token_word_refs, render_token_slice,
+    token_slice_at_is, token_slice_first_is, token_slice_starts_with, token_slice_starts_with_any,
+    trim_lexed_commas,
 };
 use super::lower::{
     lower_exert_attack_keyword_line, lower_gift_keyword_line, lower_keyword_special_cases,
 };
 use super::preprocess::PreprocessedLine;
 use super::token_primitives::{
-    find_index as find_token_index, split_em_dash_label_prefix_tokens, str_contains,
-    str_strip_suffix,
+    find_index as find_token_index, split_em_dash_label_prefix_tokens, str_strip_suffix,
 };
 use super::util::{
     leading_mana_cost_from_tokens, parse_additional_cost_choice_options_lexed,
@@ -46,6 +47,17 @@ use super::util::{
     parse_squad_line_lexed, parse_transmute_line_lexed, parse_warp_line_lexed,
     parse_you_may_rather_than_spell_cost_line_lexed, preserve_keyword_prefix_for_parse,
 };
+
+const SURGE_KEYWORD_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["surge"]);
+const FREERUNNING_KEYWORD_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["freerunning"]);
+const BLITZ_FROM_GRAVEYARD_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_phrases
+        & [
+            &["from", "your", "graveyard"],
+            &["using", "its", "blitz", "ability"],
+        ]
+);
 
 pub(crate) fn parse_keyword_line_cst(
     line: &PreprocessedLine,
@@ -232,7 +244,7 @@ pub(super) fn lower_alternative_cast(
         ));
     }
 
-    if line.text.trim_start().starts_with("Surge ") {
+    if SURGE_KEYWORD_PREFIX_PATTERN.matches_words(&parser_token_word_refs(tokens)) {
         let raw_tokens = lex_line(line.text.as_str(), line.info.line_index)?;
         let cost_tokens = raw_tokens.get(1..).unwrap_or_default();
         let (cost, _) = leading_mana_cost_from_tokens(cost_tokens).ok_or_else(|| {
@@ -262,7 +274,7 @@ pub(super) fn lower_alternative_cast(
         ));
     }
 
-    if line.text.trim_start().starts_with("Freerunning ") {
+    if FREERUNNING_KEYWORD_PREFIX_PATTERN.matches_words(&parser_token_word_refs(tokens)) {
         let raw_tokens = lex_line(line.text.as_str(), line.info.line_index)?;
         let cost_tokens = raw_tokens.get(1..).unwrap_or_default();
         let (cost, _) = leading_mana_cost_from_tokens(cost_tokens).ok_or_else(|| {
@@ -281,8 +293,7 @@ pub(super) fn lower_alternative_cast(
         ));
     }
 
-    let line_text = line.text.to_ascii_lowercase();
-    if line_text.contains("from your graveyard") && line_text.contains("using its blitz ability") {
+    if BLITZ_FROM_GRAVEYARD_MARKER_PATTERN.matches_words(&parser_token_word_refs(tokens)) {
         return Ok(LineAst::Abilities(vec![
             crate::cards::builders::KeywordAction::BlitzFromGraveyard,
         ]));
@@ -698,8 +709,8 @@ pub(super) fn matches_alternative_cast(
     line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
-    let line_text = line.info.raw_line.to_ascii_lowercase();
-    if line_text.contains("from your graveyard") && line_text.contains("using its blitz ability") {
+    let _ = line;
+    if BLITZ_FROM_GRAVEYARD_MARKER_PATTERN.matches_words(&parser_token_word_refs(tokens)) {
         return Ok(true);
     }
 
@@ -945,20 +956,21 @@ pub(super) fn matches_exploit(
 
 fn is_exert_attack_keyword_line(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
-    crate::runtime_backend::lexer::word_slice_starts_with_any(
-        &words,
-        &[
-            &["you", "may", "exert"][..],
-            &[
-                "if", "this", "creature", "hasnt", "been", "exerted", "this", "turn", "you", "may",
-                "exert",
-            ][..],
-            &[
-                "if", "this", "creature", "hasn't", "been", "exerted", "this", "turn", "you",
-                "may", "exert",
-            ][..],
-        ],
-    )
+    const EXERT_ATTACK_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+        prefix_any
+            & [
+                &["you", "may", "exert"],
+                &[
+                    "if", "this", "creature", "hasnt", "been", "exerted", "this", "turn", "you",
+                    "may", "exert",
+                ],
+                &[
+                    "if", "this", "creature", "hasn't", "been", "exerted", "this", "turn", "you",
+                    "may", "exert",
+                ],
+            ]
+    );
+    EXERT_ATTACK_PREFIX_PATTERN.matches_words(&words)
 }
 
 fn is_standard_gift_keyword_line(raw_line: &str) -> bool {

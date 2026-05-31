@@ -12,11 +12,7 @@ use super::super::grammar::structure::{
 };
 use super::super::lexer::{
     OwnedLexToken, TokenKind, token_slice_at_is, token_slice_first_is, token_word_refs,
-    trim_lexed_commas, word_slice_at_is, word_slice_at_is_any, word_slice_contains_any_phrase,
-    word_slice_contains_any_word, word_slice_contains_phrase, word_slice_contains_window_by,
-    word_slice_contains_word, word_slice_eq, word_slice_eq_any, word_slice_find_phrase_start,
-    word_slice_first_is, word_slice_starts_with, word_slice_starts_with_any,
-    word_slice_starts_with_at,
+    trim_lexed_commas,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::permission_helpers::{
@@ -34,6 +30,7 @@ use super::super::util::{
     remove_through_first_word as remove_through_first_word_tokens, strip_leading_word_refs_any,
 };
 use super::super::value_helpers::{parse_number_from_lexed, parse_value_from_lexed};
+use super::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::dispatch_inner::parse_subject_verb_extension_sentence;
 use super::lex_chain_helpers::{
     find_verb_lexed, has_effect_head_without_verb_lexed, segment_has_effect_head_lexed,
@@ -50,6 +47,9 @@ use super::{
     parse_simple_lose_ability_clause_lexed, parse_token_copy_followup_sentence_lexed,
     try_apply_token_copy_followup,
 };
+
+const ENCHANTED_TAG_NAME: &str = "enchanted";
+const SENTENCE_HELPER_REVEALED_TAG_PREFIX: &str = "__sentence_helper_revealed";
 #[allow(unused_imports)]
 use crate::cards::builders::{
     CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, SubjectVerbActionAst,
@@ -70,6 +70,124 @@ const UNTIL_YOUR_NEXT_UNTAP_PREFIXES: &[&[&str]] = &[
     &["until", "your", "next", "untap", "step"],
     &["during", "your", "next", "untap", "step"],
 ];
+const CHAIN_CHOOSE_BASIC_LAND_TYPE_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["choose", "a", "land", "of", "each", "basic", "land", "type"],
+            &["choose", "land", "of", "each", "basic", "land", "type"],
+        ]
+);
+const CHAIN_YOU_CHOOSE_BASIC_LAND_TYPE_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &[
+                "you", "choose", "a", "land", "of", "each", "basic", "land", "type",
+            ],
+            &[
+                "you", "choose", "land", "of", "each", "basic", "land", "type"
+            ],
+        ]
+);
+const CHAIN_TOKEN_OR_TOKENS_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_words & [&["token", "tokens"]]);
+const X_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["x"]);
+const THEN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["then"]);
+const LIBRARY_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["library"]);
+const GRAVEYARD_OR_GRAVEYARDS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["graveyard"], &["graveyards"]]);
+const INTO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["into"]);
+const THE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["the"]);
+const WHEN_WHENEVER_AT_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["when"], &["whenever"], &["at"]]);
+const TAP_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["tap"]);
+const UNTAP_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["untap"]);
+const ALL_OR_EACH_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["all"], &["each"]]);
+const GAIN_OR_GAINS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["gain"], &["gains"]]);
+const DRAW_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["draw"]);
+const CHAIN_OWNER_YOUR_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["your"]);
+const CHAIN_OWNER_TARGET_PLAYER_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["target", "player"], &["target", "players"]]);
+const CHAIN_OWNER_TARGET_OPPONENT_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["target", "opponent"], &["target", "opponents"]]);
+const CHAIN_FACE_DOWN_SHUFFLE_FROM_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["face", "down", "then", "shuffle", "all", "cards", "from"]);
+const CHAIN_EXILE_THEM_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["exile", "them"]);
+const CHAIN_THEN_MELD_THEM_INTO_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["then", "meld", "them", "into"]);
+const CHAIN_HAVE_OR_HAS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["have"], &["has"]]);
+const CHAIN_TAP_ALL_OR_EACH_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix_any & [&["tap", "all"], &["tap", "each"]]);
+const CHAIN_OR_UNTAP_ALL_EACH_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_phrases & [&[&["or", "untap", "all"], &["or", "untap", "each"]]]);
+const CHAIN_UNTIL_EOT_TRIGGER_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["until", "end", "of", "turn"],
+            &["until", "the", "end", "of", "turn"]
+        ]
+);
+const CHAIN_WOULD_ENTER_INSTEAD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["would", "instead"]; contains_any_words & [&["enter", "enters"]]);
+const CHAIN_OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
+const CHAIN_AND_OR_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["and"], &["or"]]);
+const CHAIN_COMPARISON_OR_TAIL_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["less"], &["greater"], &["more"], &["fewer"]]);
+const CHAIN_THAN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["than"]);
+const CHAIN_EQUAL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["equal"]);
+const CHAIN_TARGET_WITH_CARD_TYPE_WINDOW_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["target"]);
+const CHAIN_ALL_ABILITIES_AND_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["all", "abilities", "and"]);
+const CHAIN_ROUNDED_UP_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["rounded", "up"]);
+const CHAIN_END_OF_COMBAT_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["end", "of", "combat"]]);
+const CHAIN_BEGINNING_END_STEP_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &["beginning", "of", "the", "end", "step"],
+            &["beginning", "of", "next", "end", "step"],
+            &["beginning", "of", "the", "next", "end", "step"],
+        ]]
+);
+
+fn chain_find_phrase_start(words: &[&str], shape: &ClauseShape<'static>) -> Option<usize> {
+    (0..words.len()).find(|idx| shape.matches_words(&words[*idx..]))
+}
+
+fn chain_find_word(words: &[&str], shape: &ClauseShape<'static>) -> Option<usize> {
+    words.iter().position(|word| shape.matches_word(word))
+}
+
+fn chain_has_card_type_or_card_type_window(words: &[&str]) -> bool {
+    words.windows(3).any(|window| {
+        matches!(
+            window,
+            [
+                "artifact"
+                    | "battle"
+                    | "creature"
+                    | "enchantment"
+                    | "instant"
+                    | "land"
+                    | "planeswalker"
+                    | "sorcery",
+                "or",
+                "artifact"
+                    | "battle"
+                    | "creature"
+                    | "enchantment"
+                    | "instant"
+                    | "land"
+                    | "planeswalker"
+                    | "sorcery"
+            ]
+        )
+    })
+}
 
 fn synthetic_lexed_word(word: &str) -> OwnedLexToken {
     OwnedLexToken::word(word, TextSpan::synthetic())
@@ -80,25 +198,9 @@ fn parse_choose_land_of_each_basic_land_type_segment(
 ) -> Option<Vec<EffectAst>> {
     let word_view = TokenWordView::new(tokens);
     let words = word_view.word_refs();
-    let choice_words = if word_slice_eq_any(
-        &words,
-        &[
-            &["choose", "a", "land", "of", "each", "basic", "land", "type"],
-            &["choose", "land", "of", "each", "basic", "land", "type"],
-        ],
-    ) {
+    let choice_words = if CHAIN_CHOOSE_BASIC_LAND_TYPE_PATTERN.matches_words(&words) {
         words.as_slice()
-    } else if word_slice_eq_any(
-        &words,
-        &[
-            &[
-                "you", "choose", "a", "land", "of", "each", "basic", "land", "type",
-            ],
-            &[
-                "you", "choose", "land", "of", "each", "basic", "land", "type",
-            ],
-        ],
-    ) {
+    } else if CHAIN_YOU_CHOOSE_BASIC_LAND_TYPE_PATTERN.matches_words(&words) {
         &words[1..]
     } else {
         return None;
@@ -139,22 +241,27 @@ enum RestAction {
     Sacrifice,
 }
 
+const REST_ACTION_SEGMENT_PHRASES: &[(&[&str], RestAction)] = &[
+    (&["destroy", "the", "rest"], RestAction::Destroy),
+    (&["destroy", "rest"], RestAction::Destroy),
+    (&["exile", "the", "rest"], RestAction::Exile),
+    (&["exile", "rest"], RestAction::Exile),
+    (&["sacrifice", "the", "rest"], RestAction::Sacrifice),
+    (&["sacrifice", "rest"], RestAction::Sacrifice),
+    (&["sacrifices", "the", "rest"], RestAction::Sacrifice),
+    (&["sacrifices", "rest"], RestAction::Sacrifice),
+];
+
 fn parse_rest_action_segment_lexed(tokens: &[OwnedLexToken]) -> Option<RestAction> {
     let words = token_word_refs(tokens);
-    let words = if word_slice_first_is(&words, "then") {
+    let words = if THEN_WORD_PATTERN.matches_first_word(&words) {
         &words[1..]
     } else {
         words.as_slice()
     };
-    match words {
-        ["destroy", "the", "rest"] | ["destroy", "rest"] => Some(RestAction::Destroy),
-        ["exile", "the", "rest"] | ["exile", "rest"] => Some(RestAction::Exile),
-        ["sacrifice", "the", "rest"]
-        | ["sacrifice", "rest"]
-        | ["sacrifices", "the", "rest"]
-        | ["sacrifices", "rest"] => Some(RestAction::Sacrifice),
-        _ => None,
-    }
+    REST_ACTION_SEGMENT_PHRASES
+        .iter()
+        .find_map(|(phrase, action)| (*phrase == words).then_some(*action))
 }
 
 fn rest_action_effect(action: RestAction, filter: ObjectFilter, player: PlayerAst) -> EffectAst {
@@ -219,8 +326,8 @@ fn starts_like_create_fragment_lexed(tokens: &[OwnedLexToken]) -> bool {
     };
     let starts_like_count = parse_number_from_lexed(tokens).is_some()
         || contains_char(first_word, '/')
-        || first_word == "x";
-    starts_like_count && word_slice_contains_any_word(&words, &["token", "tokens"])
+        || X_WORD_PATTERN.matches_word(first_word);
+    starts_like_count && CHAIN_TOKEN_OR_TOKENS_PATTERN.matches_words(&words)
 }
 
 pub(super) fn parse_effect_chain_rule_lexed(
@@ -246,11 +353,11 @@ fn parse_exile_library_then_shuffle_graveyard_chain_lexed(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     fn parse_owner(words: &[&str]) -> Option<(PlayerFilter, PlayerAst)> {
         let words = crate::runtime_backend::util::possessive_normalized_word_refs(words);
-        if word_slice_eq(&words, &["your"]) {
+        if CHAIN_OWNER_YOUR_PATTERN.matches_words(&words) {
             Some((PlayerFilter::You, PlayerAst::You))
-        } else if word_slice_eq_any(&words, &[&["target", "player"], &["target", "players"]]) {
+        } else if CHAIN_OWNER_TARGET_PLAYER_PATTERN.matches_words(&words) {
             Some((PlayerFilter::target_player(), PlayerAst::Target))
-        } else if word_slice_eq_any(&words, &[&["target", "opponent"], &["target", "opponents"]]) {
+        } else if CHAIN_OWNER_TARGET_OPPONENT_PATTERN.matches_words(&words) {
             Some((PlayerFilter::target_opponent(), PlayerAst::TargetOpponent))
         } else {
             None
@@ -263,7 +370,7 @@ fn parse_exile_library_then_shuffle_graveyard_chain_lexed(
     }
 
     let clause_words = token_word_refs(clause_tokens);
-    let Some(library_idx) = word_slice_find_phrase_start(&clause_words, &["library"]) else {
+    let Some(library_idx) = chain_find_word(&clause_words, &LIBRARY_WORD_PATTERN) else {
         return Ok(None);
     };
     if library_idx <= 4 {
@@ -274,18 +381,13 @@ fn parse_exile_library_then_shuffle_graveyard_chain_lexed(
         Some(owner) => owner,
         None => return Ok(None),
     };
-    if !word_slice_starts_with_at(
-        &clause_words,
-        library_idx + 1,
-        &["face", "down", "then", "shuffle", "all", "cards", "from"],
-    ) {
+    if !CHAIN_FACE_DOWN_SHUFFLE_FROM_PATTERN.matches_words(&clause_words[library_idx + 1..]) {
         return Ok(None);
     }
 
     let graveyard_tail = &clause_words[library_idx + 8..];
-    let Some(graveyard_idx) = graveyard_tail
-        .iter()
-        .position(|word| matches!(*word, "graveyard" | "graveyards"))
+    let Some(graveyard_idx) =
+        chain_find_word(graveyard_tail, &GRAVEYARD_OR_GRAVEYARDS_WORD_PATTERN)
     else {
         return Ok(None);
     };
@@ -298,7 +400,11 @@ fn parse_exile_library_then_shuffle_graveyard_chain_lexed(
         return Ok(None);
     }
     let library_tail = &graveyard_tail[graveyard_idx + 1..];
-    if library_tail.first() != Some(&"into") || library_tail.last() != Some(&"library") {
+    if !INTO_WORD_PATTERN.matches_first_word(library_tail)
+        || !library_tail
+            .last()
+            .is_some_and(|word| LIBRARY_WORD_PATTERN.matches_word(word))
+    {
         return Ok(None);
     }
     let Some((destination_owner_filter, _destination_owner_player)) =
@@ -322,7 +428,7 @@ pub(crate) fn looks_like_multi_create_chain_lexed(tokens: &[OwnedLexToken]) -> b
     matches!(find_verb_lexed(tokens), Some((Verb::Create, _)))
         && token_word_refs(tokens)
             .iter()
-            .filter(|word| matches!(**word, "token" | "tokens"))
+            .filter(|word| CHAIN_TOKEN_OR_TOKENS_PATTERN.matches_word(word))
             .count()
             >= 2
 }
@@ -350,9 +456,9 @@ pub(crate) fn parse_effect_chain_lexed(
     }
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if word_slice_starts_with(&clause_words, &["exile", "them"])
+    if CHAIN_EXILE_THEM_PREFIX_PATTERN.matches_words(&clause_words)
         && let Some(meld_idx) =
-            word_slice_find_phrase_start(&clause_words, &["then", "meld", "them", "into"])
+            chain_find_phrase_start(&clause_words, &CHAIN_THEN_MELD_THEM_INTO_PREFIX_PATTERN)
     {
         let result_words = &clause_words[meld_idx + 4..];
         if result_words.is_empty() {
@@ -380,7 +486,7 @@ pub(crate) fn parse_effect_chain_lexed(
         let mut stripped = remove_through_first_word(tokens, "may");
         if stripped
             .first()
-            .is_some_and(|token| token.is_word("have") || token.is_word("has"))
+            .is_some_and(|token| CHAIN_HAVE_OR_HAS_WORD_PATTERN.matches_token(token))
         {
             stripped.remove(0);
         }
@@ -410,10 +516,8 @@ pub(crate) fn parse_effect_chain_lexed(
         return Ok(vec![EffectAst::May { effects }]);
     }
 
-    if word_slice_first_is(&clause_words, "tap")
-        && word_slice_at_is_any(&clause_words, 1, &["all", "each"])
-        && (word_slice_contains_phrase(&clause_words, &["or", "untap", "all"])
-            || word_slice_contains_phrase(&clause_words, &["or", "untap", "each"]))
+    if CHAIN_TAP_ALL_OR_EACH_PREFIX_PATTERN.matches_words(&clause_words)
+        && CHAIN_OR_UNTAP_ALL_EACH_PATTERN.matches_words(&clause_words)
     {
         return parse_effect_chain_with_subject_verb_primitives_lexed(tokens);
     }
@@ -450,27 +554,19 @@ fn leading_may_is_permission_clause_lexed(tokens: &[OwnedLexToken]) -> Result<bo
 }
 
 fn starts_with_until_end_of_turn_trigger_clause(clause_words: &[&str]) -> bool {
-    word_slice_starts_with_any(
-        clause_words,
-        &[
-            &["until", "end", "of", "turn"],
-            &["until", "the", "end", "of", "turn"],
-        ],
-    ) && word_slice_at_is_any(
-        clause_words,
-        if word_slice_at_is(clause_words, 1, "the") {
-            5
-        } else {
-            4
-        },
-        &["when", "whenever", "at"],
-    )
+    CHAIN_UNTIL_EOT_TRIGGER_PREFIX_PATTERN.matches_words(clause_words)
+        && WHEN_WHENEVER_AT_WORD_PATTERN.matches_word_at(
+            clause_words,
+            if THE_WORD_PATTERN.matches_word_at(clause_words, 1) {
+                5
+            } else {
+                4
+            },
+        )
 }
 
 fn is_would_enter_replacement_clause(clause_words: &[&str]) -> bool {
-    word_slice_contains_word(clause_words, "would")
-        && word_slice_contains_any_word(clause_words, &["enter", "enters"])
-        && word_slice_contains_word(clause_words, "instead")
+    CHAIN_WOULD_ENTER_INSTEAD_PATTERN.matches_words(clause_words)
 }
 
 fn is_comparison_or_delimiter_lexed(tokens: &[OwnedLexToken], idx: usize) -> bool {
@@ -479,10 +575,11 @@ fn is_comparison_or_delimiter_lexed(tokens: &[OwnedLexToken], idx: usize) -> boo
     }
     let previous_word = (0..idx).rev().find_map(|i| tokens[i].as_word());
     let next_word = tokens.get(idx + 1).and_then(OwnedLexToken::as_word);
-    if matches!(next_word, Some("less" | "greater" | "more" | "fewer")) {
+    if next_word.is_some_and(|word| CHAIN_COMPARISON_OR_TAIL_WORD_PATTERN.matches_word(word)) {
         return true;
     }
-    previous_word == Some("than") && next_word == Some("equal")
+    previous_word.is_some_and(|word| CHAIN_THAN_WORD_PATTERN.matches_word(word))
+        && next_word.is_some_and(|word| CHAIN_EQUAL_WORD_PATTERN.matches_word(word))
 }
 
 fn action_separator_indices_lexed(tokens: &[OwnedLexToken]) -> Vec<usize> {
@@ -510,7 +607,7 @@ fn action_separator_indices_lexed(tokens: &[OwnedLexToken]) -> Vec<usize> {
         if inside_quotes {
             continue;
         }
-        if token.is_word("or")
+        if CHAIN_OR_WORD_PATTERN.matches_token(token)
             && tokens
                 .get(idx + 1)
                 .and_then(OwnedLexToken::as_word)
@@ -533,7 +630,7 @@ fn action_separator_indices_lexed(tokens: &[OwnedLexToken]) -> Vec<usize> {
                 && (after_words
                     .first()
                     .is_some_and(|word| is_card_type_word(word))
-                    || (word_slice_first_is(&after_words, "or")
+                    || (CHAIN_OR_WORD_PATTERN.matches_first_word(&after_words)
                         && after_words
                             .get(1)
                             .is_some_and(|word| is_card_type_word(word))))
@@ -542,7 +639,8 @@ fn action_separator_indices_lexed(tokens: &[OwnedLexToken]) -> Vec<usize> {
             }
         }
         let is_separator = token.kind == TokenKind::Comma
-            || (token.is_word("or") && !is_comparison_or_delimiter_lexed(tokens, idx));
+            || (CHAIN_OR_WORD_PATTERN.matches_token(token)
+                && !is_comparison_or_delimiter_lexed(tokens, idx));
         if is_separator {
             indices.push(idx);
         }
@@ -553,7 +651,7 @@ fn action_separator_indices_lexed(tokens: &[OwnedLexToken]) -> Vec<usize> {
 fn normalize_or_action_option_lexed(mut option: &[OwnedLexToken]) -> &[OwnedLexToken] {
     while option
         .first()
-        .is_some_and(|token| token.is_word("and") || token.is_word("or"))
+        .is_some_and(|token| CHAIN_AND_OR_WORD_PATTERN.matches_token(token))
     {
         option = &option[1..];
     }
@@ -567,31 +665,8 @@ pub(crate) fn parse_or_action_clause_lexed(
         return Ok(None);
     }
     let words = token_word_refs(tokens);
-    if word_slice_contains_word(&words, "target")
-        && word_slice_contains_window_by(&words, 3, |window| {
-            matches!(
-                window,
-                [
-                    "artifact"
-                        | "battle"
-                        | "creature"
-                        | "enchantment"
-                        | "instant"
-                        | "land"
-                        | "planeswalker"
-                        | "sorcery",
-                    "or",
-                    "artifact"
-                        | "battle"
-                        | "creature"
-                        | "enchantment"
-                        | "instant"
-                        | "land"
-                        | "planeswalker"
-                        | "sorcery"
-                ]
-            )
-        })
+    if CHAIN_TARGET_WITH_CARD_TYPE_WINDOW_PATTERN.matches_words(&words)
+        && chain_has_card_type_or_card_type_window(&words)
     {
         return Ok(None);
     }
@@ -605,10 +680,10 @@ pub(crate) fn parse_or_action_clause_lexed(
 
         let first_words = crate::runtime_backend::token_word_refs(first);
         let second_words = crate::runtime_backend::token_word_refs(second);
-        if word_slice_first_is(&first_words, "tap")
-            && word_slice_first_is(&second_words, "untap")
-            && word_slice_at_is_any(&first_words, 1, &["all", "each"])
-            && word_slice_at_is_any(&second_words, 1, &["all", "each"])
+        if TAP_WORD_PATTERN.matches_first_word(&first_words)
+            && UNTAP_WORD_PATTERN.matches_first_word(&second_words)
+            && ALL_OR_EACH_WORD_PATTERN.matches_word_at(&first_words, 1)
+            && ALL_OR_EACH_WORD_PATTERN.matches_word_at(&second_words, 1)
         {
             continue;
         }
@@ -1127,8 +1202,8 @@ pub(crate) fn parse_effect_chain_inner_lexed(
             continue;
         }
         let segment_words = token_word_refs(&segment);
-        if word_slice_starts_with(&segment_words, &["all", "abilities", "and"])
-            && word_slice_at_is_any(&segment_words, 3, &["gain", "gains"])
+        if CHAIN_ALL_ABILITIES_AND_PATTERN.matches_words(&segment_words)
+            && GAIN_OR_GAINS_WORD_PATTERN.matches_word_at(&segment_words, 3)
         {
             let Some(gain_idx) =
                 crate::runtime_backend::lexer::find_token_any_word(&segment, &["gain", "gains"])
@@ -1179,7 +1254,7 @@ fn is_orphan_rounded_up_where_x_tail(
     previous_effect: Option<&EffectAst>,
 ) -> bool {
     let segment_words = token_word_refs(segment);
-    if !word_slice_eq(&segment_words, &["rounded", "up"]) {
+    if !CHAIN_ROUNDED_UP_PATTERN.matches_words(&segment_words) {
         return false;
     }
     if previous.is_none() && previous_effect.is_none() {
@@ -1458,11 +1533,12 @@ fn for_each_revealed_this_way_filter(filter: &ObjectFilter) -> bool {
     filter.tagged_constraints.iter().any(|constraint| {
         constraint.relation == TaggedOpbjectRelation::IsTaggedObject
             && (constraint.tag.as_str() == IT_TAG
-                || constraint
-                    .tag
-                    .as_str()
-                    .starts_with("__sentence_helper_revealed"))
+                || sentence_helper_revealed_tag(constraint.tag.as_str()))
     })
+}
+
+fn sentence_helper_revealed_tag(tag: &str) -> bool {
+    tag.starts_with(SENTENCE_HELPER_REVEALED_TAG_PREFIX)
 }
 
 fn is_revealed_this_way_scalar_reward(effect: &EffectAst) -> bool {
@@ -1534,22 +1610,15 @@ fn trailing_if_predicate_supported(predicate: &PredicateAst) -> bool {
             | PredicateAst::PlayerHasCitysBlessing { .. }
             | PredicateAst::PlayerHasMoreCardsInHandThanYou { .. }
             | PredicateAst::PlayerHasCardTypesInGraveyardOrMore { .. }
-    ) || matches!(predicate, PredicateAst::TaggedMatches(tag, _) if tag.as_str() == "enchanted")
+    ) || matches!(predicate, PredicateAst::TaggedMatches(tag, _) if tag.as_str() == ENCHANTED_TAG_NAME)
 }
 
 pub(crate) fn is_beginning_of_end_step_words(words: &[&str]) -> bool {
-    word_slice_contains_any_phrase(
-        words,
-        &[
-            &["beginning", "of", "the", "end", "step"],
-            &["beginning", "of", "next", "end", "step"],
-            &["beginning", "of", "the", "next", "end", "step"],
-        ],
-    )
+    CHAIN_BEGINNING_END_STEP_PATTERN.matches_words(words)
 }
 
 pub(crate) fn is_end_of_combat_words(words: &[&str]) -> bool {
-    word_slice_contains_phrase(words, &["end", "of", "combat"])
+    CHAIN_END_OF_COMBAT_PATTERN.matches_words(words)
 }
 
 pub(crate) fn target_is_generic_token_filter(target: &TargetAst) -> bool {
@@ -1861,7 +1930,7 @@ pub(crate) fn expand_segments_with_multi_create_clauses_lexed(
         let segment_words = token_word_refs(&segment);
         let token_mentions = segment_words
             .iter()
-            .filter(|word| matches!(**word, "token" | "tokens"))
+            .filter(|word| CHAIN_TOKEN_OR_TOKENS_PATTERN.matches_word(word))
             .count();
         if token_mentions < 2 {
             expanded.push(segment);
@@ -2417,7 +2486,7 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
                     },
                     action: SubjectVerbActionAst::Draw { .. },
                 })
-            ) && word_slice_first_is(&clause_words, "draw")
+            ) && DRAW_WORD_PATTERN.matches_first_word(&clause_words)
         }
         CarryContext::ForEachPlayer
         | CarryContext::ForEachTargetPlayers(_)

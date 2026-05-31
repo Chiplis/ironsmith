@@ -1,5 +1,22 @@
 use super::super::super::lexer::LexedClause;
 use super::*;
+use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
+
+const THEN_RETURN_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["then", "return"]);
+const ALL_OR_EACH_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["all"], &["each"]]);
+const OR_UNTAP_PREFIX: &[&str] = &["or", "untap"];
+const OR_UNTAP_ALL_PREFIX: &[&str] = &["or", "untap", "all"];
+const CHOSEN_TYPE_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_phrases & [&[&["chosen", "type"], &["that", "type"],]]);
+const TARGET_PLAYER_CONTROLS_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["target", "player", "controls"]]);
+const THAT_PLAYER_CONTROLS_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &["that", "player", "controls"],
+            &["that", "players", "control"],
+        ]]
+);
 
 const TYPE_CHOICE_QUALIFIER_PHRASES: &[&[&str]] = &[
     &["of", "the", "chosen", "type"],
@@ -40,7 +57,10 @@ pub(crate) fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextE
     if let Some(effect) = parse_tap_or_untap_all(tokens)? {
         return Ok(effect);
     }
-    if clause.first_is_any_word(&["all", "each"]) {
+    if clause
+        .first_word()
+        .is_some_and(|word| ALL_OR_EACH_PATTERN.matches_word(word))
+    {
         let filter_clause = clause
             .after_words(1)
             .unwrap_or_else(|| clause.from(clause.len()));
@@ -49,7 +69,7 @@ pub(crate) fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextE
     }
     if let Some(then_idx) = tokens
         .windows(2)
-        .position(|window| window[0].is_word("then") && window[1].is_word("return"))
+        .position(|window| THEN_RETURN_PATTERN.matches(LexedClause::new(window)))
     {
         let tap_tokens = trim_commas(&tokens[..then_idx]);
         let return_tokens = trim_commas(&tokens[then_idx + 1..]);
@@ -62,7 +82,7 @@ pub(crate) fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextE
         }
     }
     // Handle "tap or untap <target>" as a choice between tapping and untapping.
-    if let Some(target_clause) = clause.strip_prefix_clause(&["or", "untap"]) {
+    if let Some(target_clause) = clause.strip_prefix_clause(OR_UNTAP_PREFIX) {
         let target = parse_target_phrase(target_clause.tokens())?;
         return Ok(EffectAst::subject_verb_tap_or_untap(target.clone()));
     }
@@ -72,19 +92,21 @@ pub(crate) fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextE
 
 fn parse_tap_or_untap_all(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
-    if !clause.first_is_any_word(&["all", "each"]) {
+    if !clause
+        .first_word()
+        .is_some_and(|word| ALL_OR_EACH_PATTERN.matches_word(word))
+    {
         return Ok(None);
     }
     let Some(after_quantifier) = clause.from_word(1) else {
         return Ok(None);
     };
     let Some((left_clause, right_with_separator)) =
-        after_quantifier.split_once_before_phrase(&["or", "untap", "all"])
+        after_quantifier.split_once_before_phrase(OR_UNTAP_ALL_PREFIX)
     else {
         return Ok(None);
     };
-    let Some(right_clause) = right_with_separator.strip_prefix_clause(&["or", "untap", "all"])
-    else {
+    let Some(right_clause) = right_with_separator.strip_prefix_clause(OR_UNTAP_ALL_PREFIX) else {
         return Ok(None);
     };
     let left_clause = left_clause.trimmed();
@@ -99,9 +121,7 @@ fn parse_tap_or_untap_all(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,
     let analyze_type_choice_reference = |tokens: &[OwnedLexToken]| {
         let clause = LexedClause::new(tokens);
         let stripped = clause.without_any_phrase_trimmed(TYPE_CHOICE_QUALIFIER_PHRASES);
-        let mentions = stripped.is_some()
-            || clause.contains_phrase(&["chosen", "type"])
-            || clause.contains_phrase(&["that", "type"]);
+        let mentions = stripped.is_some() || CHOSEN_TYPE_MARKER_PATTERN.matches(clause);
         let tokens = if let Some((_, tokens)) = stripped {
             tokens
         } else {
@@ -123,12 +143,10 @@ fn parse_tap_or_untap_all(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,
     if right_mentions_chosen_type {
         untap_filter.chosen_creature_type = true;
     }
-    if left_clause.contains_phrase(&["target", "player", "controls"]) {
+    if TARGET_PLAYER_CONTROLS_PATTERN.matches(left_clause) {
         tap_filter.controller = Some(PlayerFilter::target_player());
     }
-    if right_clause.contains_phrase(&["that", "player", "controls"])
-        || right_clause.contains_phrase(&["that", "players", "control"])
-    {
+    if THAT_PLAYER_CONTROLS_PATTERN.matches(right_clause) {
         untap_filter.controller = tap_filter
             .controller
             .clone()

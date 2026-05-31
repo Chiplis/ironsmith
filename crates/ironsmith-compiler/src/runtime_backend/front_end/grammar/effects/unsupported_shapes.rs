@@ -1,10 +1,52 @@
 use super::*;
+use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
+    ClauseShape, clause_shape,
+};
 
 const EACH_PLAYER_PREFIXES: &[&[&str]] = &[&["each", "player"]];
 const EACH_PLAYER_EXILES_ALL_PREFIXES: &[&[&str]] = &[&["each", "player", "exiles", "all"]];
 const EXILE_PREFIXES: &[&[&str]] = &[&["exile"]];
 const RETURN_EACH_CREATURE_ISNT_PREFIXES: &[&[&str]] =
     &[&["return", "each", "creature", "that", "isnt"]];
+const UNTAP_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_words & [&["untap", "untaps"]]);
+const CONTRACTION_NEGATION_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_words & [&["doesnt", "dont", "cant"]]);
+const SPLIT_NEGATION_MARKER_PATTERN: ClauseShape<'static> = ClauseShape::new()
+    .contains_any_phrases(&[&[&["does", "not"], &["do", "not"], &["can", "not"]]]);
+const NEGATED_UNTAP_DURING_PATTERN: ClauseShape<'static> = ClauseShape::new()
+    .contains_any_phrases(&[&[&["dont", "untap", "during"], &["doesnt", "untap", "during"]]]);
+const CONTROLLERS_UNTAP_STEP_PATTERN: ClauseShape<'static> = ClauseShape::new()
+    .contains_any_phrases(&[&[
+        &["controllers", "untap", "step"],
+        &["controllers", "untap", "steps"],
+    ]]);
+const FOR_AS_LONG_AS_REMAINS_TAPPED_PATTERN: ClauseShape<'static> = clause_shape!(contains_phrases & [&["for", "as", "long", "as"]]; contains_words & ["remains", "tapped"]);
+const GREATEST_MANA_VALUE_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["greatest", "mana", "value"]]);
+const LEAST_POWER_AMONG_CREATURES_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["least", "power", "among", "creatures"]]);
+const DIVIDED_EVENLY_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["divided", "evenly"]]);
+const DIFFERENT_NAMES_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["different", "names"]]);
+const CHOSEN_AT_RANDOM_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["chosen", "at", "random"]]);
+const IF_SACRIFICE_ISLAND_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_phrases
+        & [
+            &["if", "you", "sacrifice", "an", "island"],
+            &["this", "way"]
+        ]
+);
+const SPENT_TO_CAST_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["spent", "to", "cast"]]);
+const FACE_DOWN_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["face", "down"]]);
+const FACE_DOWN_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["face-down"], &["facedown"]]);
+const ENTER_OR_ENTERS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["enter"], &["enters"]]);
 
 pub(crate) fn is_enters_as_copy_clause_lexed(tokens: &[OwnedLexToken]) -> bool {
     let as_copy_idx = primitives::words_find_phrase(tokens, &["as", "a", "copy"])
@@ -13,7 +55,7 @@ pub(crate) fn is_enters_as_copy_clause_lexed(tokens: &[OwnedLexToken]) -> bool {
     match as_copy_idx {
         Some(idx) => tokens[..idx]
             .iter()
-            .any(|t| t.is_word("enter") || t.is_word("enters")),
+            .any(|token| ENTER_OR_ENTERS_WORD_PATTERN.matches_token(token)),
         None => false,
     }
 }
@@ -22,12 +64,9 @@ pub(crate) fn is_negated_untap_clause_words(words: &[&str]) -> bool {
     if words.len() < 3 {
         return false;
     }
-    let has_untap = word_slice_contains_any_word(words, &["untap", "untaps"]);
-    let has_negation = word_slice_contains_any_word(words, &["doesnt", "dont", "cant"])
-        || word_slice_contains_any_phrase(
-            words,
-            &[&["does", "not"], &["do", "not"], &["can", "not"]],
-        );
+    let has_untap = UNTAP_MARKER_PATTERN.matches_words(words);
+    let has_negation = CONTRACTION_NEGATION_MARKER_PATTERN.matches_words(words)
+        || SPLIT_NEGATION_MARKER_PATTERN.matches_words(words);
     has_untap && has_negation
 }
 
@@ -46,21 +85,9 @@ pub(crate) fn is_negated_untap_clause_lexed(tokens: &[OwnedLexToken]) -> bool {
 pub(crate) fn looks_like_supported_negated_untap_clause_lexed(tokens: &[OwnedLexToken]) -> bool {
     let words_storage = normalize_cant_words(tokens);
     let words = words_storage.iter().map(String::as_str).collect::<Vec<_>>();
-    let has_negated_untap = word_slice_contains_any_phrase(
-        words.as_slice(),
-        &[&["dont", "untap", "during"], &["doesnt", "untap", "during"]],
-    );
-    let has_controllers_untap_step = word_slice_contains_any_phrase(
-        words.as_slice(),
-        &[
-            &["controllers", "untap", "step"],
-            &["controllers", "untap", "steps"],
-        ],
-    );
-    let has_tapped_duration =
-        word_slice_contains_phrase(words.as_slice(), &["for", "as", "long", "as"])
-            && word_slice_contains_word(words.as_slice(), "remains")
-            && word_slice_contains_word(words.as_slice(), "tapped");
+    let has_negated_untap = NEGATED_UNTAP_DURING_PATTERN.matches_words(words.as_slice());
+    let has_controllers_untap_step = CONTROLLERS_UNTAP_STEP_PATTERN.matches_words(words.as_slice());
+    let has_tapped_duration = FOR_AS_LONG_AS_REMAINS_TAPPED_PATTERN.matches_words(words.as_slice());
     has_negated_untap && has_controllers_untap_step && has_tapped_duration
 }
 
@@ -221,11 +248,11 @@ pub(crate) fn has_when_you_sacrifice_this_way_clause_sentence_lexed(
 }
 
 pub(crate) fn has_greatest_mana_value_clause_sentence_lexed(words: &[&str]) -> bool {
-    word_slice_contains_phrase(words, &["greatest", "mana", "value"])
+    GREATEST_MANA_VALUE_PATTERN.matches_words(words)
 }
 
 pub(crate) fn has_least_power_among_creatures_clause_sentence_lexed(words: &[&str]) -> bool {
-    word_slice_contains_phrase(words, &["least", "power", "among", "creatures"])
+    LEAST_POWER_AMONG_CREATURES_PATTERN.matches_words(words)
 }
 
 pub(crate) fn has_villainous_choice_clause_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -233,15 +260,15 @@ pub(crate) fn has_villainous_choice_clause_sentence_lexed(tokens: &[OwnedLexToke
 }
 
 pub(crate) fn has_divided_evenly_clause_sentence_lexed(words: &[&str]) -> bool {
-    word_slice_contains_phrase(words, &["divided", "evenly"])
+    DIVIDED_EVENLY_PATTERN.matches_words(words)
 }
 
 pub(crate) fn has_different_names_clause_sentence_lexed(words: &[&str]) -> bool {
-    word_slice_contains_phrase(words, &["different", "names"])
+    DIFFERENT_NAMES_PATTERN.matches_words(words)
 }
 
 pub(crate) fn has_chosen_at_random_clause_sentence_lexed(words: &[&str]) -> bool {
-    word_slice_contains_phrase(words, &["chosen", "at", "random"])
+    CHOSEN_AT_RANDOM_PATTERN.matches_words(words)
 }
 
 pub(crate) fn has_defending_players_choice_clause_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -264,22 +291,21 @@ pub(crate) fn has_target_creature_token_player_planeswalker_clause_sentence_lexe
 pub(crate) fn has_if_you_sacrifice_an_island_this_way_clause_sentence_lexed(
     words: &[&str],
 ) -> bool {
-    word_slice_contains_phrase(words, &["if", "you", "sacrifice", "an", "island"])
-        && word_slice_contains_phrase(words, &["this", "way"])
+    IF_SACRIFICE_ISLAND_THIS_WAY_PATTERN.matches_words(words)
 }
 
 pub(crate) fn has_spent_to_cast_clause_sentence_lexed(words: &[&str]) -> bool {
-    word_slice_contains_phrase(words, &["spent", "to", "cast"])
+    SPENT_TO_CAST_PATTERN.matches_words(words)
 }
 
 pub(crate) fn has_face_down_clause_sentence_lexed(
     words: &[&str],
     tokens: &[OwnedLexToken],
 ) -> bool {
-    let has_face_down = word_slice_contains_phrase(words, &["face", "down"])
+    let has_face_down = FACE_DOWN_PATTERN.matches_words(words)
         || words
             .iter()
-            .any(|word| matches!(*word, "face-down" | "facedown"));
+            .any(|word| FACE_DOWN_WORD_PATTERN.matches_word(word));
     if !has_face_down {
         return false;
     }

@@ -1,5 +1,6 @@
 use super::super::grammar::primitives::TokenWordView;
-use super::super::lexer::{OwnedLexToken, split_lexed_sentences, word_slice_starts_with};
+use super::super::lexer::{OwnedLexToken, split_lexed_sentences};
+use super::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::dispatch_entry::SentenceInput;
 use super::dispatch_inner::parse_effect_sentence_lexed;
 use crate::cards::builders::{
@@ -9,6 +10,23 @@ use crate::cards::builders::{
 use crate::effect::{ChoiceCount, Until, Value};
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::zone::Zone;
+
+const DIVVY_SEARCH_LIBRARY_GRAVEYARD_CREATURE_CARDS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix
+        & [
+            "search",
+            "your",
+            "library",
+            "and",
+            "graveyard",
+            "for",
+            "up",
+            "to",
+            "four",
+            "creature",
+            "cards",
+        ]
+);
 
 fn membership_predicate_for_iterated_object(tag: &str) -> PredicateAst {
     PredicateAst::TaggedMatches(
@@ -52,9 +70,11 @@ fn matches_sentence_sequence(sentence_words: &[TokenWordView<'_>], expected: &[&
 }
 
 fn first_sentence_has_prefix(sentence_words: &[TokenWordView<'_>], prefix: &[&str]) -> bool {
-    sentence_words
-        .first()
-        .is_some_and(|words| word_slice_starts_with(&words.word_refs(), prefix))
+    sentence_words.first().is_some_and(|words| {
+        ClauseShape::new()
+            .prefix(prefix)
+            .matches_words(&words.word_refs())
+    })
 }
 
 fn sentence_has_phrase(sentence_words: &[TokenWordView<'_>], phrase: &[&str]) -> bool {
@@ -75,22 +95,8 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         if words.has_phrase(&["chooses", "two", "of", "those", "cards"])
             && words.has_phrase(&["shuffle", "the", "chosen", "cards"])
             && words.has_phrase(&["put", "the", "rest", "onto", "the", "battlefield"])
-            && word_slice_starts_with(
-                &word_refs,
-                &[
-                    "search",
-                    "your",
-                    "library",
-                    "and",
-                    "graveyard",
-                    "for",
-                    "up",
-                    "to",
-                    "four",
-                    "creature",
-                    "cards",
-                ],
-            )
+            && DIVVY_SEARCH_LIBRARY_GRAVEYARD_CREATURE_CARDS_PREFIX_PATTERN
+                .matches_words(&word_refs)
         {
             let first_effect_tokens = split_lexed_sentences(sentences[0].lowered())
                 .into_iter()

@@ -1,13 +1,130 @@
 use super::*;
 use crate::runtime_backend::SubjectAst;
 use crate::runtime_backend::ast::SubjectVerbActionAst;
-use crate::runtime_backend::lexer::{
-    word_slice_contains_any_phrase_or_empty, word_slice_contains_phrase_or_empty,
-    word_slice_contains_word, word_slice_eq, word_slice_find_phrase_start_or_zero,
-    word_slice_starts_with,
-};
 
 pub(crate) type ActivationRestrictionCompatWords<'a> = grammar::TokenWordView<'a>;
+
+const PRIMARY_ADD_MANA_CLAUSE_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["add"],
+            &["adds"],
+            &["you", "add"],
+            &["that", "player", "add"],
+            &["that", "player", "adds"],
+            &["target", "player", "add"],
+            &["target", "player", "adds"],
+        ]
+);
+const IMPRINTED_COLOR_MANA_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["exiled"]; contains_any_words & [&["card", "cards"], &["color", "colors"]]);
+const ANY_COMBINATION_MANA_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["any", "combination", "of"]]);
+const ANY_CHOICE_MANA_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["any"]; contains_any_words & [&["color", "type"]]);
+const OR_CHOICE_MANA_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["or"]);
+const CHOSEN_COLOR_MANA_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["chosen", "color"]);
+const COMMANDER_IDENTITY_MANA_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["identity"]; contains_any_words & [&["commander", "commanders"]]);
+const THIS_WAY_COUNTER_REMOVAL_VALUE_PATTERN: ClauseShape<'static> = clause_shape!(contains_phrases & [&["this", "way"]]; contains_words & ["removed"]; contains_any_words & [&["counter", "counters"]]);
+const FOR_EACH_COLOR_AMONG_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["for", "each", "color", "among"]]);
+const ADD_ONE_MANA_OF_THAT_COLOR_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["add", "one", "mana", "of", "that", "color"]]);
+const THAT_COLOR_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["that", "color"]);
+const THIS_ENTERS_TAPPED_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["this"]; contains_words & ["enters", "tapped"]);
+const ENTERS_TAPPED_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["enters", "tapped"]);
+const ATTACKING_TRAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["and", "attacking"], &["attacking"]]);
+const THIS_COST_REDUCED_BY_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["this", "cost", "is", "reduced", "by"]);
+const FOR_EACH_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["for", "each"]);
+const ACTIVATED_ABILITIES_OF_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["activated", "abilities", "of"]);
+const LESS_TO_ACTIVATE_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["less", "to", "activate"]);
+const LESS_TO_ACTIVATE_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["less", "to", "activate"]);
+const LESS_TO_ACTIVATE_IF_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["less", "to", "activate", "if"]);
+const IT_TARGETS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["it", "targets"]);
+const LESS_TO_ACTIVATE_FOR_EACH_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["less", "to", "activate", "for", "each"]);
+const THIS_ABILITY_COSTS_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["this", "ability", "costs"]);
+const THIS_SPELL_COSTS_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["this", "spell", "costs"]);
+const HAS_OR_HAVE_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["has"], &["have"]]);
+const ADD_OR_ADDS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["add"], &["adds"]]);
+const DEVOTION_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["devotion"]);
+const TO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["to"]);
+const TAPPED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["tapped"]);
+const COST_OR_COSTS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["cost"], &["costs"]]);
+const COSTS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["costs"]);
+const LESS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["less"]);
+const EACH_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["each"]);
+const CARD_TYPE_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["card", "type"]]);
+const GRAVEYARD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["graveyard"]);
+const X_COST_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["x"], &["+x"], &["-x"]]);
+const ZERO_LOYALTY_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["0"]);
+const YOUR_DEVOTION_OWNER_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(suffix & ["your"]);
+const THEIR_DEVOTION_OWNER_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(suffix & ["their"]);
+const OPPONENT_DEVOTION_OWNER_SUFFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(suffix_any & [&["opponent"], &["opponents"]]);
+const WHERE_X_IS_WORDS: &[&str] = &["where", "x", "is"];
+const WHERE_X_IS_PATTERN: ClauseShape<'static> = clause_shape!(exact & WHERE_X_IS_WORDS);
+const THAT_PLAYER_DEVOTION_OWNER_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    suffix_any
+        & [
+            &["that", "players"],
+            &["that", "player"],
+            &["that", "player's"],
+            &["that", "players'"],
+        ]
+);
+const ALL_CREATURES_ABLE_TO_BLOCK_SOURCE_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &[
+                "all",
+                "creatures",
+                "able",
+                "to",
+                "block",
+                "this",
+                "creature",
+                "do",
+                "so",
+            ],
+            &[
+                "all",
+                "creatures",
+                "able",
+                "to",
+                "block",
+                "this",
+                "do",
+                "so",
+            ],
+        ]
+);
+const SOURCE_MUST_BE_BLOCKED_IF_ABLE_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["this", "creature", "must", "be", "blocked", "if", "able"],
+            &["this", "must", "be", "blocked", "if", "able"],
+        ]
+);
+
+fn find_token_shape(tokens: &[OwnedLexToken], shape: &ClauseShape<'static>) -> Option<usize> {
+    find_index(tokens, |token| shape.matches_token(token))
+}
 
 pub(crate) fn joined_activation_clause_text(tokens: &[OwnedLexToken]) -> String {
     crate::runtime_backend::token_word_refs(tokens).join(" ")
@@ -36,7 +153,7 @@ pub(crate) fn contains_granted_keyword_before_word(
 ) -> bool {
     (0..keyword_idx)
         .filter_map(|idx| words.get(idx))
-        .any(|word| matches!(word, "has" | "have"))
+        .any(|word| HAS_OR_HAVE_WORD_PATTERN.matches_word(word))
 }
 
 pub(crate) fn find_cycling_keyword_word_index(
@@ -150,17 +267,9 @@ pub(crate) fn parse_activated_line_with_raw(
         let primary_sentence = &effect_sentences[0];
         let x_defined_by_cost = activation_cost_mentions_x(cost_tokens);
         let effect_words = ActivationRestrictionCompatWords::new(primary_sentence);
-        let is_primary_add_clause = matches!(
-            (
-                effect_words.get(0),
-                effect_words.get(1),
-                effect_words.get(2)
-            ),
-            (Some("add" | "adds"), _, _)
-                | (Some("you"), Some("add"), _)
-                | (Some("that"), Some("player"), Some("add" | "adds"))
-                | (Some("target"), Some("player"), Some("add" | "adds"))
-        );
+        let primary_sentence_words = effect_words.to_word_refs();
+        let is_primary_add_clause =
+            PRIMARY_ADD_MANA_CLAUSE_PATTERN.matches_words(&primary_sentence_words);
         let is_primary_color_among_add_clause =
             is_for_each_color_among_add_mana_clause(primary_sentence);
         if is_primary_add_clause || is_primary_color_among_add_clause {
@@ -185,10 +294,8 @@ pub(crate) fn parse_activated_line_with_raw(
                 }
             }
 
-            let add_token_idx = find_index(primary_sentence, |token| {
-                token.is_word("add") || token.is_word("adds")
-            })
-            .unwrap_or(0);
+            let add_token_idx =
+                find_token_shape(primary_sentence, &ADD_OR_ADDS_WORD_PATTERN).unwrap_or(0);
             let mana_tokens = if is_primary_color_among_add_clause {
                 primary_sentence
             } else {
@@ -213,25 +320,14 @@ pub(crate) fn parse_activated_line_with_raw(
                     .or_else(|| parse_add_mana_equal_amount_value(mana_tokens))
             };
 
-            let has_imprinted_colors = word_slice_contains_word(&mana_words, "exiled")
-                && (word_slice_contains_word(&mana_words, "card")
-                    || word_slice_contains_word(&mana_words, "cards"))
-                && mana_words
-                    .iter()
-                    .any(|word| *word == "color" || *word == "colors");
-            let has_any_combination_mana =
-                word_slice_contains_phrase_or_empty(&mana_words, &["any", "combination", "of"]);
-            let has_any_choice_mana = word_slice_contains_word(&mana_words, "any")
-                && (word_slice_contains_word(&mana_words, "color")
-                    || word_slice_contains_word(&mana_words, "type")
-                    || has_any_combination_mana);
-            let has_or_choice_mana = word_slice_contains_word(&mana_words, "or");
-            let has_chosen_color = word_slice_contains_word(&mana_words, "chosen")
-                && word_slice_contains_word(&mana_words, "color");
-            let uses_commander_identity = mana_words
-                .iter()
-                .any(|word| *word == "commander" || *word == "commanders")
-                && word_slice_contains_word(&mana_words, "identity");
+            let has_imprinted_colors = IMPRINTED_COLOR_MANA_PATTERN.matches_words(&mana_words);
+            let has_any_combination_mana = ANY_COMBINATION_MANA_PATTERN.matches_words(&mana_words);
+            let has_any_choice_mana =
+                has_any_combination_mana || ANY_CHOICE_MANA_PATTERN.matches_words(&mana_words);
+            let has_or_choice_mana = OR_CHOICE_MANA_PATTERN.matches_words(&mana_words);
+            let has_chosen_color = CHOSEN_COLOR_MANA_PATTERN.matches_words(&mana_words);
+            let uses_commander_identity =
+                COMMANDER_IDENTITY_MANA_PATTERN.matches_words(&mana_words);
             let loyalty_timing = if loyalty_shorthand_cost.is_some() {
                 ActivationTiming::SorcerySpeed
             } else {
@@ -445,10 +541,10 @@ pub(crate) fn activation_cost_mentions_x(tokens: &[OwnedLexToken]) -> bool {
         .iter()
         .filter_map(OwnedLexToken::as_word)
         .any(|word| {
-            matches!(word, "x" | "+x" | "-x")
+            X_COST_WORD_PATTERN.matches_word(word)
                 || word
                     .split('/')
-                    .any(|part| matches!(part, "x" | "+x" | "-x"))
+                    .any(|part| X_COST_WORD_PATTERN.matches_word(part))
         })
 }
 
@@ -459,8 +555,9 @@ pub(crate) fn resolve_activated_mana_x_requirements(
 ) -> Result<(), CardTextError> {
     let clause_word_view = ActivationRestrictionCompatWords::new(sentence_tokens);
     let clause_words = clause_word_view.to_word_refs();
-    if let Some(where_idx) =
-        word_slice_find_phrase_start_or_zero(&clause_words, &["where", "x", "is"])
+    if let Some(where_idx) = clause_words
+        .windows(WHERE_X_IS_WORDS.len())
+        .position(|window| WHERE_X_IS_PATTERN.matches_words(window))
     {
         let clause = clause_words.join(" ");
         let where_token_idx =
@@ -479,11 +576,7 @@ pub(crate) fn resolve_activated_mana_x_requirements(
     }
 
     let x_defined_by_removed_this_way =
-        word_slice_contains_phrase_or_empty(&clause_words, &["this", "way"])
-            && word_slice_contains_word(&clause_words, "removed")
-            && clause_words
-                .iter()
-                .any(|word| matches!(*word, "counter" | "counters"));
+        THIS_WAY_COUNTER_REMOVAL_VALUE_PATTERN.matches_words(&clause_words);
 
     if mana_effect_contains_unbound_x(effect)
         && !x_defined_by_cost
@@ -545,7 +638,7 @@ pub(crate) fn parse_loyalty_shorthand_activation_cost(
         });
     }
     if let Some(rest) = str_strip_prefix(word, "-") {
-        if rest.eq_ignore_ascii_case("x") {
+        if X_COST_WORD_PATTERN.matches_word(rest) {
             return Some(TotalCost::from_cost(
                 crate::costs::Cost::remove_any_counters_from_source(
                     Some(CounterType::Loyalty),
@@ -560,13 +653,14 @@ pub(crate) fn parse_loyalty_shorthand_activation_cost(
             )));
         }
     }
-    if word == "0"
+    if ZERO_LOYALTY_WORD_PATTERN.matches_word(word)
         && raw_line.is_some_and(|line| {
             let mut parts = line.trim().splitn(2, ':');
             let Some(prefix) = parts.next() else {
                 return false;
             };
-            parts.next().is_some() && prefix.trim().replace('−', "-") == "0"
+            parts.next().is_some()
+                && ZERO_LOYALTY_WORD_PATTERN.matches_word(prefix.trim().replace('−', "-").as_str())
         })
     {
         return Some(TotalCost::free());
@@ -676,11 +770,8 @@ pub(crate) fn normalize_activate_only_restriction(
 
 pub(crate) fn is_for_each_color_among_add_mana_clause(tokens: &[OwnedLexToken]) -> bool {
     let words = ActivationRestrictionCompatWords::new(tokens).to_word_refs();
-    word_slice_contains_phrase_or_empty(&words, &["for", "each", "color", "among"])
-        && word_slice_contains_phrase_or_empty(
-            &words,
-            &["add", "one", "mana", "of", "that", "color"],
-        )
+    FOR_EACH_COLOR_AMONG_PATTERN.matches_words(&words)
+        && ADD_ONE_MANA_OF_THAT_COLOR_PATTERN.matches_words(&words)
 }
 
 pub(crate) fn flatten_mana_activation_conditions(
@@ -795,7 +886,7 @@ pub(crate) fn parse_triggered_times_each_turn_lexed(tokens: &[OwnedLexToken]) ->
 }
 
 pub(crate) fn parse_named_number(word: &str) -> Option<u32> {
-    parse_number_word_u32(word)
+    parse_cardinal_u32(word)
 }
 
 pub(crate) fn parse_activation_cost(tokens: &[OwnedLexToken]) -> Result<TotalCost, CardTextError> {
@@ -807,7 +898,7 @@ pub(crate) fn parse_devotion_value_from_add_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(devotion_idx) = find_index(&words, |word| *word == "devotion") else {
+    let Some(devotion_idx) = DEVOTION_WORD_PATTERN.find_word(&words) else {
         return Ok(None);
     };
 
@@ -818,7 +909,8 @@ pub(crate) fn parse_devotion_value_from_add_clause(
         ))
     })?;
 
-    let to_idx = find_index(&words[devotion_idx + 1..], |word| *word == "to")
+    let to_idx = TO_WORD_PATTERN
+        .find_word(&words[devotion_idx + 1..])
         .map(|idx| devotion_idx + 1 + idx)
         .ok_or_else(|| {
             CardTextError::ParseError(format!(
@@ -826,7 +918,7 @@ pub(crate) fn parse_devotion_value_from_add_clause(
                 words.join(" ")
             ))
         })?;
-    if word_slice_starts_with(&words[to_idx + 1..], &["that", "color"]) {
+    if THAT_COLOR_PREFIX_PATTERN.matches_words(&words[to_idx + 1..]) {
         return Ok(Some(Value::DevotionToChosenColor(player)));
     }
     let color_word = words.get(to_idx + 1).copied().ok_or_else(|| {
@@ -861,22 +953,16 @@ pub(crate) fn parse_devotion_player_from_words(
         return None;
     }
     let left = &words[..devotion_idx];
-    if matches!(left, [.., "your"]) {
+    if YOUR_DEVOTION_OWNER_SUFFIX_PATTERN.matches_words(left) {
         return Some(PlayerFilter::You);
     }
-    if matches!(left, [.., "their"]) {
+    if THEIR_DEVOTION_OWNER_SUFFIX_PATTERN.matches_words(left) {
         return Some(PlayerFilter::IteratedPlayer);
     }
-    if matches!(left, [.., "opponent"] | [.., "opponents"]) {
+    if OPPONENT_DEVOTION_OWNER_SUFFIX_PATTERN.matches_words(left) {
         return Some(PlayerFilter::Opponent);
     }
-    if matches!(
-        left,
-        [.., "that", "players"]
-            | [.., "that", "player"]
-            | [.., "that", "player's"]
-            | [.., "that", "players'"]
-    ) {
+    if THAT_PLAYER_DEVOTION_OWNER_SUFFIX_PATTERN.matches_words(left) {
         return Some(PlayerFilter::Target(Box::new(PlayerFilter::Any)));
     }
     None
@@ -928,8 +1014,7 @@ pub(crate) fn parse_enters_tapped_line(
         return Ok(None);
     }
     if is_negated_untap_clause(&clause_words) {
-        let has_enters_tapped = word_slice_contains_word(&clause_words, "enters")
-            && word_slice_contains_word(&clause_words, "tapped");
+        let has_enters_tapped = ENTERS_TAPPED_WORD_PATTERN.matches_words(&clause_words);
         if has_enters_tapped {
             return Err(CardTextError::ParseError(format!(
                 "unsupported mixed enters-tapped and negated-untap clause (clause: '{}')",
@@ -938,12 +1023,10 @@ pub(crate) fn parse_enters_tapped_line(
         }
         return Ok(None);
     }
-    if word_slice_first_is(&clause_words, "this")
-        && word_slice_contains_word(&clause_words, "enters")
-        && word_slice_contains_word(&clause_words, "tapped")
-    {
-        let tapped_word_idx =
-            find_index(&clause_words, |word| *word == "tapped").ok_or_else(|| {
+    if THIS_ENTERS_TAPPED_PATTERN.matches_words(&clause_words) {
+        let tapped_word_idx = TAPPED_WORD_PATTERN
+            .find_word(&clause_words)
+            .ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "missing tapped keyword in enters-tapped clause (clause: '{}')",
                     clause_words.join(" ")
@@ -958,10 +1041,7 @@ pub(crate) fn parse_enters_tapped_line(
             })?;
         let trailing_words =
             crate::runtime_backend::token_word_refs(&tokens[tapped_token_idx + 1..]);
-        if matches!(
-            trailing_words.as_slice(),
-            ["and", "attacking"] | ["attacking"]
-        ) {
+        if ATTACKING_TRAIL_PATTERN.matches_words(&trailing_words) {
             return Ok(None);
         }
         if !trailing_words.is_empty() {
@@ -979,9 +1059,7 @@ pub(crate) fn parse_cost_reduction_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let line_words = crate::runtime_backend::token_word_refs(tokens);
-    if word_slice_starts_with(&line_words, &["this", "cost", "is", "reduced", "by"])
-        && line_words.len() > 6
-    {
+    if THIS_COST_REDUCED_BY_PREFIX_PATTERN.matches_words(&line_words) && line_words.len() > 6 {
         let amount_tokens = trim_commas(&tokens[5..]);
         let parsed_amount = parse_cost_modifier_amount(&amount_tokens);
         let (amount_value, used) = parsed_amount.clone().unwrap_or((Value::Fixed(1), 0));
@@ -992,8 +1070,7 @@ pub(crate) fn parse_cost_reduction_line(
         };
         let remaining_tokens = amount_tokens.get(used..).unwrap_or_default();
         let remaining_words = crate::runtime_backend::token_word_refs(remaining_tokens);
-        if word_slice_contains_word(&remaining_words, "for")
-            && word_slice_contains_word(&remaining_words, "each")
+        if FOR_EACH_WORD_PATTERN.matches_words(&remaining_words)
             && let Some(dynamic) = parse_dynamic_cost_modifier_value(remaining_tokens)?
         {
             let reduction = scale_dynamic_cost_modifier_value(dynamic, amount_fixed);
@@ -1019,9 +1096,8 @@ pub(crate) fn parse_cost_reduction_line(
         )));
     }
 
-    if word_slice_starts_with(&line_words, &["activated", "abilities", "of"]) {
-        let Some(cost_idx) = find_index(&line_words, |word| *word == "cost" || *word == "costs")
-        else {
+    if ACTIVATED_ABILITIES_OF_PREFIX_PATTERN.matches_words(&line_words) {
+        let Some(cost_idx) = COST_OR_COSTS_WORD_PATTERN.find_word(&line_words) else {
             return Ok(None);
         };
         if cost_idx <= 3 {
@@ -1055,7 +1131,7 @@ pub(crate) fn parse_cost_reduction_line(
             }
         };
         let tail_words = crate::runtime_backend::token_word_refs(&amount_tokens[used..]);
-        if !word_slice_starts_with(&tail_words, &["less", "to", "activate"]) {
+        if !LESS_TO_ACTIVATE_PREFIX_PATTERN.matches_words(&tail_words) {
             return Ok(None);
         }
 
@@ -1066,7 +1142,7 @@ pub(crate) fn parse_cost_reduction_line(
         )));
     }
 
-    if word_slice_starts_with(&line_words, &["this", "ability", "costs"]) {
+    if THIS_ABILITY_COSTS_PREFIX_PATTERN.matches_words(&line_words) {
         let amount_tokens = trim_commas(&tokens[3..]);
         let Some((amount_value, used)) = parse_cost_modifier_amount(&amount_tokens) else {
             return Ok(None);
@@ -1082,17 +1158,17 @@ pub(crate) fn parse_cost_reduction_line(
         };
         let tail_tokens = trim_commas(&amount_tokens[used..]);
         let tail_words = crate::runtime_backend::token_word_refs(&tail_tokens);
-        if word_slice_eq(&tail_words, &["less", "to", "activate"]) {
+        if LESS_TO_ACTIVATE_PATTERN.matches_words(&tail_words) {
             return Ok(Some(StaticAbility::reduce_activated_ability_costs(
                 ObjectFilter::source(),
                 reduction,
                 None,
             )));
         }
-        if word_slice_starts_with(&tail_words, &["less", "to", "activate", "if"]) {
+        if LESS_TO_ACTIVATE_IF_PREFIX_PATTERN.matches_words(&tail_words) {
             let condition_tokens = trim_commas(&tail_tokens[4..]);
             let condition_words = crate::runtime_backend::token_word_refs(&condition_tokens);
-            if word_slice_starts_with(&condition_words, &["it", "targets"]) {
+            if IT_TARGETS_PREFIX_PATTERN.matches_words(&condition_words) {
                 let (count, used) = parse_number(&condition_tokens[2..]).ok_or_else(|| {
                     CardTextError::ParseError(format!(
                         "unsupported activated-ability target condition count (clause: '{}')",
@@ -1126,7 +1202,7 @@ pub(crate) fn parse_cost_reduction_line(
                 line_words.join(" ")
             )));
         }
-        if word_slice_starts_with(&tail_words, &["less", "to", "activate", "for", "each"]) {
+        if LESS_TO_ACTIVATE_FOR_EACH_PREFIX_PATTERN.matches_words(&tail_words) {
             if let Some(Value::BasicLandTypesAmong(lands_filter)) =
                 parse_dynamic_cost_modifier_value(&tail_tokens)?
             {
@@ -1159,11 +1235,11 @@ pub(crate) fn parse_cost_reduction_line(
         }
     }
 
-    if !word_slice_starts_with(&line_words, &["this", "spell", "costs"]) {
+    if !THIS_SPELL_COSTS_PREFIX_PATTERN.matches_words(&line_words) {
         return Ok(None);
     }
 
-    let costs_idx = find_index(tokens, |token| token.is_word("costs"))
+    let costs_idx = find_token_shape(tokens, &COSTS_WORD_PATTERN)
         .ok_or_else(|| CardTextError::ParseError("missing costs keyword".to_string()))?;
     let amount_tokens = &tokens[costs_idx + 1..];
     let parsed_amount = parse_cost_modifier_amount(amount_tokens);
@@ -1177,7 +1253,7 @@ pub(crate) fn parse_cost_reduction_line(
     let remaining_tokens = &tokens[costs_idx + 1 + used..];
     let remaining_words: Vec<&str> = crate::runtime_backend::token_word_refs(remaining_tokens);
 
-    if !word_slice_contains_word(&remaining_words, "less") {
+    if !LESS_WORD_PATTERN.matches_words(&remaining_words) {
         return Ok(None);
     }
 
@@ -1191,9 +1267,9 @@ pub(crate) fn parse_cost_reduction_line(
         return Ok(None);
     }
 
-    let has_each = word_slice_contains_word(&remaining_words, "each");
-    let has_card_type = word_slice_contains_phrase_or_empty(&remaining_words, &["card", "type"]);
-    let has_graveyard = word_slice_contains_word(&remaining_words, "graveyard");
+    let has_each = EACH_WORD_PATTERN.matches_words(&remaining_words);
+    let has_card_type = CARD_TYPE_WORD_PATTERN.matches_words(&remaining_words);
+    let has_graveyard = GRAVEYARD_WORD_PATTERN.matches_words(&remaining_words);
 
     if has_each && has_card_type && has_graveyard {
         if amount_fixed != 1 {
@@ -1233,29 +1309,7 @@ pub(crate) fn parse_all_creatures_able_to_block_source_line(
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let words_storage = normalize_cant_words(tokens);
     let words = words_storage.iter().map(String::as_str).collect::<Vec<_>>();
-    if matches!(
-        words.as_slice(),
-        [
-            "all",
-            "creatures",
-            "able",
-            "to",
-            "block",
-            "this",
-            "creature",
-            "do",
-            "so"
-        ] | [
-            "all",
-            "creatures",
-            "able",
-            "to",
-            "block",
-            "this",
-            "do",
-            "so"
-        ]
-    ) {
+    if ALL_CREATURES_ABLE_TO_BLOCK_SOURCE_PATTERN.matches_words(&words) {
         return Ok(Some(StaticAbilityAst::GrantStaticAbility {
             filter: ObjectFilter::creature(),
             ability: Box::new(StaticAbilityAst::Static(StaticAbility::must_block())),
@@ -1270,11 +1324,7 @@ pub(crate) fn parse_source_must_be_blocked_if_able_line(
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words_storage = normalize_cant_words(tokens);
     let words = words_storage.iter().map(String::as_str).collect::<Vec<_>>();
-    if matches!(
-        words.as_slice(),
-        ["this", "creature", "must", "be", "blocked", "if", "able"]
-            | ["this", "must", "be", "blocked", "if", "able"]
-    ) {
+    if SOURCE_MUST_BE_BLOCKED_IF_ABLE_PATTERN.matches_words(&words) {
         return Ok(Some(StaticAbility::restriction(
             crate::effect::Restriction::must_be_blocked(ObjectFilter::source()),
             "this creature must be blocked if able".to_string(),

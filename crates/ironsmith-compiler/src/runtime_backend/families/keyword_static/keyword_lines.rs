@@ -1,3 +1,20 @@
+const KEYWORD_PROTECTION_EACH_MANA_VALUE_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["each", "mana", "value", "among"]);
+const KEYWORD_AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
+const KEYWORD_PROTECTION_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["protection"]);
+const KEYWORD_FROM_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["from"]);
+const KEYWORD_WITH_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["with"]);
+const KEYWORD_PERMANENT_OR_PERMANENTS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["permanent"], &["permanents"]]);
+const KEYWORD_THE_CHOSEN_PLAYER_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["the", "chosen", "player"]);
+const KEYWORD_THE_CHOSEN_COLOR_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["the", "chosen", "color"]);
+const KEYWORD_THE_LAST_CHOSEN_COLOR_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["the", "last", "chosen", "color"]);
+const KEYWORD_COLOR_OR_COLORS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["color"], &["colors"]]);
+
 pub(crate) fn parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     if let Some(actions) = parse_flashback_keyword_line(tokens) {
         return Some(actions);
@@ -61,7 +78,7 @@ pub(crate) fn reject_unimplemented_keyword_actions(
 pub(crate) fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     let words_view = crate::runtime_backend::lexer::TokenWordView::new(tokens);
     let words = words_view.word_refs();
-    let first_word_idx = if word_slice_at_is(&words, 0, "and") {
+    let first_word_idx = if KEYWORD_AND_WORD_PATTERN.matches_word_at(&words, 0) {
         1
     } else {
         0
@@ -69,8 +86,8 @@ pub(crate) fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<Key
     if words.len().saturating_sub(first_word_idx) < 3 {
         return None;
     }
-    if !word_slice_at_is(&words, first_word_idx, "protection")
-        || !word_slice_at_is(&words, first_word_idx + 1, "from")
+    if !KEYWORD_PROTECTION_WORD_PATTERN.matches_word_at(&words, first_word_idx)
+        || !KEYWORD_FROM_WORD_PATTERN.matches_word_at(&words, first_word_idx + 1)
     {
         return None;
     }
@@ -78,11 +95,8 @@ pub(crate) fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<Key
     let mut actions = Vec::new();
     let parse_from_target = |words: &[&str], idx: usize| -> Option<KeywordAction> {
         let value = *words.get(idx + 1)?;
-        if value == "each"
-            && word_slice_at_is(words, idx + 2, "mana")
-            && word_slice_at_is(words, idx + 3, "value")
-            && word_slice_at_is(words, idx + 4, "among")
-        {
+        let target_tail = words.get(idx + 1..)?;
+        if KEYWORD_PROTECTION_EACH_MANA_VALUE_PATTERN.matches_words(target_tail) {
             let filter_tokens = trim_commas(
                 LexedClause::new(tokens)
                     .from_word(idx + 5)?
@@ -91,8 +105,8 @@ pub(crate) fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<Key
             let filter = parse_object_filter_lexed(&filter_tokens, false).ok()?;
             return Some(KeywordAction::ProtectionFromEachManaValueAmong(filter));
         }
-        if matches!(value, "permanent" | "permanents")
-            && word_slice_at_is(words, idx + 2, "with")
+        if KEYWORD_PERMANENT_OR_PERMANENTS_WORD_PATTERN.matches_word(value)
+            && KEYWORD_WITH_WORD_PATTERN.matches_word_at(words, idx + 2)
         {
             let counter_words = &words[idx + 3..];
             if let Some((with_counter, consumed)) = parse_filter_counter_constraint_words(counter_words)
@@ -104,28 +118,21 @@ pub(crate) fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<Key
             }
         }
         match value {
-            "the"
-                if word_slice_at_is(words, idx + 2, "chosen")
-                    && word_slice_at_is(words, idx + 3, "player") =>
+            "the" if KEYWORD_THE_CHOSEN_PLAYER_PATTERN.matches_words(&words[idx + 1..]) =>
             {
                 Some(KeywordAction::ProtectionFromChosenPlayer)
             }
-            "the"
-                if word_slice_at_is(words, idx + 2, "chosen")
-                    && word_slice_at_is(words, idx + 3, "color") =>
+            "the" if KEYWORD_THE_CHOSEN_COLOR_PATTERN.matches_words(&words[idx + 1..]) =>
             {
                 Some(KeywordAction::ProtectionFromChosenColor)
             }
-            "the"
-                if word_slice_at_is(words, idx + 2, "last")
-                    && word_slice_at_is(words, idx + 3, "chosen")
-                    && word_slice_at_is(words, idx + 4, "color") =>
+            "the" if KEYWORD_THE_LAST_CHOSEN_COLOR_PATTERN.matches_words(&words[idx + 1..]) =>
             {
                 Some(KeywordAction::ProtectionFromChosenColor)
             }
             "colorless" => Some(KeywordAction::ProtectionFromColorless),
             "everything" => Some(KeywordAction::ProtectionFromEverything),
-            "all" if word_slice_at_is_any(words, idx + 2, &["color", "colors"]) => {
+            "all" if KEYWORD_COLOR_OR_COLORS_WORD_PATTERN.matches_word_at(words, idx + 2) => {
                 Some(KeywordAction::ProtectionFromAllColors)
             }
             _ => parse_color(value)

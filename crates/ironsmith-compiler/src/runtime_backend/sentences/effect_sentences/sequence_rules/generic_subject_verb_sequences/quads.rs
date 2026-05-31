@@ -11,8 +11,11 @@ use crate::effect::ChoiceCount;
 use crate::filter::TaggedObjectConstraint;
 use crate::runtime_backend::effect_sentences;
 use crate::runtime_backend::effect_sentences::SentenceInput;
+use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use crate::runtime_backend::front_end::lexer::{LexedClause, OwnedLexToken};
-use crate::runtime_backend::util::{helper_tag_for_tokens, parse_number};
+use crate::runtime_backend::util::{
+    helper_tag_for_tokens, parse_choice_count_token_prefix_consumed,
+};
 use crate::target::TaggedOpbjectRelation;
 use crate::zone::Zone;
 
@@ -78,9 +81,57 @@ fn search_reveal_tag(effects: &[EffectAst]) -> Option<TagKey> {
         .then_some(searched_tag)
 }
 
+const NAMED_REVEALED_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix &["if", "you", "reveal"];
+    contains_phrases &[&["this", "way"]]
+);
+
+const PUTS_LOOKED_CARD_ONTO_BATTLEFIELD_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &["put", "it", "onto", "the", "battlefield"],
+            &["put", "that", "card", "onto", "the", "battlefield"],
+        ]]
+);
+
+const OTHERWISE_PUTS_LOOKED_CARD_INTO_HAND_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["put", "that", "card", "into", "your", "hand"],
+            &["put", "it", "into", "your", "hand"],
+        ]
+);
+
+const OTHERWISE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["otherwise"]);
+
+const THEN_SHUFFLE_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["then", "shuffle"], &["shuffle"]]);
+
+const MAY_REVEAL_FROM_LOOKED_CARDS_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["you", "may", "reveal"]);
+
+const BARGAINED_PUT_REVEALED_CARDS_ONTO_BATTLEFIELD_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix & ["if", "this", "spell", "was", "bargained"];
+    contains_phrases & [&["put", "the", "revealed", "cards", "onto", "the", "battlefield"]]
+);
+
+const OTHERWISE_PUT_REVEALED_CARDS_INTO_HAND_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix
+        & [
+            "otherwise",
+            "put",
+            "the",
+            "revealed",
+            "cards",
+            "into",
+            "your",
+            "hand",
+        ]
+);
+
 fn named_revealed_card_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     let clause = LexedClause::new(tokens);
-    if !clause.starts_with(&["if", "you", "reveal"]) || !clause.contains_phrase(&["this", "way"]) {
+    if !NAMED_REVEALED_THIS_WAY_PATTERN.matches(clause) {
         return None;
     }
     let words = clause.word_refs();
@@ -96,43 +147,42 @@ fn named_revealed_card_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> 
 
 fn puts_it_onto_battlefield(tokens: &[OwnedLexToken]) -> bool {
     let clause = LexedClause::new(tokens);
-    clause.contains_any_phrase(&[
-        &["put", "it", "onto", "the", "battlefield"],
-        &["put", "that", "card", "onto", "the", "battlefield"],
-    ])
+    PUTS_LOOKED_CARD_ONTO_BATTLEFIELD_PATTERN.matches(clause)
 }
 
 fn otherwise_puts_that_card_into_hand(tokens: &[OwnedLexToken]) -> bool {
     let mut clause = LexedClause::new(tokens).trimmed();
-    if clause.first_is_word("otherwise") {
+    if clause
+        .word_refs()
+        .first()
+        .is_some_and(|word| OTHERWISE_WORD_PATTERN.matches_word(word))
+    {
         clause = clause.from(1).trimmed();
     }
-    clause.starts_with_any(&[
-        &["put", "that", "card", "into", "your", "hand"],
-        &["put", "it", "into", "your", "hand"],
-    ])
+    OTHERWISE_PUTS_LOOKED_CARD_INTO_HAND_PATTERN.matches(clause)
 }
 
 fn then_shuffle(tokens: &[OwnedLexToken]) -> bool {
     let clause = LexedClause::new(tokens).trimmed();
-    clause.matches_any_words(&[&["then", "shuffle"], &["shuffle"]])
+    THEN_SHUFFLE_PATTERN.matches(clause)
 }
 
 fn parse_may_reveal_up_to_from_looked_cards(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(ObjectFilter, ChoiceCount)>, CardTextError> {
     let clause = LexedClause::new(tokens).trimmed();
-    if !clause.starts_with(&["you", "may", "reveal", "up", "to"]) {
+    if !MAY_REVEAL_FROM_LOOKED_CARDS_PATTERN.matches(clause) {
         return Ok(None);
     }
 
-    let Some(count_start) = clause.token_index_for_word_index(5) else {
+    let Some(count_start) = clause.token_index_for_word_index(3) else {
         return Ok(None);
     };
     let tokens = clause.tokens();
-    let (count, count_used) = parse_number(&tokens[count_start..]).ok_or_else(|| {
-        CardTextError::ParseError("unable to parse reveal count from looked cards".to_string())
-    })?;
+    let (count, count_used) = parse_choice_count_token_prefix_consumed(&tokens[count_start..])
+        .ok_or_else(|| {
+            CardTextError::ParseError("unable to parse reveal count from looked cards".to_string())
+        })?;
     let filter_start = count_start + count_used;
     let Some((filter_clause, _)) = clause.split_once_on_phrase(&["from", "among", "them"]) else {
         return Ok(None);
@@ -147,7 +197,7 @@ fn parse_may_reveal_up_to_from_looked_cards(
             })?;
     filter.zone = Some(Zone::Library);
 
-    Ok(Some((filter, ChoiceCount::up_to(count as usize))))
+    Ok(Some((filter, count)))
 }
 
 pub(crate) fn parse_look_at_top_put_counted_into_hand_rest_bottom_with_kicker_override(
@@ -261,26 +311,8 @@ pub(crate) fn parse_look_at_top_may_reveal_match_bargain_battlefield_else_hand_t
 
     let third_clause = LexedClause::new(sentences[sentence_idx + 2].lowered());
     let fourth_clause = LexedClause::new(sentences[sentence_idx + 3].lowered());
-    if !third_clause.starts_with(&["if", "this", "spell", "was", "bargained"])
-        || !third_clause.contains_phrase(&[
-            "put",
-            "the",
-            "revealed",
-            "cards",
-            "onto",
-            "the",
-            "battlefield",
-        ])
-        || !fourth_clause.starts_with(&[
-            "otherwise",
-            "put",
-            "the",
-            "revealed",
-            "cards",
-            "into",
-            "your",
-            "hand",
-        ])
+    if !BARGAINED_PUT_REVEALED_CARDS_ONTO_BATTLEFIELD_PATTERN.matches(third_clause)
+        || !OTHERWISE_PUT_REVEALED_CARDS_INTO_HAND_PATTERN.matches(fourth_clause)
         || !then_shuffle(sentences[sentence_idx + 4].lowered())
     {
         return Ok(None);

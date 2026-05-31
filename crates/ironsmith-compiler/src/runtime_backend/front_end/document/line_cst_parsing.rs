@@ -1,6 +1,10 @@
 use super::super::grammar::structure;
 use super::*;
 use crate::parse_trace;
+use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
+
+const ADDITIONAL_LAND_PLAY_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["you", "may", "play"]);
 
 pub(super) fn parse_triggered_line_cst(
     line: &PreprocessedLine,
@@ -321,7 +325,7 @@ fn is_first_equip_cost_alternative_line(normalized: &str) -> bool {
 fn is_additional_land_play_static_line(normalized: &str) -> bool {
     let normalized = normalized.trim_end_matches('.').to_ascii_lowercase();
     let words = normalized.split_whitespace().collect::<Vec<_>>();
-    if !word_slice_starts_with(&words, &["you", "may", "play"]) {
+    if !ADDITIONAL_LAND_PLAY_PREFIX_PATTERN.matches_words(&words) {
         return false;
     }
     let Some((_, used)) = ironsmith_core::parse_cardinal_words(&words[3..]) else {

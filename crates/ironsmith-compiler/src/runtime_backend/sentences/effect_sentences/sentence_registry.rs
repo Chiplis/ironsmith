@@ -1,5 +1,6 @@
-use super::super::lexer::{OwnedLexToken, word_slice_eq_any};
+use super::super::lexer::OwnedLexToken;
 use super::super::rule_engine::LexClauseView;
+use super::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::sentence_unsupported::diagnose_sentence_unsupported_lexed;
 use super::{
     chain_carry::FALLBACK_POST_DIAGNOSTIC_INDEX_LEXED,
@@ -10,6 +11,10 @@ use super::{
     subject_verb_special_recognizers::SUBJECT_VERB_PRE_DIAGNOSTIC_INDEX_LEXED,
 };
 use crate::cards::builders::{CardTextError, EffectAst};
+use crate::runtime_backend::util::parse_number_word_u32;
+
+const X_CANT_BE_ZERO_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["x", "cant", "be", "0"], &["x", "can't", "be", "0"]]);
 
 fn run_sentence_rule_family(
     index: &'static super::super::rule_engine::LexRuleIndex<Vec<EffectAst>>,
@@ -22,10 +27,7 @@ pub(super) fn run_sentence_parse_rules_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<(&'static str, Vec<EffectAst>), CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if word_slice_eq_any(
-        &words,
-        &[&["x", "cant", "be", "0"], &["x", "can't", "be", "0"]],
-    ) {
+    if X_CANT_BE_ZERO_PATTERN.matches_words(&words) {
         return Ok(("x_cant_be_zero_activation_restriction", Vec::new()));
     }
 
@@ -34,14 +36,9 @@ pub(super) fn run_sentence_parse_rules_lexed(
         ["roll", count, die, "and", "choose", "one", "result"]
             if die.starts_with('d')
                 && die[1..].parse::<u32>().is_ok()
-                && (count.parse::<u32>().is_ok()
-                    || ironsmith_core::parse_cardinal_word(count).is_some())
+                && parse_number_word_u32(count).is_some()
     ) {
-        let count = words[1]
-            .parse::<u32>()
-            .ok()
-            .or_else(|| ironsmith_core::parse_cardinal_word(words[1]))
-            .expect("count was validated above");
+        let count = parse_number_word_u32(words[1]).expect("count was validated above");
         let sides = words[2][1..]
             .parse::<u32>()
             .expect("die size was validated above");

@@ -3969,6 +3969,11 @@ fn rewrite_lexed_activation_condition_parser_handles_control_and_graveyard_condi
     .expect("rewrite lexer should classify graveyard condition");
     let control = lex_line("Activate only if you control three or more artifacts.", 0)
         .expect("rewrite lexer should classify control condition");
+    let dynamic_control = lex_line(
+        "Activate only if you control two or more artifact creatures.",
+        0,
+    )
+    .expect("rewrite lexer should classify dynamic control condition");
 
     assert!(matches!(
         parse_activation_condition_lexed(&graveyard),
@@ -3982,6 +3987,14 @@ fn rewrite_lexed_activation_condition_parser_handles_control_and_graveyard_condi
             count: 3,
             ..
         })
+    ));
+    assert!(matches!(
+        parse_activation_condition_lexed(&dynamic_control),
+        Some(crate::ConditionExpr::PlayerControlsAtLeast {
+            player: crate::target::PlayerFilter::You,
+            count: 2,
+            filter,
+        }) if filter.card_types == vec![CardType::Artifact, CardType::Creature]
     ));
 }
 

@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use crate::runtime_backend::front_end::lex_patterns::{
     LexCaptureKind, LexCaptureRole, LexPattern, LexPatternAtom, LexPatternMatch,
 };
@@ -36,6 +37,19 @@ pub(crate) const RETURN_WITH_COUNTERS_ON_IT_PATTERN_ATOMS: &[LexPatternAtom<'sta
     ),
 ];
 const PUT_ONTO_BATTLEFIELD_WORDS: &[&str] = &["put", "puts"];
+const PUT_WORD: &str = "put";
+const AND_WORD: &str = "and";
+const ON_WORD: &str = "on";
+const SACRIFICE_WORD: &str = "sacrifice";
+const WITH_WORD: &str = "with";
+const THEN_PREFIX: &[&str] = &["then"];
+const IF_PREFIX: &[&str] = &["if"];
+const IT_ENTERS_WITH_PREFIX: &[&str] = &["it", "enters", "with"];
+const ONTO_BATTLEFIELD_WORDS: &[&str] = &["onto", "battlefield"];
+const FOR_EACH_KIND_COUNTER_ON_PREFIX: &[&str] = &["for", "each", "kind", "of", "counter", "on"];
+const PUT_OR_REMOVE_COUNTER_KIND_TAIL_PHRASE: &[&str] = &[
+    "put", "another", "counter", "of", "that", "kind", "on", "it", "or", "remove", "one", "from",
+];
 pub(crate) const PUT_ONTO_BATTLEFIELD_WITH_COUNTERS_ON_IT_PATTERN_ATOMS: &[LexPatternAtom<
     'static,
 >] = &[
@@ -69,9 +83,9 @@ pub(crate) const IF_ENTERS_WITH_ADDITIONAL_COUNTER_PATTERN_ATOMS: &[LexPatternAt
     LexPattern::role_capture(
         "predicate",
         LexCaptureRole::Condition,
-        LexCaptureKind::UntilPhrase(&["it", "enters", "with"]),
+        LexCaptureKind::UntilPhrase(IT_ENTERS_WITH_PREFIX),
     ),
-    LexPattern::phrase(&["it", "enters", "with"]),
+    LexPattern::phrase(IT_ENTERS_WITH_PREFIX),
     LexPattern::role_capture(
         "counter",
         LexCaptureRole::Amount,
@@ -95,6 +109,7 @@ pub(crate) const PUT_ONTO_BATTLEFIELD_WITH_ADDITIONAL_COUNTERS_PATTERN_ATOMS: &[
     ),
 ];
 const SACRIFICE_WORDS: &[&str] = &["sacrifice", "sacrifices"];
+const RETURN_WORDS: &[&str] = &["return", "returns"];
 pub(crate) const SACRIFICE_THEN_PUT_ONTO_BATTLEFIELD_WITH_ADDITIONAL_COUNTERS_PATTERN_ATOMS:
     &[LexPatternAtom<'static>] = &[
     LexPattern::any_word(SACRIFICE_WORDS),
@@ -157,6 +172,38 @@ pub(crate) const PUT_COUNTER_SEQUENCE_PATTERN_ATOMS: &[LexPatternAtom<'static>] 
         LexCaptureKind::Rest,
     ),
 ];
+const BATTLEFIELD_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["battlefield"]);
+const BATTLEFIELD_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["battlefield"]);
+const TAPPED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["tapped"]);
+const ADDITIONAL_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["additional"]);
+const PRESERVE_CONTROL_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["under", "its", "control"], &["under", "their", "control"]]);
+const YOUR_CONTROL_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["under", "your", "control"]);
+const OWNER_CONTROL_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["under", "its", "owner", "control"],
+            &["under", "their", "owner", "control"],
+            &["under", "his", "owner", "control"],
+            &["under", "her", "owner", "control"],
+            &["under", "that", "player", "control"],
+        ]
+);
+const IT_OR_THEM_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["it"], &["them"]]);
+const IT_OR_THEM_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix_any & [&["it"], &["them"]]);
+const ENTERS_AS_CREATURE_PREDICATE_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["creature", "enters", "this", "way"],
+            &["it", "enters", "as", "creature"],
+        ]
+);
+const SACRIFICE_OR_SACRIFICES_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["sacrifice"], &["sacrifices"]]);
 
 fn subject_verb_put_counters_target(effect: &EffectAst) -> Option<TargetAst> {
     match effect {
@@ -246,9 +293,7 @@ pub(crate) fn parse_sentence_for_each_counter_kind_put_or_remove_matched(
     _matched: &LexPatternMatch<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     // "for each kind of counter on <target>, put another counter of that kind on it or remove one from it"
-    let Some(after_prefix) =
-        clause.strip_prefix_clause(&["for", "each", "kind", "of", "counter", "on"])
-    else {
+    let Some(after_prefix) = clause.strip_prefix_clause(FOR_EACH_KIND_COUNTER_ON_PREFIX) else {
         return Ok(None);
     };
     let Some((target_clause, tail_clause)) = after_prefix.split_once_on_comma() else {
@@ -261,10 +306,7 @@ pub(crate) fn parse_sentence_for_each_counter_kind_put_or_remove_matched(
     }
     let target = parse_target_phrase(target_clause.tokens())?;
 
-    if !tail_clause.contains_phrase(&[
-        "put", "another", "counter", "of", "that", "kind", "on", "it", "or", "remove", "one",
-        "from",
-    ]) {
+    if !tail_clause.contains_phrase(PUT_OR_REMOVE_COUNTER_KIND_TAIL_PHRASE) {
         return Ok(None);
     }
 
@@ -283,15 +325,8 @@ pub(crate) fn parse_put_counter_ladder_segments(
 
     let mut effects = Vec::new();
     for (idx, segment) in segments.iter().enumerate() {
-        let segment_clause = if idx == 0 {
-            if !segment.first_is_word("put") {
-                return Ok(None);
-            }
-            segment.from(1).trimmed()
-        } else if segment.first_is_word("and") {
-            segment.from(1).trimmed()
-        } else {
-            segment.trimmed()
+        let Some(segment_clause) = counter_ladder_payload_segment(*segment, idx) else {
+            return Ok(None);
         };
         if segment_clause.is_empty() {
             return Ok(None);
@@ -335,7 +370,7 @@ pub(crate) fn parse_sentence_put_counter_sequence_matched(
     clause: SubjectVerbPrimitiveClause<'_>,
     _matched: &LexPatternMatch<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if !clause.first_is_word("put") {
+    if !counter_marker_clause_first_is_word(clause, PUT_WORD) {
         return Ok(None);
     }
     if clause.contains_no_words(&["counter", "counters"]) {
@@ -477,15 +512,8 @@ pub(crate) fn parse_sentence_put_counter_sequence_matched(
 
     let mut effects = Vec::new();
     for (idx, segment) in segments.iter().enumerate() {
-        let segment_clause = if idx == 0 {
-            if !segment.first_is_word("put") {
-                return Ok(None);
-            }
-            segment.from(1).trimmed()
-        } else if segment.first_is_word("and") {
-            segment.from(1).trimmed()
-        } else {
-            *segment
+        let Some(segment_clause) = counter_ladder_payload_segment(*segment, idx) else {
+            return Ok(None);
         };
 
         if segment_clause.is_empty() {
@@ -525,7 +553,7 @@ pub(crate) fn is_pump_like_effect(effect: &EffectAst) -> bool {
 pub(crate) fn parse_gets_then_fights_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let body_clause = clause.strip_prefix_clause(&["then"]).unwrap_or(clause);
+    let body_clause = clause.strip_prefix_clause(THEN_PREFIX).unwrap_or(clause);
     if body_clause.is_empty() {
         return Ok(None);
     }
@@ -626,46 +654,31 @@ pub(crate) fn parse_return_with_counters_on_it_sentence_matched(
     if destination_clause.is_empty() {
         return Ok(None);
     }
-    if !destination_clause.contains_word("battlefield") {
+    let base_destination_word_storage = destination_clause.word_refs();
+    let base_destination_words = normalize_destination_words(&base_destination_word_storage);
+    if !BATTLEFIELD_WORD_PATTERN.matches_words(&base_destination_words) {
         return Ok(None);
     }
 
-    let base_destination_word_storage = destination_clause.word_refs();
-    let base_destination_words = normalize_destination_words(&base_destination_word_storage);
-    let Some(battlefield_idx) =
-        crate::runtime_backend::lexer::word_slice_find_word(&base_destination_words, "battlefield")
+    let Some(battlefield_idx) = base_destination_words
+        .iter()
+        .position(|word| BATTLEFIELD_WORD_PATTERN.matches_word(word))
     else {
         return Ok(None);
     };
-    let tapped = word_slice_contains_word(&base_destination_words, "tapped");
-    let destination_tail = super::super::super::util::word_refs_except(
-        &base_destination_words[battlefield_idx + 1..],
-        &["tapped"],
-    );
-    const PRESERVE_CONTROL_TAILS: &[&[&str]] =
-        &[&["under", "its", "control"], &["under", "their", "control"]];
-    const OWNER_CONTROL_TAILS: &[&[&str]] = &[
-        &["under", "its", "owner", "control"],
-        &["under", "their", "owner", "control"],
-        &["under", "his", "owner", "control"],
-        &["under", "her", "owner", "control"],
-        &["under", "that", "player", "control"],
-    ];
+    let tapped = TAPPED_WORD_PATTERN.matches_words(&base_destination_words);
+    let destination_tail = base_destination_words[battlefield_idx + 1..]
+        .iter()
+        .copied()
+        .filter(|word| !TAPPED_WORD_PATTERN.matches_word(word))
+        .collect::<Vec<_>>();
     let battlefield_controller = if destination_tail.is_empty()
-        || crate::runtime_backend::lexer::word_slice_eq_any(
-            &destination_tail,
-            PRESERVE_CONTROL_TAILS,
-        ) {
+        || PRESERVE_CONTROL_TAIL_PATTERN.matches_words(&destination_tail)
+    {
         ReturnControllerAst::Preserve
-    } else if crate::runtime_backend::lexer::word_slice_eq(
-        &destination_tail,
-        &["under", "your", "control"],
-    ) {
+    } else if YOUR_CONTROL_TAIL_PATTERN.matches_words(&destination_tail) {
         ReturnControllerAst::You
-    } else if crate::runtime_backend::lexer::word_slice_eq_any(
-        &destination_tail,
-        OWNER_CONTROL_TAILS,
-    ) {
+    } else if OWNER_CONTROL_TAIL_PATTERN.matches_words(&destination_tail) {
         ReturnControllerAst::Owner
     } else {
         return Ok(None);
@@ -678,13 +691,12 @@ pub(crate) fn parse_return_with_counters_on_it_sentence_matched(
         return Ok(None);
     };
     let on_target_words = on_target_clause.word_refs();
-    let timing_words = if word_slice_starts_with(&on_target_words, &["it"])
-        || word_slice_starts_with(&on_target_words, &["them"])
-    {
-        &on_target_words[1..]
-    } else {
-        return Ok(None);
-    };
+    let timing_words =
+        if let Some(prefix_len) = IT_OR_THEM_PREFIX_PATTERN.matched_prefix_len(&on_target_words) {
+            &on_target_words[prefix_len..]
+        } else {
+            return Ok(None);
+        };
     let delayed_timing = if timing_words.is_empty() {
         None
     } else {
@@ -794,42 +806,22 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence_matched(
     if destination_clause.is_empty() {
         return Ok(None);
     }
-    if !destination_clause.contains_word("battlefield") {
-        return Ok(None);
-    }
-
     let base_destination_word_storage = destination_clause.word_refs();
     let base_destination_words = normalize_destination_words(&base_destination_word_storage);
-    if base_destination_words.first() != Some(&"battlefield") {
+    if !BATTLEFIELD_PREFIX_PATTERN.matches_words(&base_destination_words) {
         return Ok(None);
     }
 
     let destination_tail = &base_destination_words[1..];
-    const OWNER_CONTROL_TAILS: &[&[&str]] = &[
-        &["under", "its", "owner", "control"],
-        &["under", "their", "owner", "control"],
-        &["under", "his", "owner", "control"],
-        &["under", "her", "owner", "control"],
-        &["under", "that", "player", "control"],
-    ];
     let supported_control_tail = destination_tail.is_empty()
-        || crate::runtime_backend::lexer::word_slice_eq(
-            destination_tail,
-            &["under", "your", "control"],
-        )
-        || crate::runtime_backend::lexer::word_slice_eq_any(destination_tail, OWNER_CONTROL_TAILS);
+        || YOUR_CONTROL_TAIL_PATTERN.matches_words(destination_tail)
+        || OWNER_CONTROL_TAIL_PATTERN.matches_words(destination_tail);
     if !supported_control_tail {
         return Ok(None);
     }
-    let battlefield_controller = if crate::runtime_backend::lexer::word_slice_eq(
-        destination_tail,
-        &["under", "your", "control"],
-    ) {
+    let battlefield_controller = if YOUR_CONTROL_TAIL_PATTERN.matches_words(destination_tail) {
         ReturnControllerAst::You
-    } else if crate::runtime_backend::lexer::word_slice_eq_any(
-        destination_tail,
-        OWNER_CONTROL_TAILS,
-    ) {
+    } else if OWNER_CONTROL_TAIL_PATTERN.matches_words(destination_tail) {
         ReturnControllerAst::Owner
     } else {
         ReturnControllerAst::Preserve
@@ -842,7 +834,7 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence_matched(
         return Ok(None);
     };
     let on_target_words = on_target_clause.word_refs();
-    if !crate::runtime_backend::lexer::word_slice_eq_any(&on_target_words, &[&["it"], &["them"]]) {
+    if !IT_OR_THEM_PATTERN.matches_words(&on_target_words) {
         return Ok(None);
     }
 
@@ -883,6 +875,28 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence_matched(
     }
 
     Ok(Some(effects))
+}
+
+fn counter_ladder_payload_segment(
+    segment: SubjectVerbPrimitiveClause<'_>,
+    idx: usize,
+) -> Option<SubjectVerbPrimitiveClause<'_>> {
+    if idx == 0 {
+        segment
+            .first_is_word(PUT_WORD)
+            .then(|| segment.from(1).trimmed())
+    } else if segment.first_is_word(AND_WORD) {
+        Some(segment.from(1).trimmed())
+    } else {
+        Some(segment.trimmed())
+    }
+}
+
+fn counter_marker_clause_first_is_word(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    expected: &str,
+) -> bool {
+    clause.first_is_word(expected)
 }
 
 pub(crate) fn parse_sentence_return_with_counters_on_it(
@@ -1010,12 +1024,12 @@ fn parse_additional_counter_descriptor_on_target(
 ) -> Result<Option<(u32, crate::object::CounterType)>, CardTextError> {
     let counter_clause = counter_clause.trimmed();
     let Some((descriptor_clause, on_target_clause)) =
-        counter_clause.rsplit_once_on_word_trimmed("on")
+        counter_clause.rsplit_once_on_word_trimmed(ON_WORD)
     else {
         return Ok(None);
     };
     if descriptor_clause.is_empty()
-        || !descriptor_clause.contains_word("additional")
+        || !ADDITIONAL_WORD_PATTERN.matches_words(&descriptor_clause.word_refs())
         || !accepted_targets
             .iter()
             .any(|target_words| on_target_clause.word_refs() == *target_words)
@@ -1041,7 +1055,7 @@ pub(crate) fn parse_if_enters_with_additional_counter_sentence_matched(
     _matched: &LexPatternMatch<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     // "if <predicate>, it enters with <counter descriptor> on it"
-    let Some(after_if) = clause.strip_prefix_clause(&["if"]) else {
+    let Some(after_if) = clause.strip_prefix_clause(IF_PREFIX) else {
         return Ok(None);
     };
     let Some((predicate_clause, followup_clause)) = after_if.split_once_on_comma() else {
@@ -1050,20 +1064,15 @@ pub(crate) fn parse_if_enters_with_additional_counter_sentence_matched(
 
     let predicate_words =
         crate::runtime_backend::util::non_article_word_refs(&predicate_clause.trimmed_word_refs());
-    let predicate_is_supported = crate::runtime_backend::lexer::word_slice_eq_any(
-        &predicate_words,
-        &[
-            &["creature", "enters", "this", "way"],
-            &["it", "enters", "as", "creature"],
-        ],
-    );
+    let predicate_is_supported =
+        ENTERS_AS_CREATURE_PREDICATE_PATTERN.matches_words(&predicate_words);
     if !predicate_is_supported {
         return Ok(None);
     }
 
     let Some(counter_clause) = followup_clause
         .trimmed()
-        .strip_prefix_clause(&["it", "enters", "with"])
+        .strip_prefix_clause(IT_ENTERS_WITH_PREFIX)
     else {
         return Ok(None);
     };
@@ -1106,14 +1115,14 @@ pub(crate) fn parse_put_onto_battlefield_with_additional_counters_sentence_match
     clause: SubjectVerbPrimitiveClause<'_>,
     _matched: &LexPatternMatch<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if clause.first_word() != Some("put") {
+    if !counter_marker_clause_first_is_word(clause, PUT_WORD) {
         return Ok(None);
     }
-    if !clause.contains_all_words(&["onto", "battlefield"]) {
+    if !clause.contains_all_words(ONTO_BATTLEFIELD_WORDS) {
         return Ok(None);
     }
 
-    let Some((move_clause, counter_clause)) = clause.rsplit_once_on_word_trimmed("with") else {
+    let Some((move_clause, counter_clause)) = clause.rsplit_once_on_word_trimmed(WITH_WORD) else {
         return Ok(None);
     };
     if move_clause.is_empty() || counter_clause.is_empty() {
@@ -1174,7 +1183,7 @@ pub(crate) fn parse_sacrifice_then_put_onto_battlefield_with_additional_counters
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if !clause
         .token(0)
-        .is_some_and(|token| token.is_word("sacrifice") || token.is_word("sacrifices"))
+        .is_some_and(|token| SACRIFICE_OR_SACRIFICES_WORD_PATTERN.matches_token(token))
     {
         return Ok(None);
     }
@@ -1192,7 +1201,7 @@ pub(crate) fn parse_sacrifice_then_put_onto_battlefield_with_additional_counters
         return Ok(None);
     };
     let mut effects = if sacrifice_clause.len() >= 2
-        && sacrifice_clause.first_is_word("sacrifice")
+        && counter_marker_clause_first_is_word(sacrifice_clause, SACRIFICE_WORD)
         && sacrifice_clause
             .from(1)
             .tokens()
@@ -1236,7 +1245,7 @@ pub(crate) fn parse_if_sacrifice_then_put_onto_battlefield_with_additional_count
     clause: SubjectVerbPrimitiveClause<'_>,
     _matched: &LexPatternMatch<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(after_if) = clause.strip_prefix_clause(&["if"]) else {
+    let Some(after_if) = clause.strip_prefix_clause(IF_PREFIX) else {
         return Ok(None);
     };
     let Some((predicate_clause, effect_clause)) = after_if.split_once_on_comma() else {
@@ -1248,7 +1257,7 @@ pub(crate) fn parse_if_sacrifice_then_put_onto_battlefield_with_additional_count
     if predicate_clause.is_empty() || effect_clause.is_empty() {
         return Ok(None);
     }
-    if !effect_clause.first_is_any_word(&["sacrifice", "sacrifices"]) {
+    if !effect_clause.first_is_any_word(SACRIFICE_WORDS) {
         return Ok(None);
     }
 
@@ -1286,11 +1295,11 @@ pub(crate) fn parse_each_player_return_with_additional_counter_sentence_matched(
     if inner_clause.is_empty() {
         return Ok(None);
     }
-    if !inner_clause.first_is_any_word(&["return", "returns"]) {
+    if !inner_clause.first_is_any_word(RETURN_WORDS) {
         return Ok(None);
     }
 
-    let Some((return_clause, counter_clause)) = inner_clause.rsplit_once_on_word_trimmed("with")
+    let Some((return_clause, counter_clause)) = inner_clause.rsplit_once_on_word_trimmed(WITH_WORD)
     else {
         return Ok(None);
     };

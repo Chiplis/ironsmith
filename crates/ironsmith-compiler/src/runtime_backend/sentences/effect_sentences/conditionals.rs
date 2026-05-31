@@ -6,7 +6,7 @@ use super::super::grammar::effects::{
 };
 use super::super::grammar::primitives as grammar;
 use super::super::grammar::values as shared_values;
-use super::super::lexer::{OwnedLexToken, word_slice_eq, word_slice_eq_any};
+use super::super::lexer::OwnedLexToken;
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::super::token_primitives::{
     find_index, rfind_index, slice_contains, slice_ends_with, slice_starts_with,
@@ -14,10 +14,13 @@ use super::super::token_primitives::{
 };
 use super::super::util::{
     is_article, is_permanent_type, is_source_reference_words, parse_card_type,
-    parse_counter_type_word, parse_mana_symbol_word_flexible, parse_number, parse_target_phrase,
-    parse_zone_word, span_from_tokens, token_index_for_word_index, trim_commas, words,
+    parse_counter_type_word, parse_mana_symbol_word_flexible, parse_number,
+    parse_subtype_word as parse_shared_subtype_word,
+    parse_supertype_word as parse_shared_supertype_word, parse_target_phrase, parse_zone_word,
+    span_from_tokens, token_index_for_word_index, trim_commas, words,
 };
 use super::super::value_helpers::parse_filter_comparison_tokens;
+use super::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::{parse_effect_chain, parse_effect_chain_inner, parse_effect_chain_lexed};
 #[allow(unused_imports)]
 use crate::cards::builders::{
@@ -29,6 +32,21 @@ use crate::mana::{ManaCost, ManaSymbol};
 use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
+
+const COUNTER_TARGET_SPELL_IF_KICKED_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["counter", "target", "spell", "if", "it", "was", "kicked"]);
+const COUNTER_TARGET_SECOND_SPELL_CAST_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &[
+                "counter", "target", "spell", "thats", "second", "spell", "cast", "this", "turn",
+            ],
+            &[
+                "counter", "target", "spell", "thats", "the", "second", "spell", "cast", "this",
+                "turn",
+            ],
+        ]
+);
 
 #[cfg(test)]
 pub(crate) fn parse_conditional_sentence_lexed(
@@ -64,277 +82,11 @@ pub(crate) fn parse_type_line(
 }
 
 pub(crate) fn parse_supertype_word(word: &str) -> Option<Supertype> {
-    match word.to_ascii_lowercase().as_str() {
-        "basic" => Some(Supertype::Basic),
-        "legendary" => Some(Supertype::Legendary),
-        "snow" => Some(Supertype::Snow),
-        "world" => Some(Supertype::World),
-        _ => None,
-    }
+    parse_shared_supertype_word(word)
 }
 
 pub(crate) fn parse_subtype_word(word: &str) -> Option<Subtype> {
-    match word.to_ascii_lowercase().as_str() {
-        "plains" => Some(Subtype::Plains),
-        "island" => Some(Subtype::Island),
-        "swamp" => Some(Subtype::Swamp),
-        "mountain" => Some(Subtype::Mountain),
-        "forest" => Some(Subtype::Forest),
-        "desert" | "deserts" => Some(Subtype::Desert),
-        "urzas" => Some(Subtype::Urzas),
-        "cave" | "caves" => Some(Subtype::Cave),
-        "gate" | "gates" => Some(Subtype::Gate),
-        "locus" | "loci" => Some(Subtype::Locus),
-        "town" | "towns" => Some(Subtype::Town),
-        "advisor" => Some(Subtype::Advisor),
-        "ally" | "allies" => Some(Subtype::Ally),
-        "alien" | "aliens" => Some(Subtype::Alien),
-        "angel" => Some(Subtype::Angel),
-        "ape" => Some(Subtype::Ape),
-        "army" | "armies" => Some(Subtype::Army),
-        "archer" => Some(Subtype::Archer),
-        "artificer" => Some(Subtype::Artificer),
-        "assassin" => Some(Subtype::Assassin),
-        "astartes" => Some(Subtype::Astartes),
-        "avatar" => Some(Subtype::Avatar),
-        "barbarian" => Some(Subtype::Barbarian),
-        "bard" => Some(Subtype::Bard),
-        "bat" | "bats" => Some(Subtype::Bat),
-        "bear" => Some(Subtype::Bear),
-        "beast" => Some(Subtype::Beast),
-        "berserker" => Some(Subtype::Berserker),
-        "bird" => Some(Subtype::Bird),
-        "boar" => Some(Subtype::Boar),
-        "cat" => Some(Subtype::Cat),
-        "centaur" => Some(Subtype::Centaur),
-        "citizen" | "citizens" => Some(Subtype::Citizen),
-        "clown" | "clowns" => Some(Subtype::Clown),
-        "coward" | "cowards" => Some(Subtype::Coward),
-        "changeling" => Some(Subtype::Changeling),
-        "cleric" => Some(Subtype::Cleric),
-        "construct" => Some(Subtype::Construct),
-        "crab" => Some(Subtype::Crab),
-        "crocodile" => Some(Subtype::Crocodile),
-        "dalek" => Some(Subtype::Dalek),
-        "dauthi" => Some(Subtype::Dauthi),
-        "detective" => Some(Subtype::Detective),
-        "doctor" | "doctors" => Some(Subtype::Doctor),
-        "demon" => Some(Subtype::Demon),
-        "devil" => Some(Subtype::Devil),
-        "dinosaur" => Some(Subtype::Dinosaur),
-        "djinn" => Some(Subtype::Djinn),
-        "efreet" | "efreets" => Some(Subtype::Efreet),
-        "dog" => Some(Subtype::Dog),
-        "drone" | "drones" => Some(Subtype::Drone),
-        "dragon" => Some(Subtype::Dragon),
-        "drake" => Some(Subtype::Drake),
-        "druid" => Some(Subtype::Druid),
-        "dwarf" => Some(Subtype::Dwarf),
-        "elder" => Some(Subtype::Elder),
-        "eldrazi" => Some(Subtype::Eldrazi),
-        "hamster" | "hamsters" => Some(Subtype::Hamster),
-        "spawn" | "spawns" => Some(Subtype::Spawn),
-        "scion" | "scions" => Some(Subtype::Scion),
-        "elemental" => Some(Subtype::Elemental),
-        "elephant" => Some(Subtype::Elephant),
-        "elk" => Some(Subtype::Elk),
-        "elf" | "elves" => Some(Subtype::Elf),
-        "faerie" => Some(Subtype::Faerie),
-        "fish" => Some(Subtype::Fish),
-        "fox" => Some(Subtype::Fox),
-        "frog" => Some(Subtype::Frog),
-        "fungus" => Some(Subtype::Fungus),
-        "gargoyle" => Some(Subtype::Gargoyle),
-        "giant" => Some(Subtype::Giant),
-        "gnome" => Some(Subtype::Gnome),
-        "glimmer" | "glimmers" => Some(Subtype::Glimmer),
-        "goat" => Some(Subtype::Goat),
-        "goblin" => Some(Subtype::Goblin),
-        "god" => Some(Subtype::God),
-        "golem" => Some(Subtype::Golem),
-        "gorgon" => Some(Subtype::Gorgon),
-        "germ" | "germs" => Some(Subtype::Germ),
-        "gremlin" | "gremlins" => Some(Subtype::Gremlin),
-        "griffin" => Some(Subtype::Griffin),
-        "hag" => Some(Subtype::Hag),
-        "halfling" => Some(Subtype::Halfling),
-        "harpy" => Some(Subtype::Harpy),
-        "hero" | "heroes" => Some(Subtype::Hero),
-        "hippo" => Some(Subtype::Hippo),
-        "horror" => Some(Subtype::Horror),
-        "homunculus" | "homunculi" => Some(Subtype::Homunculus),
-        "horse" => Some(Subtype::Horse),
-        "hound" => Some(Subtype::Hound),
-        "human" => Some(Subtype::Human),
-        "hydra" => Some(Subtype::Hydra),
-        "illusion" => Some(Subtype::Illusion),
-        "imp" => Some(Subtype::Imp),
-        "insect" => Some(Subtype::Insect),
-        "inkling" | "inklings" => Some(Subtype::Inkling),
-        "jackal" | "jackals" => Some(Subtype::Jackal),
-        "jellyfish" => Some(Subtype::Jellyfish),
-        "kavu" => Some(Subtype::Kavu),
-        "kirin" => Some(Subtype::Kirin),
-        "kithkin" => Some(Subtype::Kithkin),
-        "knight" => Some(Subtype::Knight),
-        "kobold" => Some(Subtype::Kobold),
-        "kor" => Some(Subtype::Kor),
-        "kraken" => Some(Subtype::Kraken),
-        "leviathan" => Some(Subtype::Leviathan),
-        "lizard" => Some(Subtype::Lizard),
-        "manticore" => Some(Subtype::Manticore),
-        "mercenary" => Some(Subtype::Mercenary),
-        "merfolk" => Some(Subtype::Merfolk),
-        "minion" => Some(Subtype::Minion),
-        "mite" | "mites" => Some(Subtype::Mite),
-        "minotaur" => Some(Subtype::Minotaur),
-        "mole" => Some(Subtype::Mole),
-        "monk" => Some(Subtype::Monk),
-        "monkey" | "monkeys" => Some(Subtype::Monkey),
-        "moonfolk" => Some(Subtype::Moonfolk),
-        "mount" | "mounts" => Some(Subtype::Mount),
-        "mouse" | "mice" => Some(Subtype::Mouse),
-        "mutant" => Some(Subtype::Mutant),
-        "myr" => Some(Subtype::Myr),
-        "naga" => Some(Subtype::Naga),
-        "necron" | "necrons" => Some(Subtype::Necron),
-        "nightmare" => Some(Subtype::Nightmare),
-        "ninja" => Some(Subtype::Ninja),
-        "noble" => Some(Subtype::Noble),
-        "octopus" | "octopuses" => Some(Subtype::Octopus),
-        "ogre" => Some(Subtype::Ogre),
-        "ooze" => Some(Subtype::Ooze),
-        "orc" => Some(Subtype::Orc),
-        "otter" => Some(Subtype::Otter),
-        "ouphe" | "ouphes" => Some(Subtype::Ouphe),
-        "ox" => Some(Subtype::Ox),
-        "oyster" => Some(Subtype::Oyster),
-        "peasant" => Some(Subtype::Peasant),
-        "pest" => Some(Subtype::Pest),
-        "pegasus" => Some(Subtype::Pegasus),
-        "phyrexian" => Some(Subtype::Phyrexian),
-        "phoenix" => Some(Subtype::Phoenix),
-        "pincher" | "pinchers" => Some(Subtype::Pincher),
-        "pilot" => Some(Subtype::Pilot),
-        "pirate" => Some(Subtype::Pirate),
-        "plant" => Some(Subtype::Plant),
-        "praetor" => Some(Subtype::Praetor),
-        "raccoon" => Some(Subtype::Raccoon),
-        "rabbit" => Some(Subtype::Rabbit),
-        "rat" => Some(Subtype::Rat),
-        "reflection" => Some(Subtype::Reflection),
-        "rebel" => Some(Subtype::Rebel),
-        "rhino" => Some(Subtype::Rhino),
-        "rogue" => Some(Subtype::Rogue),
-        "robot" => Some(Subtype::Robot),
-        "salamander" => Some(Subtype::Salamander),
-        "saproling" | "saprolings" => Some(Subtype::Saproling),
-        "samurai" => Some(Subtype::Samurai),
-        "satyr" => Some(Subtype::Satyr),
-        "scarecrow" => Some(Subtype::Scarecrow),
-        "scout" => Some(Subtype::Scout),
-        "servo" | "servos" => Some(Subtype::Servo),
-        "serpent" => Some(Subtype::Serpent),
-        "shade" => Some(Subtype::Shade),
-        "shaman" => Some(Subtype::Shaman),
-        "shapeshifter" => Some(Subtype::Shapeshifter),
-        "shark" => Some(Subtype::Shark),
-        "sheep" => Some(Subtype::Sheep),
-        "skeleton" => Some(Subtype::Skeleton),
-        "slith" => Some(Subtype::Slith),
-        "sliver" => Some(Subtype::Sliver),
-        "slug" => Some(Subtype::Slug),
-        "snake" => Some(Subtype::Snake),
-        "soldier" => Some(Subtype::Soldier),
-        "sorcerer" => Some(Subtype::Sorcerer),
-        "spacecraft" => Some(Subtype::Spacecraft),
-        "sphinx" => Some(Subtype::Sphinx),
-        "specter" => Some(Subtype::Specter),
-        "spider" => Some(Subtype::Spider),
-        "spike" => Some(Subtype::Spike),
-        "splinter" | "splinters" => Some(Subtype::Splinter),
-        "spirit" => Some(Subtype::Spirit),
-        "sponge" => Some(Subtype::Sponge),
-        "squid" => Some(Subtype::Squid),
-        "squirrel" => Some(Subtype::Squirrel),
-        "starfish" => Some(Subtype::Starfish),
-        "surrakar" => Some(Subtype::Surrakar),
-        "survivor" | "survivors" => Some(Subtype::Survivor),
-        "thopter" => Some(Subtype::Thopter),
-        "thrull" => Some(Subtype::Thrull),
-        "tiefling" => Some(Subtype::Tiefling),
-        "tentacle" | "tentacles" => Some(Subtype::Tentacle),
-        "toy" => Some(Subtype::Toy),
-        "treefolk" => Some(Subtype::Treefolk),
-        "triskelavite" | "triskelavites" => Some(Subtype::Triskelavite),
-        "trilobite" => Some(Subtype::Trilobite),
-        "troll" => Some(Subtype::Troll),
-        "turtle" => Some(Subtype::Turtle),
-        "unicorn" => Some(Subtype::Unicorn),
-        "vampire" => Some(Subtype::Vampire),
-        "vedalken" => Some(Subtype::Vedalken),
-        "viashino" => Some(Subtype::Viashino),
-        "villain" | "villains" => Some(Subtype::Villain),
-        "wall" => Some(Subtype::Wall),
-        "warlock" => Some(Subtype::Warlock),
-        "warrior" => Some(Subtype::Warrior),
-        "weird" => Some(Subtype::Weird),
-        "werewolf" | "werewolves" => Some(Subtype::Werewolf),
-        "whale" => Some(Subtype::Whale),
-        "wizard" => Some(Subtype::Wizard),
-        "wolf" | "wolves" => Some(Subtype::Wolf),
-        "wolverine" => Some(Subtype::Wolverine),
-        "wombat" => Some(Subtype::Wombat),
-        "worm" => Some(Subtype::Worm),
-        "wraith" => Some(Subtype::Wraith),
-        "wurm" => Some(Subtype::Wurm),
-        "yeti" => Some(Subtype::Yeti),
-        "zombie" => Some(Subtype::Zombie),
-        "zubera" => Some(Subtype::Zubera),
-        "clue" => Some(Subtype::Clue),
-        "contraption" => Some(Subtype::Contraption),
-        "equipment" => Some(Subtype::Equipment),
-        "food" => Some(Subtype::Food),
-        "fortification" => Some(Subtype::Fortification),
-        "gold" => Some(Subtype::Gold),
-        "incubator" | "incubators" => Some(Subtype::Incubator),
-        "junk" | "junks" => Some(Subtype::Junk),
-        "lander" | "landers" => Some(Subtype::Lander),
-        "map" | "maps" => Some(Subtype::Map),
-        "treasure" => Some(Subtype::Treasure),
-        "vehicle" => Some(Subtype::Vehicle),
-        "aura" => Some(Subtype::Aura),
-        "background" => Some(Subtype::Background),
-        "cartouche" => Some(Subtype::Cartouche),
-        "class" => Some(Subtype::Class),
-        "curse" => Some(Subtype::Curse),
-        "role" => Some(Subtype::Role),
-        "rune" => Some(Subtype::Rune),
-        "saga" => Some(Subtype::Saga),
-        "shard" => Some(Subtype::Shard),
-        "shrine" => Some(Subtype::Shrine),
-        "adventure" => Some(Subtype::Adventure),
-        "arcane" => Some(Subtype::Arcane),
-        "lesson" => Some(Subtype::Lesson),
-        "trap" => Some(Subtype::Trap),
-        "ajani" => Some(Subtype::Ajani),
-        "ashiok" => Some(Subtype::Ashiok),
-        "chandra" => Some(Subtype::Chandra),
-        "elspeth" => Some(Subtype::Elspeth),
-        "garruk" => Some(Subtype::Garruk),
-        "gideon" => Some(Subtype::Gideon),
-        "jace" => Some(Subtype::Jace),
-        "karn" => Some(Subtype::Karn),
-        "liliana" => Some(Subtype::Liliana),
-        "nissa" => Some(Subtype::Nissa),
-        "sorin" => Some(Subtype::Sorin),
-        "teferi" => Some(Subtype::Teferi),
-        "tyvar" => Some(Subtype::Tyvar),
-        "ugin" => Some(Subtype::Ugin),
-        "vraska" => Some(Subtype::Vraska),
-        "siege" | "sieges" => Some(Subtype::Siege),
-        _ => None,
-    }
+    parse_shared_subtype_word(word)
 }
 
 pub(crate) fn parse_for_each_opponent_doesnt(
@@ -405,10 +157,7 @@ pub(crate) fn parse_sentence_counter_target_spell_if_it_was_kicked(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if !word_slice_eq(
-        &clause_words,
-        &["counter", "target", "spell", "if", "it", "was", "kicked"],
-    ) {
+    if !COUNTER_TARGET_SPELL_IF_KICKED_PATTERN.matches_words(&clause_words) {
         return Ok(None);
     }
 
@@ -426,19 +175,7 @@ pub(crate) fn parse_sentence_counter_target_spell_thats_second_cast_this_turn(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let matches = word_slice_eq_any(
-        &clause_words,
-        &[
-            &[
-                "counter", "target", "spell", "thats", "second", "spell", "cast", "this", "turn",
-            ],
-            &[
-                "counter", "target", "spell", "thats", "the", "second", "spell", "cast", "this",
-                "turn",
-            ],
-        ],
-    );
-    if !matches {
+    if !COUNTER_TARGET_SECOND_SPELL_CAST_THIS_TURN_PATTERN.matches_words(&clause_words) {
         return Ok(None);
     }
 

@@ -22,9 +22,6 @@ use super::super::keyword_static::parse_value_binding_clause;
 use super::super::keyword_static_helpers::parse_granted_activated_or_triggered_ability_for_gain;
 use super::super::lexer::{
     LexStream, LexedClause, OwnedLexToken, TokenKind, split_lexed_sentences, token_slice_at_is,
-    word_slice_at_is, word_slice_at_is_any, word_slice_contains_any_phrase,
-    word_slice_contains_phrase, word_slice_ends_with, word_slice_eq, word_slice_eq_any,
-    word_slice_find_phrase_start_or_zero, word_slice_first_is_any, word_slice_starts_with_any,
 };
 use super::super::object_filters::{
     is_comparison_or_delimiter, parse_object_filter, parse_object_filter_lexed,
@@ -71,6 +68,7 @@ use crate::effect::{ChoiceCount, EventValueSpec, Until, Value};
 use crate::filter::Comparison;
 use crate::mana::ManaSymbol;
 use crate::parse_trace;
+use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use crate::target::{
     ChooseSpec, ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation,
 };
@@ -79,6 +77,154 @@ use ironsmith_core::ValueSurfaceHint;
 use std::cell::OnceCell;
 
 mod subject_verb_followups;
+
+const THAT_OBJECT_POWER_DAMAGE_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &[
+                "that", "creature", "deals", "damage", "equal", "to", "its", "power"
+            ],
+            &[
+                "that",
+                "permanent",
+                "deals",
+                "damage",
+                "equal",
+                "to",
+                "its",
+                "power"
+            ],
+        ]]
+);
+const THIS_OBJECT_DAMAGE_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases & [&[&["to", "this", "creature"], &["to", "this", "permanent"],]]
+);
+const TO_THAT_PLAYER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["to", "that", "player"]]);
+const WITH_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["with"]);
+const LEARN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["learn"]);
+const OUTSIDE_GAME_ART_RATING_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &["ask", "a", "person", "outside", "the", "game", "to", "rate"],
+            &["when", "they", "rate", "the", "art"],
+        ]]
+);
+const DESTROYED_THIS_WAY_SUBJECT_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["creature", "destroyed", "this", "way"],
+            &["creatures", "destroyed", "this", "way"],
+            &["a", "creature", "destroyed", "this", "way"],
+        ]
+);
+const BE_REGENERATED_SUFFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(suffix & ["be", "regenerated"]);
+const CANT_BE_REGENERATED_SPLIT_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["can", "t", "be", "regenerated"]]);
+const DEAL_X_DAMAGE_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_phrases & [&[&["deal", "x", "damage"], &["deals", "x", "damage"]]]);
+const X_LIFE_CHANGE_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &["gain", "x", "life"],
+            &["gains", "x", "life"],
+            &["lose", "x", "life"],
+            &["loses", "x", "life"],
+        ]]
+);
+const OTHERWISE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["otherwise"]);
+const REFERENTIAL_THAT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["that"]);
+const REFERENTIAL_NOUN_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["creature"], &["permanent"]]);
+const GET_GAIN_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["get"], &["gets"], &["gain"], &["gains"]]);
+const NONSEMANTIC_X_CANT_BE_ZERO_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["x", "cant", "be", "0"], &["x", "can't", "be", "0"]]);
+const COUNTER_OR_COUNTERS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["counter"], &["counters"]]);
+const OR_OR_MORE_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["or"], &["more"]]);
+const CANT_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["cant"], &["can't"], &["cannot"]]);
+const ON_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["on"]);
+const IT_OR_THEM_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["it"], &["them"]]);
+const NO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["no"]);
+const X_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["x"]);
+const WHERE_X_IS_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["where", "x", "is"]);
+const SIMPLE_CANT_BE_REGENERATED_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["it", "cant", "be", "regenerated"],
+            &["it", "cant", "be", "regenerated", "this", "turn"],
+            &["they", "cant", "be", "regenerated"],
+            &["they", "cant", "be", "regenerated", "this", "turn"],
+            &[
+                "creature",
+                "destroyed",
+                "this",
+                "way",
+                "cant",
+                "be",
+                "regenerated",
+            ],
+            &[
+                "creature",
+                "destroyed",
+                "this",
+                "way",
+                "can't",
+                "be",
+                "regenerated",
+            ],
+            &[
+                "creatures",
+                "destroyed",
+                "this",
+                "way",
+                "cant",
+                "be",
+                "regenerated",
+            ],
+            &[
+                "creatures",
+                "destroyed",
+                "this",
+                "way",
+                "can't",
+                "be",
+                "regenerated",
+            ],
+            &[
+                "a",
+                "creature",
+                "destroyed",
+                "this",
+                "way",
+                "cant",
+                "be",
+                "regenerated",
+            ],
+            &[
+                "a",
+                "creature",
+                "destroyed",
+                "this",
+                "way",
+                "can't",
+                "be",
+                "regenerated",
+            ],
+        ]
+);
+const CANT_BE_REGENERATED_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["it", "cant", "be", "regenerated", "this", "turn"],
+            &["they", "cant", "be", "regenerated", "this", "turn"],
+        ]
+);
 
 fn summarize_effects(effects: &[EffectAst]) -> String {
     effects
@@ -101,27 +247,9 @@ fn repair_that_object_power_damage_subject(
     previous_damage_target: Option<TargetAst>,
 ) {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    let looks_like_that_object_power_damage = word_slice_contains_any_phrase(
-        &words,
-        &[
-            &[
-                "that", "creature", "deals", "damage", "equal", "to", "its", "power",
-            ],
-            &[
-                "that",
-                "permanent",
-                "deals",
-                "damage",
-                "equal",
-                "to",
-                "its",
-                "power",
-            ],
-        ],
-    ) && word_slice_contains_any_phrase(
-        &words,
-        &[&["to", "this", "creature"], &["to", "this", "permanent"]],
-    );
+    let looks_like_that_object_power_damage = THAT_OBJECT_POWER_DAMAGE_PATTERN
+        .matches_words(&words)
+        && THIS_OBJECT_DAMAGE_TARGET_PATTERN.matches_words(&words);
     if !looks_like_that_object_power_damage {
         return;
     }
@@ -161,7 +289,7 @@ fn repair_target_controlled_source_damage_to_that_player(
     tokens: &[OwnedLexToken],
 ) {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if !word_slice_contains_phrase(&words, &["to", "that", "player"]) {
+    if !TO_THAT_PLAYER_PATTERN.matches_words(&words) {
         return;
     }
 
@@ -200,31 +328,28 @@ fn apply_trailing_counter_constraint_to_destroy_all(
     tokens: &[OwnedLexToken],
 ) {
     let token_words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(counter_idx) =
-        crate::runtime_backend::lexer::word_slice_find_word_where(&token_words, |word| {
-            matches!(word, "counter" | "counters")
-        })
-    else {
+    let Some(counter_idx) = COUNTER_OR_COUNTERS_WORD_PATTERN.find_word(&token_words) else {
         return;
     };
-    if !word_slice_at_is(&token_words, counter_idx + 1, "on")
-        || !word_slice_at_is_any(&token_words, counter_idx + 2, &["it", "them"])
+    if !ON_WORD_PATTERN.matches_word_at(&token_words, counter_idx + 1)
+        || !IT_OR_THEM_WORD_PATTERN.matches_word_at(&token_words, counter_idx + 2)
     {
         return;
     }
     let descriptor_start = token_words[..counter_idx]
         .iter()
-        .rposition(|word| *word == "with")
+        .rposition(|word| WITH_WORD_PATTERN.matches_word(word))
         .map(|idx| idx + 1)
         .unwrap_or(0);
     let descriptor_words = token_words[descriptor_start..counter_idx]
         .iter()
         .copied()
         .filter(|word| {
-            !matches!(*word, "or" | "more") && ironsmith_core::parse_cardinal_word(word).is_none()
+            !OR_OR_MORE_WORD_PATTERN.matches_word(word)
+                && ironsmith_core::parse_cardinal_word(word).is_none()
         })
         .collect::<Vec<_>>();
-    if word_slice_first_is_any(&descriptor_words, &["no"]) {
+    if NO_WORD_PATTERN.matches_word_at(&descriptor_words, 0) {
         return;
     }
     let counter_constraint = if descriptor_words.is_empty() {
@@ -232,9 +357,11 @@ fn apply_trailing_counter_constraint_to_destroy_all(
     } else {
         let descriptor_tokens = descriptor_words
             .iter()
-            .chain(std::iter::once(&"counter"))
-            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
+            .copied()
+            .chain(std::iter::once("counter"))
             .collect::<Vec<_>>();
+        let descriptor_tokens =
+            crate::runtime_backend::lexer::synthetic_word_tokens(&descriptor_tokens);
         let Some(counter_type) = parse_counter_type_from_tokens(&descriptor_tokens) else {
             return;
         };
@@ -242,7 +369,7 @@ fn apply_trailing_counter_constraint_to_destroy_all(
     };
     if !token_words[..counter_idx]
         .iter()
-        .any(|word| *word == "with")
+        .any(|word| WITH_WORD_PATTERN.matches_word(word))
     {
         return;
     }
@@ -965,10 +1092,9 @@ fn parse_effect_sentences_from_sentence_inputs(
         }
         sentence_tokens = rewrite_when_one_or_more_this_way_clause_prefix(&sentence_tokens);
 
-        if word_slice_eq(
-            &crate::runtime_backend::token_word_refs(&sentence_tokens),
-            &["learn"],
-        ) {
+        if LEARN_WORD_PATTERN
+            .matches_words(&crate::runtime_backend::token_word_refs(&sentence_tokens))
+        {
             effects.push(EffectAst::subject_verb_learn(PlayerAst::You));
             carried_context = None;
             sentence_idx += 1;
@@ -1150,11 +1276,7 @@ fn parse_effect_sentences_from_sentence_inputs(
 
 fn is_outside_game_art_rating_sentence(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    let has_phrase = |needle: &[&str]| -> bool {
-        crate::runtime_backend::lexer::word_slice_contains_phrase(&words, needle)
-    };
-    has_phrase(&["ask", "a", "person", "outside", "the", "game", "to", "rate"])
-        || has_phrase(&["when", "they", "rate", "the", "art"])
+    OUTSIDE_GAME_ART_RATING_PATTERN.matches_words(&words)
 }
 
 pub(crate) fn parse_effect_sentences_lexed(
@@ -1353,96 +1475,23 @@ fn group_this_way_copy_cast_followups(tokens: &[OwnedLexToken], effects: &mut Ve
 pub(crate) fn is_cant_be_regenerated_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
     let words_storage = normalize_cant_words(tokens);
     let words = words_storage.iter().map(String::as_str).collect::<Vec<_>>();
-    let destroyed_this_way_subject = word_slice_starts_with_any(
-        &words,
-        &[
-            &["creature", "destroyed", "this", "way"],
-            &["creatures", "destroyed", "this", "way"],
-            &["a", "creature", "destroyed", "this", "way"],
-        ],
-    );
+    let destroyed_this_way_subject = DESTROYED_THIS_WAY_SUBJECT_PATTERN.matches_words(&words);
     if destroyed_this_way_subject
-        && word_slice_ends_with(&words, &["be", "regenerated"])
+        && BE_REGENERATED_SUFFIX_PATTERN.matches_words(&words)
         && (words
             .iter()
-            .any(|word| matches!(*word, "cant" | "can't" | "cannot"))
-            || word_slice_contains_any_phrase(&words, &[&["can", "t", "be", "regenerated"]]))
+            .any(|word| CANT_WORD_PATTERN.matches_word(word))
+            || CANT_BE_REGENERATED_SPLIT_PATTERN.matches_words(&words))
     {
         return true;
     }
-    matches!(
-        words.as_slice(),
-        ["it", "cant", "be", "regenerated"]
-            | ["it", "cant", "be", "regenerated", "this", "turn"]
-            | ["they", "cant", "be", "regenerated"]
-            | ["they", "cant", "be", "regenerated", "this", "turn"]
-            | [
-                "creature",
-                "destroyed",
-                "this",
-                "way",
-                "cant",
-                "be",
-                "regenerated"
-            ]
-            | [
-                "creature",
-                "destroyed",
-                "this",
-                "way",
-                "can't",
-                "be",
-                "regenerated"
-            ]
-            | [
-                "creatures",
-                "destroyed",
-                "this",
-                "way",
-                "cant",
-                "be",
-                "regenerated"
-            ]
-            | [
-                "creatures",
-                "destroyed",
-                "this",
-                "way",
-                "can't",
-                "be",
-                "regenerated"
-            ]
-            | [
-                "a",
-                "creature",
-                "destroyed",
-                "this",
-                "way",
-                "cant",
-                "be",
-                "regenerated"
-            ]
-            | [
-                "a",
-                "creature",
-                "destroyed",
-                "this",
-                "way",
-                "can't",
-                "be",
-                "regenerated"
-            ]
-    )
+    SIMPLE_CANT_BE_REGENERATED_PATTERN.matches_words(&words)
 }
 
 pub(crate) fn is_cant_be_regenerated_this_turn_followup_sentence(tokens: &[OwnedLexToken]) -> bool {
     let words_storage = normalize_cant_words(tokens);
     let words = words_storage.iter().map(String::as_str).collect::<Vec<_>>();
-    matches!(
-        words.as_slice(),
-        ["it", "cant", "be", "regenerated", "this", "turn"]
-            | ["they", "cant", "be", "regenerated", "this", "turn"]
-    )
+    CANT_BE_REGENERATED_THIS_TURN_PATTERN.matches_words(&words)
 }
 
 pub(crate) fn apply_cant_be_regenerated_to_last_destroy_effect(
@@ -2565,27 +2614,14 @@ pub(crate) fn apply_where_x_to_damage_amounts(
     effects: &mut [EffectAst],
 ) -> Result<(), CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let has_deal_x = word_slice_contains_any_phrase(
-        &clause_words,
-        &[&["deal", "x", "damage"], &["deals", "x", "damage"]],
-    );
-    let has_x_life = word_slice_contains_any_phrase(
-        &clause_words,
-        &[
-            &["gain", "x", "life"],
-            &["gains", "x", "life"],
-            &["lose", "x", "life"],
-            &["loses", "x", "life"],
-        ],
-    );
-    let Some(where_idx) =
-        word_slice_find_phrase_start_or_zero(&clause_words, &["where", "x", "is"])
-    else {
+    let has_deal_x = DEAL_X_DAMAGE_PATTERN.matches_words(&clause_words);
+    let has_x_life = X_LIFE_CHANGE_PATTERN.matches_words(&clause_words);
+    let Some(where_idx) = WHERE_X_IS_PATTERN.find_exact_window(&clause_words, 3) else {
         return Ok(());
     };
     let has_unbound_x_before_where = clause_words[..where_idx]
         .iter()
-        .any(|word| word.eq_ignore_ascii_case("x"));
+        .any(|word| X_WORD_PATTERN.matches_word(word));
     if !has_deal_x && !has_x_life && !has_unbound_x_before_where {
         return Ok(());
     }
@@ -2924,7 +2960,7 @@ pub(crate) fn strip_otherwise_sentence_prefix(
 ) -> Option<Vec<OwnedLexToken>> {
     if !tokens
         .first()
-        .is_some_and(|token| token.is_word("otherwise"))
+        .is_some_and(|token| OTHERWISE_WORD_PATTERN.matches_token(token))
     {
         return None;
     }
@@ -2953,9 +2989,9 @@ pub(crate) fn rewrite_otherwise_referential_subject(
 ) -> Vec<OwnedLexToken> {
     let clause_words = crate::runtime_backend::token_word_refs(&tokens);
     let is_referential_get = clause_words.len() >= 3
-        && clause_words[0] == "that"
-        && matches!(clause_words[1], "creature" | "permanent")
-        && matches!(clause_words[2], "gets" | "get" | "gains" | "gain");
+        && REFERENTIAL_THAT_WORD_PATTERN.matches_word(clause_words[0])
+        && REFERENTIAL_NOUN_WORD_PATTERN.matches_word(clause_words[1])
+        && GET_GAIN_WORD_PATTERN.matches_word(clause_words[2]);
     if !is_referential_get {
         return tokens;
     }
@@ -2971,10 +3007,7 @@ pub(crate) fn is_nonsemantic_restriction_sentence(tokens: &[OwnedLexToken]) -> b
     let words = crate::runtime_backend::token_word_refs(tokens);
     is_activate_only_restriction_sentence(tokens)
         || is_trigger_only_restriction_sentence(tokens)
-        || word_slice_eq_any(
-            &words,
-            &[&["x", "cant", "be", "0"], &["x", "can't", "be", "0"]],
-        )
+        || NONSEMANTIC_X_CANT_BE_ZERO_PATTERN.matches_words(&words)
 }
 
 fn token_copy_followup_container_effects_mut(

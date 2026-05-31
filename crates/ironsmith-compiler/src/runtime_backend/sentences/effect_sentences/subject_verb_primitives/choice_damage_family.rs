@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use crate::runtime_backend::front_end::lex_patterns::{
     LexCaptureKind, LexCaptureRole, LexPattern, LexPatternAtom, LexPatternMatch,
 };
@@ -20,6 +21,76 @@ pub(crate) const REVEAL_SELECTED_CARDS_IN_YOUR_HAND_PATTERN_ATOMS: &[LexPatternA
 ];
 const REVEAL_VERB_PHRASES: &[&[&str]] = &[&["reveal"], &["reveals"]];
 const REVEAL_ARTICLE_WORDS: &[&str] = &["a", "an", "one"];
+const FROM_PREFIX: &[&str] = &["from"];
+const TO_PREFIX: &[&str] = &["to"];
+const UP_TO_ONE_TARGET_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["up", "to", "one", "target"]);
+const ALL_OR_EACH_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["all"], &["each"]]);
+const OF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["of"]);
+const TO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["to"]);
+const REVEAL_ARTICLE_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["a"], &["an"], &["one"]]);
+const CARD_OR_CARDS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["card"], &["cards"]]);
+const CARD_WORD_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["card"]);
+const HAND_REFERENCE_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["their", "hand"],
+            &["their", "hands"],
+            &["your", "hand"],
+            &["your", "hands"],
+            &["that", "player", "hand"],
+            &["that", "player", "hands"],
+            &["target", "player", "hand"],
+            &["target", "player", "hands"],
+        ]
+);
+const DAMAGE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["damage"]);
+const DESTROY_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["destroy"]);
+const AT_RANDOM_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["at", "random"]]);
+const YOU_GAIN_X_LIFE_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["you", "gain", "x", "life"]]);
+const THEM_OR_THAT_PLAYER_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["them"], &["that", "player"]]);
+const TARGET_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["target"]);
+const EXILE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["exile"]);
+const COUNTER_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["counter"]);
+const CREATE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["create"]);
+const CHOOSE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["choose"]);
+const ENCHANTED_ATTACKED_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["that", "creature", "attacked", "this", "turn"],
+            &["enchanted", "creature", "attacked", "this", "turn"],
+        ]
+);
+const DAMAGE_SOURCE_SUBJECT_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["this", "aura"],
+            &["this", "permanent"],
+            &["this", "enchantment"],
+        ]
+);
+const THAT_PLAYER_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["that", "player"]);
+
+fn choice_damage_clause_first_matches(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    shape: &ClauseShape<'static>,
+) -> bool {
+    clause
+        .first_word()
+        .is_some_and(|word| shape.matches_word(word))
+}
+
+fn is_explicit_target_clause(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
+    choice_damage_clause_first_matches(clause, &TARGET_WORD_PATTERN)
+        || parse_choice_count_before_target_prefix(clause.tokens()).is_some()
+}
+
 pub(crate) const TARGET_PLAYER_REVEALS_RANDOM_CARD_FROM_HAND_PATTERN_ATOMS: &[LexPatternAtom<
     'static,
 >] = &[
@@ -132,7 +203,7 @@ pub(crate) fn parse_sentence_each_opponent_loses_x_and_you_gain_x_matched(
     };
     let has_lose_x =
         drain_clause.contains_any_phrase(&[&["lose", "x", "life"], &["loses", "x", "life"]]);
-    let has_gain_x = drain_clause.contains_phrase(&["you", "gain", "x", "life"]);
+    let has_gain_x = YOU_GAIN_X_LIFE_MARKER_PATTERN.matches_words(&drain_clause.word_refs());
     if !has_lose_x || !has_gain_x {
         return Ok(None);
     }
@@ -218,15 +289,16 @@ pub(crate) fn parse_sentence_exile_up_to_one_each_target_type(
 pub(crate) fn parse_sentence_exile_multi_target(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if !clause.first_is_word("exile") || clause.contains_word("unless") {
+    if !clause
+        .first_word()
+        .is_some_and(|word| EXILE_WORD_PATTERN.matches_word(word))
+        || clause.contains_word("unless")
+    {
         return Ok(None);
     }
 
     let Some(and_idx) = clause.find_token_word_where("and", |idx, tail_clause| {
-        idx > 0
-            && !tail_clause.is_empty()
-            && (tail_clause.first_is_word("target")
-                || (tail_clause.starts_with(&["up", "to"]) && tail_clause.contains_word("target")))
+        idx > 0 && !tail_clause.is_empty() && is_explicit_target_clause(tail_clause)
     }) else {
         return Ok(None);
     };
@@ -238,10 +310,8 @@ pub(crate) fn parse_sentence_exile_multi_target(
     }
 
     let first_words = first_clause.word_refs();
-    let first_is_explicit_target = first_clause.first_is_word("target")
-        || (first_clause.starts_with(&["up", "to"]) && first_clause.contains_word("target"));
-    let second_is_explicit_target = second_clause.first_is_word("target")
-        || (second_clause.starts_with(&["up", "to"]) && second_clause.contains_word("target"));
+    let first_is_explicit_target = is_explicit_target_clause(first_clause);
+    let second_is_explicit_target = is_explicit_target_clause(second_clause);
 
     let mut first_target =
         if !first_is_explicit_target && is_likely_named_or_source_reference_words(&first_words) {
@@ -307,11 +377,10 @@ pub(crate) fn split_destroy_target_segments(
             .iter()
             .enumerate()
             .filter_map(|(idx, token)| {
+                let _ = token;
                 if idx >= 3
-                    && token.is_word("target")
-                    && segment_clause[idx - 3].is_word("up")
-                    && segment_clause[idx - 2].is_word("to")
-                    && segment_clause[idx - 1].is_word("one")
+                    && UP_TO_ONE_TARGET_PATTERN
+                        .matches_words(&segment_clause.between(idx - 3, idx + 1).word_refs())
                 {
                     Some(idx - 3)
                 } else {
@@ -343,12 +412,12 @@ pub(crate) fn split_destroy_target_segments(
 pub(crate) fn parse_sentence_destroy_multi_target(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if !clause.first_is_word("destroy") {
+    if !choice_damage_clause_first_matches(clause, &DESTROY_WORD_PATTERN) {
         return Ok(None);
     }
     if clause
         .token(1)
-        .is_some_and(|t| t.is_word("all") || t.is_word("each"))
+        .is_some_and(|token| ALL_OR_EACH_WORD_PATTERN.matches_token(token))
     {
         return Ok(None);
     }
@@ -407,9 +476,10 @@ pub(crate) fn parse_sentence_destroy_multi_target(
         }) {
             return Ok(None);
         }
-        let is_explicit_target = word_slice_first_is(&segment_words, "target")
-            || (segment_clause.strip_any_prefix(UP_TO_PREFIXES).is_some()
-                && segment_clause.contains_word("target"));
+        let is_explicit_target = segment_words
+            .first()
+            .is_some_and(|word| TARGET_WORD_PATTERN.matches_words(&[*word]))
+            || parse_choice_count_before_target_prefix(segment_clause.tokens()).is_some();
         if !is_explicit_target && !is_likely_named_or_source_reference_words(&segment_words) {
             return Ok(None);
         }
@@ -479,34 +549,28 @@ pub(crate) fn parse_sentence_reveal_selected_cards_in_your_hand_matched(
     }
 
     let mut count = ChoiceCount::exactly(1);
-    if descriptor_clause
-        .strip_any_prefix(ANY_NUMBER_OF_PREFIXES)
-        .is_some()
+    if let Some((parsed_count, used)) =
+        crate::runtime_backend::util::parse_choice_count_token_prefix_consumed(
+            descriptor_clause.tokens(),
+        )
     {
-        count = ChoiceCount::any_number();
-        descriptor_clause = descriptor_clause.from(3).trimmed();
-    } else if descriptor_clause.strip_any_prefix(UP_TO_PREFIXES).is_some() {
-        let count_clause = descriptor_clause.from(2);
-        if let Some((value, used)) = parse_number(count_clause.tokens()) {
-            count = ChoiceCount::up_to(value as usize);
-            descriptor_clause = descriptor_clause.from(2 + used).trimmed();
-            if descriptor_clause.first_is_word("of") {
-                descriptor_clause = descriptor_clause.from(1).trimmed();
-            }
+        count = if parsed_count.dynamic_x {
+            ChoiceCount::any_number()
         } else {
-            return Ok(None);
+            parsed_count
+        };
+        descriptor_clause = descriptor_clause.from(used).trimmed();
+        if choice_damage_clause_first_matches(descriptor_clause, &OF_WORD_PATTERN) {
+            descriptor_clause = descriptor_clause.from(1).trimmed();
         }
-    } else if descriptor_clause.first_word() == Some("x") {
-        count = ChoiceCount::any_number();
-        descriptor_clause = descriptor_clause.from(1).trimmed();
     } else if descriptor_clause
         .first_word()
-        .is_some_and(|word| matches!(word, "a" | "an" | "one"))
+        .is_some_and(|word| REVEAL_ARTICLE_WORD_PATTERN.matches_word(word))
     {
         descriptor_clause = descriptor_clause.from(1).trimmed();
     } else if descriptor_clause
         .first_word()
-        .is_some_and(|word| matches!(word, "all" | "each"))
+        .is_some_and(|word| ALL_OR_EACH_WORD_PATTERN.matches_word(word))
     {
         return Ok(None);
     }
@@ -527,7 +591,7 @@ pub(crate) fn parse_sentence_reveal_selected_cards_in_your_hand_matched(
             }
             if !descriptor_words
                 .get(idx)
-                .is_some_and(|word| matches!(*word, "card" | "cards"))
+                .is_some_and(|word| CARD_OR_CARDS_WORD_PATTERN.matches_word(word))
             {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported reveal-hand clause (clause: '{}')",
@@ -596,7 +660,7 @@ pub(crate) fn parse_sentence_target_player_reveals_random_card_from_hand_matched
     if reveal_words.is_empty()
         || !reveal_words
             .first()
-            .is_some_and(|word| matches!(*word, "a" | "an" | "one"))
+            .is_some_and(|word| REVEAL_ARTICLE_WORD_PATTERN.matches_words(&[*word]))
     {
         return Ok(None);
     }
@@ -605,33 +669,21 @@ pub(crate) fn parse_sentence_target_player_reveals_random_card_from_hand_matched
         return Ok(None);
     };
     let descriptor_words = descriptor_clause.word_refs();
-    if descriptor_words.is_empty() || !word_slice_contains_word(&descriptor_words, "card") {
+    if descriptor_words.is_empty() || !CARD_WORD_MARKER_PATTERN.matches_words(&descriptor_words) {
         return Ok(None);
     }
 
     let Some((random_descriptor_clause, hand_clause)) =
-        descriptor_clause.split_once_on_phrase(&["from"])
+        descriptor_clause.split_once_on_phrase(FROM_PREFIX)
     else {
         return Ok(None);
     };
-    if !random_descriptor_clause.contains_phrase(&["at", "random"]) {
+    if !AT_RANDOM_MARKER_PATTERN.matches_words(&random_descriptor_clause.word_refs()) {
         return Ok(None);
     }
 
     let hand_words = hand_clause.word_refs();
-    if !word_slice_eq_any(
-        &hand_words,
-        &[
-            &["their", "hand"],
-            &["their", "hands"],
-            &["your", "hand"],
-            &["your", "hands"],
-            &["that", "player", "hand"],
-            &["that", "player", "hands"],
-            &["target", "player", "hand"],
-            &["target", "player", "hands"],
-        ],
-    ) {
+    if !HAND_REFERENCE_PATTERN.matches_words(&hand_words) {
         return Ok(None);
     }
 
@@ -816,20 +868,17 @@ pub(crate) fn parse_sentence_damage_unless_controller_has_source_deal_damage_mat
     };
     if !deal_tail
         .get(used)
-        .is_some_and(|token| token.is_word("damage"))
+        .is_some_and(|token| DAMAGE_WORD_PATTERN.matches_token(token))
     {
         return Ok(None);
     }
 
     let alt_target_clause = deal_tail_clause
         .from(used + 1)
-        .strip_prefix_clause(&["to"])
+        .strip_prefix_clause(TO_PREFIX)
         .unwrap_or_else(|| deal_tail_clause.from(used + 1));
     let alt_target_words = alt_target_clause.word_refs();
-    if !crate::runtime_backend::lexer::word_slice_eq_any(
-        &alt_target_words,
-        &[&["them"], &["that", "player"]],
-    ) {
+    if !THEM_OR_THAT_PLAYER_PATTERN.matches_words(&alt_target_words) {
         return Ok(None);
     }
 
@@ -875,11 +924,7 @@ pub(crate) fn parse_sentence_damage_to_that_player_unless_enchanted_attacked_mat
         return Ok(None);
     }
 
-    if !matches!(
-        after_clause.word_refs().as_slice(),
-        ["that", "creature", "attacked", "this", "turn"]
-            | ["enchanted", "creature", "attacked", "this", "turn"]
-    ) {
+    if !ENCHANTED_ATTACKED_THIS_TURN_PATTERN.matches_words(&after_clause.word_refs()) {
         return Ok(None);
     }
 
@@ -889,10 +934,7 @@ pub(crate) fn parse_sentence_damage_to_that_player_unless_enchanted_attacked_mat
         return Ok(None);
     };
 
-    if !matches!(
-        subject_clause.word_refs().as_slice(),
-        ["this", "aura"] | ["this", "permanent"] | ["this", "enchantment"]
-    ) {
+    if !DAMAGE_SOURCE_SUBJECT_PATTERN.matches_words(&subject_clause.word_refs()) {
         return Ok(None);
     }
     let damage_tokens = damage_clause.tokens();
@@ -901,19 +943,16 @@ pub(crate) fn parse_sentence_damage_to_that_player_unless_enchanted_attacked_mat
     };
     if !damage_tokens
         .get(used)
-        .is_some_and(|token| token.is_word("damage"))
+        .is_some_and(|token| DAMAGE_WORD_PATTERN.matches_token(token))
     {
         return Ok(None);
     }
 
     let mut target_clause = damage_clause.from(used + 1).trimmed();
-    if target_clause.first_is_word("to") {
+    if choice_damage_clause_first_matches(target_clause, &TO_WORD_PATTERN) {
         target_clause = target_clause.from(1).trimmed();
     }
-    if !crate::runtime_backend::lexer::word_slice_eq(
-        &target_clause.word_refs(),
-        &["that", "player"],
-    ) {
+    if !THAT_PLAYER_PATTERN.matches_words(&target_clause.word_refs()) {
         return Ok(None);
     }
 
@@ -968,10 +1007,15 @@ pub(crate) fn parse_sentence_unless_pays_matched(
     let before_unless_clause = clause.before(unless_idx);
     let before_words = before_unless_clause.word_refs();
 
-    if word_slice_first_is(&before_words, "counter") {
+    if before_words
+        .first()
+        .is_some_and(|word| COUNTER_WORD_PATTERN.matches_words(&[*word]))
+    {
         return Ok(None);
     }
-    if word_slice_first_is(&before_words, "create")
+    if before_words
+        .first()
+        .is_some_and(|word| CREATE_WORD_PATTERN.matches_words(&[*word]))
         && before_unless_clause.contains_word("token")
         && before_unless_clause.contains_word("sacrifice")
         && before_unless_clause.contains_word("counter")
@@ -988,7 +1032,9 @@ pub(crate) fn parse_sentence_unless_pays_matched(
             == Some(["its", "controller", "has", "you", "draw", "a", "card"].as_slice())
         && let Some(then_return_word_idx) =
             before_unless_clause.find_phrase_start(&["then", "return"])
-        && word_slice_at_is(&sentence_words, 3, "choose")
+        && sentence_words
+            .get(3)
+            .is_some_and(|word| CHOOSE_WORD_PATTERN.matches_words(&[*word]))
     {
         let Some(target_clause) = clause
             .after_words(4)

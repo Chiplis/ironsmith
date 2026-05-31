@@ -25,6 +25,7 @@ use super::cst::{
     UnsupportedLineCst,
 };
 use super::cst_lowering::lower_non_metadata_rewrite_line_cst;
+use super::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::grammar::abilities::{
     is_activate_only_once_each_turn_line_lexed, is_doesnt_untap_during_your_untap_step_line_lexed,
     is_land_reveal_enters_static_line_lexed, is_land_reveal_enters_tapped_followup_line_lexed,
@@ -42,7 +43,7 @@ use super::lexer::{
     find_token_kind, find_token_word, lex_line, render_token_slice, token_slice_ends_with,
     token_slice_first_is, token_slice_last_kind, token_slice_starts_with,
     token_slice_starts_with_any, token_slice_words_eq, token_slice_words_eq_any, token_word_refs,
-    trim_lexed_commas, word_slice_ends_with_any, word_slice_eq, word_slice_starts_with,
+    trim_lexed_commas,
 };
 use super::preprocess::{
     PreprocessedDocument, PreprocessedItem, PreprocessedLine, preprocess_document,
@@ -62,6 +63,82 @@ use super::util::{
     preserve_keyword_prefix_for_parse,
 };
 use std::sync::LazyLock;
+
+const TRIGGERS_ONLY_ONCE_EACH_TURN_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &[
+                "this", "ability", "triggers", "only", "once", "each", "turn"
+            ],
+            &["do", "this", "only", "once", "each", "turn"],
+        ]
+);
+const NAMED_REFERENCE_MARKER: &str = " named ";
+const TOKEN_NAME_SUFFIX: &str = " twin";
+const SOURCE_ALIAS_EFFECT_VERBS: &[&str] = &[
+    "add",
+    "attach",
+    "become",
+    "convert",
+    "counter",
+    "create",
+    "deal",
+    "destroy",
+    "detain",
+    "discard",
+    "draw",
+    "exchange",
+    "exile",
+    "get",
+    "goad",
+    "incubate",
+    "investigate",
+    "look",
+    "mill",
+    "move",
+    "pay",
+    "proliferate",
+    "regenerate",
+    "remove",
+    "return",
+    "sacrifice",
+    "scry",
+    "shuffle",
+    "skip",
+    "surveil",
+    "suspect",
+    "tap",
+    "transform",
+    "untap",
+];
+const SOURCE_ALIAS_NON_VERB_FOLLOWUPS: &[&str] = &[
+    "gets", "get", "has", "have", "is", "are", "enters", "attacks", "blocks", "becomes", "become",
+    "can't", "cant", "can", "does", "doesn't", "doesnt",
+];
+const WHEN_ONE_OR_MORE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["when", "one", "or", "more"],
+            &["whenever", "one", "or", "more"]
+        ]
+);
+const CUMULATIVE_UPKEEP_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["cumulative", "upkeep"]);
+const ECHO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["echo"]);
+const FORMER_SECTION9_CANONICAL_GAPS: &[&str] = &[
+    "destroy target creature if its white. a creature destroyed this way cant be regenerated.",
+    "create two 1/1 white kithkin soldier creature tokens if {w} was spent to cast this spell. counter up to one target creature spell if {u} was spent to cast this spell.",
+    "{t}, sacrifice x goats: add x mana of any one color. you gain x life.",
+    "shuffle your library, then exile the top four cards. you may cast any number of spells with mana value 5 or less from among them without paying their mana costs. lands you control dont untap during your next untap step.",
+    "destroy target creature unless its controller pays life equal to its toughness. a creature destroyed this way cant be regenerated.",
+    "destroy all lands or all creatures. creatures destroyed this way cant be regenerated.",
+    "destroy two target nonblack creatures unless either one is a color the other isnt. they cant be regenerated.",
+];
+const FORMER_SECTION9_CANONICAL_WITHOUT_HYPHEN_GAPS: &[&str] = &[
+    "exile target nontoken creature you own and the top two cards of your library in a facedown pile, shuffle that pile, then cloak those cards. they enter tapped.",
+];
+const LESS_THAN_ONE_MANA_REDUCTION_REMINDER: &str =
+    "this effect can't reduce the mana in that cost to less than one mana.";
 
 mod block_parsing;
 mod line_cst_parsing;
@@ -169,14 +246,7 @@ fn strip_trailing_trigger_cap_suffix_tokens(
     let Some((phrase, head)) = grammar::strip_lexed_suffix_phrases(tokens, &cap_suffixes) else {
         return (tokens, None);
     };
-    let count = if word_slice_eq(
-        phrase,
-        &[
-            "this", "ability", "triggers", "only", "once", "each", "turn",
-        ],
-    ) {
-        1
-    } else if word_slice_eq(phrase, &["do", "this", "only", "once", "each", "turn"]) {
+    let count = if TRIGGERS_ONLY_ONCE_EACH_TURN_SUFFIX_PATTERN.matches_words(phrase) {
         1
     } else {
         2
@@ -462,21 +532,9 @@ fn parse_former_section9_unsupported_line_cst(
     let normalized = line.info.normalized.normalized.as_str();
     let canonical = normalized.replace(['\'', '’'], "");
     let canonical_without_hyphens = canonical.replace('-', "");
-    let matches_former_section9_gap = canonical
-        == "destroy target creature if its white. a creature destroyed this way cant be regenerated."
-        || canonical
-            == "create two 1/1 white kithkin soldier creature tokens if {w} was spent to cast this spell. counter up to one target creature spell if {u} was spent to cast this spell."
-        || canonical == "{t}, sacrifice x goats: add x mana of any one color. you gain x life."
-        || canonical
-            == "shuffle your library, then exile the top four cards. you may cast any number of spells with mana value 5 or less from among them without paying their mana costs. lands you control dont untap during your next untap step."
-        || canonical_without_hyphens
-            == "exile target nontoken creature you own and the top two cards of your library in a facedown pile, shuffle that pile, then cloak those cards. they enter tapped."
-        || canonical
-            == "destroy target creature unless its controller pays life equal to its toughness. a creature destroyed this way cant be regenerated."
-        || canonical
-            == "destroy all lands or all creatures. creatures destroyed this way cant be regenerated."
-        || canonical
-            == "destroy two target nonblack creatures unless either one is a color the other isnt. they cant be regenerated.";
+    let matches_former_section9_gap = FORMER_SECTION9_CANONICAL_GAPS.contains(&canonical.as_str())
+        || FORMER_SECTION9_CANONICAL_WITHOUT_HYPHEN_GAPS
+            .contains(&canonical_without_hyphens.as_str());
     matches_former_section9_gap.then(|| UnsupportedLineCst {
         info: line.info.clone(),
         reason_code: "former-section9-line-not-yet-supported",
@@ -750,11 +808,15 @@ fn preflight_invalid_payment_keyword_lines(text: &str) -> Option<CardTextError> 
         };
 
         for segment in grammar::split_lexed_slices_on_commas_or_semicolons(&tokens) {
-            let (keyword, cost_start) =
-                if token_slice_starts_with(segment, &["cumulative", "upkeep"]) {
-                    ("cumulative upkeep", 2)
-                } else if token_slice_first_is(segment, "echo") {
-                    ("echo", 1)
+            let segment_words = TokenWordView::new(segment).word_refs();
+            let (keyword, cost_start, is_echo) =
+                if CUMULATIVE_UPKEEP_PREFIX_PATTERN.matches_words(&segment_words) {
+                    ("cumulative upkeep", 2, false)
+                } else if segment_words
+                    .first()
+                    .is_some_and(|word| ECHO_WORD_PATTERN.matches_words(&[*word]))
+                {
+                    ("echo", 1, true)
                 } else {
                     continue;
                 };
@@ -763,7 +825,7 @@ fn preflight_invalid_payment_keyword_lines(text: &str) -> Option<CardTextError> 
                 token.is_period() || token.kind == TokenKind::LParen
             })
             .or_else(|| {
-                if keyword == "echo" {
+                if is_echo {
                     find_token_word(&segment[1..], "at").map(|idx| idx + 1)
                 } else {
                     None
@@ -870,7 +932,7 @@ fn normalize_named_source_sentence_for_builder(
     }
 
     let names = source_name_aliases_for_builder(builder);
-    if !names.is_empty() && !lower.contains(" named ") {
+    if !names.is_empty() && !mentions_named_reference(lower.as_str()) {
         let mut rewritten = lower.clone();
         for name_lower in &names {
             rewritten = replace_named_source_aliases(&rewritten, name_lower, subject);
@@ -896,7 +958,7 @@ fn normalize_named_source_trigger_for_builder(
             normalize_named_source_trigger_head_for_builder(builder, trigger_head)?;
         let names = source_name_aliases_for_builder(builder);
         let mut rewritten_body = effect_body.to_string();
-        if !names.is_empty() && !rewritten_body.contains(" named ") {
+        if !names.is_empty() && !mentions_named_reference(rewritten_body.as_str()) {
             let subject = named_source_subject_for_builder(builder);
             for name_lower in &names {
                 if rewritten_body.contains(&format!("control of {name_lower}")) {
@@ -986,7 +1048,7 @@ fn normalize_named_source_trigger_head_for_builder(
     }
 
     let names = source_name_aliases_for_builder(builder);
-    if !names.is_empty() && !trimmed.contains(" named ") {
+    if !names.is_empty() && !mentions_named_reference(trimmed) {
         let mut rewritten = trimmed.to_string();
         for name_lower in &names {
             rewritten = replace_named_source_aliases_for_trigger_normalization(
@@ -1012,66 +1074,15 @@ fn source_alias_prefix_looks_like_effect_verb(alias: &str, remainder: &str) -> b
     else {
         return false;
     };
-    !matches!(
-        next_word,
-        "gets"
-            | "get"
-            | "has"
-            | "have"
-            | "is"
-            | "are"
-            | "enters"
-            | "attacks"
-            | "blocks"
-            | "becomes"
-            | "become"
-            | "can't"
-            | "cant"
-            | "can"
-            | "does"
-            | "doesn't"
-            | "doesnt"
-    )
+    !SOURCE_ALIAS_NON_VERB_FOLLOWUPS.contains(&next_word)
 }
 
 fn is_effect_verb_word(word: &str) -> bool {
-    matches!(
-        word,
-        "add"
-            | "attach"
-            | "become"
-            | "convert"
-            | "counter"
-            | "create"
-            | "deal"
-            | "destroy"
-            | "detain"
-            | "discard"
-            | "draw"
-            | "exchange"
-            | "exile"
-            | "get"
-            | "goad"
-            | "incubate"
-            | "investigate"
-            | "look"
-            | "mill"
-            | "move"
-            | "pay"
-            | "proliferate"
-            | "regenerate"
-            | "remove"
-            | "return"
-            | "sacrifice"
-            | "scry"
-            | "shuffle"
-            | "skip"
-            | "surveil"
-            | "suspect"
-            | "tap"
-            | "transform"
-            | "untap"
-    )
+    SOURCE_ALIAS_EFFECT_VERBS.contains(&word)
+}
+
+fn mentions_named_reference(text: &str) -> bool {
+    str_contains(text, NAMED_REFERENCE_MARKER)
 }
 
 fn replace_named_source_aliases(text: &str, alias: &str, replacement: &str) -> String {
@@ -1105,7 +1116,7 @@ fn replace_named_source_aliases_with_options(
         let end = start + alias.len();
         let before_is_boundary = start == 0 || !bytes[start - 1].is_ascii_alphanumeric();
         let after_is_boundary = end >= bytes.len() || !bytes[end].is_ascii_alphanumeric();
-        let is_token_name_suffix = lower[end..].starts_with(" twin");
+        let is_token_name_suffix = str_starts_with(&lower[end..], TOKEN_NAME_SUFFIX);
         let preserve_surface = preserve_surface_hints
             && source_alias_occurrence_should_preserve_surface(lower.as_bytes(), start, end);
         if before_is_boundary && after_is_boundary && !is_token_name_suffix && !preserve_surface {
@@ -2467,9 +2478,7 @@ fn starts_with_when_one_or_more_this_way_clause(tokens: &[OwnedLexToken]) -> boo
     let this_way_in_prefix = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
         .map(|(before, _after)| grammar::contains_phrase(before, &["this", "way"]))
         .unwrap_or(false);
-    (word_slice_starts_with(&words, &["when", "one", "or", "more"])
-        || word_slice_starts_with(&words, &["whenever", "one", "or", "more"]))
-        && this_way_in_prefix
+    WHEN_ONE_OR_MORE_PREFIX_PATTERN.matches_words(&words) && this_way_in_prefix
 }
 
 fn rewrite_when_one_or_more_this_way_line(line: &PreprocessedLine) -> PreprocessedLine {
@@ -3185,9 +3194,7 @@ pub(crate) fn parse_document_cst(
                     idx += 1;
                     continue;
                 }
-                if normalized
-                    == "this effect can't reduce the mana in that cost to less than one mana."
-                {
+                if normalized == LESS_THAN_ONE_MANA_REDUCTION_REMINDER {
                     idx += 1;
                     continue;
                 }

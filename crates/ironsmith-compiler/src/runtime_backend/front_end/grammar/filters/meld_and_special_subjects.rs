@@ -1,4 +1,35 @@
 use super::*;
+use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
+    ClauseShape, clause_shape,
+};
+
+const THERE_ARE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["there", "are"]);
+const YOU_HAVE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["you", "have"]);
+const IN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["in"]);
+const TYPE_OR_TYPES_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_words & [&["type", "types"]]);
+const AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
+const OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
+const CARD_OR_CARDS_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["card"], &["cards"]]);
+const OF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["of"]);
+const MANA_OF_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["mana", "of"]);
+const SAME_COLOR_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["same", "color"]);
+const THE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["the"]);
+const MANA_SPENT_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["mana", "was", "spent", "to", "cast", "this", "spell"],
+            &["mana", "were", "spent", "to", "cast", "this", "spell"],
+        ]
+);
+const SAME_COLOR_MANA_SPENT_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["was", "spent", "to", "cast", "it"],
+            &["was", "spent", "to", "cast", "this", "spell"],
+        ]
+);
 
 pub(super) fn parse_graveyard_threshold_predicate(
     filtered: &[&str],
@@ -14,32 +45,31 @@ pub(super) fn parse_graveyard_threshold_predicate(
         }
     }
 
-    let (count, tail_start, constrained_player) = if filtered.len() >= 5
-        && filtered[0] == "there"
-        && filtered[1] == "are"
-        && filtered[3] == "or"
-        && filtered[4] == "more"
-    {
-        let Some(count) = parse_named_number(filtered[2]) else {
+    fn parse_at_least_quantity_prefix(words: &[&str]) -> Option<(u32, usize)> {
+        let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+        let (comparison, used) =
+            parse_quantity_comparison_prefix(&tokens, false, false, "graveyard threshold").ok()?;
+        let count = comparison_to_strict_at_least_threshold(&comparison)?;
+        Some((count, used))
+    }
+
+    let (count, tail_start, constrained_player) =
+        if filtered.len() >= 5 && THERE_ARE_PREFIX_PATTERN.matches_words(filtered) {
+            let Some((count, used)) = parse_at_least_quantity_prefix(&filtered[2..]) else {
+                return Ok(None);
+            };
+            (count, 2 + used, None)
+        } else if filtered.len() >= 5 && YOU_HAVE_PREFIX_PATTERN.matches_words(filtered) {
+            let Some((count, used)) = parse_at_least_quantity_prefix(&filtered[2..]) else {
+                return Ok(None);
+            };
+            (count, 2 + used, Some(PlayerAst::You))
+        } else {
             return Ok(None);
         };
-        (count, 5usize, None)
-    } else if filtered.len() >= 5
-        && filtered[0] == "you"
-        && filtered[1] == "have"
-        && filtered[3] == "or"
-        && filtered[4] == "more"
-    {
-        let Some(count) = parse_named_number(filtered[2]) else {
-            return Ok(None);
-        };
-        (count, 5usize, Some(PlayerAst::You))
-    } else {
-        return Ok(None);
-    };
 
     let tail = &filtered[tail_start..];
-    let Some(in_idx) = rfind_index(tail, |word| *word == "in") else {
+    let Some(in_idx) = rfind_index(tail, |word| IN_WORD_PATTERN.matches_word(word)) else {
         return Ok(None);
     };
     if in_idx == 0 || in_idx + 1 >= tail.len() {
@@ -62,19 +92,16 @@ pub(super) fn parse_graveyard_threshold_predicate(
     }
 
     let raw_filter_words = &tail[..in_idx];
-    if raw_filter_words.is_empty()
-        || word_slice_contains_word(raw_filter_words, "type")
-        || word_slice_contains_word(raw_filter_words, "types")
-    {
+    if raw_filter_words.is_empty() || TYPE_OR_TYPES_MARKER_PATTERN.matches_words(raw_filter_words) {
         return Ok(None);
     }
 
     let mut normalized_filter_words = Vec::with_capacity(raw_filter_words.len());
     for (idx, word) in raw_filter_words.iter().enumerate() {
-        if *word == "and"
+        if AND_WORD_PATTERN.matches_word(word)
             && raw_filter_words
                 .get(idx + 1)
-                .is_some_and(|next| *next == "or")
+                .is_some_and(|next| OR_WORD_PATTERN.matches_word(next))
         {
             continue;
         }
@@ -84,13 +111,11 @@ pub(super) fn parse_graveyard_threshold_predicate(
         return Ok(None);
     }
 
-    let mut filter = if word_slice_eq_any(&normalized_filter_words, &[&["card"], &["cards"]]) {
+    let mut filter = if CARD_OR_CARDS_PATTERN.matches_words(&normalized_filter_words) {
         ObjectFilter::default()
     } else {
-        let filter_tokens = normalized_filter_words
-            .iter()
-            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
-            .collect::<Vec<_>>();
+        let filter_tokens =
+            crate::runtime_backend::lexer::synthetic_word_tokens(normalized_filter_words);
         let Ok(filter) = parse_object_filter(&filter_tokens, false) else {
             return Ok(None);
         };
@@ -121,18 +146,21 @@ pub(super) fn parse_graveyard_threshold_predicate(
 pub(super) fn parse_mana_spent_to_cast_predicate(
     words: &[&str],
 ) -> Option<(u32, Option<ManaSymbol>)> {
-    if words.len() < 10 || words[0] != "at" || words[1] != "least" {
+    if words.len() < 10 {
         return None;
     }
 
-    let amount_tokens = vec![OwnedLexToken::word(
-        words[2].to_string(),
-        TextSpan::synthetic(),
-    )];
-    let (amount, _) = parse_number(&amount_tokens)?;
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let (amount, used) =
+        parse_greater_than_or_equal_quantity_prefix(&tokens, false, false, "mana spent predicate")
+            .ok()
+            .flatten()?;
 
-    let mut idx = 3;
-    if word_slice_at_is(words, idx, "of") {
+    let mut idx = used;
+    if words
+        .get(idx)
+        .is_some_and(|word| OF_WORD_PATTERN.matches_word(word))
+    {
         idx += 1;
     }
 
@@ -147,10 +175,7 @@ pub(super) fn parse_mana_spent_to_cast_predicate(
         None
     };
 
-    let tail = &words[idx..];
-    let canonical_tail = ["mana", "was", "spent", "to", "cast", "this", "spell"];
-    let plural_tail = ["mana", "were", "spent", "to", "cast", "this", "spell"];
-    if tail == canonical_tail || tail == plural_tail {
+    if MANA_SPENT_TAIL_PATTERN.matches_words(&words[idx..]) {
         return Some((amount, symbol));
     }
 
@@ -158,33 +183,37 @@ pub(super) fn parse_mana_spent_to_cast_predicate(
 }
 
 pub(crate) fn parse_same_color_mana_spent_to_cast_predicate(words: &[&str]) -> Option<u32> {
-    if words.len() < 12 || words[0] != "at" || words[1] != "least" {
+    if words.len() < 12 {
         return None;
     }
 
-    let amount_tokens = vec![OwnedLexToken::word(
-        words[2].to_string(),
-        TextSpan::synthetic(),
-    )];
-    let (amount, _) = parse_number(&amount_tokens)?;
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let (amount, used) = parse_greater_than_or_equal_quantity_prefix(
+        &tokens,
+        false,
+        false,
+        "same-color mana spent predicate",
+    )
+    .ok()
+    .flatten()?;
 
-    let mut idx = 3;
-    if !word_slice_starts_with(&words[idx..], &["mana", "of"]) {
+    let mut idx = used;
+    if !MANA_OF_PREFIX_PATTERN.matches_words(&words[idx..]) {
         return None;
     }
     idx += 2;
-    if word_slice_at_is(words, idx, "the") {
+    if words
+        .get(idx)
+        .is_some_and(|word| THE_WORD_PATTERN.matches_word(word))
+    {
         idx += 1;
     }
-    if !word_slice_starts_with(&words[idx..], &["same", "color"]) {
+    if !SAME_COLOR_PREFIX_PATTERN.matches_words(&words[idx..]) {
         return None;
     }
     idx += 2;
 
-    let tail = &words[idx..];
-    let it_tail = ["was", "spent", "to", "cast", "it"];
-    let this_spell_tail = ["was", "spent", "to", "cast", "this", "spell"];
-    if tail == it_tail || tail == this_spell_tail {
+    if SAME_COLOR_MANA_SPENT_TAIL_PATTERN.matches_words(&words[idx..]) {
         return Some(amount);
     }
 

@@ -200,6 +200,36 @@ const UNSUPPORTED_CONTAINS_RULES: &[UnsupportedWordRule] = &[
     },
 ];
 
+const CHOOSE_TARGET_LAND_PREFIX: &[&str] = &["choose", "target", "land"];
+const CREATE_THREE_COPY_TOKENS_PHRASE: &[&str] = &[
+    "create", "three", "tokens", "that", "are", "copies", "of", "it",
+];
+const LOSES_ABILITIES_AND_BECOMES_PHRASE: &[&str] =
+    &["loses", "all", "abilities", "and", "becomes"];
+const UNTIL_END_OF_TURN_PREFIX: &[&str] = &["until", "end", "of", "turn"];
+const FOR_AS_LONG_AS_OWNER_PLAY_PERMISSION_PHRASE: &[&str] = &[
+    "for", "as", "long", "as", "that", "card", "remains", "exiled", "its", "owner", "may", "play",
+    "it",
+];
+const OPPONENT_CAST_THIS_WAY_COSTS_PHRASE: &[&str] = &[
+    "a", "spell", "cast", "by", "an", "opponent", "this", "way", "costs",
+];
+const CAST_THIS_WAY_COSTS_PHRASE: &[&str] = &["a", "spell", "cast", "this", "way", "costs"];
+const EACH_PLAYER_X_MULTI_STEP_PHRASE: &[&str] = &[
+    "each",
+    "player",
+    "loses",
+    "x",
+    "life",
+    "discards",
+    "x",
+    "cards",
+    "sacrifices",
+    "x",
+    "creatures",
+];
+const THEN_SACRIFICES_X_LANDS_PHRASE: &[&str] = &["then", "sacrifices", "x", "lands"];
+
 const UNSUPPORTED_EQUALS_RULES: &[UnsupportedWordRule] = &[
     UnsupportedWordRule {
         phrase: &[
@@ -329,38 +359,23 @@ pub(super) fn diagnose_known_unsupported_rewrite_line(
         }
     }
 
-    let message = if ctx.has_prefix(&["choose", "target", "land"])
-        && ctx.contains_phrase(&[
-            "create", "three", "tokens", "that", "are", "copies", "of", "it",
-        ]) {
+    let message = if ctx.has_prefix(CHOOSE_TARGET_LAND_PREFIX)
+        && ctx.contains_phrase(CREATE_THREE_COPY_TOKENS_PHRASE)
+    {
         "unsupported choose-leading spell clause"
-    } else if ctx.contains_phrase(&["loses", "all", "abilities", "and", "becomes"]) {
-        if ctx.has_prefix(&["until", "end", "of", "turn"]) {
+    } else if ctx.contains_phrase(LOSES_ABILITIES_AND_BECOMES_PHRASE) {
+        if ctx.has_prefix(UNTIL_END_OF_TURN_PREFIX) {
             "unsupported loses-all-abilities with becomes clause"
         } else {
             "unsupported lose-all-abilities static becomes clause"
         }
-    } else if ctx.contains_phrase(&[
-        "for", "as", "long", "as", "that", "card", "remains", "exiled", "its", "owner", "may",
-        "play", "it",
-    ]) && !ctx.contains_phrase(&[
-        "a", "spell", "cast", "by", "an", "opponent", "this", "way", "costs",
-    ]) && !ctx.contains_phrase(&["a", "spell", "cast", "this", "way", "costs"])
+    } else if ctx.contains_phrase(FOR_AS_LONG_AS_OWNER_PLAY_PERMISSION_PHRASE)
+        && !ctx.contains_phrase(OPPONENT_CAST_THIS_WAY_COSTS_PHRASE)
+        && !ctx.contains_phrase(CAST_THIS_WAY_COSTS_PHRASE)
     {
         "unsupported for-as-long-as play/cast permission clause"
-    } else if ctx.contains_phrase(&[
-        "each",
-        "player",
-        "loses",
-        "x",
-        "life",
-        "discards",
-        "x",
-        "cards",
-        "sacrifices",
-        "x",
-        "creatures",
-    ]) && ctx.contains_phrase(&["then", "sacrifices", "x", "lands"])
+    } else if ctx.contains_phrase(EACH_PLAYER_X_MULTI_STEP_PHRASE)
+        && ctx.contains_phrase(THEN_SACRIFICES_X_LANDS_PHRASE)
     {
         "unsupported multi-step each-player clause with 'then'"
     } else if ctx.has_prefix(&["target", "artifact", "creature", "or", "player"]) {

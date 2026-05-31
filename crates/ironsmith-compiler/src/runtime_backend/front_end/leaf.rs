@@ -12,24 +12,58 @@ use crate::object::CounterType;
 use crate::target::PlayerFilter;
 use crate::types::{CardType, Subtype};
 
+use super::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::effect_sentences::parse_subtype_word;
 use super::grammar::primitives::TokenWordView;
 use super::grammar::values::{
-    count_word_value, parse_count_word_tokens, parse_mana_cost_tokens, parse_mana_symbol,
-    parse_mana_symbol_group,
+    parse_count_word_tokens, parse_mana_cost_tokens, parse_mana_symbol, parse_mana_symbol_group,
 };
 use super::lexer::{
     OwnedLexToken, TokenKind, lex_line, render_token_slice, token_slice_at_is,
-    token_slice_first_is, word_slice_at_is, word_slice_at_is_any, word_slice_contains_word,
-    word_slice_ends_with, word_slice_eq, word_slice_eq_any, word_slice_find_window_by,
-    word_slice_find_word_where, word_slice_first_is, word_slice_first_is_any,
-    word_slice_last_is_any, word_slice_starts_with, word_slice_starts_with_any,
+    token_slice_first_is, word_slice_at_is_any, word_slice_contains_word, word_slice_ends_with,
+    word_slice_eq, word_slice_eq_any, word_slice_find_window_by, word_slice_first_is,
+    word_slice_first_is_any, word_slice_last_is_any, word_slice_starts_with,
 };
 use super::object_filters::parse_object_filter_lexed;
 use super::token_primitives::{
     find_index as find_token_index, str_ends_with, str_starts_with, str_strip_prefix,
     str_strip_suffix,
 };
+use super::util::{parse_card_type, parse_counter_type_from_tokens, parse_number};
+
+const NAMED_ARTIFACTS_YOU_CONTROL_MARKERS: &[&[&str]] = &[
+    &["and", "artifacts", "you", "control", "named"],
+    &["and", "artifact", "you", "control", "named"],
+];
+const THE_TOP_SOURCE_WORDS: &[&str] = &["the", "top"];
+const RETURN_TO_OWNER_HAND_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    suffix_any
+        & [
+            &["to", "its", "owners", "hand"],
+            &["to", "their", "owners", "hand"],
+        ]
+);
+const AMONG_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["among"]);
+const X_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["x"]);
+const ALL_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["all"]);
+const ANY_NUMBER_OF_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["any", "number", "of"]);
+const ONE_OR_MORE_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["one", "or", "more"]);
+const REVEAL_THIS_CARD_FROM_HAND_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["reveal", "this", "card", "from", "your", "hand"]);
+const REVEAL_THIS_SOURCE_TYPE_FROM_HAND_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["reveal", "this"]; suffix & ["from", "your", "hand"]);
+const GENERIC_COUNTER_DESCRIPTOR_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["counter"], &["counters"]]);
+const SPELL_OR_SPELLS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["spell"], &["spells"]]);
+const COUNTER_OR_COUNTERS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["counter"], &["counters"]]);
+const OTHER_OR_ANOTHER_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["another"], &["other"]]);
+const CARD_OR_CARDS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["card"], &["cards"]]);
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ActivationCostCst {
@@ -134,6 +168,197 @@ pub(crate) enum ActivationCostSegmentCst {
 
 type LeafCompatWords<'a> = TokenWordView<'a>;
 
+const LEAF_ONE_OR_MORE_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["one", "or", "more"]);
+const LEAF_ANY_NUMBER_OF_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["any", "number", "of"]);
+const LEAF_X_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["x"]);
+const LEAF_ARTICLE_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["a"], &["an"], &["the"]]);
+const LEAF_A_OR_AN_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["a"], &["an"]]);
+const LEAF_YOUR_HAND_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["your", "hand"]);
+const LEAF_THIS_CARD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this", "card"]);
+const LEAF_OTHER_OR_ANOTHER_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["another"], &["other"]]);
+const LEAF_CARD_NAMED_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["card", "named"]);
+const LEAF_CARD_OR_CARDS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["card"], &["cards"]]);
+const LEAF_AND_OR_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["and"], &["or"]]);
+const LEAF_AT_RANDOM_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["at", "random"]);
+const LEAF_A_CREATURE_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["a", "creature"]);
+const LEAF_UP_TO_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["up", "to"]);
+const LEAF_ON_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["on"]);
+const LEAF_FROM_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["from"]);
+const LEAF_AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
+const LEAF_ZERO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["0"]);
+const LEAF_PAY_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["pay"]);
+const LEAF_LIFE_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["life"], &["lives"]]);
+const LEAF_EXERT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["exert"]);
+const LEAF_MILL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["mill"]);
+const LEAF_BEHOLD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["behold"]);
+const LEAF_BLIGHT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["blight"]);
+const LEAF_UNTAPPED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["untapped"]);
+const LEAF_TARGET_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["target"]);
+const LEAF_MOVE_OPPONENT_OWNED_EXILED_CARD_TO_GRAVEYARD_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &[
+                "put",
+                "a",
+                "card",
+                "an",
+                "opponent",
+                "owns",
+                "from",
+                "exile",
+                "into",
+                "that",
+                "players",
+                "graveyard",
+            ],
+            &[
+                "put",
+                "a",
+                "card",
+                "an",
+                "opponent",
+                "owns",
+                "from",
+                "exile",
+                "into",
+                "that",
+                "player's",
+                "graveyard",
+            ],
+        ]
+);
+const LEAF_FROM_YOUR_GRAVEYARD_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["from", "your", "graveyard"]);
+const LEAF_TOP_LIBRARY_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix & ["the", "top"];
+    suffix_any & [&["cards", "of", "your", "library"], &["card", "of", "your", "library"]]
+);
+const LEAF_FROM_YOUR_HAND_SUFFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(suffix & ["from", "your", "hand"]);
+const LEAF_FROM_YOUR_GRAVEYARD_SUFFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(suffix & ["from", "your", "graveyard"]);
+const LEAF_SOURCE_SELF_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["it"],
+            &["this"],
+            &["this", "creature"],
+            &["this", "artifact"],
+            &["this", "aura"],
+            &["this", "enchantment"],
+            &["this", "equipment"],
+            &["this", "fortification"],
+            &["this", "land"],
+            &["this", "permanent"],
+            &["this", "card"],
+        ]
+);
+const LEAF_EXILE_SELF_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["this"],
+            &["this", "card"],
+            &["this", "spell"],
+            &["this", "permanent"],
+            &["this", "creature"],
+            &["this", "artifact"],
+            &["this", "enchantment"],
+            &["this", "land"],
+            &["this", "aura"],
+            &["this", "vehicle"],
+        ]
+);
+const LEAF_EXILE_SELF_FROM_YOUR_ZONE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["this", "card", "from", "your"],
+            &["this", "spell", "from", "your"],
+            &["this", "creature", "from", "your"],
+            &["this", "artifact", "from", "your"],
+            &["this", "enchantment", "from", "your"],
+            &["this", "land", "from", "your"],
+            &["this", "aura", "from", "your"],
+            &["this", "vehicle", "from", "your"],
+        ]
+);
+const LEAF_RETURN_SELF_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["it"],
+            &["this"],
+            &["this", "card"],
+            &["this", "permanent"],
+            &["this", "creature"],
+            &["this", "artifact"],
+            &["this", "enchantment"],
+            &["this", "land"],
+        ]
+);
+const LEAF_COUNTER_SELF_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["this"],
+            &["this", "creature"],
+            &["this", "permanent"],
+            &["this", "artifact"],
+            &["this", "aura"],
+            &["this", "card"],
+            &["this", "land"],
+        ]
+);
+const LEAF_COUNTER_REMOVAL_SELF_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["this"],
+            &["this", "creature"],
+            &["this", "permanent"],
+            &["this", "artifact"],
+            &["this", "enchantment"],
+            &["this", "card"],
+            &["this", "land"],
+            &["it"],
+        ]
+);
+
+fn token_slice_is_symbol(token: &OwnedLexToken, symbol: &str) -> bool {
+    token.slice.eq_ignore_ascii_case(symbol)
+}
+
+fn token_word_is_symbol(token: &OwnedLexToken, symbol: &str) -> bool {
+    token
+        .as_word()
+        .is_some_and(|word| word.eq_ignore_ascii_case(symbol))
+}
+
+fn is_energy_symbol_token(token: &OwnedLexToken) -> bool {
+    match token.kind {
+        TokenKind::ManaGroup => token_slice_is_symbol(token, "{e}"),
+        TokenKind::Word | TokenKind::Number => token_word_is_symbol(token, "e"),
+        _ => false,
+    }
+}
+
+fn is_tap_symbol_token(token: &OwnedLexToken) -> bool {
+    token_word_is_symbol(token, "t") || token_slice_is_symbol(token, "{t}")
+}
+
+fn is_untap_symbol_token(token: &OwnedLexToken) -> bool {
+    token_word_is_symbol(token, "q") || token_slice_is_symbol(token, "{q}")
+}
+
+fn is_reserved_activation_symbol_token(token: &OwnedLexToken) -> bool {
+    is_energy_symbol_token(token) || is_tap_symbol_token(token) || is_untap_symbol_token(token)
+}
+
 fn parse_filter_text(text: &str, other: bool) -> Result<ObjectFilter, CardTextError> {
     let tokens = lex_line(text, 0)?;
     parse_object_filter_lexed(&tokens, other)
@@ -141,22 +366,11 @@ fn parse_filter_text(text: &str, other: bool) -> Result<ObjectFilter, CardTextEr
 
 fn filter_text_mentions_spell(text: &str) -> bool {
     text.split(|ch: char| !ch.is_ascii_alphabetic())
-        .any(|word| matches!(word, "spell" | "spells"))
+        .any(|word| SPELL_OR_SPELLS_WORD_PATTERN.matches_word(word))
 }
 
 fn parse_card_type_word(word: &str) -> Option<CardType> {
-    match word.to_ascii_lowercase().as_str() {
-        "creature" | "creatures" => Some(CardType::Creature),
-        "artifact" | "artifacts" => Some(CardType::Artifact),
-        "enchantment" | "enchantments" => Some(CardType::Enchantment),
-        "land" | "lands" => Some(CardType::Land),
-        "planeswalker" | "planeswalkers" => Some(CardType::Planeswalker),
-        "instant" | "instants" => Some(CardType::Instant),
-        "sorcery" | "sorceries" => Some(CardType::Sorcery),
-        "battle" | "battles" => Some(CardType::Battle),
-        "kindred" => Some(CardType::Kindred),
-        _ => None,
-    }
+    parse_card_type(&word.to_ascii_lowercase())
 }
 
 fn parse_color_word(word: &str) -> Option<ColorSet> {
@@ -210,11 +424,8 @@ fn render_lower_lexed_tokens(tokens: &[OwnedLexToken]) -> String {
 }
 
 fn parse_count_prefix_words(words: &[&str]) -> Option<(u32, usize)> {
-    let first = words.first().copied()?;
-    if let Some(parsed) = count_word_value(first) {
-        return Some((parsed, 1));
-    }
-    first.parse::<u32>().ok().map(|parsed| (parsed, 1))
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    parse_number(&tokens)
 }
 
 fn skip_articles(words: &[&str], mut idx: usize) -> usize {
@@ -256,109 +467,27 @@ fn token_slice_for_word_range<'a>(
     Some(&tokens[token_start..token_end])
 }
 
-fn intern_counter_name(word: &str) -> &'static str {
-    use std::collections::HashMap;
-    use std::sync::{Mutex, OnceLock};
-
-    static INTERNER: OnceLock<Mutex<HashMap<String, &'static str>>> = OnceLock::new();
-
-    let map = INTERNER.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut map = map.lock().expect("counter name interner lock poisoned");
-    if let Some(existing) = map.get(word) {
-        return *existing;
-    }
-
-    let leaked: &'static str = Box::leak(word.to_string().into_boxed_str());
-    map.insert(word.to_string(), leaked);
-    leaked
-}
-
-fn parse_counter_type_word(word: &str) -> Option<CounterType> {
-    match word {
-        "+1/+1" => Some(CounterType::PlusOnePlusOne),
-        "-1/-1" | "-0/-1" => Some(CounterType::MinusOneMinusOne),
-        "+1/+0" => Some(CounterType::PlusOnePlusZero),
-        "+0/+1" => Some(CounterType::PlusZeroPlusOne),
-        "+1/+2" => Some(CounterType::PlusOnePlusTwo),
-        "+2/+2" => Some(CounterType::PlusTwoPlusTwo),
-        "-0/-2" => Some(CounterType::MinusZeroMinusTwo),
-        "-2/-2" => Some(CounterType::MinusTwoMinusTwo),
-        "deathtouch" => Some(CounterType::Deathtouch),
-        "decayed" => Some(CounterType::Decayed),
-        "flying" => Some(CounterType::Flying),
-        "haste" => Some(CounterType::Haste),
-        "hexproof" => Some(CounterType::Hexproof),
-        "indestructible" => Some(CounterType::Indestructible),
-        "lifelink" => Some(CounterType::Lifelink),
-        "menace" => Some(CounterType::Menace),
-        "reach" => Some(CounterType::Reach),
-        "trample" => Some(CounterType::Trample),
-        "vigilance" => Some(CounterType::Vigilance),
-        "loyalty" => Some(CounterType::Loyalty),
-        "charge" => Some(CounterType::Charge),
-        "stun" => Some(CounterType::Stun),
-        "void" => Some(CounterType::Void),
-        "depletion" => Some(CounterType::Depletion),
-        "storage" => Some(CounterType::Storage),
-        "ki" => Some(CounterType::Ki),
-        "energy" => Some(CounterType::Energy),
-        "age" => Some(CounterType::Age),
-        "blood" => Some(CounterType::Blood),
-        "ice" => Some(CounterType::Ice),
-        "finality" => Some(CounterType::Finality),
-        "time" => Some(CounterType::Time),
-        "brain" => Some(CounterType::Brain),
-        "burden" => Some(CounterType::Named(intern_counter_name("burden"))),
-        "level" => Some(CounterType::Level),
-        "lore" => Some(CounterType::Lore),
-        "luck" => Some(CounterType::Luck),
-        "oil" => Some(CounterType::Oil),
-        _ => None,
-    }
-}
-
 fn parse_counter_type_descriptor(raw: &str) -> Result<CounterType, CardTextError> {
-    let words = raw
+    let descriptor_words = raw
         .split_whitespace()
         .map(|word| word.trim_matches(|ch: char| ch == ',' || ch == '.'))
         .filter(|word| !word.is_empty())
         .collect::<Vec<_>>();
 
-    let counter_idx =
-        word_slice_find_word_where(&words, |word| matches!(word, "counter" | "counters"));
-
-    let counter_type = counter_idx.and_then(|counter_idx| {
-        if counter_idx == 0 {
-            return None;
-        }
-
-        let prev = words[counter_idx - 1];
-        if let Some(counter_type) = parse_counter_type_word(prev) {
-            return Some(counter_type);
-        }
-
-        if prev == "strike" && counter_idx >= 2 {
-            match words[counter_idx - 2] {
-                "double" => return Some(CounterType::DoubleStrike),
-                "first" => return Some(CounterType::FirstStrike),
-                _ => {}
-            }
-        }
-
-        if prev == "another" || ironsmith_core::parse_cardinal_word(prev).is_some() {
-            return None;
-        }
-
-        prev.chars()
-            .all(|ch| ch.is_ascii_alphabetic())
-            .then(|| CounterType::Named(intern_counter_name(prev)))
-    });
-
-    counter_type.ok_or_else(|| {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(descriptor_words);
+    parse_counter_type_from_tokens(&tokens).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "rewrite counter parser could not determine counter type from '{raw}'"
         ))
     })
+}
+
+fn parse_optional_counter_type_descriptor(raw: &str) -> Result<Option<CounterType>, CardTextError> {
+    let words = raw.split_whitespace().collect::<Vec<_>>();
+    if words.is_empty() || GENERIC_COUNTER_DESCRIPTOR_PATTERN.matches_words(&words) {
+        return Ok(None);
+    }
+    parse_counter_type_descriptor(raw).map(Some)
 }
 
 fn activation_cost_prefix_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
@@ -391,7 +520,7 @@ fn parse_loyalty_shorthand_activation_cost_tokens(
             }
 
             if sign == b'-' {
-                if rest.eq_ignore_ascii_case("x") {
+                if LEAF_X_WORD_PATTERN.matches_word(rest) {
                     return Some(vec![ActivationCostSegmentCst::RemoveCountersDynamic {
                         counter_type: Some(CounterType::Loyalty),
                         display_x: true,
@@ -407,7 +536,7 @@ fn parse_loyalty_shorthand_activation_cost_tokens(
             }
         }
 
-        (text == "0").then(Vec::new)
+        LEAF_ZERO_WORD_PATTERN.matches_word(text).then(Vec::new)
     };
 
     match tokens {
@@ -426,7 +555,7 @@ fn parse_loyalty_shorthand_activation_cost_tokens(
         }
         [sign, value] if sign.kind == TokenKind::Dash => {
             let value = value.parser_text();
-            if value.eq_ignore_ascii_case("x") {
+            if LEAF_X_WORD_PATTERN.matches_word(value) {
                 Some(vec![ActivationCostSegmentCst::RemoveCountersDynamic {
                     counter_type: Some(CounterType::Loyalty),
                     display_x: true,
@@ -455,15 +584,21 @@ fn parse_generic_choice_prefix_tokens<'a>(
     }
 
     let (choice_count, consumed_words) =
-        if word_slice_starts_with(lowered.as_slice(), &["one", "or", "more"]) {
+        if LEAF_ONE_OR_MORE_PREFIX_PATTERN.matches_words(lowered.as_slice()) {
             (ChoiceCount::at_least(1), 3)
-        } else if word_slice_starts_with(lowered.as_slice(), &["any", "number", "of"]) {
+        } else if LEAF_ANY_NUMBER_OF_PREFIX_PATTERN.matches_words(lowered.as_slice()) {
             (ChoiceCount::any_number(), 3)
-        } else if word_slice_first_is(&lowered, "x") {
+        } else if lowered
+            .first()
+            .is_some_and(|word| LEAF_X_WORD_PATTERN.matches_word(word))
+        {
             (ChoiceCount::dynamic_x(), 1)
         } else if let Some((count, consumed_words)) = parse_count_prefix_words(lowered.as_slice()) {
             (ChoiceCount::exactly(count as usize), consumed_words)
-        } else if word_slice_first_is_any(&lowered, &["a", "an", "the"]) {
+        } else if lowered
+            .first()
+            .is_some_and(|word| LEAF_ARTICLE_WORD_PATTERN.matches_word(word))
+        {
             (ChoiceCount::exactly(1), 1)
         } else {
             (ChoiceCount::exactly(1), 0)
@@ -486,10 +621,10 @@ fn parse_discard_segment_tokens(
     let lowered = words.to_word_refs();
     let tail = lowered.get(1..).unwrap_or_default();
 
-    if word_slice_eq(tail, &["your", "hand"]) {
+    if LEAF_YOUR_HAND_PATTERN.matches_words(tail) {
         return Ok(ActivationCostSegmentCst::DiscardHand);
     }
-    if word_slice_eq(tail, &["this", "card"]) {
+    if LEAF_THIS_CARD_PATTERN.matches_words(tail) {
         return Ok(ActivationCostSegmentCst::DiscardSource);
     }
     if tail.is_empty() {
@@ -508,7 +643,7 @@ fn parse_discard_segment_tokens(
     let mut other = false;
     if tail
         .get(idx)
-        .is_some_and(|word| matches!(*word, "another" | "other"))
+        .is_some_and(|word| LEAF_OTHER_OR_ANOTHER_WORD_PATTERN.matches_word(word))
     {
         other = true;
         idx += 1;
@@ -516,12 +651,12 @@ fn parse_discard_segment_tokens(
 
     while tail
         .get(idx)
-        .is_some_and(|word| matches!(*word, "a" | "an"))
+        .is_some_and(|word| LEAF_A_OR_AN_WORD_PATTERN.matches_word(word))
     {
         idx += 1;
     }
 
-    if word_slice_starts_with(&tail[idx..], &["card", "named"]) {
+    if LEAF_CARD_NAMED_PREFIX_PATTERN.matches_words(&tail[idx..]) {
         let Some(name_tokens) = token_slice_from_word_index(tokens, &words, idx + 3) else {
             return Err(CardTextError::ParseError(format!(
                 "rewrite discard parser expected card name in '{raw}'"
@@ -544,10 +679,12 @@ fn parse_discard_segment_tokens(
 
     let mut card_types = Vec::new();
     while let Some(word) = tail.get(idx).copied() {
-        if matches!(word, "card" | "cards") {
+        if LEAF_CARD_OR_CARDS_WORD_PATTERN.matches_word(word) {
             break;
         }
-        if matches!(word, "and" | "or" | "a" | "an") {
+        if LEAF_AND_OR_WORD_PATTERN.matches_word(word)
+            || LEAF_A_OR_AN_WORD_PATTERN.matches_word(word)
+        {
             idx += 1;
             continue;
         }
@@ -562,7 +699,7 @@ fn parse_discard_segment_tokens(
 
     if !tail
         .get(idx)
-        .is_some_and(|word| matches!(*word, "card" | "cards"))
+        .is_some_and(|word| LEAF_CARD_OR_CARDS_WORD_PATTERN.matches_word(word))
     {
         return Err(CardTextError::ParseError(format!(
             "rewrite discard parser expected card selector in '{raw}'"
@@ -572,7 +709,7 @@ fn parse_discard_segment_tokens(
 
     let random = match tail.get(idx..) {
         None | Some([]) => false,
-        Some(["at", "random"]) => true,
+        Some(words) if LEAF_AT_RANDOM_PATTERN.matches_words(words) => true,
         _ => {
             return Err(CardTextError::ParseError(format!(
                 "rewrite discard parser does not yet support trailing clause in '{raw}'"
@@ -601,32 +738,17 @@ fn parse_sacrifice_segment_tokens(
     let lowered = words.to_word_refs();
     let tail = lowered.get(1..).unwrap_or_default();
 
-    if word_slice_eq_any(
-        tail,
-        &[
-            &["it"],
-            &["this"],
-            &["this", "creature"],
-            &["this", "artifact"],
-            &["this", "aura"],
-            &["this", "enchantment"],
-            &["this", "equipment"],
-            &["this", "fortification"],
-            &["this", "land"],
-            &["this", "permanent"],
-            &["this", "card"],
-        ],
-    ) {
+    if LEAF_SOURCE_SELF_PATTERN.matches_words(tail) {
         return Ok(ActivationCostSegmentCst::SacrificeSelf);
     }
-    if word_slice_eq(tail, &["a", "creature"]) {
+    if LEAF_A_CREATURE_PATTERN.matches_words(tail) {
         return Ok(ActivationCostSegmentCst::SacrificeCreature);
     }
 
     let mut idx = 0usize;
     let mut count = 1u32;
     let mut up_to = false;
-    if word_slice_starts_with(tail, &["up", "to"])
+    if LEAF_UP_TO_PREFIX_PATTERN.matches_words(tail)
         && let Some((parsed, consumed_words)) = parse_count_prefix_words(&tail[2..])
     {
         count = parsed;
@@ -635,14 +757,14 @@ fn parse_sacrifice_segment_tokens(
     } else if let Some((parsed, consumed_words)) = parse_count_prefix_words(tail) {
         count = parsed;
         idx = consumed_words;
-    } else if word_slice_first_is_any(tail, &["a", "an"]) {
+    } else if LEAF_A_OR_AN_WORD_PATTERN.matches_first_word(tail) {
         idx = 1;
     }
 
     let mut other = false;
     if tail
         .get(idx)
-        .is_some_and(|word| matches!(*word, "another" | "other"))
+        .is_some_and(|word| OTHER_OR_ANOTHER_WORD_PATTERN.matches_word(word))
     {
         other = true;
         idx += 1;
@@ -683,19 +805,22 @@ fn parse_tap_chosen_segment_tokens(
     if let Some((parsed, consumed_words)) = parse_count_prefix_words(tail) {
         count = parsed;
         idx = consumed_words;
-    } else if word_slice_first_is_any(tail, &["a", "an"]) {
+    } else if LEAF_A_OR_AN_WORD_PATTERN.matches_first_word(tail) {
         idx = 1;
     }
 
     if tail
         .get(idx)
-        .is_some_and(|word| matches!(*word, "another" | "other"))
+        .is_some_and(|word| OTHER_OR_ANOTHER_WORD_PATTERN.matches_word(word))
     {
         other = true;
         idx += 1;
     }
 
-    if !word_slice_at_is(tail, idx, "untapped") {
+    if !tail
+        .get(idx)
+        .is_some_and(|word| LEAF_UNTAPPED_WORD_PATTERN.matches_word(word))
+    {
         return Err(CardTextError::ParseError(format!(
             "rewrite tap-cost parser expected untapped selector in '{raw}'"
         )));
@@ -729,42 +854,18 @@ fn parse_exile_segment_tokens(
     let lowered = words.to_word_refs();
     let tail = lowered.get(1..).unwrap_or_default();
 
-    if word_slice_starts_with(tail, &["target"]) {
+    if LEAF_TARGET_PREFIX_PATTERN.matches_words(tail) {
         return Err(CardTextError::ParseError(
             "unsupported targeted exile cost segment".to_string(),
         ));
     }
 
-    if word_slice_eq_any(
-        tail,
-        &[
-            &["this"],
-            &["this", "card"],
-            &["this", "spell"],
-            &["this", "permanent"],
-            &["this", "creature"],
-            &["this", "artifact"],
-            &["this", "enchantment"],
-            &["this", "land"],
-            &["this", "aura"],
-            &["this", "vehicle"],
-        ],
-    ) || word_slice_starts_with_any(
-        tail,
-        &[
-            &["this", "card", "from", "your"],
-            &["this", "spell", "from", "your"],
-            &["this", "creature", "from", "your"],
-            &["this", "artifact", "from", "your"],
-            &["this", "enchantment", "from", "your"],
-            &["this", "land", "from", "your"],
-            &["this", "aura", "from", "your"],
-            &["this", "vehicle", "from", "your"],
-        ],
-    ) {
+    if LEAF_EXILE_SELF_TARGET_PATTERN.matches_words(tail)
+        || LEAF_EXILE_SELF_FROM_YOUR_ZONE_PREFIX_PATTERN.matches_words(tail)
+    {
         let mut idx = 0usize;
         while idx + 2 < tail.len() {
-            if tail[idx] == "from" && tail[idx + 1] == "your" && tail[idx + 2] == "graveyard" {
+            if LEAF_FROM_YOUR_GRAVEYARD_PATTERN.matches_words(&tail[idx..]) {
                 return Ok(ActivationCostSegmentCst::ExileSelfFromGraveyard);
             }
             idx += 1;
@@ -772,10 +873,7 @@ fn parse_exile_segment_tokens(
         return Ok(ActivationCostSegmentCst::ExileSelf);
     }
 
-    if word_slice_starts_with(tail, &["the", "top"])
-        && (word_slice_ends_with(tail, &["cards", "of", "your", "library"])
-            || word_slice_ends_with(tail, &["card", "of", "your", "library"]))
-    {
+    if LEAF_TOP_LIBRARY_PATTERN.matches_words(tail) {
         let count_start = 3usize;
         let count_end = lowered.len().saturating_sub(4);
         let count = if count_start >= count_end {
@@ -792,7 +890,7 @@ fn parse_exile_segment_tokens(
         return Ok(ActivationCostSegmentCst::ExileTopLibrary { count });
     }
 
-    if word_slice_ends_with(tail, &["from", "your", "hand"]) {
+    if LEAF_FROM_YOUR_HAND_SUFFIX_PATTERN.matches_words(tail) {
         let subject = &tail[..tail.len() - 3];
         if subject.is_empty() {
             return Err(CardTextError::ParseError(
@@ -818,7 +916,7 @@ fn parse_exile_segment_tokens(
 
         if !subject
             .get(idx)
-            .is_some_and(|word| matches!(*word, "card" | "cards"))
+            .is_some_and(|word| CARD_OR_CARDS_WORD_PATTERN.matches_word(word))
         {
             return Err(CardTextError::ParseError(format!(
                 "rewrite exile-from-hand parser expected card selector in '{raw}'"
@@ -831,7 +929,7 @@ fn parse_exile_segment_tokens(
         });
     }
 
-    if word_slice_ends_with(tail, &["from", "your", "graveyard"]) {
+    if LEAF_FROM_YOUR_GRAVEYARD_SUFFIX_PATTERN.matches_words(tail) {
         let Some(subject_tokens) =
             token_slice_for_word_range(tokens, &words, 1, lowered.len().saturating_sub(3))
         else {
@@ -877,14 +975,13 @@ fn parse_exile_segment_tokens(
 
 fn parse_exile_self_and_named_artifacts_cost(tail: &[&str]) -> Option<ActivationCostSegmentCst> {
     let marker_idx = word_slice_find_window_by(tail, 5, |window| {
-        word_slice_eq(window, &["and", "artifacts", "you", "control", "named"])
-            || word_slice_eq(window, &["and", "artifact", "you", "control", "named"])
+        word_slice_eq_any(window, NAMED_ARTIFACTS_YOU_CONTROL_MARKERS)
     })?;
     if marker_idx == 0 {
         return None;
     }
     let source_words = &tail[..marker_idx];
-    if source_words.is_empty() || word_slice_eq(source_words, &["the", "top"]) {
+    if source_words.is_empty() || word_slice_eq(source_words, THE_TOP_SOURCE_WORDS) {
         return None;
     }
     let name_words = &tail[marker_idx + 5..];
@@ -895,7 +992,7 @@ fn parse_exile_self_and_named_artifacts_cost(tail: &[&str]) -> Option<Activation
     let mut names = Vec::new();
     let mut start = 0usize;
     for (idx, word) in name_words.iter().enumerate() {
-        if *word == "and" {
+        if LEAF_AND_WORD_PATTERN.matches_word(word) {
             if start < idx {
                 names.push(name_words[start..idx].join(" "));
             }
@@ -915,9 +1012,7 @@ fn parse_return_segment_tokens(
     let raw = render_lower_lexed_tokens(tokens);
     let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
-    let suffix_len = if word_slice_ends_with(lowered.as_slice(), &["to", "its", "owners", "hand"]) {
-        4
-    } else if word_slice_ends_with(lowered.as_slice(), &["to", "their", "owners", "hand"]) {
+    let suffix_len = if RETURN_TO_OWNER_HAND_SUFFIX_PATTERN.matches_words(lowered.as_slice()) {
         4
     } else {
         return Err(CardTextError::ParseError(format!(
@@ -926,19 +1021,7 @@ fn parse_return_segment_tokens(
     };
 
     let target = &lowered[1..lowered.len() - suffix_len];
-    if word_slice_eq_any(
-        target,
-        &[
-            &["it"],
-            &["this"],
-            &["this", "card"],
-            &["this", "permanent"],
-            &["this", "creature"],
-            &["this", "artifact"],
-            &["this", "enchantment"],
-            &["this", "land"],
-        ],
-    ) {
+    if LEAF_RETURN_SELF_TARGET_PATTERN.matches_words(target) {
         return Ok(ActivationCostSegmentCst::ReturnSelfToHand);
     }
 
@@ -973,44 +1056,11 @@ fn parse_put_counter_segment_tokens(
     let raw = render_lower_lexed_tokens(tokens);
     let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
-    if word_slice_eq_any(
-        &lowered,
-        &[
-            &[
-                "put",
-                "a",
-                "card",
-                "an",
-                "opponent",
-                "owns",
-                "from",
-                "exile",
-                "into",
-                "that",
-                "players",
-                "graveyard",
-            ],
-            &[
-                "put",
-                "a",
-                "card",
-                "an",
-                "opponent",
-                "owns",
-                "from",
-                "exile",
-                "into",
-                "that",
-                "player's",
-                "graveyard",
-            ],
-        ],
-    ) {
+    if LEAF_MOVE_OPPONENT_OWNED_EXILED_CARD_TO_GRAVEYARD_PATTERN.matches_words(&lowered) {
         return Ok(ActivationCostSegmentCst::MoveOpponentOwnedExiledCardToGraveyard);
     }
 
-    let Some(on_word_idx) = word_slice_find_word_where(lowered.as_slice(), |word| word == "on")
-    else {
+    let Some(on_word_idx) = LEAF_ON_WORD_PATTERN.find_word(lowered.as_slice()) else {
         return Err(CardTextError::ParseError(format!(
             "rewrite put-counter parser missing 'on' in '{raw}'"
         )));
@@ -1035,18 +1085,7 @@ fn parse_put_counter_segment_tokens(
     let counter_descriptor = render_lower_lexed_tokens(counter_tokens);
     let counter_type = parse_counter_type_descriptor(counter_descriptor.as_str())?;
 
-    if word_slice_eq_any(
-        target,
-        &[
-            &["this"],
-            &["this", "creature"],
-            &["this", "permanent"],
-            &["this", "artifact"],
-            &["this", "aura"],
-            &["this", "card"],
-            &["this", "land"],
-        ],
-    ) {
+    if LEAF_COUNTER_SELF_TARGET_PATTERN.matches_words(target) {
         return Ok(ActivationCostSegmentCst::PutCounters {
             counter_type,
             count,
@@ -1071,8 +1110,7 @@ fn parse_remove_counter_segment_tokens(
     let raw = render_lower_lexed_tokens(tokens);
     let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
-    let Some(from_word_idx) = word_slice_find_word_where(lowered.as_slice(), |word| word == "from")
-    else {
+    let Some(from_word_idx) = LEAF_FROM_WORD_PATTERN.find_word(lowered.as_slice()) else {
         return Err(CardTextError::ParseError(format!(
             "rewrite remove-counter parser missing 'from' in '{raw}'"
         )));
@@ -1080,7 +1118,7 @@ fn parse_remove_counter_segment_tokens(
 
     let descriptor = &lowered[1..from_word_idx];
     let target = &lowered[from_word_idx + 1..];
-    let target_among = word_slice_starts_with(target, &["among"]);
+    let target_among = AMONG_PREFIX_PATTERN.matches_words(target);
     let target_filter_tokens = if target_among {
         token_slice_from_word_index(tokens, &words, from_word_idx + 2)
     } else {
@@ -1090,16 +1128,14 @@ fn parse_remove_counter_segment_tokens(
         .map(render_lower_lexed_tokens)
         .unwrap_or_default();
 
-    if word_slice_starts_with(descriptor, &["x"]) {
+    if X_PREFIX_PATTERN.matches_words(descriptor) {
         let counter_type = if descriptor.len() <= 1 {
             None
         } else {
             let counter_tokens =
                 token_slice_for_word_range(tokens, &words, 2, from_word_idx).unwrap_or(&[]);
             let counter_descriptor = render_lower_lexed_tokens(counter_tokens);
-            (!counter_descriptor.is_empty())
-                .then(|| parse_counter_type_descriptor(counter_descriptor.as_str()))
-                .transpose()?
+            parse_optional_counter_type_descriptor(counter_descriptor.as_str())?
         };
         return if target_among {
             Ok(ActivationCostSegmentCst::RemoveCountersAmong {
@@ -1118,18 +1154,14 @@ fn parse_remove_counter_segment_tokens(
         };
     }
 
-    if word_slice_starts_with(descriptor, &["all"]) {
+    if ALL_PREFIX_PATTERN.matches_words(descriptor) {
         let counter_type = if descriptor.len() <= 1 {
             None
         } else {
             let counter_tokens =
                 token_slice_for_word_range(tokens, &words, 2, from_word_idx).unwrap_or(&[]);
             let counter_descriptor = render_lower_lexed_tokens(counter_tokens);
-            (!counter_descriptor.is_empty()
-                && counter_descriptor != "counter"
-                && counter_descriptor != "counters")
-                .then(|| parse_counter_type_descriptor(counter_descriptor.as_str()))
-                .transpose()?
+            parse_optional_counter_type_descriptor(counter_descriptor.as_str())?
         };
         return if target_among {
             Ok(ActivationCostSegmentCst::RemoveCountersAmong {
@@ -1148,18 +1180,14 @@ fn parse_remove_counter_segment_tokens(
         };
     }
 
-    if word_slice_starts_with(descriptor, &["any", "number", "of"]) {
+    if ANY_NUMBER_OF_PREFIX_PATTERN.matches_words(descriptor) {
         let counter_type = if descriptor.len() <= 3 {
             None
         } else {
             let counter_tokens =
                 token_slice_for_word_range(tokens, &words, 4, from_word_idx).unwrap_or(&[]);
             let counter_descriptor = render_lower_lexed_tokens(counter_tokens);
-            (!counter_descriptor.is_empty()
-                && counter_descriptor != "counter"
-                && counter_descriptor != "counters")
-                .then(|| parse_counter_type_descriptor(counter_descriptor.as_str()))
-                .transpose()?
+            parse_optional_counter_type_descriptor(counter_descriptor.as_str())?
         };
         return if target_among {
             Ok(ActivationCostSegmentCst::RemoveCountersAmong {
@@ -1178,18 +1206,14 @@ fn parse_remove_counter_segment_tokens(
         };
     }
 
-    if word_slice_starts_with(descriptor, &["one", "or", "more"]) {
+    if ONE_OR_MORE_PREFIX_PATTERN.matches_words(descriptor) {
         let counter_type = if descriptor.len() <= 3 {
             None
         } else {
             let counter_tokens =
                 token_slice_for_word_range(tokens, &words, 4, from_word_idx).unwrap_or(&[]);
             let counter_descriptor = render_lower_lexed_tokens(counter_tokens);
-            (!counter_descriptor.is_empty()
-                && counter_descriptor != "counter"
-                && counter_descriptor != "counters")
-                .then(|| parse_counter_type_descriptor(counter_descriptor.as_str()))
-                .transpose()?
+            parse_optional_counter_type_descriptor(counter_descriptor.as_str())?
         };
         return if target_among {
             Ok(ActivationCostSegmentCst::RemoveCountersAmong {
@@ -1222,11 +1246,7 @@ fn parse_remove_counter_segment_tokens(
         let counter_tokens =
             token_slice_for_word_range(tokens, &words, idx + 1, from_word_idx).unwrap_or(&[]);
         let counter_descriptor = render_lower_lexed_tokens(counter_tokens);
-        (!counter_descriptor.is_empty()
-            && counter_descriptor != "counter"
-            && counter_descriptor != "counters")
-            .then(|| parse_counter_type_descriptor(counter_descriptor.as_str()))
-            .transpose()?
+        parse_optional_counter_type_descriptor(counter_descriptor.as_str())?
     };
 
     if target_among {
@@ -1239,19 +1259,7 @@ fn parse_remove_counter_segment_tokens(
         });
     }
 
-    if !word_slice_eq_any(
-        target,
-        &[
-            &["this"],
-            &["this", "creature"],
-            &["this", "permanent"],
-            &["this", "artifact"],
-            &["this", "enchantment"],
-            &["this", "card"],
-            &["this", "land"],
-            &["it"],
-        ],
-    ) {
+    if !LEAF_COUNTER_REMOVAL_SELF_TARGET_PATTERN.matches_words(target) {
         return Ok(ActivationCostSegmentCst::RemoveCountersAmong {
             counter_type,
             count,
@@ -1307,10 +1315,10 @@ fn parse_activation_cost_segment_tokens(
 fn parse_energy_symbol_count_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
     let mut count = 0u32;
     for token in tokens {
-        match token.kind {
-            TokenKind::ManaGroup if token.slice.eq_ignore_ascii_case("{e}") => count += 1,
-            TokenKind::Word | TokenKind::Number if token.is_word("e") => count += 1,
-            _ => return None,
+        if is_energy_symbol_token(token) {
+            count += 1;
+        } else {
+            return None;
         }
     }
 
@@ -1324,10 +1332,10 @@ fn parse_bare_symbol_segment_tokens(tokens: &[OwnedLexToken]) -> Option<Activati
 
     if tokens.len() == 1 {
         let token = &tokens[0];
-        if token.is_word("t") || token.slice.eq_ignore_ascii_case("{t}") {
+        if is_tap_symbol_token(token) {
             return Some(ActivationCostSegmentCst::Tap);
         }
-        if token.is_word("q") || token.slice.eq_ignore_ascii_case("{q}") {
+        if is_untap_symbol_token(token) {
             return Some(ActivationCostSegmentCst::Untap);
         }
     }
@@ -1341,10 +1349,7 @@ fn parse_bare_symbol_segment_tokens(tokens: &[OwnedLexToken]) -> Option<Activati
         match token.kind {
             TokenKind::ManaGroup => {
                 let slice = token.slice.as_str();
-                if slice.eq_ignore_ascii_case("{e}")
-                    || slice.eq_ignore_ascii_case("{t}")
-                    || slice.eq_ignore_ascii_case("{q}")
-                {
+                if is_reserved_activation_symbol_token(token) {
                     return None;
                 }
                 let group = parse_mana_symbol_group(slice).ok()?;
@@ -1352,10 +1357,7 @@ fn parse_bare_symbol_segment_tokens(tokens: &[OwnedLexToken]) -> Option<Activati
             }
             TokenKind::Word | TokenKind::Number => {
                 let word = token.as_word()?;
-                if word.eq_ignore_ascii_case("e")
-                    || word.eq_ignore_ascii_case("t")
-                    || word.eq_ignore_ascii_case("q")
-                {
+                if is_reserved_activation_symbol_token(token) {
                     return None;
                 }
                 if let Ok(group) = parse_mana_symbol_group(word) {
@@ -1378,7 +1380,7 @@ fn parse_pay_segment_tokens(
     let raw = render_trimmed_lexed_tokens(tokens);
     let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
-    if !word_slice_first_is(&lowered, "pay") {
+    if !LEAF_PAY_WORD_PATTERN.matches_first_word(&lowered) {
         return Err(CardTextError::ParseError(
             "rewrite pay-cost parser expected leading 'pay'".to_string(),
         ));
@@ -1397,7 +1399,7 @@ fn parse_pay_segment_tokens(
         )));
     }
 
-    if word_slice_last_is_any(&lowered_rest, &["life", "lives"]) {
+    if LEAF_LIFE_WORD_PATTERN.matches_last_word(&lowered_rest) {
         let count_words = &lowered_rest[..lowered_rest.len() - 1];
         if let Some((amount, consumed_words)) = parse_count_prefix_words(count_words)
             && consumed_words == count_words.len()
@@ -1435,7 +1437,7 @@ fn parse_exert_segment_tokens(
     let raw = render_trimmed_lexed_tokens(tokens);
     let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
-    if !word_slice_first_is(&lowered, "exert") {
+    if !LEAF_EXERT_WORD_PATTERN.matches_first_word(&lowered) {
         return Err(CardTextError::ParseError(
             "rewrite exert-cost parser expected leading 'exert'".to_string(),
         ));
@@ -1459,7 +1461,7 @@ fn parse_mill_segment_tokens(
     let raw = render_lower_lexed_tokens(tokens);
     let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
-    if !word_slice_first_is(&lowered, "mill") {
+    if !LEAF_MILL_WORD_PATTERN.matches_first_word(&lowered) {
         return Err(CardTextError::ParseError(
             "rewrite mill parser expected leading 'mill'".to_string(),
         ));
@@ -1469,7 +1471,7 @@ fn parse_mill_segment_tokens(
     let (count, consumed_words) =
         if let Some((count, consumed_words)) = parse_count_prefix_words(tail) {
             (count, consumed_words)
-        } else if word_slice_first_is_any(tail, &["a", "an"]) {
+        } else if LEAF_A_OR_AN_WORD_PATTERN.matches_first_word(tail) {
             (1, 1)
         } else {
             return Err(CardTextError::ParseError(format!(
@@ -1479,7 +1481,7 @@ fn parse_mill_segment_tokens(
 
     let has_card_word = tail
         .get(consumed_words)
-        .is_some_and(|word| matches!(*word, "card" | "cards"));
+        .is_some_and(|word| CARD_OR_CARDS_WORD_PATTERN.matches_word(word));
     if !has_card_word || consumed_words + 1 != tail.len() {
         return Err(CardTextError::ParseError(format!(
             "rewrite mill parser expected trailing card selector in '{raw}'"
@@ -1495,7 +1497,7 @@ fn parse_behold_segment_tokens(
     let raw = render_lower_lexed_tokens(tokens);
     let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
-    if !word_slice_first_is(&lowered, "behold") {
+    if !LEAF_BEHOLD_WORD_PATTERN.matches_first_word(&lowered) {
         return Err(CardTextError::ParseError(
             "rewrite behold parser expected leading 'behold'".to_string(),
         ));
@@ -1505,7 +1507,7 @@ fn parse_behold_segment_tokens(
     let (count, consumed_words) =
         if let Some((count, consumed_words)) = parse_count_prefix_words(tail) {
             (count, consumed_words)
-        } else if word_slice_first_is_any(tail, &["a", "an"]) {
+        } else if LEAF_A_OR_AN_WORD_PATTERN.matches_first_word(tail) {
             (1, 1)
         } else {
             return Err(CardTextError::ParseError(format!(
@@ -1540,7 +1542,7 @@ fn parse_blight_segment_tokens(
     let raw = render_lower_lexed_tokens(tokens);
     let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
-    if !word_slice_first_is(&lowered, "blight") {
+    if !LEAF_BLIGHT_WORD_PATTERN.matches_first_word(&lowered) {
         return Err(CardTextError::ParseError(
             "rewrite blight parser expected leading 'blight'".to_string(),
         ));
@@ -1571,27 +1573,26 @@ fn parse_reveal_segment_tokens(
     let raw = render_lower_lexed_tokens(tokens);
     let words = LeafCompatWords::new(tokens);
     let lowered = words.to_word_refs();
-    if word_slice_eq(
-        &lowered,
-        &["reveal", "this", "card", "from", "your", "hand"],
-    ) {
+    if REVEAL_THIS_CARD_FROM_HAND_PATTERN.matches_words(&lowered) {
         return Ok(ActivationCostSegmentCst::RevealSourceFromHand);
     }
 
-    if lowered.len() == 6
-        && lowered[0] == "reveal"
-        && lowered[1] == "this"
-        && lowered[3] == "from"
-        && lowered[4] == "your"
-        && lowered[5] == "hand"
-        && parse_card_type_word(lowered[2]).is_some()
-    {
+    if reveal_this_source_type_from_hand(&lowered) {
         return Ok(ActivationCostSegmentCst::RevealSourceFromHand);
     }
 
     Err(CardTextError::ParseError(format!(
         "rewrite reveal-cost parser does not yet support '{raw}'"
     )))
+}
+
+fn reveal_this_source_type_from_hand(words: &[&str]) -> bool {
+    words.len() == 6
+        && REVEAL_THIS_SOURCE_TYPE_FROM_HAND_PATTERN.matches_words(words)
+        && words
+            .get(2)
+            .and_then(|word| parse_card_type_word(word))
+            .is_some()
 }
 
 fn parse_shard_style_branch_tokens(tokens: &[OwnedLexToken]) -> Option<ManaSymbol> {
@@ -1602,7 +1603,7 @@ fn parse_shard_style_branch_tokens(tokens: &[OwnedLexToken]) -> Option<ManaSymbo
     if tap_tokens.len() != 1 || tap_tokens[0].kind != TokenKind::ManaGroup {
         return None;
     }
-    if tap_tokens[0].parser_text() != "{t}" {
+    if !is_tap_symbol_token(&tap_tokens[0]) {
         return None;
     }
 

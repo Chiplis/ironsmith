@@ -186,8 +186,13 @@ fn match_atoms<'p>(
                     if let Some(sequence_cursor) =
                         match_atoms(sequence, words, cursor, &mut sequence_captures)
                     {
-                        matched = Some((sequence_cursor, sequence_captures));
-                        break;
+                        let is_better = match &matched {
+                            None => true,
+                            Some((matched_cursor, _)) => sequence_cursor > *matched_cursor,
+                        };
+                        if is_better {
+                            matched = Some((sequence_cursor, sequence_captures));
+                        }
                     }
                 }
                 let (sequence_cursor, sequence_captures) = matched?;
@@ -414,10 +419,7 @@ mod tests {
     use crate::runtime_backend::lexer::OwnedLexToken;
 
     fn tokens(words: &[&str]) -> Vec<OwnedLexToken> {
-        words
-            .iter()
-            .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
-            .collect()
+        crate::runtime_backend::lexer::synthetic_word_tokens(words)
     }
 
     #[test]
@@ -515,6 +517,29 @@ mod tests {
         let pattern = LexPattern::new(&atoms);
 
         assert!(pattern.matches_clause(clause));
+    }
+
+    #[test]
+    fn pattern_alternate_sequences_prefer_longest_match() {
+        let tokens = tokens(&["if", "any", "of", "those", "cards", "remain", "exiled"]);
+        let clause = LexedClause::new(&tokens);
+        let short = [LexPattern::phrase(&["if"])];
+        let long = [LexPattern::phrase(&["if", "any", "of", "those", "cards"])];
+        let alternatives: &[&[LexPatternAtom<'_>]] = &[&short, &long];
+        let atoms = [
+            LexPattern::any_sequence(alternatives),
+            LexPattern::capture("tail", LexCaptureKind::Rest),
+        ];
+        let pattern = LexPattern::new(&atoms);
+
+        let matched = pattern.match_clause(clause).expect("match");
+        assert_eq!(
+            matched
+                .capture_clause("tail", clause)
+                .expect("tail")
+                .word_refs(),
+            ["remain", "exiled"]
+        );
     }
 
     #[test]

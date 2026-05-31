@@ -1,7 +1,6 @@
 use super::*;
-use crate::runtime_backend::lexer::{
-    word_slice_contains_any_phrase, word_slice_eq, word_slice_eq_any, word_slice_find_phrase_start,
-    word_slice_starts_with,
+use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
+    ClauseShape, clause_shape,
 };
 use crate::runtime_backend::sentences::effect_sentences::lex_chain_helpers::{
     find_verb_lexed, has_effect_head_without_verb_lexed,
@@ -10,9 +9,77 @@ use crate::runtime_backend::sentences::effect_sentences::subject_verb_primitives
     SubjectVerbPrimitiveClause, try_build_unless,
 };
 
+const SACRIFICE_OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
+const SACRIFICE_UNLESS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["unless"]);
+const SACRIFICE_UNLESS_ESCAPED_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["unless", "it", "escaped"]);
+const SACRIFICE_UNLESS_OPPONENT_DAMAGED_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["an", "opponent", "was", "dealt", "damage", "this", "turn"]);
+const MANA_SPENT_TO_CAST_SELF_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["was", "spent", "to", "cast", "it"],
+            &["was", "spent", "to", "cast", "this", "spell"],
+        ]
+);
+const SACRIFICE_ALL_OR_EACH_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["all"], &["each"]]);
+const SACRIFICE_OTHER_OR_ANOTHER_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["other"], &["another"]]);
+const SACRIFICE_ANOTHER_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["another"]);
+const GREATEST_MANA_VALUE_AMONG_WORDS: &[&str] =
+    &["with", "the", "greatest", "mana", "value", "among"];
+const GREATEST_MANA_VALUE_AMONG_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & GREATEST_MANA_VALUE_AMONG_WORDS);
+const CHOICE_SUFFIX_THREE_WORD_PATTERNS: &[&[&str]] = &[
+    &["of", "their", "choice"],
+    &["of", "your", "choice"],
+    &["of", "its", "choice"],
+];
+const CHOICE_SUFFIX_FIVE_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(suffix & ["of", "his", "or", "her", "choice"]);
+const TAGGED_IT_OR_CARD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["it"], &["that", "card"]]);
+const ATTACHED_OBJECT_EXCLUSION_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &["than", "enchanted", "creature"],
+            &["than", "enchanted", "permanent"],
+            &["than", "equipped", "creature"],
+            &["than", "equipped", "permanent"],
+        ]]
+);
+const DISCARD_HAND_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["hand"],
+            &["your", "hand"],
+            &["their", "hand"],
+            &["that", "players", "hand"],
+        ]
+);
+const DISCARD_THOSE_CARDS_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["those", "cards"]);
+const DISCARD_ALL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["all"]);
+const DISCARD_CARD_OR_CARDS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["card"], &["cards"]]);
+const DISCARD_THE_QUALIFIER_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["the"]);
+const DISCARD_AT_RANDOM_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["at", "random"]);
+const DISCARD_WITH_THAT_NAME_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["with", "that", "name"]);
+const DISCARD_COLOR_OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
+const DISCARD_CHOSEN_COLOR_PATTERNS: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["of", "that", "color"],
+            &["that", "color"],
+            &["of", "the", "chosen", "color"],
+            &["the", "chosen", "color"],
+        ]
+);
+
 fn trim_trailing_discard_alternative_action(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     for (idx, token) in tokens.iter().enumerate() {
-        if !token.is_word("or") {
+        if !SACRIFICE_OR_WORD_PATTERN.matches_token(token) {
             continue;
         }
 
@@ -30,6 +97,31 @@ fn trim_trailing_discard_alternative_action(tokens: &[OwnedLexToken]) -> Vec<Own
     }
 
     trim_commas(tokens)
+}
+
+fn discard_value_from_choice_count(count: crate::effect::ChoiceCount) -> Option<(Value, bool)> {
+    if count.is_any_number() {
+        return Some((Value::Fixed(0), true));
+    }
+    if count.is_dynamic_x() {
+        return Some((Value::X, false));
+    }
+    if count.min == 0
+        && let Some(max) = count.max
+    {
+        return Some((Value::Fixed(max as i32), false));
+    }
+    if count.min == count.max? {
+        return Some((Value::Fixed(count.min as i32), false));
+    }
+    None
+}
+
+fn parse_discard_count_prefix(tokens: &[OwnedLexToken]) -> Option<(Value, bool, usize)> {
+    let (choice_count, used) =
+        crate::runtime_backend::util::parse_choice_count_token_prefix_consumed(tokens)?;
+    let (value, any_number) = discard_value_from_choice_count(choice_count)?;
+    Some((value, any_number, used))
 }
 
 fn wrap_unless_escaped(effect: EffectAst, unless_escaped: bool) -> EffectAst {
@@ -52,13 +144,7 @@ fn parse_unless_mana_spent_to_cast_predicate(tokens: &[OwnedLexToken]) -> Option
         return None;
     }
     let words = crate::runtime_backend::token_word_refs(rest);
-    if !word_slice_eq_any(
-        &words,
-        &[
-            &["was", "spent", "to", "cast", "it"],
-            &["was", "spent", "to", "cast", "this", "spell"],
-        ],
-    ) {
+    if !MANA_SPENT_TO_CAST_SELF_PATTERN.matches_words(&words) {
         return None;
     }
     let symbols = parse_mana_symbol_group(mana_token.slice.as_str()).ok()?;
@@ -74,10 +160,11 @@ fn parse_unless_mana_spent_to_cast_predicate(tokens: &[OwnedLexToken]) -> Option
 fn split_greatest_mana_value_among_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
-    let marker = ["with", "the", "greatest", "mana", "value", "among"];
     let words = crate::runtime_backend::token_word_refs(tokens);
-    let marker_start = word_slice_find_phrase_start(&words, &marker)?;
-    let marker_end = marker_start + marker.len();
+    let marker_start = words
+        .windows(GREATEST_MANA_VALUE_AMONG_WORDS.len())
+        .position(|window| GREATEST_MANA_VALUE_AMONG_PATTERN.matches_words(window))?;
+    let marker_end = marker_start + GREATEST_MANA_VALUE_AMONG_WORDS.len();
     let before_idx = token_index_for_word_index(tokens, marker_start)?;
     let after_idx = token_index_for_word_index(tokens, marker_end)?;
     Some((&tokens[..before_idx], &tokens[after_idx..]))
@@ -92,17 +179,19 @@ pub(crate) fn parse_sacrifice(
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let mut normalized_words = clause_words.as_slice();
     let mut unless_escaped = false;
-    if let Some(unless_idx) = find_index(&normalized_words, |word| *word == "unless") {
+    if let Some(unless_idx) = find_index(&normalized_words, |word| {
+        SACRIFICE_UNLESS_WORD_PATTERN.matches_words(&[*word])
+    }) {
         let tail = &normalized_words[unless_idx..];
-        if word_slice_eq(tail, &["unless", "it", "escaped"]) {
+        if SACRIFICE_UNLESS_ESCAPED_PATTERN.matches_words(tail) {
             unless_escaped = true;
             let cut_idx = token_index_for_word_index(tokens, unless_idx).unwrap_or(tokens.len());
             tokens = &tokens[..cut_idx];
             normalized_words = &normalized_words[..unless_idx];
         } else {
-            let Some(unless_token_idx) =
-                find_index(tokens, |token: &OwnedLexToken| token.is_word("unless"))
-            else {
+            let Some(unless_token_idx) = find_index(tokens, |token: &OwnedLexToken| {
+                SACRIFICE_UNLESS_WORD_PATTERN.matches_token(token)
+            }) else {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported sacrifice-unless clause (clause: '{}')",
                     clause_words.join(" ")
@@ -121,10 +210,7 @@ pub(crate) fn parse_sacrifice(
             }
             let unless_words =
                 crate::runtime_backend::token_word_refs(&tokens[unless_token_idx + 1..]);
-            if word_slice_eq(
-                &unless_words,
-                &["an", "opponent", "was", "dealt", "damage", "this", "turn"],
-            ) {
+            if SACRIFICE_UNLESS_OPPONENT_DAMAGED_PATTERN.matches_words(&unless_words) {
                 return Ok(EffectAst::Conditional {
                     predicate: PredicateAst::OpponentLostLifeThisTurn,
                     if_true: Vec::new(),
@@ -159,13 +245,13 @@ pub(crate) fn parse_sacrifice(
 
     if tokens
         .first()
-        .is_some_and(|token| token.is_word("all") || token.is_word("each"))
+        .is_some_and(|token| SACRIFICE_ALL_OR_EACH_WORD_PATTERN.matches_token(token))
     {
         let mut idx = 1usize;
         let mut other = false;
         if tokens
             .get(idx)
-            .is_some_and(|token| token.is_word("other") || token.is_word("another"))
+            .is_some_and(|token| SACRIFICE_OTHER_OR_ANOTHER_WORD_PATTERN.matches_token(token))
         {
             other = true;
             idx += 1;
@@ -189,7 +275,7 @@ pub(crate) fn parse_sacrifice(
     }
     if tokens
         .get(idx)
-        .is_some_and(|token| token.is_word("another"))
+        .is_some_and(|token| SACRIFICE_ANOTHER_WORD_PATTERN.matches_token(token))
     {
         other = true;
         idx += 1;
@@ -239,19 +325,16 @@ pub(crate) fn parse_sacrifice(
     };
 
     let filter_words = ZoneHandlerNormalizedWords::new(object_tokens);
-    let suffix_word_count =
-        if grammar::words_match_suffix(object_tokens, &["of", "their", "choice"]).is_some()
-            || grammar::words_match_suffix(object_tokens, &["of", "your", "choice"]).is_some()
-            || grammar::words_match_suffix(object_tokens, &["of", "its", "choice"]).is_some()
-        {
-            3usize
-        } else if grammar::words_match_suffix(object_tokens, &["of", "his", "or", "her", "choice"])
-            .is_some()
-        {
-            5usize
-        } else {
-            0usize
-        };
+    let suffix_word_count = if CHOICE_SUFFIX_THREE_WORD_PATTERNS
+        .iter()
+        .any(|suffix| grammar::words_match_suffix(object_tokens, suffix).is_some())
+    {
+        3usize
+    } else if CHOICE_SUFFIX_FIVE_WORD_PATTERN.matches_words(&filter_words.to_word_refs()) {
+        5usize
+    } else {
+        0usize
+    };
     let filter_tokens = if suffix_word_count == 0 {
         object_tokens
     } else {
@@ -271,7 +354,7 @@ pub(crate) fn parse_sacrifice(
         )));
     }
     let filter_words = crate::runtime_backend::token_word_refs(filter_tokens);
-    let mut filter = if word_slice_eq_any(&filter_words, &[&["it"], &["that", "card"]]) {
+    let mut filter = if TAGGED_IT_OR_CARD_PATTERN.matches_words(&filter_words) {
         ObjectFilter::tagged(TagKey::from(IT_TAG))
     } else {
         parse_object_filter_lexed(filter_tokens, other)?
@@ -291,15 +374,8 @@ pub(crate) fn parse_sacrifice(
         )));
     }
     let sacrifice_words = crate::runtime_backend::token_word_refs(tokens);
-    let excludes_attached_object = word_slice_contains_any_phrase(
-        &sacrifice_words,
-        &[
-            &["than", "enchanted", "creature"],
-            &["than", "enchanted", "permanent"],
-            &["than", "equipped", "creature"],
-            &["than", "equipped", "permanent"],
-        ],
-    );
+    let excludes_attached_object =
+        ATTACHED_OBJECT_EXCLUSION_PATTERN.matches_words(&sacrifice_words);
     if excludes_attached_object
         && filter.controller.is_none()
         && let Some(controller) = controller_filter_for_token_player(player)
@@ -329,19 +405,11 @@ pub(crate) fn parse_discard(
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if word_slice_eq_any(
-        &clause_words,
-        &[
-            &["hand"],
-            &["your", "hand"],
-            &["their", "hand"],
-            &["that", "players", "hand"],
-        ],
-    ) {
+    if DISCARD_HAND_PATTERN.matches_words(&clause_words) {
         return Ok(EffectAst::subject_verb_discard_hand(player));
     }
 
-    if word_slice_eq_any(&clause_words, &[&["it"], &["that", "card"]]) {
+    if TAGGED_IT_OR_CARD_PATTERN.matches_words(&clause_words) {
         let mut tagged_filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
         tagged_filter.zone = Some(Zone::Hand);
         return Ok(EffectAst::subject_verb_discard(
@@ -354,7 +422,7 @@ pub(crate) fn parse_discard(
         ));
     }
 
-    if word_slice_eq(&clause_words, &["those", "cards"]) {
+    if DISCARD_THOSE_CARDS_PATTERN.matches_words(&clause_words) {
         let mut tagged_filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
         tagged_filter.zone = Some(Zone::Hand);
         return Ok(EffectAst::subject_verb_discard(
@@ -367,37 +435,28 @@ pub(crate) fn parse_discard(
         ));
     }
 
-    let any_number = word_slice_starts_with(clause_words.as_slice(), &["any", "number", "of"]);
-    let count_tokens =
-        if let Some((_, rest)) = grammar::words_match_any_prefix(tokens, UP_TO_PREFIXES) {
-            rest
-        } else if any_number {
-            &tokens[token_index_for_word_index(tokens, 3).unwrap_or(tokens.len())..]
-        } else {
-            tokens
-        };
-    let count_offset = tokens.len().saturating_sub(count_tokens.len());
-    let uses_all_count = count_tokens
+    let uses_all_count = tokens
         .first()
-        .is_some_and(|token| token.is_word("all"));
-    let (mut count, used) = if uses_all_count {
-        (Value::Fixed(0), count_offset + 1)
-    } else if any_number {
-        (Value::Fixed(0), count_offset)
+        .is_some_and(|token| DISCARD_ALL_WORD_PATTERN.matches_token(token));
+    let (mut count, any_number, used) = if uses_all_count {
+        (Value::Fixed(0), false, 1)
+    } else if let Some((count, any_number, used)) = parse_discard_count_prefix(tokens) {
+        (count, any_number, used)
     } else {
-        let (count, used_relative) = parse_value(count_tokens).ok_or_else(|| {
+        let (count, used) = parse_value(tokens).ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "missing discard count (clause: '{}')",
                 clause_words.join(" ")
             ))
         })?;
-        (count, count_offset + used_relative)
+        (count, false, used)
     };
 
     let rest = &tokens[used..];
     let rest_words = crate::runtime_backend::token_word_refs(rest);
-    let Some(card_word_idx) = find_index(&rest_words, |word| *word == "card" || *word == "cards")
-    else {
+    let Some(card_word_idx) = find_index(&rest_words, |word| {
+        DISCARD_CARD_OR_CARDS_WORD_PATTERN.matches_words(&[*word])
+    }) else {
         return Err(CardTextError::ParseError(
             "missing card keyword".to_string(),
         ));
@@ -407,10 +466,8 @@ pub(crate) fn parse_discard(
     let qualifier_tokens = trim_commas(&rest[..card_token_idx]);
     let mut discard_filter = None;
     if !qualifier_tokens.is_empty()
-        && !word_slice_eq(
-            &crate::runtime_backend::token_word_refs(&qualifier_tokens),
-            &["the"],
-        )
+        && !DISCARD_THE_QUALIFIER_PATTERN
+            .matches_words(&crate::runtime_backend::token_word_refs(&qualifier_tokens))
     {
         let mut filter = if let Ok(filter) = parse_object_filter(&qualifier_tokens, false) {
             filter
@@ -455,11 +512,11 @@ pub(crate) fn parse_discard(
         ));
     }
     let trailing_words = crate::runtime_backend::token_word_refs(trailing_tokens);
-    let random = word_slice_eq(&trailing_words, &["at", "random"]);
+    let random = DISCARD_AT_RANDOM_PATTERN.matches_words(&trailing_words);
     if !trailing_words.is_empty() && !random {
         let trailing_filter = if let Ok(filter) = parse_object_filter(trailing_tokens, false) {
             Some(filter)
-        } else if word_slice_eq(&trailing_words, &["with", "that", "name"]) {
+        } else if DISCARD_WITH_THAT_NAME_PATTERN.matches_words(&trailing_words) {
             let mut filter = ObjectFilter::default();
             filter.name = Some("{chosen name}".to_string());
             Some(filter)
@@ -522,7 +579,7 @@ pub(crate) fn parse_discard_color_qualifier_filter(
     let mut colors = crate::color::ColorSet::new();
     let mut saw_color = false;
     for word in qualifier_words {
-        if word == "or" {
+        if DISCARD_COLOR_OR_WORD_PATTERN.matches_word(word) {
             continue;
         }
         let color = parse_color(word)?;
@@ -543,13 +600,7 @@ pub(crate) fn parse_discard_chosen_color_qualifier_filter(
     tokens: &[OwnedLexToken],
 ) -> Option<ObjectFilter> {
     let qualifier_words = crate::runtime_backend::util::non_article_token_word_refs(tokens);
-    if !matches!(
-        qualifier_words.as_slice(),
-        ["of", "that", "color"]
-            | ["that", "color"]
-            | ["of", "the", "chosen", "color"]
-            | ["the", "chosen", "color"]
-    ) {
+    if !DISCARD_CHOSEN_COLOR_PATTERNS.matches_words(qualifier_words.as_slice()) {
         return None;
     }
 

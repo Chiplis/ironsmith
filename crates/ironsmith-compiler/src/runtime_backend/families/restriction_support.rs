@@ -9,6 +9,8 @@ use super::activation_and_restrictions::{
 use super::lexer::lex_line;
 use super::token_primitives::{str_contains, str_strip_prefix, str_strip_suffix};
 
+const ACTIVATE_ONLY_ONCE_EACH_TURN_TEXT: &str = "activate only once each turn";
+
 pub(crate) fn apply_pending_restrictions_to_ability(
     ability: &mut Ability,
     pending: &mut ParsedRestrictions,
@@ -212,7 +214,7 @@ fn normalize_activation_restriction(
         return Some(restriction.to_string());
     }
     let mut normalized = restriction.to_ascii_lowercase();
-    if normalized == "activate only once each turn" {
+    if normalized == ACTIVATE_ONLY_ONCE_EACH_TURN_TEXT {
         return None;
     }
     let prefix = "activate only once each turn and ";

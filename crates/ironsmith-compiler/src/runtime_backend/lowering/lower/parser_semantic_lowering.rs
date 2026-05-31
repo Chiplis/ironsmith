@@ -7,6 +7,25 @@ use crate::runtime_backend::lexer::{
     word_slice_contains_any_phrase, word_slice_contains_any_word, word_slice_contains_phrase,
     word_slice_contains_word, word_slice_starts_with,
 };
+use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
+    ClauseShape, clause_shape,
+};
+
+const DRAFT_RULE_LINE_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["draft", "this", "card", "face", "up"]);
+const DRAFT_RULE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["reveal", "this", "card", "as", "you", "draft", "it"],
+            &["as", "you", "draft"],
+            &["during", "the", "draft"],
+            &["immediately", "after", "the", "draft"],
+        ]
+);
+const DRAFT_BOOSTER_PASS_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix & ["each", "player", "passes"];
+    contains_phrases & [&["booster", "pack"]]
+);
 
 fn parse_effect_sentences_from_text(
     text: &str,
@@ -1313,7 +1332,7 @@ fn lower_rewrite_static_to_chunk_impl(
             chosen_option_label,
         );
     }
-    if is_draft_rule_static_line(raw) {
+    if is_draft_rule_static_line(parse_tokens) {
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(
                 StaticAbility::draft_rule_text(raw.trim_end_matches('.').to_string()).into(),
@@ -1457,14 +1476,11 @@ fn looks_like_ability_word_marker_text(text: &str, parse_tokens: &[OwnedLexToken
     !words.is_empty() && words.len() <= 4
 }
 
-fn is_draft_rule_static_line(raw: &str) -> bool {
-    let lower = raw.trim().to_ascii_lowercase();
-    lower.trim_end_matches('.') == "draft this card face up"
-        || lower.starts_with("reveal this card as you draft it")
-        || lower.starts_with("as you draft ")
-        || lower.starts_with("during the draft, ")
-        || lower.starts_with("immediately after the draft, ")
-        || lower.starts_with("each player passes ") && lower.contains("booster pack")
+fn is_draft_rule_static_line(parse_tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(parse_tokens);
+    DRAFT_RULE_LINE_PATTERN.matches_words(&words)
+        || DRAFT_RULE_PREFIX_PATTERN.matches_words(&words)
+        || DRAFT_BOOSTER_PASS_PATTERN.matches_words(&words)
 }
 
 fn parse_additional_land_play_static_count_from_text(text: &str) -> Option<u32> {

@@ -15,6 +15,12 @@ use super::lexer::{
 };
 pub(crate) type LexedInput<'a> = LexStream<'a>;
 
+const TICKET_SYMBOL_TEXT: &str = "{tk}";
+const COMPLEATED_MARKER_TEXT: &str = "compleated";
+const CORE_KEYWORD_MARKER_PREFIXES: &[&str] =
+    &["prototype ", "more than meets the eye ", "splice onto "];
+const STATIC_KEYWORD_MARKER_EXTRA_PREFIXES: &[&str] = &["dredge "];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TurnDurationPhrase {
     ThisTurn,
@@ -227,6 +233,42 @@ pub(crate) fn str_strip_suffix<'a>(text: &'a str, suffix: &str) -> Option<&'a st
 
 pub(crate) fn str_strip_suffix_char(text: &str, suffix: char) -> Option<&str> {
     crate::string_primitives::strip_suffix_char(text, suffix)
+}
+
+pub(crate) fn is_ticket_symbol_cost_text(cost: &str) -> bool {
+    let mut saw_ticket_symbol = false;
+    let mut remainder = cost.trim();
+    while let Some(next) = str_strip_prefix(remainder, TICKET_SYMBOL_TEXT) {
+        saw_ticket_symbol = true;
+        remainder = next.trim_start();
+    }
+
+    saw_ticket_symbol && remainder.is_empty()
+}
+
+pub(crate) fn is_ticket_sticker_marker_text(text: &str) -> bool {
+    let Some((cost, body_text)) = str_split_once_char(text, '—') else {
+        return false;
+    };
+
+    is_ticket_symbol_cost_text(cost) && !body_text.trim().is_empty()
+}
+
+pub(crate) fn is_core_keyword_marker_text(text: &str) -> bool {
+    let text = text.trim_start().to_ascii_lowercase();
+    CORE_KEYWORD_MARKER_PREFIXES
+        .iter()
+        .any(|prefix| text.starts_with(prefix))
+        || is_ticket_sticker_marker_text(&text)
+}
+
+pub(crate) fn is_static_keyword_marker_text(text: &str) -> bool {
+    let text = text.trim_start().to_ascii_lowercase();
+    text == COMPLEATED_MARKER_TEXT
+        || is_core_keyword_marker_text(&text)
+        || STATIC_KEYWORD_MARKER_EXTRA_PREFIXES
+            .iter()
+            .any(|prefix| text.starts_with(prefix))
 }
 
 pub(crate) fn str_split_once<'a>(text: &'a str, needle: &str) -> Option<(&'a str, &'a str)> {

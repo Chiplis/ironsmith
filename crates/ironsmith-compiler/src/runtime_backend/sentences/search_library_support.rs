@@ -1,3 +1,4 @@
+use super::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::grammar::primitives::{self as grammar, split_lexed_slices_on_or};
 use super::grammar::values::parse_value_comparison_tokens;
 use super::lexer::{
@@ -9,12 +10,15 @@ use super::object_filters::parse_object_filter;
 use super::token_primitives::{
     parse_simple_restriction_duration_prefix, parse_simple_restriction_duration_suffix,
 };
-use super::util::trim_commas;
+use super::util::{parse_number, trim_commas};
 use crate::cards::builders::CardTextError;
 use crate::effect::Value;
 use crate::target::ObjectFilter;
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
+
+const FROM_THE_TOP_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["from", "the", "top"]);
+const SEARCH_SUPPORT_OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum SearchLibraryManaConstraint {
@@ -25,14 +29,9 @@ pub(crate) enum SearchLibraryManaConstraint {
 }
 
 pub(crate) fn word_slice_mentions_nth_from_top(words: &[&str]) -> bool {
-    let mut idx = 0usize;
-    while idx + 3 < words.len() {
-        if words[idx + 1] == "from" && words[idx + 2] == "the" && words[idx + 3] == "top" {
-            return true;
-        }
-        idx += 1;
-    }
-    false
+    words
+        .windows(4)
+        .any(|window| FROM_THE_TOP_PATTERN.matches_words(&window[1..]))
 }
 
 fn is_source_reference_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
@@ -191,10 +190,8 @@ pub(crate) fn extract_search_library_mana_constraint(
     }
 
     let parse_single_u32_clause = |tokens: &[OwnedLexToken]| -> Option<u32> {
-        let [token] = tokens else {
-            return None;
-        };
-        token.parser_text().parse::<u32>().ok()
+        let (value, used) = parse_number(tokens)?;
+        (used == tokens.len()).then_some(value)
     };
     let constraint = if let Some(value) = parse_single_u32_clause(clause_tokens) {
         SearchLibraryManaConstraint::Equal(value)
@@ -213,12 +210,12 @@ pub(crate) fn extract_search_library_mana_constraint(
         let [left, middle, right] = clause_tokens else {
             return None;
         };
-        if !middle.is_word("or") {
+        if !SEARCH_SUPPORT_OR_WORD_PATTERN.matches_token(middle) {
             return None;
         }
         SearchLibraryManaConstraint::OneOf(vec![
-            left.parser_text().parse::<u32>().ok()?,
-            right.parser_text().parse::<u32>().ok()?,
+            parse_single_u32_clause(std::slice::from_ref(left))?,
+            parse_single_u32_clause(std::slice::from_ref(right))?,
         ])
     };
 

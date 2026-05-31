@@ -1,8 +1,9 @@
+use super::super::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::super::grammar::abilities as ability_grammar;
 use super::super::grammar::filters::spell_filters::parse_spell_filter_with_grammar_entrypoint;
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::keyword_static::parse_cost_modifier_mana_cost;
-use super::super::lexer::{OwnedLexToken, word_slice_eq, word_slice_starts_with};
+use super::super::lexer::OwnedLexToken;
 use super::super::token_primitives::find_index;
 use super::{joined_activation_clause_text, merge_mana_activation_conditions};
 use crate::ability::ActivationTiming;
@@ -28,6 +29,18 @@ enum ActivatedSentenceModifier {
 
 const THIS_ABILITY_COSTS_PREFIXES: &[&[&str]] = &[&["this", "ability", "costs"]];
 const THE_NEXT_PREFIXES: &[&[&str]] = &[&["the", "next"]];
+const SPELL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["spell"]);
+const COSTS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["costs"]);
+const LESS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["less"]);
+const NEXT_SPELL_YOU_CAST_THIS_TURN_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["spell", "you", "cast", "this", "turn"]);
+const LESS_TO_CAST_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["less", "to", "cast"]);
+const ACTIVATE_ONLY_ONCE_EACH_TURN_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["activate", "only", "once", "each", "turn"]);
+const ACTIVATE_ONLY_ONCE_EACH_TURN_AND_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["activate", "only", "once", "each", "turn", "and"]);
+const AND_ONLY_ONCE_EACH_TURN_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["and", "only", "once", "each", "turn"]);
 
 pub(super) struct ActivatedSentenceScan<'a> {
     pub(super) kept_sentences: Vec<&'a [OwnedLexToken]>,
@@ -61,15 +74,11 @@ fn parse_next_spell_cost_reduction_sentence(tokens: &[OwnedLexToken]) -> Option<
         return None;
     }
 
-    let spell_idx = find_index(&clause_words, |word| *word == "spell")?;
-    let costs_idx = find_index(&clause_words, |word| *word == "costs")?;
-    let less_idx = find_index(&clause_words, |word| *word == "less")?;
-    if clause_words.get(spell_idx + 1).copied() != Some("you")
-        || clause_words.get(spell_idx + 2).copied() != Some("cast")
-        || clause_words.get(spell_idx + 3).copied() != Some("this")
-        || clause_words.get(spell_idx + 4).copied() != Some("turn")
-        || clause_words.get(less_idx + 1).copied() != Some("to")
-        || clause_words.get(less_idx + 2).copied() != Some("cast")
+    let spell_idx = find_index(&clause_words, |word| SPELL_WORD_PATTERN.matches_word(word))?;
+    let costs_idx = find_index(&clause_words, |word| COSTS_WORD_PATTERN.matches_word(word))?;
+    let less_idx = find_index(&clause_words, |word| LESS_WORD_PATTERN.matches_word(word))?;
+    if !NEXT_SPELL_YOU_CAST_THIS_TURN_TAIL_PATTERN.matches_words(&clause_words[spell_idx..])
+        || !LESS_TO_CAST_PATTERN.matches_words(&clause_words[less_idx..])
         || costs_idx <= spell_idx
     {
         return None;
@@ -234,13 +243,10 @@ pub(crate) fn normalize_activate_only_restriction(
         return None;
     }
     let word_refs = words.iter().map(String::as_str).collect::<Vec<_>>();
-    if word_slice_eq(&word_refs, &["activate", "only", "once", "each", "turn"]) {
+    if ACTIVATE_ONLY_ONCE_EACH_TURN_PATTERN.matches_words(&word_refs) {
         return None;
     }
-    if word_slice_starts_with(
-        &word_refs,
-        &["activate", "only", "once", "each", "turn", "and"],
-    ) {
+    if ACTIVATE_ONLY_ONCE_EACH_TURN_AND_PREFIX_PATTERN.matches_words(&word_refs) {
         words.drain(0..6);
     }
     let mut index = 0usize;
@@ -249,7 +255,7 @@ pub(crate) fn normalize_activate_only_restriction(
             .iter()
             .map(String::as_str)
             .collect::<Vec<_>>();
-        if word_slice_starts_with(&tail_refs, &["and", "only", "once", "each", "turn"]) {
+        if AND_ONLY_ONCE_EACH_TURN_PATTERN.matches_words(&tail_refs) {
             words.drain(index..index + 5);
         } else {
             index += 1;

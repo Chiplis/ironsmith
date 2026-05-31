@@ -17,6 +17,10 @@ use crate::cards::builders::{
 };
 use crate::types::CardType;
 
+const MULTI_WORD_KEYWORD_ABILITY_NAMES: &[&str] = &["first strike", "double strike", "ward"];
+const LOWEST_LIFE_CONTROL_UPKEEP_SENTENCE: &str = "at the beginning of your upkeep, the player with the lowest life total gains control of this creature";
+const LOWEST_LIFE_CONTROL_TIE_SENTENCE: &str = "if two or more players are tied for lowest life total, you choose one of them, and that player gains control of this creature";
+
 #[derive(Debug, Clone)]
 pub(crate) struct PreprocessedDocument {
     pub(crate) builder: CardDefinitionBuilder,
@@ -231,7 +235,7 @@ fn replace_names_with_map(
     }
 
     fn is_keyword_ability_name(name: &str) -> bool {
-        if name == "first strike" || name == "double strike" || name == "ward" {
+        if MULTI_WORD_KEYWORD_ABILITY_NAMES.contains(&name) {
             return true;
         }
         if str_contains(name, " ") {
@@ -1024,10 +1028,8 @@ fn rewrite_lowest_life_tie_choice_line(text: &str) -> String {
     let second = sentences[1].trim();
     let first_lower = first.to_ascii_lowercase();
     let second_lower = second.to_ascii_lowercase();
-    if first_lower
-        == "at the beginning of your upkeep, the player with the lowest life total gains control of this creature"
-        && second_lower
-            == "if two or more players are tied for lowest life total, you choose one of them, and that player gains control of this creature"
+    if first_lower == LOWEST_LIFE_CONTROL_UPKEEP_SENTENCE
+        && second_lower == LOWEST_LIFE_CONTROL_TIE_SENTENCE
     {
         return format!("{first}.");
     }

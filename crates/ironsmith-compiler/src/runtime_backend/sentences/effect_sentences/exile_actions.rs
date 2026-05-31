@@ -1,8 +1,106 @@
+use super::super::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::*;
-use crate::runtime_backend::lexer::{
-    word_slice_at_is, word_slice_first_is, word_slice_first_is_any, word_slice_starts_with,
-    word_slice_starts_with_any,
-};
+const EXILE_TARGET_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["target"]);
+const EXILE_FROM_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["from"]);
+const EXILE_INSTEAD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["instead"]);
+const EXILE_ALL_OR_EACH_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["all"], &["each"]]);
+const EXILE_TOP_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["top"]);
+const EXILE_CARD_OR_CARDS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["card"], &["cards"]]);
+const EXILE_OF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["of"]);
+const EXILE_FACE_DOWN_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["face-down"], &["facedown"]]);
+const EXILE_FACE_DOWN_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["face", "down"]);
+const EXILE_HAND_OR_GRAVEYARD_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["hand"], &["hands"], &["graveyard"], &["graveyards"]]);
+const EXILE_GRAVEYARD_OWNER_YOU_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["your", "graveyard"]);
+const EXILE_GRAVEYARD_OWNER_THEIR_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["their", "graveyard"]);
+const EXILE_GRAVEYARD_OWNER_THAT_PLAYER_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["that", "player", "graveyard"],
+            &["that", "players", "graveyard"]
+        ]
+);
+const EXILE_GRAVEYARD_OWNER_TARGET_PLAYER_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["target", "player", "graveyard"],
+            &["target", "players", "graveyard"]
+        ]
+);
+const EXILE_GRAVEYARD_OWNER_TARGET_OPPONENT_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["target", "opponent", "graveyard"],
+            &["target", "opponents", "graveyard"]
+        ]
+);
+const EXILE_GRAVEYARD_OWNER_ITS_CONTROLLER_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["its", "controller", "graveyard"],
+            &["its", "controllers", "graveyard"]
+        ]
+);
+const EXILE_GRAVEYARD_OWNER_ITS_OWNER_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["its", "owner", "graveyard"],
+            &["its", "owners", "graveyard"]
+        ]
+);
+const EXILE_GRAVEYARD_OWNER_HIS_OR_HER_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["his", "or", "her", "graveyard"]);
+const EXILE_LIBRARY_OWNER_DEFAULT_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["library"]);
+const EXILE_LIBRARY_OWNER_YOU_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["your", "library"]);
+const EXILE_LIBRARY_OWNER_THEIR_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["their", "library"]);
+const EXILE_LIBRARY_OWNER_THAT_PLAYER_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["that", "player", "library"],
+            &["that", "players", "library"]
+        ]
+);
+const EXILE_LIBRARY_OWNER_TARGET_PLAYER_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["target", "player", "library"],
+            &["target", "players", "library"]
+        ]
+);
+const EXILE_LIBRARY_OWNER_TARGET_OPPONENT_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["target", "opponent", "library"],
+            &["target", "opponents", "library"]
+        ]
+);
+const EXILE_LIBRARY_OWNER_ITS_CONTROLLER_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["its", "controller", "library"],
+            &["its", "controllers", "library"]
+        ]
+);
+const EXILE_LIBRARY_OWNER_ITS_OWNER_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix_any & [&["its", "owner", "library"], &["its", "owners", "library"]]);
+const EXILE_LIBRARY_OWNER_HIS_OR_HER_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["his", "or", "her", "library"]);
+const EXILE_EACH_OPPONENT_LIBRARY_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["each", "opponent", "library"],
+            &["each", "opponents", "library"]
+        ]
+);
+const EXILE_THE_TOP_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["the", "top"]);
 
 pub(crate) fn parse_exile(
     tokens: &[OwnedLexToken],
@@ -37,7 +135,10 @@ pub(crate) fn parse_exile(
     )? {
         return Ok(effect);
     }
-    if word_slice_first_is_any(&clause_words, &["all", "each"]) {
+    if clause_words
+        .first()
+        .is_some_and(|word| EXILE_ALL_OR_EACH_WORD_PATTERN.matches_word(word))
+    {
         let filter_tokens = &tokens[1..];
         let mut filter = parse_object_filter_lexed(filter_tokens, false)?;
         apply_exile_subject_owner_context(&mut filter, subject);
@@ -114,7 +215,9 @@ pub(crate) fn parse_exile(
         })
         && !before_and.is_empty()
     {
-        let starts_multi_target = after_and.first().is_some_and(|t| t.is_word("target"))
+        let starts_multi_target = after_and
+            .first()
+            .is_some_and(|t| EXILE_TARGET_WORD_PATTERN.matches_token(t))
             || (crate::runtime_backend::grammar::primitives::strip_lexed_prefix_phrase(
                 after_and,
                 &["up", "to"],
@@ -170,11 +273,13 @@ pub(crate) fn parse_same_name_exile_hand_and_graveyard_clause(
         return Ok(None);
     }
 
-    let Some(from_idx) = find_index(&clause_words, |word| *word == "from") else {
+    let Some(from_idx) = find_index(&clause_words, |word| {
+        EXILE_FROM_WORD_PATTERN.matches_word(word)
+    }) else {
         return Ok(None);
     };
     let Some(first_zone_idx) = find_index(&clause_words[from_idx + 1..], |word| {
-        matches!(*word, "hand" | "hands" | "graveyard" | "graveyards")
+        EXILE_HAND_OR_GRAVEYARD_WORD_PATTERN.matches_word(word)
     })
     .map(|offset| from_idx + 1 + offset) else {
         return Ok(None);
@@ -247,18 +352,22 @@ pub(crate) fn split_exile_face_down_suffix(tokens: &[OwnedLexToken]) -> (&[Owned
     while end > 0 && tokens[end - 1].is_comma() {
         end -= 1;
     }
-    if end > 0 && tokens[end - 1].is_word("instead") {
+    if end > 0 && EXILE_INSTEAD_WORD_PATTERN.matches_token(&tokens[end - 1]) {
         end -= 1;
         while end > 0 && tokens[end - 1].is_comma() {
             end -= 1;
         }
     }
 
-    if end > 0 && (tokens[end - 1].is_word("face-down") || tokens[end - 1].is_word("facedown")) {
+    if end > 0 && EXILE_FACE_DOWN_WORD_PATTERN.matches_token(&tokens[end - 1]) {
         return (&tokens[..end - 1], true);
     }
 
-    if end >= 2 && tokens[end - 2].is_word("face") && tokens[end - 1].is_word("down") {
+    if end >= 2
+        && EXILE_FACE_DOWN_TAIL_PATTERN.matches_words(&crate::runtime_backend::token_word_refs(
+            &tokens[end - 2..end],
+        ))
+    {
         return (&tokens[..end - 2], true);
     }
 
@@ -292,58 +401,28 @@ pub(crate) fn split_exile_graveyard_replacement_suffix(
 }
 
 pub(crate) fn parse_graveyard_owner_prefix(words: &[&str]) -> Option<(PlayerAst, usize)> {
-    if word_slice_starts_with(words, &["your", "graveyard"]) {
+    if EXILE_GRAVEYARD_OWNER_YOU_PATTERN.matches_words(words) {
         return Some((PlayerAst::You, 2));
     }
-    if word_slice_starts_with(words, &["their", "graveyard"]) {
+    if EXILE_GRAVEYARD_OWNER_THEIR_PATTERN.matches_words(words) {
         return Some((PlayerAst::That, 2));
     }
-    if word_slice_starts_with_any(
-        words,
-        &[
-            &["that", "player", "graveyard"],
-            &["that", "players", "graveyard"],
-        ],
-    ) {
+    if EXILE_GRAVEYARD_OWNER_THAT_PLAYER_PATTERN.matches_words(words) {
         return Some((PlayerAst::That, 3));
     }
-    if word_slice_starts_with_any(
-        words,
-        &[
-            &["target", "player", "graveyard"],
-            &["target", "players", "graveyard"],
-        ],
-    ) {
+    if EXILE_GRAVEYARD_OWNER_TARGET_PLAYER_PATTERN.matches_words(words) {
         return Some((PlayerAst::Target, 3));
     }
-    if word_slice_starts_with_any(
-        words,
-        &[
-            &["target", "opponent", "graveyard"],
-            &["target", "opponents", "graveyard"],
-        ],
-    ) {
+    if EXILE_GRAVEYARD_OWNER_TARGET_OPPONENT_PATTERN.matches_words(words) {
         return Some((PlayerAst::TargetOpponent, 3));
     }
-    if word_slice_starts_with_any(
-        words,
-        &[
-            &["its", "controller", "graveyard"],
-            &["its", "controllers", "graveyard"],
-        ],
-    ) {
+    if EXILE_GRAVEYARD_OWNER_ITS_CONTROLLER_PATTERN.matches_words(words) {
         return Some((PlayerAst::ItsController, 3));
     }
-    if word_slice_starts_with_any(
-        words,
-        &[
-            &["its", "owner", "graveyard"],
-            &["its", "owners", "graveyard"],
-        ],
-    ) {
+    if EXILE_GRAVEYARD_OWNER_ITS_OWNER_PATTERN.matches_words(words) {
         return Some((PlayerAst::ItsOwner, 3));
     }
-    if word_slice_starts_with(words, &["his", "or", "her", "graveyard"]) {
+    if EXILE_GRAVEYARD_OWNER_HIS_OR_HER_PATTERN.matches_words(words) {
         return Some((PlayerAst::That, 4));
     }
     None
@@ -353,13 +432,13 @@ fn parse_library_owner_prefix(
     words: &[&str],
     default_player: PlayerAst,
 ) -> Option<(PlayerAst, usize)> {
-    if word_slice_starts_with(words, &["library"]) {
+    if EXILE_LIBRARY_OWNER_DEFAULT_PATTERN.matches_words(words) {
         return Some((default_player, 1));
     }
-    if word_slice_starts_with(words, &["your", "library"]) {
+    if EXILE_LIBRARY_OWNER_YOU_PATTERN.matches_words(words) {
         return Some((PlayerAst::You, 2));
     }
-    if word_slice_starts_with(words, &["their", "library"]) {
+    if EXILE_LIBRARY_OWNER_THEIR_PATTERN.matches_words(words) {
         return Some((
             if matches!(default_player, PlayerAst::Implicit) {
                 PlayerAst::ItsController
@@ -369,49 +448,22 @@ fn parse_library_owner_prefix(
             2,
         ));
     }
-    if word_slice_starts_with_any(
-        words,
-        &[
-            &["that", "player", "library"],
-            &["that", "players", "library"],
-        ],
-    ) {
+    if EXILE_LIBRARY_OWNER_THAT_PLAYER_PATTERN.matches_words(words) {
         return Some((PlayerAst::That, 3));
     }
-    if word_slice_starts_with_any(
-        words,
-        &[
-            &["target", "player", "library"],
-            &["target", "players", "library"],
-        ],
-    ) {
+    if EXILE_LIBRARY_OWNER_TARGET_PLAYER_PATTERN.matches_words(words) {
         return Some((PlayerAst::Target, 3));
     }
-    if word_slice_starts_with_any(
-        words,
-        &[
-            &["target", "opponent", "library"],
-            &["target", "opponents", "library"],
-        ],
-    ) {
+    if EXILE_LIBRARY_OWNER_TARGET_OPPONENT_PATTERN.matches_words(words) {
         return Some((PlayerAst::TargetOpponent, 3));
     }
-    if word_slice_starts_with_any(
-        words,
-        &[
-            &["its", "controller", "library"],
-            &["its", "controllers", "library"],
-        ],
-    ) {
+    if EXILE_LIBRARY_OWNER_ITS_CONTROLLER_PATTERN.matches_words(words) {
         return Some((PlayerAst::ItsController, 3));
     }
-    if word_slice_starts_with_any(
-        words,
-        &[&["its", "owner", "library"], &["its", "owners", "library"]],
-    ) {
+    if EXILE_LIBRARY_OWNER_ITS_OWNER_PATTERN.matches_words(words) {
         return Some((PlayerAst::ItsOwner, 3));
     }
-    if word_slice_starts_with(words, &["his", "or", "her", "library"]) {
+    if EXILE_LIBRARY_OWNER_HIS_OR_HER_PATTERN.matches_words(words) {
         return Some((
             if matches!(default_player, PlayerAst::Implicit) {
                 PlayerAst::ItsController
@@ -431,10 +483,10 @@ pub(crate) fn parse_exile_top_library_clause(
     let tokens = trim_commas(tokens);
     let words = crate::runtime_backend::token_word_refs(&tokens);
     let mut start = 0usize;
-    if word_slice_first_is(&words, "the") {
+    if EXILE_THE_TOP_PREFIX_PATTERN.matches_words(&words) {
         start = 1;
     }
-    if !word_slice_at_is(&words, start, "top") {
+    if !EXILE_TOP_WORD_PATTERN.matches_word_at(&words, start) {
         return None;
     }
 
@@ -442,26 +494,26 @@ pub(crate) fn parse_exile_top_library_clause(
     let (count, used_after_top) = parse_value(&tokens[count_start..])?;
     let after_count = trim_commas(&tokens[count_start + used_after_top..]);
     let after_count_words = crate::runtime_backend::token_word_refs(&after_count);
-    if !word_slice_first_is_any(&after_count_words, &["card", "cards"]) {
+    if !after_count_words
+        .first()
+        .is_some_and(|word| EXILE_CARD_OR_CARDS_WORD_PATTERN.matches_word(word))
+    {
         return None;
     }
 
     let after_cards_start = token_index_for_word_index(&after_count, 1)?;
     let after_cards = trim_commas(&after_count[after_cards_start..]);
     let after_cards_words = crate::runtime_backend::token_word_refs(&after_cards);
-    if !word_slice_first_is(&after_cards_words, "of") {
+    if !after_cards_words
+        .first()
+        .is_some_and(|word| EXILE_OF_WORD_PATTERN.matches_word(word))
+    {
         return None;
     }
 
     let owner_tokens = trim_commas(&after_cards[1..]);
     let owner_words = crate::runtime_backend::token_word_refs(&owner_tokens);
-    if word_slice_starts_with_any(
-        &owner_words,
-        &[
-            &["each", "opponent", "library"],
-            &["each", "opponents", "library"],
-        ],
-    ) {
+    if EXILE_EACH_OPPONENT_LIBRARY_PATTERN.matches_words(&owner_words) {
         return Some(EffectAst::ForEachOpponent {
             effects: vec![EffectAst::subject_verb_exile_top_of_library(
                 PlayerAst::That,

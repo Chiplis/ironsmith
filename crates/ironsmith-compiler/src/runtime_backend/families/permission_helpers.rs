@@ -7,6 +7,8 @@ use winnow::combinator::alt;
 use winnow::error::{ContextError, ErrMode};
 use winnow::prelude::*;
 
+use super::activation_and_restrictions::parse_named_number;
+use super::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::grammar::filters::{
     parse_object_filter_with_grammar_entrypoint_lexed,
     parse_spell_filter_with_grammar_entrypoint_lexed,
@@ -15,9 +17,7 @@ use super::grammar::primitives as grammar;
 use super::grammar::values::parse_value_comparison_tokens;
 use super::lexer::{
     LexStream, OwnedLexToken, TokenKind, token_slice_first_is_any, token_slice_strip_word_prefix,
-    token_word_refs, trim_lexed_commas, word_slice_contains_any_phrase, word_slice_contains_phrase,
-    word_slice_contains_word, word_slice_ends_with, word_slice_eq, word_slice_eq_any,
-    word_slice_first_is, word_slice_first_is_any, word_slice_last_is_any, word_slice_starts_with,
+    token_word_refs, trim_lexed_commas,
 };
 use super::object_filters::merge_spell_filters;
 use super::token_primitives::{
@@ -69,6 +69,147 @@ struct TaggedPermissionTarget {
     tag: TagKey,
     as_copy: bool,
 }
+
+const SPELL_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["spell"], &["spells"]]);
+const HAND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["hand"]);
+const GRAVEYARD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["graveyard"]);
+const FROM_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["from"]);
+const WITHOUT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["without"]);
+const ONCE_EACH_YOUR_TURNS_MAY_CAST_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix
+        & [
+            "once", "during", "each", "of", "your", "turns", "you", "may", "cast"
+        ]
+);
+const ONCE_EACH_YOUR_TURNS_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["once", "during", "each", "of", "your", "turns"]);
+const FROM_YOUR_GRAVEYARD_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(suffix & ["from", "your", "graveyard"]);
+const STATIC_PERMANENT_GRAVEYARD_SAC_LAND_PERMISSION_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact
+        & [
+            "once",
+            "during",
+            "each",
+            "of",
+            "your",
+            "turns",
+            "you",
+            "may",
+            "cast",
+            "a",
+            "permanent",
+            "spell",
+            "from",
+            "your",
+            "graveyard",
+            "by",
+            "sacrificing",
+            "a",
+            "land",
+            "in",
+            "addition",
+            "to",
+            "paying",
+            "its",
+            "other",
+            "costs",
+        ]
+);
+const STATIC_CREATURE_GRAVEYARD_CAST_PERMISSION_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact
+        & [
+            "once",
+            "during",
+            "each",
+            "of",
+            "your",
+            "turns",
+            "you",
+            "may",
+            "cast",
+            "a",
+            "creature",
+            "spell",
+            "from",
+            "your",
+            "graveyard",
+        ]
+);
+const PERMANENT_SPELL_GRAVEYARD_SAC_LAND_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact
+        & [
+            "a",
+            "permanent",
+            "spell",
+            "from",
+            "your",
+            "graveyard",
+            "by",
+            "sacrificing",
+            "a",
+            "land",
+            "in",
+            "addition",
+            "to",
+            "paying",
+            "its",
+            "other",
+            "costs",
+        ]
+);
+const SOURCE_CARD_OR_SPELL_FROM_GRAVEYARD_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["this", "card", "from", "your", "graveyard"],
+            &["this", "spell", "from", "your", "graveyard"],
+        ]
+);
+const FROM_TOP_OF_YOUR_LIBRARY_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["from", "the", "top", "of", "your", "library"]);
+const FROM_YOUR_GRAVEYARD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["from", "your", "graveyard"]);
+const PLAY_ANY_NUMBER_OF_LANDS_EACH_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact
+        & [
+            "play", "any", "number", "of", "lands", "on", "each", "of", "your", "turns"
+        ]
+);
+const FOR_AS_LONG_AS_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["for", "as", "long", "as"]);
+const MAY_PLAY_OR_CAST_PERMISSION_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_phrases & [&[&["may", "play"], &["may", "cast"]]]);
+const ONCE_GRAVEYARD_PERMISSION_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix & ["once", "during", "each", "of", "your", "turns"];
+    contains_words & ["graveyard"]
+);
+const PLAY_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["play"]);
+const ADDITIONAL_LAND_THIS_TURN_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["additional", "land", "this", "turn"],
+            &["additional", "lands", "this", "turn"],
+        ]
+);
+const SINGULAR_FREE_CAST_FROM_HAND_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_phrases & [&[&["cast", "a", "spell"], &["cast", "one", "spell"]]]);
+const FROM_YOUR_ZONE_WITH_MANA_VALUE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["from", "your", "graveyard", "with", "mana", "value"],
+            &["from", "your", "hand", "with", "mana", "value"],
+        ]
+);
+const WITHOUT_PAYING_ITS_MANA_COST_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["without", "paying", "its", "mana", "cost"]);
+const TAGGED_SPELL_MANA_VALUE_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &["that", "spell", "s", "mana", "value"],
+            &["that", "spells", "mana", "value"],
+        ]]
+);
 
 fn parse_permission_lead_inner<'a>(
     input: &mut LexStream<'a>,
@@ -572,7 +713,7 @@ fn parse_static_hand_free_cast_grant_spec_from_rest(
     if filter_refs.is_empty()
         || !filter_refs
             .iter()
-            .any(|word| *word == "spell" || *word == "spells")
+            .any(|word| SPELL_WORD_PATTERN.matches_words(&[*word]))
     {
         return Ok(None);
     }
@@ -616,36 +757,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         return Ok(None);
     }
 
-    if clause_refs
-        == [
-            "once",
-            "during",
-            "each",
-            "of",
-            "your",
-            "turns",
-            "you",
-            "may",
-            "cast",
-            "a",
-            "permanent",
-            "spell",
-            "from",
-            "your",
-            "graveyard",
-            "by",
-            "sacrificing",
-            "a",
-            "land",
-            "in",
-            "addition",
-            "to",
-            "paying",
-            "its",
-            "other",
-            "costs",
-        ]
-    {
+    if STATIC_PERMANENT_GRAVEYARD_SAC_LAND_PERMISSION_PATTERN.matches_words(&clause_refs) {
         let permanent_spell_filter = ObjectFilter {
             card_types: vec![
                 CardType::Artifact,
@@ -669,14 +781,14 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         }));
     }
 
-    if word_slice_starts_with(
-        &clause_refs,
-        &[
-            "once", "during", "each", "of", "your", "turns", "you", "may", "cast",
-        ],
-    ) && word_slice_ends_with(&clause_refs, &["from", "your", "graveyard"])
+    if ONCE_EACH_YOUR_TURNS_MAY_CAST_PREFIX_PATTERN.matches_words(&clause_refs)
+        && FROM_YOUR_GRAVEYARD_TAIL_PATTERN.matches_words(&clause_refs)
     {
-        let Some(from_idx) = find_token_index(tokens, |token| token.is_word("from")) else {
+        let Some(from_idx) = find_token_index(tokens, |token| {
+            token
+                .as_word()
+                .is_some_and(|word| FROM_WORD_PATTERN.matches_word(word))
+        }) else {
             return Ok(None);
         };
         let Some(subject_start) = token_index_for_word_index(tokens, 9) else {
@@ -698,25 +810,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         }
     }
 
-    if clause_refs
-        == [
-            "once",
-            "during",
-            "each",
-            "of",
-            "your",
-            "turns",
-            "you",
-            "may",
-            "cast",
-            "a",
-            "creature",
-            "spell",
-            "from",
-            "your",
-            "graveyard",
-        ]
-    {
+    if STATIC_CREATURE_GRAVEYARD_CAST_PERMISSION_PATTERN.matches_words(&clause_refs) {
         return Ok(Some(PermissionClauseSpec::GrantBySpec {
             player: PlayerAst::You,
             spec: crate::grant::GrantSpec::new(
@@ -847,30 +941,8 @@ pub(crate) fn parse_permission_clause_spec_lexed(
     if prefixed_lifetime.is_none()
         && player == PlayerAst::You
         && !allow_land
-        && rest_words
-            == [
-                "a",
-                "permanent",
-                "spell",
-                "from",
-                "your",
-                "graveyard",
-                "by",
-                "sacrificing",
-                "a",
-                "land",
-                "in",
-                "addition",
-                "to",
-                "paying",
-                "its",
-                "other",
-                "costs",
-            ]
-        && word_slice_starts_with(
-            &clause_refs,
-            &["once", "during", "each", "of", "your", "turns"],
-        )
+        && PERMANENT_SPELL_GRAVEYARD_SAC_LAND_TARGET_PATTERN.matches_words(&rest_words)
+        && ONCE_EACH_YOUR_TURNS_PREFIX_PATTERN.matches_words(&clause_refs)
     {
         let permanent_spell_filter = ObjectFilter {
             card_types: vec![
@@ -895,11 +967,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         }));
     }
 
-    if matches!(
-        rest_words.as_slice(),
-        ["this", "card", "from", "your", "graveyard"]
-            | ["this", "spell", "from", "your", "graveyard"]
-    ) {
+    if SOURCE_CARD_OR_SPELL_FROM_GRAVEYARD_PATTERN.matches_words(&rest_words) {
         return Ok(Some(PermissionClauseSpec::GrantBySpec {
             player,
             spec: crate::grant::GrantSpec::new(
@@ -945,9 +1013,9 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             "exile",
             "it",
             "instead",
-        ] if result.parse::<u32>().is_ok()
+        ] if parse_named_number(result).is_some()
     ) {
-        let result = rest_words[11].parse::<u32>().map_err(|_| {
+        let result = parse_named_number(rest_words[11]).ok_or_else(|| {
             CardTextError::ParseError("invalid die roll graveyard-cast condition".to_string())
         })?;
         return Ok(Some(PermissionClauseSpec::GrantBySpec {
@@ -973,10 +1041,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
     if allow_land && let Some(after_lands) = token_slice_strip_word_prefix(rest_tokens, &["lands"])
     {
         let zone_words = token_word_refs(after_lands);
-        if word_slice_eq(
-            &zone_words,
-            &["from", "the", "top", "of", "your", "library"],
-        ) {
+        if FROM_TOP_OF_YOUR_LIBRARY_PATTERN.matches_words(&zone_words) {
             return Ok(Some(PermissionClauseSpec::GrantBySpec {
                 player,
                 spec: crate::grant::GrantSpec::new(
@@ -992,17 +1057,17 @@ pub(crate) fn parse_permission_clause_spec_lexed(
     if allow_land
         && let Some(after_lands_and_cast) =
             token_slice_strip_word_prefix(rest_tokens, &["lands", "and", "cast"])
-        && let Some(from_idx) =
-            find_token_index(after_lands_and_cast, |token| token.is_word("from"))
+        && let Some(from_idx) = find_token_index(after_lands_and_cast, |token| {
+            token
+                .as_word()
+                .is_some_and(|word| FROM_WORD_PATTERN.matches_word(word))
+        })
     {
         let zone_words = token_word_refs(&after_lands_and_cast[from_idx..]);
-        if word_slice_eq(
-            &zone_words,
-            &["from", "the", "top", "of", "your", "library"],
-        ) {
+        if FROM_TOP_OF_YOUR_LIBRARY_PATTERN.matches_words(&zone_words) {
             let subject_tokens = trim_lexed_commas(&after_lands_and_cast[..from_idx]);
             let subject_words = token_word_refs(subject_tokens);
-            let filter = if word_slice_eq(&subject_words, &["spells"]) {
+            let filter = if SPELL_WORD_PATTERN.matches_words(&subject_words) {
                 ObjectFilter::default()
             } else {
                 let Some(spell_filter) =
@@ -1038,14 +1103,15 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             } else {
                 (rest_tokens, prefixed_lifetime)
             };
-        if let Some(from_idx) = find_token_index(zone_grant_tokens, |token| token.is_word("from")) {
+        if let Some(from_idx) = find_token_index(zone_grant_tokens, |token| {
+            token
+                .as_word()
+                .is_some_and(|word| FROM_WORD_PATTERN.matches_word(word))
+        }) {
             let zone_words = token_word_refs(&zone_grant_tokens[from_idx..]);
-            let zone = if word_slice_eq(
-                &zone_words,
-                &["from", "the", "top", "of", "your", "library"],
-            ) {
+            let zone = if FROM_TOP_OF_YOUR_LIBRARY_PATTERN.matches_words(&zone_words) {
                 Some(Zone::Library)
-            } else if word_slice_eq(&zone_words, &["from", "your", "graveyard"]) {
+            } else if FROM_YOUR_GRAVEYARD_PATTERN.matches_words(&zone_words) {
                 Some(Zone::Graveyard)
             } else {
                 None
@@ -1053,7 +1119,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             if let Some(zone) = zone {
                 let subject_tokens = trim_lexed_commas(&zone_grant_tokens[..from_idx]);
                 let subject_words = token_word_refs(subject_tokens);
-                let filter = if word_slice_eq(&subject_words, &["spells"]) {
+                let filter = if SPELL_WORD_PATTERN.matches_words(&subject_words) {
                     ObjectFilter::default()
                 } else if let Some(filter) =
                     parse_permission_subject_filter_tokens_lexed(subject_tokens)?
@@ -1139,19 +1205,15 @@ pub(crate) fn parse_unsupported_play_cast_permission_clause_lexed(
         return Ok(None);
     }
 
-    if clause_refs
-        == [
-            "play", "any", "number", "of", "lands", "on", "each", "of", "your", "turns",
-        ]
-    {
+    if PLAY_ANY_NUMBER_OF_LANDS_EACH_TURN_PATTERN.matches_words(&clause_refs) {
         return Err(CardTextError::ParseError(format!(
             "unsupported additional-land-play permission clause (clause: '{}')",
             clause_refs.join(" ")
         )));
     }
 
-    if word_slice_starts_with(&clause_refs, &["for", "as", "long", "as"])
-        && word_slice_contains_any_phrase(&clause_refs, &[&["may", "play"], &["may", "cast"]])
+    if FOR_AS_LONG_AS_PREFIX_PATTERN.matches_words(&clause_refs)
+        && MAY_PLAY_OR_CAST_PERMISSION_PATTERN.matches_words(&clause_refs)
     {
         if parse_cast_or_play_tagged_clause(tokens)?.is_some() {
             return Ok(None);
@@ -1162,11 +1224,8 @@ pub(crate) fn parse_unsupported_play_cast_permission_clause_lexed(
         )));
     }
 
-    if word_slice_starts_with(
-        &clause_refs,
-        &["once", "during", "each", "of", "your", "turns"],
-    ) && word_slice_contains_word(&clause_refs, "graveyard")
-        && word_slice_contains_any_phrase(&clause_refs, &[&["may", "play"], &["may", "cast"]])
+    if ONCE_GRAVEYARD_PERMISSION_PATTERN.matches_words(&clause_refs)
+        && MAY_PLAY_OR_CAST_PERMISSION_PATTERN.matches_words(&clause_refs)
     {
         return Err(CardTextError::ParseError(format!(
             "unsupported once-per-turn graveyard play/cast permission clause (clause: '{}')",
@@ -1235,7 +1294,8 @@ pub(crate) fn parse_additional_land_plays_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause_refs = token_word_refs(tokens);
-    if !word_slice_first_is(&clause_refs, "play") {
+    let first_word = clause_refs.first().copied().unwrap_or_default();
+    if !PLAY_WORD_PATTERN.matches_words(&[first_word]) {
         return Ok(None);
     }
 
@@ -1253,13 +1313,7 @@ pub(crate) fn parse_additional_land_plays_clause_lexed(
     };
 
     let tail = &clause_refs[1 + used..];
-    if !word_slice_eq_any(
-        tail,
-        &[
-            &["additional", "land", "this", "turn"],
-            &["additional", "lands", "this", "turn"],
-        ],
-    ) {
+    if !ADDITIONAL_LAND_THIS_TURN_TAIL_PATTERN.matches_words(tail) {
         return Ok(None);
     }
 
@@ -1309,10 +1363,7 @@ fn grant_spec_is_free_cast_from_hand(spec: &crate::grant::GrantSpec) -> bool {
 }
 
 fn clause_is_singular_free_cast_from_hand(clause_words: &[&str]) -> bool {
-    word_slice_contains_any_phrase(
-        clause_words,
-        &[&["cast", "a", "spell"], &["cast", "one", "spell"]],
-    )
+    SINGULAR_FREE_CAST_FROM_HAND_PATTERN.matches_words(clause_words)
 }
 
 fn parse_cast_with_tagged_mana_value_limit_clause(
@@ -1321,7 +1372,10 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
     fn parse_simple_spell_type_list_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
         let words = token_word_refs(tokens);
         let mut words = strip_leading_article_word_refs(&words).to_vec();
-        if word_slice_last_is_any(&words, &["spell", "spells"]) {
+        if words
+            .last()
+            .is_some_and(|word| SPELL_WORD_PATTERN.matches_words(&[*word]))
+        {
             words.pop();
         }
         if words.is_empty() {
@@ -1369,9 +1423,9 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
                 .to_string()
         })
         .collect();
-    let Some(from_idx) =
-        crate::slice_primitives::find_index(&normalized_words, |word| word == "from")
-    else {
+    let Some(from_idx) = crate::slice_primitives::find_index(&normalized_words, |word| {
+        FROM_WORD_PATTERN.matches_words(&[word.as_str()])
+    }) else {
         return Ok(None);
     };
     if from_idx == 0 {
@@ -1379,20 +1433,16 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
     }
 
     let normalized_tail = &normalized_words[from_idx..];
+    let normalized_tail_refs: Vec<_> = normalized_tail.iter().map(String::as_str).collect();
     if normalized_tail.len() < 12
-        || normalized_tail[0] != "from"
-        || normalized_tail[1] != "your"
-        || !matches!(normalized_tail[2].as_str(), "graveyard" | "hand")
-        || normalized_tail[3] != "with"
-        || normalized_tail[4] != "mana"
-        || normalized_tail[5] != "value"
+        || !FROM_YOUR_ZONE_WITH_MANA_VALUE_PREFIX_PATTERN.matches_words(&normalized_tail_refs)
     {
         return Ok(None);
     }
 
     let Some(without_idx) = normalized_tail
         .iter()
-        .position(|word| word.as_str() == "without")
+        .position(|word| WITHOUT_WORD_PATTERN.matches_words(&[word.as_str()]))
     else {
         return Ok(None);
     };
@@ -1403,7 +1453,7 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    if !word_slice_eq(&without_tail, &["without", "paying", "its", "mana", "cost"]) {
+    if !WITHOUT_PAYING_ITS_MANA_COST_PATTERN.matches_words(&without_tail) {
         return Ok(None);
     }
 
@@ -1432,15 +1482,9 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
     };
     filter.owner = Some(crate::target::PlayerFilter::You);
 
-    let normalized_tail_refs: Vec<_> = normalized_tail.iter().map(String::as_str).collect();
-    let graveyard_uses_tagged_spell_mana_value = matches!(normalized_tail[2].as_str(), "graveyard")
-        && word_slice_contains_any_phrase(
-            &normalized_tail_refs,
-            &[
-                &["that", "spell", "s", "mana", "value"],
-                &["that", "spells", "mana", "value"],
-            ],
-        );
+    let graveyard_uses_tagged_spell_mana_value = GRAVEYARD_WORD_PATTERN
+        .matches_word(normalized_tail[2].as_str())
+        && TAGGED_SPELL_MANA_VALUE_PATTERN.matches_words(&normalized_tail_refs);
     if graveyard_uses_tagged_spell_mana_value {
         filter.mana_value = None;
         filter
@@ -1478,7 +1522,7 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
         });
     }
 
-    let zone = if normalized_tail[2] == "hand" {
+    let zone = if HAND_WORD_PATTERN.matches_word(normalized_tail[2].as_str()) {
         Zone::Hand
     } else {
         Zone::Graveyard

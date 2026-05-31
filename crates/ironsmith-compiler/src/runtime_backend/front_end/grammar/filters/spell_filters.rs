@@ -1,4 +1,9 @@
 use super::*;
+use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
+    ClauseShape, clause_shape,
+};
+
+const AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
 
 pub(crate) fn parse_object_filter_with_grammar_entrypoint(
     tokens: &[OwnedLexToken],
@@ -58,8 +63,10 @@ pub(super) fn is_plausible_meld_subject_start(word: &str) -> bool {
 }
 
 pub(super) fn find_meld_subject_split(words: &[&str]) -> Option<usize> {
-    crate::runtime_backend::lexer::word_slice_find_window_by(words, 2, |window| {
-        window[0] == "and" && is_plausible_meld_subject_start(window[1])
-    })
-    .or_else(|| find_index(words, |word| *word == "and"))
+    words
+        .windows(2)
+        .position(|window| {
+            AND_WORD_PATTERN.matches_word(window[0]) && is_plausible_meld_subject_start(window[1])
+        })
+        .or_else(|| find_index(words, |word| AND_WORD_PATTERN.matches_word(word)))
 }

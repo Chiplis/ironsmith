@@ -3,10 +3,7 @@ use super::super::keyword_static::parse_pt_modifier;
 use super::super::lexer::{
     LexedClause, OwnedLexToken, find_any_token_word_sequence_span, find_token_word_sequence,
     find_token_word_sequence_span, token_slice_at_is, token_slice_at_is_any, token_slice_first_is,
-    token_slice_starts_with_at, word_slice_contains_phrase, word_slice_ends_with,
-    word_slice_ends_with_any, word_slice_eq, word_slice_eq_any, word_slice_find_phrase_start,
-    word_slice_first_is, word_slice_first_is_any, word_slice_matching_value,
-    word_slice_starts_with,
+    token_slice_starts_with_at,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{find_window_by, rfind_index};
@@ -14,6 +11,7 @@ use super::super::util::{
     is_article, is_source_reference_words, parse_target_phrase, parse_value, span_from_tokens,
     trim_commas,
 };
+use super::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::zone_counter_helpers::{split_until_source_leaves_tail, target_object_filter_mut};
 use super::zone_handlers::collapse_leading_signed_pt_modifier_tokens;
 use super::{apply_where_x_to_damage_amounts, find_verb, parse_simple_gain_ability_clause};
@@ -26,12 +24,55 @@ use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOp
 use crate::zone::Zone;
 
 const THAT_MUCH_PREFIXES: &[&[&str]] = &[&["that", "much"]];
+const THAT_MUCH_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["that", "much"]);
+const WITH_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["with"]);
+const DEAL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["deal"]);
+const DAMAGE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["damage"]);
+const TO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["to"]);
+const TARGET_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["target"]);
+const PREVENT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["prevent"]);
+const THAT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["that"]);
+const THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this", "turn"]);
+const INSTEAD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["instead"]);
+const FANOUT_VERB_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["destroy"], &["exile"], &["return"]]);
+const RETURN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["return"]);
+const YOUR_GRAVEYARD_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["your", "graveyard"]]);
+const GET_OR_GAIN_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["get"], &["gets"], &["gain"], &["gains"]]);
+const GET_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["get"], &["gets"]]);
+const CONTROLLER_CONTROLS_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
+    suffix_any
+        & [
+            &["controller", "controls"],
+            &["controller", "control"],
+            &["controllers", "controls"],
+            &["controllers", "control"],
+        ]
+);
+const THAT_PLAYER_OR_THAT_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["that", "player", "or", "that"]);
+const PLAYER_OR_PLAYERS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["player"], &["players"]]);
+const PLANESWALKER_OR_PLANESWALKERS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["planeswalker"], &["planeswalkers"]]);
+const PLAYER_OPPONENT_DAMAGE_PART_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["player"], &["players"], &["opponent"], &["opponents"]]);
+const EACH_OR_ALL_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["each"], &["all"]]);
+const YOU_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["you"]);
+const OPPONENT_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["opponent"], &["opponents"]]);
 
 pub(crate) fn find_same_name_reference_span(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(usize, usize)>, CardTextError> {
     for idx in 0..tokens.len() {
-        if !tokens[idx].is_word("with") {
+        if !tokens[idx]
+            .as_word()
+            .is_some_and(|word| WITH_WORD_PATTERN.matches_word(word))
+        {
             continue;
         }
         if token_slice_starts_with_at(tokens, idx + 1, &["the", "same", "name", "as", "that"])
@@ -157,7 +198,7 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
         return Ok(None);
     };
 
-    let deal_tokens: Option<&[OwnedLexToken]> = if first_word == "deal" {
+    let deal_tokens: Option<&[OwnedLexToken]> = if DEAL_WORD_PATTERN.matches_words(&[first_word]) {
         Some(tokens)
     } else if let Some((Verb::Deal, verb_idx)) = find_verb(tokens) {
         let subject_words =
@@ -173,7 +214,7 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
 
     if let Some(deal_tokens) = deal_tokens {
         let deal_words = crate::runtime_backend::token_word_refs(deal_tokens);
-        let (amount, used) = if word_slice_starts_with(&deal_words[1..], &["that", "much"]) {
+        let (amount, used) = if THAT_MUCH_PREFIX_PATTERN.matches_words(&deal_words[1..]) {
             (Value::EventValue(EventValueSpec::Amount), 2usize)
         } else if let Some((value, used)) = parse_value(&deal_tokens[1..]) {
             (value, used)
@@ -182,18 +223,20 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
         };
 
         let after_amount = &deal_tokens[1 + used..];
-        if !after_amount
-            .first()
-            .is_some_and(|token| token.is_word("damage"))
-        {
+        if !after_amount.first().is_some_and(|token| {
+            token
+                .as_word()
+                .is_some_and(|word| DAMAGE_WORD_PATTERN.matches_word(word))
+        }) {
             return Ok(None);
         }
 
         let mut target_tokens = &after_amount[1..];
-        if target_tokens
-            .first()
-            .is_some_and(|token| token.is_word("to"))
-        {
+        if target_tokens.first().is_some_and(|token| {
+            token
+                .as_word()
+                .is_some_and(|word| TO_WORD_PATTERN.matches_word(word))
+        }) {
             target_tokens = &target_tokens[1..];
         }
         if target_tokens.is_empty() {
@@ -207,9 +250,11 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
         };
         let first_target_tokens = trim_commas(&target_tokens[..split_idx]);
         if first_target_tokens.is_empty()
-            || !first_target_tokens
-                .iter()
-                .any(|token| token.is_word("target"))
+            || !first_target_tokens.iter().any(|token| {
+                token
+                    .as_word()
+                    .is_some_and(|word| TARGET_WORD_PATTERN.matches_word(word))
+            })
         {
             return Ok(None);
         }
@@ -229,7 +274,7 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
     }
 
     let verb = first_word;
-    if verb != "destroy" && verb != "exile" && verb != "return" {
+    if !FANOUT_VERB_PATTERN.matches_words(&[verb]) {
         return Ok(None);
     }
 
@@ -243,15 +288,22 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
 
     let first_target_tokens = trim_commas(&tokens[1..and_idx]);
     if first_target_tokens.is_empty()
-        || !first_target_tokens
-            .iter()
-            .any(|token| token.is_word("target"))
+        || !first_target_tokens.iter().any(|token| {
+            token
+                .as_word()
+                .is_some_and(|word| TARGET_WORD_PATTERN.matches_word(word))
+        })
     {
         return Ok(None);
     }
 
-    let second_clause_tokens = if verb == "return" {
-        let to_idx = rfind_index(tokens, |token| token.is_word("to")).ok_or_else(|| {
+    let second_clause_tokens = if RETURN_WORD_PATTERN.matches_words(&[verb]) {
+        let to_idx = rfind_index(tokens, |token| {
+            token
+                .as_word()
+                .is_some_and(|word| TO_WORD_PATTERN.matches_word(word))
+        })
+        .ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "missing return destination in same-name fanout clause (clause: '{}')",
                 words_all.join(" ")
@@ -282,7 +334,7 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
     };
 
     let mut first_target = parse_target_phrase(&first_target_tokens)?;
-    if verb == "return"
+    if RETURN_WORD_PATTERN.matches_words(&[verb])
         && let Some(first_filter) = target_object_filter_mut(&mut first_target)
     {
         if first_filter.zone.is_none() {
@@ -294,7 +346,7 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
         if first_filter.owner.is_none() {
             first_filter.owner = filter.owner.clone();
             if first_filter.owner.is_none()
-                && word_slice_contains_phrase(&words_all, &["your", "graveyard"])
+                && YOUR_GRAVEYARD_MARKER_PATTERN.matches_words(&words_all)
             {
                 first_filter.owner = Some(PlayerFilter::You);
             }
@@ -335,7 +387,10 @@ pub(crate) fn find_shares_color_reference_span(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(usize, usize)>, CardTextError> {
     for idx in 0..tokens.len() {
-        if !tokens[idx].is_word("that") {
+        if !tokens[idx]
+            .as_word()
+            .is_some_and(|word| THAT_WORD_PATTERN.matches_word(word))
+        {
             continue;
         }
         if token_slice_at_is_any(tokens, idx + 1, &["shares", "share"])
@@ -434,10 +489,9 @@ fn parse_explicit_shared_color_gets_or_gains(
     let verb_idx = tokens[and_idx + 3..]
         .iter()
         .position(|token| {
-            token.is_word("get")
-                || token.is_word("gets")
-                || token.is_word("gain")
-                || token.is_word("gains")
+            token
+                .as_word()
+                .is_some_and(|word| GET_OR_GAIN_WORD_PATTERN.matches_word(word))
         })
         .map(|idx| and_idx + 3 + idx);
     let Some(verb_token_idx) = verb_idx else {
@@ -446,9 +500,11 @@ fn parse_explicit_shared_color_gets_or_gains(
 
     let first_target_tokens = trim_commas(&tokens[..and_idx]);
     if first_target_tokens.is_empty()
-        || !first_target_tokens
-            .iter()
-            .any(|token| token.is_word("target"))
+        || !first_target_tokens.iter().any(|token| {
+            token
+                .as_word()
+                .is_some_and(|word| TARGET_WORD_PATTERN.matches_word(word))
+        })
     {
         return Ok(None);
     }
@@ -462,7 +518,10 @@ fn parse_explicit_shared_color_gets_or_gains(
     };
     let first_target = parse_target_phrase(&first_target_tokens)?;
 
-    if tokens[verb_token_idx].is_word("get") || tokens[verb_token_idx].is_word("gets") {
+    if tokens[verb_token_idx]
+        .as_word()
+        .is_some_and(|word| GET_WORD_PATTERN.matches_word(word))
+    {
         let modifier_tokens = &tokens[verb_token_idx + 1..];
         let modifier_word = modifier_tokens
             .first()
@@ -556,9 +615,11 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
         };
         let first_target_tokens = trim_commas(&after_verb[..split_idx]);
         if first_target_tokens.is_empty()
-            || !first_target_tokens
-                .iter()
-                .any(|token| token.is_word("target"))
+            || !first_target_tokens.iter().any(|token| {
+                token
+                    .as_word()
+                    .is_some_and(|word| TARGET_WORD_PATTERN.matches_word(word))
+            })
         {
             return Ok(None);
         }
@@ -602,17 +663,19 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
         };
 
         let after_amount = &after_verb[used..];
-        if !after_amount
-            .first()
-            .is_some_and(|token| token.is_word("damage"))
-        {
+        if !after_amount.first().is_some_and(|token| {
+            token
+                .as_word()
+                .is_some_and(|word| DAMAGE_WORD_PATTERN.matches_word(word))
+        }) {
             return Ok(None);
         }
         let mut target_tokens = &after_amount[1..];
-        if target_tokens
-            .first()
-            .is_some_and(|token| token.is_word("to"))
-        {
+        if target_tokens.first().is_some_and(|token| {
+            token
+                .as_word()
+                .is_some_and(|word| TO_WORD_PATTERN.matches_word(word))
+        }) {
             target_tokens = &target_tokens[1..];
         }
         if target_tokens.is_empty() {
@@ -623,9 +686,11 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
         };
         let first_target_tokens = trim_commas(&target_tokens[..split_idx]);
         if first_target_tokens.is_empty()
-            || !first_target_tokens
-                .iter()
-                .any(|token| token.is_word("target"))
+            || !first_target_tokens.iter().any(|token| {
+                token
+                    .as_word()
+                    .is_some_and(|word| TARGET_WORD_PATTERN.matches_word(word))
+            })
         {
             return Ok(None);
         }
@@ -643,7 +708,10 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
         ]));
     }
 
-    if word_slice_first_is(&words_all, "prevent") {
+    if words_all
+        .first()
+        .is_some_and(|word| PREVENT_WORD_PATTERN.matches_word(word))
+    {
         let mut idx = verb_token_idx + 1;
         if token_slice_at_is(tokens, idx, "the") {
             idx += 1;
@@ -675,10 +743,9 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
         }
         idx += 1;
 
-        let Some(this_turn_rel) = word_slice_find_phrase_start(
-            &crate::runtime_backend::token_word_refs(&tokens[idx..]),
-            &["this", "turn"],
-        ) else {
+        let Some(this_turn_rel) = THIS_TURN_PATTERN
+            .find_exact_window(&crate::runtime_backend::token_word_refs(&tokens[idx..]), 2)
+        else {
             return Ok(None);
         };
         let this_turn_abs = idx + this_turn_rel;
@@ -693,9 +760,11 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
 
         let first_target_tokens = trim_commas(&scope_tokens[..split_idx]);
         if first_target_tokens.is_empty()
-            || !first_target_tokens
-                .iter()
-                .any(|token| token.is_word("target"))
+            || !first_target_tokens.iter().any(|token| {
+                token
+                    .as_word()
+                    .is_some_and(|word| TARGET_WORD_PATTERN.matches_word(word))
+            })
         {
             return Ok(None);
         }
@@ -786,9 +855,11 @@ pub(crate) fn parse_shared_color_target_fanout_sentence(
 
         let first_target_tokens = trim_commas(&subject_tokens[..and_idx]);
         if first_target_tokens.is_empty()
-            || !first_target_tokens
-                .iter()
-                .any(|token| token.is_word("target"))
+            || !first_target_tokens.iter().any(|token| {
+                token
+                    .as_word()
+                    .is_some_and(|word| TARGET_WORD_PATTERN.matches_word(word))
+            })
         {
             return Ok(None);
         }
@@ -874,10 +945,12 @@ enum CompoundDamagePart {
 
 fn strip_trailing_damage_noise(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let mut cleaned = trim_commas(tokens);
-    while cleaned
-        .last()
-        .is_some_and(|token| token.is_word("instead") || token.is_comma())
-    {
+    while cleaned.last().is_some_and(|token| {
+        token.is_comma()
+            || token
+                .as_word()
+                .is_some_and(|word| INSTEAD_WORD_PATTERN.matches_word(word))
+    }) {
         cleaned.pop();
     }
     cleaned
@@ -926,21 +999,13 @@ fn strip_known_controller_tail(
     player_context: Option<PlayerFilter>,
 ) -> (Vec<OwnedLexToken>, Option<PlayerFilter>) {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    let has_controller_controls_tail = word_slice_ends_with_any(
-        &words,
-        &[
-            &["controller", "controls"],
-            &["controller", "control"],
-            &["controllers", "controls"],
-            &["controllers", "control"],
-        ],
-    );
+    let has_controller_controls_tail = CONTROLLER_CONTROLS_TAIL_PATTERN.matches_words(&words);
     if has_controller_controls_tail && words.len() >= 6 {
         for start in 0..words.len().saturating_sub(4) {
-            if word_slice_starts_with(&words[start..], &["that", "player", "or", "that"])
+            if THAT_PLAYER_OR_THAT_PREFIX_PATTERN.matches_words(&words[start..])
                 && words[start + 4..words.len().saturating_sub(2)]
                     .iter()
-                    .any(|word| word.starts_with("planeswalker"))
+                    .any(|word| PLANESWALKER_OR_PLANESWALKERS_WORD_PATTERN.matches_word(word))
             {
                 return (
                     tokens_before_word(tokens, start),
@@ -1059,21 +1124,18 @@ fn parse_each_damage_part(
         return Ok(None);
     }
 
-    if let Some(player_filter) = word_slice_matching_value(
-        &words,
-        &[
-            (&["player"], PlayerFilter::Any),
-            (&["players"], PlayerFilter::Any),
-            (&["opponent"], PlayerFilter::Opponent),
-            (&["opponents"], PlayerFilter::Opponent),
-        ],
-    ) {
+    if PLAYER_OPPONENT_DAMAGE_PART_PATTERN.matches_words(&words) {
+        let player_filter = if OPPONENT_WORD_PATTERN.matches_words(&words) {
+            PlayerFilter::Opponent
+        } else {
+            PlayerFilter::Any
+        };
         return Ok(Some(CompoundDamagePart::EachPlayer(player_filter)));
     }
 
     if words
         .first()
-        .is_some_and(|word| *word == "player" || *word == "players")
+        .is_some_and(|word| PLAYER_OR_PLAYERS_WORD_PATTERN.matches_words(&[*word]))
     {
         return Ok(None);
     }
@@ -1102,25 +1164,31 @@ fn parse_damage_part(
         return Ok(None);
     }
 
-    if word_slice_first_is_any(&words, &["each", "all"]) {
+    if words
+        .first()
+        .is_some_and(|word| EACH_OR_ALL_WORD_PATTERN.matches_words(&[*word]))
+    {
         return parse_each_damage_part(&tokens[1..], player_context);
     }
 
-    if word_slice_eq(&words, &["you"]) {
+    if YOU_WORD_PATTERN.matches_words(&words) {
         return Ok(Some(CompoundDamagePart::Target(TargetAst::Player(
             PlayerFilter::You,
             span_from_tokens(&tokens),
         ))));
     }
 
-    if word_slice_eq_any(&words, &[&["opponent"], &["opponents"]]) {
+    if OPPONENT_WORD_PATTERN.matches_words(&words) {
         return Ok(Some(CompoundDamagePart::Target(TargetAst::Player(
             PlayerFilter::Opponent,
             span_from_tokens(&tokens),
         ))));
     }
 
-    if crate::runtime_backend::lexer::word_slice_contains_word(&words, "target") {
+    if words
+        .iter()
+        .any(|word| TARGET_WORD_PATTERN.matches_words(&[*word]))
+    {
         return Ok(Some(CompoundDamagePart::Target(parse_target_phrase(
             &tokens,
         )?)));
@@ -1196,7 +1264,10 @@ fn parse_equal_damage_amount_and_targets(
     }
 
     for target_to_idx in 3..tokens.len() {
-        if !tokens[target_to_idx].is_word("to") {
+        if !tokens[target_to_idx]
+            .as_word()
+            .is_some_and(|word| TO_WORD_PATTERN.matches_word(word))
+        {
             continue;
         }
         let target_tail = &tokens[target_to_idx + 1..];
@@ -1231,7 +1302,7 @@ pub(crate) fn parse_compound_damage_fanout_sentence(
             (amount, target_tokens)
         } else {
             let deal_words = crate::runtime_backend::token_word_refs(deal_tokens);
-            let (amount, used) = if word_slice_starts_with(&deal_words[1..], &["that", "much"]) {
+            let (amount, used) = if THAT_MUCH_PREFIX_PATTERN.matches_words(&deal_words[1..]) {
                 (Value::EventValue(EventValueSpec::Amount), 2usize)
             } else if let Some((value, used)) = parse_value(after_deal) {
                 (value, used)
@@ -1240,18 +1311,20 @@ pub(crate) fn parse_compound_damage_fanout_sentence(
             };
 
             let after_amount = &after_deal[used..];
-            if !after_amount
-                .first()
-                .is_some_and(|token| token.is_word("damage"))
-            {
+            if !after_amount.first().is_some_and(|token| {
+                token
+                    .as_word()
+                    .is_some_and(|word| DAMAGE_WORD_PATTERN.matches_word(word))
+            }) {
                 return Ok(None);
             }
 
             let mut target_tokens = &after_amount[1..];
-            if target_tokens
-                .first()
-                .is_some_and(|token| token.is_word("to"))
-            {
+            if target_tokens.first().is_some_and(|token| {
+                token
+                    .as_word()
+                    .is_some_and(|word| TO_WORD_PATTERN.matches_word(word))
+            }) {
                 target_tokens = &target_tokens[1..];
             }
             (amount, target_tokens.to_vec())
@@ -1307,9 +1380,11 @@ pub(crate) fn parse_same_name_gets_fanout_sentence(
 
     let first_target_tokens = trim_commas(&subject_tokens[..and_idx]);
     if first_target_tokens.is_empty()
-        || !first_target_tokens
-            .iter()
-            .any(|token| token.is_word("target"))
+        || !first_target_tokens.iter().any(|token| {
+            token
+                .as_word()
+                .is_some_and(|word| TARGET_WORD_PATTERN.matches_word(word))
+        })
     {
         return Ok(None);
     }

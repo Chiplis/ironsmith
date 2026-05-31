@@ -1,5 +1,9 @@
 use super::super::grammar::structure;
 use super::*;
+use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
+
+const REVEAL_THIS_CARD_FROM_HAND_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["reveal", "this", "card", "from", "your", "hand"]);
 
 fn join_statement_parse_sentence_group(sentences: &[Vec<OwnedLexToken>]) -> Vec<OwnedLexToken> {
     let mut joined = Vec::new();
@@ -361,15 +365,15 @@ pub(super) fn parse_colon_nonactivation_statement_fallback(
         return Ok(None);
     };
 
-    let left = render_token_slice(left_tokens);
-    let trimmed_left = left.trim();
-
-    if trimmed_left.eq_ignore_ascii_case("reveal this card from your hand") {
+    if REVEAL_THIS_CARD_FROM_HAND_PATTERN.matches_words(&token_word_refs(left_tokens)) {
         let left_line = rewrite_line_tokens(line, left_tokens);
         if let Some(statement) = parse_statement_line_cst(&left_line)? {
             return Ok(Some(statement));
         }
     }
+
+    let left = render_token_slice(left_tokens);
+    let trimmed_left = left.trim();
 
     if !str_contains(trimmed_left, "{") && str_contains(trimmed_left, ",") {
         let right_line = rewrite_line_tokens(line, right_tokens);

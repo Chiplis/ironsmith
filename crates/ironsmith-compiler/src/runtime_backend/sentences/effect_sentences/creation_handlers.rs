@@ -16,10 +16,6 @@ use super::super::grammar::structure::parse_who_player_predicate_lexed;
 use super::super::keyword_static::parse_value_binding_clause;
 use super::super::lexer::{
     LexedClause, render_token_slice, token_slice_at_is, token_slice_first_is, token_word_refs,
-    word_slice_contains_any_phrase, word_slice_contains_phrase, word_slice_contains_word,
-    word_slice_eq_any, word_slice_find_any_phrase_start, word_slice_find_phrase_start,
-    word_slice_find_word, word_slice_find_word_where, word_slice_first_is, word_slice_first_is_any,
-    word_slice_rfind_word_where, word_slice_starts_with, word_slice_starts_with_any,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{
@@ -30,7 +26,7 @@ use super::super::util::{
     parse_target_phrase, parse_value, token_index_for_word_index, trim_commas,
     value_contains_unbound_x,
 };
-use super::clause_pattern_helpers::extract_subject_player;
+use super::clause_pattern_helpers::{ClauseShape, clause_shape, extract_subject_player};
 use super::conditionals::parse_subtype_word;
 use super::dispatch_entry::target_references_it;
 use super::lex_chain_helpers::starts_with_inline_token_rules_tail;
@@ -43,16 +39,252 @@ fn push_unique_subtype(subtypes: &mut Vec<Subtype>, subtype: Subtype) {
     crate::slice_primitives::push_unique(subtypes, subtype);
 }
 
+const CREATE_CARD_TYPES_AMONG_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases & [&[&["card", "type", "among"], &["card", "types", "among"]]]
+);
+const CREATE_EXCEPT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["except"]);
+const CREATE_LOSE_OR_LOSES_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_words & [&["lose", "loses"]]);
+const CREATE_SOULBOND_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["soulbond"]);
+const CREATE_NOT_LEGENDARY_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &["isnt", "legendary"],
+            &["isn't", "legendary"],
+            &["is", "not", "legendary"],
+        ]]
+);
+const CREATE_GRANT_VERB_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_words & [&["has", "have", "gain", "gains"]]);
+const CREATE_BEGINNING_NEXT_END_STEP_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &["beginning", "of", "the", "next", "end", "step"],
+            &["beginning", "of", "next", "end", "step"],
+            &["beginning", "of", "the", "end", "step"],
+            &["beginning", "of", "end", "step"],
+        ]]
+);
+const CREATE_SACRIFICE_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["sacrifice"]);
+const CREATE_EXILE_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["exile"]);
+const CREATE_DELAY_REFERENCE_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_words & [&["token", "tokens", "permanent", "permanents", "it", "them"]]
+);
+const CREATE_TOKEN_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["token"]);
+const CREATE_LEGENDARY_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["legendary"]);
+const CREATE_AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
+const CREATE_AND_OR_OR_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["and"], &["or"]]);
+const CREATE_ARTICLE_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["a"], &["an"]]);
+const CREATE_ARTICLE_OR_THE_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["a"], &["an"], &["the"]]);
+const CREATE_OF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["of"]);
+const CREATE_INLINE_REFERENCE_START_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["that"], &["it"], &["those"], &["thats"], &["its"]]);
+const CREATE_TAPPED_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["tapped"]);
+const CREATE_ATTACKING_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["attacking"]);
+const CREATE_DECAYED_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["decayed"]);
+const CREATE_INLINE_MODIFIER_START_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix_any & [&["thats"], &["that", "is"], &["that", "are"]]);
+const CREATE_IDENTITY_CLAUSE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["its"],
+            &["it", "is"],
+            &["it", "s"],
+            &["it's"],
+            &["it’s"],
+            &["theyre"],
+            &["they", "re"],
+            &["they're"],
+            &["they’re"],
+            &["they", "are"],
+        ]
+);
+const CREATE_ATTACK_TARGET_PLAYER_OR_PLANESWALKER_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &[
+                "that",
+                "player",
+                "or",
+                "a",
+                "planeswalker",
+                "they",
+                "control"
+            ],
+            &["that", "player", "or", "planeswalker", "they", "control"],
+            &[
+                "that",
+                "player",
+                "or",
+                "a",
+                "planeswalker",
+                "they",
+                "controls"
+            ],
+            &["that", "player", "or", "planeswalker", "they", "controls"],
+            &[
+                "that",
+                "player",
+                "or",
+                "a",
+                "planeswalker",
+                "their",
+                "control"
+            ],
+            &["that", "player", "or", "planeswalker", "their", "control"],
+        ]]
+);
+const CREATE_EQUAL_TO_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["equal", "to"]]);
+const CREATE_TOKEN_RULES_TEXT_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &["it", "has"],
+            &["it", "gains"],
+            &["it", "gets"],
+            &["this", "token"],
+            &["that", "token"],
+        ]]
+);
+const CREATE_EQUIPMENT_RULES_SUBJECT_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &["equipped", "creature", "has"],
+            &["equipped", "creature", "gets"],
+        ]]
+);
+const CREATE_UNBLOCKABLE_RULES_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &["this", "token", "cant", "be", "blocked"],
+            &["this", "creature", "cant", "be", "blocked"],
+            &["cant", "be", "blocked"],
+        ]]
+);
+const CREATE_ATTACKING_THAT_PLAYER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["attacking", "that", "player"]]);
+const CREATE_ATTACHED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["attached"]);
+const CREATE_TO_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["to"]);
+const CREATE_WITH_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["with"]);
+const CREATE_NAMED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["named"]);
+const CREATE_TOKEN_OR_TOKENS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["token"], &["tokens"]]);
+const CREATE_FOR_EACH_WORDS: &[&str] = &["for", "each"];
+const CREATE_FOR_EACH_PATTERN: ClauseShape<'static> = clause_shape!(exact & CREATE_FOR_EACH_WORDS);
+const CREATE_TOKEN_GETS_FOR_EACH_WORDS: &[&str] =
+    &["this", "token", "gets", "+1/+1", "for", "each"];
+const CREATE_TOKEN_GETS_FOR_EACH_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & CREATE_TOKEN_GETS_FOR_EACH_WORDS);
+const CREATE_CREATURE_GETS_FOR_EACH_WORDS: &[&str] =
+    &["this", "creature", "gets", "+1/+1", "for", "each"];
+const CREATE_CREATURE_GETS_FOR_EACH_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & CREATE_CREATURE_GETS_FOR_EACH_WORDS);
+const CREATE_YOU_CONTROL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["you", "control"]);
+const CREATE_IN_ADDITION_TO_ITS_TYPES_WORDS: &[&str] =
+    &["in", "addition", "to", "its", "other", "types"];
+const CREATE_IN_ADDITION_TO_ITS_TYPES_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & CREATE_IN_ADDITION_TO_ITS_TYPES_WORDS);
+const CREATE_IN_ADDITION_TO_THEIR_TYPES_WORDS: &[&str] =
+    &["in", "addition", "to", "their", "other", "types"];
+const CREATE_IN_ADDITION_TO_THEIR_TYPES_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & CREATE_IN_ADDITION_TO_THEIR_TYPES_WORDS);
+const CREATE_DESCRIPTOR_END_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["with"], &["has"], &["have"], &["gain"], &["gains"]]);
+const CREATE_NAME_END_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["with"], &["that"], &["which"], &["thats"]]);
+const CREATE_RULES_TEXT_START_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["when"],
+            &["whenever"],
+            &["if"],
+            &["t"],
+            &["this"],
+            &["that"],
+            &["it"],
+            &["those"],
+            &["sacrifice"],
+            &["add"],
+            &["draw"],
+            &["deals"],
+            &["deal"],
+        ]
+);
+const CREATE_PRESERVE_RULES_TAIL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["when"],
+            &["whenever"],
+            &["at"],
+            &["sacrifice"],
+            &["return"],
+            &["counter"],
+            &["draw"],
+            &["add"],
+            &["deals"],
+            &["deal"],
+            &["gets"],
+            &["gain"],
+            &["gains"],
+            &["power"],
+            &["toughness"],
+            &["cant"],
+            &["can"],
+            &["block"],
+        ]
+);
+const CREATE_PT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["x/x"]]);
+const CREATE_WHERE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["where"]);
+const CREATE_EXILED_THIS_WAY_WORDS: &[&str] = &["exiled", "this", "way"];
+const CREATE_EXILED_THIS_WAY_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & CREATE_EXILED_THIS_WAY_WORDS);
+const CREATE_TIME_OR_TIMES_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["time"], &["times"]]);
+const CREATE_ONCE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["once"]);
+const CREATE_TWICE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["twice"]);
+const CREATE_COPY_OR_COPIES_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_words & [&["copy", "copies"]]);
+const CREATE_COPY_OR_COPIES_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["copy"], &["copies"]]);
+const CREATE_WHEN_OR_WHENEVER_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["when"], &["whenever"]]);
+const CREATE_YOU_REFERENCE_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["you"], &["your"], &["youve"]]);
+const CREATE_OPPONENT_REFERENCE_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["opponent"], &["opponents"]]);
+const CREATE_SPELL_OR_SPELLS_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_words & [&["spell", "spells"]]);
+const CREATE_CAST_OR_CASTS_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_words & [&["cast", "casts"]]);
+const CREATE_TURN_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["turn"]);
+const CREATE_INVESTIGATE_TRAILING_TIME_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["time"], &["times"]]);
+
+fn create_find_phrase_shape(
+    words: &[&str],
+    phrase_len: usize,
+    shape: ClauseShape<'static>,
+) -> Option<usize> {
+    words
+        .windows(phrase_len)
+        .position(|window| shape.matches_words(window))
+}
+
 fn reject_lossy_for_each_fallback(
     tokens: &[OwnedLexToken],
     full_clause_words: &[&str],
 ) -> Result<(), CardTextError> {
     let words = token_word_refs(tokens);
-    let has_card_type_among = word_slice_contains_any_phrase(
-        &words,
-        &[&["card", "type", "among"], &["card", "types", "among"]],
-    );
-    if has_card_type_among {
+    if CREATE_CARD_TYPES_AMONG_PATTERN.matches_words(&words) {
         return Err(CardTextError::ParseError(format!(
             "unsupported card-types-among create count (clause: '{}')",
             full_clause_words.join(" ")
@@ -73,7 +305,7 @@ pub(crate) fn looks_like_pt_word(word: &str) -> bool {
     };
     let is_component = |part: &str| {
         let part = part.trim_matches(|ch| matches!(ch, '+' | '-'));
-        part == "x" || part == "*" || part.parse::<i32>().is_ok()
+        matches!(part, "x" | "*") || part.parse::<i32>().is_ok()
     };
     is_component(power) && is_component(toughness)
 }
@@ -140,7 +372,7 @@ pub(crate) fn parse_copy_modifiers_from_tail(
     let mut set_base_power_toughness = None;
     let mut granted_abilities = Vec::new();
 
-    let except_idx = word_slice_rfind_word_where(tail_words, |word| word == "except");
+    let except_idx = CREATE_EXCEPT_WORD_PATTERN.rfind_word(tail_words);
     let modifier_words = except_idx
         .map(|idx| &tail_words[idx + 1..])
         .unwrap_or_default();
@@ -157,23 +389,15 @@ pub(crate) fn parse_copy_modifiers_from_tail(
         ));
     }
 
-    if (word_slice_contains_word(modifier_words, "lose")
-        || word_slice_contains_word(modifier_words, "loses"))
-        && word_slice_contains_word(modifier_words, "soulbond")
+    if CREATE_LOSE_OR_LOSES_MARKER_PATTERN.matches_words(modifier_words)
+        && CREATE_SOULBOND_MARKER_PATTERN.matches_words(modifier_words)
     {
         return Err(CardTextError::ParseError(
             "removing soulbond requires non-marker semantics".to_string(),
         ));
     }
 
-    if word_slice_contains_any_phrase(
-        modifier_words,
-        &[
-            &["isnt", "legendary"],
-            &["isn't", "legendary"],
-            &["is", "not", "legendary"],
-        ],
-    ) {
+    if CREATE_NOT_LEGENDARY_PATTERN.matches_words(modifier_words) {
         removed_supertypes.push(Supertype::Legendary);
     }
 
@@ -184,13 +408,18 @@ pub(crate) fn parse_copy_modifiers_from_tail(
         set_base_power_toughness = Some((power, toughness));
     }
 
-    let has_grant_verb = word_slice_contains_word(modifier_words, "has")
-        || word_slice_contains_word(modifier_words, "have")
-        || word_slice_contains_word(modifier_words, "gain")
-        || word_slice_contains_word(modifier_words, "gains");
+    let has_grant_verb = CREATE_GRANT_VERB_MARKER_PATTERN.matches_words(modifier_words);
     let has_modifier_keyword = |keyword: &str| {
-        word_slice_contains_phrase(modifier_words, &["with", keyword])
-            || (has_grant_verb && word_slice_contains_word(modifier_words, keyword))
+        let with_keyword = ["with", keyword];
+        let with_keyword_phrases: &[&[&str]] = &[&with_keyword];
+        let keyword_words = [keyword];
+        ClauseShape::new()
+            .contains_phrases(with_keyword_phrases)
+            .matches_words(modifier_words)
+            || (has_grant_verb
+                && ClauseShape::new()
+                    .contains_words(&keyword_words)
+                    .matches_words(modifier_words))
     };
     if has_modifier_keyword("flying") {
         granted_abilities.push(StaticAbility::flying());
@@ -198,26 +427,29 @@ pub(crate) fn parse_copy_modifiers_from_tail(
     if has_modifier_keyword("trample") {
         granted_abilities.push(StaticAbility::trample());
     }
-    if let Some(idx) = word_slice_find_phrase_start(
+    if let Some(idx) = create_find_phrase_shape(
         modifier_words,
-        &["this", "token", "gets", "+1/+1", "for", "each"],
+        CREATE_TOKEN_GETS_FOR_EACH_WORDS.len(),
+        CREATE_TOKEN_GETS_FOR_EACH_PATTERN,
     )
     .or_else(|| {
-        word_slice_find_phrase_start(
+        create_find_phrase_shape(
             modifier_words,
-            &["this", "creature", "gets", "+1/+1", "for", "each"],
+            CREATE_CREATURE_GETS_FOR_EACH_WORDS.len(),
+            CREATE_CREATURE_GETS_FOR_EACH_PATTERN,
         )
     }) {
         let mut tail = modifier_words.get(idx + 6..).unwrap_or_default();
-        while tail
-            .first()
-            .is_some_and(|word| is_article(word) || matches!(*word, "a" | "an" | "the"))
-        {
+        while tail.first().is_some_and(|word| {
+            is_article(word) || CREATE_ARTICLE_OR_THE_WORD_PATTERN.matches_word(word)
+        }) {
             tail = &tail[1..];
         }
         if let Some(subtype_word) = tail.first().copied() {
             let subtype = parse_subtype_flexible(subtype_word);
-            let you_control = word_slice_contains_phrase(tail, &["you", "control"]);
+            let you_control = tail
+                .windows(2)
+                .any(|window| CREATE_YOU_CONTROL_PATTERN.matches_words(window));
             if let Some(subtype) = subtype
                 && you_control
             {
@@ -235,14 +467,16 @@ pub(crate) fn parse_copy_modifiers_from_tail(
         }
     }
 
-    let addition_idx = word_slice_find_phrase_start(
+    let addition_idx = create_find_phrase_shape(
         modifier_words,
-        &["in", "addition", "to", "its", "other", "types"],
+        CREATE_IN_ADDITION_TO_ITS_TYPES_WORDS.len(),
+        CREATE_IN_ADDITION_TO_ITS_TYPES_PATTERN,
     )
     .or_else(|| {
-        word_slice_find_phrase_start(
+        create_find_phrase_shape(
             modifier_words,
-            &["in", "addition", "to", "their", "other", "types"],
+            CREATE_IN_ADDITION_TO_THEIR_TYPES_WORDS.len(),
+            CREATE_IN_ADDITION_TO_THEIR_TYPES_PATTERN,
         )
     });
     if let Some(addition_idx) = addition_idx {
@@ -256,26 +490,10 @@ pub(crate) fn parse_copy_modifiers_from_tail(
             }
         }
     } else {
-        let starts_with_identity_clause = word_slice_starts_with_any(
-            modifier_words,
-            &[
-                &["its"],
-                &["it", "is"],
-                &["it", "s"],
-                &["it's"],
-                &["it’s"],
-                &["theyre"],
-                &["they", "re"],
-                &["they're"],
-                &["they’re"],
-                &["they", "are"],
-            ],
-        );
-        if starts_with_identity_clause {
-            let descriptor_end = word_slice_find_word_where(modifier_words, |word| {
-                matches!(word, "with" | "has" | "have" | "gain" | "gains")
-            })
-            .unwrap_or(modifier_words.len());
+        if CREATE_IDENTITY_CLAUSE_PREFIX_PATTERN.matches_words(modifier_words) {
+            let descriptor_end = CREATE_DESCRIPTOR_END_WORD_PATTERN
+                .find_word(modifier_words)
+                .unwrap_or(modifier_words.len());
             let descriptor_words = &modifier_words[..descriptor_end];
             let mut colors = ColorSet::new();
             let mut card_types = Vec::new();
@@ -336,33 +554,14 @@ pub(crate) fn parse_copy_modifiers_from_tail(
 }
 
 pub(crate) fn parse_next_end_step_token_delay_flags(tail_words: &[&str]) -> (bool, bool) {
-    let has_beginning_of_end_step = word_slice_contains_any_phrase(
-        tail_words,
-        &[
-            &["beginning", "of", "the", "next", "end", "step"],
-            &["beginning", "of", "next", "end", "step"],
-            &["beginning", "of", "the", "end", "step"],
-            &["beginning", "of", "end", "step"],
-        ],
-    );
-    if !has_beginning_of_end_step {
+    if !CREATE_BEGINNING_NEXT_END_STEP_PATTERN.matches_words(tail_words) {
         return (false, false);
     }
 
-    let has_sacrifice_reference = word_slice_contains_word(tail_words, "sacrifice")
-        && (word_slice_contains_word(tail_words, "token")
-            || word_slice_contains_word(tail_words, "tokens")
-            || word_slice_contains_word(tail_words, "permanent")
-            || word_slice_contains_word(tail_words, "permanents")
-            || word_slice_contains_word(tail_words, "it")
-            || word_slice_contains_word(tail_words, "them"));
-    let has_exile_reference = word_slice_contains_word(tail_words, "exile")
-        && (word_slice_contains_word(tail_words, "token")
-            || word_slice_contains_word(tail_words, "tokens")
-            || word_slice_contains_word(tail_words, "permanent")
-            || word_slice_contains_word(tail_words, "permanents")
-            || word_slice_contains_word(tail_words, "it")
-            || word_slice_contains_word(tail_words, "them"));
+    let has_sacrifice_reference = CREATE_SACRIFICE_MARKER_PATTERN.matches_words(tail_words)
+        && CREATE_DELAY_REFERENCE_MARKER_PATTERN.matches_words(tail_words);
+    let has_exile_reference = CREATE_EXILE_MARKER_PATTERN.matches_words(tail_words)
+        && CREATE_DELAY_REFERENCE_MARKER_PATTERN.matches_words(tail_words);
 
     (has_sacrifice_reference, has_exile_reference)
 }
@@ -412,7 +611,7 @@ pub(crate) fn trailing_create_at_next_end_step_clause(
         }
         if tail_words[..start]
             .iter()
-            .any(|word| matches!(*word, "when" | "whenever"))
+            .any(|word| CREATE_WHEN_OR_WHENEVER_WORD_PATTERN.matches_word(word))
         {
             continue;
         }
@@ -427,7 +626,7 @@ pub(crate) fn split_copy_source_tail_modifiers(
 ) -> (Vec<OwnedLexToken>, bool, bool) {
     let mut split_idx: Option<usize> = None;
     for idx in 0..source_tokens.len() {
-        if !source_tokens[idx].is_word("and") {
+        if !CREATE_AND_WORD_PATTERN.matches_token(&source_tokens[idx]) {
             continue;
         }
         let tail_tokens = trim_commas(&source_tokens[idx + 1..]);
@@ -435,15 +634,14 @@ pub(crate) fn split_copy_source_tail_modifiers(
         if tail_words.is_empty() {
             continue;
         }
-        let starts_reference = matches!(
-            tail_words.first().copied(),
-            Some("that" | "it" | "those" | "thats" | "its")
-        );
+        let starts_reference = tail_words
+            .first()
+            .is_some_and(|word| CREATE_INLINE_REFERENCE_START_PATTERN.matches_word(word));
         if !starts_reference {
             continue;
         }
-        if !grammar::contains_word(&tail_tokens, "tapped")
-            && !grammar::contains_word(&tail_tokens, "attacking")
+        if !CREATE_TAPPED_MARKER_PATTERN.matches_words(&tail_words)
+            && !CREATE_ATTACKING_MARKER_PATTERN.matches_words(&tail_words)
         {
             continue;
         }
@@ -456,8 +654,9 @@ pub(crate) fn split_copy_source_tail_modifiers(
     };
 
     let modifier_tokens = trim_commas(&source_tokens[split_idx + 1..]);
-    let enters_tapped = grammar::contains_word(&modifier_tokens, "tapped");
-    let enters_attacking = grammar::contains_word(&modifier_tokens, "attacking");
+    let modifier_words = token_word_refs(&modifier_tokens);
+    let enters_tapped = CREATE_TAPPED_MARKER_PATTERN.matches_words(&modifier_words);
+    let enters_attacking = CREATE_ATTACKING_MARKER_PATTERN.matches_words(&modifier_words);
     let source_tokens = trim_commas(&source_tokens[..split_idx]).to_vec();
     (source_tokens, enters_tapped, enters_attacking)
 }
@@ -466,59 +665,27 @@ pub(crate) fn split_copy_source_inline_combat_modifiers(
     source_tokens: &[OwnedLexToken],
 ) -> (Vec<OwnedLexToken>, bool, bool, Option<PlayerAst>) {
     let source_words = token_word_refs(source_tokens);
-    let modifier_start_word_idx = word_slice_find_word_where(&source_words, |word| word == "thats")
-        .or_else(|| {
-            word_slice_find_any_phrase_start(&source_words, &[&["that", "is"], &["that", "are"]])
-                .map(|(_, idx)| idx)
-        });
+    let modifier_start_word_idx = source_words.iter().enumerate().find_map(|(idx, _)| {
+        CREATE_INLINE_MODIFIER_START_PATTERN
+            .matches_words(&source_words[idx..])
+            .then_some(idx)
+    });
 
     let Some(modifier_start_word_idx) = modifier_start_word_idx else {
         return (source_tokens.to_vec(), false, false, None);
     };
 
     let modifier_words = &source_words[modifier_start_word_idx..];
-    let enters_tapped = word_slice_contains_word(modifier_words, "tapped");
-    let enters_attacking = word_slice_contains_word(modifier_words, "attacking");
+    let enters_tapped = CREATE_TAPPED_MARKER_PATTERN.matches_words(modifier_words);
+    let enters_attacking = CREATE_ATTACKING_MARKER_PATTERN.matches_words(modifier_words);
     if !enters_tapped && !enters_attacking {
         return (source_tokens.to_vec(), false, false, None);
     }
 
-    let attack_target_player_or_planeswalker_controlled_by = word_slice_contains_any_phrase(
-        modifier_words,
-        &[
-            &[
-                "that",
-                "player",
-                "or",
-                "a",
-                "planeswalker",
-                "they",
-                "control",
-            ],
-            &["that", "player", "or", "planeswalker", "they", "control"],
-            &[
-                "that",
-                "player",
-                "or",
-                "a",
-                "planeswalker",
-                "they",
-                "controls",
-            ],
-            &["that", "player", "or", "planeswalker", "they", "controls"],
-            &[
-                "that",
-                "player",
-                "or",
-                "a",
-                "planeswalker",
-                "their",
-                "control",
-            ],
-            &["that", "player", "or", "planeswalker", "their", "control"],
-        ],
-    )
-    .then_some(PlayerAst::That);
+    let attack_target_player_or_planeswalker_controlled_by =
+        CREATE_ATTACK_TARGET_PLAYER_OR_PLANESWALKER_PATTERN
+            .matches_words(modifier_words)
+            .then_some(PlayerAst::That);
 
     let Some(modifier_start_token_idx) =
         token_index_for_word_index(source_tokens, modifier_start_word_idx)
@@ -543,7 +710,11 @@ fn parse_create_equal_to_dynamic_count(
     tail_tokens: &[OwnedLexToken],
 ) -> Result<Option<(Value, usize)>, CardTextError> {
     let tail_words = token_word_refs(tail_tokens);
-    let Some(equal_word_idx) = word_slice_find_phrase_start(&tail_words, &["equal", "to"]) else {
+    let Some(equal_word_idx) = tail_words.iter().enumerate().find_map(|(idx, _)| {
+        CREATE_EQUAL_TO_PATTERN
+            .matches_words(&tail_words[idx..])
+            .then_some(idx)
+    }) else {
         return Ok(None);
     };
     let Some(equal_token_idx) = token_index_for_word_index(tail_tokens, equal_word_idx) else {
@@ -597,15 +768,15 @@ pub(crate) fn parse_create(
 
     if tokens
         .get(idx)
-        .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+        .is_some_and(|token| CREATE_ARTICLE_WORD_PATTERN.matches_token(token))
     {
         idx += 1;
     }
 
     let remaining_words = token_word_refs(&tokens[idx..]);
-    let token_idx =
-        word_slice_find_word_where(&remaining_words, |word| matches!(word, "token" | "tokens"))
-            .ok_or_else(|| CardTextError::ParseError("create clause missing token".to_string()))?;
+    let token_idx = CREATE_TOKEN_OR_TOKENS_WORD_PATTERN
+        .find_word(&remaining_words)
+        .ok_or_else(|| CardTextError::ParseError("create clause missing token".to_string()))?;
 
     let mut name_words =
         crate::runtime_backend::util::non_article_word_refs(&remaining_words[..token_idx]);
@@ -634,11 +805,13 @@ pub(crate) fn parse_create(
     }
     let mut attached_to_target: Option<TargetAst> = None;
     let pre_attach_tail_words = token_word_refs(&tail_tokens);
-    let pre_attach_for_each_idx =
-        word_slice_find_phrase_start(&pre_attach_tail_words, &["for", "each"]);
-    if let Some(attached_word_idx) =
-        word_slice_find_word_where(&pre_attach_tail_words, |word| word == "attached")
-        && word_slice_starts_with(&pre_attach_tail_words[attached_word_idx + 1..], &["to"])
+    let pre_attach_for_each_idx = create_find_phrase_shape(
+        &pre_attach_tail_words,
+        CREATE_FOR_EACH_WORDS.len(),
+        CREATE_FOR_EACH_PATTERN,
+    );
+    if let Some(attached_word_idx) = CREATE_ATTACHED_WORD_PATTERN.find_word(&pre_attach_tail_words)
+        && CREATE_TO_PREFIX_PATTERN.matches_words(&pre_attach_tail_words[attached_word_idx + 1..])
         && (pre_attach_for_each_idx.is_none()
             || pre_attach_for_each_idx.is_some_and(|for_each_idx| attached_word_idx < for_each_idx))
         && let Some(attached_token_idx) =
@@ -656,33 +829,25 @@ pub(crate) fn parse_create(
     }
     let tail_words = token_word_refs(&tail_tokens);
     if attached_to_target.is_some()
-        && tail_words
-            .iter()
-            .any(|word| matches!(*word, "copy" | "copies"))
+        && CREATE_COPY_OR_COPIES_MARKER_PATTERN.matches_words(&tail_words)
     {
         return Err(CardTextError::ParseError(format!(
             "unsupported aura-copy attachment fanout clause (clause: '{}')",
             clause_words.join(" ")
         )));
     }
-    let with_idx = word_slice_find_word_where(&tail_words, |word| word == "with");
-    let raw_for_each_idx = word_slice_find_phrase_start(&tail_words, &["for", "each"]);
+    let with_idx = CREATE_WITH_WORD_PATTERN.find_word(&tail_words);
+    let raw_for_each_idx = create_find_phrase_shape(
+        &tail_words,
+        CREATE_FOR_EACH_WORDS.len(),
+        CREATE_FOR_EACH_PATTERN,
+    );
     let for_each_idx = raw_for_each_idx.filter(|idx| {
         let prefix_words = &tail_words[..*idx];
-        let looks_like_token_rules_text = word_slice_contains_any_phrase(
-            prefix_words,
-            &[
-                &["it", "has"],
-                &["it", "gains"],
-                &["it", "gets"],
-                &["this", "token"],
-                &["that", "token"],
-            ],
-        ) || (word_slice_contains_word(prefix_words, "token")
-            && (word_slice_contains_word(prefix_words, "has")
-                || word_slice_contains_word(prefix_words, "have")
-                || word_slice_contains_word(prefix_words, "gets")
-                || word_slice_contains_word(prefix_words, "gains")));
+        let looks_like_token_rules_text = CREATE_TOKEN_RULES_TEXT_PREFIX_PATTERN
+            .matches_words(prefix_words)
+            || (CREATE_TOKEN_MARKER_PATTERN.matches_words(prefix_words)
+                && CREATE_GRANT_VERB_MARKER_PATTERN.matches_words(prefix_words));
         if looks_like_token_rules_text {
             return false;
         }
@@ -803,15 +968,14 @@ pub(crate) fn parse_create(
     let mut modifier_tail_words = tail_words.clone();
     let mut raw_name_override: Option<String> = None;
     let mut rules_text_range: Option<(usize, usize)> = None;
-    if let Some(named_idx) = word_slice_find_word_where(&tail_words, |word| word == "named") {
+    if let Some(named_idx) = CREATE_NAMED_WORD_PATTERN.find_word(&tail_words) {
         let range_end = for_each_idx.unwrap_or(tail_words.len());
         if named_idx + 1 < range_end {
             let after_named = &tail_words[named_idx + 1..range_end];
-            let name_end = word_slice_find_word_where(after_named, |word| {
-                matches!(word, "with" | "that" | "which" | "thats")
-            })
-            .map(|offset| named_idx + 1 + offset)
-            .unwrap_or(range_end);
+            let name_end = CREATE_NAME_END_WORD_PATTERN
+                .find_word(after_named)
+                .map(|offset| named_idx + 1 + offset)
+                .unwrap_or(range_end);
             if named_idx + 1 < name_end {
                 name_words.push("named");
                 name_words.extend(tail_words[named_idx + 1..name_end].iter().copied());
@@ -819,22 +983,22 @@ pub(crate) fn parse_create(
         }
     }
     name_words.retain(|word| {
-        if *word == "tapped" {
+        if CREATE_TAPPED_MARKER_PATTERN.matches_word(word) {
             tapped = true;
             return false;
         }
-        if *word == "attacking" {
+        if CREATE_ATTACKING_MARKER_PATTERN.matches_word(word) {
             attacking = true;
             return false;
         }
         true
     });
-    name_words.retain(|word| !matches!(*word, "and" | "or"));
+    name_words.retain(|word| !CREATE_AND_OR_OR_WORD_PATTERN.matches_word(word));
     let name_words_primary_len = name_words.len();
     if name_words.is_empty() {
         if tail_words
             .iter()
-            .any(|word| matches!(*word, "copy" | "copies"))
+            .any(|word| CREATE_COPY_OR_COPIES_WORD_PATTERN.matches_word(word))
         {
             let (
                 set_colors,
@@ -861,16 +1025,18 @@ pub(crate) fn parse_create(
             }
             let (sacrifice_at_next_end_step, exile_at_next_end_step) =
                 parse_next_end_step_token_delay_flags(&tail_words);
-            if let Some(of_idx) = find_token_index(&tail_tokens, |token| token.is_word("of")) {
+            if let Some(of_idx) = find_token_index(&tail_tokens, |token| {
+                CREATE_OF_WORD_PATTERN.matches_token(token)
+            }) {
                 let source_tokens = &tail_tokens[of_idx + 1..];
                 let source_end = find_token_index(source_tokens, |token| {
-                    token.is_comma() || token.is_word("except")
+                    token.is_comma() || CREATE_EXCEPT_WORD_PATTERN.matches_token(token)
                 })
                 .unwrap_or(source_tokens.len());
                 let mut source_end = source_end;
                 for idx in 1..source_end {
                     if starts_with_inline_token_rules_tail(&source_tokens[idx..])
-                        || (source_tokens[idx].is_word("and")
+                        || (CREATE_AND_WORD_PATTERN.matches_token(&source_tokens[idx])
                             && starts_with_inline_token_rules_tail(&source_tokens[idx + 1..]))
                     {
                         source_end = idx;
@@ -952,75 +1118,35 @@ pub(crate) fn parse_create(
             "create clause missing token name".to_string(),
         ));
     }
-    if let Some(with_idx) = word_slice_find_word_where(&tail_words, |word| word == "with") {
+    if let Some(with_idx) = CREATE_WITH_WORD_PATTERN.find_word(&tail_words) {
         let with_tail_end = for_each_idx.unwrap_or(tail_words.len());
         if with_idx + 1 < with_tail_end {
             let with_words = &tail_words[with_idx + 1..with_tail_end];
-            let has_equipment_rules_subject = word_slice_contains_any_phrase(
-                with_words,
-                &[
-                    &["equipped", "creature", "has"],
-                    &["equipped", "creature", "gets"],
-                ],
-            );
-            let rules_text_start = word_slice_find_word_where(with_words, |word| {
-                matches!(
-                    word,
-                    "when"
-                        | "whenever"
-                        | "if"
-                        | "t"
-                        | "this"
-                        | "that"
-                        | "it"
-                        | "those"
-                        | "sacrifice"
-                        | "add"
-                        | "draw"
-                        | "deals"
-                        | "deal"
-                )
-            });
+            let has_equipment_rules_subject =
+                CREATE_EQUIPMENT_RULES_SUBJECT_PATTERN.matches_words(with_words);
+            let rules_text_start = CREATE_RULES_TEXT_START_WORD_PATTERN.find_word(with_words);
             let mut include_end = rules_text_start.unwrap_or(with_words.len());
             if include_end > 0
                 && let Some(named_pos) =
-                    word_slice_find_word_where(&with_words[..include_end], |word| word == "named")
+                    CREATE_NAMED_WORD_PATTERN.find_word(&with_words[..include_end])
             {
                 include_end = named_pos;
             }
             let preserve_rules_tail = rules_text_start
                 .is_some_and(|start| start < with_words.len())
-                && with_words[include_end..].iter().any(|word| {
-                    matches!(
-                        *word,
-                        "when"
-                            | "whenever"
-                            | "at"
-                            | "sacrifice"
-                            | "return"
-                            | "counter"
-                            | "draw"
-                            | "add"
-                            | "deals"
-                            | "deal"
-                            | "gets"
-                            | "gain"
-                            | "gains"
-                            | "power"
-                            | "toughness"
-                            | "cant"
-                            | "can"
-                            | "block"
-                    )
-                });
+                && with_words[include_end..]
+                    .iter()
+                    .any(|word| CREATE_PRESERVE_RULES_TAIL_WORD_PATTERN.matches_word(word));
             let preserve_rules_tail = preserve_rules_tail || has_equipment_rules_subject;
             if preserve_rules_tail {
                 let start = with_idx + 1 + include_end;
                 if start < with_tail_end {
                     rules_text_range = Some((start, with_tail_end));
                 }
-                let raw_tail_start = find_token_index(&tail_tokens, |token| token.is_word("with"))
-                    .unwrap_or(with_idx.min(tail_tokens.len()));
+                let raw_tail_start = find_token_index(&tail_tokens, |token| {
+                    CREATE_WITH_WORD_PATTERN.matches_token(token)
+                })
+                .unwrap_or(with_idx.min(tail_tokens.len()));
                 let raw_tail_end = if let Some(for_each_idx) = for_each_idx {
                     token_index_for_word_index(&tail_tokens, for_each_idx)
                         .unwrap_or(tail_tokens.len())
@@ -1052,15 +1178,18 @@ pub(crate) fn parse_create(
         }
     }
     let mut dynamic_power_toughness = None;
-    if let Some(pt_idx) = word_slice_find_word_where(&name_words, looks_like_pt_word)
+    if let Some(pt_idx) = CREATE_PT_WORD_PATTERN
+        .find_word(&name_words)
+        .or_else(|| find_token_index(&name_words, |word| looks_like_pt_word(word)))
         && pt_idx < name_words_primary_len
     {
-        if name_words[pt_idx].eq_ignore_ascii_case("x/x") {
+        if CREATE_PT_WORD_PATTERN.matches_word(name_words[pt_idx]) {
             dynamic_power_toughness = Some((Value::X, Value::X));
             name_words[pt_idx] = "0/0";
         }
         let prefix_words = &name_words[..pt_idx];
-        let keep_prefix = word_slice_contains_word(prefix_words, "legendary")
+        let keep_prefix = CREATE_NOT_LEGENDARY_PATTERN.matches_words(prefix_words)
+            || CREATE_LEGENDARY_MARKER_PATTERN.matches_words(prefix_words)
             || prefix_words
                 .first()
                 .is_some_and(|word| is_probable_token_name_word(word));
@@ -1070,14 +1199,7 @@ pub(crate) fn parse_create(
     }
     let name = raw_name_override.unwrap_or_else(|| normalize_token_name(&name_words));
 
-    let grants_unblockable = word_slice_contains_any_phrase(
-        &tail_words,
-        &[
-            &["this", "token", "cant", "be", "blocked"],
-            &["this", "creature", "cant", "be", "blocked"],
-            &["cant", "be", "blocked"],
-        ],
-    );
+    let grants_unblockable = CREATE_UNBLOCKABLE_RULES_PATTERN.matches_words(&tail_words);
 
     if let Some((start, end)) = rules_text_range {
         if start < end && end <= modifier_tail_words.len() {
@@ -1089,7 +1211,7 @@ pub(crate) fn parse_create(
         }
     }
 
-    if let Some(where_word_idx) = word_slice_find_word(&tail_words, "where")
+    if let Some(where_word_idx) = CREATE_WHERE_WORD_PATTERN.find_word(&tail_words)
         && let Some(where_token_idx) = token_index_for_word_index(&tail_tokens, where_word_idx)
     {
         let where_value =
@@ -1111,18 +1233,18 @@ pub(crate) fn parse_create(
         modifier_tail_words.truncate(where_word_idx);
     }
 
-    tapped |= word_slice_contains_word(&modifier_tail_words, "tapped");
-    attacking |= word_slice_contains_word(&modifier_tail_words, "attacking");
+    tapped |= CREATE_TAPPED_MARKER_PATTERN.matches_words(&modifier_tail_words);
+    attacking |= CREATE_ATTACKING_MARKER_PATTERN.matches_words(&modifier_tail_words);
     if attacking
         && matches!(player, PlayerAst::That)
-        && word_slice_contains_phrase(&modifier_tail_words, &["attacking", "that", "player"])
+        && CREATE_ATTACKING_THAT_PLAYER_PATTERN.matches_words(&modifier_tail_words)
     {
         player = PlayerAst::You;
     }
     let (sacrifice_at_next_end_step, exile_at_next_end_step) =
         parse_next_end_step_token_delay_flags(&modifier_tail_words);
     let mut granted_abilities = Vec::new();
-    if word_slice_contains_word(&modifier_tail_words, "decayed") {
+    if CREATE_DECAYED_MARKER_PATTERN.matches_words(&modifier_tail_words) {
         granted_abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Decayed));
     }
     if grants_unblockable {
@@ -1229,18 +1351,18 @@ pub(crate) fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> O
         );
     }
     let clause_words = token_word_refs(tokens);
-    if (grammar::contains_word(tokens, "spell") || grammar::contains_word(tokens, "spells"))
-        && (grammar::contains_word(tokens, "cast") || grammar::contains_word(tokens, "casts"))
-        && grammar::contains_word(tokens, "turn")
+    if CREATE_SPELL_OR_SPELLS_MARKER_PATTERN.matches_words(&clause_words)
+        && CREATE_CAST_OR_CASTS_MARKER_PATTERN.matches_words(&clause_words)
+        && CREATE_TURN_MARKER_PATTERN.matches_words(&clause_words)
     {
         let player = if clause_words
             .iter()
-            .any(|word| matches!(*word, "you" | "your" | "youve"))
+            .any(|word| CREATE_YOU_REFERENCE_WORD_PATTERN.matches_word(word))
         {
             PlayerFilter::You
         } else if clause_words
             .iter()
-            .any(|word| matches!(*word, "opponent" | "opponents"))
+            .any(|word| CREATE_OPPONENT_REFERENCE_WORD_PATTERN.matches_word(word))
         {
             PlayerFilter::Opponent
         } else {
@@ -1344,7 +1466,11 @@ pub(crate) fn normalize_token_name(words: &[&str]) -> String {
 
 fn parse_investigate_for_each_count(tokens: &[OwnedLexToken]) -> Result<Value, CardTextError> {
     let words = token_word_refs(tokens);
-    if let Some(exiled_idx) = word_slice_find_phrase_start(&words, &["exiled", "this", "way"]) {
+    if let Some(exiled_idx) = create_find_phrase_shape(
+        &words,
+        CREATE_EXILED_THIS_WAY_WORDS.len(),
+        CREATE_EXILED_THIS_WAY_PATTERN,
+    ) {
         let clause = LexedClause::new(tokens);
         let filter_tokens = trim_commas(
             clause
@@ -1426,8 +1552,8 @@ pub(crate) fn parse_investigate(
     let trailing = trim_commas(&tokens[used..]);
     let trailing_words = token_word_refs(&trailing);
     if matches!(count, Value::X)
-        && word_slice_first_is_any(&trailing_words, &["time", "times"])
-        && let Some(where_idx) = word_slice_find_word(&trailing_words, "where")
+        && CREATE_TIME_OR_TIMES_WORD_PATTERN.matches_word_at(&trailing_words, 0)
+        && let Some(where_idx) = CREATE_WHERE_WORD_PATTERN.find_word(&trailing_words)
     {
         let where_token_idx = token_index_for_word_index(&trailing, where_idx).unwrap_or(0);
         if let Some(where_count) = parse_value_binding_clause(&trailing[where_token_idx..]) {
@@ -1435,8 +1561,8 @@ pub(crate) fn parse_investigate(
             return Ok(EffectAst::subject_verb_investigate(player, count));
         }
     }
-    let trailing_ok =
-        trailing_words.is_empty() || word_slice_eq_any(&trailing_words, &[&["time"], &["times"]]);
+    let trailing_ok = trailing_words.is_empty()
+        || CREATE_INVESTIGATE_TRAILING_TIME_PATTERN.matches_words(&trailing_words);
     if !trailing_ok {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing investigate clause (clause: '{}')",
@@ -1462,28 +1588,28 @@ pub(crate) fn parse_incubate(
 
     let mut trailing = trim_commas(&tokens[used..]).to_vec();
     let mut trailing_words = token_word_refs(&trailing);
-    if word_slice_first_is(&trailing_words, "once") {
+    if CREATE_ONCE_WORD_PATTERN.matches_word_at(&trailing_words, 0) {
         count = Value::Fixed(1);
         trailing = trim_commas(&trailing[1..]).to_vec();
         trailing_words = token_word_refs(&trailing);
-    } else if word_slice_first_is(&trailing_words, "twice") {
+    } else if CREATE_TWICE_WORD_PATTERN.matches_word_at(&trailing_words, 0) {
         count = Value::Fixed(2);
         trailing = trim_commas(&trailing[1..]).to_vec();
         trailing_words = token_word_refs(&trailing);
     } else if let Some((parsed_count, count_used)) = parse_value(&trailing) {
         let count_tail = trim_commas(&trailing[count_used..]).to_vec();
         let count_tail_words = token_word_refs(&count_tail);
-        if word_slice_first_is_any(&count_tail_words, &["time", "times"]) {
+        if CREATE_TIME_OR_TIMES_WORD_PATTERN.matches_word_at(&count_tail_words, 0) {
             count = parsed_count;
             trailing = trim_commas(&count_tail[1..]).to_vec();
             trailing_words = token_word_refs(&trailing);
         }
-    } else if word_slice_first_is_any(&trailing_words, &["time", "times"]) {
+    } else if CREATE_TIME_OR_TIMES_WORD_PATTERN.matches_word_at(&trailing_words, 0) {
         trailing = trim_commas(&trailing[1..]).to_vec();
         trailing_words = token_word_refs(&trailing);
     }
 
-    if let Some(where_word_idx) = word_slice_find_word(&trailing_words, "where") {
+    if let Some(where_word_idx) = CREATE_WHERE_WORD_PATTERN.find_word(&trailing_words) {
         let where_token_idx = token_index_for_word_index(&trailing, where_word_idx).unwrap_or(0);
         let Some(where_value) = parse_value_binding_clause(&trailing[where_token_idx..]) else {
             return Err(CardTextError::ParseError(format!(

@@ -23,7 +23,8 @@ use super::super::token_primitives::{
     find_index, iter_contains, lexed_head_words, rfind_index, slice_contains, str_strip_suffix,
 };
 use super::super::util::{
-    is_article, is_source_reference_words, mana_pips_from_token, parse_card_type, parse_color,
+    is_article, is_source_reference_words, mana_pips_from_token, parse_card_type,
+    parse_choice_count_before_target_prefix, parse_choice_count_token_prefix_consumed, parse_color,
     parse_counter_type_from_tokens, parse_subject, parse_subtype_flexible,
     token_index_for_word_index, words,
 };
@@ -66,6 +67,7 @@ use crate::cards::builders::{
 #[allow(unused_imports)]
 use crate::effect::{ChoiceCount, Until, Value};
 use crate::mana::ManaSymbol;
+use crate::runtime_backend::front_end::lex_patterns::{LexCaptureRole, LexPatternMatch};
 #[allow(unused_imports)]
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 #[allow(unused_imports)]
@@ -156,6 +158,35 @@ pub(crate) fn parse_if_any_tagged_cards_share_card_type_with_triggering_spell(
         return Ok(None);
     }
 
+    let trailing = trailing_clause.trim();
+    if trailing.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing effect after revealed-card card-type condition (clause: '{}')",
+            clause.text()
+        )));
+    }
+
+    let mut filter = ObjectFilter::default();
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: TagKey::from("triggering"),
+        relation: TaggedOpbjectRelation::SharesCardType,
+    });
+    let if_true = parse_effect_chain_inner(&trailing)?;
+
+    Ok(Some(vec![EffectAst::Conditional {
+        predicate: PredicateAst::TaggedMatches(TagKey::from(IT_TAG), filter),
+        if_true,
+        if_false: Vec::new(),
+    }]))
+}
+
+pub(crate) fn parse_if_any_tagged_cards_share_card_type_with_triggering_spell_matched(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    matched: &LexPatternMatch<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(trailing_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Tail) else {
+        return Ok(None);
+    };
     let trailing = trailing_clause.trim();
     if trailing.is_empty() {
         return Err(CardTextError::ParseError(format!(

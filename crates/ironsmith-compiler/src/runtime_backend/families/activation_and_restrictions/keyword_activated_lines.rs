@@ -1,5 +1,31 @@
 use super::*;
 
+const CHANNEL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["channel"]);
+const CRAFT_WITH_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["craft", "with"]);
+const PAY_LIFE_COST_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["pay"]; suffix & ["life"]);
+const LIFE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["life"]);
+const CYCLING_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["cycling"]);
+const LANDCYCLING_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["landcycling"]);
+const EQUIP_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["equip"]);
+const EQUIP_SUBTYPE_CONNECTOR_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["or"], &["and"], &["and/or"]]);
+const CREATURE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["creature"]);
+const RECONFIGURE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["reconfigure"]);
+const CRAFT_ARTIFACT_MATERIAL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["artifact"]);
+const CRAFT_CREATURE_MATERIAL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["creature"]);
+const CRAFT_ONE_OR_MORE_MATERIAL_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["one", "or", "more"]);
+const CRAFT_RED_INSTANT_SORCERY_MATERIAL_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["red", "instant", "and", "or", "sorcery", "cards"],
+            &["red", "instant", "and/or", "sorcery", "cards"],
+            &["red", "instant", "or", "sorcery", "cards"],
+        ]
+);
+const DISCARD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["discard"]);
+
 pub(crate) fn parse_cycling_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
@@ -119,7 +145,10 @@ pub(crate) fn parse_channel_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     let words = ActivationRestrictionCompatWords::new(tokens);
-    if words.first() != Some("channel") {
+    if words
+        .first()
+        .is_none_or(|word| !CHANNEL_WORD_PATTERN.matches_word(word))
+    {
         return Ok(None);
     }
 
@@ -143,7 +172,7 @@ pub(crate) fn parse_craft_line_lexed(
     let tokens = &tokens[..reminder_start];
     let words = ActivationRestrictionCompatWords::new(tokens);
     let words = words.to_word_refs();
-    if !word_slice_starts_with(&words, &["craft", "with"]) {
+    if !CRAFT_WITH_PREFIX_PATTERN.matches_words(&words) {
         return Ok(None);
     }
 
@@ -218,76 +247,42 @@ fn parse_craft_material_spec(
     tokens: &[OwnedLexToken],
 ) -> Result<(ObjectFilter, ChoiceCount, String), CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    match words.as_slice() {
-        ["artifact"] => Ok((
+    if CRAFT_ARTIFACT_MATERIAL_PATTERN.matches_words(&words) {
+        return Ok((
             craft_battlefield_or_graveyard_filter(CardType::Artifact),
             ChoiceCount::exactly(1),
             "artifact".to_string(),
-        )),
-        ["creature"] => Ok((
+        ));
+    }
+    if CRAFT_CREATURE_MATERIAL_PATTERN.matches_words(&words) {
+        return Ok((
             craft_creature_battlefield_or_graveyard_filter(),
             ChoiceCount::exactly(1),
             "creature".to_string(),
-        )),
-        ["one", "or", "more"] => {
-            let mut filter = ObjectFilter::default();
-            filter.any_of = vec![
-                ObjectFilter::permanent()
-                    .in_zone(Zone::Battlefield)
-                    .controlled_by(PlayerFilter::You)
-                    .other(),
-                ObjectFilter::default()
-                    .in_zone(Zone::Graveyard)
-                    .owned_by(PlayerFilter::You)
-                    .other(),
-            ];
-            Ok((filter, ChoiceCount::at_least(1), "one or more".to_string()))
-        }
-        [
-            "four",
-            "or",
-            "more",
-            "red",
-            "instant",
-            "and",
-            "or",
-            "sorcery",
-            "cards",
-        ]
-        | [
-            "four",
-            "or",
-            "more",
-            "red",
-            "instant",
-            "and/or",
-            "sorcery",
-            "cards",
-        ]
-        | [
-            "four",
-            "or",
-            "more",
-            "red",
-            "instant",
-            "or",
-            "sorcery",
-            "cards",
-        ] => Ok((
-            ObjectFilter::default()
-                .in_zone(Zone::Graveyard)
-                .owned_by(PlayerFilter::You)
-                .with_colors(ColorSet::from_color(crate::color::Color::Red))
-                .with_type(CardType::Instant)
-                .with_type(CardType::Sorcery),
-            ChoiceCount::at_least(4),
-            "four or more red instant and/or sorcery cards".to_string(),
-        )),
-        _ => Err(CardTextError::ParseError(format!(
-            "unsupported craft material clause '{}'",
-            words.join(" ")
-        ))),
+        ));
     }
+    if CRAFT_ONE_OR_MORE_MATERIAL_PATTERN.matches_words(&words) {
+        return Ok((
+            craft_any_battlefield_or_graveyard_filter(),
+            ChoiceCount::at_least(1),
+            "one or more".to_string(),
+        ));
+    }
+    if let Some((count, used)) =
+        parse_greater_than_or_equal_quantity_prefix(tokens, false, false, "craft material")?
+        && CRAFT_RED_INSTANT_SORCERY_MATERIAL_TAIL_PATTERN.matches_words(&words[used..])
+    {
+        return Ok((
+            craft_red_instant_or_sorcery_graveyard_filter(),
+            ChoiceCount::at_least(count as usize),
+            words.join(" "),
+        ));
+    }
+
+    Err(CardTextError::ParseError(format!(
+        "unsupported craft material clause '{}'",
+        words.join(" ")
+    )))
 }
 
 fn craft_battlefield_or_graveyard_filter(card_type: CardType) -> ObjectFilter {
@@ -305,6 +300,30 @@ fn craft_battlefield_or_graveyard_filter(card_type: CardType) -> ObjectFilter {
             .other(),
     ];
     filter
+}
+
+fn craft_any_battlefield_or_graveyard_filter() -> ObjectFilter {
+    let mut filter = ObjectFilter::default();
+    filter.any_of = vec![
+        ObjectFilter::permanent()
+            .in_zone(Zone::Battlefield)
+            .controlled_by(PlayerFilter::You)
+            .other(),
+        ObjectFilter::default()
+            .in_zone(Zone::Graveyard)
+            .owned_by(PlayerFilter::You)
+            .other(),
+    ];
+    filter
+}
+
+fn craft_red_instant_or_sorcery_graveyard_filter() -> ObjectFilter {
+    ObjectFilter::default()
+        .in_zone(Zone::Graveyard)
+        .owned_by(PlayerFilter::You)
+        .with_colors(ColorSet::from_color(crate::color::Color::Red))
+        .with_type(CardType::Instant)
+        .with_type(CardType::Sorcery)
 }
 
 fn craft_creature_battlefield_or_graveyard_filter() -> ObjectFilter {
@@ -361,7 +380,7 @@ pub(crate) fn parse_cycling_keyword_cost_groups(
                     break;
                 };
                 idx += 1;
-                if word == "life" {
+                if LIFE_WORD_PATTERN.matches_word(word.as_str()) {
                     break;
                 }
             }
@@ -376,7 +395,7 @@ pub(crate) fn parse_cycling_keyword_cost_groups(
                     && tokens
                         .get(idx + 2)
                         .and_then(OwnedLexToken::as_word)
-                        .is_some_and(|next| next.eq_ignore_ascii_case("discard"));
+                        .is_some_and(|next| DISCARD_WORD_PATTERN.matches_word(next));
                 let is_cost_token = mana_pips_from_token(&tokens[idx]).is_some()
                     || lower_word.as_deref().is_some_and(is_cycling_cost_word);
                 if looks_like_reminder_cost || !is_cost_token {
@@ -439,7 +458,7 @@ pub(crate) fn parse_cycling_keyword_group_text(tokens: &[OwnedLexToken]) -> Opti
             continue;
         }
         let cost_words = crate::runtime_backend::token_word_refs(&cost_tokens);
-        let cost = if cost_words.len() >= 3 && cost_words[0] == "pay" && cost_words[2] == "life" {
+        let cost = if cost_words.len() >= 3 && PAY_LIFE_COST_PATTERN.matches_words(&cost_words) {
             format!("pay {} life", cost_words[1])
         } else {
             parse_activation_cost(&cost_tokens)
@@ -502,11 +521,11 @@ pub(crate) fn parse_cycling_search_filter(
         }
     }
 
-    if keyword == "cycling" {
+    if CYCLING_WORD_PATTERN.matches_word(keyword) {
         return Ok(None);
     }
 
-    if keyword == "landcycling" {
+    if LANDCYCLING_WORD_PATTERN.matches_word(keyword) {
         push_unique(&mut filter.card_types, CardType::Land);
         return Ok(Some(filter));
     }
@@ -558,7 +577,10 @@ pub(crate) fn parse_equip_line(
         .unwrap_or(tokens);
     let clause_word_view = ActivationRestrictionCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
-    if !word_slice_first_is(&clause_words, "equip") {
+    if !clause_words
+        .first()
+        .is_some_and(|word| EQUIP_WORD_PATTERN.matches_words(&[*word]))
+    {
         return Ok(None);
     }
 
@@ -749,7 +771,10 @@ fn parse_equip_target_filter_qualifier(tokens: &[OwnedLexToken]) -> Option<Objec
         return None;
     }
     let mut subtype_words = words.as_slice();
-    if word_slice_last_is(subtype_words, "creature") {
+    if subtype_words
+        .last()
+        .is_some_and(|word| CREATURE_WORD_PATTERN.matches_word(word))
+    {
         subtype_words = &subtype_words[..subtype_words.len().saturating_sub(1)];
     }
     if subtype_words.is_empty() {
@@ -759,7 +784,7 @@ fn parse_equip_target_filter_qualifier(tokens: &[OwnedLexToken]) -> Option<Objec
     let mut parsed_subtypes = Vec::new();
     let mut saw_subtype = false;
     for word in subtype_words {
-        if matches!(*word, "or" | "and" | "and/or") {
+        if EQUIP_SUBTYPE_CONNECTOR_PATTERN.matches_word(word) {
             if !saw_subtype {
                 return None;
             }
@@ -796,7 +821,10 @@ pub(crate) fn parse_reconfigure_line_lexed(
         .next()
         .unwrap_or(tokens);
     let words = ActivationRestrictionCompatWords::new(tokens);
-    if words.first() != Some("reconfigure") {
+    if words
+        .first()
+        .is_none_or(|word| !RECONFIGURE_WORD_PATTERN.matches_word(word))
+    {
         return Ok(None);
     }
 

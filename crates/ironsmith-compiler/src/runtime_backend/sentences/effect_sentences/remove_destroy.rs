@@ -1,16 +1,70 @@
 use super::*;
 use crate::runtime_backend::effect_sentences::SubjectVerbPrimitiveClause;
+use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use crate::runtime_backend::lexer::{
     token_slice_at_is, token_slice_first_is, token_slice_first_is_any, token_slice_starts_with,
-    word_slice_contains_any_phrase, word_slice_eq_any, word_slice_find_phrase_start_or_zero,
-    word_slice_first_is, word_slice_first_is_any,
 };
-use crate::runtime_backend::util::parse_filter_counter_constraint_words;
+use crate::runtime_backend::util::{
+    parse_choice_count_before_target_prefix, parse_filter_counter_constraint_words,
+};
+
+const FROM_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["from"]);
+const COMBAT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["combat"]);
+const COUNTER_OR_COUNTERS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["counter"], &["counters"]]);
+const WITH_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["with"]);
+const AT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["at"]);
+const COMBAT_HISTORY_DESTROY_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &["was", "blocked"],
+            &["was", "blocking"],
+            &["blocking", "it"],
+            &["blocked", "it"],
+            &["it", "blocked"],
+        ]]
+);
+const ATTACHED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["attached"]);
+const TO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["to"]);
+const ATTACHED_SUPPORTED_TARGET_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["you"], &["it"]]);
+const ATTACHED_FILTER_TRAILING_BE_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["that"], &["were"], &["was"], &["is"], &["are"]]);
+const ATTACHED_TIMING_TAIL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["at"],
+            &["beginning"],
+            &["end"],
+            &["combat"],
+            &["turn"],
+            &["step"],
+            &["until"],
+        ]
+);
+const CHOSEN_THIS_WAY_SUFFIXES: &[&[&str]] = &[
+    &["chosen", "this", "way"],
+    &["that", "were", "chosen", "this", "way"],
+    &["that", "was", "chosen", "this", "way"],
+];
+const CHOSEN_THIS_WAY_SUFFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(suffix_any CHOSEN_THIS_WAY_SUFFIXES);
+const EXCEPT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["except"]);
+const IF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["if"]);
+const INSTEAD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["instead"]);
+const AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
+const NO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["no"]);
+const ALL_OR_EACH_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["all"], &["each"]]);
+const TARGET_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["target"]);
+const BLOCKED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["blocked"]);
+const DEALT_DAMAGE_THIS_TURN_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["that", "was", "dealt", "damage", "this", "turn"]);
 
 pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
-    if let Some(from_idx) = find_index(tokens, |token| token.is_word("from")) {
+    if let Some(from_idx) = find_index(tokens, |token| FROM_WORD_PATTERN.matches_token(token)) {
         let tail_words = crate::runtime_backend::token_word_refs(&tokens[from_idx + 1..]);
-        if crate::runtime_backend::lexer::word_slice_eq(&tail_words, &["combat"]) {
+        if COMBAT_WORD_PATTERN.matches_words(&tail_words) {
             let target_tokens = trim_commas(&tokens[..from_idx]);
             if target_tokens.is_empty() {
                 return Err(CardTextError::ParseError(format!(
@@ -25,7 +79,7 @@ pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
 
     if token_slice_first_is(tokens, "all")
         && let Some(counter_idx) = find_index(tokens, |token: &OwnedLexToken| {
-            token.is_word("counter") || token.is_word("counters")
+            COUNTER_OR_COUNTERS_WORD_PATTERN.matches_token(token)
         })
         && counter_idx > 1
     {
@@ -81,7 +135,7 @@ pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     idx += used;
 
     let counter_idx = find_index(&tokens[idx..], |token: &OwnedLexToken| {
-        token.is_word("counter") || token.is_word("counters")
+        COUNTER_OR_COUNTERS_WORD_PATTERN.matches_token(token)
     })
     .map(|offset| idx + offset)
     .ok_or_else(|| CardTextError::ParseError("missing counter keyword".to_string()))?;
@@ -193,11 +247,13 @@ pub(crate) fn wrap_destroy_with_delayed_timing(
 }
 
 fn parse_destroy_all_filter(tokens: &[OwnedLexToken]) -> Result<ObjectFilter, CardTextError> {
-    if let Some(with_idx) = find_index(tokens, |token: &OwnedLexToken| token.is_word("with")) {
+    if let Some(with_idx) = find_index(tokens, |token: &OwnedLexToken| {
+        WITH_WORD_PATTERN.matches_token(token)
+    }) {
         let base_tokens = trim_commas(&tokens[..with_idx]);
         let tail_words = crate::runtime_backend::token_word_refs(&tokens[with_idx + 1..]);
         if !base_tokens.is_empty()
-            && word_slice_first_is(&tail_words, "no")
+            && NO_WORD_PATTERN.matches_word_at(&tail_words, 0)
             && let Some((counter_constraint, consumed)) =
                 parse_filter_counter_constraint_words(&tail_words[1..])
             && consumed == tail_words.len().saturating_sub(1)
@@ -225,7 +281,7 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     let mut delayed_timing = None;
     let mut timing_cut_word_idx = original_clause_words.len();
     for word_idx in 0..original_clause_words.len() {
-        if original_clause_words[word_idx] != "at" {
+        if !AT_WORD_PATTERN.matches_word(original_clause_words[word_idx]) {
             continue;
         }
         if let Some(timing) = parse_delayed_destroy_timing_words(&original_clause_words[word_idx..])
@@ -270,52 +326,37 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     let has_combat_history = (grammar::contains_word(&core_tokens, "dealt")
         && grammar::contains_word(&core_tokens, "damage")
         && grammar::contains_word(&core_tokens, "turn"))
-        || word_slice_contains_any_phrase(
-            &clause_words,
-            &[
-                &["was", "blocked"],
-                &["was", "blocking"],
-                &["blocking", "it"],
-                &["blocked", "it"],
-                &["it", "blocked"],
-            ],
-        );
+        || COMBAT_HISTORY_DESTROY_PATTERN.matches_words(&clause_words);
     if has_combat_history {
         return Err(CardTextError::ParseError(format!(
             "unsupported combat-history destroy clause (clause: '{}')",
             clause_words.join(" ")
         )));
     }
-    if word_slice_first_is_any(&clause_words, &["all", "each"]) {
+    if ALL_OR_EACH_WORD_PATTERN.matches_word_at(&clause_words, 0) {
         if let Some(attached_idx) = find_index(&core_tokens, |token: &OwnedLexToken| {
-            token.is_word("attached")
+            ATTACHED_WORD_PATTERN.matches_token(token)
         }) && core_tokens
             .get(attached_idx + 1)
-            .is_some_and(|token| token.is_word("to"))
+            .is_some_and(|token| TO_WORD_PATTERN.matches_token(token))
             && attached_idx > 1
         {
             let mut filter_tokens = trim_commas(&core_tokens[1..attached_idx]).to_vec();
             while filter_tokens
                 .last()
                 .and_then(OwnedLexToken::as_word)
-                .is_some_and(|word| matches!(word, "that" | "were" | "was" | "is" | "are"))
+                .is_some_and(|word| ATTACHED_FILTER_TRAILING_BE_WORD_PATTERN.matches_word(word))
             {
                 filter_tokens.pop();
             }
             let target_tokens = trim_commas(&core_tokens[attached_idx + 2..]);
             let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
-            let has_timing_tail = target_words.iter().any(|word| {
-                matches!(
-                    *word,
-                    "at" | "beginning" | "end" | "combat" | "turn" | "step" | "until"
-                )
-            });
+            let has_timing_tail = target_words
+                .iter()
+                .any(|word| ATTACHED_TIMING_TAIL_WORD_PATTERN.matches_word(word));
             let supported_target = grammar::words_match_prefix(&target_tokens, &["target"])
                 .is_some()
-                || crate::runtime_backend::lexer::word_slice_eq_any(
-                    &target_words,
-                    &[&["you"], &["it"]],
-                )
+                || ATTACHED_SUPPORTED_TARGET_PATTERN.matches_words(&target_words)
                 || grammar::words_match_any_prefix(&target_tokens, ATTACHED_REFERENCE_PREFIXES)
                     .is_some();
             if !filter_tokens.is_empty()
@@ -374,16 +415,14 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             ));
         }
         let filter_words = crate::runtime_backend::token_word_refs(filter_tokens);
-        let chosen_this_way_suffixes: [&[&str]; 3] = [
-            &["chosen", "this", "way"],
-            &["that", "were", "chosen", "this", "way"],
-            &["that", "was", "chosen", "this", "way"],
-        ];
-        if let Some(suffix) = chosen_this_way_suffixes.iter().find(|suffix| {
-            filter_words.len() >= suffix.len()
-                && &filter_words[filter_words.len() - suffix.len()..] == **suffix
-        }) {
-            let cutoff = filter_words.len() - suffix.len();
+        if CHOSEN_THIS_WAY_SUFFIX_PATTERN.matches_words(&filter_words)
+            && let Some(suffix_len) = CHOSEN_THIS_WAY_SUFFIXES.iter().find_map(|suffix| {
+                (filter_words.len() >= suffix.len()
+                    && filter_words[filter_words.len() - suffix.len()..] == **suffix)
+                    .then_some(suffix.len())
+            })
+        {
+            let cutoff = filter_words.len() - suffix_len;
             let token_cutoff = if cutoff == 0 {
                 0
             } else {
@@ -391,9 +430,9 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             };
             let base_filter_tokens = trim_commas(&filter_tokens[..token_cutoff]);
             let mut filter = parse_object_filter(&base_filter_tokens, false)?;
-            let relation = if let Some(except_idx) =
-                find_index(&base_filter_tokens, |token| token.is_word("except"))
-            {
+            let relation = if let Some(except_idx) = find_index(&base_filter_tokens, |token| {
+                EXCEPT_WORD_PATTERN.matches_token(token)
+            }) {
                 let base_before_except = trim_commas(&base_filter_tokens[..except_idx]);
                 if base_before_except.is_empty() {
                     return Err(CardTextError::ParseError(format!(
@@ -427,11 +466,13 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
         )));
     }
 
-    if let Some(if_idx) = find_index(&core_tokens, |token: &OwnedLexToken| token.is_word("if")) {
+    if let Some(if_idx) = find_index(&core_tokens, |token: &OwnedLexToken| {
+        IF_WORD_PATTERN.matches_token(token)
+    }) {
         let mut target_tokens = trim_commas(&core_tokens[..if_idx]).to_vec();
         while target_tokens
             .last()
-            .is_some_and(|token| token.is_word("instead"))
+            .is_some_and(|token| INSTEAD_WORD_PATTERN.matches_token(token))
         {
             target_tokens.pop();
         }
@@ -478,11 +519,14 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             ),
         });
     }
-    if let Some(and_idx) = find_index(&core_tokens, |token: &OwnedLexToken| token.is_word("and")) {
+    if let Some(and_idx) = find_index(&core_tokens, |token: &OwnedLexToken| {
+        AND_WORD_PATTERN.matches_token(token)
+    }) {
         let tail_slice = &core_tokens[and_idx + 1..];
-        let starts_multi_target = tail_slice.first().is_some_and(|t| t.is_word("target"))
-            || (grammar::words_match_any_prefix(tail_slice, UP_TO_PREFIXES).is_some()
-                && grammar::contains_word(tail_slice, "target"));
+        let starts_multi_target = tail_slice
+            .first()
+            .is_some_and(|t| TARGET_WORD_PATTERN.matches_token(t))
+            || parse_choice_count_before_target_prefix(tail_slice).is_some();
         if starts_multi_target {
             return Err(CardTextError::ParseError(format!(
                 "unsupported multi-target destroy clause (clause: '{}')",
@@ -494,7 +538,7 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     if grammar::words_match_any_prefix(&core_tokens, TARGET_BLOCKED_PREFIXES).is_some() {
         let mut target_tokens = core_tokens.to_vec();
         if let Some(blocked_idx) = find_index(&target_tokens, |token: &OwnedLexToken| {
-            token.is_word("blocked")
+            BLOCKED_WORD_PATTERN.matches_token(token)
         }) {
             target_tokens.remove(blocked_idx);
         }
@@ -520,10 +564,8 @@ pub(crate) fn parse_destroy_combat_history_target(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TargetAst>, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(that_idx) = word_slice_find_phrase_start_or_zero(
-        &clause_words,
-        &["that", "was", "dealt", "damage", "this", "turn"],
-    ) else {
+    let Some(that_idx) = DEALT_DAMAGE_THIS_TURN_TAIL_PATTERN.find_exact_window(&clause_words, 6)
+    else {
         return Ok(None);
     };
     if that_idx == 0 || that_idx + 6 != clause_words.len() {

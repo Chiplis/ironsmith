@@ -5,10 +5,38 @@ use super::super::token_primitives::{
 };
 use super::line_dispatch::{LineDispatchContext, LineDispatchResult};
 use super::*;
+use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 
 const MAX_SPEED_CONDITION_LABEL: &str = "__max_speed_condition";
 const CONTROL_COLOR_PAIR_PERMANENT_CONDITION_PREFIX: &str = "__control_color_pair_permanent_";
 const STATION_THRESHOLD_CONDITION_PREFIX: &str = "__station_threshold_";
+const DRAFT_RULE_LINE_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["draft", "this", "card", "face", "up"]);
+const DRAFT_RULE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["reveal", "this", "card", "as", "you", "draft", "it"],
+            &["as", "you", "draft"],
+            &["during", "the", "draft"],
+            &["immediately", "after", "the", "draft"],
+        ]
+);
+const DRAFT_BOOSTER_PASS_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix & ["each", "player", "passes"];
+    contains_phrases & [&["booster", "pack"]]
+);
+const CAN_BLOCK_ADDITIONAL_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["this", "creature", "can", "block"]);
+const ADDITIONAL_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["additional"]);
+const CREATURE_OR_CREATURES_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_words & [&["creature", "creatures"]]);
+const BLOCK_DURATION_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(suffix_any & [&["each", "combat"], &["this", "turn"]]);
+const START_YOUR_ENGINES_LINE_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["start", "your", "engines"]);
+const LEARN_LINE_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["learn"]);
+const STATION_LINE_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["station"]);
 
 pub(super) fn run_trailing_keyword_activation_line_family(
     ctx: &LineDispatchContext<'_>,
@@ -189,10 +217,8 @@ fn max_speed_intervening_if_text(body_text: &str) -> String {
 pub(super) fn run_start_your_engines_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let lower = ctx.line.info.raw_line.trim_start().to_ascii_lowercase();
-    if !str_starts_with(lower.as_str(), "start your engines!")
-        && lower.trim_end_matches('.').trim() != "start your engines"
-    {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(&ctx.line.tokens);
+    if !START_YOUR_ENGINES_LINE_PATTERN.matches_words(&words) {
         return Ok(None);
     }
 
@@ -213,7 +239,7 @@ pub(super) fn run_start_your_engines_line_family(
 pub(super) fn run_draft_rule_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    if !is_draft_rule_line(ctx.line.info.raw_line.as_str()) {
+    if !is_draft_rule_line(&ctx.line.tokens) {
         return Ok(None);
     }
 
@@ -228,25 +254,18 @@ pub(super) fn run_draft_rule_line_family(
     )))
 }
 
-fn is_draft_rule_line(raw_line: &str) -> bool {
-    let lower = raw_line.trim().to_ascii_lowercase();
-    if lower.is_empty() {
-        return false;
-    }
-
-    lower.trim_end_matches('.') == "draft this card face up"
-        || lower.starts_with("reveal this card as you draft it")
-        || lower.starts_with("as you draft ")
-        || lower.starts_with("during the draft, ")
-        || lower.starts_with("immediately after the draft, ")
-        || lower.starts_with("each player passes ") && lower.contains("booster pack")
+fn is_draft_rule_line(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
+    DRAFT_RULE_LINE_PATTERN.matches_words(&words)
+        || DRAFT_RULE_PREFIX_PATTERN.matches_words(&words)
+        || DRAFT_BOOSTER_PASS_PATTERN.matches_words(&words)
 }
 
 pub(super) fn run_learn_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let lower = ctx.line.info.raw_line.trim().to_ascii_lowercase();
-    if !str_starts_with(lower.as_str(), "learn.") && lower.trim_end_matches('.') != "learn" {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(&ctx.line.tokens);
+    if !LEARN_LINE_PATTERN.matches_words(&words) {
         return Ok(None);
     }
 
@@ -456,14 +475,11 @@ pub(super) fn run_champion_line_family(
 pub(super) fn run_station_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let lower = ctx.line.info.raw_line.trim().to_ascii_lowercase();
-    if !str_starts_with(lower.as_str(), "station")
-        || (!str_starts_with(lower.as_str(), "station ")
-            && !str_starts_with(lower.as_str(), "station(")
-            && lower.trim_end_matches('.') != "station")
-    {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(&ctx.line.tokens);
+    if !STATION_LINE_PATTERN.matches_words(&words) {
         return Ok(None);
     }
+    let lower = ctx.line.info.raw_line.trim().to_ascii_lowercase();
 
     let activation_text = "Tap another untapped creature you control: Put X charge counters on this artifact, where X is the power of the creature tapped this way. Activate only as a sorcery.";
     let activation_line = rewrite_line_normalized(ctx.line, activation_text)?;
@@ -1053,20 +1069,17 @@ pub(super) fn run_statement_probe_line_family(
 
 fn is_can_block_additional_creatures_static_line(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if !word_slice_starts_with(&words, &["this", "creature", "can", "block"]) {
+    if !CAN_BLOCK_ADDITIONAL_PREFIX_PATTERN.matches_words(&words) {
         return false;
     }
 
-    let has_additional =
-        crate::runtime_backend::lexer::word_slice_contains_word(&words, "additional");
-    let has_creature_noun = words
-        .iter()
-        .any(|word| *word == "creature" || *word == "creatures");
+    let has_additional = ADDITIONAL_WORD_PATTERN.matches_words(&words);
+    let has_creature_noun = CREATURE_OR_CREATURES_WORD_PATTERN.matches_words(&words);
     if !has_additional || !has_creature_noun {
         return false;
     }
 
-    word_slice_ends_with_any(&words, &[&["each", "combat"], &["this", "turn"]])
+    BLOCK_DURATION_TAIL_PATTERN.matches_words(&words)
 }
 
 pub(super) fn run_static_line_family(

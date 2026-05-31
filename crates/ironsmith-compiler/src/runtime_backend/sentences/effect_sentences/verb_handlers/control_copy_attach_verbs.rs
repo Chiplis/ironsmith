@@ -1,3 +1,150 @@
+const CCA_LIFE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["life"]);
+const CCA_THE_GAME_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["the", "game"]);
+const CCA_UNLESS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["unless"]);
+const CCA_DURATION_START_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["during"], &["until"]]);
+const CCA_OF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["of"]);
+const CCA_THOSE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["those"]);
+const CCA_IT_OR_THEM_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["it"], &["them"]]);
+const CCA_CARD_OR_CARDS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["card"], &["cards"]]);
+const CCA_HAND_OR_HANDS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["hand"], &["hands"]]);
+const CCA_GRAVEYARD_OR_GRAVEYARDS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["graveyard"], &["graveyards"]]);
+const CCA_LIBRARY_OR_LIBRARIES_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["library"], &["libraries"]]);
+const CCA_REST_TARGET_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["the", "rest"], &["rest"]]);
+const CCA_AND_OR_THEN_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_words & [&["and", "then"]]);
+const CCA_ON_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["on"]);
+const CCA_THAT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["that"]);
+const CCA_ATTACHED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["attached"]);
+const CCA_THE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["the"]);
+const CCA_CHOICE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["choice"]);
+const CCA_EITHER_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["either"]);
+const CCA_TOP_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["top"]);
+const CCA_OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
+const CCA_BOTTOM_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["bottom"]);
+const CCA_PUT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["put"]);
+const CCA_BATTLEFIELD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["battlefield"]);
+const CCA_FROM_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["from"]);
+const CCA_COMMAND_ZONE_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["command", "zone"]);
+const CCA_DESTINATION_IGNORED_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["and"], &["tapped"], &["attacking"]]);
+const CCA_ATTACHED_TO_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["attached", "to"]);
+const CCA_UNDER_YOUR_CONTROL_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["under", "your", "control"]);
+const CCA_OWNER_CONTROL_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["under", "its", "owners", "control"],
+            &["under", "his", "owners", "control"],
+            &["under", "her", "owners", "control"],
+            &["under", "their", "owners", "control"],
+            &["under", "that", "players", "control"],
+        ]
+);
+const CCA_ALL_OR_EACH_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["all"], &["each"]]);
+const CCA_OWNER_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["owner"], &["owners"], &["owner's"], &["owners'"]]);
+const CCA_PLAYER_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["player"],
+            &["players"],
+            &["player's"],
+            &["players'"],
+        ]
+);
+const CCA_FOR_AS_LONG_AS_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["for", "as", "long", "as"]]);
+const CCA_YOU_CONTROL_SOURCE_MARKER_PATTERN: ClauseShape<'static> =
+    ClauseShape::new()
+        .contains_words(&["you", "control"])
+        .contains_any_words(&[&["this"], &["thiss"], &["source"], &["creature"], &["permanent"]]);
+const CCA_DURING_NEXT_TURN_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["during", "next", "turn"]);
+const CCA_UNTIL_END_NEXT_TURN_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["until", "end", "next", "turn"]);
+const CCA_UNTIL_END_TURN_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["until", "end", "turn"]);
+const CCA_BACK_ANY_ORDER_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["back", "any", "order"]);
+const CCA_FROM_AMONG_HAND_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["from", "among", "hand"]);
+const CCA_REST_TOP_BOTTOM_LIBRARY_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["rest", "top", "bottom", "library"]);
+const CCA_YOUR_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["your"]);
+const CCA_THEIR_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["their"]);
+const CCA_THAT_PLAYER_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix_any & [&["that", "player"], &["that", "players"]]);
+const CCA_REST_BOTTOM_LIBRARY_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["rest", "bottom", "library"]);
+const CCA_REST_GRAVEYARD_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["rest", "graveyard"]);
+const CCA_LIBRARY_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["library"]);
+const CCA_POWER_NUMBER_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["power", "number"]);
+const CCA_YOU_CONTROL_PHRASE_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["you", "control"]]);
+const CCA_IT_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["it"]);
+const CCA_THEM_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["them"]);
+const CCA_HAND_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["hand"]);
+const CCA_INTO_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["into"]);
+const CCA_ATTACKING_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["attacking"]);
+const CCA_TAPPED_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["tapped"]);
+const CCA_AMONG_THEM_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["among", "them"]);
+const CCA_PERMANENT_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["permanent"]);
+const CCA_STICKER_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["sticker"]);
+
+fn parse_put_choice_count_prefix(
+    tokens: &[OwnedLexToken],
+    clause_words: &[&str],
+) -> Result<(ChoiceCount, usize), CardTextError> {
+    parse_choice_count_token_prefix_consumed(tokens).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "missing put count (clause: '{}')",
+            clause_words.join(" ")
+        ))
+    })
+}
+
+fn parse_counted_card_target_prefix(
+    target_tokens: &[OwnedLexToken],
+) -> Result<Option<TargetAst>, CardTextError> {
+    let Some((count, used)) = parse_choice_count_token_prefix_consumed(target_tokens) else {
+        return Ok(None);
+    };
+    if !target_tokens
+        .get(used)
+        .is_some_and(|token| CCA_CARD_OR_CARDS_WORD_PATTERN.matches_token(token))
+    {
+        return Ok(None);
+    }
+    let inner = parse_target_phrase(&target_tokens[used..])?;
+    Ok(Some(TargetAst::WithCount(Box::new(inner), count)))
+}
+
+fn cca_destination_player_from_words(words: &[&str], fallback: PlayerAst) -> PlayerAst {
+    if CCA_YOUR_MARKER_PATTERN.matches_words(words) {
+        PlayerAst::You
+    } else if CCA_THEIR_MARKER_PATTERN.matches_words(words)
+        || CCA_THAT_PLAYER_PREFIX_PATTERN.matches_words(words)
+    {
+        PlayerAst::That
+    } else {
+        fallback
+    }
+}
+
 pub(crate) fn parse_lose_life(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
@@ -7,7 +154,7 @@ pub(crate) fn parse_lose_life(
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
 
     if clause_words.len() == 2
-        && clause_words[1] == "life"
+        && CCA_LIFE_WORD_PATTERN.matches_word(clause_words[1])
         && let Some((amount, _)) = parse_number(tokens)
     {
         return Ok(subject_verb_player_resource_effect(
@@ -32,7 +179,7 @@ pub(crate) fn parse_lose_life(
             SubjectVerbActionAst::LoseLife { amount },
         ));
     }
-    if crate::runtime_backend::lexer::word_slice_eq(&clause_words, &["the", "game"]) {
+    if CCA_THE_GAME_PATTERN.matches_words(&clause_words) {
         return Ok(EffectAst::subject_verb_lose_game(player));
     }
 
@@ -72,7 +219,7 @@ pub(crate) fn parse_lose_life(
         }
         if trailing
             .first()
-            .is_some_and(|token| token.is_word("unless"))
+            .is_some_and(|token| CCA_UNLESS_WORD_PATTERN.matches_token(token))
         {
             let mut unless_as_if_tokens = Vec::with_capacity(trailing.len() + 1);
             unless_as_if_tokens.push(OwnedLexToken::word("if".to_string(), TextSpan::synthetic()));
@@ -130,7 +277,9 @@ pub(crate) fn parse_gain_life(
             &["then", "shuffle", "your", "graveyard", "into", "your"],
         )
         .is_some()
-            && grammar::contains_word(&trailing, "library")
+            && CCA_LIBRARY_MARKER_PATTERN.matches_words(&crate::runtime_backend::token_word_refs(
+                &trailing,
+            ))
         {
             return Err(CardTextError::ParseError(format!(
                 "unsupported trailing life-gain shuffle-graveyard clause (clause: '{}')",
@@ -159,7 +308,7 @@ pub(crate) fn parse_gain_life(
         }
         if trailing
             .first()
-            .is_some_and(|token| token.is_word("unless"))
+            .is_some_and(|token| CCA_UNLESS_WORD_PATTERN.matches_token(token))
         {
             let mut unless_as_if_tokens = Vec::with_capacity(trailing.len() + 1);
             unless_as_if_tokens.push(OwnedLexToken::word("if".to_string(), TextSpan::synthetic()));
@@ -190,9 +339,8 @@ pub(crate) fn parse_gain_control(
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let has_dynamic_power_bound = grammar::contains_word(tokens, "power")
-        && grammar::contains_word(tokens, "number")
-        && grammar::words_find_phrase(tokens, &["you", "control"]).is_some();
+    let has_dynamic_power_bound = CCA_POWER_NUMBER_MARKER_PATTERN.matches_words(&clause_words)
+        && CCA_YOU_CONTROL_PHRASE_MARKER_PATTERN.matches_words(&clause_words);
     if has_dynamic_power_bound {
         return Err(CardTextError::ParseError(format!(
             "unsupported dynamic power-bound control clause (clause: '{}')",
@@ -214,7 +362,7 @@ pub(crate) fn parse_gain_control(
     }
 
     let duration_idx = find_index(&tokens[idx..], |token: &OwnedLexToken| {
-        token.is_word("during") || token.is_word("until")
+        CCA_DURATION_START_WORD_PATTERN.matches_token(token)
     })
     .map(|offset| idx + offset)
     .or_else(|| {
@@ -316,33 +464,21 @@ pub(crate) fn parse_control_duration(
         return Ok(ControlDurationAst::Forever);
     }
 
-    let has_for_as_long_as =
-        grammar::words_find_phrase(tokens, &["for", "as", "long", "as"]).is_some();
-    if has_for_as_long_as
-        && grammar::contains_word(tokens, "you")
-        && grammar::contains_word(tokens, "control")
-        && (grammar::contains_word(tokens, "this")
-            || grammar::contains_word(tokens, "thiss")
-            || grammar::contains_word(tokens, "source")
-            || grammar::contains_word(tokens, "creature")
-            || grammar::contains_word(tokens, "permanent"))
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if CCA_FOR_AS_LONG_AS_MARKER_PATTERN.matches_words(&words)
+        && CCA_YOU_CONTROL_SOURCE_MARKER_PATTERN.matches_words(&words)
     {
         return Ok(ControlDurationAst::AsLongAsYouControlSource);
     }
 
-    let has_during = grammar::contains_word(tokens, "during");
-    let has_next = grammar::contains_word(tokens, "next");
-    let has_turn = grammar::contains_word(tokens, "turn");
-    if has_during && has_next && has_turn {
+    if CCA_DURING_NEXT_TURN_MARKER_PATTERN.matches_words(&words) {
         return Ok(ControlDurationAst::DuringNextTurn);
     }
 
-    let has_until = grammar::contains_word(tokens, "until");
-    let has_end = grammar::contains_word(tokens, "end");
-    if has_until && has_end && has_next && has_turn {
+    if CCA_UNTIL_END_NEXT_TURN_MARKER_PATTERN.matches_words(&words) {
         return Ok(ControlDurationAst::UntilYourNextTurnEnd);
     }
-    if has_until && has_end && has_turn {
+    if CCA_UNTIL_END_TURN_MARKER_PATTERN.matches_words(&words) {
         return Ok(ControlDurationAst::UntilEndOfTurn);
     }
 
@@ -359,7 +495,7 @@ pub(crate) fn parse_put_into_hand(
         tokens: &[OwnedLexToken],
     ) -> Option<DelayedReturnTimingAst> {
         let hand_idx = rfind_index(tokens, |token: &OwnedLexToken| {
-            token.is_word("hand") || token.is_word("hands")
+            CCA_HAND_OR_HANDS_WORD_PATTERN.matches_token(token)
         })?;
         let tail_tokens = trim_commas(&tokens[hand_idx + 1..]);
         let tail_words = crate::runtime_backend::token_word_refs(&tail_tokens);
@@ -385,10 +521,10 @@ pub(crate) fn parse_put_into_hand(
         let target_words = crate::runtime_backend::token_word_refs(target_tokens);
         let has_graveyard = target_words
             .iter()
-            .any(|word| matches!(*word, "graveyard" | "graveyards"));
+            .any(|word| CCA_GRAVEYARD_OR_GRAVEYARDS_WORD_PATTERN.matches_word(word));
         let has_hand = target_words
             .iter()
-            .any(|word| matches!(*word, "hand" | "hands"));
+            .any(|word| CCA_HAND_OR_HANDS_WORD_PATTERN.matches_word(word));
         if !(has_graveyard && has_hand) {
             return target;
         }
@@ -446,54 +582,54 @@ pub(crate) fn parse_put_into_hand(
             Some("its") => {
                 idx += 1;
                 if words.get(idx).copied().is_some_and(|word| {
-                    matches!(word, "owner" | "owners" | "owner's" | "owners'")
+                    CCA_OWNER_WORD_PATTERN.matches_word(word)
                 }) {
                     idx += 1;
                 }
             }
             Some("that") if words.get(idx + 1).copied().is_some_and(|word| {
-                matches!(word, "player" | "players" | "player's" | "players'")
+                CCA_PLAYER_WORD_PATTERN.matches_word(word)
             }) =>
             {
                 idx += 2;
             }
-            Some("owner" | "owners" | "owner's" | "owners'") => {
+            Some(word) if CCA_OWNER_WORD_PATTERN.matches_word(word) => {
                 idx += 1;
             }
             _ => {}
         }
 
-        if !word_slice_at_is(&words, idx, "choice") {
+        if !CCA_CHOICE_WORD_PATTERN.matches_word_at(&words, idx) {
             return false;
         }
         idx += 1;
-        if !word_slice_at_is(&words, idx, "of") {
+        if !CCA_OF_WORD_PATTERN.matches_word_at(&words, idx) {
             return false;
         }
         idx += 1;
-        if word_slice_at_is(&words, idx, "either") {
+        if CCA_EITHER_WORD_PATTERN.matches_word_at(&words, idx) {
             idx += 1;
         }
-        if word_slice_at_is(&words, idx, "the") {
+        if CCA_THE_WORD_PATTERN.matches_word_at(&words, idx) {
             idx += 1;
         }
 
-        let top_or_bottom = word_slice_at_is(&words, idx, "top")
-            && word_slice_at_is(&words, idx + 1, "or")
-            && word_slice_at_is(&words, idx + 2, "bottom");
-        let bottom_or_top = word_slice_at_is(&words, idx, "bottom")
-            && word_slice_at_is(&words, idx + 1, "or")
-            && word_slice_at_is(&words, idx + 2, "top");
+        let top_or_bottom = CCA_TOP_WORD_PATTERN.matches_word_at(&words, idx)
+            && CCA_OR_WORD_PATTERN.matches_word_at(&words, idx + 1)
+            && CCA_BOTTOM_WORD_PATTERN.matches_word_at(&words, idx + 2);
+        let bottom_or_top = CCA_BOTTOM_WORD_PATTERN.matches_word_at(&words, idx)
+            && CCA_OR_WORD_PATTERN.matches_word_at(&words, idx + 1)
+            && CCA_TOP_WORD_PATTERN.matches_word_at(&words, idx + 2);
         if !(top_or_bottom || bottom_or_top) {
             return false;
         }
         idx += 3;
-        if !word_slice_at_is(&words, idx, "of") {
+        if !CCA_OF_WORD_PATTERN.matches_word_at(&words, idx) {
             return false;
         }
         words[idx + 1..]
             .iter()
-            .any(|word| matches!(*word, "library" | "libraries"))
+            .any(|word| CCA_LIBRARY_OR_LIBRARIES_WORD_PATTERN.matches_word(word))
     }
 
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
@@ -503,7 +639,7 @@ pub(crate) fn parse_put_into_hand(
     fn parse_counted_those_cards_target(tokens: &[OwnedLexToken]) -> Option<u32> {
         let tokens = trim_commas(tokens);
         let words = crate::runtime_backend::token_word_refs(&tokens);
-        if !word_slice_first_is(&words, "put") {
+        if !CCA_PUT_WORD_PATTERN.matches_first_word(&words) {
             return None;
         }
 
@@ -512,20 +648,20 @@ pub(crate) fn parse_put_into_hand(
         let mut idx = used;
         if count_tokens
             .get(idx)
-            .is_some_and(|token: &OwnedLexToken| token.is_word("of"))
+            .is_some_and(|token: &OwnedLexToken| CCA_OF_WORD_PATTERN.matches_token(token))
         {
             idx += 1;
         }
         if !count_tokens
             .get(idx)
-            .is_some_and(|token: &OwnedLexToken| token.is_word("those"))
+            .is_some_and(|token: &OwnedLexToken| CCA_THOSE_WORD_PATTERN.matches_token(token))
         {
             return None;
         }
         idx += 1;
         if !count_tokens
             .get(idx)
-            .is_some_and(|token: &OwnedLexToken| token.is_word("card") || token.is_word("cards"))
+            .is_some_and(|token: &OwnedLexToken| CCA_CARD_OR_CARDS_WORD_PATTERN.matches_token(token))
         {
             return None;
         }
@@ -538,52 +674,27 @@ pub(crate) fn parse_put_into_hand(
     }
 
     // "Put them/it back in any order." (typically after looking at the top cards of a library).
-    if grammar::contains_word(tokens, "back")
-        && grammar::contains_word(tokens, "any")
-        && grammar::contains_word(tokens, "order")
-        && word_slice_first_is_any(&clause_words, &["it", "them"])
+    if CCA_BACK_ANY_ORDER_MARKER_PATTERN.matches_words(&clause_words)
+        && CCA_IT_OR_THEM_WORD_PATTERN.matches_first_word(&clause_words)
     {
         return Ok(EffectAst::subject_verb_reorder_top_of_library(TagKey::from(IT_TAG)));
     }
 
-    if grammar::contains_word(tokens, "from")
-        && grammar::contains_word(tokens, "among")
-        && grammar::contains_word(tokens, "hand")
-    {
+    if CCA_FROM_AMONG_HAND_MARKER_PATTERN.matches_words(&clause_words) {
         return Ok(EffectAst::subject_verb_put_some_into_hand_rest_into_graveyard(
             player, 1,
         ));
     }
-    let has_it = grammar::contains_word(tokens, "it");
-    let has_them = grammar::contains_word(tokens, "them");
-    let has_hand = grammar::contains_word(tokens, "hand");
-    let has_into = grammar::contains_word(tokens, "into");
+    let has_it = CCA_IT_MARKER_PATTERN.matches_words(&clause_words);
+    let has_them = CCA_THEM_MARKER_PATTERN.matches_words(&clause_words);
+    let has_hand = CCA_HAND_MARKER_PATTERN.matches_words(&clause_words);
+    let has_into = CCA_INTO_MARKER_PATTERN.matches_words(&clause_words);
 
     // "Put one of those cards on top of your library and the rest on the bottom of your library"
-    if grammar::contains_word(tokens, "rest")
-        && grammar::contains_word(tokens, "top")
-        && grammar::contains_word(tokens, "bottom")
-        && grammar::contains_word(tokens, "library")
-        && crate::runtime_backend::lexer::word_slice_contains_any_word(
-            &clause_words,
-            &["and", "then"],
-        )
+    if CCA_REST_TOP_BOTTOM_LIBRARY_MARKER_PATTERN.matches_words(&clause_words)
+        && CCA_AND_OR_THEN_WORD_PATTERN.matches_words(&clause_words)
     {
-        let mut up_to = false;
-        let (count, used) = if token_slice_first_is(tokens, "up")
-            && token_slice_at_is(tokens, 1, "to")
-        {
-            up_to = true;
-            parse_number(&tokens[2..]).map(|(value, used)| (value, used + 2))
-        } else {
-            parse_number(tokens)
-        }
-        .ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "missing put count (clause: '{}')",
-                clause_words.join(" ")
-            ))
-        })?;
+        let (choice_count, used) = parse_put_choice_count_prefix(tokens, &clause_words)?;
 
         let mut idx = used;
         if token_slice_at_is(tokens, idx, "of") {
@@ -611,21 +722,8 @@ pub(crate) fn parse_put_into_hand(
             )));
         }
 
-        let library_owner = if grammar::contains_word(tokens, "your") {
-            PlayerAst::You
-        } else if grammar::contains_word(tokens, "their")
-            || grammar::words_match_any_prefix(tokens, THAT_PLAYER_PREFIXES).is_some()
-        {
-            PlayerAst::That
-        } else {
-            player
-        };
+        let library_owner = cca_destination_player_from_words(&clause_words, player);
 
-        let choice_count = if up_to {
-            ChoiceCount::up_to(count as usize)
-        } else {
-            ChoiceCount::exactly(count as usize)
-        };
         return Ok(EffectAst::subject_verb_rearrange_looked_cards_in_library(
             library_owner,
             TagKey::from(IT_TAG),
@@ -636,29 +734,10 @@ pub(crate) fn parse_put_into_hand(
     if has_hand && has_into && (has_it || has_them) {
         // "Put N of them into your hand and the rest on the bottom of your library in any order."
         if has_them
-            && grammar::contains_word(tokens, "rest")
-            && grammar::contains_word(tokens, "bottom")
-            && grammar::contains_word(tokens, "library")
-            && crate::runtime_backend::lexer::word_slice_contains_any_word(
-                &clause_words,
-                &["and", "then"],
-            )
+            && CCA_REST_BOTTOM_LIBRARY_MARKER_PATTERN.matches_words(&clause_words)
+            && CCA_AND_OR_THEN_WORD_PATTERN.matches_words(&clause_words)
         {
-            let mut up_to = false;
-            let (count, used) = if token_slice_first_is(tokens, "up")
-                && token_slice_at_is(tokens, 1, "to")
-            {
-                up_to = true;
-                parse_number(&tokens[2..]).map(|(value, used)| (value, used + 2))
-            } else {
-                parse_number(tokens)
-            }
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "missing put count (clause: '{}')",
-                    clause_words.join(" ")
-                ))
-            })?;
+            let (choice_count, used) = parse_put_choice_count_prefix(tokens, &clause_words)?;
             let mut idx = used;
             if token_slice_at_is(tokens, idx, "of") {
                 idx += 1;
@@ -670,48 +749,17 @@ pub(crate) fn parse_put_into_hand(
                 )));
             }
 
-            let dest_player = if grammar::contains_word(tokens, "your") {
-                PlayerAst::You
-            } else if grammar::contains_word(tokens, "their")
-                || grammar::words_match_any_prefix(tokens, THAT_PLAYER_PREFIXES).is_some()
-            {
-                PlayerAst::That
-            } else {
-                player
-            };
+            let dest_player = cca_destination_player_from_words(&clause_words, player);
 
-            let choice_count = if up_to {
-                ChoiceCount::up_to(count as usize)
-            } else {
-                ChoiceCount::exactly(count as usize)
-            };
             return Ok(EffectAst::subject_verb_put_some_into_hand_rest_on_bottom_of_library_with_count(dest_player, choice_count));
         }
 
         // "Put N of them into your hand and the rest into your graveyard."
         if has_them
-            && grammar::contains_word(tokens, "rest")
-            && grammar::contains_word(tokens, "graveyard")
-            && crate::runtime_backend::lexer::word_slice_contains_any_word(
-                &clause_words,
-                &["and", "then"],
-            )
+            && CCA_REST_GRAVEYARD_MARKER_PATTERN.matches_words(&clause_words)
+            && CCA_AND_OR_THEN_WORD_PATTERN.matches_words(&clause_words)
         {
-            let mut up_to = false;
-            let (count, used) = if token_slice_first_is(tokens, "up")
-                && token_slice_at_is(tokens, 1, "to")
-            {
-                up_to = true;
-                parse_number(&tokens[2..]).map(|(value, used)| (value, used + 2))
-            } else {
-                parse_number(tokens)
-            }
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "missing put count (clause: '{}')",
-                    clause_words.join(" ")
-                ))
-            })?;
+            let (choice_count, used) = parse_put_choice_count_prefix(tokens, &clause_words)?;
             // Accept optional "of" before "them".
             let mut idx = used;
             if token_slice_at_is(tokens, idx, "of") {
@@ -725,21 +773,8 @@ pub(crate) fn parse_put_into_hand(
             }
 
             // The chooser is typically the player whose hand is referenced.
-            let dest_player = if grammar::contains_word(tokens, "your") {
-                PlayerAst::You
-            } else if grammar::contains_word(tokens, "their")
-                || grammar::words_match_any_prefix(tokens, THAT_PLAYER_PREFIXES).is_some()
-            {
-                PlayerAst::That
-            } else {
-                player
-            };
+            let dest_player = cca_destination_player_from_words(&clause_words, player);
 
-            let choice_count = if up_to {
-                ChoiceCount::up_to(count as usize)
-            } else {
-                ChoiceCount::exactly(count as usize)
-            };
             return Ok(EffectAst::subject_verb_put_some_into_hand_rest_into_graveyard_with_count(dest_player, choice_count));
         }
 
@@ -763,7 +798,7 @@ pub(crate) fn parse_put_into_hand(
         }
         if !tokens
             .get(idx)
-            .is_some_and(|token| token.is_word("battlefield"))
+            .is_some_and(|token| CCA_BATTLEFIELD_WORD_PATTERN.matches_token(token))
         {
             return Err(CardTextError::ParseError(format!(
                 "unsupported put destination after 'onto' (clause: '{}')",
@@ -780,43 +815,16 @@ pub(crate) fn parse_put_into_hand(
 
         let mut battlefield_controller = ReturnControllerAst::Preserve;
         if token_slice_at_is(tokens, idx, "under") {
-            let consumed =
-                if grammar::words_match_prefix(&tokens[idx..], &["under", "your", "control"])
-                    .is_some()
-                {
-                    battlefield_controller = ReturnControllerAst::You;
-                    Some(3usize)
-                } else if grammar::words_match_prefix(
-                    &tokens[idx..],
-                    &["under", "its", "owners", "control"],
-                )
-                .is_some()
-                    || grammar::words_match_prefix(
-                        &tokens[idx..],
-                        &["under", "his", "owners", "control"],
-                    )
-                    .is_some()
-                    || grammar::words_match_prefix(
-                        &tokens[idx..],
-                        &["under", "her", "owners", "control"],
-                    )
-                    .is_some()
-                    || grammar::words_match_prefix(
-                        &tokens[idx..],
-                        &["under", "their", "owners", "control"],
-                    )
-                    .is_some()
-                    || grammar::words_match_prefix(
-                        &tokens[idx..],
-                        &["under", "that", "players", "control"],
-                    )
-                    .is_some()
-                {
-                    battlefield_controller = ReturnControllerAst::Owner;
-                    Some(4usize)
-                } else {
-                    None
-                };
+            let controller_words = crate::runtime_backend::token_word_refs(&tokens[idx..]);
+            let consumed = if CCA_UNDER_YOUR_CONTROL_PATTERN.matches_words(&controller_words) {
+                battlefield_controller = ReturnControllerAst::You;
+                Some(3usize)
+            } else if CCA_OWNER_CONTROL_TAIL_PATTERN.matches_words(&controller_words) {
+                battlefield_controller = ReturnControllerAst::Owner;
+                Some(4usize)
+            } else {
+                None
+            };
             if let Some(consumed) = consumed {
                 idx += consumed;
             }
@@ -844,7 +852,7 @@ pub(crate) fn parse_put_into_hand(
             let attachment_target_len = if crate::runtime_backend::lexer::token_slice_first_is(after_to, "it") {
                 1usize
             } else if after_to.len() >= 2
-                && after_to[0].is_word("that")
+                && CCA_THAT_WORD_PATTERN.matches_token(&after_to[0])
                 && after_to[1].as_word().is_some_and(|word| {
                     matches!(
                         word,
@@ -885,7 +893,7 @@ pub(crate) fn parse_put_into_hand(
 
         if !target_tokens
             .first()
-            .is_some_and(|token| token.is_word("attached"))
+            .is_some_and(|token| CCA_ATTACHED_WORD_PATTERN.matches_token(token))
         {
             let mut rewritten = target_tokens;
             rewritten.push(OwnedLexToken::word("onto".to_string(), tokens[0].span()));
@@ -894,7 +902,7 @@ pub(crate) fn parse_put_into_hand(
         }
     }
 
-    if let Some(on_idx) = find_index(tokens, |token| token.is_word("on"))
+    if let Some(on_idx) = find_index(tokens, |token| CCA_ON_WORD_PATTERN.matches_token(token))
         && is_top_or_bottom_choice_destination(&tokens[on_idx + 1..])
     {
         let target_tokens = trim_commas(&tokens[..on_idx]);
@@ -904,13 +912,8 @@ pub(crate) fn parse_put_into_hand(
                 clause_words.join(" ")
             )));
         }
-        let target = if let Some((count, used)) = parse_number(&target_tokens)
-            && target_tokens
-                .get(used)
-                .is_some_and(|token| token.is_word("card") || token.is_word("cards"))
-        {
-            let inner = parse_target_phrase(&target_tokens[used..])?;
-            TargetAst::WithCount(Box::new(inner), ChoiceCount::exactly(count as usize))
+        let target = if let Some(target) = parse_counted_card_target_prefix(&target_tokens)? {
+            target
         } else {
             parse_target_phrase(&target_tokens)?
         };
@@ -938,13 +941,8 @@ pub(crate) fn parse_put_into_hand(
                 clause_words.join(" ")
             )));
         }
-        let target = if let Some((count, used)) = parse_number(&target_tokens)
-            && target_tokens
-                .get(used)
-                .is_some_and(|token| token.is_word("card") || token.is_word("cards"))
-        {
-            let inner = parse_target_phrase(&target_tokens[used..])?;
-            TargetAst::WithCount(Box::new(inner), ChoiceCount::exactly(count as usize))
+        let target = if let Some(target) = parse_counted_card_target_prefix(&target_tokens)? {
+            target
         } else {
             parse_target_phrase(&target_tokens)?
         };
@@ -958,20 +956,20 @@ pub(crate) fn parse_put_into_hand(
         ));
     }
 
-    if let Some(on_idx) = find_index(tokens, |token| token.is_word("on")) {
+    if let Some(on_idx) = find_index(tokens, |token| CCA_ON_WORD_PATTERN.matches_token(token)) {
         let mut bottom_idx = on_idx + 1;
         if tokens
             .get(bottom_idx)
-            .is_some_and(|token| token.is_word("the"))
+            .is_some_and(|token| CCA_THE_WORD_PATTERN.matches_token(token))
         {
             bottom_idx += 1;
         }
         if tokens
             .get(bottom_idx)
-            .is_some_and(|token| token.is_word("bottom"))
+            .is_some_and(|token| CCA_BOTTOM_WORD_PATTERN.matches_token(token))
             && tokens
                 .get(bottom_idx + 1)
-                .is_some_and(|token| token.is_word("of"))
+                .is_some_and(|token| CCA_OF_WORD_PATTERN.matches_token(token))
         {
             let target_tokens = trim_commas(&tokens[..on_idx]);
             if target_tokens.is_empty() {
@@ -980,7 +978,9 @@ pub(crate) fn parse_put_into_hand(
                     clause_words.join(" ")
                 )));
             }
-            if !grammar::contains_word(&tokens[bottom_idx + 2..], "library") {
+            if !CCA_LIBRARY_MARKER_PATTERN
+                .matches_words(&crate::runtime_backend::token_word_refs(&tokens[bottom_idx + 2..]))
+            {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported put destination after 'on bottom of' (clause: '{}')",
                     clause_words.join(" ")
@@ -988,21 +988,13 @@ pub(crate) fn parse_put_into_hand(
             }
 
             let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
-            let is_rest_target = crate::runtime_backend::lexer::word_slice_eq_any(
-                &target_words,
-                &[&["the", "rest"], &["rest"]],
-            );
+            let is_rest_target = CCA_REST_TARGET_PATTERN.matches_words(&target_words);
             if is_rest_target {
                 return Ok(EffectAst::subject_verb_put_rest_on_bottom_of_library());
             }
 
-            let target = if let Some((count, used)) = parse_number(&target_tokens)
-                && target_tokens
-                    .get(used)
-                    .is_some_and(|token| token.is_word("card") || token.is_word("cards"))
-            {
-                let inner = parse_target_phrase(&target_tokens[used..])?;
-                TargetAst::WithCount(Box::new(inner), ChoiceCount::exactly(count as usize))
+            let target = if let Some(target) = parse_counted_card_target_prefix(&target_tokens)? {
+                target
             } else {
                 parse_target_phrase(&target_tokens)?
             };
@@ -1055,12 +1047,7 @@ pub(crate) fn parse_put_into_hand(
                 None
             };
             let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
-            if zone == Zone::Graveyard
-                && crate::runtime_backend::lexer::word_slice_eq_any(
-                    &target_words,
-                    &[&["the", "rest"], &["rest"]],
-                )
-            {
+            if zone == Zone::Graveyard && CCA_REST_TARGET_PATTERN.matches_words(&target_words) {
                 return Ok(EffectAst::subject_verb_move_to_zone(
                     TargetAst::Object(
                         ObjectFilter::tagged(TagKey::from(IT_TAG)),
@@ -1077,22 +1064,11 @@ pub(crate) fn parse_put_into_hand(
 
             if zone == Zone::Hand {
                 if let Some(count) = parse_counted_those_cards_target(&target_tokens)
-                    && grammar::contains_word(destination_tokens, "rest")
-                    && grammar::contains_word(destination_tokens, "graveyard")
-                    && crate::runtime_backend::lexer::word_slice_contains_any_word(
-                        &clause_words,
-                        &["and", "then"],
-                    )
+                    && CCA_REST_GRAVEYARD_MARKER_PATTERN
+                        .matches_words(&crate::runtime_backend::token_word_refs(destination_tokens))
+                    && CCA_AND_OR_THEN_WORD_PATTERN.matches_words(&clause_words)
                 {
-                    let dest_player = if grammar::contains_word(tokens, "your") {
-                        PlayerAst::You
-                    } else if grammar::contains_word(tokens, "their")
-                        || grammar::words_match_any_prefix(tokens, THAT_PLAYER_PREFIXES).is_some()
-                    {
-                        PlayerAst::That
-                    } else {
-                        player
-                    };
+                    let dest_player = cca_destination_player_from_words(&clause_words, player);
 
                     return Ok(EffectAst::subject_verb_put_some_into_hand_rest_into_graveyard(
                         dest_player,
@@ -1146,7 +1122,7 @@ pub(crate) fn parse_put_into_hand(
             .collect();
         if !destination_tokens
             .first()
-            .is_some_and(|token| token.is_word("battlefield"))
+            .is_some_and(|token| CCA_BATTLEFIELD_WORD_PATTERN.matches_token(token))
         {
             return Err(CardTextError::ParseError(format!(
                 "unsupported put destination after 'onto' (clause: '{}')",
@@ -1155,21 +1131,20 @@ pub(crate) fn parse_put_into_hand(
         }
 
         let mut destination_tail: Vec<OwnedLexToken> = destination_tokens[1..].to_vec();
-        let battlefield_attacking = grammar::contains_word(&destination_tail, "attacking");
-        let battlefield_tapped = grammar::contains_word(&destination_tail, "tapped");
-        if let Some(from_idx) = find_index(&destination_tail, |token| token.is_word("from"))
-            && destination_tail
-                .get(from_idx + 1)
-                .is_some_and(|token| token.is_word("command"))
-            && destination_tail
-                .get(from_idx + 2)
-                .is_some_and(|token| token.is_word("zone"))
+        let destination_tail_words = crate::runtime_backend::token_word_refs(&destination_tail);
+        let battlefield_attacking = CCA_ATTACKING_MARKER_PATTERN.matches_words(&destination_tail_words);
+        let battlefield_tapped = CCA_TAPPED_MARKER_PATTERN.matches_words(&destination_tail_words);
+        if let Some(from_idx) = find_index(&destination_tail, |token| {
+            CCA_FROM_WORD_PATTERN.matches_token(token)
+        }) && destination_tail.len() >= from_idx + 3
+            && CCA_COMMAND_ZONE_TAIL_PATTERN.matches_words(&crate::runtime_backend::token_word_refs(
+                &destination_tail[from_idx + 1..],
+            ))
         {
             destination_tail.drain(from_idx..from_idx + 3);
         }
-        destination_tail.retain(|token| !token.is_word("and"));
-        destination_tail.retain(|token| !token.is_word("tapped"));
-        destination_tail.retain(|token| !token.is_word("attacking"));
+        destination_tail
+            .retain(|token| !CCA_DESTINATION_IGNORED_WORD_PATTERN.matches_token(token));
         if battlefield_attacking {
             return Err(CardTextError::ParseError(format!(
                 "unsupported put destination after 'onto' (clause: '{}')",
@@ -1180,10 +1155,10 @@ pub(crate) fn parse_put_into_hand(
         let mut attached_to_target: Option<TargetAst> = None;
         if destination_tail
             .first()
-            .is_some_and(|token| token.is_word("attached"))
-            && destination_tail
-                .get(1)
-                .is_some_and(|token| token.is_word("to"))
+            .is_some_and(|_| {
+                CCA_ATTACHED_TO_PREFIX_PATTERN
+                    .matches_words(&crate::runtime_backend::token_word_refs(&destination_tail))
+            })
         {
             let attachment_target_tokens = trim_commas(&destination_tail[2..]);
             if attachment_target_tokens.is_empty() {
@@ -1197,38 +1172,18 @@ pub(crate) fn parse_put_into_hand(
         }
 
         let destination_tail_words = crate::runtime_backend::token_word_refs(&destination_tail);
-        const OWNER_CONTROL_TAILS: &[&[&str]] = &[
-            &["under", "its", "owners", "control"],
-            &["under", "his", "owners", "control"],
-            &["under", "her", "owners", "control"],
-            &["under", "their", "owners", "control"],
-            &["under", "that", "players", "control"],
-        ];
         let supported_control_tail = destination_tail_words.is_empty()
-            || crate::runtime_backend::lexer::word_slice_eq(
-                &destination_tail_words,
-                &["under", "your", "control"],
-            )
-            || crate::runtime_backend::lexer::word_slice_eq_any(
-                &destination_tail_words,
-                OWNER_CONTROL_TAILS,
-            );
+            || CCA_UNDER_YOUR_CONTROL_PATTERN.matches_words(&destination_tail_words)
+            || CCA_OWNER_CONTROL_TAIL_PATTERN.matches_words(&destination_tail_words);
         if !supported_control_tail {
             return Err(CardTextError::ParseError(format!(
                 "unsupported put destination after 'onto' (clause: '{}')",
                 clause_words.join(" ")
             )));
         }
-        let battlefield_controller = if crate::runtime_backend::lexer::word_slice_eq(
-            &destination_tail_words,
-            &["under", "your", "control"],
-        ) {
+        let battlefield_controller = if CCA_UNDER_YOUR_CONTROL_PATTERN.matches_words(&destination_tail_words) {
             ReturnControllerAst::You
-        } else if crate::runtime_backend::lexer::word_slice_eq_any(
-            &destination_tail_words,
-            OWNER_CONTROL_TAILS,
-        )
-        {
+        } else if CCA_OWNER_CONTROL_TAIL_PATTERN.matches_words(&destination_tail_words) {
             ReturnControllerAst::Owner
         } else {
             ReturnControllerAst::Preserve
@@ -1236,7 +1191,7 @@ pub(crate) fn parse_put_into_hand(
 
         if target_tokens
             .first()
-            .is_some_and(|token| token.is_word("all") || token.is_word("each"))
+            .is_some_and(|token| CCA_ALL_OR_EACH_WORD_PATTERN.matches_token(token))
         {
             let mut filter = parse_object_filter(&target_tokens[1..], false)?;
             if grammar::words_find_phrase(&target_tokens[1..], &["from", "it"]).is_some() {
@@ -1248,12 +1203,12 @@ pub(crate) fn parse_put_into_hand(
                     .tagged_constraints
                     .retain(|constraint| constraint.tag.as_str() != IT_TAG);
             }
-            if grammar::contains_word(tokens, "among") && grammar::contains_word(tokens, "them") {
+            if CCA_AMONG_THEM_MARKER_PATTERN.matches_words(&clause_words) {
                 filter.zone = Some(Zone::Exile);
                 if filter.owner.is_none() {
                     filter.owner = Some(PlayerFilter::IteratedPlayer);
                 }
-                if grammar::contains_word(tokens, "permanent") {
+                if CCA_PERMANENT_MARKER_PATTERN.matches_words(&clause_words) {
                     filter.card_types = vec![
                         CardType::Artifact,
                         CardType::Creature,
@@ -1296,7 +1251,7 @@ pub(crate) fn parse_put_into_hand(
         ));
     }
 
-    if grammar::contains_word(tokens, "sticker") {
+    if CCA_STICKER_MARKER_PATTERN.matches_words(&clause_words) {
         return Err(CardTextError::ParseError(format!(
             "unsupported sticker clause (clause: '{}')",
             clause_words.join(" ")

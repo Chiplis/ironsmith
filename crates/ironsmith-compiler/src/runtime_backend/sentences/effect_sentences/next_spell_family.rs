@@ -1,20 +1,40 @@
 use super::super::keyword_static::parse_ability_line;
-use super::super::lexer::{
-    LexedClause, OwnedLexToken, word_slice_at_is, word_slice_ends_with,
-    word_slice_find_phrase_start, word_slice_find_word, word_slice_first_is_any,
-    word_slice_starts_with,
-};
+use super::super::lexer::{LexedClause, OwnedLexToken};
 use super::super::object_filters::parse_object_filter_lexed;
 use super::super::util::strip_leading_article_word_refs;
 use crate::cards::builders::{CardTextError, EffectAst, PlayerAst, TextSpan};
+use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use crate::static_abilities::StaticAbility;
 use crate::target::{ObjectFilter, PlayerFilter};
 
+const SHARED_CAST_SUFFIXES: &[&[&str]] = &[
+    &["you", "cast"],
+    &["they", "cast"],
+    &["that", "player", "cast"],
+    &["target", "player", "cast"],
+    &["target", "opponent", "cast"],
+    &["opponent", "cast"],
+    &["opponents", "cast"],
+];
+const SHARED_CAST_SUFFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(suffix_any SHARED_CAST_SUFFIXES);
+const CANT_BE_COUNTERED_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["cant", "be", "countered"], &["can't", "be", "countered"]]);
+const WHEN_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["when"]);
+const THE_NEXT_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["the", "next"]);
+const NEXT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["next"]);
+const CAST_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["cast"]);
+const THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this", "turn"]);
+const FROM_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["from"]);
+const AND_THE_NEXT_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and", "the", "next"]);
+const IT_GAINS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["it", "gains"]);
+const IT_HAS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["it", "has"]);
+const THIS_TURN_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(suffix & ["this", "turn"]);
+const HAS_OR_HAVE_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["has"], &["have"]]);
+
 fn synth_word_tokens(words: &[&str]) -> Vec<OwnedLexToken> {
-    words
-        .iter()
-        .map(|word| OwnedLexToken::word((*word).to_string(), TextSpan::synthetic()))
-        .collect()
+    crate::runtime_backend::lexer::synthetic_word_tokens(words)
 }
 
 fn next_spell_grant_player_ast(filter: &ObjectFilter) -> Option<PlayerAst> {
@@ -32,16 +52,11 @@ fn next_spell_grant_player_ast(filter: &ObjectFilter) -> Option<PlayerAst> {
 }
 
 fn next_spell_grant_shared_cast_suffix<'a>(words: &'a [&'a str]) -> Option<&'a [&'a str]> {
-    for suffix in [
-        &["you", "cast"][..],
-        &["they", "cast"][..],
-        &["that", "player", "cast"][..],
-        &["target", "player", "cast"][..],
-        &["target", "opponent", "cast"][..],
-        &["opponent", "cast"][..],
-        &["opponents", "cast"][..],
-    ] {
-        if word_slice_ends_with(words, suffix) {
+    if !SHARED_CAST_SUFFIX_PATTERN.matches_words(words) {
+        return None;
+    }
+    for suffix in SHARED_CAST_SUFFIXES {
+        if words.ends_with(suffix) {
             return Some(suffix);
         }
     }
@@ -51,10 +66,7 @@ fn next_spell_grant_shared_cast_suffix<'a>(words: &'a [&'a str]) -> Option<&'a [
 fn parse_next_spell_grant_ability(
     words: &[&str],
 ) -> Option<crate::cards::builders::GrantedAbilityAst> {
-    if matches!(
-        words,
-        ["cant", "be", "countered"] | ["can't", "be", "countered"]
-    ) {
+    if CANT_BE_COUNTERED_PATTERN.matches_words(words) {
         return Some(crate::cards::builders::GrantedAbilityAst::StaticAbility(
             StaticAbility::cant_be_countered_ability(),
         ));
@@ -83,13 +95,13 @@ fn parse_next_spell_subject_filter(words: &[&str]) -> Result<Option<ObjectFilter
 fn parse_when_next_cast_grant_sentence(
     clause_words: &[&str],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if !word_slice_starts_with(clause_words, &["when"]) {
+    if !WHEN_PREFIX_PATTERN.matches_words(clause_words) {
         return Ok(None);
     }
-    let Some(next_idx) = word_slice_find_word(clause_words, "next") else {
+    let Some(next_idx) = NEXT_WORD_PATTERN.find_word(clause_words) else {
         return Ok(None);
     };
-    if next_idx == 0 || !word_slice_at_is(clause_words, next_idx + 1, "cast") {
+    if next_idx == 0 || !CAST_WORD_PATTERN.matches_word_at(clause_words, next_idx + 1) {
         return Ok(None);
     }
     let caster_words = &clause_words[1..next_idx];
@@ -110,7 +122,7 @@ fn parse_when_next_cast_grant_sentence(
         _ => return Ok(None),
     };
 
-    let Some(this_turn_idx) = word_slice_find_phrase_start(clause_words, &["this", "turn"]) else {
+    let Some(this_turn_idx) = THIS_TURN_PATTERN.find_exact_window(clause_words, 2) else {
         return Ok(None);
     };
     if this_turn_idx <= next_idx + 2 {
@@ -122,9 +134,9 @@ fn parse_when_next_cast_grant_sentence(
     }
 
     let after_turn = &clause_words[this_turn_idx + 2..];
-    let ability_words = if word_slice_starts_with(after_turn, &["it", "gains"]) {
+    let ability_words = if IT_GAINS_PREFIX_PATTERN.matches_words(after_turn) {
         &after_turn[2..]
-    } else if word_slice_starts_with(after_turn, &["it", "has"]) {
+    } else if IT_HAS_PREFIX_PATTERN.matches_words(after_turn) {
         &after_turn[2..]
     } else {
         return Ok(None);
@@ -133,17 +145,16 @@ fn parse_when_next_cast_grant_sentence(
         return Ok(None);
     };
 
-    let filter_words =
-        if let Some(from_idx) = word_slice_find_phrase_start(subject_words, &["from"]) {
-            [
-                &subject_words[..from_idx],
-                cast_by_words,
-                &subject_words[from_idx..],
-            ]
-            .concat()
-        } else {
-            [subject_words, cast_by_words].concat()
-        };
+    let filter_words = if let Some(from_idx) = FROM_WORD_PATTERN.find_word(subject_words) {
+        [
+            &subject_words[..from_idx],
+            cast_by_words,
+            &subject_words[from_idx..],
+        ]
+        .concat()
+    } else {
+        [subject_words, cast_by_words].concat()
+    };
     let Some(filter) = parse_next_spell_subject_filter(&filter_words)? else {
         return Ok(None);
     };
@@ -161,7 +172,7 @@ pub(crate) fn parse_next_spell_grant_sentence_lexed(
     if let Some(effects) = parse_when_next_cast_grant_sentence(&clause_words)? {
         return Ok(Some(effects));
     }
-    if !clause.starts_with(&["the", "next"]) {
+    if !THE_NEXT_PREFIX_PATTERN.matches_words(&clause_words) {
         return Ok(None);
     }
 
@@ -171,7 +182,7 @@ pub(crate) fn parse_next_spell_grant_sentence_lexed(
         let Some(ability) = parse_next_spell_grant_ability(ability_words) else {
             return Ok(None);
         };
-        if !word_slice_ends_with(subject_words, &["this", "turn"]) {
+        if !THIS_TURN_SUFFIX_PATTERN.matches_words(subject_words) {
             return Ok(None);
         }
         let subject_without_turn = &subject_words[..subject_words.len() - 2];
@@ -181,8 +192,7 @@ pub(crate) fn parse_next_spell_grant_sentence_lexed(
         };
         let shared_prefix =
             &subject_without_turn[2..subject_without_turn.len() - shared_cast_words.len()];
-        let Some(split_idx) = word_slice_find_phrase_start(shared_prefix, &["and", "the", "next"])
-        else {
+        let Some(split_idx) = AND_THE_NEXT_PATTERN.find_exact_window(shared_prefix, 3) else {
             return Ok(None);
         };
         let first_subject = &shared_prefix[..split_idx];
@@ -217,23 +227,21 @@ pub(crate) fn parse_next_spell_grant_sentence_lexed(
         ]));
     }
 
-    let (subject_words, ability_words) = if let Some(has_idx) = clause_words
-        .iter()
-        .position(|word| matches!(*word, "has" | "have"))
-    {
-        (&clause_words[..has_idx], &clause_words[has_idx + 1..])
-    } else if let Some(cant_idx) = clause
-        .find_phrase_start(&["cant", "be", "countered"])
-        .or_else(|| clause.find_phrase_start(&["can't", "be", "countered"]))
-    {
-        (&clause_words[..cant_idx], &clause_words[cant_idx..])
-    } else {
-        return Ok(None);
-    };
+    let (subject_words, ability_words) =
+        if let Some(has_idx) = HAS_OR_HAVE_WORD_PATTERN.find_word(&clause_words) {
+            (&clause_words[..has_idx], &clause_words[has_idx + 1..])
+        } else if let Some(cant_idx) = clause
+            .find_phrase_start(&["cant", "be", "countered"])
+            .or_else(|| clause.find_phrase_start(&["can't", "be", "countered"]))
+        {
+            (&clause_words[..cant_idx], &clause_words[cant_idx..])
+        } else {
+            return Ok(None);
+        };
     let Some(ability) = parse_next_spell_grant_ability(ability_words) else {
         return Ok(None);
     };
-    if !word_slice_ends_with(subject_words, &["this", "turn"]) {
+    if !THIS_TURN_SUFFIX_PATTERN.matches_words(subject_words) {
         return Ok(None);
     }
 
