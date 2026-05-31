@@ -21777,6 +21777,111 @@ fn clown_car_etb_applies_odd_even_result_branches_per_die_for_x_rolls() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn complaints_clerk_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Complaints Clerk")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Beast])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "When this creature enters, open an Attraction. (Put the top card of your Attraction deck onto the battlefield.)\nWhenever you roll a 1, create a 1/1 white Clown Robot artifact creature token.",
+        )
+        .expect("Complaints Clerk should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_complaints_clerk_roll(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    clerk_id: ObjectId,
+    controller: PlayerId,
+    roll: u32,
+) {
+    game.force_next_die_roll(roll);
+    let mut ctx = crate::effects::ExecutionContext::new_default(clerk_id, controller);
+    let outcome = crate::effects::execute_effect(
+        game,
+        &Effect::roll_die(6, PlayerFilter::Specific(controller)),
+        &mut ctx,
+    )
+    .expect("die roll should resolve");
+    for event in outcome.events {
+        queue_triggers_from_event(game, trigger_queue, event, false);
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn complaints_clerk_roll_one_trigger_creates_clown_robot_token() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let clerk = complaints_clerk_definition();
+    let clerk_id = game.create_object_from_definition(&clerk, alice, Zone::Battlefield);
+
+    resolve_complaints_clerk_roll(&mut game, &mut trigger_queue, clerk_id, alice, 1);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Complaints Clerk should trigger when its controller rolls a 1"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Complaints Clerk roll trigger should go on stack");
+    resolve_stack_entry(&mut game).expect("Complaints Clerk roll trigger should resolve");
+
+    let clown_robots = game
+        .battlefield
+        .iter()
+        .filter(|&&id| {
+            game.object(id).is_some_and(|obj| {
+                matches!(obj.kind, ObjectKind::Token)
+                    && game.controller_of(obj) == alice
+                    && obj.card_types.contains(&CardType::Artifact)
+                    && obj.card_types.contains(&CardType::Creature)
+                    && obj.subtypes.contains(&Subtype::Clown)
+                    && obj.subtypes.contains(&Subtype::Robot)
+                    && game.current_power(id) == Some(1)
+                    && game.current_toughness(id) == Some(1)
+            })
+        })
+        .count();
+    assert_eq!(clown_robots, 1, "rolling 1 should create one Clown Robot");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn complaints_clerk_non_one_roll_does_not_trigger() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let clerk = complaints_clerk_definition();
+    let clerk_id = game.create_object_from_definition(&clerk, alice, Zone::Battlefield);
+
+    resolve_complaints_clerk_roll(&mut game, &mut trigger_queue, clerk_id, alice, 2);
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Complaints Clerk should not trigger for a non-1 die result"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn complaints_clerk_opponent_roll_one_does_not_trigger() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let clerk = complaints_clerk_definition();
+    let clerk_id = game.create_object_from_definition(&clerk, alice, Zone::Battlefield);
+
+    resolve_complaints_clerk_roll(&mut game, &mut trigger_queue, clerk_id, bob, 1);
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Complaints Clerk should not trigger when another player rolls a 1"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn arden_angel_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Arden Angel")
         .card_types(vec![CardType::Creature])

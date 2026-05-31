@@ -130,6 +130,9 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::PlayerTapsForMana { player, filter } => {
             Trigger::player_taps_for_mana(player, filter)
         }
+        TriggerSpec::PlayerRollsResult { player, result } => {
+            Trigger::player_rolls_result(player, result)
+        }
         TriggerSpec::AbilityActivated {
             activator,
             filter,
@@ -490,6 +493,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::PlayerSearchesLibrary(_)
         | TriggerSpec::PlayerShufflesLibrary { .. }
         | TriggerSpec::PlayerTapsForMana { .. }
+        | TriggerSpec::PlayerRollsResult { .. }
         | TriggerSpec::PlayerSacrifices { .. }
         | TriggerSpec::ThisDealsDamageToPlayer { .. }
         | TriggerSpec::DealsDamageToPlayer { .. }
@@ -560,6 +564,7 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         TriggerSpec::PlayerSearchesLibrary(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerShufflesLibrary { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerTapsForMana { .. } => Some(PlayerFilter::IteratedPlayer),
+        TriggerSpec::PlayerRollsResult { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::AbilityActivated { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerSacrifices { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::ThisDealsDamageToPlayer { .. }

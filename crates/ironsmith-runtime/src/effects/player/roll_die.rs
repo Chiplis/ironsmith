@@ -1,6 +1,7 @@
 use crate::effect::{EffectOutcome, ExecutionFact};
 use crate::effects::{EffectExecutor, helpers::resolve_player_filter};
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::other::DieRolledEvent;
 use crate::game_state::GameState;
 use crate::target::PlayerFilter;
 
@@ -46,6 +47,10 @@ impl EffectExecutor for RollDieEffect {
                 .turn_history
                 .record_die_roll(player, clamped);
             return Ok(EffectOutcome::count(clamped as i32)
+                .with_event(crate::triggers::TriggerEvent::new_with_provenance(
+                    DieRolledEvent::new(player, ctx.source, clamped, self.sides),
+                    ctx.provenance,
+                ))
                 .with_execution_fact(ExecutionFact::ChosenNumber(clamped)));
         }
 
@@ -54,6 +59,10 @@ impl EffectExecutor for RollDieEffect {
         let result = faces[0];
         game.turn_store.turn_history.record_die_roll(player, result);
         Ok(EffectOutcome::count(result as i32)
+            .with_event(crate::triggers::TriggerEvent::new_with_provenance(
+                DieRolledEvent::new(player, ctx.source, result, self.sides),
+                ctx.provenance,
+            ))
             .with_execution_fact(ExecutionFact::ChosenNumber(result)))
     }
 }

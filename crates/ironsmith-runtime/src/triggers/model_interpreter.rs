@@ -245,6 +245,9 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::PlayerTapsForMana { player, filter } => {
             crate::triggers::Trigger::player_taps_for_mana(player, filter)
         }
+        TriggerKind::PlayerRollsResult { player, result } => {
+            crate::triggers::Trigger::player_rolls_result(player, result)
+        }
         TriggerKind::AbilityActivatedQualified {
             activator,
             filter,
