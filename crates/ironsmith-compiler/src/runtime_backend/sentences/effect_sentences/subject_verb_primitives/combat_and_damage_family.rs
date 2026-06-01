@@ -237,7 +237,11 @@ pub(crate) fn parse_sentence_destroy_creature_type_of_choice_matched(
     }
 
     Ok(Some(vec![
-        EffectAst::subject_verb_choose_creature_type(PlayerAst::You, vec![]),
+        EffectAst::subject_verb_choose_creature_type(
+            PlayerAst::You,
+            crate::types::SubtypeFamily::Creature,
+            vec![],
+        ),
         EffectAst::subject_verb_destroy_all(ObjectFilter::creature().of_chosen_creature_type()),
     ]))
 }
@@ -320,6 +324,7 @@ pub(crate) fn parse_sentence_pump_creature_type_of_choice_matched(
         if patched {
             let mut effects = vec![EffectAst::subject_verb_choose_creature_type(
                 PlayerAst::You,
+                crate::types::SubtypeFamily::Creature,
                 vec![],
             )];
             effects.extend(gain_effects);
@@ -375,7 +380,11 @@ pub(crate) fn parse_sentence_pump_creature_type_of_choice_matched(
     filter.chosen_creature_type = true;
 
     Ok(Some(vec![
-        EffectAst::subject_verb_choose_creature_type(PlayerAst::You, vec![]),
+        EffectAst::subject_verb_choose_creature_type(
+            PlayerAst::You,
+            crate::types::SubtypeFamily::Creature,
+            vec![],
+        ),
         EffectAst::subject_verb_pump_all(filter, power, toughness, duration),
     ]))
 }
@@ -434,7 +443,11 @@ pub(crate) fn parse_sentence_must_attack_creature_type_of_choice_matched(
     filter.chosen_creature_type = true;
 
     Ok(Some(vec![
-        EffectAst::subject_verb_choose_creature_type(PlayerAst::You, vec![]),
+        EffectAst::subject_verb_choose_creature_type(
+            PlayerAst::You,
+            crate::types::SubtypeFamily::Creature,
+            vec![],
+        ),
         EffectAst::subject_verb_grant_abilities_all(
             filter,
             vec![crate::runtime_backend::GrantedAbilityAst::MustAttack],
@@ -628,6 +641,7 @@ pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice_matched(
     if needs_inline_choice_effect {
         effects.push(EffectAst::subject_verb_choose_creature_type(
             PlayerAst::You,
+            crate::types::SubtypeFamily::Creature,
             vec![],
         ));
     }

@@ -350,6 +350,7 @@ pub(crate) fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
                 .any(|constraint| constraint.tag.as_str() == tag)
                 || effects_reference_tag(effects, tag)
         }
+        EffectAst::DelayedTriggerThisTurn { .. } => false,
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action: SubjectVerbActionAst::Cant { restriction, .. },
             ..

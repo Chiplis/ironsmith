@@ -2,6 +2,7 @@ use super::*;
 
 const THIS_DESTINATION_TRIGGER_NAME_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this"]);
 const THIS_OR_IT_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["this"], &["it"]]);
+const OF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["of"]);
 const DAMAGER_NAMED_SOURCE_LEADING_EXCLUDED_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -4087,6 +4088,36 @@ fn parse_possessive_ability_trigger_tail_lexed<'a>(
     let Some(ability_idx) = find_token_shape(tail_tokens, &ABILITY_OR_ABILITIES_PATTERN) else {
         return Ok(None);
     };
+    if tail_tokens
+        .get(ability_idx + 1)
+        .is_some_and(|token| OF_WORD_PATTERN.matches_token(token))
+    {
+        let owner_tokens = trim_commas(&tail_tokens[ability_idx + 2..]);
+        if owner_tokens.is_empty() {
+            return Ok(None);
+        }
+        let mut owner_filter_tokens = owner_tokens.clone();
+        let mut of_chosen_type = false;
+        if let Some(of_idx) = find_token_shape(&owner_filter_tokens, &OF_WORD_PATTERN) {
+            let tail_words =
+                crate::runtime_backend::token_word_refs(&owner_filter_tokens[of_idx + 1..]);
+            let tail_words = non_article_word_refs(&tail_words);
+            if matches!(tail_words.as_slice(), ["that", "type"] | ["chosen", "type"]) {
+                owner_filter_tokens = trim_commas(&owner_filter_tokens[..of_idx]);
+                of_chosen_type = true;
+            }
+        }
+        let mut owner_filter = parse_object_filter_lexed(&owner_filter_tokens, false).map_err(|_| {
+            CardTextError::ParseError(format!(
+                "unsupported activated-ability trigger source filter (clause: '{}')",
+                tail_words.join(" ")
+            ))
+        })?;
+        if of_chosen_type {
+            owner_filter.chosen_creature_type = true;
+        }
+        return Ok(Some((owner_filter, None)));
+    }
     if ability_idx == 0 || ability_idx + 1 != tail_tokens.len() {
         return Ok(None);
     }

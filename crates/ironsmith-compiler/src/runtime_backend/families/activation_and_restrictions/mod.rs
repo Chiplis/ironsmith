@@ -111,6 +111,7 @@ pub(crate) use choice_object_clauses::{
     parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand, parse_choose_color_phrase_words,
     parse_choose_creature_type_phrase_words, parse_choose_creature_type_then_become_type,
     parse_choose_land_type_phrase_words, parse_choose_player_phrase_words,
+    parse_choose_subtype_phrase_words,
     parse_sentence_target_player_chooses_then_puts_on_top_of_library,
     parse_sentence_target_player_chooses_then_you_put_it_onto_battlefield,
     parse_target_player_choose_objects_clause, parse_target_player_chooses_then_other_cant_block,

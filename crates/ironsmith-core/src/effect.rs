@@ -159,6 +159,11 @@ pub enum DelayedTriggerSpec {
         from: crate::zone::Zone,
         one_or_more: bool,
     },
+    AbilityActivated {
+        activator: PlayerFilter,
+        filter: ObjectFilter,
+        non_mana_only: bool,
+    },
     SpellCast {
         filter: Option<ObjectFilter>,
         caster: PlayerFilter,
@@ -4030,6 +4035,7 @@ impl ChooseColorEffect {
 pub struct ChooseCreatureTypeEffect {
     pub chooser: PlayerFilter,
     pub excluded_subtypes: Vec<Subtype>,
+    pub family: crate::types::SubtypeFamily,
 }
 
 impl ChooseCreatureTypeEffect {
@@ -4037,7 +4043,13 @@ impl ChooseCreatureTypeEffect {
         Self {
             chooser,
             excluded_subtypes,
+            family: crate::types::SubtypeFamily::Creature,
         }
+    }
+
+    pub fn with_family(mut self, family: crate::types::SubtypeFamily) -> Self {
+        self.family = family;
+        self
     }
 }
 

@@ -10,12 +10,13 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::target::PlayerFilter;
-use crate::types::Subtype;
+use crate::types::{Subtype, SubtypeFamily};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChooseCreatureTypeEffect {
     pub chooser: PlayerFilter,
     pub excluded_subtypes: Vec<Subtype>,
+    pub family: SubtypeFamily,
 }
 
 impl ChooseCreatureTypeEffect {
@@ -23,11 +24,22 @@ impl ChooseCreatureTypeEffect {
         Self {
             chooser,
             excluded_subtypes,
+            family: SubtypeFamily::Creature,
         }
     }
 
-    fn creature_type_options(&self) -> Vec<Subtype> {
-        BecomeCreatureTypeChoiceEffect::all_creature_types()
+    pub fn with_family(mut self, family: SubtypeFamily) -> Self {
+        self.family = family;
+        self
+    }
+
+    fn subtype_options(&self) -> Vec<Subtype> {
+        let options = if self.family == SubtypeFamily::Creature {
+            BecomeCreatureTypeChoiceEffect::all_creature_types()
+        } else {
+            self.family.all_subtypes().to_vec()
+        };
+        options
             .iter()
             .copied()
             .filter(|subtype| !self.excluded_subtypes.contains(subtype))
@@ -46,7 +58,7 @@ impl EffectExecutor for ChooseCreatureTypeEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let chooser = resolve_player_filter(game, &self.chooser, ctx)?;
-        let subtype_options = self.creature_type_options();
+        let subtype_options = self.subtype_options();
         if subtype_options.is_empty() {
             return Ok(EffectOutcome::resolved());
         }
@@ -59,7 +71,7 @@ impl EffectExecutor for ChooseCreatureTypeEffect {
         let choice_ctx = SelectOptionsContext::new(
             chooser,
             Some(ctx.source),
-            "Choose a creature type",
+            format!("Choose a {}", self.family.type_phrase()),
             options,
             1,
             1,

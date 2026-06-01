@@ -23,6 +23,8 @@ const CHOOSE_WORD_PATTERN: ClauseShape<'static> =
 const CHOICE_CONNECTOR_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["or"], &["and"]]);
 const CREATURE_TYPE_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["creature", "type"]);
+const PLANESWALKER_TYPE_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["planeswalker", "type"]);
 const OTHER_THAN_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["other", "than"]);
 const COLOR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["color"]);
 const PERMANENT_TYPE_PATTERN: ClauseShape<'static> =
@@ -998,25 +1000,41 @@ pub(crate) fn parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(
 pub(crate) fn parse_choose_creature_type_phrase_words(
     words: &[&str],
 ) -> Result<Option<(usize, Vec<Subtype>)>, CardTextError> {
+    let Some((idx, family, excluded_subtypes)) = parse_choose_subtype_phrase_words(words)? else {
+        return Ok(None);
+    };
+    if family != crate::types::SubtypeFamily::Creature {
+        return Ok(None);
+    }
+    Ok(Some((idx, excluded_subtypes)))
+}
+
+pub(crate) fn parse_choose_subtype_phrase_words(
+    words: &[&str],
+) -> Result<Option<(usize, crate::types::SubtypeFamily, Vec<Subtype>)>, CardTextError> {
     let Some(mut idx) = parse_choose_phrase_prefix_words(words) else {
         return Ok(None);
     };
-    if !CREATURE_TYPE_PATTERN.matches_words(&words[idx..]) {
+    let family = if CREATURE_TYPE_PATTERN.matches_words(&words[idx..]) {
+        crate::types::SubtypeFamily::Creature
+    } else if PLANESWALKER_TYPE_PATTERN.matches_words(&words[idx..]) {
+        crate::types::SubtypeFamily::Planeswalker
+    } else {
         return Ok(None);
-    }
+    };
     idx += 2;
 
     let mut excluded_subtypes = Vec::new();
     if OTHER_THAN_PATTERN.matches_words(&words[idx..]) {
         let subtype_word = words.get(idx + 2).copied().ok_or_else(|| {
             CardTextError::ParseError(format!(
-                "missing creature subtype exclusion in creature-type choice clause (clause: '{}')",
+                "missing subtype exclusion in subtype choice clause (clause: '{}')",
                 words.join(" ")
             ))
         })?;
         let subtype = parse_subtype_flexible(subtype_word).ok_or_else(|| {
                 CardTextError::ParseError(format!(
-                    "unsupported creature subtype exclusion in creature-type choice clause (clause: '{}')",
+                    "unsupported subtype exclusion in subtype choice clause (clause: '{}')",
                     words.join(" ")
                 ))
             })?;
@@ -1024,7 +1042,7 @@ pub(crate) fn parse_choose_creature_type_phrase_words(
         idx += 3;
     }
 
-    Ok(Some((idx, excluded_subtypes)))
+    Ok(Some((idx, family, excluded_subtypes)))
 }
 
 pub(crate) fn parse_choose_phrase_prefix_words(words: &[&str]) -> Option<usize> {

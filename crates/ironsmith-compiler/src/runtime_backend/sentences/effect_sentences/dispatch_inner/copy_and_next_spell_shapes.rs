@@ -181,9 +181,103 @@ fn retarget_source_copy_spell_to_delayed_triggering_object(effects: &mut [Effect
     }
 }
 
+fn parse_leading_until_end_of_turn_delayed_trigger_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let mut idx = 0usize;
+    if !token_slice_at_is(tokens, idx, "until") {
+        return Ok(None);
+    }
+    idx += 1;
+    if token_slice_at_is(tokens, idx, "the") {
+        idx += 1;
+    }
+    if !token_slice_at_is(tokens, idx, "end")
+        || !token_slice_at_is(tokens, idx + 1, "of")
+        || !token_slice_at_is(tokens, idx + 2, "turn")
+    {
+        return Ok(None);
+    }
+    idx += 3;
+    if tokens.get(idx).is_some_and(OwnedLexToken::is_comma) {
+        idx += 1;
+    }
+
+    let delayed_clause = trim_commas(&tokens[idx..]);
+    if !delayed_clause
+        .first()
+        .is_some_and(|token| WHEN_OR_WHENEVER_WORD_PATTERN.matches_token(token))
+    {
+        return Ok(None);
+    }
+
+    let (trigger_part, effect_part) = if let Some((before_comma, after_comma)) =
+        super::super::grammar::primitives::split_lexed_once_on_delimiter(
+            &delayed_clause,
+            super::super::lexer::TokenKind::Comma,
+        ) {
+        (before_comma.to_vec(), trim_commas(after_comma))
+    } else {
+        let Some(copy_idx) = delayed_clause.iter().enumerate().find_map(|(idx, _token)| {
+            if idx > 0 && (token_slice_at_is(&delayed_clause, idx, "copy")
+                || token_slice_at_is(&delayed_clause, idx, "copies"))
+            {
+                Some(idx)
+            } else {
+                None
+            }
+        }) else {
+            return Ok(None);
+        };
+        (delayed_clause[..copy_idx].to_vec(), trim_commas(&delayed_clause[copy_idx..]))
+    };
+
+    let mut trigger_tokens = trim_commas(&trigger_part);
+    if trigger_tokens
+        .first()
+        .is_some_and(|token| WHEN_OR_WHENEVER_WORD_PATTERN.matches_token(token))
+    {
+        trigger_tokens = trigger_tokens[1..].to_vec();
+    }
+    if trigger_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing delayed trigger clause after 'until end of turn' (clause: '{}')",
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
+        )));
+    }
+    if effect_part.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing delayed trigger effect clause (clause: '{}')",
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
+        )));
+    }
+
+    let trigger = parse_trigger_clause_lexed(&trigger_tokens)?;
+    let mut delayed_effects = parse_effect_chain(&effect_part)?;
+    if delayed_effects.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing delayed trigger effect clause (clause: '{}')",
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
+        )));
+    }
+    if matches!(trigger, TriggerSpec::SpellCast { .. }) {
+        retarget_source_copy_spell_to_delayed_triggering_object(&mut delayed_effects);
+    }
+
+    Ok(Some(vec![EffectAst::DelayedTriggerThisTurn {
+        trigger,
+        effects: delayed_effects,
+        one_shot: false,
+    }]))
+}
+
 pub(crate) fn parse_sentence_delayed_trigger_this_turn(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(effects) = parse_leading_until_end_of_turn_delayed_trigger_sentence(tokens)? {
+        return Ok(Some(effects));
+    }
+
     if COPY_NEXT_THIS_TURN_PREFIX_PATTERN.matches_words(&crate::runtime_backend::token_word_refs(
         tokens,
     )) {

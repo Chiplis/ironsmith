@@ -55686,6 +55686,190 @@ fn fatespinner_draw_step_choice_skips_only_that_players_draw_step() {
     assert!(!game.turn_store.skip_next_combat_phases.contains(&bob));
 }
 
+fn leori_triggered_ability(def: &CardDefinition) -> crate::ability::TriggeredAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered)
+                if triggered
+                    .trigger
+                    .display()
+                    .contains("deals combat damage to a player") =>
+            {
+                Some(triggered.clone())
+            }
+            _ => None,
+        })
+        .expect("Leori should compile a combat-damage trigger")
+}
+
+fn leori_delayed_schedule(
+    triggered: &crate::ability::TriggeredAbility,
+) -> &crate::effects::ScheduleDelayedTriggerEffect {
+    triggered.effects.segments[0].default_effects[1]
+        .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+        .expect("Leori trigger should schedule an until-end delayed trigger")
+}
+
+struct ChooseSubtypeByName(&'static str);
+
+impl crate::decision::DecisionMaker for ChooseSubtypeByName {
+    fn decide_options(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        ctx.options
+            .iter()
+            .find(|option| option.description.eq_ignore_ascii_case(self.0))
+            .map(|option| vec![option.index])
+            .unwrap_or_else(|| vec![0])
+    }
+}
+
+#[test]
+fn leori_oracle_parses_strictly_and_renders_planeswalker_copy_clause() {
+    assert_oracle_card_parses_strict("Leori, Sparktouched Hunter");
+    let def = parse_oracle_card_definition("Leori, Sparktouched Hunter");
+    let rendered = compiled_text_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("choose a planeswalker type"),
+        "Leori should render the planeswalker-type choice, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Until end of turn, whenever you activate an ability of a planeswalker of that type, copy that ability"),
+        "Leori should render the delayed ability-copy clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("You may choose new targets for the copies"),
+        "Leori should render the copy retarget follow-up, got {rendered}"
+    );
+}
+
+#[test]
+fn leori_lowers_to_planeswalker_type_delayed_ability_copy() {
+    let def = parse_oracle_card_definition("Leori, Sparktouched Hunter");
+    let triggered = leori_triggered_ability(&def);
+    let debug = format!("{triggered:#?}");
+
+    assert!(
+        debug.contains("ChooseCreatureTypeEffect")
+            && debug.contains("family: Planeswalker")
+            && debug.contains("ScheduleDelayedTriggerEffect")
+            && debug.contains("AbilityActivatedTrigger")
+            && debug.contains("chosen_creature_type: true")
+            && debug.contains("CopySpellEffect")
+            && debug.contains("triggering_source")
+            && debug.contains("RetargetStackObjectEffect"),
+        "Leori should structurally choose a planeswalker type, schedule the matching ability trigger, copy that ability, and retarget the copies, got {debug}"
+    );
+}
+
+#[test]
+fn leori_planeswalker_type_choice_filters_delayed_ability_trigger() {
+    let def = parse_oracle_card_definition("Leori, Sparktouched Hunter");
+    let triggered = leori_triggered_ability(&def);
+    let schedule = leori_delayed_schedule(&triggered);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let leori_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let jace_def = CardDefinitionBuilder::new(CardId::new(), "Jace Test")
+        .card_types(vec![CardType::Planeswalker])
+        .subtypes(vec![Subtype::Jace])
+        .build();
+    let chandra_def = CardDefinitionBuilder::new(CardId::new(), "Chandra Test")
+        .card_types(vec![CardType::Planeswalker])
+        .subtypes(vec![Subtype::Chandra])
+        .build();
+    let jace_id = game.create_object_from_definition(&jace_def, alice, Zone::Battlefield);
+    let chandra_id = game.create_object_from_definition(&chandra_def, alice, Zone::Battlefield);
+
+    let choose_effect = triggered.effects.segments[0].default_effects[0]
+        .downcast_ref::<crate::effects::ChooseCreatureTypeEffect>()
+        .expect("Leori's first effect should choose a planeswalker type");
+    let mut dm = ChooseSubtypeByName("jace");
+    let mut exec_ctx = crate::effects::ExecutionContext::new(leori_id, alice, &mut dm);
+    choose_effect
+        .execute(&mut game, &mut exec_ctx)
+        .expect("planeswalker type choice should execute");
+    assert_eq!(game.chosen_creature_type(leori_id), Some(Subtype::Jace));
+
+    let trigger_ctx = crate::triggers::TriggerContext::for_source(leori_id, alice, &game);
+    let jace_event = crate::events::RawEvent::new(
+        crate::events::spells::AbilityActivatedEvent::new(jace_id, alice, false),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let chandra_event = crate::events::RawEvent::new(
+        crate::events::spells::AbilityActivatedEvent::new(chandra_id, alice, false),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let opponent_event = crate::events::RawEvent::new(
+        crate::events::spells::AbilityActivatedEvent::new(jace_id, bob, false),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    assert!(
+        schedule.trigger.matches(&jace_event, &trigger_ctx),
+        "Leori's delayed trigger should match your chosen-type planeswalker ability"
+    );
+    assert!(
+        !schedule.trigger.matches(&chandra_event, &trigger_ctx),
+        "Leori's delayed trigger should ignore planeswalkers outside the chosen type"
+    );
+    assert!(
+        !schedule.trigger.matches(&opponent_event, &trigger_ctx),
+        "Leori's delayed trigger should ignore abilities activated by another player"
+    );
+}
+
+#[test]
+fn leori_delayed_effect_copies_the_triggering_ability_on_the_stack() {
+    let def = parse_oracle_card_definition("Leori, Sparktouched Hunter");
+    let triggered = leori_triggered_ability(&def);
+    let schedule = leori_delayed_schedule(&triggered);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let leori_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let jace_def = CardDefinitionBuilder::new(CardId::new(), "Jace Test")
+        .card_types(vec![CardType::Planeswalker])
+        .subtypes(vec![Subtype::Jace])
+        .build();
+    let jace_id = game.create_object_from_definition(&jace_def, alice, Zone::Battlefield);
+    game.stack.push(crate::game_state::StackEntry::ability(
+        jace_id,
+        alice,
+        vec![Effect::draw(1)],
+    ));
+    let event = crate::events::RawEvent::new(
+        crate::events::spells::AbilityActivatedEvent::new(jace_id, alice, false),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut dm = ChooseSubtypeByName("jace");
+    let mut ctx = crate::effects::ExecutionContext::new(leori_id, alice, &mut dm)
+        .with_triggering_event(event);
+
+    for effect in schedule.effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Leori delayed copy effect should resolve");
+    }
+
+    assert_eq!(game.stack.len(), 2, "Leori should add one copied ability to the stack");
+    let copy_entry = game.stack.last().expect("copied ability should be on stack");
+    assert!(copy_entry.is_ability, "the copied stack object should remain an ability");
+    assert!(
+        copy_entry.ability_effects.is_some(),
+        "the copied ability should preserve the original ability effects"
+    );
+}
+
 #[test]
 fn fatespinner_main_phase_choice_skips_each_remaining_main_phase_this_turn() {
     let (mut game, bob) = resolve_fatespinner_upkeep_choice("main phase");

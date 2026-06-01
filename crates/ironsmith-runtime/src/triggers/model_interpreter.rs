@@ -537,6 +537,11 @@ impl super::Trigger {
                     Self::new(trigger)
                 }
             }
+            ironsmith_core::DelayedTriggerSpec::AbilityActivated {
+                activator,
+                filter,
+                non_mana_only,
+            } => Self::ability_activated_qualified(activator, filter, non_mana_only),
             ironsmith_core::DelayedTriggerSpec::SpellCast {
                 filter,
                 caster,

@@ -728,11 +728,17 @@ fn compile_subject_verb_effect(
                 Effect::choose_named_option(subject.into_player_filter(), options.clone())
             })
         }
-        SubjectVerbActionAst::ChooseCreatureType { excluded_subtypes } => {
+        SubjectVerbActionAst::ChooseCreatureType {
+            family,
+            excluded_subtypes,
+        } => {
             compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
-                Effect::choose_creature_type(
-                    subject.into_player_filter(),
-                    excluded_subtypes.clone(),
+                Effect::new(
+                    crate::effects::ChooseCreatureTypeEffect::new(
+                        subject.into_player_filter(),
+                        excluded_subtypes.clone(),
+                    )
+                    .with_family(*family),
                 )
             })
         }

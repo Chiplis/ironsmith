@@ -800,6 +800,7 @@ pub(crate) enum SubjectVerbActionAst {
         options: Vec<String>,
     },
     ChooseCreatureType {
+        family: SubtypeFamily,
         excluded_subtypes: Vec<Subtype>,
     },
     ChooseCardName {
@@ -1851,8 +1852,12 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::ChooseNamedOption { options } => {
                 f.debug_tuple("ChooseNamedOption").field(options).finish()
             }
-            Self::ChooseCreatureType { excluded_subtypes } => f
+            Self::ChooseCreatureType {
+                family,
+                excluded_subtypes,
+            } => f
                 .debug_struct("ChooseCreatureType")
+                .field("family", family)
                 .field("excluded_subtypes", excluded_subtypes)
                 .finish(),
             Self::ChooseCardName { filter, tag } => f
@@ -5764,12 +5769,16 @@ impl EffectAst {
 
     pub(crate) fn subject_verb_choose_creature_type(
         player: PlayerAst,
+        family: SubtypeFamily,
         excluded_subtypes: Vec<Subtype>,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Chooser,
             player,
-            SubjectVerbActionAst::ChooseCreatureType { excluded_subtypes },
+            SubjectVerbActionAst::ChooseCreatureType {
+                family,
+                excluded_subtypes,
+            },
         )
     }
 

@@ -39,6 +39,15 @@ fn compile_delayed_trigger_spec(
                 one_or_more: *one_or_more,
             },
         ),
+        TriggerSpec::AbilityActivated {
+            activator,
+            filter,
+            non_mana_only,
+        } => Ok(ironsmith_core::DelayedTriggerSpec::AbilityActivated {
+            activator: activator.clone(),
+            filter: filter.clone(),
+            non_mana_only: *non_mana_only,
+        }),
         TriggerSpec::ThisDies => Ok(ironsmith_core::DelayedTriggerSpec::ThisDies),
         TriggerSpec::ThisLeavesBattlefield => {
             Ok(ironsmith_core::DelayedTriggerSpec::ThisLeavesBattlefield)

@@ -124,7 +124,7 @@ const OBJECT_FILTER_FACE_UP_PREFIX_PATTERN: ClauseShape<'static> =
 const OBJECT_FILTER_CHOSEN_COLOR_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["chosen", "color"]);
 const OBJECT_FILTER_CHOSEN_TYPE_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["chosen", "type"]);
+    clause_shape!(prefix_any & [&["chosen", "type"], &["that", "type"]]);
 const OBJECT_FILTER_NONCHOSEN_TYPE_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["nonchosen", "type"]);
 const OBJECT_FILTER_YOU_CONTROL_BUT_DONT_OWN_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(

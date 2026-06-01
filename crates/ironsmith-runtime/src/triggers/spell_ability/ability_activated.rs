@@ -52,17 +52,43 @@ impl TriggerMatcher for AbilityActivatedTrigger {
 
     fn display(&self) -> String {
         let subject = self.activator.description();
+        let verb = if subject.eq_ignore_ascii_case("you") {
+            "activate"
+        } else {
+            "activates"
+        };
         let ability = if self.non_mana_only {
             "a non-mana ability"
         } else {
             "an ability"
         };
         if self.filter == ObjectFilter::default() {
-            format!("Whenever {subject} activates {ability}")
+            format!("Whenever {subject} {verb} {ability}")
         } else {
+            let filter_description = self
+                .filter
+                .description()
+                .replace("of the chosen type", "of that type");
+            let filter_description = if filter_description.ends_with('s')
+                || filter_description.starts_with("a ")
+                || filter_description.starts_with("an ")
+                || filter_description.starts_with("the ")
+            {
+                filter_description
+            } else {
+                let article = if matches!(
+                    filter_description.chars().next(),
+                    Some('a' | 'e' | 'i' | 'o' | 'u')
+                ) {
+                    "an"
+                } else {
+                    "a"
+                };
+                format!("{article} {filter_description}")
+            };
             format!(
-                "Whenever {subject} activates {ability} of {}",
-                self.filter.description()
+                "Whenever {subject} {verb} {ability} of {}",
+                filter_description
             )
         }
     }

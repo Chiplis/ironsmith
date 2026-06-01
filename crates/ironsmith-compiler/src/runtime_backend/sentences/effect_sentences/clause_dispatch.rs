@@ -8,7 +8,7 @@ use self::next_turn_cant::parse_next_turn_cant_clause;
 use super::super::activation_and_restrictions::{
     build_may_cast_tagged_effect, find_negation_span, parse_cant_restriction_clause,
     parse_cant_restrictions, parse_choose_card_type_phrase_words, parse_choose_color_phrase_words,
-    parse_choose_creature_type_phrase_words, parse_choose_player_phrase_words,
+    parse_choose_player_phrase_words, parse_choose_subtype_phrase_words,
     parse_may_cast_it_sentence, parse_single_word_keyword_action,
     parse_target_player_choose_objects_clause, parse_you_choose_objects_clause,
     parse_you_choose_player_clause, starts_with_target_indicator,
@@ -1013,12 +1013,13 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         ));
     }
 
-    if let Some((consumed, excluded_subtypes)) =
-        parse_choose_creature_type_phrase_words(choice_words)?
+    if let Some((consumed, family, excluded_subtypes)) =
+        parse_choose_subtype_phrase_words(choice_words)?
         && consumed == choice_words.len()
     {
         return Ok(EffectAst::subject_verb_choose_creature_type(
             crate::cards::builders::PlayerAst::Implicit,
+            family,
             excluded_subtypes,
         ));
     }

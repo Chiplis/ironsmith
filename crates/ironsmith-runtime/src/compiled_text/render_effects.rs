@@ -28093,6 +28093,12 @@ fn describe_remove_counter_phrase(
 }
 
 pub(super) fn describe_effect_impl(effect: &Effect) -> String {
+    if effect
+        .downcast_ref::<crate::effects::TagTriggeringSourceEffect>()
+        .is_some()
+    {
+        return String::new();
+    }
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
         if let Some(compact) = describe_reveal_until_sequence(sequence) {
             return compact;
@@ -28670,8 +28676,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     {
         let chooser = describe_player_filter(&choose_creature_type.chooser);
         let choose_verb = player_verb(&chooser, "choose", "chooses");
+        let type_phrase = choose_creature_type.family.type_phrase();
+        let chooser_prefix = if chooser.eq_ignore_ascii_case("you") {
+            "Choose".to_string()
+        } else {
+            format!("{chooser} {choose_verb}")
+        };
         if choose_creature_type.excluded_subtypes.is_empty() {
-            return format!("{chooser} {choose_verb} a creature type");
+            return format!("{chooser_prefix} a {type_phrase}");
         }
         let excluded = choose_creature_type
             .excluded_subtypes
@@ -28679,7 +28691,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             .map(|subtype| subtype.to_string().to_ascii_lowercase())
             .collect::<Vec<_>>();
         return format!(
-            "{chooser} {choose_verb} a creature type other than {}",
+            "{chooser_prefix} a {type_phrase} other than {}",
             join_with_or(&excluded)
         );
     }
@@ -32616,6 +32628,10 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             target_text = target_text.replacen("instant or sorcery", "instant or sorcery spell", 1);
         }
         if matches!(copy_spell.count, Value::Fixed(1)) {
+            if matches!(&copy_spell.target, ChooseSpec::Tagged(tag) if tag.as_str() == "triggering_source")
+            {
+                return "Copy that ability".to_string();
+            }
             if matches!(copy_spell.target, ChooseSpec::Iterated) {
                 let mut text = "Copy that spell".to_string();
                 if copy_spell
@@ -33323,15 +33339,25 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         let trigger_display = schedule.trigger.display();
         let mut trigger_text = trigger_display.trim().trim_end_matches('.').to_string();
+        let until_end_prefix = schedule.until_end_of_turn
+            && (trigger_text.to_ascii_lowercase().starts_with("whenever ")
+                || trigger_text.to_ascii_lowercase().starts_with("when "));
         if schedule.until_end_of_turn {
             let trigger_lower = trigger_text.to_ascii_lowercase();
-            if !trigger_lower.contains(" this turn") {
+            if !until_end_prefix && !trigger_lower.contains(" this turn") {
                 trigger_text.push_str(" this turn");
             }
         }
         trigger_text = cleanup_decompiled_text(&trigger_text);
         let trigger_lower = trigger_text.to_ascii_lowercase();
         let mut delayed_text = lowercase_first(&describe_effect_list(&schedule.effects));
+        if until_end_prefix {
+            delayed_text = delayed_text.replace("for the copy", "for the copies");
+            return format!(
+                "Until end of turn, {}, {delayed_text}",
+                lowercase_first(&trigger_text)
+            );
+        }
         if delayed_text.contains("if it matches card in exile, put it into its owner's graveyard") {
             delayed_text = delayed_text.replace(
                 "if it matches card in exile, put it into its owner's graveyard",

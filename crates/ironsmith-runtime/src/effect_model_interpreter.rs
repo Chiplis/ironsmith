@@ -1289,7 +1289,7 @@ where
         return Ok(Effect::new(crate::effects::ChooseCreatureTypeEffect::new(
             payload.chooser.clone(),
             payload.excluded_subtypes.clone(),
-        )));
+        ).with_family(payload.family)));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::FlipCoinEffect>(&effect) {
         return Ok(Effect::new(crate::effects::FlipCoinEffect::new(
