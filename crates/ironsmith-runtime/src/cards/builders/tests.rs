@@ -18356,6 +18356,203 @@ fn cho_arrim_alchemist_runtime_prevents_chosen_source_to_you_and_gains_that_life
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn samite_blessing_strict_parse_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Samite Blessing");
+    let def = parse_oracle_card_definition("Samite Blessing");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains("enchant creature"),
+        "Samite Blessing should keep its Aura enchant line, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Enchanted creature has {T}: The next time a source of your choice would deal damage to target creature this turn, prevent that damage")
+            || rendered.contains("Enchanted creature has \"{T}: The next time a source of your choice would deal damage to target creature this turn, prevent that damage.\""),
+        "Samite Blessing should render the granted target-creature prevention ability, got {rendered}"
+    );
+    assert!(
+        !rendered_lower.contains("unsupported"),
+        "Samite Blessing should parse strictly without unsupported markers, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("AttachedAbilityGrant")
+            && debug.contains("PreventNextTimeDamageEffect")
+            && debug.contains("Target(Object"),
+        "Samite Blessing should structurally grant a targeted prevention ability, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn samite_blessing_runtime_prevents_next_chosen_source_damage_to_target_creature_only() {
+    struct ChooseNamedSourceDecisionMaker {
+        source_name: &'static str,
+    }
+
+    impl crate::decision::DecisionMaker for ChooseNamedSourceDecisionMaker {
+        fn decide_objects(
+            &mut self,
+            game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            if let Some(chosen) = ctx.candidates.iter().find_map(|candidate| {
+                if !candidate.legal {
+                    return None;
+                }
+                game.object(candidate.id)
+                    .is_some_and(|object| object.name == self.source_name)
+                    .then_some(candidate.id)
+            }) {
+                vec![chosen]
+            } else {
+                crate::decision::AutoPassDecisionMaker.decide_objects(game, ctx)
+            }
+        }
+    }
+
+    let blessing = parse_oracle_card_definition("Samite Blessing");
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let enchanted = CardDefinitionBuilder::new(CardId::from_raw(91_301), "Blessed Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let protected = CardDefinitionBuilder::new(CardId::from_raw(91_302), "Protected Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let other_target = CardDefinitionBuilder::new(CardId::from_raw(91_303), "Other Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let chosen_source = CardDefinitionBuilder::new(CardId::from_raw(91_304), "Chosen Source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let other_source = CardDefinitionBuilder::new(CardId::from_raw(91_305), "Other Source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+
+    let enchanted_id = game.create_object_from_definition(&enchanted, alice, Zone::Battlefield);
+    let protected_id = game.create_object_from_definition(&protected, alice, Zone::Battlefield);
+    let other_target_id =
+        game.create_object_from_definition(&other_target, alice, Zone::Battlefield);
+    let chosen_source_id =
+        game.create_object_from_definition(&chosen_source, bob, Zone::Battlefield);
+    let other_source_id = game.create_object_from_definition(&other_source, bob, Zone::Battlefield);
+    let blessing_id = game.create_object_from_definition(&blessing, alice, Zone::Battlefield);
+    game.object_mut(blessing_id)
+        .expect("Samite Blessing should exist")
+        .attached_to = Some(crate::object::AttachmentTarget::Object(enchanted_id));
+    game.object_mut(enchanted_id)
+        .expect("enchanted creature should exist")
+        .attachments
+        .push(blessing_id);
+
+    let enchanted_chars = game
+        .calculated_characteristics(enchanted_id)
+        .expect("enchanted creature should have calculated characteristics");
+    let activated = enchanted_chars
+        .abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Activated(activated) = &ability.kind else {
+                return None;
+            };
+            format!("{:?}", activated.effects)
+                .contains("PreventNextTimeDamageEffect")
+                .then_some(activated)
+        })
+        .expect("Samite Blessing should grant the enchanted creature the prevention ability");
+    assert!(
+        activated.effects.flattened_default_effects().iter().any(|effect| {
+            effect
+                .0
+                .get_target_spec()
+                .is_some_and(|spec| format!("{spec:?}").contains("Creature"))
+        }),
+        "granted Samite Blessing ability should require a target creature, got {:?}",
+        activated.effects
+    );
+
+    let mut dm = ChooseNamedSourceDecisionMaker {
+        source_name: "Chosen Source",
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(enchanted_id, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(protected_id)]);
+    for effect in activated.effects.flattened_default_effects() {
+        effect
+            .0
+            .execute(&mut game, &mut ctx)
+            .expect("Samite Blessing granted ability should resolve");
+    }
+
+    let (damage_to_other_target, prevented_other_target) =
+        crate::events::processing::process_damage_with_event(
+            &mut game,
+            chosen_source_id,
+            crate::events::DamageTarget::Object(other_target_id),
+            3,
+            false,
+            crate::events::cause::EventCause::effect(),
+        );
+    assert_eq!(
+        damage_to_other_target, 3,
+        "chosen source damage to a non-target creature should not be prevented"
+    );
+    assert!(!prevented_other_target);
+
+    let (damage_from_other_source, prevented_other_source) =
+        crate::events::processing::process_damage_with_event(
+            &mut game,
+            other_source_id,
+            crate::events::DamageTarget::Object(protected_id),
+            3,
+            false,
+            crate::events::cause::EventCause::effect(),
+        );
+    assert_eq!(
+        damage_from_other_source, 3,
+        "nonchosen source damage to the target creature should not be prevented"
+    );
+    assert!(!prevented_other_source);
+
+    let (prevented_damage, prevented) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        chosen_source_id,
+        crate::events::DamageTarget::Object(protected_id),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        prevented_damage, 0,
+        "chosen source damage to the target creature should be prevented"
+    );
+    assert!(prevented);
+
+    let (second_damage, second_prevented) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        chosen_source_id,
+        crate::events::DamageTarget::Object(protected_id),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        second_damage, 3,
+        "Samite Blessing should prevent only the next matching damage event"
+    );
+    assert!(!second_prevented);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_target_opponent_chooses_creature_then_other_cant_block() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Eunuchs Variant")
             .parse_text(

@@ -561,6 +561,8 @@ pub enum DamageTargetConstraint {
     Any,
     /// Damage is dealt to a specific player.
     Player(PlayerId),
+    /// Damage is dealt to a specific object.
+    Object(ObjectId),
 }
 
 /// Matches preventable damage events with optional source/target constraints.
@@ -637,6 +639,14 @@ impl ReplacementMatcher for PreventableDamageConstraintMatcher {
                     }
                 }
                 DamageTarget::Object(_) => return false,
+            },
+            DamageTargetConstraint::Object(object_id) => match damage.target {
+                DamageTarget::Object(id) => {
+                    if &id != object_id {
+                        return false;
+                    }
+                }
+                DamageTarget::Player(_) => return false,
             },
         }
 

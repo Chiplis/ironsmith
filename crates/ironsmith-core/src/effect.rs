@@ -112,6 +112,7 @@ pub enum PreventNextTimeDamageSource {
 pub enum PreventNextTimeDamageTarget {
     AnyTarget,
     You,
+    Target(crate::target_model::ChooseSpec),
 }
 
 #[derive(Debug, Clone, PartialEq)]

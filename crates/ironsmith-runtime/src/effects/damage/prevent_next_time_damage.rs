@@ -8,6 +8,7 @@ use crate::Value;
 use crate::effect::{Effect, EffectOutcome, EventValueSpec};
 use crate::effects::DealDamageEffect;
 use crate::effects::EffectExecutor;
+use crate::effects::helpers::{resolve_objects_for_effect, resolve_players_from_spec};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::damage::matchers::{
     DamageSourceConstraint, DamageTargetConstraint, PreventableDamageConstraintMatcher,
@@ -32,6 +33,8 @@ pub enum PreventNextTimeDamageTarget {
     AnyTarget,
     /// Only damage that would be dealt to you.
     You,
+    /// Only damage that would be dealt to a target chosen as this resolves.
+    Target(ChooseSpec),
 }
 
 /// Register a one-shot replacement effect that prevents the next damage event matching constraints.
@@ -72,9 +75,22 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let target_constraint = match self.target {
+        let target_constraint = match &self.target {
             PreventNextTimeDamageTarget::AnyTarget => DamageTargetConstraint::Any,
             PreventNextTimeDamageTarget::You => DamageTargetConstraint::Player(ctx.controller),
+            PreventNextTimeDamageTarget::Target(spec) => {
+                if let Ok(objects) = resolve_objects_for_effect(game, ctx, spec)
+                    && let Some(object_id) = objects.first()
+                {
+                    DamageTargetConstraint::Object(*object_id)
+                } else if let Ok(players) = resolve_players_from_spec(game, spec, ctx)
+                    && let Some(player_id) = players.first()
+                {
+                    DamageTargetConstraint::Player(*player_id)
+                } else {
+                    return Err(ExecutionError::InvalidTarget);
+                }
+            }
         };
 
         let mut chosen_source = None;
@@ -159,6 +175,17 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
             .replacement_effects
             .add_one_shot_effect(replacement);
         Ok(EffectOutcome::resolved())
+    }
+
+    fn get_target_spec(&self) -> Option<&ChooseSpec> {
+        match &self.target {
+            PreventNextTimeDamageTarget::Target(spec) => Some(spec),
+            _ => None,
+        }
+    }
+
+    fn target_description(&self) -> &'static str {
+        "damage prevention target"
     }
 }
 
