@@ -632,6 +632,21 @@ pub struct PutCountersEffect {
     pub distributed: bool,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct DoubleCountersEffect {
+    pub counter_type: Option<crate::counter::CounterType>,
+    pub target: ChooseSpec,
+}
+
+impl DoubleCountersEffect {
+    pub fn new(counter_type: Option<crate::counter::CounterType>, target: ChooseSpec) -> Self {
+        Self {
+            counter_type,
+            target,
+        }
+    }
+}
+
 impl PutCountersEffect {
     pub fn new(
         counter_type: crate::counter::CounterType,

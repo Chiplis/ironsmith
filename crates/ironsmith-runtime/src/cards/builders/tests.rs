@@ -7,9 +7,9 @@ use crate::compiled_text::{
 };
 use crate::effects::{
     AddManaEffect, ChooseModeEffect, ChooseObjectsEffect, ConsultTopOfLibraryEffect,
-    CreateTokenEffect, DestroyEffect, DrawCardsEffect, EffectExecutor, GainLifeEffect,
-    IfEffect, MoveToZoneEffect, ReturnFromGraveyardToHandEffect, TagTriggeringObjectEffect,
-    TaggedEffect, TargetOnlyEffect, UntapEffect, WithIdEffect,
+    CreateTokenEffect, DestroyEffect, DoubleCountersEffect, DrawCardsEffect, EffectExecutor,
+    GainLifeEffect, IfEffect, MoveToZoneEffect, ReturnFromGraveyardToHandEffect,
+    TagTriggeringObjectEffect, TaggedEffect, TargetOnlyEffect, UntapEffect, WithIdEffect,
 };
 use crate::filter::ObjectFilterExt;
 use crate::object::AuraAttachmentFilter;
@@ -33592,6 +33592,53 @@ fn parse_distribute_then_double_counters_clause() {
         rendered.contains("double the number of +1/+1 counters"),
         "expected trailing double-counters clause, got {rendered}"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_deepglow_skate_strict_oracle_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Deepglow Skate")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Fish])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "When this creature enters, double the number of each kind of counter on any number of target permanents.",
+        )
+        .expect("Deepglow Skate strict oracle text should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert_eq!(
+        rendered,
+        "When this creature enters, double the number of each kind of counter on any number of target permanents."
+    );
+
+    let ability = def
+        .abilities
+        .iter()
+        .find(|ability| matches!(&ability.kind, AbilityKind::Triggered(_)))
+        .expect("Deepglow Skate should have an enters triggered ability");
+    let AbilityKind::Triggered(triggered) = &ability.kind else {
+        panic!("expected Deepglow Skate triggered ability");
+    };
+    let double = triggered
+        .effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<DoubleCountersEffect>())
+        .expect("Deepglow Skate should lower to a double-counters effect");
+    assert_eq!(double.counter_type, None);
+    assert!(double.target.is_target());
+    assert_eq!(double.target.count(), crate::effect::ChoiceCount::any_number());
+    let ChooseSpec::Object(filter) = double.target.base() else {
+        panic!(
+            "Deepglow Skate should target permanents, got {:?}",
+            double.target
+        );
+    };
+    assert_eq!(filter.zone, Some(Zone::Battlefield));
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

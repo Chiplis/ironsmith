@@ -404,6 +404,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::ReturnAllToHand { .. }
             | SubjectVerbActionAst::ReturnAllToHandOfChosenColor { .. }
             | SubjectVerbActionAst::DoubleCountersOnEach { .. }
+            | SubjectVerbActionAst::DoubleCountersOnTarget { .. }
             | SubjectVerbActionAst::MoveAllCounters { .. }
             | SubjectVerbActionAst::MoveOneCounter { .. }
             | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { .. }

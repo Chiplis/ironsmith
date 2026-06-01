@@ -28482,6 +28482,31 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     {
         return "Learn".to_string();
     }
+    if let Some(double_counters) = effect.downcast_ref::<crate::effects::DoubleCountersEffect>() {
+        let counter_text = match double_counters.counter_type {
+            Some(counter_type) => format!("{} counters", describe_counter_type(counter_type)),
+            None => "each kind of counter".to_string(),
+        };
+        if let ChooseSpec::All(filter) = double_counters.target.base() {
+            let filter_description = filter.description();
+            let filter_text = strip_indefinite_article(&filter_description);
+            let has_tagged_iterated_reference =
+                filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                });
+            if has_tagged_iterated_reference {
+                return format!(
+                    "Double the number of {counter_text} on each of those {}",
+                    pluralize_noun_phrase(filter_text)
+                );
+            }
+            return format!("Double the number of {counter_text} on each {filter_text}");
+        }
+        return format!(
+            "Double the number of {counter_text} on {}",
+            describe_choose_spec(&double_counters.target)
+        );
+    }
     if let Some(for_each) = effect.downcast_ref::<crate::effects::ForEachObject>() {
         if let Some(compact) =
             describe_divided_evenly_x_damage_to_target_opponent_creatures(for_each)

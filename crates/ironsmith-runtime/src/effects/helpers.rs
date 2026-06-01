@@ -2849,7 +2849,26 @@ pub fn resolve_objects_from_spec(
         }
         ChooseSpec::WithCount(inner, count) | ChooseSpec::WithCountValue(inner, count, _) => {
             if inner.is_target() {
-                return resolve_objects_from_spec(game, inner, ctx);
+                let objects = match resolve_objects_from_spec(game, inner, ctx) {
+                    Ok(objects) => objects,
+                    Err(ExecutionError::InvalidTarget) => {
+                        if count.min == 0 && ctx.targets.is_empty() {
+                            Vec::new()
+                        } else {
+                            return Err(ExecutionError::InvalidTarget);
+                        }
+                    }
+                    Err(err) => return Err(err),
+                };
+                if objects.len() < count.min {
+                    return Err(ExecutionError::InvalidTarget);
+                }
+                if let Some(max) = count.max
+                    && objects.len() > max
+                {
+                    return Err(ExecutionError::InvalidTarget);
+                }
+                return Ok(objects);
             }
 
             if let ChooseSpec::Object(filter) = inner.base() {

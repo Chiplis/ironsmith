@@ -1597,8 +1597,12 @@ pub(crate) enum SubjectVerbActionAst {
         position: Value,
     },
     DoubleCountersOnEach {
-        counter_type: CounterType,
+        counter_type: Option<CounterType>,
         filter: ObjectFilter,
+    },
+    DoubleCountersOnTarget {
+        counter_type: Option<CounterType>,
+        target: TargetAst,
     },
     RemoveCountersAll {
         amount: Value,
@@ -3098,6 +3102,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("DoubleCountersOnEach")
                 .field("counter_type", counter_type)
                 .field("filter", filter)
+                .finish(),
+            Self::DoubleCountersOnTarget {
+                counter_type,
+                target,
+            } => f
+                .debug_struct("DoubleCountersOnTarget")
+                .field("counter_type", counter_type)
+                .field("target", target)
                 .finish(),
             Self::RemoveCountersAll {
                 amount,
@@ -6171,7 +6183,7 @@ impl EffectAst {
     }
 
     pub(crate) fn subject_verb_double_counters_on_each(
-        counter_type: CounterType,
+        counter_type: Option<CounterType>,
         filter: ObjectFilter,
     ) -> Self {
         Self::subject_verb(
@@ -6180,6 +6192,20 @@ impl EffectAst {
             SubjectVerbActionAst::DoubleCountersOnEach {
                 counter_type,
                 filter,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_double_counters_on_target(
+        counter_type: Option<CounterType>,
+        target: TargetAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::DoubleCountersOnTarget {
+                counter_type,
+                target,
             },
         )
     }
