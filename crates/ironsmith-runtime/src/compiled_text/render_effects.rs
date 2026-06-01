@@ -3070,6 +3070,53 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
 }
 
+fn describe_reveal_top_to_hand_then_lose_mana_value_effects(effects: &[Effect]) -> Option<String> {
+    let [reveal_effect, move_effect, lose_effect] = effects else {
+        return None;
+    };
+    let reveal = unwrap_basic_tag_wrappers(reveal_effect)
+        .downcast_ref::<crate::effects::RevealTopEffect>()?;
+    if reveal.player != PlayerFilter::You {
+        return None;
+    }
+    let tag = reveal.tag.as_ref()?;
+    let move_effect = unwrap_basic_tag_wrappers(move_effect);
+    let moves_tag_to_hand = move_effect
+        .downcast_ref::<crate::effects::ReturnToHandEffect>()
+        .is_some_and(|return_to_hand| {
+            matches!(return_to_hand.spec.base(), ChooseSpec::Tagged(found) if found == tag)
+        })
+        || move_effect
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            .is_some_and(|move_to_zone| {
+                move_to_zone.zone == Zone::Hand
+                    && matches!(
+                        move_to_zone.target.base(),
+                        ChooseSpec::Tagged(found) if found == tag
+                    )
+            });
+    if !moves_tag_to_hand {
+        return None;
+    }
+    let lose_life = unwrap_basic_tag_wrappers(lose_effect)
+        .downcast_ref::<crate::effects::LoseLifeEffect>()?;
+    if lose_life.player != ChooseSpec::Player(PlayerFilter::You) {
+        return None;
+    }
+    if !matches!(
+        &lose_life.amount,
+        Value::ManaValueOf(spec)
+            if matches!(spec.base(), ChooseSpec::Tagged(found) if found == tag)
+    )
+    {
+        return None;
+    }
+    Some(
+        "Reveal the top card of your library and put that card into your hand. You lose life equal to the card's mana value"
+            .to_string(),
+    )
+}
+
 fn is_all_attacking_creatures(spec: &ChooseSpec) -> bool {
     let ChooseSpec::All(filter) = spec.base() else {
         return false;
@@ -3955,6 +4002,9 @@ fn describe_revealed_cards_opponent_may_put_or_draw(effects: &[&Effect]) -> Opti
 }
 
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
+    if let Some(compact) = describe_reveal_top_to_hand_then_lose_mana_value_effects(effects) {
+        return compact;
+    }
     if let Some(compact) = describe_structural_multisentence_effect_list(effects) {
         return compact;
     }
@@ -14624,6 +14674,11 @@ pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
 
     let compact = describe_effect_list(effects);
     let compact_trimmed = compact.trim();
+    if compact_trimmed
+        == "Reveal the top card of your library and put that card into your hand. You lose life equal to the card's mana value"
+    {
+        return Some(cleanup_decompiled_text(&lowercase_first(compact_trimmed)));
+    }
     if !compact_trimmed.is_empty()
         && !compact_trimmed.contains(". ")
         && !compact_trimmed.contains(": ")

@@ -2872,6 +2872,9 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
     }
 
     if let Some(used) = matching_prefix_len(&[
+        &["the", "card", "mana", "value"],
+        &["the", "card's", "mana", "value"],
+        &["the", "cards", "mana", "value"],
         &["that", "card", "mana", "value"],
         &["that", "card's", "mana", "value"],
         &["that", "cards", "mana", "value"],
