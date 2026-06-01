@@ -1,7 +1,7 @@
 use crate::{
     ActivationTiming, AnthemCountExpression, Comparison, CounterType, EffectId, EventValueSpec,
-    ManaSymbol, ObjectFilter, PlayerFilter, PlayerId, StableId, TagKey, ValueComparisonOperator,
-    Zone,
+    ManaSymbol, ObjectFilter, PlayerFilter, PlayerId, StableId, Subtype, TagKey,
+    ValueComparisonOperator, Zone,
 };
 use crate::{ChooseSpec, Color, ColorSet};
 
@@ -58,6 +58,7 @@ pub enum Value {
     HalfRoundedDown(Box<Value>),
     Count(ObjectFilter),
     CountScaled(ObjectFilter, i32),
+    GreatestCount(ObjectFilter),
     TotalPower(ObjectFilter),
     TotalToughness(ObjectFilter),
     TotalManaValue(ObjectFilter),
@@ -707,6 +708,7 @@ pub enum Condition {
     SourceWasCast,
     ThisSpellEscaped,
     ThisSpellWasCastFromZone(Zone),
+    ThisSpellWasCastFromNonHand,
     PlayerTappedLandForManaThisTurn {
         player: PlayerFilter,
     },
@@ -745,6 +747,7 @@ pub enum Condition {
     TargetHasGreatestPowerAmongCreatures,
     TargetManaValueLteColorsSpentToCastThisSpell,
     ItIsNight,
+    FirstCombatPhaseOfTurn,
     SourceIsTapped,
     SourceIsSaddled,
     SourceDevouredCreaturesOrMore(u32),
@@ -759,6 +762,10 @@ pub enum Condition {
     SourceHasCountersAtLeast(u32),
     SourcePowerAtLeast(u32),
     SourceDealtCombatDamageToPlayerThisTurn,
+    PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn {
+        player: PlayerFilter,
+        subtype: Subtype,
+    },
     ManaSpentToCastThisSpellAtLeast {
         amount: u32,
         symbol: Option<ManaSymbol>,

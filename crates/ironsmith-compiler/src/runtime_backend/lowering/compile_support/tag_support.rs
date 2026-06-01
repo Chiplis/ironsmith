@@ -124,6 +124,9 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::PreventAllCombatDamageFromSource { source: target, .. }
             | SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget { target, .. }
             | SubjectVerbActionAst::RedirectNextTimeDamageToSource { target, .. }
+            | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
+                source: target,
+            }
             | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { target, .. }
             | SubjectVerbActionAst::CreateTokenCopyFromSource { source: target, .. }
             | SubjectVerbActionAst::PreventDamage { target, .. }
@@ -132,6 +135,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::MoveToLibraryNthFromTop { target, .. }
             | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target }
             | SubjectVerbActionAst::RemoveUpToAnyCounters { target, .. }
+            | SubjectVerbActionAst::DoubleCountersOnTarget { target, .. }
             | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target }
             | SubjectVerbActionAst::PutSticker { target, .. }
             | SubjectVerbActionAst::SwitchPowerToughness { target, .. }
@@ -642,6 +646,8 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::SkipTurn
         | SubjectVerbActionAst::SkipCombatPhases
         | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
+        | SubjectVerbActionAst::SkipMainPhasesThisTurn
+        | SubjectVerbActionAst::SkipCombatPhasesThisTurn
         | SubjectVerbActionAst::SkipDrawStep
         | SubjectVerbActionAst::PlayFromGraveyardUntilEot
         | SubjectVerbActionAst::ControlPlayer { .. }
@@ -689,6 +695,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::MoveAllCounters { .. }
         | SubjectVerbActionAst::MoveOneCounter { .. }
         | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { .. }
+        | SubjectVerbActionAst::DoubleCountersOnTarget { .. }
         | SubjectVerbActionAst::ReturnToHand { .. }
         | SubjectVerbActionAst::ReturnAllToHand { .. }
         | SubjectVerbActionAst::ReturnAllToHandOfChosenColor { .. }
@@ -708,6 +715,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }
         | SubjectVerbActionAst::PreventNextTimeDamage { .. }
         | SubjectVerbActionAst::RedirectNextTimeDamageToSource { .. }
+        | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController { .. }
         | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { .. }
         | SubjectVerbActionAst::PreventAllDamageToTarget { .. }
         | SubjectVerbActionAst::PreventAllDamageFromSourceFilter { .. }

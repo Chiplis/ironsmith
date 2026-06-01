@@ -1083,6 +1083,7 @@ pub(crate) enum PreventNextTimeDamageSourceAst {
 pub(crate) enum RedirectNextTimeDamageDestinationAst {
     SourceObject,
     Controller,
+    SourceController,
 }
 
 #[cfg(any(test, ironsmith_runtime_parser_tests))]
@@ -1320,6 +1321,7 @@ pub(crate) enum IfResultPredicate {
     Did,
     DidNot,
     DiesThisWay,
+    ExcessDamageDealt,
     WasDeclined,
     Value(crate::effect::Comparison),
 }
@@ -5148,13 +5150,13 @@ mod effect_parse_tests {
     use crate::effects::{
         AddManaOfAnyColorEffect, AddManaOfAnyOneColorEffect, AddManaOfLandProducedTypesEffect,
         AddScaledManaEffect, CreateTokenCopyEffect, DestroyEffect, DiscardEffect, DrawCardsEffect,
-        EnergyCountersEffect, ExchangeControlEffect, ExchangeValuesEffect, ExchangeZonesEffect,
-        ExileInsteadOfGraveyardEffect, FatesealEffect, ForEachObject, ForPlayersEffect,
-        GrantBySpecEffect, LookAtHandEffect, ModifyPowerToughnessForEachEffect, PutCountersEffect,
-        RemoveCountersEffect, RemoveUpToAnyCountersEffect, ReturnFromGraveyardToBattlefieldEffect,
-        SacrificeEffect, SetBasePowerToughnessEffect, SetLifeTotalEffect, SkipCombatPhasesEffect,
-        SkipDrawStepEffect, SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, SurveilEffect,
-        TaggedEffect, TapEffect,
+        DoubleCountersEffect, EnergyCountersEffect, ExchangeControlEffect, ExchangeValuesEffect,
+        ExchangeZonesEffect, ExileInsteadOfGraveyardEffect, FatesealEffect, ForEachObject,
+        ForPlayersEffect, GrantBySpecEffect, LookAtHandEffect, ModifyPowerToughnessForEachEffect,
+        PutCountersEffect, RemoveCountersEffect, RemoveUpToAnyCountersEffect,
+        ReturnFromGraveyardToBattlefieldEffect, SacrificeEffect, SetBasePowerToughnessEffect,
+        SetLifeTotalEffect, SkipCombatPhasesEffect, SkipDrawStepEffect,
+        SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, SurveilEffect, TaggedEffect, TapEffect,
     };
     use crate::ids::CardId;
     use crate::mana::{ManaCost, ManaSymbol};
@@ -6678,26 +6680,18 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         let AbilityKind::Triggered(triggered) = &ability.kind else {
             panic!("expected triggered ability");
         };
-        let for_each = triggered
+        let double = triggered
             .effects
             .iter()
-            .find_map(|effect| effect.downcast_ref::<ForEachObject>())
-            .expect("triggered ability should compile through ForEachObject");
-        let put = for_each
-            .effects
-            .iter()
-            .find_map(|effect| effect.downcast_ref::<PutCountersEffect>())
-            .expect("ForEachObject should include PutCountersEffect");
+            .find_map(|effect| effect.downcast_ref::<DoubleCountersEffect>())
+            .expect("triggered ability should compile through DoubleCountersEffect");
 
-        assert_eq!(put.counter_type, CounterType::PlusOnePlusOne);
-        assert_eq!(
-            put.amount,
-            Value::CountersOn(
-                Box::new(ChooseSpec::Iterated),
-                Some(CounterType::PlusOnePlusOne)
-            )
-        );
-        assert_eq!(put.target, ChooseSpec::Iterated);
+        assert_eq!(double.counter_type, Some(CounterType::PlusOnePlusOne));
+        let ChooseSpec::All(filter) = &double.target else {
+            panic!("expected non-targeted all-creatures spec, got {:?}", double.target);
+        };
+        assert!(filter.card_types.contains(&CardType::Creature));
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]

@@ -54,6 +54,7 @@ pub(crate) struct EffectReferenceResolutionConfig {
 #[derive(Debug, Clone, Copy)]
 struct EffectReferenceResolutionState {
     last_effect_id: Option<EffectId>,
+    last_library_search_effect_id: Option<EffectId>,
     allow_life_event_value: bool,
     bind_unbound_x_to_last_effect: bool,
 }
@@ -723,6 +724,9 @@ fn advance_reference_frame_for_effect(
                 }
                 SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget { target, .. }
                 | SubjectVerbActionAst::RedirectNextTimeDamageToSource { target, .. }
+                | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
+                    source: target,
+                }
                 | SubjectVerbActionAst::PreventDamage { target, .. }
                 | SubjectVerbActionAst::PreventAllDamageToTarget { target, .. }
                 | SubjectVerbActionAst::PreventDamageToTargetPutCounters { target, .. }
@@ -1143,6 +1147,9 @@ fn advance_reference_frame_for_effect(
         EffectAst::RepeatEffects { effects, .. } => {
             advance_effects_preserving_last_effect(&effects, id_gen, frame)?;
         }
+        EffectAst::BidLife { winner_effects, .. } => {
+            advance_effects_preserving_last_effect(winner_effects, id_gen, frame)?;
+        }
         EffectAst::ManaRestricted { effects, .. } => {
             advance_reference_frames(effects, id_gen, frame)?;
         }
@@ -1157,6 +1164,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::ForEachPlayerDoesNot { .. }
         | EffectAst::ForEachOpponentDid { .. }
         | EffectAst::ForEachPlayerDid { .. }
+        | EffectAst::DirectionalAdjacentPlayerControl { .. }
         | EffectAst::VoteStart { .. }
         | EffectAst::VoteStartObjects { .. }
         | EffectAst::VoteOption { .. }
@@ -1169,6 +1177,7 @@ fn advance_reference_frame_for_effect(
 fn effect_reference_resolution_state(env: &ReferenceEnv) -> EffectReferenceResolutionState {
     EffectReferenceResolutionState {
         last_effect_id: env.last_effect_id.clone().into_option(),
+        last_library_search_effect_id: env.last_library_search_effect_id.clone().into_option(),
         allow_life_event_value: env.allow_life_event_value,
         bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
     }
@@ -1224,6 +1233,11 @@ fn annotate_effect_sequence_with_env_internal(
             )
         {
             out_env.last_effect_id = RefState::Known(id);
+        }
+        if let Some(id) = assigned_effect_id
+            && effect_is_library_search(&effect)
+        {
+            out_env.last_library_search_effect_id = RefState::Known(id);
         }
 
         current_env = out_env.clone();
@@ -1315,6 +1329,9 @@ fn maybe_assign_effect_result_id(
                     SubjectVerbActionAst::PumpByLastEffect { .. }
                 )
         );
+    let later_needs_library_search_result = effect_is_library_search(&effects[idx])
+        && idx + 1 < effects.len()
+        && effects[idx + 1..].iter().any(effect_is_searched_library_gate);
 
     if !(next_is_if_result_with_opponent_doesnt
         || next_is_if_result_with_player_doesnt
@@ -1323,7 +1340,8 @@ fn maybe_assign_effect_result_id(
         || next_is_result_gate
         || next_needs_event_derived_amount
         || later_needs_event_derived_amount
-        || next_needs_prior_effect_value)
+        || next_needs_prior_effect_value
+        || later_needs_library_search_result)
     {
         return None;
     }
@@ -1331,6 +1349,32 @@ fn maybe_assign_effect_result_id(
     let id = EffectId(id_gen.next_effect_id);
     id_gen.next_effect_id += 1;
     Some(id)
+}
+
+fn effect_is_searched_library_gate(effect: &EffectAst) -> bool {
+    matches!(
+        effect,
+        EffectAst::IfResult {
+            predicate: crate::cards::builders::IfResultPredicate::SearchedLibrary,
+            ..
+        } | EffectAst::WhenResult {
+            predicate: crate::cards::builders::IfResultPredicate::SearchedLibrary,
+            ..
+        }
+    )
+}
+
+fn effect_is_library_search(effect: &EffectAst) -> bool {
+    match effect {
+        EffectAst::ChooseObjectsAcrossZones {
+            zones, search_mode, ..
+        } => search_mode.is_some() && zones.contains(&crate::zone::Zone::Library),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::SearchLibrary { shuffle, .. },
+            ..
+        }) => *shuffle,
+        _ => false,
+    }
 }
 
 fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
@@ -1588,7 +1632,15 @@ fn resolve_effect_references_in_effect(
     state: EffectReferenceResolutionState,
 ) -> Result<EffectAst, CardTextError> {
     if let EffectAst::IfResult { predicate, effects } = effect {
-        let condition = state.last_effect_id.ok_or_else(|| {
+        let condition = if matches!(
+            predicate,
+            crate::cards::builders::IfResultPredicate::SearchedLibrary
+        ) {
+            state.last_library_search_effect_id.or(state.last_effect_id)
+        } else {
+            state.last_effect_id
+        }
+        .ok_or_else(|| {
             CardTextError::ParseError("missing prior effect for if clause".to_string())
         })?;
         let effects = resolve_effect_sequence_references_with_state(
@@ -1596,6 +1648,7 @@ fn resolve_effect_references_in_effect(
             id_gen,
             EffectReferenceResolutionState {
                 last_effect_id: Some(condition),
+                last_library_search_effect_id: state.last_library_search_effect_id,
                 allow_life_event_value: state.allow_life_event_value,
                 bind_unbound_x_to_last_effect: true,
             },
@@ -1616,6 +1669,7 @@ fn resolve_effect_references_in_effect(
             id_gen,
             EffectReferenceResolutionState {
                 last_effect_id: Some(condition),
+                last_library_search_effect_id: state.last_library_search_effect_id,
                 allow_life_event_value: state.allow_life_event_value,
                 bind_unbound_x_to_last_effect: true,
             },
@@ -1655,6 +1709,7 @@ fn resolve_effect_references_in_effect(
     {
         let nested_state = EffectReferenceResolutionState {
             last_effect_id: state.last_effect_id,
+            last_library_search_effect_id: state.last_library_search_effect_id,
             allow_life_event_value: trigger_supports_event_amount(trigger),
             bind_unbound_x_to_last_effect: state.bind_unbound_x_to_last_effect,
         };
@@ -1700,6 +1755,11 @@ fn resolve_effect_sequence_references_with_state(
         } else {
             assigned_effect_id
         };
+        if let Some(id) = assigned_effect_id
+            && effect_is_library_search(&effect)
+        {
+            state.last_library_search_effect_id = Some(id);
+        }
         resolved.push(effect);
     }
 
@@ -1757,6 +1817,7 @@ fn advance_reference_env_for_effect(
                 source_object_antecedent: true_sequence.final_env.source_object_antecedent
                     && false_sequence.final_env.source_object_antecedent,
                 last_effect_id: env.last_effect_id.clone(),
+                last_library_search_effect_id: env.last_library_search_effect_id.clone(),
                 iterated_player: env.iterated_player,
                 allow_life_event_value: env.allow_life_event_value,
                 bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
@@ -1922,6 +1983,8 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::SkipTurn
             | SubjectVerbActionAst::SkipCombatPhases
             | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
+            | SubjectVerbActionAst::SkipMainPhasesThisTurn
+            | SubjectVerbActionAst::SkipCombatPhasesThisTurn
             | SubjectVerbActionAst::SkipDrawStep
             | SubjectVerbActionAst::PlayFromGraveyardUntilEot
             | SubjectVerbActionAst::ControlPlayer { .. }
@@ -1969,6 +2032,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::ReturnAllToHand { .. }
             | SubjectVerbActionAst::ReturnAllToHandOfChosenColor { .. }
             | SubjectVerbActionAst::DoubleCountersOnEach { .. }
+            | SubjectVerbActionAst::DoubleCountersOnTarget { .. }
             | SubjectVerbActionAst::MoveAllCounters { .. }
             | SubjectVerbActionAst::MoveOneCounter { .. }
             | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { .. }
@@ -1988,6 +2052,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }
             | SubjectVerbActionAst::PreventNextTimeDamage { .. }
             | SubjectVerbActionAst::RedirectNextTimeDamageToSource { .. }
+            | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController { .. }
             | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { .. }
             | SubjectVerbActionAst::PreventAllDamageToTarget { .. }
             | SubjectVerbActionAst::PreventAllDamageFromSourceFilter { .. }
@@ -2404,6 +2469,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::SkipTurn
             | SubjectVerbActionAst::SkipCombatPhases
             | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
+            | SubjectVerbActionAst::SkipMainPhasesThisTurn
+            | SubjectVerbActionAst::SkipCombatPhasesThisTurn
             | SubjectVerbActionAst::SkipDrawStep
             | SubjectVerbActionAst::PlayFromGraveyardUntilEot
             | SubjectVerbActionAst::RingTemptsYou
@@ -2652,6 +2719,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::DoubleCountersOnEach { filter, .. } => {
                 bind_unresolved_it_in_filter(filter, seed_tag)
             }
+            SubjectVerbActionAst::DoubleCountersOnTarget { target, .. } => {
+                bind_unresolved_it_in_target(target, seed_tag)
+            }
             SubjectVerbActionAst::ChooseCardName { filter, tag } => {
                 filter
                     .as_mut()
@@ -2767,6 +2837,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 bind_unresolved_it_in_prevent_next_source(source, seed_tag)
                     + bind_unresolved_it_in_target(target, seed_tag)
             }
+            SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
+                source,
+            } => bind_unresolved_it_in_target(source, seed_tag),
             SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget {
                 object_filter,
                 target,

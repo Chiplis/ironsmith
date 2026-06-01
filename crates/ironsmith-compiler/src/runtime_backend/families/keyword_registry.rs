@@ -51,6 +51,7 @@ use super::util::{
 const SURGE_KEYWORD_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["surge"]);
 const FREERUNNING_KEYWORD_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["freerunning"]);
+const SNEAK_KEYWORD_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["sneak"]);
 const BLITZ_FROM_GRAVEYARD_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(
     contains_phrases
         & [
@@ -293,6 +294,30 @@ pub(super) fn lower_alternative_cast(
         ));
     }
 
+    if SNEAK_KEYWORD_PREFIX_PATTERN.matches_words(&parser_token_word_refs(tokens)) {
+        if !is_supported_spell_sneak_line(line.info.raw_line.as_str()) {
+            return Err(CardTextError::ParseError(format!(
+                "sneak keyword form is not yet supported: '{}'",
+                line.info.raw_line
+            )));
+        }
+        let raw_tokens = lex_line(line.text.as_str(), line.info.line_index)?;
+        let cost_tokens = raw_tokens.get(1..).unwrap_or_default();
+        let (cost, _) = leading_mana_cost_from_tokens(cost_tokens).ok_or_else(|| {
+            CardTextError::ParseError(format!("sneak keyword missing cost '{}'", line.text))
+        })?;
+        return Ok(LineAst::AlternativeCastingMethod(
+            crate::alternative_cast::AlternativeCastingMethod::alternative_cost(
+                "Sneak",
+                Some(cost),
+                vec![crate::costs::Cost::effect(
+                    crate::effect::Effect::new(crate::effects::SneakCostEffect::new()),
+                )],
+            )
+            .into(),
+        ));
+    }
+
     if BLITZ_FROM_GRAVEYARD_MARKER_PATTERN.matches_words(&parser_token_word_refs(tokens)) {
         return Ok(LineAst::Abilities(vec![
             crate::cards::builders::KeywordAction::BlitzFromGraveyard,
@@ -327,6 +352,15 @@ pub(super) fn lower_alternative_cast(
         "rewrite keyword lowering could not parse alternative cost line '{}'",
         line.info.raw_line
     )))
+}
+
+fn is_supported_spell_sneak_line(raw_line: &str) -> bool {
+    let lower = raw_line.to_ascii_lowercase();
+    lower.contains("you may cast this spell for")
+        && lower.contains(
+            "return an unblocked attacker you control to hand during the declare blockers step",
+        )
+        && !lower.contains("enters tapped and attacking")
 }
 
 pub(super) fn lower_bestow(
@@ -997,6 +1031,7 @@ fn parse_additional_cost_kind(tokens: &[OwnedLexToken]) -> Result<bool, CardText
 fn parse_alternative_cast_kind(tokens: &[OwnedLexToken]) -> Result<bool, CardTextError> {
     let rendered = render_token_slice(tokens).trim().to_ascii_lowercase();
     Ok(token_slice_first_is(tokens, "encore")
+        || token_slice_first_is(tokens, "sneak")
         || parse_self_free_cast_alternative_cost_line_lexed(tokens).is_some()
         || parse_you_may_rather_than_spell_cost_line_lexed(tokens, rendered.as_str())?.is_some()
         || parse_flash_with_additional_cost_line_lexed(tokens).is_some()

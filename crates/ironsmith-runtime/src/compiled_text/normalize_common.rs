@@ -907,6 +907,13 @@ pub(super) fn normalize_token_quoted_ability_surfaces(line: &str) -> String {
 
 pub(super) fn normalize_token_granted_static_ability_text(text: &str) -> String {
     let mut normalized = normalize_sentence_surface_style(text);
+    if normalized
+        .starts_with("This token saddles mounts and crews vehicles as though its power were ")
+    {
+        normalized = normalized
+            .replace("saddles mounts", "saddles Mounts")
+            .replace("crews vehicles", "crews Vehicles");
+    }
     if let Some(rest) = normalized.strip_prefix("This creature ") {
         normalized = format!("This token {rest}");
     } else if normalized == "This creature gets +1/+1." {
@@ -6404,6 +6411,12 @@ pub(super) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
         .trim()
         .to_string();
     subject = pluralize_noun_phrase(&subject);
+    if filter.subtypes.len() == 2
+        && filter.subtypes.contains(&crate::types::Subtype::Mount)
+        && filter.subtypes.contains(&crate::types::Subtype::Vehicle)
+    {
+        subject = subject.replace("Mounts or Vehicles", "Mounts and/or Vehicles");
+    }
     if let Some(rest) = subject.strip_prefix("the active player's ") {
         subject = format!("{rest} they control");
     }
@@ -6439,6 +6452,8 @@ pub(super) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
         && !mentions_controller_or_owner
         && !is_combat_restricted
         && !has_sacrificed_tag
+        && !filter.entered_battlefield_this_turn
+        && filter.entered_battlefield_controller.is_none()
     {
         subject.push_str(" on the battlefield");
     }
@@ -6623,7 +6638,7 @@ pub(super) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
         Some(PlayerFilter::Active) => Some("they control"),
         Some(PlayerFilter::Defending) => Some("defending player controls"),
         Some(PlayerFilter::Attacking) => Some("attacking player controls"),
-        Some(PlayerFilter::DamagedPlayer) => Some("damaged player controls"),
+        Some(PlayerFilter::DamagedPlayer) => Some("that player controls"),
         Some(PlayerFilter::Teammate) => Some("a teammate controls"),
         Some(PlayerFilter::Specific(_)) => Some("that player controls"),
         Some(PlayerFilter::Target(_)) | Some(PlayerFilter::IteratedPlayer) => Some("they control"),
@@ -6650,7 +6665,7 @@ pub(super) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
             Some(PlayerFilter::Active) => Some("they own"),
             Some(PlayerFilter::Defending) => Some("defending player owns"),
             Some(PlayerFilter::Attacking) => Some("attacking player owns"),
-            Some(PlayerFilter::DamagedPlayer) => Some("damaged player owns"),
+            Some(PlayerFilter::DamagedPlayer) => Some("that player owns"),
             Some(PlayerFilter::Teammate) => Some("a teammate owns"),
             Some(PlayerFilter::Specific(_)) => Some("that player owns"),
             Some(PlayerFilter::Target(_)) | Some(PlayerFilter::IteratedPlayer) => Some("they own"),
@@ -8090,6 +8105,12 @@ pub(crate) fn describe_value(value: &Value) -> String {
             } else {
                 format!("{multiplier} times the number of {subject}")
             }
+        }
+        Value::GreatestCount(filter) => {
+            format!(
+                "the greatest number of {}",
+                describe_count_filter_value_subject(filter)
+            )
         }
         Value::TotalPower(filter) => {
             format!(
@@ -10534,6 +10555,7 @@ pub(super) fn describe_effect_predicate(predicate: &EffectPredicate) -> String {
         EffectPredicate::Happened => "happened".to_string(),
         EffectPredicate::DidNotHappen => "that doesn't happen".to_string(),
         EffectPredicate::HappenedNotReplaced => "happened and was not replaced".to_string(),
+        EffectPredicate::ExcessDamageDealt => "excess damage was dealt this way".to_string(),
         EffectPredicate::Value(cmp) => format!("its count {}", describe_comparison(cmp)),
         EffectPredicate::Chosen => "was chosen".to_string(),
         EffectPredicate::WasDeclined => "was declined".to_string(),
@@ -11430,6 +11452,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             };
             format!("this spell was cast from {zone_text}")
         }
+        Condition::ThisSpellWasCastFromNonHand => {
+            "this spell was cast from anywhere other than your hand".to_string()
+        }
         Condition::PlayerTappedLandForManaThisTurn { player } => {
             format!(
                 "{} tapped a land for mana this turn",
@@ -11456,6 +11481,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::NoSpellsWereCastLastTurn => "no spells were cast last turn".to_string(),
         Condition::ItIsNight => "it's night".to_string(),
+        Condition::FirstCombatPhaseOfTurn => "it's the first combat phase of the turn".to_string(),
         Condition::SpellsWereCastLastTurnOrMore(count) => {
             let count_text = small_number_word(*count)
                 .unwrap_or_else(|| count.to_string());
@@ -12300,6 +12326,16 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::SourceAttackedThisTurn => "this creature attacked this turn".to_string(),
         Condition::SourceDealtCombatDamageToPlayerThisTurn => {
             "it dealt combat damage to a player this turn".to_string()
+        }
+        Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype } => {
+            let player_text = match player {
+                PlayerFilter::Any => "a player".to_string(),
+                PlayerFilter::Opponent => "an opponent".to_string(),
+                _ => describe_player_filter(player),
+            };
+            format!(
+                "{player_text} was dealt combat damage by a {subtype} this turn"
+            )
         }
         Condition::SourceCameUnderYourControlThisTurn => {
             "this creature came under your control this turn".to_string()

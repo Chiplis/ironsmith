@@ -151,6 +151,14 @@ fn parse_permission_lead_inner<'a>(
             player: PlayerAst::Any,
             allow_land: true,
         }),
+        grammar::phrase(&["its", "owner", "may", "cast"]).value(PermissionLead {
+            player: PlayerAst::ItsOwner,
+            allow_land: false,
+        }),
+        grammar::phrase(&["its", "owner", "may", "play"]).value(PermissionLead {
+            player: PlayerAst::ItsOwner,
+            allow_land: true,
+        }),
         grammar::phrase(&["cast"]).value(PermissionLead {
             player: PlayerAst::Implicit,
             allow_land: false,
@@ -468,6 +476,15 @@ fn parse_permission_duration_prefix_tokens<'a>(
         return (Some(PermissionLifetime::ForAsLongAsExiled), rest);
     }
 
+    if let Some(rest) = token_slice_strip_word_prefix(
+        tokens,
+        &[
+            "for", "as", "long", "as", "that", "card", "remains", "exiled",
+        ],
+    ) {
+        return (Some(PermissionLifetime::ForAsLongAsExiled), rest);
+    }
+
     (None, tokens)
 }
 
@@ -526,6 +543,17 @@ fn parse_permission_tail_tokens(
     if token_slice_strip_word_prefix(
         tokens,
         &["for", "as", "long", "as", "it", "remains", "exiled"],
+    )
+    .is_some_and(|rest| rest.is_empty())
+    {
+        return Some((PermissionLifetime::ForAsLongAsExiled, false));
+    }
+
+    if token_slice_strip_word_prefix(
+        tokens,
+        &[
+            "for", "as", "long", "as", "that", "card", "remains", "exiled",
+        ],
     )
     .is_some_and(|rest| rest.is_empty())
     {
@@ -1009,13 +1037,6 @@ pub(crate) fn parse_permission_clause_spec_lexed(
                 clause_refs.join(" ")
             )));
         }
-        if lifetime == PermissionLifetime::ForAsLongAsExiled && without_paying_mana_cost {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported for-as-long-as-exiled play target with alternative cost (clause: '{}')",
-                clause_refs.join(" ")
-            )));
-        }
-
         if lifetime == PermissionLifetime::ForAsLongAsYouControlSource && without_paying_mana_cost {
             return Err(CardTextError::ParseError(format!(
                 "unsupported for-as-long-as-you-control-source play target with alternative cost (clause: '{}')",
@@ -1933,13 +1954,17 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             player,
             allow_land,
             as_copy: false,
-            without_paying_mana_cost: false,
+            without_paying_mana_cost,
             lifetime: PermissionLifetime::ForAsLongAsExiled,
-        }) if player == PlayerAst::Implicit || player == PlayerAst::You => Ok(Some(
+        }) if matches!(
+            player,
+            PlayerAst::Implicit | PlayerAst::You | PlayerAst::ItsOwner
+        ) => Ok(Some(
             EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
                 tag,
-                PlayerAst::Implicit,
+                player,
                 allow_land,
+                without_paying_mana_cost,
                 allow_any_color_for_cast,
             ),
         )),

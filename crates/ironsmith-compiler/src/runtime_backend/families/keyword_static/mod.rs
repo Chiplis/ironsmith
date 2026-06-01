@@ -26,6 +26,7 @@ use super::grammar::abilities::{
     is_if_source_you_control_with_mana_value_double_instead_marker_line_lexed,
     is_krrik_black_mana_life_payment_line_lexed,
     is_lands_dont_untap_during_their_controllers_untap_steps_line_lexed,
+    is_lethal_damage_to_creatures_you_control_uses_power_line_lexed,
     is_mana_group_slash_marker_line_lexed, is_may_assign_damage_as_unblocked_line_lexed,
     is_minimum_spell_total_mana_three_line_lexed, is_more_than_meets_the_eye_marker_line_lexed,
     is_no_maximum_hand_size_line_lexed, is_once_each_turn_play_from_exile_marker_guard_lexed,
@@ -91,7 +92,8 @@ use super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggere
 use super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::rule_engine::{LexRuleHeadHint, LexRuleHintIndex, build_lex_rule_hint_index};
 use super::static_ability_helpers::{
-    lower_granted_abilities_ast_to_object_abilities, static_ability_for_keyword_action,
+    afflict_triggered_ability, lower_granted_abilities_ast_to_object_abilities,
+    static_ability_for_keyword_action,
 };
 use super::token_primitives::{
     find_index, find_window_by, is_core_keyword_marker_text, is_ticket_sticker_marker_text,
@@ -1109,6 +1111,8 @@ const IT_IS_OR_ITS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["it", "is"], &["it", "s"]]);
 const IN_ADDITION_TO_ITS_OTHER_TYPES_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["in", "addition", "to", "its", "other", "types"]);
+const IN_ADDITION_TO_ITS_OTHER_CREATURE_TYPES_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["in", "addition", "to", "its", "other", "creature", "types"]);
 const COPY_POWER_TOUGHNESS_FROM_SELF_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
         & [
@@ -2346,8 +2350,11 @@ fn keyword_static_clause_text(tokens: &[OwnedLexToken]) -> String {
 }
 
 fn keyword_static_marker(tokens: &[OwnedLexToken]) -> StaticAbility {
-    let text = keyword_static_clause_text(tokens);
+    let mut text = keyword_static_clause_text(tokens);
     if supported_keyword_marker_text(&text) {
+        if is_power_greater_marker_text(&text.to_ascii_lowercase()) && !text.ends_with('.') {
+            text.push('.');
+        }
         return StaticAbility::keyword_marker(text);
     }
     StaticAbility::keyword_fallback_text(text)
@@ -2362,10 +2369,11 @@ fn supported_keyword_marker_text(text: &str) -> bool {
 }
 
 fn is_power_greater_marker_text(text: &str) -> bool {
+    let text = text.trim_end_matches('.');
     POWER_GREATER_MARKER_PREFIXES
         .iter()
         .any(|prefix| text.starts_with(prefix))
-        && text.ends_with(POWER_GREATER_MARKER_SUFFIX)
+        && text.ends_with(POWER_GREATER_MARKER_SUFFIX.trim_end_matches('.'))
 }
 
 fn is_loyalty_counter_crew_cost_marker_text(text: &str) -> bool {
@@ -2777,6 +2785,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         ),
         single_static_ability_ast_passthrough_rule!(parse_trigger_suppression_line_ast),
         single_static_ability_ast_rule!(parse_creatures_assign_combat_damage_using_toughness_line),
+        single_static_ability_ast_rule!(
+            parse_lethal_damage_to_creatures_you_control_uses_power_line
+        ),
         single_static_ability_ast_rule!(parse_players_cant_cycle_line),
         single_static_ability_ast_rule!(parse_starting_life_bonus_line),
         single_static_ability_ast_rule!(parse_buyback_cost_reduction_line),
@@ -3015,6 +3026,63 @@ fn parse_static_ability_ast_line_lowered(
     Ok(None)
 }
 
+fn title_case_count_as_card_name(words: &[&str]) -> String {
+    words
+        .iter()
+        .filter(|word| !word.is_empty())
+        .map(|word| {
+            let mut chars = word.chars();
+            if let Some(first) = chars.next() {
+                let mut out = first.to_ascii_uppercase().to_string();
+                out.push_str(chars.as_str());
+                out
+            } else {
+                String::new()
+            }
+        })
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn parse_count_as_card_named_for_spell_effect_line(
+    words: &[&str],
+) -> Option<StaticAbility> {
+    const GRAVEYARD_PREFIXES: &[&[&str]] = &[
+        &["if", "this", "card", "is", "in", "a", "graveyard"],
+        &["if", "this", "card", "is", "in", "your", "graveyard"],
+    ];
+    if !GRAVEYARD_PREFIXES
+        .iter()
+        .any(|prefix| words.starts_with(prefix))
+    {
+        return None;
+    }
+
+    let effects_idx = word_slice_find_phrase_start(words, &["effects", "from", "spells", "named"])?;
+    let spell_name_start = effects_idx + 4;
+    let count_idx = word_slice_find_word(words.get(spell_name_start..).unwrap_or_default(), "count")?
+        + spell_name_start;
+    let spell_name_words = words.get(spell_name_start..count_idx)?;
+    if spell_name_words.is_empty()
+        || !words
+            .get(count_idx..count_idx + 6)
+            .is_some_and(|tail| tail == ["count", "it", "as", "a", "card", "named"])
+    {
+        return None;
+    }
+
+    let counted_name_words = words.get(count_idx + 6..)?;
+    if counted_name_words.is_empty() {
+        return None;
+    }
+
+    Some(StaticAbility::count_as_card_named_for_spell_effect(
+        title_case_count_as_card_name(spell_name_words),
+        title_case_count_as_card_name(counted_name_words),
+    ))
+}
+
 fn parse_static_ability_ast_line_early_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
@@ -3067,6 +3135,9 @@ fn parse_static_ability_ast_line_early_lexed(
     }
 
     let words = parser_token_word_refs(tokens);
+    if let Some(ability) = parse_count_as_card_named_for_spell_effect_line(&words) {
+        return Ok(Some(vec![ability.into()]));
+    }
     if SOURCE_CAN_BLOCK_PREFIX_PATTERN.matches_words(&words) {
         let mut idx = 4usize;
         if words
@@ -5309,7 +5380,12 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
             }
 
             let mut remainder_start = cursor;
-            if IN_ADDITION_TO_ITS_OTHER_TYPES_PREFIX_PATTERN.matches_words(&tail[remainder_start..])
+            if IN_ADDITION_TO_ITS_OTHER_CREATURE_TYPES_PREFIX_PATTERN
+                .matches_words(&tail[remainder_start..])
+            {
+                remainder_start += 7;
+            } else if IN_ADDITION_TO_ITS_OTHER_TYPES_PREFIX_PATTERN
+                .matches_words(&tail[remainder_start..])
             {
                 remainder_start += 6;
             }
@@ -5971,6 +6047,17 @@ pub(crate) fn parse_creatures_assign_combat_damage_using_toughness_line(
             ));
         }
         None => {}
+    }
+    Ok(None)
+}
+
+pub(crate) fn parse_lethal_damage_to_creatures_you_control_uses_power_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    if is_lethal_damage_to_creatures_you_control_uses_power_line_lexed(tokens) {
+        return Ok(Some(
+            StaticAbility::lethal_damage_to_creatures_you_control_uses_power(),
+        ));
     }
     Ok(None)
 }
@@ -10606,12 +10693,15 @@ pub(crate) fn parse_copy_activated_abilities_line(
     let Some(has_idx) = has_idx else {
         return Ok(None);
     };
+    let Some(has_token_idx) = token_index_for_word_index(tokens, has_idx) else {
+        return Ok(None);
+    };
 
-    let (condition, subject_start) = match parse_anthem_prefix_condition(tokens, has_idx) {
+    let (condition, subject_start) = match parse_anthem_prefix_condition(tokens, has_token_idx) {
         Ok(parsed) => parsed,
         Err(_) => return Ok(None),
     };
-    let subject_tokens = trim_commas(&tokens[subject_start..has_idx]);
+    let subject_tokens = trim_commas(&tokens[subject_start..has_token_idx]);
     if subject_tokens.is_empty() {
         return Ok(None);
     }
@@ -10620,7 +10710,10 @@ pub(crate) fn parse_copy_activated_abilities_line(
         Err(_) => return Ok(None),
     };
 
-    let filter_tokens = trim_edge_punctuation(&tokens[(has_idx + 5)..]);
+    let Some(filter_start_idx) = token_index_for_word_index(tokens, has_idx + 5) else {
+        return Ok(None);
+    };
+    let filter_tokens = trim_edge_punctuation(&tokens[filter_start_idx..]);
     let mut filter_tokens =
         strip_leading_token_words_any(&filter_tokens, &["all", "each"]).to_vec();
     let after_of_words = crate::runtime_backend::lexer::parser_token_word_refs(&filter_tokens);

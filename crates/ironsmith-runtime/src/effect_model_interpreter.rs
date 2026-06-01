@@ -307,6 +307,9 @@ where
     if let Some(converted) = clone_direct_effect::<M, crate::effects::NinjutsuCostEffect>(&effect) {
         return Ok(converted);
     }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::SneakCostEffect>(&effect) {
+        return Ok(converted);
+    }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::ConspireCostEffect>(&effect) {
         return Ok(converted);
     }
@@ -773,6 +776,13 @@ where
         };
         return Ok(Effect::new(converted));
     }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::BidLifeEffect<M::Effect>>(&effect) {
+        return Ok(Effect::new(crate::effects::BidLifeEffect::new(
+            payload.target.clone(),
+            payload.starting_bid,
+            convert_effects(payload.winner_effects.iter().cloned(), hooks)?,
+        )));
+    }
     if let Some(converted) = hooks.runtime_external_model_effect_hook(&effect)? {
         return Ok(converted);
     }
@@ -990,16 +1000,26 @@ where
             ironsmith_core::RedirectNextTimeDamageSource::Filter(filter) => {
                 crate::effects::RedirectNextTimeDamageSource::Filter(filter.clone())
             }
+            ironsmith_core::RedirectNextTimeDamageSource::Target(spec) => {
+                crate::effects::RedirectNextTimeDamageSource::Target(spec.clone())
+            }
         };
-        let Some(target) = payload.target.clone() else {
-            return Err(hooks.unsupported_effect(
-                "redirect next time damage to source without a protected target".to_string(),
-            ));
+        let effect = if let Some(target) = payload.target.clone() {
+            crate::effects::RedirectNextTimeDamageToSourceEffect::new(source, target)
+        } else {
+            crate::effects::RedirectNextTimeDamageToSourceEffect {
+                source,
+                target: None,
+                destination: crate::effects::RedirectNextTimeDamageDestination::SourceObject,
+                all_this_turn: false,
+            }
         };
-        let effect = crate::effects::RedirectNextTimeDamageToSourceEffect::new(source, target);
         let effect = match payload.destination {
             ironsmith_core::RedirectNextTimeDamageDestination::SourceObject => effect,
             ironsmith_core::RedirectNextTimeDamageDestination::Controller => effect.to_controller(),
+            ironsmith_core::RedirectNextTimeDamageDestination::SourceController => {
+                effect.to_source_controller()
+            }
         };
         let effect = if payload.all_this_turn {
             effect.all_this_turn()
@@ -1083,6 +1103,12 @@ where
         return Ok(Effect::new(
             crate::effects::ForEachCounterKindPutOrRemoveEffect::new(payload.target.clone()),
         ));
+    }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::DoubleCountersEffect>(&effect) {
+        return Ok(Effect::new(crate::effects::DoubleCountersEffect::new(
+            payload.counter_type,
+            payload.target.clone(),
+        )));
     }
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::ReflexiveTriggerEffect<M::Effect>>(&effect)
@@ -1316,6 +1342,11 @@ where
             payload.options.clone(),
         )));
     }
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::DirectionalAdjacentPlayerControlEffect>(&effect)
+    {
+        return Ok(converted);
+    }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::SetLifeTotalEffect>(&effect) {
         return Ok(Effect::new(crate::effects::SetLifeTotalEffect::new(
             payload.amount.clone(),
@@ -1365,6 +1396,19 @@ where
     {
         return Ok(Effect::new(
             crate::effects::SkipNextCombatPhaseThisTurnEffect::new(payload.player.clone()),
+        ));
+    }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::SkipMainPhasesThisTurnEffect>(&effect)
+    {
+        return Ok(Effect::new(
+            crate::effects::SkipMainPhasesThisTurnEffect::new(payload.player.clone()),
+        ));
+    }
+    if let Some(payload) =
+        M::downcast_ref::<ironsmith_core::SkipCombatPhasesThisTurnEffect>(&effect)
+    {
+        return Ok(Effect::new(
+            crate::effects::SkipCombatPhasesThisTurnEffect::new(payload.player.clone()),
         ));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::SkipCombatPhasesEffect>(&effect) {

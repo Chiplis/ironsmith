@@ -19,7 +19,7 @@ use crate::game_state::{GameState, Phase, Step};
 use crate::ids::{ObjectId, PlayerId};
 use crate::types::CardType;
 use crate::zone::Zone;
-pub use ironsmith_core::{NinjutsuCostEffect, NinjutsuEffect};
+pub use ironsmith_core::{NinjutsuCostEffect, NinjutsuEffect, SneakCostEffect};
 
 fn in_ninjutsu_window(game: &GameState) -> bool {
     if game.turn.phase != Phase::Combat {
@@ -29,6 +29,10 @@ fn in_ninjutsu_window(game: &GameState) -> bool {
         game.turn.step,
         Some(Step::DeclareBlockers | Step::CombatDamage | Step::EndCombat)
     )
+}
+
+fn in_sneak_window(game: &GameState) -> bool {
+    game.turn.phase == Phase::Combat && game.turn.step == Some(Step::DeclareBlockers)
 }
 
 fn unblocked_attackers(game: &GameState, controller: PlayerId) -> Vec<ObjectId> {
@@ -185,6 +189,133 @@ impl CostExecutableEffect for NinjutsuCostEffect {
         if source_obj.zone != Zone::Hand {
             return Err(CostValidationError::Other(
                 "Ninjutsu source must be in hand".to_string(),
+            ));
+        }
+
+        if unblocked_attackers(game, controller).is_empty() {
+            return Err(CostValidationError::Other(
+                "No unblocked attacker you control to return".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+}
+
+impl EffectExecutor for SneakCostEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        if !in_sneak_window(game) {
+            return Err(ExecutionError::Impossible(
+                "Sneak can only be paid during the declare blockers step".to_string(),
+            ));
+        }
+
+        let Some(source_obj) = game.object(ctx.source) else {
+            return Err(ExecutionError::ObjectNotFound(ctx.source));
+        };
+        if source_obj.zone != Zone::Hand {
+            return Err(ExecutionError::Impossible(
+                "Sneak source must be in hand".to_string(),
+            ));
+        }
+
+        let candidates = unblocked_attackers(game, ctx.controller);
+        if candidates.is_empty() {
+            return Err(ExecutionError::Impossible(
+                "No unblocked attacker you control to return".to_string(),
+            ));
+        }
+
+        let chosen = {
+            let spec = ChooseObjectsSpec::new(
+                ctx.source,
+                "Choose an unblocked attacker you control to return to hand",
+                candidates.clone(),
+                1,
+                Some(1),
+            );
+            make_decision(
+                game,
+                ctx.decision_maker,
+                ctx.controller,
+                Some(ctx.source),
+                spec,
+            )
+        };
+
+        let chosen_attacker = chosen
+            .into_iter()
+            .find(|id| candidates.contains(id))
+            .or_else(|| candidates.first().copied())
+            .ok_or_else(|| {
+                ExecutionError::Impossible(
+                    "No valid unblocked attacker was chosen for sneak".to_string(),
+                )
+            })?;
+
+        if let Some(combat) = game.combat.as_mut() {
+            combat
+                .attackers
+                .retain(|info| info.creature != chosen_attacker);
+            combat.blockers.remove(&chosen_attacker);
+            combat.damage_assignment_order.remove(&chosen_attacker);
+            for blockers in combat.blockers.values_mut() {
+                blockers.retain(|id| *id != chosen_attacker);
+            }
+            for order in combat.damage_assignment_order.values_mut() {
+                order.retain(|id| *id != chosen_attacker);
+            }
+        }
+
+        let _new_id = game
+            .move_object_with_commander_options(
+                chosen_attacker,
+                Zone::Hand,
+                ctx.cause.clone(),
+                &mut *ctx.decision_maker,
+            )
+            .map(|(new_id, _)| new_id)
+            .ok_or_else(|| {
+                ExecutionError::Impossible("Failed to return chosen attacker to hand".to_string())
+            })?;
+
+        Ok(EffectOutcome::resolved())
+    }
+
+    fn cost_description(&self) -> Option<String> {
+        Some("Return an unblocked attacker you control to its owner's hand".to_string())
+    }
+}
+
+impl CostExecutableEffect for SneakCostEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Result<(), CostValidationError> {
+        if !in_sneak_window(game) {
+            return Err(CostValidationError::Other(
+                "Sneak can only be paid during the declare blockers step".to_string(),
+            ));
+        }
+
+        let Some(source_obj) = game.object(source) else {
+            return Err(CostValidationError::Other(
+                "Sneak source does not exist".to_string(),
+            ));
+        };
+        if source_obj.zone != Zone::Hand {
+            return Err(CostValidationError::Other(
+                "Sneak source must be in hand".to_string(),
             ));
         }
 

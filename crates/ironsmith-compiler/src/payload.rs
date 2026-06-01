@@ -448,7 +448,9 @@ impl KeywordAction {
 pub enum IfResultPredicate {
     Did,
     DidNot,
+    SearchedLibrary,
     DiesThisWay,
+    ExcessDamageDealt,
     WasDeclined,
     Value(ironsmith_core::Comparison),
 }

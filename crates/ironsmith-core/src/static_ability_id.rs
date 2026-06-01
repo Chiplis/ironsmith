@@ -93,6 +93,7 @@ pub enum StaticAbilityId {
     ThisCreatureAssignsCombatDamageUsingToughness,
     CreaturesAssignCombatDamageUsingToughness,
     CreaturesYouControlAssignCombatDamageUsingToughness,
+    LethalDamageToCreaturesYouControlUsesPower,
     Anthem,
     GrantAbility,
     RemoveAbilityForFilter,
@@ -118,6 +119,7 @@ pub enum StaticAbilityId {
     GrantObjectAbilityForFilter,
     SetColors,
     SetName,
+    CountAsCardNamedForSpellEffect,
     MakeColorless,
     AddSupertypes,
     RemoveSupertypes,
@@ -352,6 +354,7 @@ impl StaticAbilityId {
             | ThisCreatureAssignsCombatDamageUsingToughness
             | CreaturesAssignCombatDamageUsingToughness
             | CreaturesYouControlAssignCombatDamageUsingToughness
+            | LethalDamageToCreaturesYouControlUsesPower
             | Anthem
             | GrantAbility
             | RemoveAbilityForFilter
@@ -377,6 +380,7 @@ impl StaticAbilityId {
             | GrantObjectAbilityForFilter
             | SetColors
             | SetName
+            | CountAsCardNamedForSpellEffect
             | MakeColorless
             | AddSupertypes
             | RemoveSupertypes
@@ -650,6 +654,7 @@ impl StaticAbilityId {
                 | ThisCreatureAssignsCombatDamageUsingToughness
                 | CreaturesAssignCombatDamageUsingToughness
                 | CreaturesYouControlAssignCombatDamageUsingToughness
+                | LethalDamageToCreaturesYouControlUsesPower
         )
     }
 

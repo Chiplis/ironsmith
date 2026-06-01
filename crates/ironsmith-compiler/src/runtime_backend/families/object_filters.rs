@@ -14,7 +14,7 @@ use super::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape}
 use super::grammar::primitives::{self as grammar_primitives, split_lexed_slices_on_or};
 use super::keyword_static::parse_pt_modifier;
 use super::lexer::{
-    OwnedLexToken, TokenWordView, find_token_word, token_slice_at_is,
+    OwnedLexToken, TokenWordView, find_token_word, parser_token_word_refs, token_slice_at_is,
     word_slice_contains_any_phrase, word_slice_find_phrase_start,
 };
 use super::util::{
@@ -154,12 +154,21 @@ const OBJECT_FILTER_YOUR_LIBRARY_SUFFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["in", "your", "library"], &["from", "your", "library"]]);
 const OBJECT_FILTER_GRAVEYARD_SUFFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["in", "graveyard"], &["from", "graveyard"]]);
+const OBJECT_FILTER_ALL_GRAVEYARDS_SUFFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["in", "all", "graveyards"], &["from", "all", "graveyards"]]);
 const OBJECT_FILTER_HAND_SUFFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["in", "hand"], &["from", "hand"]]);
 const OBJECT_FILTER_LIBRARY_SUFFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["in", "library"], &["from", "library"]]);
 const OBJECT_FILTER_EXILE_SUFFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["in", "exile"], &["from", "exile"]]);
+const OBJECT_FILTER_DIFFERENT_NAMES_CLAUSE_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["with", "different", "names"],
+            &["that", "have", "different", "names"]
+        ]
+);
 
 fn word_slice_match<'a>(
     expected: &str,
@@ -342,6 +351,11 @@ fn parse_simple_object_filter_suffix(words: &[&str]) -> Option<(SimpleObjectFilt
     {
         return Some((SimpleObjectFilterSuffix::Zone(Zone::Graveyard), 2));
     }
+    if tail(words, 3)
+        .is_some_and(|tail| OBJECT_FILTER_ALL_GRAVEYARDS_SUFFIX_PATTERN.matches_words(tail))
+    {
+        return Some((SimpleObjectFilterSuffix::Zone(Zone::Graveyard), 3));
+    }
     if tail(words, 2).is_some_and(|tail| OBJECT_FILTER_HAND_SUFFIX_PATTERN.matches_words(tail)) {
         return Some((SimpleObjectFilterSuffix::Zone(Zone::Hand), 2));
     }
@@ -450,6 +464,29 @@ pub(super) fn trim_vote_winner_suffix(tokens: &[OwnedLexToken]) -> (Vec<OwnedLex
         return (tokens.to_vec(), false);
     };
     (trim_commas(&tokens[..token_end]), true)
+}
+
+fn strip_object_filter_different_names_clause(
+    tokens: &[OwnedLexToken],
+) -> (Vec<OwnedLexToken>, bool) {
+    let mut cursor = 0usize;
+    while cursor < tokens.len() {
+        for pattern_len in [3usize, 4usize] {
+            if cursor + pattern_len <= tokens.len()
+                && OBJECT_FILTER_DIFFERENT_NAMES_CLAUSE_PATTERN.matches_words(
+                    &parser_token_word_refs(&tokens[cursor..cursor + pattern_len]),
+                )
+            {
+                let mut stripped = Vec::with_capacity(tokens.len() - pattern_len);
+                stripped.extend_from_slice(&tokens[..cursor]);
+                stripped.extend_from_slice(&tokens[cursor + pattern_len..]);
+                return (trim_commas(&stripped), true);
+            }
+        }
+        cursor += 1;
+    }
+
+    (trim_commas(tokens), false)
 }
 
 pub(super) fn apply_parity_filter_phrases(words: &[&str], filter: &mut ObjectFilter) {
@@ -742,7 +779,9 @@ pub(crate) fn parse_object_filter(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
-    if let Some(with_idx) = find_token_word(tokens, "with") {
+    let (tokens, distinct_names) = strip_object_filter_different_names_clause(tokens);
+    let tokens = tokens.as_slice();
+    let mut filter = if let Some(with_idx) = find_token_word(tokens, "with") {
         let base_tokens = trim_commas(&tokens[..with_idx]);
         let tail_words = crate::runtime_backend::token_word_refs(&tokens[with_idx + 1..]);
         if !base_tokens.is_empty()
@@ -758,9 +797,8 @@ pub(crate) fn parse_object_filter(
                 other,
             )?;
             filter.without_counter = Some(counter_constraint);
-            return Ok(filter);
-        }
-        if !base_tokens.is_empty()
+            filter
+        } else if !base_tokens.is_empty()
             && let Some((counter_constraint, consumed)) =
                 parse_filter_counter_constraint_words(&tail_words)
             && consumed == tail_words.len()
@@ -770,10 +808,15 @@ pub(crate) fn parse_object_filter(
                 other,
             )?;
             filter.with_counter = Some(counter_constraint);
-            return Ok(filter);
+            filter
+        } else {
+            super::grammar::filters::parse_object_filter_with_grammar_entrypoint(tokens, other)?
         }
-    }
-    super::grammar::filters::parse_object_filter_with_grammar_entrypoint(tokens, other)
+    } else {
+        super::grammar::filters::parse_object_filter_with_grammar_entrypoint(tokens, other)?
+    };
+    filter.distinct_names |= distinct_names;
+    Ok(filter)
 }
 
 pub(crate) fn parse_object_filter_lexed(
@@ -781,7 +824,10 @@ pub(crate) fn parse_object_filter_lexed(
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
     let (trimmed_tokens, vote_winners_only) = trim_vote_winner_suffix(tokens);
+    let (trimmed_tokens, distinct_names) =
+        strip_object_filter_different_names_clause(&trimmed_tokens);
     if let Some(mut filter) = parse_simple_object_filter_lexed(&trimmed_tokens, other) {
+        filter.distinct_names |= distinct_names;
         if vote_winners_only {
             filter = filter.match_tagged(
                 TagKey::from(VOTE_WINNERS_TAG),
@@ -790,7 +836,9 @@ pub(crate) fn parse_object_filter_lexed(
         }
         return Ok(filter);
     }
-    parse_object_filter(&trimmed_tokens, other)
+    let mut filter = parse_object_filter(&trimmed_tokens, other)?;
+    filter.distinct_names |= distinct_names;
+    Ok(filter)
 }
 
 pub(crate) fn spell_filter_has_identity(filter: &ObjectFilter) -> bool {

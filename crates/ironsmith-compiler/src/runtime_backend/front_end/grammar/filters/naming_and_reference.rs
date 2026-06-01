@@ -79,7 +79,10 @@ const REFERENCE_OBJECT_NOUN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
         & [
             &["artifact"],
             &["creature"],
+            &["enchantment"],
+            &["land"],
             &["permanent"],
+            &["planeswalker"],
             &["card"],
             &["spell"],
             &["source"],

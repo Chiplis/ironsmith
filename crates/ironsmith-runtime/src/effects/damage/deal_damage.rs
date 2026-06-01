@@ -3,7 +3,7 @@
 //! This module implements the `DealDamage` effect, which deals damage to a target
 //! creature, planeswalker, or player.
 
-use crate::effect::EffectOutcome;
+use crate::effect::{EffectOutcome, ExecutionFact};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{
     resolve_objects_for_effect, resolve_player_from_spec, resolve_value,
@@ -80,6 +80,12 @@ pub(crate) fn apply_processed_damage_outcome(
             }),
             DamageTarget::Player(_) => None,
         };
+        let excess_damage = match assignment.target {
+            DamageTarget::Object(object_id) => {
+                excess_damage_to_object(game, object_id, assignment.amount, keywords)
+            }
+            DamageTarget::Player(_) => 0,
+        };
         let applied = crate::rules::damage::apply_processed_damage_assignment(
             game,
             source,
@@ -97,6 +103,9 @@ pub(crate) fn apply_processed_damage_outcome(
             affected_objects.push(object_id);
         }
         let mut outcome = EffectOutcome::count(assignment.amount as i32);
+        if excess_damage > 0 {
+            outcome = outcome.with_execution_fact(ExecutionFact::ExcessDamageDealt);
+        }
         if assignment.amount > 0 {
             let mut damage_event = DamageEvent::with_cause(
                 source,
@@ -154,6 +163,33 @@ pub(crate) fn apply_processed_damage_outcome(
         outcome = outcome.with_affected_objects_from_game(game, affected_objects);
     }
     outcome
+}
+
+fn excess_damage_to_object(
+    game: &GameState,
+    target: crate::ids::ObjectId,
+    amount: u32,
+    keywords: crate::rules::damage::SourceDamageKeywords,
+) -> u32 {
+    if amount == 0 {
+        return 0;
+    }
+    let Some(object) = game.object(target) else {
+        return 0;
+    };
+    if object.has_card_type(CardType::Creature) {
+        let lethal = if keywords.has_deathtouch {
+            1
+        } else {
+            let Some(toughness) = game.calculated_toughness(target).or_else(|| object.toughness())
+            else {
+                return 0;
+            };
+            (toughness - game.damage_on(target) as i32).max(0) as u32
+        };
+        return amount.saturating_sub(lethal);
+    }
+    0
 }
 
 impl EffectExecutor for DealDamageEffect {

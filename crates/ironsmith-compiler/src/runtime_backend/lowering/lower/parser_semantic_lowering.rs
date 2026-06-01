@@ -363,6 +363,12 @@ fn statement_group_should_parse_as_effects_first(tokens: &[OwnedLexToken]) -> bo
     if linked_statement_should_stay_grouped(tokens) {
         return true;
     }
+    if matches!(
+        classify_statement_line_family_lexed(tokens),
+        Some(StatementLineFamily::Vote)
+    ) {
+        return true;
+    }
 
     let words = token_word_refs(tokens);
     if words
@@ -1719,6 +1725,10 @@ fn rewrite_copy_count_to_times_paid_label_rewrite(effects: &mut [EffectAst], lab
             | EffectAst::ForEachPlayerDid { effects, .. }
             | EffectAst::ForEachTaggedPlayer { effects, .. }
             | EffectAst::RepeatProcess { effects, .. }
+            | EffectAst::BidLife {
+                winner_effects: effects,
+                ..
+            }
             | EffectAst::DelayedUntilNextEndStep { effects, .. }
             | EffectAst::DelayedUntilNextUpkeep { effects, .. }
             | EffectAst::DelayedUntilNextDrawStep { effects, .. }

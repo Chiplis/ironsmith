@@ -14,7 +14,8 @@ use super::super::permission_helpers::{
 };
 use super::super::token_primitives::find_index;
 use super::super::util::{
-    parse_alternative_cast_words, parse_subject, span_from_tokens, trim_commas, words,
+    parse_alternative_cast_words, parse_subject, parse_target_phrase, span_from_tokens,
+    trim_commas, words,
 };
 use super::dispatch_entry::parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard;
 use super::zone_handlers::parse_exile_top_library_clause;
@@ -111,8 +112,13 @@ const OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
 const YOU_OR_OWN_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["you"], &["own"]]);
 const YOU_OWN_PATTERN: ClauseShape<'static> = clause_shape!(contains_phrases & [&["you", "own"]]);
-const FOR_EACH_OF_THOSE_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["for", "each", "of", "those"]);
+const FOR_EACH_OF_THOSE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["for", "each", "of", "those"],
+            &["for", "each", "of", "them"]
+        ]
+);
 const AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
 const ARTICLE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["a"], &["an"]]);
 const SEARCH_YOUR_LIBRARY_FOR_PREFIX_PATTERN: ClauseShape<'static> =
@@ -200,6 +206,31 @@ const KICKED_PUT_THOSE_ONTO_BATTLEFIELD_INSTEAD_PATTERN: ClauseShape<'static> = 
             "into",
             "your",
             "hand",
+        ]
+);
+const LIFE_BID_FOR_CONTROL_FIRST_SENTENCE_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix & ["each", "player", "may", "bid", "life", "for", "control", "of"]
+);
+const LIFE_BID_START_ZERO_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact
+        & [
+            "you", "start", "the", "bidding", "with", "a", "bid", "of", "0"
+        ]
+);
+const LIFE_BID_TOP_HIGH_BID_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact
+        & [
+            "in", "turn", "order", "each", "player", "may", "top", "the", "high", "bid"
+        ]
+);
+const LIFE_BID_STANDS_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact & ["the", "bidding", "ends", "if", "the", "high", "bid", "stands"]
+);
+const LIFE_BID_CONTROL_REWARD_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact
+        & [
+            "the", "high", "bidder", "loses", "life", "equal", "to", "the", "high", "bid",
+            "and", "gains", "control", "of", "the", "creature"
         ]
 );
 const EXILE_TARGET_NONLAND_PERMANENT_PATTERN: ClauseShape<'static> =
@@ -627,6 +658,7 @@ fn parse_exile_top_library_then_play_bundle(
                 SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
                     player,
                     allow_land,
+                    without_paying_mana_cost,
                     allow_any_color_for_cast,
                     ..
                 },
@@ -635,6 +667,7 @@ fn parse_exile_top_library_then_play_bundle(
             tag,
             player,
             allow_land,
+            without_paying_mana_cost,
             allow_any_color_for_cast,
         ),
         _ => return Ok(None),
@@ -1128,7 +1161,7 @@ fn parse_reveal_from_outside_game_to_hand(
 fn parse_choose_objects_then_for_each_of_those_bundle(
     first: &[OwnedLexToken],
     second: &[OwnedLexToken],
-    third: &[OwnedLexToken],
+    third: Option<&[OwnedLexToken]>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let mut normalized_first = first.to_vec();
     for token in &mut normalized_first {
@@ -1163,11 +1196,6 @@ fn parse_choose_objects_then_for_each_of_those_bundle(
         return Ok(None);
     }
 
-    let trailing_effects = effect_sentences::parse_effect_sentence_lexed(third)?;
-    if trailing_effects.is_empty() {
-        return Ok(None);
-    }
-
     let mut combined = vec![EffectAst::ChooseObjects {
         filter,
         count,
@@ -1179,7 +1207,13 @@ fn parse_choose_objects_then_for_each_of_those_bundle(
         tag: choose_tag,
         effects: loop_body_effects,
     });
-    combined.extend(trailing_effects);
+    if let Some(third) = third {
+        let trailing_effects = effect_sentences::parse_effect_sentence_lexed(third)?;
+        if trailing_effects.is_empty() {
+            return Ok(None);
+        }
+        combined.extend(trailing_effects);
+    }
     Ok(Some(combined))
 }
 
@@ -1934,6 +1968,45 @@ fn parse_nissas_encouragement_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<Eff
     Some(effects)
 }
 
+fn parse_bid_life_for_control_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    let sentences = split_lexed_sentences(tokens);
+    let [first, start, top, stands, reward] = sentences.as_slice() else {
+        return None;
+    };
+
+    let first_words = crate::runtime_backend::token_word_refs(first);
+    let start_words = crate::runtime_backend::token_word_refs(start);
+    let top_words = crate::runtime_backend::token_word_refs(top);
+    let stands_words = crate::runtime_backend::token_word_refs(stands);
+    let reward_words = crate::runtime_backend::token_word_refs(reward);
+
+    if !LIFE_BID_FOR_CONTROL_FIRST_SENTENCE_PATTERN.matches_words(&first_words)
+        || !LIFE_BID_START_ZERO_PATTERN.matches_words(&start_words)
+        || !LIFE_BID_TOP_HIGH_BID_PATTERN.matches_words(&top_words)
+        || !LIFE_BID_STANDS_PATTERN.matches_words(&stands_words)
+        || !LIFE_BID_CONTROL_REWARD_PATTERN.matches_words(&reward_words)
+    {
+        return None;
+    }
+
+    let control_of_idx = first_words
+        .windows(2)
+        .position(|window| window == ["control", "of"])?;
+    let target_start = control_of_idx + 2;
+    let target_token_start = super::super::util::token_index_for_word_index(first, target_start)?;
+    let target = parse_target_phrase(&first[target_token_start..]).ok()?;
+
+    Some(vec![EffectAst::BidLife {
+        target: target.clone(),
+        starting_bid: 0,
+        winner_effects: vec![EffectAst::subject_verb_gain_control(
+            PlayerAst::Implicit,
+            target,
+            crate::effect::Until::Forever,
+        )],
+    }])
+}
+
 pub(crate) fn parse_exact_card_effect_bundle_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
@@ -1959,6 +2032,9 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
         return Some(effects);
     }
     if let Some(effects) = parse_nissas_encouragement_bundle(tokens) {
+        return Some(effects);
+    }
+    if let Some(effects) = parse_bid_life_for_control_bundle(tokens) {
         return Some(effects);
     }
     if let Some(effects) = parse_draw_create_treasure_lose_life_bundle(tokens) {
@@ -2020,8 +2096,14 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
         && let Ok(Some(effects)) = parse_choose_objects_then_for_each_of_those_bundle(
             sentences[0],
             sentences[1],
-            sentences[2],
+            Some(sentences[2]),
         )
+    {
+        return Some(effects);
+    }
+    if sentences.len() == 2
+        && let Ok(Some(effects)) =
+            parse_choose_objects_then_for_each_of_those_bundle(sentences[0], sentences[1], None)
     {
         return Some(effects);
     }

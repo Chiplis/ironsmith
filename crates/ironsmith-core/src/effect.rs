@@ -81,6 +81,7 @@ pub enum EffectPredicate {
     Happened,
     DidNotHappen,
     HappenedNotReplaced,
+    ExcessDamageDealt,
     Value(crate::effect_model::Comparison),
     Chosen,
     WasDeclined,
@@ -117,12 +118,14 @@ pub enum PreventNextTimeDamageTarget {
 pub enum RedirectNextTimeDamageSource {
     Choice,
     Filter(crate::filter_model::ObjectFilter),
+    Target(crate::target_model::ChooseSpec),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RedirectNextTimeDamageDestination {
     SourceObject,
     Controller,
+    SourceController,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -627,6 +630,21 @@ pub struct PutCountersEffect {
     pub target: ChooseSpec,
     pub target_count: Option<ChoiceCount>,
     pub distributed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DoubleCountersEffect {
+    pub counter_type: Option<crate::counter::CounterType>,
+    pub target: ChooseSpec,
+}
+
+impl DoubleCountersEffect {
+    pub fn new(counter_type: Option<crate::counter::CounterType>, target: ChooseSpec) -> Self {
+        Self {
+            counter_type,
+            target,
+        }
+    }
 }
 
 impl PutCountersEffect {
@@ -1356,6 +1374,27 @@ impl ExchangeControlEffect {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct DirectionalAdjacentPlayerControlEffect {
+    pub filter: ObjectFilter,
+    pub left_option: String,
+    pub right_option: String,
+}
+
+impl DirectionalAdjacentPlayerControlEffect {
+    pub fn new(
+        filter: ObjectFilter,
+        left_option: impl Into<String>,
+        right_option: impl Into<String>,
+    ) -> Self {
+        Self {
+            filter,
+            left_option: left_option.into(),
+            right_option: right_option.into(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BattlefieldController {
     Preserve,
@@ -1371,6 +1410,7 @@ pub struct MoveToZoneEffect {
     pub battlefield_controller: BattlefieldController,
     pub enters_tapped: bool,
     pub enters_attacking: bool,
+    pub enters_face_down: bool,
     pub transfer_exiled_with_source_links: bool,
 }
 
@@ -1383,6 +1423,7 @@ impl MoveToZoneEffect {
             battlefield_controller: BattlefieldController::Preserve,
             enters_tapped: false,
             enters_attacking: false,
+            enters_face_down: false,
             transfer_exiled_with_source_links: false,
         }
     }
@@ -1427,12 +1468,18 @@ impl MoveToZoneEffect {
         self.enters_attacking = true;
         self
     }
+
+    pub fn face_down(mut self) -> Self {
+        self.enters_face_down = true;
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReturnAllToBattlefieldEffect {
     pub filter: ObjectFilter,
     pub tapped: bool,
+    pub face_down: bool,
     pub battlefield_controller: BattlefieldController,
 }
 
@@ -1441,6 +1488,7 @@ impl ReturnAllToBattlefieldEffect {
         Self {
             filter,
             tapped,
+            face_down: false,
             battlefield_controller: BattlefieldController::Owner,
         }
     }
@@ -1452,6 +1500,11 @@ impl ReturnAllToBattlefieldEffect {
 
     pub fn under_you_control(mut self) -> Self {
         self.battlefield_controller = BattlefieldController::You;
+        self
+    }
+
+    pub fn face_down(mut self) -> Self {
+        self.face_down = true;
         self
     }
 }
@@ -3005,6 +3058,7 @@ impl<E> VoteEffect<E> {
 pub struct GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
     pub tag: crate::tag::TagKey,
     pub player: PlayerFilter,
+    pub duration: GrantPlayTaggedDuration,
     pub while_on_top_of_library: bool,
     pub zone: Option<crate::zone::Zone>,
 }
@@ -3014,6 +3068,7 @@ impl GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
         Self {
             tag: tag.into(),
             player,
+            duration: GrantPlayTaggedDuration::UntilEndOfTurn,
             while_on_top_of_library: false,
             zone: Some(crate::zone::Zone::Exile),
         }
@@ -3021,6 +3076,11 @@ impl GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
 
     pub fn while_on_top_of_library(mut self) -> Self {
         self.while_on_top_of_library = true;
+        self
+    }
+
+    pub fn for_as_long_as_exiled(mut self) -> Self {
+        self.duration = GrantPlayTaggedDuration::ForAsLongAsExiled;
         self
     }
 
@@ -3513,8 +3573,22 @@ impl RedirectNextTimeDamageToSourceEffect {
         }
     }
 
+    pub fn from_source_target(source: ChooseSpec) -> Self {
+        Self {
+            source: RedirectNextTimeDamageSource::Target(source),
+            target: None,
+            destination: RedirectNextTimeDamageDestination::SourceController,
+            all_this_turn: false,
+        }
+    }
+
     pub fn to_controller(mut self) -> Self {
         self.destination = RedirectNextTimeDamageDestination::Controller;
+        self
+    }
+
+    pub fn to_source_controller(mut self) -> Self {
+        self.destination = RedirectNextTimeDamageDestination::SourceController;
         self
     }
 
@@ -3802,6 +3876,15 @@ impl UnearthEffect {
 pub struct NinjutsuCostEffect;
 
 impl NinjutsuCostEffect {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct SneakCostEffect;
+
+impl SneakCostEffect {
     pub fn new() -> Self {
         Self
     }
@@ -4343,6 +4426,28 @@ pub struct SkipCombatPhasesEffect {
 }
 
 impl SkipCombatPhasesEffect {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SkipMainPhasesThisTurnEffect {
+    pub player: PlayerFilter,
+}
+
+impl SkipMainPhasesThisTurnEffect {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SkipCombatPhasesThisTurnEffect {
+    pub player: PlayerFilter,
+}
+
+impl SkipCombatPhasesThisTurnEffect {
     pub fn new(player: PlayerFilter) -> Self {
         Self { player }
     }
@@ -5872,6 +5977,28 @@ impl<E> RepeatEffectsEffect<E> {
         Self {
             count: count.into(),
             effects,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LifeBidStart {
+    Fixed(u32),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BidLifeEffect<E> {
+    pub target: ChooseSpec,
+    pub starting_bid: LifeBidStart,
+    pub winner_effects: Vec<E>,
+}
+
+impl<E> BidLifeEffect<E> {
+    pub fn new(target: ChooseSpec, starting_bid: LifeBidStart, winner_effects: Vec<E>) -> Self {
+        Self {
+            target,
+            starting_bid,
+            winner_effects,
         }
     }
 }

@@ -312,6 +312,10 @@ const STATIC_ZONE_HINT_PHRASES: &[(&[&str], Zone)] = &[
         Zone::Graveyard,
     ),
     (
+        &["this", "card", "is", "in", "a", "graveyard"],
+        Zone::Graveyard,
+    ),
+    (
         &["this", "creature", "is", "in", "your", "graveyard"],
         Zone::Graveyard,
     ),

@@ -918,6 +918,7 @@ pub(crate) fn parse_sentence_return_multiple_targets_matched(
                 effects.push(EffectAst::subject_verb_return_all_to_battlefield(
                     filter,
                     tapped,
+                    false,
                     ReturnControllerAst::Owner,
                 ));
             } else {

@@ -365,6 +365,66 @@ fn resolve_effect_metric(
     Ok(resolved)
 }
 
+fn normalize_count_as_name(name: &str) -> String {
+    name.chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .map(|ch| ch.to_ascii_lowercase())
+        .collect()
+}
+
+fn count_as_names_match(lhs: &str, rhs: &str) -> bool {
+    lhs.eq_ignore_ascii_case(rhs) || normalize_count_as_name(lhs) == normalize_count_as_name(rhs)
+}
+
+fn source_spell_name_for_count_as(game: &GameState, ctx: &ExecutionContext<'_>) -> Option<String> {
+    if let Some(object) = game.object(ctx.source) {
+        return (object.zone == Zone::Stack).then(|| object.name.clone());
+    }
+
+    let snapshot = ctx.source_snapshot.as_ref()?;
+    (snapshot.zone == Zone::Stack).then(|| snapshot.name.clone())
+}
+
+fn count_as_card_named_for_spell_effect_bonus(
+    game: &GameState,
+    filter: &crate::filter::ObjectFilter,
+    ctx: &ExecutionContext<'_>,
+    filter_ctx: &crate::target::FilterContext,
+) -> usize {
+    let Some(required_name) = filter.name.as_deref() else {
+        return 0;
+    };
+    let Some(source_name) = source_spell_name_for_count_as(game, ctx) else {
+        return 0;
+    };
+
+    game.object_ids_in_deterministic_order()
+        .into_iter()
+        .filter_map(|id| game.object(id))
+        .filter(|object| !filter.matches_non_recursive(object, filter_ctx, game))
+        .filter(|object| {
+            object.abilities.iter().any(|ability| {
+                if !ability.functions_in(&object.zone) {
+                    return false;
+                }
+                let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+                    return false;
+                };
+                let Some(spec) = static_ability.count_as_card_named_for_spell_effect_spec() else {
+                    return false;
+                };
+                count_as_names_match(source_name.as_str(), spec.spell_name.as_str())
+                    && count_as_names_match(required_name, spec.counted_name.as_str())
+            })
+        })
+        .filter(|object| {
+            let mut counted_object = (*object).clone();
+            counted_object.name = required_name.to_string();
+            filter.matches_non_recursive(&counted_object, filter_ctx, game)
+        })
+        .count()
+}
+
 /// Resolve a Value to a concrete i32.
 pub fn resolve_value(
     game: &GameState,
@@ -408,7 +468,8 @@ pub fn resolve_value(
                 .iter()
                 .filter_map(|&id| game.object(id))
                 .filter(|obj| filter.matches(obj, &filter_ctx, game))
-                .count();
+                .count()
+                + count_as_card_named_for_spell_effect_bonus(game, filter, ctx, &filter_ctx);
             Ok(count as i32)
         }
         Value::PlayersWhoControlMoreThanYou(filter) => {
@@ -438,8 +499,37 @@ pub fn resolve_value(
                 .iter()
                 .filter_map(|&id| game.object(id))
                 .filter(|obj| filter.matches(obj, &filter_ctx, game))
-                .count() as i32;
+                .count()
+                + count_as_card_named_for_spell_effect_bonus(game, filter, ctx, &filter_ctx);
+            let count = count as i32;
             Ok(count * *multiplier)
+        }
+        Value::GreatestCount(filter) => {
+            let filter_ctx = ctx.filter_context(game);
+            let Some(controller_filter) = &filter.controller else {
+                let count = value_candidate_ids_for_filter(game, filter, ctx)
+                    .iter()
+                    .filter_map(|&id| game.object(id))
+                    .filter(|obj| filter.matches(obj, &filter_ctx, game))
+                    .count();
+                return Ok(count as i32);
+            };
+
+            let mut greatest = 0i32;
+            for player in game.players.iter().filter(|player| player.is_in_game()) {
+                if !controller_filter.matches_player(player.id, &filter_ctx) {
+                    continue;
+                }
+                let mut player_filter = filter.clone();
+                player_filter.controller = Some(crate::filter::PlayerFilter::Specific(player.id));
+                let count = value_candidate_ids_for_filter(game, &player_filter, ctx)
+                    .iter()
+                    .filter_map(|&id| game.object(id))
+                    .filter(|obj| player_filter.matches(obj, &filter_ctx, game))
+                    .count() as i32;
+                greatest = greatest.max(count);
+            }
+            Ok(greatest)
         }
         Value::TotalPower(filter) => {
             let filter_ctx = ctx.filter_context(game);
@@ -2611,10 +2701,11 @@ pub fn resolve_objects_for_effect_with_choice_description(
             let description = choice_description
                 .clone()
                 .unwrap_or_else(|| format!("Choose {}", filter.description()));
+            let choosing_player = ctx.iteration.iterated_player.unwrap_or(ctx.controller);
             view_hidden_candidate_objects(
                 game,
                 ctx,
-                game.controlling_player_for(ctx.controller),
+                game.controlling_player_for(choosing_player),
                 &candidates,
                 description,
                 false,
@@ -2627,10 +2718,11 @@ pub fn resolve_objects_for_effect_with_choice_description(
 
         let description =
             choice_description.unwrap_or_else(|| format!("Choose {}", filter.description()));
+        let choosing_player = ctx.iteration.iterated_player.unwrap_or(ctx.controller);
         let chosen: Vec<ObjectId> = make_decision(
             game,
             ctx.decision_maker,
-            ctx.controller,
+            choosing_player,
             Some(ctx.source),
             ChooseObjectsSpec::new(ctx.source, description, candidates.clone(), min, Some(max)),
         );
@@ -2849,7 +2941,26 @@ pub fn resolve_objects_from_spec(
         }
         ChooseSpec::WithCount(inner, count) | ChooseSpec::WithCountValue(inner, count, _) => {
             if inner.is_target() {
-                return resolve_objects_from_spec(game, inner, ctx);
+                let objects = match resolve_objects_from_spec(game, inner, ctx) {
+                    Ok(objects) => objects,
+                    Err(ExecutionError::InvalidTarget) => {
+                        if count.min == 0 && ctx.targets.is_empty() {
+                            Vec::new()
+                        } else {
+                            return Err(ExecutionError::InvalidTarget);
+                        }
+                    }
+                    Err(err) => return Err(err),
+                };
+                if objects.len() < count.min {
+                    return Err(ExecutionError::InvalidTarget);
+                }
+                if let Some(max) = count.max
+                    && objects.len() > max
+                {
+                    return Err(ExecutionError::InvalidTarget);
+                }
+                return Ok(objects);
             }
 
             if let ChooseSpec::Object(filter) = inner.base() {

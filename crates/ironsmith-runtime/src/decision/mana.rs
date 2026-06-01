@@ -1098,6 +1098,7 @@ fn casting_method_grants_special_timing(
     casting_method: &CastingMethod,
 ) -> bool {
     casting_method_grants_flash_timing(ctx.game, ctx.player, spell, casting_method)
+        || casting_method_grants_sneak_timing(ctx.game, spell, casting_method)
         || (ctx.allow_library_search_cast_timing
             && casting_method_grants_library_search_timing(
                 ctx.game,
@@ -1105,6 +1106,23 @@ fn casting_method_grants_special_timing(
                 spell_id,
                 casting_method,
             ))
+}
+
+fn casting_method_grants_sneak_timing(
+    game: &GameState,
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+) -> bool {
+    let method = match casting_method {
+        CastingMethod::Alternative(idx) => spell.alternative_casts.get(*idx),
+        _ => None,
+    };
+    let Some(method) = method else {
+        return false;
+    };
+    method.name().eq_ignore_ascii_case("Sneak")
+        && matches!(game.turn.phase, Phase::Combat)
+        && game.turn.step == Some(Step::DeclareBlockers)
 }
 
 pub(crate) fn face_down_cast_mana_cost() -> crate::mana::ManaCost {
@@ -5058,4 +5076,125 @@ pub fn calculate_convoke_cost(
 
     let effective_cost = crate::mana::ManaCost::from_pips(remaining_pips);
     (creatures_to_tap, effective_cost)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ability::AbilityKind;
+    use crate::alternative_cast::CastingMethod;
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::cards::builders::CardDefinitionBuilder;
+    use crate::ids::{CardId, PlayerId};
+    use crate::mana::{ManaCost, ManaSymbol};
+    use crate::types::{CardType, Subtype};
+    use crate::zone::Zone;
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    fn cavern_hoard_dragon_definition() -> crate::cards::CardDefinition {
+        CardDefinitionBuilder::new(CardId::from_raw(119_956), "Cavern-Hoard Dragon")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(7)],
+                vec![ManaSymbol::Red],
+                vec![ManaSymbol::Red],
+            ]))
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Dragon])
+            .power_toughness(PowerToughness::fixed(6, 6))
+            .parse_text(
+                "This spell costs {X} less to cast, where X is the greatest number of artifacts an opponent controls.\nFlying, trample, haste\nWhenever this creature deals combat damage to a player, you create a Treasure token for each artifact that player controls.",
+            )
+            .expect("Cavern-Hoard Dragon should parse for cost runtime test")
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    fn create_artifact(game: &mut GameState, owner: PlayerId, name: &str) {
+        let card = CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Artifact])
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Battlefield);
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn cavern_hoard_dragon_cost_reduction_uses_greatest_opponent_artifact_count() {
+        let mut game = GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+
+        for idx in 0..7 {
+            create_artifact(&mut game, alice, &format!("Alice Artifact {idx}"));
+        }
+        for idx in 0..2 {
+            create_artifact(&mut game, bob, &format!("Bob Artifact {idx}"));
+        }
+        for idx in 0..5 {
+            create_artifact(&mut game, charlie, &format!("Charlie Artifact {idx}"));
+        }
+
+        let def = cavern_hoard_dragon_definition();
+        let dragon_id = game.create_object_from_definition(&def, alice, Zone::Hand);
+        let dragon = game.object(dragon_id).expect("dragon should be in hand");
+        let reduction = dragon
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => static_ability.this_spell_cost_reduction(),
+                _ => None,
+            })
+            .expect("Cavern-Hoard Dragon should have a this-spell cost reduction");
+
+        assert_eq!(
+            resolve_this_spell_cost_reduction_value(&game, alice, dragon, reduction),
+            5,
+            "cost reduction should use the greatest single opponent artifact count, not your artifacts or all opponents combined"
+        );
+
+        let adjusted = apply_spell_cost_modifiers(
+            &game,
+            alice,
+            dragon,
+            dragon.mana_cost.as_ref().expect("dragon should have a mana cost"),
+            0,
+            &[],
+            &CastingMethod::Normal,
+        );
+        assert_eq!(
+            adjusted.to_oracle(),
+            "{2}{R}{R}",
+            "{{7}}{{R}}{{R}} reduced by the greatest opponent artifact count of five should cost {{2}}{{R}}{{R}}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn cavern_hoard_dragon_cost_reduction_is_zero_without_opponent_artifacts() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        for idx in 0..3 {
+            create_artifact(&mut game, alice, &format!("Alice Artifact {idx}"));
+        }
+
+        let def = cavern_hoard_dragon_definition();
+        let dragon_id = game.create_object_from_definition(&def, alice, Zone::Hand);
+        let dragon = game.object(dragon_id).expect("dragon should be in hand");
+        let reduction = dragon
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => static_ability.this_spell_cost_reduction(),
+                _ => None,
+            })
+            .expect("Cavern-Hoard Dragon should have a this-spell cost reduction");
+
+        assert_eq!(
+            resolve_this_spell_cost_reduction_value(&game, alice, dragon, reduction),
+            0,
+            "artifacts controlled by Cavern-Hoard Dragon's caster must not reduce its cost"
+        );
+    }
 }

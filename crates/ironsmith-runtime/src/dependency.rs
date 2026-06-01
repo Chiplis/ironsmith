@@ -1326,6 +1326,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::VoteCount(_)
         | Value::Count(_)
         | Value::CountScaled(_, _)
+        | Value::GreatestCount(_)
         | Value::TotalManaValue(_)
         | Value::GreatestManaValue(_)
         | Value::BasicLandTypesAmong(_)

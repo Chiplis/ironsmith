@@ -121,6 +121,10 @@ fn first_word_tap(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "tap")
 }
 
+fn first_word_starting(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_is(sentences, sentence_idx, "starting")
+}
+
 fn first_word_choose(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "choose")
 }
@@ -135,6 +139,10 @@ fn first_word_each(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
 
 fn first_word_target(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "target")
+}
+
+fn first_word_that_or_the(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_in(sentences, sentence_idx, &["that", "the"])
 }
 
 fn first_word_reveal(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
@@ -309,6 +317,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::triples::parse_top_cards_put_any_matching_to_zone_rest_bottom,
     },
     SequenceRuleDef {
+        name: "look-at-top-put-one-hand-bottom-cast-non-hand-put-all-hand",
+        feature_tag: Some("looked-cards-cast-non-hand-override"),
+        priority: 335,
+        consumed_sentences: 3,
+        predicate: first_word_look,
+        parser: generic_subject_verb_sequences::triples::parse_look_at_top_put_one_hand_bottom_cast_non_hand_put_all_hand,
+    },
+    SequenceRuleDef {
         name: "top-cards-reveal-any-matching-to-hand-rest-bottom",
         feature_tag: Some("looked-cards-revealed-hand-bottom"),
         priority: 335,
@@ -414,6 +430,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 2,
         predicate: first_word_each,
         parser: generic_subject_verb_sequences::parse_each_player_shuffle_reveal_then_put_revealed_types_bottom,
+    },
+    SequenceRuleDef {
+        name: "choose-phase-then-skip-chosen-this-turn",
+        feature_tag: Some("choose-step-phase-skip"),
+        priority: 244,
+        consumed_sentences: 2,
+        predicate: first_word_that_or_the,
+        parser: generic_subject_verb_sequences::pairs::parse_choose_draw_main_or_combat_phase_then_skip_chosen_this_turn,
     },
     SequenceRuleDef {
         name: "copy-for-each-target-each-copy-different",
@@ -598,6 +622,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 2,
         predicate: first_word_target_exile_look_or_reveal,
         parser: generic_subject_verb_sequences::pairs::parse_consult_match_move_and_bottom_remainder,
+    },
+    SequenceRuleDef {
+        name: "directional-adjacent-player-control",
+        feature_tag: Some("directional-player-choice-control"),
+        priority: 260,
+        consumed_sentences: 2,
+        predicate: first_word_starting,
+        parser: generic_subject_verb_sequences::pairs::parse_directional_adjacent_player_control,
     },
     SequenceRuleDef {
         name: "consult-match-onto-battlefield-or-into-hand",

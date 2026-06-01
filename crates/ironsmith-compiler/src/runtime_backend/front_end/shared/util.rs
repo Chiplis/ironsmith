@@ -2668,6 +2668,13 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         return Some((Value::EventValue(EventValueSpec::Amount), words.len()));
     }
 
+    if words
+        .get(..2)
+        .is_some_and(|prefix| matches!(prefix, ["twice", x] if X_WORD_PATTERN.matches_word(x)))
+    {
+        return Some((Value::XTimes(2), 2));
+    }
+
     if X_WORD_PATTERN.matches_word(words[0]) {
         return Some((Value::X, 1));
     }
@@ -2782,6 +2789,12 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         &["that", "cards", "power"],
         &["that", "object", "power"],
         &["that", "objects", "power"],
+        &["the", "exiled", "card", "power"],
+        &["the", "exiled", "card's", "power"],
+        &["the", "exiled", "cards", "power"],
+        &["exiled", "card", "power"],
+        &["exiled", "card's", "power"],
+        &["exiled", "cards", "power"],
         &["the", "exploited", "creature", "power"],
         &["the", "exploited", "creatures", "power"],
         &["exploited", "creature", "power"],
@@ -2818,6 +2831,12 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         &["that", "cards", "toughness"],
         &["that", "object", "toughness"],
         &["that", "objects", "toughness"],
+        &["the", "exiled", "card", "toughness"],
+        &["the", "exiled", "card's", "toughness"],
+        &["the", "exiled", "cards", "toughness"],
+        &["exiled", "card", "toughness"],
+        &["exiled", "card's", "toughness"],
+        &["exiled", "cards", "toughness"],
         &["the", "exploited", "creature", "toughness"],
         &["the", "exploited", "creatures", "toughness"],
         &["exploited", "creature", "toughness"],
@@ -2865,6 +2884,9 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
     }
 
     if let Some(used) = matching_prefix_len(&[
+        &["the", "card", "mana", "value"],
+        &["the", "card's", "mana", "value"],
+        &["the", "cards", "mana", "value"],
         &["that", "card", "mana", "value"],
         &["that", "card's", "mana", "value"],
         &["that", "cards", "mana", "value"],

@@ -63,6 +63,66 @@ fn join_with_or(items: &[String]) -> String {
     }
 }
 
+fn strip_indefinite_article(text: &str) -> &str {
+    text.strip_prefix("a ")
+        .or_else(|| text.strip_prefix("an "))
+        .unwrap_or(text)
+}
+
+fn pluralize_cost_noun_phrase(phrase: &str) -> String {
+    if let Some((head, tail)) = phrase.split_once(" ") {
+        if matches!(tail, "you control" | "an opponent controls" | "that player controls") {
+            return format!("{} {tail}", pluralize_cost_noun_phrase(head));
+        }
+    }
+    match phrase {
+        "artifact" => "artifacts".to_string(),
+        "creature" => "creatures".to_string(),
+        "enchantment" => "enchantments".to_string(),
+        "land" => "lands".to_string(),
+        "permanent" => "permanents".to_string(),
+        "card" => "cards".to_string(),
+        _ if phrase.ends_with('s') => phrase.to_string(),
+        _ => format!("{phrase}s"),
+    }
+}
+
+fn describe_greatest_count_cost_filter(filter: &ObjectFilter) -> String {
+    let Some(controller) = &filter.controller else {
+        return pluralize_cost_noun_phrase(strip_indefinite_article(&filter.description()));
+    };
+
+    let mut bare = filter.clone();
+    bare.controller = None;
+    let bare_description = bare.description();
+    let subject = pluralize_cost_noun_phrase(
+        strip_indefinite_article(&bare_description)
+            .trim()
+            .trim_end_matches(" on the battlefield")
+            .trim(),
+    );
+    let suffix = match controller {
+        PlayerFilter::You => "you control",
+        PlayerFilter::Opponent => "an opponent controls",
+        PlayerFilter::Any => "a player controls",
+        PlayerFilter::DamagedPlayer | PlayerFilter::Specific(_) | PlayerFilter::Target(_) => {
+            "that player controls"
+        }
+        PlayerFilter::IteratedPlayer => "they control",
+        _ => return pluralize_cost_noun_phrase(strip_indefinite_article(&filter.description())),
+    };
+    format!("{subject} {suffix}")
+}
+
+fn append_cost_modifier_tail(line: &mut String, tail: &str) {
+    if tail.starts_with("where ") {
+        line.push_str(", ");
+    } else {
+        line.push(' ');
+    }
+    line.push_str(tail);
+}
+
 fn describe_colors(colors: ColorSet) -> String {
     let mut words = Vec::new();
     if colors.contains(Color::White) {
@@ -183,6 +243,13 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
         Value::CountScaled(filter, multiplier) => (
             format!("{{{multiplier}}}"),
             Some(format!("for each {}", filter.description())),
+        ),
+        Value::GreatestCount(filter) => (
+            "{X}".to_string(),
+            Some(format!(
+                "where X is the greatest number of {}",
+                describe_greatest_count_cost_filter(filter)
+            )),
         ),
         Value::BasicLandTypesAmong(filter) => (
             "{1}".to_string(),
@@ -783,8 +850,7 @@ impl StaticAbilityKind for CostReduction {
         if let Some(subject) = describe_alternative_cost_subject(&self.filter) {
             let mut line = format!("{subject} cost {amount_text} less");
             if let Some(tail) = tail {
-                line.push(' ');
-                line.push_str(&tail);
+                append_cost_modifier_tail(&mut line, &tail);
             }
             return describe_cost_modifier_with_condition(line, &self.condition);
         }
@@ -794,8 +860,7 @@ impl StaticAbilityKind for CostReduction {
             amount_text
         );
         if let Some(tail) = tail {
-            line.push(' ');
-            line.push_str(&tail);
+            append_cost_modifier_tail(&mut line, &tail);
         }
         describe_cost_modifier_with_condition(line, &self.condition)
     }
@@ -1718,8 +1783,7 @@ impl StaticAbilityKind for ThisSpellCostReduction {
         let (amount_text, tail) = describe_cost_modifier_amount(&self.reduction);
         let mut line = format!("This spell costs {amount_text} less to cast");
         if let Some(tail) = tail {
-            line.push(' ');
-            line.push_str(&tail);
+            append_cost_modifier_tail(&mut line, &tail);
         } else if matches!(self.reduction, Value::X)
             && matches!(
                 self.condition,
@@ -1839,8 +1903,7 @@ impl StaticAbilityKind for CostIncrease {
             amount_text
         );
         if let Some(tail) = tail {
-            line.push(' ');
-            line.push_str(&tail);
+            append_cost_modifier_tail(&mut line, &tail);
         }
         describe_cost_modifier_with_condition(line, &self.condition)
     }

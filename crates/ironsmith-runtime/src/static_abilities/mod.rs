@@ -937,6 +937,13 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
     fn reveal_drawn_card_spec(&self) -> Option<RevealDrawnCardSpec> {
         None
     }
+
+    /// Return a graveyard count-as descriptor for effects from named spells.
+    fn count_as_card_named_for_spell_effect_spec(
+        &self,
+    ) -> Option<CountAsCardNamedForSpellEffectSpec> {
+        None
+    }
 }
 
 /// Spec for "as this enters, choose a color" abilities.
@@ -1054,6 +1061,13 @@ pub struct RevealDrawnCardSpec {
     pub your_turns_only: bool,
 }
 
+/// Spec for "effects from spells named N count this as a card named M" abilities.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CountAsCardNamedForSpellEffectSpec {
+    pub spell_name: String,
+    pub counted_name: String,
+}
+
 // Implement Clone for Box<dyn StaticAbilityKind>
 impl Clone for Box<dyn StaticAbilityKind> {
     fn clone(&self) -> Self {
@@ -1168,6 +1182,12 @@ impl StaticAbility {
 
     pub fn reveal_drawn_card_spec(&self) -> Option<RevealDrawnCardSpec> {
         self.0.reveal_drawn_card_spec()
+    }
+
+    pub fn count_as_card_named_for_spell_effect_spec(
+        &self,
+    ) -> Option<CountAsCardNamedForSpellEffectSpec> {
+        self.0.count_as_card_named_for_spell_effect_spec()
     }
 
     /// Get the display text for this ability.
@@ -2368,6 +2388,10 @@ impl StaticAbility {
         Self::new(CreaturesYouControlAssignCombatDamageUsingToughness)
     }
 
+    pub fn lethal_damage_to_creatures_you_control_uses_power() -> Self {
+        Self::new(LethalDamageToCreaturesYouControlUsesPower)
+    }
+
     pub fn prevent_all_damage_dealt_to_creatures() -> Self {
         Self::new(PreventAllDamageDealtToCreatures)
     }
@@ -2952,6 +2976,16 @@ impl StaticAbility {
         Self::new(RevealFirstCardYouDrawEachTurn::new(
             optional,
             your_turns_only,
+        ))
+    }
+
+    pub fn count_as_card_named_for_spell_effect(
+        spell_name: impl Into<String>,
+        counted_name: impl Into<String>,
+    ) -> Self {
+        Self::new(CountAsCardNamedForSpellEffect::new(
+            spell_name.into(),
+            counted_name.into(),
         ))
     }
 

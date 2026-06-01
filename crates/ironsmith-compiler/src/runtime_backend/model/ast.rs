@@ -385,6 +385,7 @@ pub(crate) enum TriggerSpec {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum PredicateAst {
     ItIsNight,
+    FirstCombatPhaseOfTurn,
     ItIsLandCard,
     ItIsSoulbondPaired,
     SourceChosenOption(String),
@@ -561,6 +562,10 @@ pub(crate) enum PredicateAst {
     },
     SourcePowerAtLeast(u32),
     SourceDealtCombatDamageToPlayerThisTurn,
+    PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn {
+        player: PlayerAst,
+        subtype: Subtype,
+    },
     SourceAttackedThisTurn,
     SourceCameUnderYourControlThisTurn,
     SourceAttackedOrBlockedThisTurn,
@@ -597,6 +602,7 @@ pub(crate) enum PredicateAst {
     },
     SameColorManaSpentToCastThisSpellAtLeast(u32),
     ThisSpellWasCastFromZone(Zone),
+    ThisSpellWasCastFromNonHand,
     ValueComparison {
         left: Value,
         operator: crate::effect::ValueComparisonOperator,
@@ -632,7 +638,8 @@ impl PredicateAst {
             | PredicateAst::ThisSpellEscaped
             | PredicateAst::ThisSpellWasKicked
             | PredicateAst::ThisSpellPaidLabel(_)
-            | PredicateAst::ThisSpellWasCastFromZone(_) => {
+            | PredicateAst::ThisSpellWasCastFromZone(_)
+            | PredicateAst::ThisSpellWasCastFromNonHand => {
                 Some(PredicateReferenceAntecedent::SourceObject)
             }
             PredicateAst::And(left, right) | PredicateAst::Or(left, right) => left
@@ -1080,6 +1087,7 @@ pub(crate) enum SubjectVerbActionAst {
         tag: TagKey,
         player: PlayerAst,
         allow_land: bool,
+        without_paying_mana_cost: bool,
         allow_any_color_for_cast: bool,
     },
     GrantPlayTaggedForAsLongAsYouControlSource {
@@ -1100,6 +1108,7 @@ pub(crate) enum SubjectVerbActionAst {
     ReturnAllToBattlefield {
         filter: ObjectFilter,
         tapped: bool,
+        face_down: bool,
         controller: ReturnControllerAst,
     },
     ExileUntilSourceLeaves {
@@ -1113,6 +1122,7 @@ pub(crate) enum SubjectVerbActionAst {
         battlefield_controller: ReturnControllerAst,
         battlefield_tapped: bool,
         battlefield_attacking: bool,
+        battlefield_face_down: bool,
         attached_to: Option<TargetAst>,
     },
     MoveToLibraryTopOrBottomChoice {
@@ -1378,6 +1388,9 @@ pub(crate) enum SubjectVerbActionAst {
         destination: RedirectNextTimeDamageDestinationAst,
         all_this_turn: bool,
     },
+    RedirectAllDamageThisTurnBySourceToSourceController {
+        source: TargetAst,
+    },
     RedirectAllDamageThisTurnToTarget {
         player_filter: PlayerFilter,
         object_filter: ObjectFilter,
@@ -1584,8 +1597,12 @@ pub(crate) enum SubjectVerbActionAst {
         position: Value,
     },
     DoubleCountersOnEach {
-        counter_type: CounterType,
+        counter_type: Option<CounterType>,
         filter: ObjectFilter,
+    },
+    DoubleCountersOnTarget {
+        counter_type: Option<CounterType>,
+        target: TargetAst,
     },
     RemoveCountersAll {
         amount: Value,
@@ -1643,6 +1660,8 @@ pub(crate) enum SubjectVerbActionAst {
     SkipTurn,
     SkipCombatPhases,
     SkipNextCombatPhaseThisTurn,
+    SkipMainPhasesThisTurn,
+    SkipCombatPhasesThisTurn,
     SkipDrawStep,
     AdditionalPhases {
         phases: Vec<crate::effects::AdditionalPhase>,
@@ -2305,12 +2324,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 tag,
                 player,
                 allow_land,
+                without_paying_mana_cost,
                 allow_any_color_for_cast,
             } => f
                 .debug_struct("GrantPlayTaggedForAsLongAsExiled")
                 .field("tag", tag)
                 .field("player", player)
                 .field("allow_land", allow_land)
+                .field("without_paying_mana_cost", without_paying_mana_cost)
                 .field("allow_any_color_for_cast", allow_any_color_for_cast)
                 .finish(),
             Self::GrantPlayTaggedForAsLongAsYouControlSource {
@@ -2346,11 +2367,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::ReturnAllToBattlefield {
                 filter,
                 tapped,
+                face_down,
                 controller,
             } => f
                 .debug_struct("ReturnAllToBattlefield")
                 .field("filter", filter)
                 .field("tapped", tapped)
+                .field("face_down", face_down)
                 .field("controller", controller)
                 .finish(),
             Self::ExileUntilSourceLeaves { target, face_down } => f
@@ -2365,6 +2388,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 battlefield_controller,
                 battlefield_tapped,
                 battlefield_attacking,
+                battlefield_face_down,
                 attached_to,
             } => f
                 .debug_struct("MoveToZone")
@@ -2374,6 +2398,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("battlefield_controller", battlefield_controller)
                 .field("battlefield_tapped", battlefield_tapped)
                 .field("battlefield_attacking", battlefield_attacking)
+                .field("battlefield_face_down", battlefield_face_down)
                 .field("attached_to", attached_to)
                 .finish(),
             Self::MoveToLibraryTopOrBottomChoice { target } => f
@@ -2773,6 +2798,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("destination", destination)
                 .field("all_this_turn", all_this_turn)
                 .finish(),
+            Self::RedirectAllDamageThisTurnBySourceToSourceController { source } => f
+                .debug_struct("RedirectAllDamageThisTurnBySourceToSourceController")
+                .field("source", source)
+                .finish(),
             Self::RedirectAllDamageThisTurnToTarget {
                 player_filter,
                 object_filter,
@@ -3074,6 +3103,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("counter_type", counter_type)
                 .field("filter", filter)
                 .finish(),
+            Self::DoubleCountersOnTarget {
+                counter_type,
+                target,
+            } => f
+                .debug_struct("DoubleCountersOnTarget")
+                .field("counter_type", counter_type)
+                .field("target", target)
+                .finish(),
             Self::RemoveCountersAll {
                 amount,
                 filter,
@@ -3141,6 +3178,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::SkipTurn => f.write_str("SkipTurn"),
             Self::SkipCombatPhases => f.write_str("SkipCombatPhases"),
             Self::SkipNextCombatPhaseThisTurn => f.write_str("SkipNextCombatPhaseThisTurn"),
+            Self::SkipMainPhasesThisTurn => f.write_str("SkipMainPhasesThisTurn"),
+            Self::SkipCombatPhasesThisTurn => f.write_str("SkipCombatPhasesThisTurn"),
             Self::SkipDrawStep => f.write_str("SkipDrawStep"),
             Self::AdditionalPhases { phases } => f
                 .debug_tuple("AdditionalPhases")
@@ -3293,6 +3332,11 @@ pub(crate) enum EffectAst {
         zones: Vec<Zone>,
         search_mode: Option<crate::effect::SearchSelectionMode>,
     },
+    DirectionalAdjacentPlayerControl {
+        filter: ObjectFilter,
+        left_option: String,
+        right_option: String,
+    },
     MayCastMatchingSpellWithoutPayingManaCost {
         player: PlayerAst,
         zone_owner: PlayerAst,
@@ -3378,6 +3422,11 @@ pub(crate) enum EffectAst {
         effects: Vec<EffectAst>,
         continue_effect_index: usize,
         continue_predicate: IfResultPredicate,
+    },
+    BidLife {
+        target: TargetAst,
+        starting_bid: u32,
+        winner_effects: Vec<EffectAst>,
     },
     VoteStart {
         options: Vec<String>,
@@ -3864,6 +3913,7 @@ impl EffectAst {
         tag: TagKey,
         player: PlayerAst,
         allow_land: bool,
+        without_paying_mana_cost: bool,
         allow_any_color_for_cast: bool,
     ) -> Self {
         Self::subject_verb(
@@ -3873,6 +3923,7 @@ impl EffectAst {
                 tag,
                 player,
                 allow_land,
+                without_paying_mana_cost,
                 allow_any_color_for_cast,
             },
         )
@@ -3922,6 +3973,7 @@ impl EffectAst {
     pub(crate) fn subject_verb_return_all_to_battlefield(
         filter: ObjectFilter,
         tapped: bool,
+        face_down: bool,
         controller: ReturnControllerAst,
     ) -> Self {
         Self::subject_verb(
@@ -3930,6 +3982,7 @@ impl EffectAst {
             SubjectVerbActionAst::ReturnAllToBattlefield {
                 filter,
                 tapped,
+                face_down,
                 controller,
             },
         )
@@ -3961,6 +4014,7 @@ impl EffectAst {
             battlefield_controller,
             battlefield_tapped,
             false,
+            false,
             attached_to,
         )
     }
@@ -3972,6 +4026,7 @@ impl EffectAst {
         battlefield_controller: ReturnControllerAst,
         battlefield_tapped: bool,
         battlefield_attacking: bool,
+        battlefield_face_down: bool,
         attached_to: Option<TargetAst>,
     ) -> Self {
         Self::subject_verb(
@@ -3984,6 +4039,7 @@ impl EffectAst {
                 battlefield_controller,
                 battlefield_tapped,
                 battlefield_attacking,
+                battlefield_face_down,
                 attached_to,
             },
         )
@@ -4629,6 +4685,16 @@ impl EffectAst {
                 destination,
                 all_this_turn: true,
             },
+        )
+    }
+
+    pub(crate) fn subject_verb_redirect_all_damage_this_turn_by_source_to_source_controller(
+        source: TargetAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController { source },
         )
     }
 
@@ -6127,7 +6193,7 @@ impl EffectAst {
     }
 
     pub(crate) fn subject_verb_double_counters_on_each(
-        counter_type: CounterType,
+        counter_type: Option<CounterType>,
         filter: ObjectFilter,
     ) -> Self {
         Self::subject_verb(
@@ -6136,6 +6202,20 @@ impl EffectAst {
             SubjectVerbActionAst::DoubleCountersOnEach {
                 counter_type,
                 filter,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_double_counters_on_target(
+        counter_type: Option<CounterType>,
+        target: TargetAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::DoubleCountersOnTarget {
+                counter_type,
+                target,
             },
         )
     }
@@ -6335,6 +6415,22 @@ impl EffectAst {
             SubjectVerbRoleAst::AffectedPlayer,
             player,
             SubjectVerbActionAst::SkipNextCombatPhaseThisTurn,
+        )
+    }
+
+    pub(crate) fn subject_verb_skip_main_phases_this_turn(player: PlayerAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::SkipMainPhasesThisTurn,
+        )
+    }
+
+    pub(crate) fn subject_verb_skip_combat_phases_this_turn(player: PlayerAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::SkipCombatPhasesThisTurn,
         )
     }
 

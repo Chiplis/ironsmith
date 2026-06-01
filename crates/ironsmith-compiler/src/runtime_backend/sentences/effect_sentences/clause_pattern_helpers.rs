@@ -811,22 +811,29 @@ pub(crate) fn parse_double_counters_clause(
     }
 
     let counter_tokens = &tokens[4..counters_idx];
-    let counter_type = parse_counter_type_from_tokens(counter_tokens)
-        .or_else(|| {
-            if counter_tokens.len() == 1 {
-                counter_tokens[0]
-                    .as_word()
-                    .and_then(parse_counter_type_word)
-            } else {
-                None
-            }
-        })
-        .ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "unsupported counter type in double-counters clause (clause: '{}')",
-                clause_text
-            ))
-        })?;
+    let counter_words = crate::runtime_backend::token_word_refs(counter_tokens);
+    let counter_type = if matches!(counter_words.as_slice(), ["each", "kind", "of"]) {
+        None
+    } else {
+        Some(
+            parse_counter_type_from_tokens(counter_tokens)
+                .or_else(|| {
+                    if counter_tokens.len() == 1 {
+                        counter_tokens[0]
+                            .as_word()
+                            .and_then(parse_counter_type_word)
+                    } else {
+                        None
+                    }
+                })
+                .ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "unsupported counter type in double-counters clause (clause: '{}')",
+                        clause_text
+                    ))
+                })?,
+        )
+    };
 
     let on_idx = find_token_index(&tokens[counters_idx + 1..], |token| {
         CLAUSE_ON_WORD_PATTERN.matches_token(token)
@@ -847,6 +854,17 @@ pub(crate) fn parse_double_counters_clause(
         return Err(CardTextError::ParseError(format!(
             "missing filter in double-counters clause (clause: '{}')",
             clause_text
+        )));
+    }
+
+    if crate::runtime_backend::token_word_refs(filter_clause.tokens())
+        .iter()
+        .any(|word| *word == "target" || *word == "targets")
+    {
+        let target = parse_target_phrase(filter_clause.tokens())?;
+        return Ok(Some(EffectAst::subject_verb_double_counters_on_target(
+            counter_type,
+            target,
         )));
     }
 
@@ -1853,6 +1871,49 @@ pub(crate) fn parse_redirect_next_damage_sentence(
                 PlayerFilter::You,
                 object_filter,
                 target,
+            ),
+        ]));
+    }
+
+    if clause_words.starts_with(&[
+        "all", "damage", "that", "would", "be", "dealt", "this", "turn", "by",
+    ]) {
+        let is_dealt_rel = clause
+            .from_word(9)
+            .unwrap_or_else(|| clause.from(clause.len()))
+            .find_phrase_start(&["is", "dealt", "to"])
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported redirected-source-damage destination (clause: '{}')",
+                    clause_text
+                ))
+            })?;
+        let is_dealt_idx = 9 + is_dealt_rel;
+        let source_clause = clause.between_words_trimmed(9, is_dealt_idx);
+        if source_clause.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing redirected-source-damage source (clause: '{}')",
+                clause_text
+            )));
+        }
+
+        let redirect_clause = clause
+            .after_words(is_dealt_idx + 3)
+            .unwrap_or_else(|| clause.from(clause.len()))
+            .trimmed();
+        if !redirect_clause.matches_any_words(&[
+            &["that", "spell's", "controller", "instead"],
+            &["that", "spells", "controller", "instead"],
+            &["that", "source's", "controller", "instead"],
+            &["that", "sources", "controller", "instead"],
+        ]) {
+            return Ok(None);
+        }
+
+        let source = parse_target_phrase(source_clause.tokens())?;
+        return Ok(Some(vec![
+            EffectAst::subject_verb_redirect_all_damage_this_turn_by_source_to_source_controller(
+                source,
             ),
         ]));
     }

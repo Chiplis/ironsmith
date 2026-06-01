@@ -105,6 +105,7 @@ const MORE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["more"]);
 const OTHER_OR_ANOTHER_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["another"], &["other"]]);
 const OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
+const CHOSEN_NAME_TAG: &str = "__chosen_name__";
 const PUT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["put"]);
 const YOU_REVEALED_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["you", "revealed"]);
@@ -421,6 +422,19 @@ const YOU_OR_DEFENDING_PLAYER_HAS_INITIATIVE_PATTERN: ClauseShape<'static> = cla
 );
 const IT_IS_NIGHT_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["its", "night"], &["it", "is", "night"], &["it", "night"]]);
+const FIRST_COMBAT_PHASE_OF_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &[
+                "its", "the", "first", "combat", "phase", "of", "the", "turn",
+            ],
+            &[
+                "it", "is", "the", "first", "combat", "phase", "of", "the", "turn",
+            ],
+            &["it", "first", "combat", "phase", "of", "turn"],
+            &["it", "the", "first", "combat", "phase", "of", "the", "turn"],
+        ]
+);
 const SOURCE_DEALT_COMBAT_DAMAGE_TO_PLAYER_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -429,6 +443,23 @@ const SOURCE_DEALT_COMBAT_DAMAGE_TO_PLAYER_THIS_TURN_PATTERN: ClauseShape<'stati
             ],
             &[
                 "it", "dealt", "combat", "damage", "to", "a", "player", "this", "turn",
+            ],
+        ]
+);
+const PLAYER_WAS_DEALT_COMBAT_DAMAGE_BY_SUBTYPE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &[
+                "a", "player", "was", "dealt", "combat", "damage", "by",
+            ],
+            &[
+                "player", "was", "dealt", "combat", "damage", "by",
+            ],
+            &[
+                "an", "opponent", "was", "dealt", "combat", "damage", "by",
+            ],
+            &[
+                "opponent", "was", "dealt", "combat", "damage", "by",
             ],
         ]
 );
@@ -1224,6 +1255,13 @@ fn parse_color_only_object_filter_words(words: &[&str]) -> Option<ObjectFilter> 
 }
 
 fn parse_this_way_object_filter_words(words: &[&str]) -> Option<ObjectFilter> {
+    let (words, needs_chosen_name) = if let Some(base_words) =
+        crate::runtime_backend::lexer::word_slice_strip_suffix(words, &["with", "chosen", "name"])
+    {
+        (base_words, true)
+    } else {
+        (words, false)
+    };
     let has_card_noun = words
         .last()
         .is_some_and(|word| CARD_OR_CARDS_WORD_PATTERN.matches_word(word));
@@ -1242,18 +1280,37 @@ fn parse_this_way_object_filter_words(words: &[&str]) -> Option<ObjectFilter> {
     ];
     for (candidate, stripped_card_noun) in candidates {
         if candidate.is_empty() {
-            return Some(ObjectFilter::default());
+            let mut filter = ObjectFilter::default();
+            if needs_chosen_name {
+                filter.tagged_constraints.push(TaggedObjectConstraint {
+                    tag: TagKey::from(CHOSEN_NAME_TAG),
+                    relation: TaggedOpbjectRelation::SameNameAsTagged,
+                });
+            }
+            return Some(filter);
         }
         let tokens = predicate_tokens_from_words(candidate);
         if let Ok(mut filter) = parse_object_filter(&tokens, false) {
             if stripped_card_noun {
                 filter.zone = None;
             }
+            if needs_chosen_name {
+                filter.tagged_constraints.push(TaggedObjectConstraint {
+                    tag: TagKey::from(CHOSEN_NAME_TAG),
+                    relation: TaggedOpbjectRelation::SameNameAsTagged,
+                });
+            }
             return Some(filter);
         }
         if let Some(mut filter) = parse_color_only_object_filter_words(candidate) {
             if stripped_card_noun {
                 filter.zone = None;
+            }
+            if needs_chosen_name {
+                filter.tagged_constraints.push(TaggedObjectConstraint {
+                    tag: TagKey::from(CHOSEN_NAME_TAG),
+                    relation: TaggedOpbjectRelation::SameNameAsTagged,
+                });
             }
             return Some(filter);
         }
@@ -3105,6 +3162,9 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if filtered.len() >= 6 && THIS_SPELL_WAS_CAST_FROM_PREFIX_PATTERN.matches_words(&filtered) {
         let zone_words = &filtered[5..];
+        if zone_words == ["anywhere", "other", "than", "your", "hand"] {
+            return Ok(PredicateAst::ThisSpellWasCastFromNonHand);
+        }
         let zone = if zone_words.len() == 1 {
             parse_zone_word(zone_words[0])
         } else if zone_words.len() == 2 && is_article(zone_words[0]) {
@@ -3821,8 +3881,35 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::ItIsNight);
     }
 
+    if FIRST_COMBAT_PHASE_OF_TURN_PATTERN.matches_words(&filtered) {
+        return Ok(PredicateAst::FirstCombatPhaseOfTurn);
+    }
+
     if SOURCE_DEALT_COMBAT_DAMAGE_TO_PLAYER_THIS_TURN_PATTERN.matches_words(&filtered) {
         return Ok(PredicateAst::SourceDealtCombatDamageToPlayerThisTurn);
+    }
+
+    if THIS_TURN_TAIL_PATTERN.matches_words(filtered.get(filtered.len().saturating_sub(2)..).unwrap_or_default())
+        && PLAYER_WAS_DEALT_COMBAT_DAMAGE_BY_SUBTYPE_PREFIX_PATTERN.matches_words(&filtered)
+    {
+        let subtype_idx = filtered.len().saturating_sub(3);
+        let subtype = parse_subtype_word(filtered[subtype_idx]).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported combat-damage source subtype predicate: {}",
+                filtered.join(" ")
+            ))
+        })?;
+        let player = if filtered.first() == Some(&"opponent")
+            || filtered.get(1) == Some(&"opponent")
+        {
+            PlayerAst::Opponent
+        } else {
+            PlayerAst::Any
+        };
+        return Ok(PredicateAst::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn {
+            player,
+            subtype,
+        });
     }
 
     if CAST_THIS_SPELL_DURING_YOUR_MAIN_PHASE_PATTERN.matches_words(&filtered) {
@@ -4030,6 +4117,17 @@ mod tests {
         let parsed = parse_predicate(&predicate_tokens)?;
 
         assert_eq!(parsed, PredicateAst::ItIsNight);
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_accepts_first_combat_phase_of_turn() -> Result<(), CardTextError> {
+        let tokens = lex_line("If it's the first combat phase of the turn", 0)?;
+        let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        assert_eq!(parsed, PredicateAst::FirstCombatPhaseOfTurn);
         Ok(())
     }
 

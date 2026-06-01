@@ -178,6 +178,7 @@ pub(crate) fn compile_condition_from_predicate_ast(
     let refs = current_reference_env(ctx);
     Ok(match predicate {
         PredicateAst::ItIsNight => Condition::ItIsNight,
+        PredicateAst::FirstCombatPhaseOfTurn => Condition::FirstCombatPhaseOfTurn,
         PredicateAst::ItIsLandCard => {
             let mut filter = ObjectFilter {
                 zone: None,
@@ -584,6 +585,12 @@ pub(crate) fn compile_condition_from_predicate_ast(
         PredicateAst::SourceDealtCombatDamageToPlayerThisTurn => {
             Condition::SourceDealtCombatDamageToPlayerThisTurn
         }
+        PredicateAst::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype } => {
+            Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn {
+                player: resolve_non_target_player_filter(*player, &refs)?,
+                subtype: *subtype,
+            }
+        }
         PredicateAst::SourceAttackedThisTurn => Condition::SourceAttackedThisTurn,
         PredicateAst::SourceCameUnderYourControlThisTurn => {
             Condition::SourceCameUnderYourControlThisTurn
@@ -636,6 +643,7 @@ pub(crate) fn compile_condition_from_predicate_ast(
             Condition::SameColorManaSpentToCastThisSpellAtLeast(*amount)
         }
         PredicateAst::ThisSpellWasCastFromZone(zone) => Condition::ThisSpellWasCastFromZone(*zone),
+        PredicateAst::ThisSpellWasCastFromNonHand => Condition::ThisSpellWasCastFromNonHand,
         PredicateAst::ValueComparison {
             left,
             operator,

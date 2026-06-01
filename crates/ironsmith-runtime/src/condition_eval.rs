@@ -99,6 +99,29 @@ fn this_spell_was_cast_from_zone(
     }
 }
 
+fn this_spell_was_cast_from_non_hand(
+    game: &GameState,
+    source: ObjectId,
+    ctx: &ExecutionContext,
+) -> bool {
+    match &ctx.casting_method {
+        crate::alternative_cast::CastingMethod::Normal
+        | crate::alternative_cast::CastingMethod::FaceDown
+        | crate::alternative_cast::CastingMethod::SplitOtherHalf
+        | crate::alternative_cast::CastingMethod::Fuse => false,
+        crate::alternative_cast::CastingMethod::GrantedFlashback
+        | crate::alternative_cast::CastingMethod::GrantedEscape { .. } => true,
+        crate::alternative_cast::CastingMethod::PlayFrom { zone, .. }
+        | crate::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom { zone, .. } => {
+            *zone != Zone::Hand
+        }
+        crate::alternative_cast::CastingMethod::Alternative(idx) => game
+            .object(source)
+            .and_then(|obj| obj.alternative_casts.get(*idx))
+            .is_some_and(|method| method.cast_from_zone() != Zone::Hand),
+    }
+}
+
 fn this_spell_escaped(game: &GameState, source: ObjectId, ctx: &ExecutionContext) -> bool {
     if ctx.optional_costs_paid.was_paid_label("Escape") || source_escaped(game, source) {
         return true;
@@ -430,6 +453,37 @@ mod tests {
             )
             .expect("source combat-damage condition should evaluate"),
             "expected Wave of Rats condition to fail without combat damage"
+        );
+    }
+
+    #[test]
+    fn first_combat_phase_condition_requires_started_first_combat() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = game.players[0].id;
+        let source = game.new_object_id();
+        let ctx = ExecutionContext::new_default(source, alice);
+        let condition = Condition::FirstCombatPhaseOfTurn;
+
+        game.turn.phase = crate::game_state::Phase::Combat;
+        game.turn_store.combat_phases_started_this_turn = 0;
+        assert!(
+            !evaluate_condition(&game, &condition, &ctx)
+                .expect("first combat condition should evaluate"),
+            "combat phase without a started combat count should not pass"
+        );
+
+        game.turn_store.combat_phases_started_this_turn = 1;
+        assert!(
+            evaluate_condition(&game, &condition, &ctx)
+                .expect("first combat condition should evaluate"),
+            "first started combat phase should pass"
+        );
+
+        game.turn_store.combat_phases_started_this_turn = 2;
+        assert!(
+            !evaluate_condition(&game, &condition, &ctx)
+                .expect("first combat condition should evaluate"),
+            "later combat phases should not pass"
         );
     }
 }
@@ -799,10 +853,15 @@ fn evaluate_condition_shared_core(
         Condition::TaggedObjectWasCast(_) => None,
         Condition::ThisSpellEscaped => Some(source_escaped(game, ctx.source)),
         Condition::ThisSpellWasCastFromZone(_) => None,
+        Condition::ThisSpellWasCastFromNonHand => None,
         Condition::NoSpellsWereCastLastTurn => {
             Some(game.turn_store.spells_cast_last_turn_total == 0)
         }
         Condition::ItIsNight => Some(game.is_night),
+        Condition::FirstCombatPhaseOfTurn => Some(
+            game.turn.phase == crate::game_state::Phase::Combat
+                && game.turn_store.combat_phases_started_this_turn == 1,
+        ),
         Condition::SpellsWereCastLastTurnOrMore(count) => {
             Some(game.turn_store.spells_cast_last_turn_total >= *count)
         }
@@ -872,6 +931,16 @@ fn evaluate_condition_shared_core(
         ),
         Condition::SourceDealtCombatDamageToPlayerThisTurn => {
             Some(game.source_dealt_combat_damage_to_player_this_turn(ctx.source))
+        }
+        Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype } => {
+            let players = matching_condition_players_simple(game, ctx.controller, player);
+            Some(
+                game.turn_store
+                    .turn_history
+                    .player_was_dealt_combat_damage_by_creature_subtype_this_turn(
+                        &players, *subtype,
+                    ),
+            )
         }
         Condition::SourceMatches(filter) => {
             let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
@@ -962,8 +1031,10 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::SourceWasCast => {}
         Condition::ThisSpellEscaped => {}
         Condition::ThisSpellWasCastFromZone(..) => {}
+        Condition::ThisSpellWasCastFromNonHand => {}
         Condition::NoSpellsWereCastLastTurn => {}
         Condition::ItIsNight => {}
+        Condition::FirstCombatPhaseOfTurn => {}
         Condition::SpellsWereCastLastTurnOrMore(..) => {}
         Condition::YouHaveFullParty => {}
         Condition::TargetIsTapped => {}
@@ -989,6 +1060,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::SourceHasCountersAtLeast(..) => {}
         Condition::SourcePowerAtLeast(..) => {}
         Condition::SourceDealtCombatDamageToPlayerThisTurn => {}
+        Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { .. } => {}
         Condition::SourceAttackedOrBlockedThisTurn => {}
         Condition::SourceIsInZone(..) => {}
         Condition::ManaSpentToCastThisSpellAtLeast { .. } => {}
@@ -1153,11 +1225,16 @@ pub fn evaluate_condition_external(
     match condition {
         Condition::XValueAtLeast(_) => false, // X not available in static context
         Condition::ItIsNight => game.is_night,
+        Condition::FirstCombatPhaseOfTurn => {
+            game.turn.phase == crate::game_state::Phase::Combat
+                && game.turn_store.combat_phases_started_this_turn == 1
+        }
         Condition::ThisSpellEscaped => source_escaped(game, ctx.source),
         Condition::ThisSpellWasKicked => game
             .object(ctx.source)
             .is_some_and(|obj| obj.optional_costs_paid.was_kicked()),
         Condition::ThisSpellWasCastFromZone(_) => false,
+        Condition::ThisSpellWasCastFromNonHand => false,
         Condition::ThisSpellPaidLabel(label) => game
             .object(ctx.source)
             .is_some_and(|obj| obj.optional_costs_paid.was_paid_label(label)),
@@ -1200,6 +1277,12 @@ pub fn evaluate_condition_external(
                 .map(|pid| game.turn_store.turn_history.spells_cast_by_player(*pid))
                 .sum();
             cast_count >= *count
+        }
+        Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype } => {
+            let players = matching_condition_players_external(game, ctx, player);
+            game.turn_store
+                .turn_history
+                .player_was_dealt_combat_damage_by_creature_subtype_this_turn(&players, *subtype)
         }
         Condition::PlayerTappedLandForManaThisTurn { player } => {
             let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
@@ -2053,11 +2136,16 @@ fn evaluate_condition_simple(
 
     match condition {
         Condition::ItIsNight => game.is_night,
+        Condition::FirstCombatPhaseOfTurn => {
+            game.turn.phase == crate::game_state::Phase::Combat
+                && game.turn_store.combat_phases_started_this_turn == 1
+        }
         Condition::ThisSpellWasKicked => game
             .object(source)
             .is_some_and(|obj| obj.optional_costs_paid.was_kicked()),
         Condition::ThisSpellEscaped => source_escaped(game, source),
         Condition::ThisSpellWasCastFromZone(_) => false,
+        Condition::ThisSpellWasCastFromNonHand => false,
         Condition::ThisSpellPaidLabel(label) => game
             .object(source)
             .is_some_and(|obj| obj.optional_costs_paid.was_paid_label(label)),
@@ -2074,6 +2162,12 @@ fn evaluate_condition_simple(
             .filter_map(|&id| game.object(id))
             .filter(|obj| opponents.contains(&game.controller_of(obj)))
             .any(|obj| filter.matches(obj, &filter_ctx, game)),
+        Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype } => {
+            let players = matching_condition_players_simple(game, controller, player);
+            game.turn_store
+                .turn_history
+                .player_was_dealt_combat_damage_by_creature_subtype_this_turn(&players, *subtype)
+        }
         Condition::PlayerControls { player, filter } => {
             let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
                 return false;
@@ -2807,6 +2901,10 @@ fn evaluate_condition(
 
     match condition {
         Condition::ItIsNight => Ok(game.is_night),
+        Condition::FirstCombatPhaseOfTurn => Ok(
+            game.turn.phase == crate::game_state::Phase::Combat
+                && game.turn_store.combat_phases_started_this_turn == 1,
+        ),
         Condition::YouControl(filter) => {
             let filter_ctx = ctx.filter_context(game);
 
@@ -2831,6 +2929,15 @@ fn evaluate_condition(
                 .any(|obj| filter.matches(obj, &filter_ctx, game));
 
             Ok(has_matching)
+        }
+        Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype } => {
+            let players = matching_condition_players_exec(game, ctx, player)?;
+            Ok(game
+                .turn_store
+                .turn_history
+                .player_was_dealt_combat_damage_by_creature_subtype_this_turn(
+                    &players, *subtype,
+                ))
         }
         Condition::PlayerControls { player, filter } => {
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
@@ -3166,6 +3273,9 @@ fn evaluate_condition(
         Condition::ThisSpellEscaped => Ok(this_spell_escaped(game, ctx.source, ctx)),
         Condition::ThisSpellWasCastFromZone(zone) => {
             Ok(this_spell_was_cast_from_zone(game, ctx.source, ctx, *zone))
+        }
+        Condition::ThisSpellWasCastFromNonHand => {
+            Ok(this_spell_was_cast_from_non_hand(game, ctx.source, ctx))
         }
         Condition::ThisSpellPaidLabel(label) => {
             Ok(resolve_value(game, &Value::WasPaidLabel(label.clone()), ctx)? != 0)

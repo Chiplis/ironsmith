@@ -354,6 +354,8 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::SkipTurn
             | SubjectVerbActionAst::SkipCombatPhases
             | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
+            | SubjectVerbActionAst::SkipMainPhasesThisTurn
+            | SubjectVerbActionAst::SkipCombatPhasesThisTurn
             | SubjectVerbActionAst::SkipDrawStep
             | SubjectVerbActionAst::PlayFromGraveyardUntilEot
             | SubjectVerbActionAst::ControlPlayer { .. }
@@ -402,6 +404,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::ReturnAllToHand { .. }
             | SubjectVerbActionAst::ReturnAllToHandOfChosenColor { .. }
             | SubjectVerbActionAst::DoubleCountersOnEach { .. }
+            | SubjectVerbActionAst::DoubleCountersOnTarget { .. }
             | SubjectVerbActionAst::MoveAllCounters { .. }
             | SubjectVerbActionAst::MoveOneCounter { .. }
             | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { .. }
@@ -421,6 +424,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }
             | SubjectVerbActionAst::PreventNextTimeDamage { .. }
             | SubjectVerbActionAst::RedirectNextTimeDamageToSource { .. }
+            | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController { .. }
             | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { .. }
             | SubjectVerbActionAst::PreventAllDamageToTarget { .. }
             | SubjectVerbActionAst::PreventAllDamageFromSourceFilter { .. }
@@ -534,7 +538,9 @@ fn parse_modal_header_prefix_effects(
             let effect_predicate = match gate_spec.predicate {
                 IfResultPredicate::Did => EffectPredicate::Happened,
                 IfResultPredicate::DidNot => EffectPredicate::DidNotHappen,
+                IfResultPredicate::SearchedLibrary => EffectPredicate::Happened,
                 IfResultPredicate::DiesThisWay => EffectPredicate::HappenedNotReplaced,
+                IfResultPredicate::ExcessDamageDealt => EffectPredicate::ExcessDamageDealt,
                 IfResultPredicate::WasDeclined => EffectPredicate::WasDeclined,
                 IfResultPredicate::Value(cmp) => EffectPredicate::Value(cmp),
             };

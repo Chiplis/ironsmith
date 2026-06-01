@@ -276,7 +276,12 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             (vec![effect], choices)
         }
         EffectAst::IfResult { predicate, effects } => {
-            let condition = ctx.last_effect_id.ok_or_else(|| {
+            let condition = if matches!(predicate, IfResultPredicate::SearchedLibrary) {
+                ctx.last_library_search_effect_id.or(ctx.last_effect_id)
+            } else {
+                ctx.last_effect_id
+            }
+            .ok_or_else(|| {
                 CardTextError::ParseError("missing prior effect for if clause".to_string())
             })?;
             let (inner_effects, inner_choices) = with_preserved_lowering_context(
@@ -328,6 +333,18 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 try_compile_simultaneous_each_player_scry(PlayerFilter::Any, &inner_effects)
                     .unwrap_or_else(|| Effect::for_players(PlayerFilter::Any, inner_effects));
             (vec![effect], inner_choices)
+        }
+        EffectAst::DirectionalAdjacentPlayerControl {
+            filter,
+            left_option,
+            right_option,
+        } => {
+            let effect = Effect::new(crate::effects::DirectionalAdjacentPlayerControlEffect::new(
+                filter.clone(),
+                left_option.clone(),
+                right_option.clone(),
+            ));
+            (vec![effect], Vec::new())
         }
         EffectAst::ForEachTargetPlayers { count, effects } => {
             let (inner_effects, inner_choices) =

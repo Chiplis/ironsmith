@@ -868,6 +868,10 @@ pub(crate) fn parse_sentence_implicit_become_clause(
             &["each", "of", "them"],
             TargetAst::Tagged(TagKey::from(IT_TAG), None),
         ),
+        (&["they're"], TargetAst::Tagged(TagKey::from(IT_TAG), None)),
+        (&["they’re"], TargetAst::Tagged(TagKey::from(IT_TAG), None)),
+        (&["theyre"], TargetAst::Tagged(TagKey::from(IT_TAG), None)),
+        (&["they", "are"], TargetAst::Tagged(TagKey::from(IT_TAG), None)),
         (&["they"], TargetAst::Tagged(TagKey::from(IT_TAG), None)),
         (&["its"], TargetAst::Tagged(TagKey::from(IT_TAG), None)),
         (&["it"], TargetAst::Tagged(TagKey::from(IT_TAG), None)),
@@ -968,6 +972,49 @@ pub(crate) fn parse_sentence_implicit_become_clause(
     };
     if body_words.is_empty() {
         return Ok(None);
+    }
+
+    if let Ok((power, toughness)) = parse_pt_modifier_values(body_words[0])
+        && body_words.len() > 1
+    {
+        let mut card_types = Vec::new();
+        let mut subtypes = Vec::new();
+        let mut parsed_all_descriptor_words = true;
+        let mut saw_subtype = false;
+        for word in &body_words[1..] {
+            if matches!(*word, "and" | "or") {
+                continue;
+            }
+            if let Some(card_type) = parse_card_type(word) {
+                if !iter_contains(card_types.iter(), &card_type) {
+                    card_types.push(card_type);
+                }
+            } else if let Some(subtype) = parse_pluralized_subtype_word(word) {
+                if !iter_contains(subtypes.iter(), &subtype) {
+                    subtypes.push(subtype);
+                }
+                saw_subtype = true;
+            } else {
+                parsed_all_descriptor_words = false;
+                break;
+            }
+        }
+        if parsed_all_descriptor_words && (!card_types.is_empty() || saw_subtype) {
+            if saw_subtype && !iter_contains(card_types.iter(), &CardType::Creature) {
+                card_types.insert(0, CardType::Creature);
+            }
+            return Ok(Some(vec![EffectAst::subject_verb_become_base_pt_creature(
+                power,
+                toughness,
+                target,
+                card_types,
+                subtypes,
+                None,
+                Vec::new(),
+                Vec::new(),
+                duration,
+            )]));
+        }
     }
 
     if let Ok((power, toughness)) = parse_pt_modifier_values(body_words[0])

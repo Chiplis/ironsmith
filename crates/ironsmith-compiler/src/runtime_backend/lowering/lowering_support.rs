@@ -108,6 +108,7 @@ fn retarget_bare_it_effect_targets_to_source(effect: &mut EffectAst) {
             | SubjectVerbActionAst::PutCounterChoice { target, .. }
             | SubjectVerbActionAst::PutOrRemoveCounters { target, .. }
             | SubjectVerbActionAst::RemoveUpToAnyCounters { target, .. }
+            | SubjectVerbActionAst::DoubleCountersOnTarget { target, .. }
             | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target } => {
                 retarget_it_target_to_source(target);
             }

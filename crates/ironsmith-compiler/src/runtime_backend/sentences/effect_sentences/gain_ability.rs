@@ -1391,10 +1391,10 @@ pub(crate) fn parse_gain_ability_sentence(
     // Check for "gets +X/+Y and gains/has/loses ..." patterns - if there's a pump
     // modifier before the ability verb, extract it as a separate Pump/PumpAll effect.
     let before_gain = &word_list[subject_start_word_idx..gain_idx];
-    let leading_become_effect = if let Some(become_idx) =
-        BECOME_OR_BECOMES_WORD_PATTERN.find_word(before_gain)
-    {
-        let become_word_idx = subject_start_word_idx + become_idx;
+    let leading_become_subject_end_word_idx = BECOME_OR_BECOMES_WORD_PATTERN
+        .find_word(before_gain)
+        .map(|become_idx| subject_start_word_idx + become_idx);
+    let leading_become_effect = if let Some(become_word_idx) = leading_become_subject_end_word_idx {
         let Some(become_token_idx) = token_index_for_word_index(tokens, become_word_idx) else {
             return Ok(None);
         };
@@ -1546,6 +1546,7 @@ pub(crate) fn parse_gain_ability_sentence(
         .or(leading_base_pt_effect
             .as_ref()
             .map(|(_, _, has_idx, _)| *has_idx))
+        .or(leading_become_subject_end_word_idx)
         .unwrap_or(gain_idx);
     let real_subject_start_word_idx = if let Some(gi) = get_idx {
         let subject_start_for_word = |idx: usize, word: &str| -> Option<usize> {
@@ -1906,6 +1907,11 @@ fn reject_unsupported_lost_abilities(
 
 fn apply_gain_clause_duration_to_leading_effect(effect: &mut EffectAst, duration: &Until) {
     match effect {
+        EffectAst::Sequence { effects } => {
+            for child in effects {
+                apply_gain_clause_duration_to_leading_effect(child, duration);
+            }
+        }
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::SetBasePowerToughness {

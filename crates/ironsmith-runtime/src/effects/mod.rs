@@ -105,9 +105,10 @@ pub use combat::{
 };
 pub use composition::{
     AdaptEffect, AmplifyEffect, AuraSwapEffect, BackupEffect, BeholdEffect, BolsterEffect,
-    CastEncodedCardCopyEffect, ChooseModeEffect, ChooseObjectsEffect, ChooseSpellCastHistoryEffect,
-    CipherEffect, ConditionalEffect, CounterAbilityEffect, CumulativeUpkeepEffect, DevourEffect,
-    EmitGiftGivenEffect, EmitKeywordActionEffect, ExecuteWithSourceEffect, ExploreEffect,
+    BidLifeEffect, CastEncodedCardCopyEffect, ChooseModeEffect, ChooseObjectsEffect,
+    ChooseSpellCastHistoryEffect, CipherEffect, ConditionalEffect, CounterAbilityEffect,
+    CumulativeUpkeepEffect, DevourEffect, EmitGiftGivenEffect, EmitKeywordActionEffect,
+    ExecuteWithSourceEffect, ExploreEffect,
     ForEachControllerOfTaggedEffect, ForEachObject, ForEachTaggedEffect, ForEachTaggedPlayerEffect,
     ForPlayersEffect, IfEffect, LocalRewriteEffect, ManaRestrictedEffect,
     ManifestCardFromHandEffect, ManifestDreadEffect, ManifestTopCardOfLibraryEffect, MayEffect,
@@ -115,13 +116,16 @@ pub use composition::{
     RepeatProcessEffect, RepeatProcessPromptEffect, SequenceEffect, SupportEffect, TagAllEffect,
     TagAttachedToSourceEffect, TagMatchingObjectsEffect, TagTriggeringDamageTargetEffect,
     TagTriggeringObjectEffect, TagTriggeringSourceEffect, TaggedEffect, TargetOnlyEffect,
-    UnlessActionEffect, UnlessPaysEffect, VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG, VoteChoice,
-    VoteEffect, VoteOption, VoteResult, WithIdEffect,
+    LifeBidStart, UnlessActionEffect, UnlessPaysEffect, VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG,
+    VoteChoice, VoteEffect, VoteOption, VoteResult, WithIdEffect,
 };
 pub use continuous::{ApplyContinuousEffect, ExchangeTextBoxesEffect, RuntimeModification};
-pub use control::{ExchangeControlEffect, GainControlEffect, SharedTypeConstraint};
+pub use control::{
+    DirectionalAdjacentPlayerControlEffect, ExchangeControlEffect, GainControlEffect,
+    SharedTypeConstraint,
+};
 pub use counters::{
-    ForEachCounterKindPutOrRemoveEffect, MoveAllCountersEffect, MoveCountersEffect,
+    DoubleCountersEffect, ForEachCounterKindPutOrRemoveEffect, MoveAllCountersEffect, MoveCountersEffect,
     MoveOneCounterEffect, ProliferateEffect, PutCountersEffect, RemoveAnyCountersAmongEffect,
     RemoveAnyCountersFromSourceEffect, RemoveCountersEffect, RemoveUpToAnyCountersEffect,
     RemoveUpToCountersEffect,
@@ -154,8 +158,9 @@ pub use permanents::{
     ConspireCostEffect, ConvertEffect, CrewCostEffect, DetainEffect, EarthbendEffect, EvolveEffect,
     ExertCostEffect, FlipEffect, GrantObjectAbilityEffect, MeldEffect, MonstrosityEffect,
     NinjutsuCostEffect, NinjutsuEffect, PhaseInEffect, PhaseOutEffect, PutStickerEffect,
-    ReconfigureEffect, RegenerateEffect, RenownEffect, SaddleCostEffect, SoulbondPairEffect,
-    SuspectEffect, TapEffect, TransformEffect, UmbraArmorEffect, UnearthEffect, UntapEffect,
+    ReconfigureEffect, RegenerateEffect, RenownEffect, SaddleCostEffect, SneakCostEffect,
+    SoulbondPairEffect, SuspectEffect, TapEffect, TransformEffect, UmbraArmorEffect, UnearthEffect,
+    UntapEffect,
 };
 pub use player::{
     AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, BecomeMonarchEffect,
@@ -170,9 +175,9 @@ pub use player::{
     GrantTaggedSpellLifeCostByManaValueEffect, IncreaseSpeedEffect, LoseTheGameEffect,
     MayCastMatchingSpellWithoutPayingManaCostEffect, PayAnyEnergyEffect, PayEnergyEffect,
     PoisonCountersEffect, ReduceSpeedEffect, RingTemptsYouEffect, RollDiceChooseResultEffect,
-    RollDieEffect, SkipCombatPhasesEffect, SkipDrawStepEffect, SkipNextCombatPhaseThisTurnEffect,
-    SkipTurnEffect, TakeInitiativeEffect, TicketCountersEffect, VentureIntoDungeonEffect,
-    WinTheGameEffect,
+    RollDieEffect, SkipCombatPhasesEffect, SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect,
+    SkipMainPhasesThisTurnEffect, SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect,
+    TakeInitiativeEffect, TicketCountersEffect, VentureIntoDungeonEffect, WinTheGameEffect,
 };
 pub use replacement::{
     ApplyReplacementEffect, RegisterDamagedBySourceZoneReplacementEffect,

@@ -68,6 +68,8 @@ const RESULT_VERB_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
             &["milled"],
         ]
 );
+const SEARCH_RESULT_VERB_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["search"], &["searches"], &["searched"]]);
 const THIS_WAY_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(suffix & ["this", "way"]);
 const UNQUALIFIED_THIS_WAY_RESULT_QUALIFIER_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
@@ -175,6 +177,11 @@ const OBJECT_DAMAGE_WOULD_DIE_THIS_WAY_PATTERN: ClauseShape<'static> = clause_sh
 );
 const EXCESS_DAMAGE_THIS_WAY_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["it", "deals", "excess", "damage", "this", "way"]);
+const EXCESS_DAMAGE_WAS_DEALT_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix & ["excess", "damage", "was", "dealt", "to"];
+    suffix & ["this", "way"];
+    contains_words & ["creature"]
+);
 const YOU_LOSE_FLIP_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["you", "lose"], &["you", "lost"]]; contains_words & ["flip"]);
 const PLAYER_SHORT_NEGATED_RESULT_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -291,6 +298,7 @@ pub(crate) enum StatementLineFamily {
     Divvy,
     ArtRating,
     ExilePlayCostsMore,
+    BidLife,
     Vote,
     Generic,
 }
@@ -526,6 +534,13 @@ pub(crate) fn classify_statement_line_family_lexed(
         return Some(StatementLineFamily::Vote);
     }
 
+    if primitives::contains_phrase(tokens, &["bid", "life"])
+        && primitives::contains_phrase(tokens, &["high", "bid"])
+        && primitives::contains_phrase(tokens, &["high", "bidder"])
+    {
+        return Some(StatementLineFamily::BidLife);
+    }
+
     let words = tokens
         .iter()
         .filter_map(OwnedLexToken::as_word)
@@ -594,6 +609,8 @@ fn is_statement_verb_word(word: &str) -> bool {
             | "draws"
             | "become"
             | "becomes"
+            | "bid"
+            | "bids"
             | "enchant"
             | "enchants"
             | "exchange"
@@ -714,6 +731,26 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
         let qualifiers = &words[action_idx + 1..words.len() - 2];
         qualifiers.is_empty() || matches!(qualifiers, ["it"] | ["them"] | ["that"])
     };
+    let is_searched_library_this_way = || {
+        if words.len() < 5 || !THIS_WAY_SUFFIX_PATTERN.matches_words(words) {
+            return false;
+        }
+        let subject_len = match words {
+            ["you", ..] | ["they", ..] | ["player", ..] | ["players", ..] => 1,
+            ["that", "player", ..] | ["first", "player", ..] => 2,
+            _ => return false,
+        };
+        let Some(verb) = words.get(subject_len) else {
+            return false;
+        };
+        if !SEARCH_RESULT_VERB_WORD_PATTERN.matches_word(verb) {
+            return false;
+        }
+        matches!(
+            &words[subject_len + 1..words.len() - 2],
+            ["your", "library"] | ["their", "library"] | ["library"]
+        )
+    };
 
     if YOU_DO_RESULT_PATTERN.matches_words(words) {
         return Some(IfResultPredicate::Did);
@@ -753,6 +790,9 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
     }
     if YOU_SEARCHED_THIS_WAY_PATTERN.matches_words(words) {
         return Some(IfResultPredicate::Did);
+    }
+    if is_searched_library_this_way() {
+        return Some(IfResultPredicate::SearchedLibrary);
     }
     if is_unqualified_this_way_result("you") {
         return Some(IfResultPredicate::Did);
@@ -795,6 +835,9 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
             | ["it", "power", "becomes", _, "this", "way"]
     ) {
         return Some(IfResultPredicate::Did);
+    }
+    if EXCESS_DAMAGE_WAS_DEALT_THIS_WAY_PATTERN.matches_words(words) {
+        return Some(IfResultPredicate::ExcessDamageDealt);
     }
     if EXCESS_DAMAGE_THIS_WAY_PATTERN.matches_words(words) {
         return Some(IfResultPredicate::Did);

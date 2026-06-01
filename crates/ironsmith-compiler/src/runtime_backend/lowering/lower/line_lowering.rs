@@ -625,7 +625,11 @@ fn clash_win_optional_top_replacement_program(
     let return_with_id = return_with_id_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
     let followup = followup.downcast_ref::<crate::effects::IfEffect>()?;
     if followup.condition != return_with_id.id
-        || followup.predicate != crate::effect::EffectPredicate::Happened
+        || !matches!(
+            followup.predicate,
+            crate::effect::EffectPredicate::Happened
+                | crate::effect::EffectPredicate::Value(crate::effect::Comparison::GreaterThan(0))
+        )
     {
         return None;
     }

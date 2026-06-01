@@ -4044,6 +4044,23 @@ fn resolve_value_with_context(
             let count = count_filter_matches(filter, ctx, &filter_ctx);
             count * *multiplier
         }
+        Value::GreatestCount(filter) => {
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
+            let Some(controller_filter) = &filter.controller else {
+                return count_filter_matches(filter, ctx, &filter_ctx);
+            };
+
+            let mut greatest = 0i32;
+            for player in ctx.game.players.iter().filter(|player| player.is_in_game()) {
+                if !controller_filter.matches_player(player.id, &filter_ctx) {
+                    continue;
+                }
+                let mut player_filter = filter.clone();
+                player_filter.controller = Some(PlayerFilter::Specific(player.id));
+                greatest = greatest.max(count_filter_matches(&player_filter, ctx, &filter_ctx));
+            }
+            greatest
+        }
         Value::BasicLandTypesAmong(filter) => {
             use std::collections::HashSet;
 

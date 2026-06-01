@@ -150,6 +150,13 @@ fn first_activated_ability(
         .expect("expected an activated ability")
 }
 
+fn order_of_succession_definition() -> crate::cards::CardDefinition {
+    parse_sorcery_definition(
+        "Order of Succession",
+        "Choose left or right. Starting with you and proceeding in the chosen direction, each player chooses a creature controlled by the next player in that direction. Each player gains control of the creature they chose.",
+    )
+}
+
 #[derive(Default)]
 struct ScriptedDecisionMaker {
     option_matches: VecDeque<String>,
@@ -259,6 +266,67 @@ impl DecisionMaker for ScriptedDecisionMaker {
 
         vec![chosen; ctx.count as usize]
     }
+}
+
+#[test]
+fn order_of_succession_left_choice_rotates_control_left() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let cara = PlayerId::from_index(2);
+    let bob_creature = create_creature(&mut game, "Bob Bear", bob, 2, 2);
+    let cara_creature = create_creature(&mut game, "Cara Drake", cara, 2, 2);
+    let alice_creature = create_creature(&mut game, "Alice Angel", alice, 2, 2);
+    let order = order_of_succession_definition();
+    let mut dm = ScriptedDecisionMaker::new(
+        &["left"],
+        &["bob bear", "cara drake", "alice angel"],
+    );
+
+    resolve_spell_definition_with_dm(&mut game, &order, alice, &mut dm);
+
+    assert_eq!(game.current_controller(bob_creature), Some(alice));
+    assert_eq!(game.current_controller(cara_creature), Some(bob));
+    assert_eq!(game.current_controller(alice_creature), Some(cara));
+}
+
+#[test]
+fn order_of_succession_right_choice_rotates_control_right() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let cara = PlayerId::from_index(2);
+    let bob_creature = create_creature(&mut game, "Bob Bear", bob, 2, 2);
+    let cara_creature = create_creature(&mut game, "Cara Drake", cara, 2, 2);
+    let alice_creature = create_creature(&mut game, "Alice Angel", alice, 2, 2);
+    let order = order_of_succession_definition();
+    let mut dm = ScriptedDecisionMaker::new(
+        &["right"],
+        &["cara drake", "bob bear", "alice angel"],
+    );
+
+    resolve_spell_definition_with_dm(&mut game, &order, alice, &mut dm);
+
+    assert_eq!(game.current_controller(cara_creature), Some(alice));
+    assert_eq!(game.current_controller(bob_creature), Some(cara));
+    assert_eq!(game.current_controller(alice_creature), Some(bob));
+}
+
+#[test]
+fn order_of_succession_skips_player_when_next_player_has_no_creature() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let cara = PlayerId::from_index(2);
+    let bob_creature = create_creature(&mut game, "Bob Bear", bob, 2, 2);
+    let alice_creature = create_creature(&mut game, "Alice Angel", alice, 2, 2);
+    let order = order_of_succession_definition();
+    let mut dm = ScriptedDecisionMaker::new(&["right"], &["bob bear", "alice angel"]);
+
+    resolve_spell_definition_with_dm(&mut game, &order, alice, &mut dm);
+
+    assert_eq!(game.current_controller(alice_creature), Some(bob));
+    assert_eq!(game.current_controller(bob_creature), Some(cara));
 }
 
 #[test]

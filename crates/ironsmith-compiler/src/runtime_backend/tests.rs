@@ -5290,6 +5290,27 @@ fn rewrite_lexed_permission_helpers_parse_while_exiled_you_may_spend_mana_suffix
 }
 
 #[test]
+fn rewrite_lexed_permission_helpers_parse_while_exiled_owner_prefix() {
+    let tokens = lex_line(
+        "For as long as that card remains exiled, its owner may cast it without paying its mana cost",
+        0,
+    )
+    .expect("rewrite lexer should classify while-exiled owner cast permission");
+
+    let parsed = super::permission_helpers::parse_cast_or_play_tagged_clause(&tokens)
+        .expect("while-exiled owner permission should parse")
+        .expect("while-exiled owner permission should produce an effect");
+    let debug = format!("{parsed:?}");
+
+    assert!(
+        debug.contains("GrantPlayTaggedForAsLongAsExiled"),
+        "{debug}"
+    );
+    assert!(debug.contains("player: ItsOwner"), "{debug}");
+    assert!(debug.contains("without_paying_mana_cost: true"), "{debug}");
+}
+
+#[test]
 fn rewrite_lowering_choose_from_opponent_graveyard_or_hand_keeps_choice_zones()
 -> Result<(), CardTextError> {
     let def = CardDefinitionBuilder::new(CardId::new(), "Psychic Intrusion Variant")
@@ -8350,6 +8371,32 @@ fn rewrite_grammar_combat_damage_using_toughness_probe_tracks_subject_variant() 
 }
 
 #[test]
+fn rewrite_grammar_zilortha_lethal_damage_power_static_line() {
+    let tokens = lex_line(
+        "Lethal damage dealt to creatures you control is determined by their power rather than their toughness.",
+        0,
+    )
+    .expect("rewrite lexer should classify Zilortha lethal-damage static line");
+
+    assert!(
+        super::grammar::abilities::is_lethal_damage_to_creatures_you_control_uses_power_line_lexed(
+            &tokens
+        ),
+        "grammar-owned lethal-damage power probe should match Zilortha's static line"
+    );
+
+    let parsed = super::keyword_static::parse_lethal_damage_to_creatures_you_control_uses_power_line(&tokens)
+        .expect("Zilortha lethal-damage static line should parse");
+
+    assert!(matches!(
+        parsed,
+        Some(ability)
+            if ability.id()
+                == crate::static_abilities::StaticAbilityId::LethalDamageToCreaturesYouControlUsesPower
+    ));
+}
+
+#[test]
 fn rewrite_grammar_players_cant_cycle_probe_matches_static_line() {
     let tokens = lex_line("Players can't cycle cards.", 0)
         .expect("rewrite lexer should classify anti-cycle static line");
@@ -8545,6 +8592,28 @@ fn parse_prevent_all_damage_by_opponents_creatures_effect_clause() {
             && spell_debug.contains("creature")
             && spell_debug.contains("opponent"),
         "expected source-filter prevent-all-damage effect, got {spell_debug}"
+    );
+}
+
+#[test]
+fn parse_reverberation_target_sorcery_damage_redirect_effect_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Reverberation")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "All damage that would be dealt this turn by target sorcery spell is dealt to that spell's controller instead.",
+        )
+        .expect("Reverberation target-sorcery redirect clause should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        spell_debug.contains("redirectnexttimedamagetosourceeffect")
+            && spell_debug.contains("source: target")
+            && spell_debug.contains("target: none")
+            && spell_debug.contains("destination: sourcecontroller")
+            && spell_debug.contains("all_this_turn: true")
+            && spell_debug.contains("target")
+            && spell_debug.contains("sorcery"),
+        "expected targeted sorcery source redirected to its controller, got {spell_debug}"
     );
 }
 

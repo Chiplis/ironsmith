@@ -77,6 +77,12 @@ fn exile_object(
                             }
                         }
                         game.add_exiled_with_source_link(ctx.source, new_id);
+                        if let Some(object) = game.object(new_id) {
+                            ctx.tag_object(
+                                crate::tag::SOURCE_EXILED_TAG,
+                                ObjectSnapshot::from_object(object, game),
+                            );
+                        }
                     }
                 }
                 return Ok(None);
@@ -253,6 +259,12 @@ impl EffectExecutor for ExileEffect {
                                 }
                                 if result.final_zone == Zone::Exile {
                                     game.add_exiled_with_source_link(ctx.source, new_id);
+                                    if let Some(object) = game.object(new_id) {
+                                        ctx.tag_object(
+                                            crate::tag::SOURCE_EXILED_TAG,
+                                            ObjectSnapshot::from_object(object, game),
+                                        );
+                                    }
                                 }
                             }
                             Ok(true)

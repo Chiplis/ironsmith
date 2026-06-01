@@ -7,7 +7,8 @@ use super::{
     ChooseColorAsEntersSpec, ChooseCreatureTypeAsEntersSpec, ChooseLandTypeAsEntersSpec,
     ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec,
     ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec, ConditionalSpellKeywordKind,
-    ConditionalSpellKeywordSpec, EnterAsCopyAsEntersSpec, GraveyardCountMetric,
+    ConditionalSpellKeywordSpec, CountAsCardNamedForSpellEffectSpec, EnterAsCopyAsEntersSpec,
+    GraveyardCountMetric,
     PowerToughnessChoiceOption, StaticAbility, StaticAbilityId, StaticAbilityKind,
     ThisSpellCastRestrictionKind, TriggerDuplicationSpec, TriggerSuppressionSpec,
     text_utils::{capitalize_first, join_with_and, number_word_u32},
@@ -497,6 +498,44 @@ impl StaticAbilityKind for RevealFirstCardYouDrawEachTurn {
             card_number: 1,
             optional: self.optional,
             your_turns_only: self.your_turns_only,
+        })
+    }
+}
+
+/// "Effects from spells named N count this as a card named M."
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CountAsCardNamedForSpellEffect {
+    pub spell_name: String,
+    pub counted_name: String,
+}
+
+impl CountAsCardNamedForSpellEffect {
+    pub fn new(spell_name: String, counted_name: String) -> Self {
+        Self {
+            spell_name,
+            counted_name,
+        }
+    }
+}
+
+impl StaticAbilityKind for CountAsCardNamedForSpellEffect {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CountAsCardNamedForSpellEffect
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "If this card is in a graveyard, effects from spells named {} count it as a card named {}.",
+            self.spell_name, self.counted_name
+        )
+    }
+
+    fn count_as_card_named_for_spell_effect_spec(
+        &self,
+    ) -> Option<CountAsCardNamedForSpellEffectSpec> {
+        Some(CountAsCardNamedForSpellEffectSpec {
+            spell_name: self.spell_name.clone(),
+            counted_name: self.counted_name.clone(),
         })
     }
 }

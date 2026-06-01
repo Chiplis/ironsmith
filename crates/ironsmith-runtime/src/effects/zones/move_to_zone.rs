@@ -253,6 +253,9 @@ impl EffectExecutor for MoveToZoneEffect {
                                 self.enters_tapped,
                             ),
                         };
+                        if self.enters_face_down && let Some(card) = game.object_mut(object_id) {
+                            card.apply_face_down_cast_overlay();
+                        }
                         match move_to_battlefield_with_options(game, ctx, object_id, options) {
                             BattlefieldEntryOutcome::Moved(new_id) => {
                                 if self.enters_attacking
@@ -275,6 +278,11 @@ impl EffectExecutor for MoveToZoneEffect {
                                 moved_ids.push(new_id);
                             }
                             BattlefieldEntryOutcome::Prevented => {
+                                if self.enters_face_down
+                                    && let Some(card) = game.object_mut(object_id)
+                                {
+                                    card.end_face_down_cast_overlay();
+                                }
                                 any_prevented = true;
                             }
                         }

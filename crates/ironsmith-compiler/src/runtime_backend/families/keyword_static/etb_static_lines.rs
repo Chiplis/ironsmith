@@ -321,6 +321,9 @@ const ETB_EXILED_CARD_MANA_VALUE_PATTERN: ClauseShape<'static> = clause_shape!(
 const ETB_TRIGGERING_SPELL_MANA_VALUE_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
+            &["the", "spell", "mana", "value"],
+            &["the", "spell's", "mana", "value"],
+            &["the", "spells", "mana", "value"],
             &["that", "spell", "mana", "value"],
             &["that", "spell's", "mana", "value"],
             &["that", "spells", "mana", "value"],
@@ -1471,6 +1474,11 @@ pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Val
         return Some(value);
     }
 
+    // where X is the greatest number of <objects> <player> controls
+    if let Some(value) = parse_where_x_is_greatest_number_of_filter_value(tokens) {
+        return Some(value);
+    }
+
     // where X is the number of <objects>
     if let Some(value) = parse_where_x_is_number_of_filter_value(tokens) {
         return Some(value);
@@ -2082,6 +2090,32 @@ pub(crate) fn parse_where_x_is_number_of_different_powers_filter_value(
     Some(Value::DistinctPowers(filter))
 }
 
+pub(crate) fn parse_where_x_is_greatest_number_of_filter_value(
+    tokens: &[OwnedLexToken],
+) -> Option<Value> {
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    if !ETB_WHERE_X_IS_PREFIX_PATTERN.matches_words(&clause_words) {
+        return None;
+    }
+
+    let greatest_idx = ETB_GREATEST_WORD_PATTERN.find_word(&clause_words)?;
+    if !clause_words
+        .get(greatest_idx + 1)
+        .is_some_and(|word| ETB_NUMBER_WORD_PATTERN.matches_word(word))
+        || !clause_words
+            .get(greatest_idx + 2)
+            .is_some_and(|word| ETB_OF_WORD_PATTERN.matches_word(word))
+    {
+        return None;
+    }
+
+    let object_start_token_idx = token_index_for_word_index(tokens, greatest_idx + 3)?;
+    let filter_tokens = &tokens[object_start_token_idx..];
+    let filter = parse_object_filter_lexed(filter_tokens, false).ok()?;
+    filter.controller.as_ref()?;
+    Some(Value::GreatestCount(filter))
+}
+
 pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if !ETB_WHERE_X_IS_PREFIX_PATTERN.matches_words(&clause_words) {
@@ -2294,26 +2328,31 @@ fn parse_number_of_counters_on_source_value(filter_words: &[&str]) -> Option<Val
         return None;
     }
     idx += 1;
-    match filter_words.get(idx..) {
-        Some(["it"])
-        | Some(["this"])
-        | Some(["this", "card"])
-        | Some(["this", "creature"])
-        | Some(["this", "permanent"])
-        | Some(["this", "source"])
-        | Some(["this", "artifact"])
-        | Some(["this", "land"])
-        | Some(["this", "enchantment"])
-        | Some(["thiss"])
-        | Some(["thiss", "card"])
-        | Some(["thiss", "creature"])
-        | Some(["thiss", "permanent"])
-        | Some(["thiss", "source"])
-        | Some(["thiss", "artifact"])
-        | Some(["this", "equipment"])
-        | Some(["thiss", "land"])
-        | Some(["thiss", "enchantment"])
-        | Some(["thiss", "equipment"]) => Some(Value::CountersOnSource(counter_type)),
+    let source_words = filter_words.get(idx..)?;
+    if is_source_reference_words(source_words) {
+        return Some(Value::CountersOnSource(counter_type));
+    }
+
+    match source_words {
+        ["it"]
+        | ["this"]
+        | ["this", "card"]
+        | ["this", "creature"]
+        | ["this", "permanent"]
+        | ["this", "source"]
+        | ["this", "artifact"]
+        | ["this", "land"]
+        | ["this", "enchantment"]
+        | ["thiss"]
+        | ["thiss", "card"]
+        | ["thiss", "creature"]
+        | ["thiss", "permanent"]
+        | ["thiss", "source"]
+        | ["thiss", "artifact"]
+        | ["this", "equipment"]
+        | ["thiss", "land"]
+        | ["thiss", "enchantment"]
+        | ["thiss", "equipment"] => Some(Value::CountersOnSource(counter_type)),
         _ => None,
     }
 }

@@ -378,6 +378,26 @@ impl GrantRegistry {
         );
     }
 
+    /// Add an alternative cast grant for a specific physical card that should survive object-id changes.
+    pub fn grant_alternative_cast_to_stable_card(
+        &mut self,
+        target_id: ObjectId,
+        target_stable_id: StableId,
+        zone: Zone,
+        player: PlayerId,
+        method: AlternativeCastingMethod,
+        source: GrantSource,
+    ) {
+        self.grant_to_stable_card(
+            target_id,
+            target_stable_id,
+            zone,
+            player,
+            Grantable::AlternativeCast(method),
+            source,
+        );
+    }
+
     /// Add an alternative cast grant for cards matching a filter.
     pub fn grant_alternative_cast_to_filter(
         &mut self,
@@ -589,6 +609,12 @@ impl GrantRegistry {
                 if *sid == source_id
             )
         });
+    }
+
+    /// Remove grants tied to a physical card's continuous presence in a zone.
+    pub fn remove_stable_card_grants_for_zone(&mut self, stable_id: StableId, zone: Zone) {
+        self.grants
+            .retain(|grant| grant.target_stable_id != Some(stable_id) || grant.zone != zone);
     }
 
     /// Clean up expired grants (call at end of turn).

@@ -178,6 +178,27 @@ fn compile_effect_inner(
             choices,
         ));
     }
+    if let EffectAst::BidLife {
+        target,
+        starting_bid,
+        winner_effects,
+    } = effect
+    {
+        let refs = current_reference_env(ctx);
+        let (target_spec, mut choices) = resolve_target_spec_with_choices(target, &refs)?;
+        let (winner_effects, winner_choices) = compile_effects(winner_effects, ctx)?;
+        for choice in winner_choices {
+            push_choice(&mut choices, choice);
+        }
+        return Ok((
+            vec![Effect::new(crate::effects::BidLifeEffect::new(
+                target_spec,
+                crate::effects::LifeBidStart::Fixed(*starting_bid),
+                winner_effects,
+            ))],
+            choices,
+        ));
+    }
     if let EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
         player,
         zone_owner,
@@ -1433,11 +1454,12 @@ fn compile_subject_verb_effect(
         )),
         SubjectVerbActionAst::ShuffleLibrary => {
             let ast_is_explicit_you = matches!(player, PlayerAst::You | PlayerAst::Implicit);
+            let follows_search_collection = ctx
+                .last_object_tag
+                .as_ref()
+                .is_some_and(|tag| is_searched_collection_tag(tag));
             if !ast_is_explicit_you
-                && ctx
-                    .last_object_tag
-                    .as_ref()
-                    .is_some_and(|tag| is_searched_collection_tag(tag))
+                && follows_search_collection
                 && ctx
                     .last_player_filter
                     .as_ref()
@@ -1448,6 +1470,11 @@ fn compile_subject_verb_effect(
                         ctx.last_player_filter.clone().expect("checked above"),
                     )],
                     Vec::new(),
+                ))
+            } else if matches!(player, PlayerAst::That) && !ctx.iterated_player {
+                Ok((
+                    vec![Effect::shuffle_library_player(PlayerFilter::target_player())],
+                    vec![ChooseSpec::target_player()],
                 ))
             } else {
                 compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
@@ -1750,6 +1777,9 @@ fn compile_subject_verb_effect(
                     crate::cards::builders::RedirectNextTimeDamageDestinationAst::Controller => {
                         effect.to_controller()
                     }
+                    crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceController => {
+                        effect.to_source_controller()
+                    }
                 };
                 let effect = if *all_this_turn {
                     effect.all_this_turn()
@@ -1757,6 +1787,15 @@ fn compile_subject_verb_effect(
                     effect
                 };
                 Effect::new(effect)
+            })
+        }
+        SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController { source } => {
+            compile_effect_for_target(source, ctx, |spec| {
+                Effect::new(
+                    crate::effects::RedirectNextTimeDamageToSourceEffect::from_source_target(spec)
+                        .to_source_controller()
+                        .all_this_turn(),
+                )
             })
         }
         SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget {
@@ -2099,6 +2138,7 @@ fn compile_subject_verb_effect(
             tag,
             player,
             allow_land,
+            without_paying_mana_cost,
             allow_any_color_for_cast,
         } => {
             let player_filter =
@@ -2119,16 +2159,23 @@ fn compile_subject_verb_effect(
             } else {
                 tag.clone()
             };
-            Ok((
-                vec![Effect::new(crate::effects::GrantPlayTaggedEffect::new(
-                    resolved_tag,
-                    player_filter,
-                    crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled,
-                    *allow_land,
-                    *allow_any_color_for_cast,
-                ))],
-                Vec::new(),
-            ))
+            let mut effects = vec![Effect::new(crate::effects::GrantPlayTaggedEffect::new(
+                resolved_tag.clone(),
+                player_filter.clone(),
+                crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled,
+                *allow_land,
+                *allow_any_color_for_cast,
+            ))];
+            if *without_paying_mana_cost {
+                effects.push(Effect::new(
+                    crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect::new(
+                        resolved_tag,
+                        player_filter,
+                    )
+                    .for_as_long_as_exiled(),
+                ));
+            }
+            Ok((effects, Vec::new()))
         }
         SubjectVerbActionAst::GrantPlayTaggedForAsLongAsYouControlSource {
             tag,
@@ -2314,12 +2361,18 @@ fn compile_subject_verb_effect(
         SubjectVerbActionAst::ReturnAllToBattlefield {
             filter,
             tapped,
+            face_down,
             controller,
         } => {
             let return_all = crate::effects::ReturnAllToBattlefieldEffect::new(
                 resolve_it_tag(filter, &current_reference_env(ctx))?,
                 *tapped,
             );
+            let return_all = if *face_down {
+                return_all.face_down()
+            } else {
+                return_all
+            };
             let return_all = match controller {
                 ReturnControllerAst::Preserve | ReturnControllerAst::Owner => {
                     return_all.under_owner_control()
@@ -2341,6 +2394,7 @@ fn compile_subject_verb_effect(
             battlefield_controller,
             battlefield_tapped,
             battlefield_attacking,
+            battlefield_face_down,
             attached_to,
         } => {
             let (mut spec, mut choices) =
@@ -2406,6 +2460,11 @@ fn compile_subject_verb_effect(
                 } else {
                     move_effect
                 };
+                let move_effect = if *zone == Zone::Battlefield && *battlefield_face_down {
+                    move_effect.face_down()
+                } else {
+                    move_effect
+                };
                 let move_effect = match battlefield_controller {
                     ReturnControllerAst::Preserve => move_effect,
                     ReturnControllerAst::Owner => move_effect.under_owner_control(),
@@ -2462,6 +2521,11 @@ fn compile_subject_verb_effect(
             };
             let move_effect = if *zone == Zone::Battlefield && *battlefield_attacking {
                 move_effect.attacking()
+            } else {
+                move_effect
+            };
+            let move_effect = if *zone == Zone::Battlefield && *battlefield_face_down {
+                move_effect.face_down()
             } else {
                 move_effect
             };
@@ -4937,7 +5001,10 @@ fn compile_subject_verb_effect(
             let (mut spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             let from_graveyard = target_mentions_graveyard(target);
-            if from_graveyard && format!("{spec:?}").contains("IteratedPlayer") {
+            if from_graveyard
+                && !ctx.iterated_player
+                && format!("{spec:?}").contains("IteratedPlayer")
+            {
                 replace_iterated_player_with_target_player_in_choose_spec(&mut spec);
             }
             let effect = tag_object_target_effect(
@@ -5016,13 +5083,17 @@ fn compile_subject_verb_effect(
             filter,
         } => {
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-            let iterated = ChooseSpec::Iterated;
-            let count = Value::CountersOn(Box::new(iterated.clone()), Some(*counter_type));
-            let effect = Effect::for_each(
-                resolved_filter,
-                vec![Effect::put_counters(*counter_type, count, iterated)],
-            );
+            let effect = Effect::double_counters(*counter_type, ChooseSpec::All(resolved_filter));
             Ok((vec![effect], Vec::new()))
+        }
+        SubjectVerbActionAst::DoubleCountersOnTarget {
+            counter_type,
+            target,
+        } => {
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let effect = Effect::double_counters(*counter_type, spec);
+            Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::RemoveCountersAll {
             amount,
@@ -5321,6 +5392,16 @@ fn compile_subject_verb_effect(
         SubjectVerbActionAst::SkipNextCombatPhaseThisTurn => {
             compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
                 Effect::skip_next_combat_phase_this_turn_player(subject.into_player_filter())
+            })
+        }
+        SubjectVerbActionAst::SkipMainPhasesThisTurn => {
+            compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
+                Effect::skip_main_phases_this_turn_player(subject.into_player_filter())
+            })
+        }
+        SubjectVerbActionAst::SkipCombatPhasesThisTurn => {
+            compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
+                Effect::skip_combat_phases_this_turn_player(subject.into_player_filter())
             })
         }
         SubjectVerbActionAst::SkipDrawStep => {

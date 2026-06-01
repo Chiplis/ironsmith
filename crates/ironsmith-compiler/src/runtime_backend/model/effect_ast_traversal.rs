@@ -76,6 +76,10 @@ macro_rules! nested_effects_variants {
                 effects: $effects,
                 ..
             }
+            | EffectAst::BidLife {
+                winner_effects: $effects,
+                ..
+            }
             | EffectAst::DelayedUntilNextEndStep {
                 effects: $effects,
                 ..
@@ -130,6 +134,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::SelfReplacement { .. } => {}
         EffectAst::ChooseObjects { .. } => {}
         EffectAst::ChooseObjectsAcrossZones { .. } => {}
+        EffectAst::DirectionalAdjacentPlayerControl { .. } => {}
         EffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. } => {}
         EffectAst::RepeatThisProcess => {}
         EffectAst::RepeatThisProcessMay => {}
@@ -153,6 +158,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ForEachPlayerDid { .. } => {}
         EffectAst::ForEachTaggedPlayer { .. } => {}
         EffectAst::RepeatProcess { .. } => {}
+        EffectAst::BidLife { .. } => {}
         EffectAst::VoteStart { .. } => {}
         EffectAst::VoteStartObjects { .. } => {}
         EffectAst::VoteOption { .. } => {}

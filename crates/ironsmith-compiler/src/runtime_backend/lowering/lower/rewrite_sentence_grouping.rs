@@ -12,10 +12,7 @@ pub(crate) fn condition_for_chosen_option_label(label: &str) -> crate::Condition
             right: crate::effect::Value::Fixed(4),
         };
     }
-    if let Some(threshold) = label
-        .strip_prefix(STATION_THRESHOLD_CONDITION_PREFIX)
-        .and_then(|value| value.parse::<i32>().ok())
-    {
+    if let Some(threshold) = station_threshold_from_chosen_option_label(label) {
         return crate::ConditionExpr::ValueComparison {
             left: crate::effect::Value::CountersOnSource(crate::CounterType::Charge),
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
@@ -51,6 +48,12 @@ pub(crate) fn condition_for_chosen_option_label(label: &str) -> crate::Condition
         return crate::ConditionExpr::Or(Box::new(left_condition), Box::new(right_condition));
     }
     crate::ConditionExpr::SourceChosenOption(label.to_string())
+}
+
+pub(crate) fn station_threshold_from_chosen_option_label(label: &str) -> Option<i32> {
+    label
+        .strip_prefix(STATION_THRESHOLD_CONDITION_PREFIX)
+        .and_then(|value| value.parse::<i32>().ok())
 }
 
 fn color_from_label(label: &str) -> Option<crate::Color> {

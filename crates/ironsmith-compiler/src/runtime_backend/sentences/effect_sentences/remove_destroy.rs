@@ -564,6 +564,11 @@ pub(crate) fn parse_destroy_combat_history_target(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TargetAst>, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    if let Some(target) =
+        parse_destroy_target_dealt_damage_to_player_this_turn(tokens, &clause_words)?
+    {
+        return Ok(Some(target));
+    }
     let Some(that_idx) = DEALT_DAMAGE_THIS_TURN_TAIL_PATTERN.find_exact_window(&clause_words, 6)
     else {
         return Ok(None);
@@ -582,6 +587,50 @@ pub(crate) fn parse_destroy_combat_history_target(
         return Ok(None);
     };
     filter.was_dealt_damage_this_turn = true;
+    Ok(Some(TargetAst::Object(filter, target_span, it_span)))
+}
+
+fn parse_destroy_target_dealt_damage_to_player_this_turn(
+    tokens: &[OwnedLexToken],
+    clause_words: &[&str],
+) -> Result<Option<TargetAst>, CardTextError> {
+    let Some(that_idx) = clause_words
+        .windows(4)
+        .position(|window| window == ["that", "dealt", "damage", "to"])
+    else {
+        return Ok(None);
+    };
+    if that_idx == 0
+        || clause_words.len() < that_idx + 7
+        || !matches!(clause_words[clause_words.len() - 2..], ["this", "turn"])
+    {
+        return Ok(None);
+    }
+
+    let player_start_word_idx = that_idx + 4;
+    let player_end_word_idx = clause_words.len() - 2;
+    if player_start_word_idx >= player_end_word_idx {
+        return Ok(None);
+    }
+
+    let target_cutoff = token_index_for_word_index(tokens, that_idx).unwrap_or(tokens.len());
+    let player_start =
+        token_index_for_word_index(tokens, player_start_word_idx).unwrap_or(tokens.len());
+    let player_end = token_index_for_word_index(tokens, player_end_word_idx).unwrap_or(tokens.len());
+    let target_tokens = trim_commas(&tokens[..target_cutoff]);
+    let player_tokens = trim_commas(&tokens[player_start..player_end]);
+    if target_tokens.is_empty() || player_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let TargetAst::Player(player, _) = parse_target_phrase(&player_tokens)? else {
+        return Ok(None);
+    };
+    let target = parse_target_phrase(&target_tokens)?;
+    let TargetAst::Object(mut filter, target_span, it_span) = target else {
+        return Ok(None);
+    };
+    filter.dealt_damage_to_player_this_turn = Some(player);
     Ok(Some(TargetAst::Object(filter, target_span, it_span)))
 }
 

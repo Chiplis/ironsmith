@@ -460,6 +460,13 @@ fn describe_single_self_replacement_segment(
     let default_text = describe_effect_list(&segment.default_effects);
     let replacement_text = describe_effect_list(&branch.replacement_effects);
     let condition_text = super::normalize_common::describe_condition(&branch.condition);
+    if let Some(looked_cards_text) = describe_looked_cards_non_hand_self_replacement(
+        &segment.default_effects,
+        &branch.replacement_effects,
+        &condition_text,
+    ) {
+        return Some(looked_cards_text);
+    }
     if let Some(local_rewrite_text) = describe_rendered_optional_zone_rewrite_self_replacement(
         &default_text,
         &replacement_text,
@@ -504,6 +511,80 @@ fn describe_single_self_replacement_segment(
     Some(format!(
         "{default_text}. If {condition_text}, {} instead",
         rewrite_self_replacement_referent_phrase(&default_text, &replacement_text)
+    ))
+}
+
+fn describe_looked_cards_non_hand_self_replacement(
+    default_effects: &[Effect],
+    replacement_effects: &[Effect],
+    condition_text: &str,
+) -> Option<String> {
+    if condition_text != "this spell was cast from anywhere other than your hand" {
+        return None;
+    }
+
+    let [default_look, choose, move_chosen, remainder] = default_effects else {
+        return None;
+    };
+    let [replacement_look, move_all] = replacement_effects else {
+        return None;
+    };
+
+    let default_look = default_look.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let replacement_look = replacement_look.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    if default_look != replacement_look
+        || default_look.reveal
+        || default_look.player != PlayerFilter::You
+    {
+        return None;
+    }
+
+    let choose = choose.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if choose.count.min != 1
+        || choose.count.max != Some(1)
+        || choose.chooser != PlayerFilter::You
+        || choose.filter.zone != Some(Zone::Library)
+        || !choose
+            .filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.tag == default_look.tag)
+    {
+        return None;
+    }
+
+    let move_chosen = unwrap_tagged_effect(move_chosen)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_chosen.zone != Zone::Hand
+        || !matches!(&move_chosen.target, ChooseSpec::Tagged(tag) if tag == &choose.tag)
+    {
+        return None;
+    }
+
+    let remainder = remainder
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+    if remainder.tag != default_look.tag
+        || remainder.keep_tagged.as_ref() != Some(&choose.tag)
+        || remainder.player != PlayerFilter::You
+    {
+        return None;
+    }
+
+    let move_all = unwrap_tagged_effect(move_all)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_all.zone != Zone::Hand
+        || !matches!(&move_all.target, ChooseSpec::Tagged(tag) if tag == &default_look.tag)
+    {
+        return None;
+    }
+
+    let count_text = describe_value(&default_look.count);
+    let order_suffix = match remainder.order {
+        crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => " in any order",
+        crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
+    };
+    Some(format!(
+        "Look at the top {count_text} cards of your library. Put one of those cards into your hand and the rest on the bottom of your library{order_suffix}. If {condition_text}, put each of those cards into your hand instead"
     ))
 }
 
@@ -893,7 +974,8 @@ fn rewrite_spell_resolution_damage_source(def: &CardDefinition, rendered: &str) 
     }
     let rendered = rewrite_damage_phrases_for_permanent_abilities(rendered, &def.card.name, false)
         .replace("Exile this source", &format!("Exile {}", def.card.name));
-    rewrite_standalone_spell_self_exile(&rendered, &def.card.name)
+    let rendered = rewrite_standalone_spell_self_exile(&rendered, &def.card.name);
+    rewrite_inline_spell_self_exile(&rendered, &def.card.name)
 }
 
 fn rewrite_standalone_spell_self_exile(rendered: &str, card_name: &str) -> String {
@@ -909,6 +991,29 @@ fn rewrite_standalone_spell_self_exile(rendered: &str, card_name: &str) -> Strin
             after.chars().next(),
             None | Some('.') | Some(',') | Some(';')
         ) {
+            out.push_str(&replacement);
+        } else {
+            out.push_str(needle);
+        }
+        rest = after;
+    }
+
+    out.push_str(rest);
+    out
+}
+
+fn rewrite_inline_spell_self_exile(rendered: &str, card_name: &str) -> String {
+    let needle = "exile this";
+    let replacement = format!("you exile {card_name}");
+    let mut out = String::with_capacity(rendered.len() + card_name.len() + 4);
+    let mut rest = rendered;
+
+    while let Some(idx) = rest.find(needle) {
+        out.push_str(&rest[..idx]);
+        let after = &rest[idx + needle.len()..];
+        if out.ends_with("then ")
+            && matches!(after.chars().next(), None | Some('.') | Some(',') | Some(';'))
+        {
             out.push_str(&replacement);
         } else {
             out.push_str(needle);
@@ -966,6 +1071,7 @@ pub(super) fn substitute_legendary_source_reference(
     let uses_named_source_surface = lower.starts_with("this creature gets ")
         || conditional_static_self_surface
         || lower.contains("if this land has ")
+        || lower.contains(" counters on this artifact")
         || lower.starts_with("whenever this creature deals combat damage to a player")
         || lower.starts_with("whenever this creature or another ")
         || lower.contains(": this creature gets ")
@@ -983,7 +1089,9 @@ pub(super) fn substitute_legendary_source_reference(
         .replace("This creature", source_name)
         .replace("this creature", source_name)
         .replace("This land", source_name)
-        .replace("this land", source_name);
+        .replace("this land", source_name)
+        .replace("This artifact", source_name)
+        .replace("this artifact", source_name);
     let lower_source_name = source_name.to_ascii_lowercase();
     if lower_source_name != source_name {
         substituted.replace(&lower_source_name, source_name)
@@ -2129,6 +2237,18 @@ pub(super) fn describe_alternative_cast_line(
                 })
                 .unwrap_or_else(|| "Freerunning".to_string())
         }
+        method if method.is_composed_cost() && method.name().eq_ignore_ascii_case("Sneak") => {
+            method
+                .mana_cost()
+                .map(|cost| {
+                    format!(
+                        "Sneak {} (You may cast this spell for {} if you also return an unblocked attacker you control to hand during the declare blockers step.)",
+                        cost.to_oracle(),
+                        cost.to_oracle()
+                    )
+                })
+                .unwrap_or_else(|| "Sneak".to_string())
+        }
         method if method.is_composed_cost() && method.name().eq_ignore_ascii_case("Prowl") => {
             method
                 .mana_cost()
@@ -2383,6 +2503,11 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 ability_idx += 1;
                 continue;
             }
+            if let Some(keyword) = describe_structural_station_keyword(ability) {
+                output.push(format!("Keyword ability {}: {keyword}", ability_idx + 1));
+                ability_idx += 1;
+                continue;
+            }
             if ability_idx + 1 < def.abilities.len()
                 && let Some(partner_with) =
                     describe_structural_partner_with_pair(ability, &def.abilities[ability_idx + 1])
@@ -2552,6 +2677,74 @@ fn ability_prefers_card_name_subject(ability: &Ability) -> bool {
     static_ability
         .enter_as_copy_as_enters()
         .is_some_and(|spec| spec.linked_exile_pair.is_some())
+}
+
+fn describe_structural_station_keyword(ability: &Ability) -> Option<&'static str> {
+    let AbilityKind::Activated(activated) = &ability.kind else {
+        return None;
+    };
+    if !matches!(activated.timing, ActivationTiming::SorcerySpeed)
+        || activated.activation_condition.is_some()
+        || !activated.choices.is_empty()
+        || !activated.mana_usage_restrictions.is_empty()
+    {
+        return None;
+    }
+    if !activated
+        .additional_restrictions
+        .iter()
+        .any(|restriction| restriction.eq_ignore_ascii_case("Activate only as a sorcery"))
+    {
+        return None;
+    }
+
+    let costs = activated.mana_cost.costs();
+    if !costs.iter().any(station_cost_chooses_tap_cost_creature)
+        || !costs.iter().any(station_cost_taps_chosen_creature)
+    {
+        return None;
+    }
+
+    let [effect] = activated.effects.flattened_default_effects() else {
+        return None;
+    };
+    let put = effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if put.counter_type != crate::CounterType::Charge
+        || !matches!(put.target.unhinted(), ChooseSpec::Source)
+    {
+        return None;
+    }
+    let Value::PowerOf(source) = put.amount.unhinted() else {
+        return None;
+    };
+    match source.unhinted() {
+        ChooseSpec::Tagged(tag) if tag.as_str() == "tap_cost_0" => Some("Station"),
+        _ => None,
+    }
+}
+
+fn station_cost_chooses_tap_cost_creature(cost: &crate::costs::Cost) -> bool {
+    let Some(effect) = cost.effect_ref() else {
+        return false;
+    };
+    let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() else {
+        return false;
+    };
+    choose.tag.as_str() == "tap_cost_0"
+        && choose.filter.controller == Some(PlayerFilter::You)
+        && choose.filter.card_types.contains(&CardType::Creature)
+        && choose.filter.other
+        && choose.filter.untapped
+}
+
+fn station_cost_taps_chosen_creature(cost: &crate::costs::Cost) -> bool {
+    let Some(effect) = cost.effect_ref() else {
+        return false;
+    };
+    let Some(tap) = effect.downcast_ref::<crate::effects::TapEffect>() else {
+        return false;
+    };
+    matches!(tap.target.unhinted(), ChooseSpec::Tagged(tag) if tag.as_str() == "tap_cost_0")
 }
 
 fn rewrite_additional_sacrifice_reference_surface(def: &CardDefinition, text: &str) -> String {

@@ -495,6 +495,15 @@ const SOURCE_IS_MONSTROUS_CONDITION_PATTERN: ClauseShape<'static> = clause_shape
             &["its", "monstrous"],
         ]
 );
+const SOURCE_IS_ON_BATTLEFIELD_CONDITION_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["this", "creature", "is", "on", "the", "battlefield"],
+            &["this", "permanent", "is", "on", "the", "battlefield"],
+            &["this", "is", "on", "the", "battlefield"],
+            &["it", "is", "on", "the", "battlefield"],
+        ]
+);
 const SOURCE_DEVOURED_CREATURES_CONDITION_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -1662,11 +1671,18 @@ pub(crate) fn parse_granted_keyword_static_line(
         return Ok(Some(compiled));
     }
 
-    let mapped = actions
-        .into_iter()
-        .filter(|action| action.lowers_to_static_ability())
-        .collect::<Vec<_>>();
-    if mapped.is_empty() && !grants_must_attack {
+    let mut mapped = Vec::new();
+    let mut object_ability_grants = Vec::new();
+    for action in actions {
+        if action.lowers_to_static_ability() {
+            mapped.push(action);
+        } else if let Some(granted) = granted_object_ability_for_keyword_action(&action) {
+            object_ability_grants.push(granted);
+        } else {
+            return Ok(None);
+        }
+    }
+    if mapped.is_empty() && object_ability_grants.is_empty() && !grants_must_attack {
         return Ok(None);
     }
 
@@ -1708,6 +1724,19 @@ pub(crate) fn parse_granted_keyword_static_line(
             },
         };
         compiled.push(ast);
+    }
+    let grant_clause = ParsedAnthemClause {
+        subject,
+        power: AnthemValue::Fixed(0),
+        toughness: AnthemValue::Fixed(0),
+        condition,
+    };
+    for (ability, display) in object_ability_grants {
+        compiled.push(grant_object_ability_for_anthem_subject(
+            &grant_clause,
+            ability,
+            display,
+        ));
     }
     Ok(Some(compiled))
 }
@@ -2385,6 +2414,7 @@ pub(crate) fn object_filter_specificity_score(filter: &ObjectFilter) -> usize {
     score += usize::from(filter.entered_battlefield_this_turn) * 2;
     score += usize::from(filter.entered_battlefield_controller.is_some()) * 2;
     score += usize::from(filter.was_dealt_damage_this_turn) * 2;
+    score += usize::from(filter.dealt_damage_to_player_this_turn.is_some()) * 2;
     score += usize::from(!filter.excluded_card_types.is_empty()) * 2;
     score += usize::from(!filter.excluded_supertypes.is_empty()) * 2;
     score += usize::from(!filter.excluded_colors.is_empty()) * 2;
@@ -2815,6 +2845,9 @@ pub(crate) fn parse_static_condition_clause(
     }
     if SOURCE_IS_MONSTROUS_CONDITION_PATTERN.matches_words(&clause_words) {
         return Ok(crate::ConditionExpr::SourceIsMonstrous);
+    }
+    if SOURCE_IS_ON_BATTLEFIELD_CONDITION_PATTERN.matches_words(&clause_words) {
+        return Ok(crate::ConditionExpr::SourceIsInZone(Zone::Battlefield));
     }
     if SOURCE_DEVOURED_CREATURES_CONDITION_PATTERN.matches_words(&clause_words) {
         return Ok(crate::ConditionExpr::SourceDevouredCreaturesOrMore(1));
@@ -5144,6 +5177,18 @@ fn grant_keyword_action_for_anthem_subject(
             action,
             condition: clause.condition.clone(),
         },
+    }
+}
+
+fn granted_object_ability_for_keyword_action(
+    action: &KeywordAction,
+) -> Option<(ParsedAbility, String)> {
+    match action {
+        KeywordAction::Afflict(amount) => Some((
+            parsed_ability_from_ability(afflict_triggered_ability(*amount)),
+            action.display_text(),
+        )),
+        _ => None,
     }
 }
 
