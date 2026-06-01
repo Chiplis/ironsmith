@@ -10,8 +10,7 @@ use crate::mana::ManaSymbol;
 pub use ironsmith_core::AddManaOfAnyOneColorEffect;
 
 use super::choice_helpers::{
-    apply_land_two_or_more_mana_replacement, choose_mana_colors, credit_mana_symbols_from_context,
-    mana_added_count_outcome,
+    choose_mana_colors, credit_mana_symbols_from_context, mana_added_count_outcome,
 };
 
 /// Effect that adds mana of any ONE color to a player's mana pool.
@@ -58,8 +57,7 @@ impl EffectExecutor for AddManaOfAnyOneColorEffect {
 
         let symbol = ManaSymbol::from_color(color);
         let mana = std::iter::repeat_n(symbol, amount as usize).collect::<Vec<_>>();
-        let mana = apply_land_two_or_more_mana_replacement(game, ctx, mana);
-        credit_mana_symbols_from_context(game, player_id, mana.iter().copied(), ctx);
+        let mana = credit_mana_symbols_from_context(game, player_id, mana, ctx);
 
         Ok(mana_added_count_outcome(
             ctx,

@@ -1,9 +1,6 @@
 //! Add colorless mana effect implementation.
 
-use super::choice_helpers::{
-    apply_land_two_or_more_mana_replacement, credit_mana_symbols_from_context,
-    mana_added_value_outcome,
-};
+use super::choice_helpers::{credit_mana_symbols_from_context, mana_added_value_outcome};
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_player_filter, resolve_value};
@@ -62,8 +59,7 @@ impl EffectExecutor for AddColorlessManaEffect {
         let count = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
 
         let mana_added: Vec<ManaSymbol> = (0..count).map(|_| ManaSymbol::Colorless).collect();
-        let mana_added = apply_land_two_or_more_mana_replacement(game, ctx, mana_added);
-        credit_mana_symbols_from_context(game, player_id, mana_added.iter().copied(), ctx);
+        let mana_added = credit_mana_symbols_from_context(game, player_id, mana_added, ctx);
         Ok(mana_added_value_outcome(ctx, player_id, mana_added))
     }
 

@@ -5179,13 +5179,18 @@ mod tests {
     use crate::alternative_cast::CastingMethod;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::cards::builders::CardDefinitionBuilder;
+    use crate::color::Color;
     use crate::derived_view::DerivedGameView;
-    use crate::effects::{AddManaEffect, EffectExecutor, ExecutionContext};
+    use crate::effect::Value;
+    use crate::effects::{
+        AddManaEffect, AddManaOfChosenColorEffect, EffectExecutor, ExecutionContext,
+    };
     use crate::events::spells::SpellCastEvent;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::provenance::ProvNodeId;
     use crate::snapshot::ObjectSnapshot;
+    use crate::target::{ObjectFilter, PlayerFilter};
     use crate::triggers::TriggerEvent;
     use crate::types::{CardType, Subtype};
     use crate::zone::Zone;
@@ -5211,6 +5216,15 @@ mod tests {
     fn create_artifact(game: &mut GameState, owner: PlayerId, name: &str) {
         let card = CardBuilder::new(CardId::new(), name)
             .card_types(vec![CardType::Artifact])
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Battlefield);
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    fn create_creature(game: &mut GameState, owner: PlayerId, name: &str) {
+        let card = CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
             .build();
         game.create_object_from_card(&card, owner, Zone::Battlefield);
     }
@@ -5334,6 +5348,76 @@ mod tests {
                 .colorless,
             1,
             "Damping Sphere should also replace actually produced land mana"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn damping_sphere_replaces_chosen_color_land_mana_outputs() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let forest_def = one_mana_land_definition();
+        let source_id = game.create_object_from_definition(&forest_def, alice, Zone::Battlefield);
+        let sphere_def = damping_sphere_definition();
+        game.create_object_from_definition(&sphere_def, alice, Zone::Battlefield);
+        game.set_chosen_color(source_id, Color::Blue);
+
+        let mana_ability_index = game
+            .object(source_id)
+            .expect("source land should remain on battlefield")
+            .abilities
+            .iter()
+            .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+            .expect("test land should have a mana ability");
+        let mut ctx = ExecutionContext::new_default(source_id, alice)
+            .with_ability_index(mana_ability_index);
+
+        let fixed_outcome = AddManaOfChosenColorEffect::new(Value::Fixed(2), PlayerFilter::You)
+            .execute(&mut game, &mut ctx)
+            .expect("chosen-color land mana ability should execute");
+        assert_eq!(
+            fixed_outcome.value,
+            crate::effect::OutcomeValue::Count(1),
+            "Damping Sphere should replace fixed two-mana chosen-color land output"
+        );
+        assert_eq!(
+            game.player(alice)
+                .expect("Alice should exist")
+                .mana_pool
+                .colorless,
+            1
+        );
+        assert_eq!(
+            game.player(alice).expect("Alice should exist").mana_pool.blue,
+            0,
+            "the original chosen-color mana should not be credited"
+        );
+
+        game.empty_mana_pools();
+        create_creature(&mut game, alice, "Damping Sphere Test Creature A");
+        create_creature(&mut game, alice, "Damping Sphere Test Creature B");
+        let dynamic_outcome = AddManaOfChosenColorEffect::new(
+            Value::Count(ObjectFilter::creature().you_control()),
+            PlayerFilter::You,
+        )
+        .execute(&mut game, &mut ctx)
+        .expect("dynamic chosen-color land mana ability should execute");
+        assert_eq!(
+            dynamic_outcome.value,
+            crate::effect::OutcomeValue::Count(1),
+            "Damping Sphere should replace dynamic chosen-color land output of two or more mana"
+        );
+        assert_eq!(
+            game.player(alice)
+                .expect("Alice should exist")
+                .mana_pool
+                .colorless,
+            1
+        );
+        assert_eq!(
+            game.player(alice).expect("Alice should exist").mana_pool.blue,
+            0,
+            "dynamic chosen-color mana should also be fully replaced"
         );
     }
 

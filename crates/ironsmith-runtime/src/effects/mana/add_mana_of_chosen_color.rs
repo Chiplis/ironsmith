@@ -49,15 +49,10 @@ impl EffectExecutor for AddManaOfChosenColorEffect {
         }
 
         let symbol = ManaSymbol::from_color(selected);
-        credit_repeated_mana_symbol_from_context(game, player_id, symbol, amount, ctx);
-        let mana = std::iter::repeat_n(symbol, amount as usize).collect::<Vec<_>>();
+        let mana = credit_repeated_mana_symbol_from_context(game, player_id, symbol, amount, ctx);
+        let count = mana.len() as i32;
 
-        Ok(mana_added_count_outcome(
-            ctx,
-            player_id,
-            mana,
-            amount as i32,
-        ))
+        Ok(mana_added_count_outcome(ctx, player_id, mana, count))
     }
 
     fn producible_mana_symbols(

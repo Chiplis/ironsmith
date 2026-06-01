@@ -163,18 +163,20 @@ pub(crate) fn credit_mana_symbols_from_context<I>(
     player_id: PlayerId,
     symbols: I,
     ctx: &ExecutionContext,
-) where
+) -> Vec<ManaSymbol>
+where
     I: IntoIterator<Item = ManaSymbol>,
 {
     let symbols = apply_land_two_or_more_mana_replacement(game, ctx, symbols.into_iter().collect());
     credit_mana_symbols_with_context(
         game,
         player_id,
-        symbols,
+        symbols.iter().copied(),
         Some(ctx.source),
         &ctx.mana.mana_usage_restrictions,
         ctx.mana.mana_source_chosen_creature_type,
     );
+    symbols
 }
 
 fn credit_mana_symbols_with_context<I>(
@@ -209,35 +211,21 @@ pub(crate) fn credit_repeated_mana_symbol_from_context(
     symbol: ManaSymbol,
     count: u32,
     ctx: &ExecutionContext,
-) {
-    credit_repeated_mana_symbol_with_context(
+) -> Vec<ManaSymbol> {
+    let symbols = apply_land_two_or_more_mana_replacement(
+        game,
+        ctx,
+        std::iter::repeat_n(symbol, count as usize).collect(),
+    );
+    credit_mana_symbols_with_context(
         game,
         player_id,
-        symbol,
-        count,
+        symbols.iter().copied(),
         Some(ctx.source),
         &ctx.mana.mana_usage_restrictions,
         ctx.mana.mana_source_chosen_creature_type,
     );
-}
-
-fn credit_repeated_mana_symbol_with_context(
-    game: &mut GameState,
-    player_id: PlayerId,
-    symbol: ManaSymbol,
-    count: u32,
-    source: Option<ObjectId>,
-    restrictions: &[crate::ability::ManaUsageRestriction],
-    source_chosen_creature_type: Option<Subtype>,
-) {
-    credit_mana_symbols_with_context(
-        game,
-        player_id,
-        std::iter::repeat_n(symbol, count as usize),
-        source,
-        restrictions,
-        source_chosen_creature_type,
-    );
+    symbols
 }
 
 /// Choose one or more mana symbols through the decision system with stable
