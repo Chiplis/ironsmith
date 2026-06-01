@@ -317,6 +317,8 @@ pub struct ManaSpendPermission {
     pub player: PlayerFilter,
     pub scope: ManaSpendScope,
     pub mana_source_filter: Option<ObjectFilter>,
+    pub any_color_mana_symbol: Option<ManaSymbol>,
+    pub other_mana_only_as_colorless: bool,
 }
 
 impl ManaSpendPermission {
@@ -325,6 +327,21 @@ impl ManaSpendPermission {
             player,
             scope: ManaSpendScope::AllCosts,
             mana_source_filter: None,
+            any_color_mana_symbol: None,
+            other_mana_only_as_colorless: false,
+        }
+    }
+
+    pub fn mana_symbol_as_any_color_other_as_colorless(
+        player: PlayerFilter,
+        symbol: ManaSymbol,
+    ) -> Self {
+        Self {
+            player,
+            scope: ManaSpendScope::AllCosts,
+            mana_source_filter: None,
+            any_color_mana_symbol: Some(symbol),
+            other_mana_only_as_colorless: true,
         }
     }
 
@@ -333,6 +350,8 @@ impl ManaSpendPermission {
             player,
             scope: ManaSpendScope::ActivationCostsOf(filter),
             mana_source_filter: None,
+            any_color_mana_symbol: None,
+            other_mana_only_as_colorless: false,
         }
     }
 
@@ -344,6 +363,8 @@ impl ManaSpendPermission {
             player,
             scope: ManaSpendScope::CastingSpellsWithStableIds(stable_ids),
             mana_source_filter: None,
+            any_color_mana_symbol: None,
+            other_mana_only_as_colorless: false,
         }
     }
 
@@ -352,6 +373,8 @@ impl ManaSpendPermission {
             player,
             scope: ManaSpendScope::CastingSpellsMatching(filter),
             mana_source_filter: None,
+            any_color_mana_symbol: None,
+            other_mana_only_as_colorless: false,
         }
     }
 
@@ -364,6 +387,8 @@ impl ManaSpendPermission {
             player,
             scope: ManaSpendScope::CastingSpellsMatching(filter),
             mana_source_filter: Some(mana_source_filter),
+            any_color_mana_symbol: None,
+            other_mana_only_as_colorless: false,
         }
     }
 

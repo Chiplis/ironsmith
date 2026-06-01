@@ -6180,7 +6180,31 @@ impl GameState {
             .mana_spend_effects
             .permissions
             .iter()
-            .any(|permission| permission.allows(self, payer, source))
+            .any(|permission| {
+                permission.allows(self, payer, source)
+                    && permission.permission.any_color_mana_symbol.is_none()
+            })
+    }
+
+    pub fn mana_spend_policy(
+        &self,
+        payer: PlayerId,
+        source: Option<ObjectId>,
+    ) -> crate::player::ManaSpendPolicy {
+        let mut policy = crate::player::ManaSpendPolicy::default();
+        for permission in &self.effect_store.mana_spend_effects.permissions {
+            if !permission.allows(self, payer, source) {
+                continue;
+            }
+            if let Some(symbol) = permission.permission.any_color_mana_symbol {
+                policy.add_symbol_as_any_color(symbol);
+            } else {
+                policy.allow_any_color = true;
+            }
+            policy.other_mana_only_as_colorless |=
+                permission.permission.other_mana_only_as_colorless;
+        }
+        policy
     }
 
     pub fn can_spend_mana_as_any_color_from_mana_source(
@@ -6451,7 +6475,7 @@ impl GameState {
             return false;
         };
 
-        let allow_any_color = self.can_spend_mana_as_any_color(payer, source);
+        let mana_spend_policy = self.mana_spend_policy(payer, source);
         let allow_black_life =
             self.player_can_pay_black_with_life_for_reason(payer, source, reason);
         let mut preview_pool = if let Some(symbol) = source
@@ -6462,10 +6486,10 @@ impl GameState {
             player.mana_pool.clone()
         };
         let (can_pay, life_to_pay) = preview_pool
-            .try_pay_tracking_life_with_any_color_and_black_life(
+            .try_pay_tracking_life_with_mana_spend_policy_and_black_life(
                 cost,
                 x_value,
-                allow_any_color,
+                &mana_spend_policy,
                 allow_black_life,
             );
         can_pay && self.can_pay_life_with_reason(payer, life_to_pay, reason)
@@ -6497,7 +6521,7 @@ impl GameState {
         x_value: u32,
         reason: crate::costs::PaymentReason,
     ) -> bool {
-        let allow_any_color = self.can_spend_mana_as_any_color(payer, source);
+        let mana_spend_policy = self.mana_spend_policy(payer, source);
         let allow_black_life =
             self.player_can_pay_black_with_life_for_reason(payer, source, reason);
         let original_pool = self.player(payer).map(|player| player.mana_pool.clone());
@@ -6509,10 +6533,10 @@ impl GameState {
             };
             let mut restricted_pool = self.mana_pool_restricted_to_symbol(&original_pool, symbol);
             let (paid, life_to_pay) = restricted_pool
-                .try_pay_tracking_life_with_any_color_and_black_life(
+                .try_pay_tracking_life_with_mana_spend_policy_and_black_life(
                     cost,
                     x_value,
-                    allow_any_color,
+                    &mana_spend_policy,
                     allow_black_life,
                 );
             if !paid || !self.can_pay_life_with_reason(payer, life_to_pay, reason) {
@@ -6543,10 +6567,10 @@ impl GameState {
             };
             player
                 .mana_pool
-                .try_pay_tracking_life_with_any_color_and_black_life(
+                .try_pay_tracking_life_with_mana_spend_policy_and_black_life(
                     cost,
                     x_value,
-                    allow_any_color,
+                    &mana_spend_policy,
                     allow_black_life,
                 )
         };

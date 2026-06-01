@@ -585,14 +585,14 @@ impl<'a> DerivedGameView<'a> {
         x_value: u32,
         reason: crate::costs::PaymentReason,
     ) -> bool {
-        let allow_any_color = self.game.can_spend_mana_as_any_color(player, source);
+        let mana_spend_policy = self.game.mana_spend_policy(player, source);
         let allow_black_life = self.player_can_pay_black_with_life_for_reason(player, reason);
         let mut preview_pool = self.potential_mana(player);
         let (can_pay, life_to_pay) = preview_pool
-            .try_pay_tracking_life_with_any_color_and_black_life(
+            .try_pay_tracking_life_with_mana_spend_policy_and_black_life(
                 cost,
                 x_value,
-                allow_any_color,
+                &mana_spend_policy,
                 allow_black_life,
             );
         can_pay

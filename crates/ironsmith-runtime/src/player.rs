@@ -14,6 +14,63 @@ pub struct ManaPool {
     pub colorless: u32,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ManaSpendPolicy {
+    pub allow_any_color: bool,
+    pub any_color_mana_symbols: Vec<ManaSymbol>,
+    pub other_mana_only_as_colorless: bool,
+}
+
+impl ManaSpendPolicy {
+    pub fn from_any_color(allow_any_color: bool) -> Self {
+        Self {
+            allow_any_color,
+            ..Self::default()
+        }
+    }
+
+    pub fn add_symbol_as_any_color(&mut self, symbol: ManaSymbol) {
+        if !self.any_color_mana_symbols.contains(&symbol) {
+            self.any_color_mana_symbols.push(symbol);
+        }
+    }
+
+    pub(crate) fn has_any_color_spending(&self) -> bool {
+        self.allow_any_color || !self.any_color_mana_symbols.is_empty()
+    }
+
+    fn symbol_spends_as_any_color(&self, symbol: ManaSymbol) -> bool {
+        self.any_color_mana_symbols.contains(&symbol)
+            || (self.allow_any_color && !self.other_mana_only_as_colorless)
+    }
+
+    fn symbol_spends_as_colorless(&self, symbol: ManaSymbol) -> bool {
+        symbol == ManaSymbol::Colorless
+            || (self.other_mana_only_as_colorless && !self.symbol_spends_as_any_color(symbol))
+    }
+
+    pub(crate) fn can_pay_symbol(&self, symbol: ManaSymbol, required: ManaSymbol) -> bool {
+        match required {
+            ManaSymbol::White
+            | ManaSymbol::Blue
+            | ManaSymbol::Black
+            | ManaSymbol::Red
+            | ManaSymbol::Green => symbol == required || self.symbol_spends_as_any_color(symbol),
+            ManaSymbol::Colorless => self.symbol_spends_as_colorless(symbol),
+            ManaSymbol::Generic(_) | ManaSymbol::Snow => matches!(
+                symbol,
+                ManaSymbol::White
+                    | ManaSymbol::Blue
+                    | ManaSymbol::Black
+                    | ManaSymbol::Red
+                    | ManaSymbol::Green
+                    | ManaSymbol::Colorless
+            ),
+            ManaSymbol::Life(_) | ManaSymbol::X => false,
+        }
+    }
+}
+
 impl ManaPool {
     pub fn new() -> Self {
         Self::default()
@@ -313,6 +370,179 @@ impl ManaPool {
         .0
     }
 
+    pub fn try_pay_tracking_life_with_mana_spend_policy_and_black_life(
+        &mut self,
+        cost: &crate::mana::ManaCost,
+        x_value: u32,
+        policy: &ManaSpendPolicy,
+        allow_black_life: bool,
+    ) -> (bool, u32) {
+        let original_pool = self.clone();
+        let result =
+            self.try_pay_internal_with_policy(cost, x_value, false, policy, allow_black_life);
+        if result.0 {
+            return result;
+        }
+
+        *self = original_pool;
+        self.try_pay_internal_with_policy(cost, x_value, true, policy, allow_black_life)
+    }
+
+    pub fn max_x_for_cost_with_mana_spend_policy_and_black_life(
+        &self,
+        cost: &crate::mana::ManaCost,
+        policy: &ManaSpendPolicy,
+        allow_black_life: bool,
+    ) -> u32 {
+        let x_pip_count = cost
+            .pips()
+            .iter()
+            .filter(|pip| pip.iter().any(|s| matches!(s, ManaSymbol::X)))
+            .count() as u32;
+        if x_pip_count == 0 {
+            return 0;
+        }
+
+        let mut non_x_cost = Vec::new();
+        for pip in cost.pips() {
+            if !pip.iter().any(|s| matches!(s, ManaSymbol::X)) {
+                non_x_cost.push(pip.clone());
+            }
+        }
+        let mut test_pool = self.clone();
+        let non_x = crate::mana::ManaCost::from_pips(non_x_cost);
+        if !test_pool
+            .try_pay_tracking_life_with_mana_spend_policy_and_black_life(
+                &non_x,
+                0,
+                policy,
+                allow_black_life,
+            )
+            .0
+        {
+            return 0;
+        }
+
+        test_pool.total() / x_pip_count
+    }
+
+    fn try_pay_internal_with_policy(
+        &mut self,
+        cost: &crate::mana::ManaCost,
+        x_value: u32,
+        prefer_life_for_phyrexian: bool,
+        policy: &ManaSpendPolicy,
+        allow_black_life: bool,
+    ) -> (bool, u32) {
+        let mut pips: Vec<_> = cost.pips().iter().collect();
+        pips.sort_by_key(|pip| {
+            if pip
+                .iter()
+                .any(|s| matches!(s, ManaSymbol::Generic(_) | ManaSymbol::X))
+            {
+                1
+            } else {
+                0
+            }
+        });
+
+        let mut life_to_pay = 0u32;
+        for pip in pips {
+            let is_phyrexian = pip.iter().any(|s| matches!(s, ManaSymbol::Life(_)));
+            let is_singleton_black_with_life =
+                Self::singleton_black_pip_with_life_option(pip, allow_black_life);
+            let has_life_option = is_phyrexian || is_singleton_black_with_life;
+
+            if prefer_life_for_phyrexian && has_life_option {
+                if is_singleton_black_with_life {
+                    life_to_pay += 2;
+                    continue;
+                }
+                if let Some(amount) = pip.iter().find_map(|symbol| match symbol {
+                    ManaSymbol::Life(amount) => Some(*amount as u32),
+                    _ => None,
+                }) {
+                    life_to_pay += amount;
+                    continue;
+                }
+            }
+
+            let mut paid = false;
+            for alternative in pip.iter() {
+                match alternative {
+                    ManaSymbol::White
+                    | ManaSymbol::Blue
+                    | ManaSymbol::Black
+                    | ManaSymbol::Red
+                    | ManaSymbol::Green
+                    | ManaSymbol::Colorless => {
+                        if let Some(symbol) = self.first_symbol_for(*alternative, policy)
+                            && self.remove(symbol, 1)
+                        {
+                            paid = true;
+                            break;
+                        }
+                        if *alternative == ManaSymbol::Black && is_singleton_black_with_life {
+                            life_to_pay += 2;
+                            paid = true;
+                            break;
+                        }
+                    }
+                    ManaSymbol::Generic(n) => {
+                        let needed = *n as u32;
+                        if self.total() >= needed {
+                            self.pay_generic(needed);
+                            paid = true;
+                            break;
+                        }
+                    }
+                    ManaSymbol::X => {
+                        if self.total() >= x_value {
+                            self.pay_generic(x_value);
+                            paid = true;
+                            break;
+                        }
+                    }
+                    ManaSymbol::Snow => {
+                        if self.total() > 0 {
+                            self.pay_generic(1);
+                            paid = true;
+                            break;
+                        }
+                    }
+                    ManaSymbol::Life(amount) => {
+                        life_to_pay += *amount as u32;
+                        paid = true;
+                        break;
+                    }
+                }
+            }
+
+            if !paid {
+                return (false, 0);
+            }
+        }
+
+        (true, life_to_pay)
+    }
+
+    fn first_symbol_for(
+        &self,
+        required: ManaSymbol,
+        policy: &ManaSpendPolicy,
+    ) -> Option<ManaSymbol> {
+        [
+            ManaSymbol::White,
+            ManaSymbol::Blue,
+            ManaSymbol::Black,
+            ManaSymbol::Red,
+            ManaSymbol::Green,
+            ManaSymbol::Colorless,
+        ]
+        .into_iter()
+        .find(|symbol| self.amount(*symbol) > 0 && policy.can_pay_symbol(*symbol, required))
+    }
+
     /// Internal payment implementation with configurable Phyrexian strategy.
     ///
     /// If `prefer_life_for_phyrexian` is true, Phyrexian pips are paid with life first.
@@ -498,84 +728,12 @@ impl ManaPool {
         allow_any_color: bool,
         allow_black_life: bool,
     ) -> u32 {
-        // First check if the non-X part of the cost can be paid
-        let mut test_pool = self.clone();
-
-        // Count how many X pips there are
-        let x_pip_count = cost
-            .pips()
-            .iter()
-            .filter(|pip| pip.iter().any(|s| matches!(s, ManaSymbol::X)))
-            .count() as u32;
-
-        if x_pip_count == 0 {
-            // No X in cost, X is 0
-            return 0;
-        }
-
-        // Pay non-X costs first to see what's left
-        // For max_x calculation, prefer life payment over mana to preserve mana for X
-        for pip in cost.pips() {
-            let is_x_pip = pip.iter().any(|s| matches!(s, ManaSymbol::X));
-            if is_x_pip {
-                continue; // Skip X pips for now
-            }
-
-            // First check if there's a life payment option - prefer it to save mana for X
-            let has_life_option = pip.iter().any(|s| matches!(s, ManaSymbol::Life(_)))
-                || Self::singleton_black_pip_with_life_option(pip, allow_black_life);
-            if has_life_option {
-                continue; // Can pay with life, preserving mana for X
-            }
-
-            let mut paid = false;
-            for alternative in pip {
-                match alternative {
-                    ManaSymbol::White
-                    | ManaSymbol::Blue
-                    | ManaSymbol::Black
-                    | ManaSymbol::Red
-                    | ManaSymbol::Green => {
-                        if allow_any_color {
-                            if test_pool.total() > 0 {
-                                test_pool.pay_generic(1);
-                                paid = true;
-                                break;
-                            }
-                        } else if test_pool.amount(*alternative) > 0 {
-                            test_pool.remove(*alternative, 1);
-                            paid = true;
-                            break;
-                        }
-                    }
-                    ManaSymbol::Colorless => {
-                        if test_pool.colorless > 0 {
-                            test_pool.colorless -= 1;
-                            paid = true;
-                            break;
-                        }
-                    }
-                    ManaSymbol::Generic(n) => {
-                        let needed = *n as u32;
-                        if test_pool.total() >= needed {
-                            test_pool.pay_generic(needed);
-                            paid = true;
-                            break;
-                        }
-                    }
-                    ManaSymbol::Snow | ManaSymbol::Life(_) | ManaSymbol::X => {
-                        paid = true;
-                        break;
-                    }
-                }
-            }
-            if !paid {
-                return 0; // Can't even pay the base cost
-            }
-        }
-
-        // Remaining mana can all go to X (divided by number of X pips, but usually 1)
-        test_pool.total() / x_pip_count
+        let policy = ManaSpendPolicy::from_any_color(allow_any_color);
+        self.max_x_for_cost_with_mana_spend_policy_and_black_life(
+            cost,
+            &policy,
+            allow_black_life,
+        )
     }
 
     fn singleton_black_pip_with_life_option(pip: &[ManaSymbol], allow_black_life: bool) -> bool {
