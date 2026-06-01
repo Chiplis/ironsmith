@@ -30851,6 +30851,29 @@ fn parse_additional_cost_sacrificed_power_reference_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn corpse_lunge_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Corpse Lunge");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let lower = rendered.to_ascii_lowercase();
+    assert!(
+        lower.contains("as an additional cost to cast this spell, exile a creature card from your graveyard"),
+        "expected Corpse Lunge additional exile cost, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Corpse Lunge deals damage equal to the exiled card's power to target creature"),
+        "expected Corpse Lunge to render exiled-card power damage, got {rendered}"
+    );
+
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("DealDamageEffect")
+            && spell_debug.contains(crate::tag::SOURCE_EXILED_TAG),
+        "expected Corpse Lunge damage amount to be based on the exiled cost card, got {spell_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_additional_cost_discard_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Discard Cost Variant")
         .parse_text("As an additional cost to cast this spell, discard a card.\nDraw a card.")

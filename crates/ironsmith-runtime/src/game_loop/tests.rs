@@ -22831,6 +22831,246 @@ fn necrotic_fumes_cost_prompt_has_no_legal_creature_without_controller_creature(
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn corpse_lunge_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(100_783), "Corpse Lunge")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "As an additional cost to cast this spell, exile a creature card from your graveyard.\nCorpse Lunge deals damage equal to the exiled card's power to target creature.",
+        )
+        .expect("Corpse Lunge should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn corpse_lunge_cast_exiles_graveyard_creature_and_deals_its_power() {
+    use crate::decision::{GameProgress, LegalAction};
+    use crate::zone::Zone;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut trigger_queue = TriggerQueue::new();
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let corpse_lunge = corpse_lunge_definition();
+    let cost_creature = CardBuilder::new(CardId::new(), "Exiled Brute")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    let target_creature = CardBuilder::new(CardId::new(), "Target Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(5, 5))
+        .build();
+
+    let cost_creature_id = game.create_object_from_card(&cost_creature, alice, Zone::Graveyard);
+    let target_creature_id = game.create_object_from_card(&target_creature, bob, Zone::Battlefield);
+    let spell_id = game.create_object_from_definition(&corpse_lunge, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Black, 3);
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("Corpse Lunge cast should start");
+
+    let mut reached_priority = false;
+    for _ in 0..8 {
+        progress = match progress {
+            GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(_)) => {
+                apply_priority_response(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::Targets(vec![Target::Object(target_creature_id)]),
+                )
+                .expect("Corpse Lunge should accept creature target")
+            }
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectOptions(ctx),
+            ) => {
+                let option_index = ctx
+                    .options
+                    .iter()
+                    .find(|opt| opt.description.to_ascii_lowercase().contains("exile"))
+                    .map(|opt| opt.index)
+                    .unwrap_or(0);
+                apply_priority_response(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::NextCostChoice(option_index),
+                )
+                .expect("Corpse Lunge should accept exile additional cost choice")
+            }
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectObjects(ctx),
+            ) => {
+                assert!(
+                    ctx.candidates
+                        .iter()
+                        .any(|candidate| candidate.id == cost_creature_id && candidate.legal),
+                    "additional cost chooser should allow exiling the controller's graveyard creature card"
+                );
+                apply_priority_response(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::CardCostChoice(cost_creature_id),
+                )
+                .expect("Corpse Lunge should accept exiling chosen graveyard creature")
+            }
+            GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Priority(_)) => {
+                reached_priority = true;
+                break;
+            }
+            other => panic!("unexpected cast flow state for Corpse Lunge: {other:?}"),
+        };
+    }
+    assert!(reached_priority, "Corpse Lunge should finish casting after costs");
+    assert_eq!(game.stack.len(), 1, "Corpse Lunge should be on the stack");
+    let stack_entry = game.stack.last().expect("Corpse Lunge should be stacked");
+    let exiled_snapshots = stack_entry
+        .tagged_objects
+        .get(&crate::tag::TagKey::from(crate::tag::SOURCE_EXILED_TAG))
+        .expect("Corpse Lunge stack entry should remember the exiled cost card");
+    assert_eq!(exiled_snapshots.len(), 1);
+    assert_eq!(exiled_snapshots[0].name, "Exiled Brute");
+    assert!(
+        game.exile.iter().any(|&id| game
+            .object(id)
+            .is_some_and(|obj| obj.name == "Exiled Brute" && obj.owner == alice)),
+        "Corpse Lunge additional cost should exile the chosen graveyard creature"
+    );
+
+    resolve_stack_entry(&mut game).expect("Corpse Lunge should resolve");
+    assert_eq!(
+        game.damage_on(target_creature_id),
+        4,
+        "Corpse Lunge should deal damage equal to the exiled creature card's power"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn corpse_lunge_rejects_noncreature_target() {
+    use crate::decision::LegalAction;
+    use crate::zone::Zone;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut trigger_queue = TriggerQueue::new();
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let corpse_lunge = corpse_lunge_definition();
+    let cost_creature = CardBuilder::new(CardId::new(), "Exiled Brute")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    let artifact = CardBuilder::new(CardId::new(), "Target Relic")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let legal_creature = CardBuilder::new(CardId::new(), "Legal Target Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    let cost_creature_id = game.create_object_from_card(&cost_creature, alice, Zone::Graveyard);
+    let artifact_id = game.create_object_from_card(&artifact, bob, Zone::Battlefield);
+    game.create_object_from_card(&legal_creature, bob, Zone::Battlefield);
+    let spell_id = game.create_object_from_definition(&corpse_lunge, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Black, 3);
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("Corpse Lunge cast should start");
+
+    for _ in 0..8 {
+        progress = match progress {
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectOptions(ctx),
+            ) => {
+                let option_index = ctx
+                    .options
+                    .iter()
+                    .find(|opt| opt.description.to_ascii_lowercase().contains("exile"))
+                    .map(|opt| opt.index)
+                    .unwrap_or(0);
+                apply_priority_response(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::NextCostChoice(option_index),
+                )
+                .expect("Corpse Lunge should accept cost choice before target rejection")
+            }
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectObjects(_),
+            ) => apply_priority_response(
+                &mut game,
+                &mut trigger_queue,
+                &mut state,
+                &PriorityResponse::CardCostChoice(cost_creature_id),
+            )
+            .expect("Corpse Lunge should accept graveyard creature cost choice"),
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Targets(_),
+            ) => {
+                let err = apply_priority_response(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::Targets(vec![Target::Object(artifact_id)]),
+                )
+                .expect_err("Corpse Lunge should reject a noncreature target");
+                let detail = format!("{err:?}").to_ascii_lowercase();
+                assert!(
+                    detail.contains("target") || detail.contains("legal"),
+                    "expected target legality error for noncreature target, got {detail}"
+                );
+                return;
+            }
+            other => panic!("unexpected Corpse Lunge cast flow before target selection: {other:?}"),
+        };
+    }
+    panic!("Corpse Lunge did not reach target selection for noncreature target test");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_corpse_cobble_flashback_from_graveyard_still_uses_sacrificed_power() {
     use crate::cards::definitions::{grizzly_bears, llanowar_elves};
