@@ -1264,6 +1264,10 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                     && grammar::words_match_any_prefix(after_then, PUT_BACK_PREFIXES).is_some()
                     && grammar::contains_word(after_then, "any")
                     && grammar::contains_word(after_then, "order");
+                let allow_sacrifice_backref_followup = !starts_with_for_each_player_or_opponent
+                    && has_back_ref
+                    && find_verb_lexed(after_then)
+                        .is_some_and(|(verb, verb_idx)| verb == Verb::Sacrifice && verb_idx == 0);
                 let allow_clash_followup = starts_with_clash;
                 if has_effect_head && (!has_back_ref || allow_backref_split)
                     || has_effect_head && allow_clash_followup
@@ -1277,6 +1281,7 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                     || has_effect_head && allow_put_battlefield_with_counter_followup
                     || has_effect_head && allow_put_into_hand_followup
                     || has_effect_head && allow_put_back_in_any_order_followup
+                    || has_effect_head && allow_sacrifice_backref_followup
                 {
                     split_point = Some(i);
                     break;

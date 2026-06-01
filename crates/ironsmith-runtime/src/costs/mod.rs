@@ -206,7 +206,15 @@ impl Cost {
                     Self::remove_any_counters_from_source(counter_type, display_x)
                 }
             }
-            ironsmith_core::Cost::Energy(amount) => Self::energy(fixed_u32(amount, "energy cost")?),
+            ironsmith_core::Cost::Energy(amount) => match fixed_u32(amount.clone(), "energy cost") {
+                Ok(fixed) => Self::energy(fixed),
+                Err(_) => Self::try_effect(crate::effect::Effect::new(
+                    crate::effects::PayEnergyEffect::new(
+                        amount,
+                        crate::target::ChooseSpec::Player(crate::target::PlayerFilter::You),
+                    ),
+                ))?,
+            },
             ironsmith_core::Cost::Mill(count) => Self::mill(fixed_u32(count, "mill cost")?),
             ironsmith_core::Cost::Life(amount) => Self::life(fixed_u32(amount, "life cost")?),
             ironsmith_core::Cost::ExileSelf => Self::exile_self(),

@@ -337,6 +337,39 @@ fn color_only_hexproof_filter_words(words: &[&str]) -> Option<ObjectFilter> {
     }
 }
 
+fn stack_ability_filter(kind: crate::filter::StackObjectKind) -> ObjectFilter {
+    ObjectFilter {
+        zone: Some(Zone::Stack),
+        stack_kind: Some(kind),
+        ..Default::default()
+    }
+}
+
+fn ability_hexproof_filter_words(words: &[&str]) -> Option<ObjectFilter> {
+    match words {
+        ["activated", "ability" | "abilities"] => Some(stack_ability_filter(
+            crate::filter::StackObjectKind::ActivatedAbility,
+        )),
+        ["triggered", "ability" | "abilities"] => Some(stack_ability_filter(
+            crate::filter::StackObjectKind::TriggeredAbility,
+        )),
+        ["activated", "and" | "or", "triggered", "ability" | "abilities"] => {
+            Some(ObjectFilter {
+                any_of: vec![
+                    stack_ability_filter(crate::filter::StackObjectKind::ActivatedAbility),
+                    stack_ability_filter(crate::filter::StackObjectKind::TriggeredAbility),
+                ],
+                ..Default::default()
+            })
+        }
+        _ => None,
+    }
+}
+
+fn hexproof_from_filter_words(words: &[&str]) -> Option<ObjectFilter> {
+    color_only_hexproof_filter_words(words).or_else(|| ability_hexproof_filter_words(words))
+}
+
 fn parse_hexproof_from_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     let words_view = TokenWordView::new(tokens);
     let words = words_view.word_refs();
@@ -352,7 +385,7 @@ fn parse_hexproof_from_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordActi
         return None;
     }
 
-    color_only_hexproof_filter_words(&words[first_word_idx + 2..])
+    hexproof_from_filter_words(&words[first_word_idx + 2..])
         .map(|filter| vec![KeywordAction::HexproofFrom(filter)])
 }
 

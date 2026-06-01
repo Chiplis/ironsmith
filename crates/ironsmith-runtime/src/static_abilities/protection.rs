@@ -219,6 +219,13 @@ impl HexproofFrom {
 }
 
 fn describe_hexproof_from_filter(filter: &ObjectFilter) -> String {
+    if filter.any_of.len() == 2
+        && filter.any_of.iter().any(is_activated_ability_stack_filter)
+        && filter.any_of.iter().any(is_triggered_ability_stack_filter)
+    {
+        return "activated and triggered abilities".to_string();
+    }
+
     if !filter.any_of.is_empty() {
         return filter
             .any_of
@@ -232,6 +239,18 @@ fn describe_hexproof_from_filter(filter: &ObjectFilter) -> String {
         return "each color".to_string();
     }
 
+    if is_activated_ability_stack_filter(filter) {
+        return "activated abilities".to_string();
+    }
+    if is_triggered_ability_stack_filter(filter) {
+        return "triggered abilities".to_string();
+    }
+    if filter.zone == Some(crate::zone::Zone::Stack)
+        && filter.stack_kind == Some(crate::filter::StackObjectKind::Ability)
+    {
+        return "abilities".to_string();
+    }
+
     let description = filter.description();
     description
         .strip_suffix(" permanent")
@@ -239,6 +258,18 @@ fn describe_hexproof_from_filter(filter: &ObjectFilter) -> String {
         .or_else(|| description.strip_suffix(" source"))
         .unwrap_or(description.as_str())
         .to_string()
+}
+
+fn is_activated_ability_stack_filter(filter: &ObjectFilter) -> bool {
+    filter.zone == Some(crate::zone::Zone::Stack)
+        && filter.stack_kind == Some(crate::filter::StackObjectKind::ActivatedAbility)
+        && filter.any_of.is_empty()
+}
+
+fn is_triggered_ability_stack_filter(filter: &ObjectFilter) -> bool {
+    filter.zone == Some(crate::zone::Zone::Stack)
+        && filter.stack_kind == Some(crate::filter::StackObjectKind::TriggeredAbility)
+        && filter.any_of.is_empty()
 }
 
 fn is_exactly_all_magic_colors_filter(filter: &ObjectFilter) -> bool {

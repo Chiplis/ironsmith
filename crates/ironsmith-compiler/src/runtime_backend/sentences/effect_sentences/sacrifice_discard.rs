@@ -244,6 +244,16 @@ pub(crate) fn parse_sacrifice(
                     if_false: vec![base],
                 });
             }
+            if let Some((player, cost)) = parse_unless_pay_energy_equal_to_tagged_mana_value(
+                &sacrifice_tokens,
+                &tokens[unless_token_idx + 1..],
+            ) {
+                return Ok(EffectAst::UnlessPays {
+                    effects: vec![base],
+                    player,
+                    cost,
+                });
+            }
             if let Some(unless_effect) = try_build_unless(
                 vec![base],
                 SubjectVerbPrimitiveClause::new(tokens),
@@ -423,6 +433,45 @@ pub(crate) fn parse_sacrifice(
         sacrifice
     };
     Ok(wrap_unless_escaped(effect, unless_escaped))
+}
+
+fn parse_unless_pay_energy_equal_to_tagged_mana_value(
+    sacrifice_tokens: &[OwnedLexToken],
+    unless_tokens: &[OwnedLexToken],
+) -> Option<(PlayerAst, crate::cost::TotalCost)> {
+    let sacrifice_words = crate::runtime_backend::token_word_refs(sacrifice_tokens);
+    if !sacrifice_words.iter().any(|word| *word == "that") {
+        return None;
+    }
+
+    let words = crate::runtime_backend::token_word_refs(unless_tokens);
+    if !words.starts_with(&["you", "pay"])
+        || !words.windows(3).any(|window| window == ["its", "mana", "value"])
+        || !words.windows(2).any(|window| window == ["equal", "to"])
+        || !unless_tokens.iter().any(is_energy_payment_token)
+    {
+        return None;
+    }
+
+    Some((
+        PlayerAst::You,
+        crate::cost::TotalCost::from_cost(crate::costs::Cost::energy(Value::ManaValueOf(
+            Box::new(ChooseSpec::Target(Box::new(ChooseSpec::Object(
+                ObjectFilter::creature(),
+            )))),
+        ))),
+    ))
+}
+
+fn is_energy_payment_token(token: &OwnedLexToken) -> bool {
+    if token.kind == crate::runtime_backend::lexer::TokenKind::ManaGroup {
+        return token
+            .slice
+            .trim_start_matches('{')
+            .trim_end_matches('}')
+            .eq_ignore_ascii_case("e");
+    }
+    token.as_word().is_some_and(|word| word == "energy")
 }
 
 pub(crate) fn parse_discard(

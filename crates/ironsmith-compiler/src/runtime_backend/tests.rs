@@ -7571,6 +7571,30 @@ fn rewrite_lexed_keyword_line_parses_hexproof_from_color_in_keyword_list() {
 }
 
 #[test]
+fn rewrite_lexed_keyword_line_parses_hexproof_from_activated_and_triggered_abilities() {
+    let keyword_tokens = lex_line("Flying, hexproof from activated and triggered abilities", 0)
+        .expect("rewrite lexer should classify ability-scoped hexproof-from keyword line");
+
+    let parsed = super::clause_support::parse_ability_line_lexed(&keyword_tokens)
+        .expect("ability-scoped hexproof-from keyword line should parse");
+    assert_eq!(parsed.len(), 2, "{parsed:?}");
+    assert_eq!(parsed[0], crate::cards::builders::KeywordAction::Flying);
+
+    let crate::cards::builders::KeywordAction::HexproofFrom(filter) = &parsed[1] else {
+        panic!("expected hexproof-from action, got {parsed:?}");
+    };
+    assert_eq!(filter.any_of.len(), 2, "{filter:?}");
+    assert!(filter.any_of.iter().any(|candidate| {
+        candidate.zone == Some(crate::zone::Zone::Stack)
+            && candidate.stack_kind == Some(crate::filter::StackObjectKind::ActivatedAbility)
+    }));
+    assert!(filter.any_of.iter().any(|candidate| {
+        candidate.zone == Some(crate::zone::Zone::Stack)
+            && candidate.stack_kind == Some(crate::filter::StackObjectKind::TriggeredAbility)
+    }));
+}
+
+#[test]
 fn rewrite_lexed_triggered_and_static_entrypoints_work_natively() {
     let triggered_tokens = lex_line(
         "Whenever you cast an Aura, Equipment, or Vehicle spell, draw a card.",

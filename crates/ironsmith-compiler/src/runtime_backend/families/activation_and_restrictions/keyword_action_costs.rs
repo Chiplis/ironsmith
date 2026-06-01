@@ -674,6 +674,16 @@ fn parse_dynamic_payment_clause_as_total_cost(
         return Ok(None);
     }
     let token_words = words(&tokens);
+    let energy_count = tokens.iter().filter(|token| is_energy_cost_token(token)).count();
+    if energy_count > 0
+        && let Some(value) = parse_equal_to_aggregate_filter_value(&tokens)
+            .or_else(|| parse_equal_to_number_of_filter_value(&tokens))
+            .or_else(|| parse_equal_to_value(&tokens))
+            .or_else(|| parse_dynamic_cost_modifier_value(&tokens).ok().flatten())
+    {
+        return Ok(Some(TotalCost::from_cost(crate::costs::Cost::energy(value))));
+    }
+
     if MANA_PREFIX_PATTERN.matches_words(&token_words)
         && let Some(value) = parse_equal_to_aggregate_filter_value(&tokens)
             .or_else(|| parse_equal_to_number_of_filter_value(&tokens))
@@ -779,6 +789,30 @@ fn parse_dynamic_payment_clause_as_total_cost(
             ironsmith_core::DynamicManaDisplayHint::Default,
         )),
     )))
+}
+
+fn parse_equal_to_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let words = words(tokens);
+    let equal_idx = words
+        .windows(2)
+        .position(|window| window == ["equal", "to"])?;
+    let value_start = token_index_for_word_index(tokens, equal_idx + 2)?;
+    let value_tokens = trim_edge_punctuation(&trim_commas(&tokens[value_start..]));
+    let (value, used) = parse_value(&value_tokens)?;
+    trim_edge_punctuation(&trim_commas(&value_tokens[used..]))
+        .is_empty()
+        .then_some(value)
+}
+
+fn is_energy_cost_token(token: &OwnedLexToken) -> bool {
+    if token.kind == crate::runtime_backend::lexer::TokenKind::ManaGroup {
+        return token
+            .slice
+            .trim_start_matches('{')
+            .trim_end_matches('}')
+            .eq_ignore_ascii_case("e");
+    }
+    token.as_word().is_some_and(|word| word == "energy")
 }
 
 pub(crate) fn marker_keyword_id(keyword: &str) -> Option<&'static str> {
