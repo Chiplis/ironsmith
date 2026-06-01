@@ -96,7 +96,6 @@ const LIFE_TOTAL_AT_LEAST_STARTING_PATTERN: ClauseShape<'static> = clause_shape!
         ]
 );
 const OR_MORE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["or", "more"]);
-const HAS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["has"]);
 const HAS_OR_HAVE_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["has"], &["have"]]);
 const HAD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["had"]);
@@ -3162,7 +3161,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
-        && HAS_WORD_PATTERN.matches_word_at(&filtered, subject_len)
+        && HAS_OR_HAVE_WORD_PATTERN.matches_word_at(&filtered, subject_len)
         && matches!(
             &filtered[subject_len + 1..],
             ["more", "card", "in", "hand", "than", "you"]
@@ -3179,7 +3178,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
-        && HAS_WORD_PATTERN.matches_word_at(&filtered, subject_len)
+        && HAS_OR_HAVE_WORD_PATTERN.matches_word_at(&filtered, subject_len)
         && matches!(
             &filtered[subject_len + 1..],
             [
@@ -3190,6 +3189,25 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                 "more", "card", "in", "their", "hand", "than", "each", "other", "player",
             ] | [
                 "more", "cards", "in", "their", "hand", "than", "each", "other", "player",
+            ]
+        )
+    {
+        return Ok(PredicateAst::PlayerHasMoreCardsInHandThanEachOtherPlayer { player });
+    }
+
+    if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
+        && matches!(player, PlayerAst::You)
+        && HAS_OR_HAVE_WORD_PATTERN.matches_word_at(&filtered, subject_len)
+        && matches!(
+            &filtered[subject_len + 1..],
+            [
+                "more", "card", "in", "hand", "than", "each", "opponent"
+            ] | [
+                "more", "cards", "in", "hand", "than", "each", "opponent"
+            ] | [
+                "more", "card", "in", "their", "hand", "than", "each", "opponent",
+            ] | [
+                "more", "cards", "in", "their", "hand", "than", "each", "opponent",
             ]
         )
     {

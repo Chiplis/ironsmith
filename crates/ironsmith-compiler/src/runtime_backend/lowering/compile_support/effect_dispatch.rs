@@ -5739,11 +5739,14 @@ fn compile_subject_verb_effect(
 
             let tag = ctx.next_tag("sacrificed");
             ctx.last_object_tag = Some(tag.clone());
-            let choose = Effect::choose_objects(
-                resolved_filter,
-                *count as usize,
-                chooser.clone(),
-                tag.clone(),
+            let choose = Effect::new(
+                crate::effects::ChooseObjectsEffect::new(
+                    resolved_filter,
+                    *count as usize,
+                    chooser.clone(),
+                    tag.clone(),
+                )
+                .in_zone(Zone::Battlefield),
             );
             let sacrifice =
                 Effect::sacrifice_player(ObjectFilter::tagged(tag), *count, chooser.clone());

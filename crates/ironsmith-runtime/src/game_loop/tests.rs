@@ -24034,6 +24034,212 @@ fn arden_angel_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn akuta_born_of_ash_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(74_390), "Akuta, Born of Ash")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Black],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Spirit])
+        .power_toughness(PowerToughness::fixed(3, 2))
+        .parse_text(
+            "Haste\nAt the beginning of your upkeep, if you have more cards in hand than each opponent, you may sacrifice a Swamp. If you do, return Akuta from your graveyard to the battlefield.",
+        )
+        .expect("Akuta, Born of Ash should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_hand_filler(game: &mut GameState, controller: PlayerId, name: &str) -> ObjectId {
+    let card = CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Instant])
+        .build();
+    game.create_object_from_card(&card, controller, Zone::Hand)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_test_swamp(game: &mut GameState, controller: PlayerId) -> ObjectId {
+    let card = CardBuilder::new(CardId::new(), "Test Swamp")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Swamp])
+        .build();
+    game.create_object_from_card(&card, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn set_akuta_upkeep(game: &mut GameState, active_player: PlayerId) {
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = active_player;
+    game.turn.priority_player = Some(active_player);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn akuta_born_of_ash_upkeep_trigger_requires_more_cards_than_each_opponent() {
+    let mut game = setup_three_player_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+
+    let akuta = akuta_born_of_ash_definition();
+    game.create_object_from_definition(&akuta, alice, Zone::Graveyard);
+    create_hand_filler(&mut game, alice, "Alice Card");
+    create_hand_filler(&mut game, bob, "Bob Card");
+    set_akuta_upkeep(&mut game, alice);
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Akuta should not trigger when its controller is tied with an opponent for cards in hand"
+    );
+
+    create_hand_filler(&mut game, alice, "Alice Extra Card");
+    create_hand_filler(&mut game, charlie, "Charlie Card One");
+    create_hand_filler(&mut game, charlie, "Charlie Card Two");
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Akuta should not trigger unless its controller has more cards than every opponent"
+    );
+
+    create_hand_filler(&mut game, alice, "Alice Third Card");
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Akuta should trigger when its controller has more cards in hand than each opponent"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn akuta_born_of_ash_rechecks_hand_condition_on_resolution() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let akuta = akuta_born_of_ash_definition();
+    let akuta_id = game.create_object_from_definition(&akuta, alice, Zone::Graveyard);
+    let akuta_stable_id = game.object(akuta_id).expect("Akuta exists").stable_id;
+    let swamp_id = create_test_swamp(&mut game, alice);
+    create_hand_filler(&mut game, alice, "Alice Card One");
+    create_hand_filler(&mut game, alice, "Alice Card Two");
+    create_hand_filler(&mut game, bob, "Bob Card");
+    set_akuta_upkeep(&mut game, alice);
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert_eq!(trigger_queue.entries.len(), 1, "Akuta should trigger");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Akuta upkeep trigger should go on the stack");
+
+    create_hand_filler(&mut game, bob, "Bob Second Card");
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Akuta trigger should resolve without effect when its condition becomes false");
+
+    let akuta_after = game
+        .find_object_by_stable_id(akuta_stable_id)
+        .expect("Akuta should still be trackable after resolving");
+    assert!(
+        game.object(akuta_after)
+            .is_some_and(|object| object.zone == Zone::Graveyard),
+        "Akuta's intervening-if condition should be checked again at resolution"
+    );
+    assert!(
+        game.object(swamp_id)
+            .is_some_and(|object| object.zone == Zone::Battlefield),
+        "a false resolution-time hand condition should not sacrifice the Swamp"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn akuta_born_of_ash_sacrifices_swamp_and_returns_from_graveyard_when_accepted() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let akuta = akuta_born_of_ash_definition();
+    let akuta_id = game.create_object_from_definition(&akuta, alice, Zone::Graveyard);
+    let akuta_stable_id = game.object(akuta_id).expect("Akuta exists").stable_id;
+    let swamp_id = create_test_swamp(&mut game, alice);
+    let swamp_stable_id = game.object(swamp_id).expect("Swamp exists").stable_id;
+    create_hand_filler(&mut game, alice, "Alice Card One");
+    create_hand_filler(&mut game, alice, "Alice Card Two");
+    create_hand_filler(&mut game, bob, "Bob Card");
+    set_akuta_upkeep(&mut game, alice);
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert_eq!(trigger_queue.entries.len(), 1, "Akuta should trigger");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Akuta upkeep trigger should go on the stack");
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Akuta trigger should resolve");
+
+    let returned_akuta = game
+        .find_object_by_stable_id(akuta_stable_id)
+        .expect("Akuta should still be trackable after returning");
+    assert!(
+        game.object(returned_akuta)
+            .is_some_and(|object| object.zone == Zone::Battlefield),
+        "accepting Akuta's optional sacrifice should return it from the graveyard"
+    );
+    let sacrificed_swamp = game
+        .find_object_by_stable_id(swamp_stable_id)
+        .expect("sacrificed Swamp should still be trackable");
+    assert!(
+        game.object(sacrificed_swamp)
+            .is_some_and(|object| object.zone == Zone::Graveyard),
+        "Akuta's accepted branch should sacrifice a Swamp"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn akuta_born_of_ash_declining_swamp_sacrifice_leaves_it_in_graveyard() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let akuta = akuta_born_of_ash_definition();
+    let akuta_id = game.create_object_from_definition(&akuta, alice, Zone::Graveyard);
+    let akuta_stable_id = game.object(akuta_id).expect("Akuta exists").stable_id;
+    let swamp_id = create_test_swamp(&mut game, alice);
+    create_hand_filler(&mut game, alice, "Alice Card One");
+    create_hand_filler(&mut game, alice, "Alice Card Two");
+    create_hand_filler(&mut game, bob, "Bob Card");
+    set_akuta_upkeep(&mut game, alice);
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert_eq!(trigger_queue.entries.len(), 1, "Akuta should trigger");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Akuta upkeep trigger should go on the stack");
+    let mut dm = AutoPassDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Akuta trigger should resolve");
+
+    let akuta_after = game
+        .find_object_by_stable_id(akuta_stable_id)
+        .expect("Akuta should still be trackable after resolving");
+    assert!(
+        game.object(akuta_after)
+            .is_some_and(|object| object.zone == Zone::Graveyard),
+        "declining the optional sacrifice should leave Akuta in the graveyard"
+    );
+    assert!(
+        game.object(swamp_id)
+            .is_some_and(|object| object.zone == Zone::Battlefield),
+        "declining the optional sacrifice should leave the Swamp on the battlefield"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn arden_angel_upkeep_roll_one_returns_from_graveyard_to_battlefield() {
     let mut game = setup_game();

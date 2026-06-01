@@ -608,6 +608,8 @@ fn rewrite_lower_parsed_ability_internal(
             };
             let (lowered, parsed_intervening_if) =
                 materialize_prepared_triggered_effects(&prepared)?;
+            let returns_source_from_graveyard =
+                resolution_program_returns_source_from_graveyard_to_battlefield(&lowered.effects);
             rewrite_validate_iterated_player_bindings_in_lowered_effects(
                 &lowered,
                 trigger_binds_player_reference_context(&trigger),
@@ -621,6 +623,15 @@ fn rewrite_lower_parsed_ability_internal(
             triggered.effects = lowered.effects;
             triggered.choices = lowered.choices;
             triggered.intervening_if = intervening_if;
+            if returns_source_from_graveyard
+                && parsed
+                    .runtime()
+                    .functional_zones
+                    .iter()
+                    .all(|zone| *zone == Zone::Battlefield)
+            {
+                parsed.runtime_mut().functional_zones = vec![Zone::Graveyard];
+            }
             return Ok(parsed);
         }
         return Ok(parsed);
@@ -644,6 +655,31 @@ fn rewrite_lower_parsed_ability_internal(
     activated.choices = lowered.choices;
     mark_activated_mana_output_if_needed(activated);
     Ok(parsed)
+}
+
+fn resolution_program_returns_source_from_graveyard_to_battlefield(
+    program: &crate::resolution::ResolutionProgram,
+) -> bool {
+    program
+        .flattened_default_effects()
+        .iter()
+        .any(effect_returns_source_from_graveyard_to_battlefield)
+}
+
+fn effect_returns_source_from_graveyard_to_battlefield(effect: &Effect) -> bool {
+    if let Some(return_effect) =
+        effect.downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
+    {
+        return matches!(return_effect.target.unhinted(), ChooseSpec::Source);
+    }
+    if let Some(if_effect) = effect.downcast_ref::<crate::effects::IfEffect>() {
+        return if_effect
+            .then
+            .iter()
+            .chain(if_effect.else_.iter())
+            .any(effect_returns_source_from_graveyard_to_battlefield);
+    }
+    false
 }
 
 fn mark_activated_mana_output_if_needed(activated: &mut crate::ability::ActivatedAbility) {

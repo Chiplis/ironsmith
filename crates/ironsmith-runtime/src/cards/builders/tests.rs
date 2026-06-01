@@ -53005,6 +53005,38 @@ fn parse_sokenzan_renegade_keeps_unique_hand_leader_upkeep_trigger() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_akuta_born_of_ash_keeps_each_opponent_hand_gate_and_sacrifice_return() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Akuta, Born of Ash")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Spirit])
+        .power_toughness(PowerToughness::fixed(3, 2))
+        .parse_text(
+            "Haste\nAt the beginning of your upkeep, if you have more cards in hand than each opponent, you may sacrifice a Swamp. If you do, return Akuta from your graveyard to the battlefield.",
+        )
+        .expect("Akuta, Born of Ash should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Haste")
+            && rendered.contains("if you have more cards in hand than each opponent")
+            && rendered.contains("you may sacrifice a Swamp")
+            && rendered.contains("If you do, return Akuta from your graveyard to the battlefield")
+            && !rendered.contains("unsupported"),
+        "expected Akuta's hand gate and sacrifice-return text to render cleanly, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("PlayerHasMoreCardsInHandThanEachOtherPlayer { player: You }")
+            && debug.contains("Sacrifice")
+            && debug.contains("ReturnFromGraveyardToBattlefieldEffect")
+            && debug.contains("functional_zones: [Graveyard]"),
+        "expected Akuta to lower the each-opponent hand gate and graveyard return, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_wild_dogs_keeps_unique_life_leader_upkeep_trigger() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Wild Dogs")
         .card_types(vec![CardType::Creature])

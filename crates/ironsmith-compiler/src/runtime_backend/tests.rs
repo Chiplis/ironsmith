@@ -1302,6 +1302,22 @@ fn rewrite_structure_predicate_parses_you_have_one_or_fewer_cards_in_hand() {
 }
 
 #[test]
+fn rewrite_structure_predicate_parses_you_have_more_cards_in_hand_than_each_opponent() {
+    let text = "you have more cards in hand than each opponent";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify predicate text");
+
+    let predicate = super::parse_predicate_lexed(&lexed)
+        .expect("predicate should parse for each-opponent hand comparison");
+
+    assert_eq!(
+        predicate,
+        crate::cards::builders::PredicateAst::PlayerHasMoreCardsInHandThanEachOtherPlayer {
+            player: crate::cards::builders::PlayerAst::You,
+        }
+    );
+}
+
+#[test]
 fn rewrite_structure_if_tail_parser_extracts_predicate() {
     let tokens = lex_line("if it's white", 0).expect("rewrite lexer should classify if tail");
     let predicate = super::grammar::structure::parse_trailing_if_predicate_lexed(&tokens)

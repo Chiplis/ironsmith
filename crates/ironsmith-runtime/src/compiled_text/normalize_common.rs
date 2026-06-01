@@ -11352,6 +11352,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             )
         }
         Condition::PlayerHasMoreCardsInHandThanEachOtherPlayer { player } => {
+            if *player == PlayerFilter::You {
+                return "you have more cards in hand than each opponent".to_string();
+            }
             format!(
                 "{} has more cards in hand than each other player",
                 describe_player_filter(player)
