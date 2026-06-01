@@ -584,6 +584,12 @@ pub(crate) fn compile_condition_from_predicate_ast(
         PredicateAst::SourceDealtCombatDamageToPlayerThisTurn => {
             Condition::SourceDealtCombatDamageToPlayerThisTurn
         }
+        PredicateAst::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype } => {
+            Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn {
+                player: resolve_non_target_player_filter(*player, &refs)?,
+                subtype: *subtype,
+            }
+        }
         PredicateAst::SourceAttackedThisTurn => Condition::SourceAttackedThisTurn,
         PredicateAst::SourceCameUnderYourControlThisTurn => {
             Condition::SourceCameUnderYourControlThisTurn

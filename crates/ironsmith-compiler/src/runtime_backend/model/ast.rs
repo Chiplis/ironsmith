@@ -561,6 +561,10 @@ pub(crate) enum PredicateAst {
     },
     SourcePowerAtLeast(u32),
     SourceDealtCombatDamageToPlayerThisTurn,
+    PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn {
+        player: PlayerAst,
+        subtype: Subtype,
+    },
     SourceAttackedThisTurn,
     SourceCameUnderYourControlThisTurn,
     SourceAttackedOrBlockedThisTurn,

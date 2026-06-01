@@ -102,6 +102,313 @@ fn put_rampaging_aetherhood_upkeep_trigger_on_stack(
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn lost_monarch_of_ifnir_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(692_108), "Lost Monarch of Ifnir")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Zombie, Subtype::Noble])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Afflict 3 (Whenever this creature becomes blocked, defending player loses 3 life.)\n\
+             Other Zombies you control have afflict 3.\n\
+             At the beginning of your second main phase, if a player was dealt combat damage by a Zombie this turn, mill three cards, then you may return a creature card from your graveyard to your hand.",
+        )
+        .expect("Lost Monarch of Ifnir should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_typed_creature(
+    game: &mut GameState,
+    name: &str,
+    owner: PlayerId,
+    subtypes: Vec<Subtype>,
+) -> ObjectId {
+    let card = CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .subtypes(subtypes)
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    game.create_object_from_card(&card, owner, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn block_lost_monarch_attacker(
+    game: &mut GameState,
+    attacker: ObjectId,
+    blocker: ObjectId,
+    defending_player: PlayerId,
+    attack_target: AttackTarget,
+) -> TriggerQueue {
+    let mut combat = CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: attacker,
+        target: attack_target,
+    });
+    let mut trigger_queue = TriggerQueue::new();
+    apply_blocker_declarations(
+        game,
+        &mut combat,
+        &mut trigger_queue,
+        &[BlockerDeclaration {
+            blocker,
+            blocking: attacker,
+        }],
+        defending_player,
+    )
+    .expect("Lost Monarch combat block should be legal");
+    trigger_queue
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn record_combat_damage_to_player(
+    game: &mut GameState,
+    source: ObjectId,
+    player: PlayerId,
+) {
+    let event = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            source,
+            crate::events::DamageTarget::Player(player),
+            2,
+            true,
+            crate::events::cause::EventCause::combat_damage(source),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    game.record_turn_history_event(&event);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_lost_monarch_second_main_trigger_on_stack(game: &mut GameState) {
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::NextMain;
+    game.turn.step = None;
+
+    let mut trigger_queue = TriggerQueue::new();
+    generate_and_queue_step_triggers(game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Lost Monarch of Ifnir should have one second-main trigger"
+    );
+    put_triggers_on_stack(game, &mut trigger_queue)
+        .expect("Lost Monarch of Ifnir second-main trigger should go on the stack");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn lost_monarch_of_ifnir_grants_afflict_only_to_other_zombies_you_control() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let monarch = lost_monarch_of_ifnir_definition();
+    let monarch_id = game.create_object_from_definition(&monarch, alice, Zone::Battlefield);
+    let other_zombie =
+        create_typed_creature(&mut game, "Ifnir Loyalist", alice, vec![Subtype::Zombie]);
+    let non_zombie = create_typed_creature(&mut game, "Ifnir Human", alice, vec![Subtype::Human]);
+    let opposing_zombie =
+        create_typed_creature(&mut game, "Opposing Zombie", bob, vec![Subtype::Zombie]);
+    let bob_blocker_1 =
+        create_typed_creature(&mut game, "Bob Blocker One", bob, vec![Subtype::Human]);
+    let bob_blocker_2 =
+        create_typed_creature(&mut game, "Bob Blocker Two", bob, vec![Subtype::Human]);
+    let bob_blocker_3 =
+        create_typed_creature(&mut game, "Bob Blocker Three", bob, vec![Subtype::Human]);
+    let alice_blocker =
+        create_typed_creature(&mut game, "Alice Blocker", alice, vec![Subtype::Human]);
+    game.refresh_continuous_state();
+
+    let mut queue = block_lost_monarch_attacker(
+        &mut game,
+        other_zombie,
+        bob_blocker_1,
+        bob,
+        AttackTarget::Player(bob),
+    );
+    assert_eq!(
+        queue.entries.len(),
+        1,
+        "other controlled Zombies should gain afflict 3"
+    );
+    put_triggers_on_stack(&mut game, &mut queue).expect("granted afflict should go on the stack");
+    resolve_stack_entry(&mut game).expect("granted afflict should resolve");
+    assert_eq!(game.player(bob).expect("bob exists").life, 17);
+
+    let mut queue = block_lost_monarch_attacker(
+        &mut game,
+        monarch_id,
+        bob_blocker_2,
+        bob,
+        AttackTarget::Player(bob),
+    );
+    assert_eq!(
+        queue.entries.len(),
+        1,
+        "Lost Monarch should keep only its own afflict trigger; the static grant says other Zombies"
+    );
+    put_triggers_on_stack(&mut game, &mut queue).expect("intrinsic afflict should go on the stack");
+    resolve_stack_entry(&mut game).expect("intrinsic afflict should resolve");
+    assert_eq!(game.player(bob).expect("bob exists").life, 14);
+
+    let queue = block_lost_monarch_attacker(
+        &mut game,
+        non_zombie,
+        bob_blocker_3,
+        bob,
+        AttackTarget::Player(bob),
+    );
+    assert!(queue.entries.is_empty(), "non-Zombies should not gain afflict");
+    assert_eq!(game.player(bob).expect("bob exists").life, 14);
+
+    let queue = block_lost_monarch_attacker(
+        &mut game,
+        opposing_zombie,
+        alice_blocker,
+        alice,
+        AttackTarget::Player(alice),
+    );
+    assert!(
+        queue.entries.is_empty(),
+        "Zombies not controlled by Lost Monarch's controller should not gain afflict"
+    );
+    assert_eq!(game.player(alice).expect("alice exists").life, 20);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn lost_monarch_of_ifnir_second_main_trigger_requires_zombie_combat_damage() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let monarch = lost_monarch_of_ifnir_definition();
+    game.create_object_from_definition(&monarch, alice, Zone::Battlefield);
+    let non_zombie =
+        create_typed_creature(&mut game, "Combat Human", alice, vec![Subtype::Human]);
+    for idx in 0..3 {
+        let card = CardBuilder::new(CardId::new(), &format!("Library Card {idx}"))
+            .card_types(vec![CardType::Instant])
+            .build();
+        game.create_object_from_card(&card, alice, Zone::Library);
+    }
+    let library_before = game.player(alice).expect("alice exists").library.len();
+    let graveyard_before = game.player(alice).expect("alice exists").graveyard.len();
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::NextMain;
+    game.turn.step = None;
+    let mut trigger_queue = TriggerQueue::new();
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Lost Monarch should not trigger without prior Zombie combat damage to a player"
+    );
+
+    record_combat_damage_to_player(&mut game, non_zombie, PlayerId::from_index(1));
+    let mut trigger_queue = TriggerQueue::new();
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Lost Monarch should not trigger for combat damage dealt by a non-Zombie"
+    );
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").library.len(),
+        library_before,
+        "Lost Monarch should not mill without prior Zombie combat damage to a player"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").graveyard.len(),
+        graveyard_before,
+        "Lost Monarch should not move cards when the condition is false"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn lost_monarch_of_ifnir_second_main_trigger_mills_and_may_return_creature() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let monarch = lost_monarch_of_ifnir_definition();
+    game.create_object_from_definition(&monarch, alice, Zone::Battlefield);
+    let zombie = create_typed_creature(&mut game, "Combat Zombie", alice, vec![Subtype::Zombie]);
+    for idx in 0..3 {
+        let card = CardBuilder::new(CardId::new(), &format!("Mill Card {idx}"))
+            .card_types(vec![CardType::Instant])
+            .build();
+        game.create_object_from_card(&card, alice, Zone::Library);
+    }
+    let creature_card = CardBuilder::new(CardId::new(), "Recoverable Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let creature_id = game.create_object_from_card(&creature_card, alice, Zone::Graveyard);
+    let creature_stable_id = game.object(creature_id).expect("creature card exists").stable_id;
+    record_combat_damage_to_player(&mut game, zombie, bob);
+
+    put_lost_monarch_second_main_trigger_on_stack(&mut game);
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("condition-true second-main trigger should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").library.len(),
+        0,
+        "Lost Monarch should mill three cards after Zombie combat damage"
+    );
+    let returned_id = game
+        .find_object_by_stable_id(creature_stable_id)
+        .expect("returned creature card should still exist");
+    assert!(
+        game.player(alice).expect("alice exists").hand.contains(&returned_id),
+        "accepting the may choice should return a creature card to hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn lost_monarch_of_ifnir_second_main_return_is_optional() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let monarch = lost_monarch_of_ifnir_definition();
+    game.create_object_from_definition(&monarch, alice, Zone::Battlefield);
+    let zombie = create_typed_creature(&mut game, "Combat Zombie", alice, vec![Subtype::Zombie]);
+    for idx in 0..3 {
+        let card = CardBuilder::new(CardId::new(), &format!("Decline Mill Card {idx}"))
+            .card_types(vec![CardType::Instant])
+            .build();
+        game.create_object_from_card(&card, alice, Zone::Library);
+    }
+    let creature_card = CardBuilder::new(CardId::new(), "Declined Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let creature_id = game.create_object_from_card(&creature_card, alice, Zone::Graveyard);
+    record_combat_damage_to_player(&mut game, zombie, bob);
+
+    put_lost_monarch_second_main_trigger_on_stack(&mut game);
+    let mut dm = AutoPassDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("declined second-main trigger should resolve");
+
+    assert_eq!(
+        game.object(creature_id).expect("creature card exists").zone,
+        Zone::Graveyard,
+        "declining the may choice should leave the creature card in the graveyard"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn rampaging_aetherhood_upkeep_pays_energy_and_adds_that_many_counters() {
     let mut game = setup_game();
