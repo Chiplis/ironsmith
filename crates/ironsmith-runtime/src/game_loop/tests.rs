@@ -1247,6 +1247,150 @@ fn ox_drover_attack_trigger_creates_ox_draws_and_vigilance_keeps_it_untapped() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn scuttling_sentinel_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(651_777), "Scuttling Sentinel")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Green, ManaSymbol::Blue],
+            vec![ManaSymbol::Green, ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Crab, Subtype::Elf])
+        .power_toughness(PowerToughness::fixed(3, 2))
+        .parse_text(
+            "Flash\nVigilance\nWhen this creature enters, put a +1/+1 counter on another target creature you control. Until end of turn, that creature becomes a blue Crab in addition to its other types and gains hexproof.",
+        )
+        .expect("Scuttling Sentinel should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn scuttling_sentinel_enter_trigger_buffs_only_another_creature_you_control_until_eot() {
+    struct ChooseSpecificCreatureDecisionMaker {
+        chosen: ObjectId,
+        seen_legal_targets: Vec<Target>,
+    }
+
+    impl DecisionMaker for ChooseSpecificCreatureDecisionMaker {
+        fn decide_targets(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::TargetsContext,
+        ) -> Vec<Target> {
+            self.seen_legal_targets = ctx
+                .requirements
+                .first()
+                .map(|requirement| requirement.legal_targets.clone())
+                .unwrap_or_default();
+            assert!(
+                self.seen_legal_targets.contains(&Target::Object(self.chosen)),
+                "the chosen creature should be a legal Scuttling Sentinel trigger target"
+            );
+            vec![Target::Object(self.chosen)]
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let target_id = create_typed_creature(&mut game, "Alice's Elf", alice, vec![Subtype::Elf]);
+    let opponent_creature_id =
+        create_typed_creature(&mut game, "Bob's Elf", bob, vec![Subtype::Elf]);
+    let sentinel = scuttling_sentinel_definition();
+    let sentinel_id = game.create_object_from_definition(&sentinel, alice, Zone::Hand);
+    game.move_object_by_effect(sentinel_id, Zone::Battlefield)
+        .expect("Scuttling Sentinel should enter the battlefield");
+
+    let mut trigger_queue = TriggerQueue::new();
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Scuttling Sentinel should trigger once when it enters"
+    );
+
+    let mut dm = ChooseSpecificCreatureDecisionMaker {
+        chosen: target_id,
+        seen_legal_targets: Vec::new(),
+    };
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Scuttling Sentinel trigger should go on the stack with a target");
+    assert!(
+        !dm.seen_legal_targets.contains(&Target::Object(sentinel_id)),
+        "Scuttling Sentinel should not be able to target itself"
+    );
+    assert!(
+        !dm.seen_legal_targets
+            .contains(&Target::Object(opponent_creature_id)),
+        "Scuttling Sentinel should not be able to target an opponent's creature"
+    );
+
+    resolve_stack_entry(&mut game).expect("Scuttling Sentinel trigger should resolve");
+
+    assert_eq!(
+        game.counter_count(target_id, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "the chosen creature should get a +1/+1 counter"
+    );
+    assert_eq!(
+        game.counter_count(sentinel_id, crate::object::CounterType::PlusOnePlusOne),
+        0,
+        "Scuttling Sentinel should not put its counter on itself"
+    );
+    assert_eq!(
+        game.counter_count(
+            opponent_creature_id,
+            crate::object::CounterType::PlusOnePlusOne
+        ),
+        0,
+        "opposing creatures should not receive Scuttling Sentinel's counter"
+    );
+    assert_eq!(
+        game.current_colors(target_id),
+        Some(crate::color::ColorSet::BLUE),
+        "the target should become blue until end of turn"
+    );
+    assert!(
+        game.current_has_subtype(target_id, Subtype::Elf)
+            && game.current_has_subtype(target_id, Subtype::Crab),
+        "the target should keep its existing type and gain Crab"
+    );
+    assert!(
+        game.object_has_static_ability_id(
+            target_id,
+            crate::static_abilities::StaticAbilityId::Hexproof
+        ),
+        "the target should gain hexproof until end of turn"
+    );
+
+    execute_cleanup_step(&mut game);
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        game.counter_count(target_id, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "the +1/+1 counter should remain after the turn ends"
+    );
+    assert!(
+        !game.current_has_subtype(target_id, Subtype::Crab)
+            && game.current_has_subtype(target_id, Subtype::Elf),
+        "the temporary Crab subtype should expire while the original type remains"
+    );
+    assert_ne!(
+        game.current_colors(target_id),
+        Some(crate::color::ColorSet::BLUE),
+        "the temporary blue color-setting effect should expire at end of turn"
+    );
+    assert!(
+        !game.object_has_static_ability_id(
+            target_id,
+            crate::static_abilities::StaticAbilityId::Hexproof
+        ),
+        "temporary hexproof should expire at end of turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn twenty_toed_toad_static_ability_sets_maximum_hand_size_to_twenty() {
     let mut game = setup_game();

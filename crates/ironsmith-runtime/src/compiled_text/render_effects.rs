@@ -4205,6 +4205,108 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
 
+    fn keyword_label_from_static_ability_id(
+        ability: crate::static_abilities::StaticAbilityId,
+    ) -> Option<&'static str> {
+        Some(match ability {
+            crate::static_abilities::StaticAbilityId::Flying => "flying",
+            crate::static_abilities::StaticAbilityId::FirstStrike => "first strike",
+            crate::static_abilities::StaticAbilityId::DoubleStrike => "double strike",
+            crate::static_abilities::StaticAbilityId::Deathtouch => "deathtouch",
+            crate::static_abilities::StaticAbilityId::Haste => "haste",
+            crate::static_abilities::StaticAbilityId::Hexproof => "hexproof",
+            crate::static_abilities::StaticAbilityId::Indestructible => "indestructible",
+            crate::static_abilities::StaticAbilityId::Lifelink => "lifelink",
+            crate::static_abilities::StaticAbilityId::Menace => "menace",
+            crate::static_abilities::StaticAbilityId::Reach => "reach",
+            crate::static_abilities::StaticAbilityId::Trample => "trample",
+            crate::static_abilities::StaticAbilityId::Vigilance => "vigilance",
+            _ => return None,
+        })
+    }
+
+    fn describe_tagged_counter_then_color_subtype_keyword(effects: &[&Effect]) -> Option<String> {
+        let effects = if let Some(first) = effects.first()
+            && first
+                .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+                .is_some()
+        {
+            &effects[1..]
+        } else {
+            effects
+        };
+        let [counter_effect, color_effect, subtype_effect, ability_effect] = effects else {
+            return None;
+        };
+        let counter_tag = effect_tag(counter_effect)?;
+        unwrap_wrapped_effect(counter_effect)
+            .downcast_ref::<crate::effects::PutCountersEffect>()?;
+
+        let color_apply = tagged_apply_continuous(color_effect)?;
+        let subtype_apply = tagged_apply_continuous(subtype_effect)?;
+        let ability_apply = tagged_apply_continuous(ability_effect)?;
+        if color_apply.until != subtype_apply.until
+            || color_apply.until != ability_apply.until
+            || color_apply.condition.is_some()
+            || subtype_apply.condition.is_some()
+            || ability_apply.condition.is_some()
+            || !apply_targets_tag(color_apply, counter_tag)
+            || !apply_targets_tag(subtype_apply, counter_tag)
+            || !apply_targets_tag(ability_apply, counter_tag)
+            || !color_apply.additional_modifications.is_empty()
+            || !subtype_apply.additional_modifications.is_empty()
+            || !ability_apply.additional_modifications.is_empty()
+            || !color_apply.runtime_modifications.is_empty()
+            || !subtype_apply.runtime_modifications.is_empty()
+            || !ability_apply.runtime_modifications.is_empty()
+        {
+            return None;
+        }
+
+        let Some(crate::continuous::Modification::SetColors(colors)) = &color_apply.modification
+        else {
+            return None;
+        };
+        let Some(crate::continuous::Modification::AddSubtypes(subtypes)) =
+            &subtype_apply.modification
+        else {
+            return None;
+        };
+        let Some(crate::continuous::Modification::AddAbility(ability)) = &ability_apply.modification
+        else {
+            return None;
+        };
+        let keyword = keyword_label_from_static_ability_id(ability.id())?;
+        if colors.is_empty() || subtypes.is_empty() {
+            return None;
+        }
+
+        let subtype_words = subtypes
+            .iter()
+            .map(|subtype| subtype.to_string().to_ascii_lowercase())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let descriptor = with_indefinite_article(&format!(
+            "{} {subtype_words}",
+            describe_token_color_words(*colors, false)
+        ));
+        let mut become_text = format!(
+            "That creature becomes {descriptor} in addition to its other types and gains {keyword}"
+        );
+        if !matches!(color_apply.until, Until::Forever) {
+            become_text.push(' ');
+            become_text.push_str(&describe_until(&color_apply.until));
+        }
+        Some(format!(
+            "{}. {become_text}",
+            describe_effect(counter_effect).trim_end_matches('.')
+        ))
+    }
+
+    if let Some(compact) = describe_tagged_counter_then_color_subtype_keyword(&raw_effects) {
+        return compact;
+    }
+
     fn describe_move_then_color_subtype_addition(effects: &[&Effect]) -> Option<String> {
         let [move_effect, color_effect, subtype_effect] = effects else {
             return None;
