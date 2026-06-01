@@ -32167,7 +32167,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         } else {
             pluralize_token_phrase(&token_blueprint)
         };
-        let (token_main, token_ability) = split_token_ability_sentence(&token_phrase);
+        let (mut token_main, mut token_ability) = split_token_ability_sentence(&token_phrase);
+        if use_where_x
+            && token_ability.is_none()
+            && let Some((head, tail)) = token_main.split_once(" with ")
+            && head.ends_with(" tokens")
+        {
+            token_main = head;
+            token_ability = Some(format!(". The tokens have {tail}"));
+        }
         let count_text = if use_where_x {
             "X".to_string()
         } else if singular_count {

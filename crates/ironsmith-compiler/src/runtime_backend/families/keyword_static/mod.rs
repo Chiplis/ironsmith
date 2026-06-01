@@ -2347,8 +2347,11 @@ fn keyword_static_clause_text(tokens: &[OwnedLexToken]) -> String {
 }
 
 fn keyword_static_marker(tokens: &[OwnedLexToken]) -> StaticAbility {
-    let text = keyword_static_clause_text(tokens);
+    let mut text = keyword_static_clause_text(tokens);
     if supported_keyword_marker_text(&text) {
+        if is_power_greater_marker_text(&text.to_ascii_lowercase()) && !text.ends_with('.') {
+            text.push('.');
+        }
         return StaticAbility::keyword_marker(text);
     }
     StaticAbility::keyword_fallback_text(text)
@@ -2363,10 +2366,11 @@ fn supported_keyword_marker_text(text: &str) -> bool {
 }
 
 fn is_power_greater_marker_text(text: &str) -> bool {
+    let text = text.trim_end_matches('.');
     POWER_GREATER_MARKER_PREFIXES
         .iter()
         .any(|prefix| text.starts_with(prefix))
-        && text.ends_with(POWER_GREATER_MARKER_SUFFIX)
+        && text.ends_with(POWER_GREATER_MARKER_SUFFIX.trim_end_matches('.'))
 }
 
 fn is_loyalty_counter_crew_cost_marker_text(text: &str) -> bool {

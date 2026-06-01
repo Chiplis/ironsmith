@@ -44305,6 +44305,262 @@ fn demonic_torment_grants_combat_only_damage_prevention_to_enchanted_creature() 
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_cloudspire_coordinator_strict_regression() {
+    assert_oracle_card_parses_strict("Cloudspire Coordinator");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cloudspire_coordinator_compiled_text_keeps_dynamic_pilot_token_clause() {
+    let def = parse_oracle_card_definition("Cloudspire Coordinator");
+    let rendered = canonical_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains(
+            "Create X 1/1 colorless Pilot creature tokens, where X is the number of Mounts and/or Vehicles that entered the battlefield under your control this turn. The tokens have \"This token saddles Mounts and crews Vehicles as though its power were 2 greater.\""
+        ),
+        "expected Cloudspire Coordinator compiled text to preserve the dynamic Pilot token count and saddle/crew clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cloudspire_coordinator_creates_pilot_tokens_for_your_entered_mounts_and_vehicles() {
+    let def = parse_oracle_card_definition("Cloudspire Coordinator");
+    let create_effect = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated
+                .effects
+                .flattened_default_effects()
+                .into_iter()
+                .find(|effect| effect.downcast_ref::<CreateTokenEffect>().is_some())
+                .cloned(),
+            _ => None,
+        })
+        .expect("Cloudspire Coordinator should have an activation that creates Pilot tokens");
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let mount = CardDefinitionBuilder::new(CardId::new(), "Mount Probe")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Mount])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let vehicle = CardDefinitionBuilder::new(CardId::new(), "Vehicle Probe")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Vehicle])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    let bear = CardDefinitionBuilder::new(CardId::new(), "Bear Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    let record_entered = |game: &mut crate::game_state::GameState, object_id: ObjectId| {
+        let event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::EnterBattlefieldEvent::new(object_id, Zone::Hand),
+            crate::provenance::ProvNodeId::default(),
+        );
+        game.record_turn_history_event(&event);
+    };
+
+    let alice_mount = game.create_object_from_definition(&mount, alice, Zone::Battlefield);
+    record_entered(&mut game, alice_mount);
+    let alice_vehicle = game.create_object_from_definition(&vehicle, alice, Zone::Battlefield);
+    record_entered(&mut game, alice_vehicle);
+    let bob_vehicle = game.create_object_from_definition(&vehicle, bob, Zone::Battlefield);
+    record_entered(&mut game, bob_vehicle);
+    let alice_bear = game.create_object_from_definition(&bear, alice, Zone::Battlefield);
+    record_entered(&mut game, alice_bear);
+    game.create_object_from_definition(&mount, alice, Zone::Battlefield);
+
+    let pilot_tokens = |game: &crate::game_state::GameState| {
+        game.battlefield
+            .iter()
+            .copied()
+            .filter(|id| {
+                game.object(*id).is_some_and(|obj| {
+                    obj.name == "Pilot"
+                        && obj.zone == Zone::Battlefield
+                        && matches!(obj.kind, crate::object::ObjectKind::Token)
+                })
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let before = pilot_tokens(&game).len();
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
+    crate::effects::execute_effect(&mut game, &create_effect, &mut ctx)
+        .expect("Cloudspire Coordinator token creation should resolve");
+    let pilots = pilot_tokens(&game);
+    assert_eq!(
+        pilots.len() - before,
+        2,
+        "Cloudspire Coordinator should count only Alice's Mount and Vehicle that entered this turn, not Bob's Vehicle, a Bear, or an unrecorded Mount"
+    );
+
+    assert!(
+        pilots.iter().all(|id| game.object(*id).is_some()),
+        "sanity check: created Pilot tokens should remain on the battlefield"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cloudspire_coordinator_pilot_token_power_bonus_applies_to_saddle_and_crew_costs() {
+    let def = parse_oracle_card_definition("Cloudspire Coordinator");
+    let pilot = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated
+                .effects
+                .flattened_default_effects()
+                .into_iter()
+                .find_map(|effect| effect.downcast_ref::<CreateTokenEffect>())
+                .map(|create| create.token.clone()),
+            _ => None,
+        })
+        .expect("Cloudspire Coordinator should create Pilot tokens");
+
+    let marker = pilot
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::KeywordMarker =>
+            {
+                Some(static_ability.display())
+            }
+            _ => None,
+        })
+        .expect("Cloudspire Coordinator Pilot token should keep its saddle/crew marker");
+    assert_eq!(
+        marker,
+        "this token saddles mounts and crews vehicles as though its power were 2 greater."
+    );
+
+    let alice = PlayerId::from_index(0);
+    let vehicle = CardDefinitionBuilder::new(CardId::new(), "Vehicle Probe")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Vehicle])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    let mount = CardDefinitionBuilder::new(CardId::new(), "Mount Probe")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Mount])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let vanilla = CardDefinitionBuilder::new(CardId::new(), "Vanilla 1/1")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+
+    let crew_cost = crate::effects::CrewCostEffect { required_power: 3 };
+    let mut crew_game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    crew_game.create_object_from_definition(&pilot, alice, Zone::Battlefield);
+    let crew_vehicle = crew_game.create_object_from_definition(&vehicle, alice, Zone::Battlefield);
+    crate::effects::CostExecutableEffect::can_execute_as_cost(
+        &crew_cost,
+        &crew_game,
+        crew_vehicle,
+        alice,
+    )
+    .expect("Cloudspire Coordinator Pilot token should crew as though its power were 2 greater");
+
+    let saddle_cost = crate::effects::SaddleCostEffect::new(3);
+    let mut saddle_game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    saddle_game.create_object_from_definition(&pilot, alice, Zone::Battlefield);
+    let saddle_mount = saddle_game.create_object_from_definition(&mount, alice, Zone::Battlefield);
+    crate::effects::CostExecutableEffect::can_execute_as_cost(
+        &saddle_cost,
+        &saddle_game,
+        saddle_mount,
+        alice,
+    )
+    .expect("Cloudspire Coordinator Pilot token should saddle as though its power were 2 greater");
+
+    let mut baseline_crew = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    baseline_crew.create_object_from_definition(&vanilla, alice, Zone::Battlefield);
+    let baseline_vehicle =
+        baseline_crew.create_object_from_definition(&vehicle, alice, Zone::Battlefield);
+    assert!(
+        crate::effects::CostExecutableEffect::can_execute_as_cost(
+            &crew_cost,
+            &baseline_crew,
+            baseline_vehicle,
+            alice,
+        )
+        .is_err(),
+        "baseline 1/1 without Cloudspire Coordinator Pilot marker should not satisfy crew 3"
+    );
+
+    let mut baseline_saddle = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    baseline_saddle.create_object_from_definition(&vanilla, alice, Zone::Battlefield);
+    let baseline_mount =
+        baseline_saddle.create_object_from_definition(&mount, alice, Zone::Battlefield);
+    assert!(
+        crate::effects::CostExecutableEffect::can_execute_as_cost(
+            &saddle_cost,
+            &baseline_saddle,
+            baseline_mount,
+            alice,
+        )
+        .is_err(),
+        "baseline 1/1 without Cloudspire Coordinator Pilot marker should not satisfy saddle 3"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cloudspire_coordinator_creates_no_tokens_without_entered_mounts_or_vehicles() {
+    let def = parse_oracle_card_definition("Cloudspire Coordinator");
+    let create_effect = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated
+                .effects
+                .flattened_default_effects()
+                .into_iter()
+                .find(|effect| effect.downcast_ref::<CreateTokenEffect>().is_some())
+                .cloned(),
+            _ => None,
+        })
+        .expect("Cloudspire Coordinator should have an activation that creates Pilot tokens");
+
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
+    crate::effects::execute_effect(&mut game, &create_effect, &mut ctx)
+        .expect("Cloudspire Coordinator zero-token branch should resolve");
+
+    let pilot_tokens = game
+        .battlefield
+        .iter()
+        .filter(|id| {
+            game.object(**id).is_some_and(|obj| {
+                obj.name == "Pilot" && matches!(obj.kind, crate::object::ObjectKind::Token)
+            })
+        })
+        .count();
+    assert_eq!(
+        pilot_tokens, 0,
+        "Cloudspire Coordinator should create no Pilot tokens when no Mounts or Vehicles entered under your control this turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn wild_roads_compiled_text_keeps_pilot_saddle_and_crew_clause() {
     let def = parse_oracle_card_definition("Wild Roads");
     let rendered = canonical_compiled_lines(&def)

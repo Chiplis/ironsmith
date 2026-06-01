@@ -907,6 +907,13 @@ pub(super) fn normalize_token_quoted_ability_surfaces(line: &str) -> String {
 
 pub(super) fn normalize_token_granted_static_ability_text(text: &str) -> String {
     let mut normalized = normalize_sentence_surface_style(text);
+    if normalized
+        .starts_with("This token saddles mounts and crews vehicles as though its power were ")
+    {
+        normalized = normalized
+            .replace("saddles mounts", "saddles Mounts")
+            .replace("crews vehicles", "crews Vehicles");
+    }
     if let Some(rest) = normalized.strip_prefix("This creature ") {
         normalized = format!("This token {rest}");
     } else if normalized == "This creature gets +1/+1." {
@@ -6404,6 +6411,12 @@ pub(super) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
         .trim()
         .to_string();
     subject = pluralize_noun_phrase(&subject);
+    if filter.subtypes.len() == 2
+        && filter.subtypes.contains(&crate::types::Subtype::Mount)
+        && filter.subtypes.contains(&crate::types::Subtype::Vehicle)
+    {
+        subject = subject.replace("Mounts or Vehicles", "Mounts and/or Vehicles");
+    }
     if let Some(rest) = subject.strip_prefix("the active player's ") {
         subject = format!("{rest} they control");
     }
@@ -6439,6 +6452,8 @@ pub(super) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
         && !mentions_controller_or_owner
         && !is_combat_restricted
         && !has_sacrificed_tag
+        && !filter.entered_battlefield_this_turn
+        && filter.entered_battlefield_controller.is_none()
     {
         subject.push_str(" on the battlefield");
     }

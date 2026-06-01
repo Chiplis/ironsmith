@@ -19,7 +19,6 @@ use super::super::effect_ast_traversal::{
 use super::super::grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed as parse_spell_filter_lexed;
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::keyword_static::parse_value_binding_clause;
-use super::super::keyword_static_helpers::parse_granted_activated_or_triggered_ability_for_gain;
 use super::super::lexer::{
     LexStream, LexedClause, OwnedLexToken, TokenKind, contains_token_word_sequence, lex_line,
     split_lexed_sentences, token_slice_at_is,
@@ -3273,12 +3272,12 @@ pub(crate) fn parse_token_granted_ability_followup_sentence_lexed(
     };
     let ability_tokens = trim_edge_punctuation(&tokens[ability_start..]);
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(ability) =
-        parse_granted_activated_or_triggered_ability_for_gain(&ability_tokens, &clause_words)?
-    else {
+    let (abilities, is_choice) =
+        super::parse_granted_abilities_for_gain_clause(&ability_tokens, &clause_words, false)?;
+    if is_choice || abilities.is_empty() {
         return Ok(None);
-    };
-    Ok(Some(vec![ability]))
+    }
+    Ok(Some(abilities))
 }
 
 fn apply_unapplied_token_copy_followup(
