@@ -1078,7 +1078,7 @@ fn player_filter_for_life_reference(player: PlayerAst) -> Option<PlayerFilter> {
         PlayerAst::MostLifeTied => Some(PlayerFilter::MostLifeTied),
         PlayerAst::LowestLifeTied => Some(PlayerFilter::LowestLifeTied),
         PlayerAst::ThatPlayerOrTargetController => None,
-        PlayerAst::ItsController | PlayerAst::ItsOwner => None,
+        PlayerAst::ItsController | PlayerAst::ItsOwner | PlayerAst::SourceOwner => None,
     }
 }
 

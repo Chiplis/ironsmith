@@ -957,6 +957,7 @@ pub(crate) enum PlayerAst {
     ThatPlayerOrTargetController,
     ItsController,
     ItsOwner,
+    SourceOwner,
     Implicit,
 }
 

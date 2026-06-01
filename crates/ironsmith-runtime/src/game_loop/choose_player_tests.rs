@@ -44,6 +44,20 @@ fn parse_sorcery_definition(name: &str, oracle_text: &str) -> crate::cards::Card
         .unwrap_or_else(|err| panic!("{name} should parse: {err:?}"))
 }
 
+fn parse_artifact_definition(name: &str, oracle_text: &str) -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Artifact])
+        .parse_text(oracle_text)
+        .unwrap_or_else(|err| panic!("{name} should parse: {err:?}"))
+}
+
+fn pendant_of_prosperity_definition() -> crate::cards::CardDefinition {
+    parse_artifact_definition(
+        "Pendant of Prosperity",
+        "This artifact enters under the control of an opponent of your choice.\n{2}, {T}: Draw a card, then you may put a land card from your hand onto the battlefield. This artifact's owner draws a card, then that player may put a land card from their hand onto the battlefield.",
+    )
+}
+
 fn register_spell_cast_this_turn_for_test(
     game: &mut GameState,
     spell_id: ObjectId,
@@ -162,6 +176,7 @@ struct ScriptedDecisionMaker {
     option_matches: VecDeque<String>,
     object_matches: VecDeque<String>,
     color_matches: VecDeque<String>,
+    boolean_choices: VecDeque<bool>,
 }
 
 impl ScriptedDecisionMaker {
@@ -173,6 +188,23 @@ impl ScriptedDecisionMaker {
         option_matches: &[&str],
         object_matches: &[&str],
         color_matches: &[&str],
+    ) -> Self {
+        Self::with_colors_and_booleans(option_matches, object_matches, color_matches, &[])
+    }
+
+    fn with_booleans(
+        option_matches: &[&str],
+        object_matches: &[&str],
+        boolean_choices: &[bool],
+    ) -> Self {
+        Self::with_colors_and_booleans(option_matches, object_matches, &[], boolean_choices)
+    }
+
+    fn with_colors_and_booleans(
+        option_matches: &[&str],
+        object_matches: &[&str],
+        color_matches: &[&str],
+        boolean_choices: &[bool],
     ) -> Self {
         Self {
             option_matches: option_matches
@@ -187,11 +219,20 @@ impl ScriptedDecisionMaker {
                 .iter()
                 .map(|value| value.to_ascii_lowercase())
                 .collect(),
+            boolean_choices: boolean_choices.iter().copied().collect(),
         }
     }
 }
 
 impl DecisionMaker for ScriptedDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        self.boolean_choices.pop_front().unwrap_or(false)
+    }
+
     fn decide_options(
         &mut self,
         _game: &GameState,
@@ -327,6 +368,118 @@ fn order_of_succession_skips_player_when_next_player_has_no_creature() {
 
     assert_eq!(game.current_controller(alice_creature), Some(bob));
     assert_eq!(game.current_controller(bob_creature), Some(cara));
+}
+
+#[test]
+fn pendant_of_prosperity_enters_under_chosen_opponent_control() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let pendant = pendant_of_prosperity_definition();
+    let mut dm = ScriptedDecisionMaker::new(&["Charlie"], &[]);
+
+    let pendant_id = move_definition_to_battlefield_with_dm(&mut game, &pendant, alice, &mut dm);
+
+    let object = game.object(pendant_id).expect("Pendant should exist");
+    assert_eq!(object.owner, alice);
+    assert_eq!(game.current_controller(pendant_id), Some(charlie));
+    assert_ne!(game.current_controller(pendant_id), Some(bob));
+}
+
+#[test]
+fn pendant_of_prosperity_cannot_enter_under_its_controllers_control_choice() {
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let pendant = pendant_of_prosperity_definition();
+    let mut dm = ScriptedDecisionMaker::new(&["Alice"], &[]);
+
+    let pendant_id = move_definition_to_battlefield_with_dm(&mut game, &pendant, alice, &mut dm);
+
+    assert_eq!(game.current_controller(pendant_id), Some(bob));
+}
+
+#[test]
+fn pendant_of_prosperity_activation_draws_for_controller_and_owner_and_puts_lands() {
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let pendant = pendant_of_prosperity_definition();
+    let mut dm = ScriptedDecisionMaker::new(&["Bob"], &[]);
+    let pendant_id = move_definition_to_battlefield_with_dm(&mut game, &pendant, alice, &mut dm);
+
+    let bob_draw = CardBuilder::new(CardId::new(), "Bob Draw").build();
+    let alice_draw = CardBuilder::new(CardId::new(), "Alice Draw").build();
+    let bob_land = CardBuilder::new(CardId::new(), "Bob Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let alice_land = CardBuilder::new(CardId::new(), "Alice Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    game.create_object_from_card(&bob_draw, bob, Zone::Library);
+    game.create_object_from_card(&alice_draw, alice, Zone::Library);
+    game.create_object_from_card(&bob_land, bob, Zone::Hand);
+    game.create_object_from_card(&alice_land, alice, Zone::Hand);
+
+    game.player_mut(bob)
+        .expect("Bob should exist")
+        .mana_pool
+        .add(ManaSymbol::Green, 2);
+    let ability_index = game
+        .object(pendant_id)
+        .expect("Pendant should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Pendant should have an activated ability");
+    let activate_action = crate::decision::compute_legal_actions(&game, bob)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == pendant_id && *idx == ability_index
+            )
+        })
+        .expect("Bob should be able to activate Pendant");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    game.turn.active_player = bob;
+    state.reset_for_new_priority_window(&mut game);
+    let mut resolve_dm =
+        ScriptedDecisionMaker::with_booleans(&[], &["Bob Land", "Alice Land"], &[true, true]);
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut resolve_dm,
+    )
+    .expect("Pendant activation should be placed on the stack");
+
+    assert!(
+        game.is_tapped(pendant_id),
+        "Pendant should tap to pay its activation cost"
+    );
+
+    resolve_stack_entry_with(&mut game, &mut resolve_dm)
+        .expect("Pendant activation should resolve");
+
+    let count_named = |game: &GameState, owner: PlayerId, zone: Zone, name: &str| {
+        game.objects_in_zone(zone)
+            .into_iter()
+            .filter(|id| {
+                game.object(*id)
+                    .is_some_and(|object| object.owner == owner && object.name == name)
+            })
+            .count()
+    };
+    assert_eq!(count_named(&game, bob, Zone::Hand, "Bob Draw"), 1);
+    assert_eq!(count_named(&game, alice, Zone::Hand, "Alice Draw"), 1);
+    assert_eq!(count_named(&game, bob, Zone::Battlefield, "Bob Land"), 1);
+    assert_eq!(count_named(&game, alice, Zone::Battlefield, "Alice Land"), 1);
 }
 
 #[test]

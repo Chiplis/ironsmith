@@ -26,6 +26,7 @@ pub enum PlayerAst {
     ThatPlayerOrTargetController,
     ItsController,
     ItsOwner,
+    SourceOwner,
     Implicit,
 }
 

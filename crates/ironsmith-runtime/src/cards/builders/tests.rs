@@ -5145,6 +5145,39 @@ fn test_parse_choose_player_as_enters_without_placeholder() {
     );
 }
 
+#[test]
+fn pendant_of_prosperity_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Pendant of Prosperity");
+    let def = parse_oracle_card_definition("Pendant of Prosperity");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert!(
+        def.abilities.iter().any(|ability| matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::EntersUnderOpponentControlAsEnters
+        )),
+        "Pendant of Prosperity should model its opponent-control as-enters ability, got {ability_debug}"
+    );
+    assert!(
+        def.abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, AbilityKind::Activated(_))),
+        "Pendant of Prosperity should keep its activated ability, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains(
+            "This artifact enters under the control of an opponent of your choice."
+        ),
+        "expected opponent-control clause in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("This artifact's owner draws a card"),
+        "expected owner draw clause in compiled text, got {rendered}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_parse_enchanted_land_is_chosen_type_without_placeholder() {

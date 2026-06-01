@@ -3291,7 +3291,7 @@ pub(crate) fn parse_subject(tokens: &[OwnedLexToken]) -> SubjectAst {
             .last()
             .is_some_and(|word| OWNER_WORD_PATTERN.matches_word(word))
     {
-        return SubjectAst::Player(PlayerAst::ItsOwner);
+        return SubjectAst::Player(PlayerAst::SourceOwner);
     }
     if ITS_OR_THEIR_CONTROLLER_SUFFIX_PATTERN.matches_words(slice) {
         return SubjectAst::Player(PlayerAst::ItsController);

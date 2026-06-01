@@ -381,6 +381,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         condition: Option<Condition>,
     },
     ChoosePlayerAsEnters(String),
+    EntersUnderOpponentControlAsEnters(String),
     ChooseCardNameAsEnters(String),
     ChooseCreatureTypeAsEnters(String),
     ChooseNamedOptionAsEnters {
@@ -1180,6 +1181,9 @@ where
             },
             StaticAbilityPayload::ChoosePlayerAsEnters(display) => {
                 StaticAbilityPayload::ChoosePlayerAsEnters(display)
+            }
+            StaticAbilityPayload::EntersUnderOpponentControlAsEnters(display) => {
+                StaticAbilityPayload::EntersUnderOpponentControlAsEnters(display)
             }
             StaticAbilityPayload::ChooseCardNameAsEnters(display) => {
                 StaticAbilityPayload::ChooseCardNameAsEnters(display)
@@ -3185,6 +3189,14 @@ impl<
             id: Some(StaticAbilityId::ChoosePlayerAsEnters),
             label: display.clone(),
             payload: StaticAbilityPayload::ChoosePlayerAsEnters(display),
+        }
+    }
+    pub fn enters_under_opponent_control_as_enters(display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::EntersUnderOpponentControlAsEnters),
+            label: display.clone(),
+            payload: StaticAbilityPayload::EntersUnderOpponentControlAsEnters(display),
         }
     }
     pub fn choose_card_name_as_enters(display: impl Into<String>) -> Self {

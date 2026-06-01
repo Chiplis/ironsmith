@@ -6,6 +6,7 @@ use super::{
     ChooseBasicLandTypeAsEntersSpec, ChooseCardNameAsEntersSpec, ChooseColorAsBecomesAttachedSpec,
     ChooseColorAsEntersSpec, ChooseCreatureTypeAsEntersSpec, ChooseLandTypeAsEntersSpec,
     ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec,
+    EntersUnderOpponentControlAsEntersSpec,
     ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec, ConditionalSpellKeywordKind,
     ConditionalSpellKeywordSpec, EnterAsCopyAsEntersSpec, GraveyardCountMetric,
     PowerToughnessChoiceOption, StaticAbility, StaticAbilityId, StaticAbilityKind,
@@ -1499,6 +1500,34 @@ impl StaticAbilityKind for ChoosePlayerAsEnters {
 
     fn player_choice_as_enters(&self) -> Option<ChoosePlayerAsEntersSpec> {
         Some(ChoosePlayerAsEntersSpec)
+    }
+}
+
+/// "This permanent enters under the control of an opponent of your choice."
+#[derive(Debug, Clone, PartialEq)]
+pub struct EntersUnderOpponentControlAsEnters {
+    pub display: String,
+}
+
+impl EntersUnderOpponentControlAsEnters {
+    pub fn new(display: String) -> Self {
+        Self { display }
+    }
+}
+
+impl StaticAbilityKind for EntersUnderOpponentControlAsEnters {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::EntersUnderOpponentControlAsEnters
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn enters_under_opponent_control_as_enters(
+        &self,
+    ) -> Option<EntersUnderOpponentControlAsEntersSpec> {
+        Some(EntersUnderOpponentControlAsEntersSpec)
     }
 }
 

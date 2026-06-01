@@ -2714,6 +2714,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_choose_creature_type_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_named_options_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_player_as_enters_line),
+        single_static_ability_ast_rule!(parse_enters_under_opponent_control_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_color_as_becomes_attached_line),
         single_static_ability_ast_rule!(parse_enchanted_land_is_chosen_type_line),
         single_static_ability_ast_rule!(parse_source_is_chosen_type_in_addition_line),
@@ -5487,6 +5488,64 @@ pub(crate) fn parse_choose_player_as_enters_line(
     Ok(Some(StaticAbility::choose_player_as_enters(format!(
         "As {display_subject} enters, choose a player."
     ))))
+}
+
+pub(crate) fn parse_enters_under_opponent_control_as_enters_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let (idx, display_subject) = if words
+        .first()
+        .is_some_and(|word| THIS_WORD_PATTERN.matches_word(word))
+    {
+        let Some(kind) = words.get(1) else {
+            return Ok(None);
+        };
+        let Some((_, display)) = AS_ENTERS_STANDARD_SUBJECTS_WITH_AURA
+            .iter()
+            .find(|(subject_kind, _)| subject_kind == kind)
+        else {
+            return Ok(None);
+        };
+        (2usize, *display)
+    } else {
+        let Some(enter_idx) = words
+            .iter()
+            .position(|word| ENTERS_WORD_PATTERN.matches_word(word))
+        else {
+            return Ok(None);
+        };
+        if source_reference_surface_for_words(&words[..enter_idx]).is_none() {
+            return Ok(None);
+        }
+        (enter_idx, "this")
+    };
+
+    if !words
+        .get(idx)
+        .is_some_and(|word| ENTERS_WORD_PATTERN.matches_word(word))
+    {
+        return Ok(None);
+    }
+    let tail = &words[idx + 1..];
+    if tail
+        != [
+            "under", "the", "control", "of", "an", "opponent", "of", "your", "choice",
+        ]
+    {
+        return Ok(None);
+    }
+
+    let mut chars = display_subject.chars();
+    let subject = match chars.next() {
+        Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
+        None => display_subject.to_string(),
+    };
+    Ok(Some(
+        StaticAbility::enters_under_opponent_control_as_enters(format!(
+            "{subject} enters under the control of an opponent of your choice."
+        )),
+    ))
 }
 
 pub(crate) fn parse_damage_redirect_to_source_line(

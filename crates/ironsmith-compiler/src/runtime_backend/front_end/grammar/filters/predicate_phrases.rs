@@ -1838,7 +1838,7 @@ fn player_filter_for_turn_value(player: PlayerAst) -> Option<PlayerFilter> {
         PlayerAst::ThatPlayerOrTargetController => {
             Some(PlayerFilter::TargetPlayerOrControllerOfTarget)
         }
-        PlayerAst::ItsController | PlayerAst::ItsOwner => None,
+        PlayerAst::ItsController | PlayerAst::ItsOwner | PlayerAst::SourceOwner => None,
     }
 }
 

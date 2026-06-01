@@ -1089,7 +1089,8 @@ fn player_filter_for_set_life_total_reference(player: PlayerAst) -> Option<Playe
         PlayerAst::LowestLifeTied => Some(PlayerFilter::LowestLifeTied),
         PlayerAst::ThatPlayerOrTargetController
         | PlayerAst::ItsController
-        | PlayerAst::ItsOwner => None,
+        | PlayerAst::ItsOwner
+        | PlayerAst::SourceOwner => None,
     }
 }
 

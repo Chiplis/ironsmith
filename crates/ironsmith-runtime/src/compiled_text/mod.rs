@@ -44,6 +44,7 @@ pub fn compiled_text_lines(def: &CardDefinition) -> Vec<String> {
     normalize_ast_surface_lines(debug_compiled_lines(def))
         .into_iter()
         .map(|line| substitute_legendary_source_reference(&line, &def.card, ""))
+        .map(|line| substitute_source_owner_reference(&line, def))
         .map(|line| substitute_kicked_draw_source_reference(&line, def))
         .map(normalize_scored_compiled_line)
         .collect()
@@ -53,6 +54,7 @@ pub fn unprocessed_compiled_lines(def: &CardDefinition) -> Vec<String> {
     normalize_ast_surface_lines(debug_compiled_lines(def))
         .into_iter()
         .map(|line| substitute_legendary_source_reference(&line, &def.card, ""))
+        .map(|line| substitute_source_owner_reference(&line, def))
         .map(normalize_unprocessed_compiled_line)
         .collect()
 }
@@ -124,6 +126,46 @@ fn substitute_kicked_draw_source_reference(line: &str, def: &CardDefinition) -> 
         "This spell was kicked",
         &format!("{source_name} was kicked"),
     )
+}
+
+fn source_type_noun(def: &CardDefinition) -> &'static str {
+    if def.card.card_types.contains(&CardType::Artifact) {
+        "artifact"
+    } else if def.card.card_types.contains(&CardType::Creature) {
+        "creature"
+    } else if def.card.card_types.contains(&CardType::Enchantment) {
+        "enchantment"
+    } else if def.card.card_types.contains(&CardType::Land) {
+        "land"
+    } else if def.card.card_types.contains(&CardType::Planeswalker) {
+        "planeswalker"
+    } else if def.card.card_types.contains(&CardType::Battle) {
+        "battle"
+    } else {
+        "permanent"
+    }
+}
+
+fn substitute_source_owner_reference(line: &str, def: &CardDefinition) -> String {
+    let noun = source_type_noun(def);
+    line.replace(
+        "then this object's owner may put a land card from this object's owner's hand",
+        "then that player may put a land card from their hand",
+    )
+    .replace(
+        "Then this object's owner may put a land card from this object's owner's hand",
+        "Then that player may put a land card from their hand",
+    )
+    .replace(
+        "this object's owner may put a land card from this object's owner's hand",
+        "that player may put a land card from their hand",
+    )
+    .replace(
+        "This object's owner may put a land card from this object's owner's hand",
+        "That player may put a land card from their hand",
+    )
+    .replace("This object's owner", &format!("This {noun}'s owner"))
+    .replace("this object's owner", &format!("this {noun}'s owner"))
 }
 
 fn normalize_unprocessed_compiled_line(line: String) -> String {

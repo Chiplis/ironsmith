@@ -627,6 +627,13 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Returns info for "this enters under an opponent's control" abilities.
+    fn enters_under_opponent_control_as_enters(
+        &self,
+    ) -> Option<EntersUnderOpponentControlAsEntersSpec> {
+        None
+    }
+
     /// Returns info for "as this enters, choose a card name" abilities.
     fn card_name_choice_as_enters(&self) -> Option<ChooseCardNameAsEntersSpec> {
         None
@@ -953,6 +960,10 @@ pub struct ChooseColorAsBecomesAttachedSpec;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ChoosePlayerAsEntersSpec;
 
+/// Spec for "this enters under an opponent's control" abilities.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct EntersUnderOpponentControlAsEntersSpec;
+
 /// Spec for "as this enters, choose a card name" abilities.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ChooseCardNameAsEntersSpec;
@@ -1106,6 +1117,12 @@ impl StaticAbility {
 
     pub fn player_choice_as_enters(&self) -> Option<ChoosePlayerAsEntersSpec> {
         self.0.player_choice_as_enters()
+    }
+
+    pub fn enters_under_opponent_control_as_enters(
+        &self,
+    ) -> Option<EntersUnderOpponentControlAsEntersSpec> {
+        self.0.enters_under_opponent_control_as_enters()
     }
 
     pub fn card_name_choice_as_enters(&self) -> Option<ChooseCardNameAsEntersSpec> {
@@ -2652,6 +2669,10 @@ impl StaticAbility {
 
     pub fn choose_player_as_enters(display: String) -> Self {
         Self::new(ChoosePlayerAsEnters::new(display))
+    }
+
+    pub fn enters_under_opponent_control_as_enters_static(display: String) -> Self {
+        Self::new(EntersUnderOpponentControlAsEnters::new(display))
     }
 
     pub fn choose_card_name_as_enters(display: String) -> Self {

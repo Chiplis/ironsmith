@@ -95,6 +95,7 @@ pub(crate) fn resolve_non_target_player_filter(
                 Ok(PlayerFilter::OwnerOf(ObjectRef::Target))
             }
         }
+        PlayerAst::SourceOwner => Ok(PlayerFilter::OwnerOf(ObjectRef::tagged(IT_TAG))),
         PlayerAst::Implicit => {
             if refs.iterated_player
                 && refs

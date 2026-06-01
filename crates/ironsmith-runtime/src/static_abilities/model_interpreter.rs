@@ -1172,6 +1172,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::ChoosePlayerAsEnters(display) => {
                 StaticAbility::choose_player_as_enters(display.clone())
             }
+            ironsmith_core::StaticAbilityPayload::EntersUnderOpponentControlAsEnters(display) => {
+                StaticAbility::enters_under_opponent_control_as_enters_static(display.clone())
+            }
             ironsmith_core::StaticAbilityPayload::ChooseCardNameAsEnters(display) => {
                 StaticAbility::choose_card_name_as_enters(display.clone())
             }
@@ -1863,6 +1866,16 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::ChoosePlayerAsEnters(_)
         )
         .then_some(super::ChoosePlayerAsEntersSpec)
+    }
+
+    fn enters_under_opponent_control_as_enters(
+        &self,
+    ) -> Option<super::EntersUnderOpponentControlAsEntersSpec> {
+        matches!(
+            self.payload(),
+            ironsmith_core::StaticAbilityPayload::EntersUnderOpponentControlAsEnters(_)
+        )
+        .then_some(super::EntersUnderOpponentControlAsEntersSpec)
     }
 
     fn card_name_choice_as_enters(&self) -> Option<super::ChooseCardNameAsEntersSpec> {

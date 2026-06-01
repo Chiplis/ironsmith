@@ -2710,31 +2710,71 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
     let mut object_etb_effects: Vec<ReplacementEffect> = Vec::new();
     let mut copy_choice_effects: Vec<ReplacementEffect> = Vec::new();
 
-    if let Some(obj) = game.object(object) {
-        if let Some(loyalty) = obj.base_loyalty
+    let mut controller_override = None;
+    let object_static_context = game.object(object).map(|obj| {
+        let controller = game.controller_of(obj);
+        let base_loyalty = obj.base_loyalty;
+        let current_static_abilities = {
+            let view = crate::derived_view::DerivedGameView::new(game);
+            view.static_abilities_rc(object)
+                .map(|abilities| abilities.as_ref().clone())
+                .unwrap_or_else(|| {
+                    obj.abilities
+                        .iter()
+                        .filter_map(|ability| match &ability.kind {
+                            AbilityKind::Static(s) => Some(s.clone()),
+                            _ => None,
+                        })
+                        .collect()
+                })
+        };
+        (controller, base_loyalty, current_static_abilities)
+    });
+
+    if let Some((controller, base_loyalty, current_static_abilities)) = object_static_context {
+        if let Some(loyalty) = base_loyalty
             && loyalty > 0
         {
             // Planeswalkers intrinsically enter with loyalty counters equal to
             // their printed loyalty. Model this as ETB counters so replacement
             // effects can modify it (e.g., Doubling Season).
-            let loyalty = loyalty_after_compleated_life_payment(obj, loyalty);
+            let loyalty = game
+                .object(object)
+                .map(|obj| loyalty_after_compleated_life_payment(obj, loyalty))
+                .unwrap_or(loyalty);
             enters_with_counters.push((CounterType::Loyalty, loyalty));
         }
-        let controller = game.controller_of(obj);
-        let view = crate::derived_view::DerivedGameView::new(game);
-        let current_static_abilities = view
-            .static_abilities_rc(object)
-            .map(|abilities| abilities.as_ref().clone())
-            .unwrap_or_else(|| {
-                obj.abilities
-                    .iter()
-                    .filter_map(|ability| match &ability.kind {
-                        AbilityKind::Static(s) => Some(s.clone()),
-                        _ => None,
-                    })
-                    .collect()
-            });
         for s in &current_static_abilities {
+            if s.enters_under_opponent_control_as_enters().is_some() {
+                let opponents = game
+                    .players
+                    .iter()
+                    .filter(|player| player.id != controller && player.is_in_game())
+                    .map(|player| player.id)
+                    .collect::<Vec<_>>();
+                if !opponents.is_empty() {
+                    let display_options = opponents
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(idx, player_id)| {
+                            game.player(*player_id).map(|player| {
+                                crate::decisions::spec::DisplayOption::new(
+                                    idx,
+                                    player.name.clone(),
+                                )
+                            })
+                        })
+                        .collect::<Vec<_>>();
+                    let choice_spec = crate::decisions::specs::ChoiceSpec::single(
+                        object,
+                        display_options,
+                    );
+                    let mut chosen = make_decision(game, dm, controller, Some(object), choice_spec);
+                    if let Some(chosen_idx) = chosen.pop().filter(|idx| *idx < opponents.len()) {
+                        controller_override = Some(opponents[chosen_idx]);
+                    }
+                }
+            }
             // Check for unified replacement effects
             if let Some(effect) = s.generate_replacement_effect(object, controller) {
                 object_etb_effects.push(effect);
@@ -2818,7 +2858,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
             added_subtypes: Vec::new(),
             added_abilities: Vec::new(),
             set_base_power_toughness: None,
-            controller_override: None,
+            controller_override,
         },
         etb_event_provenance,
     );

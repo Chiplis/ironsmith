@@ -113,6 +113,9 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
             "its controller".to_string()
         }
         PlayerFilter::OwnerOf(crate::target::ObjectRef::Target) => "its owner".to_string(),
+        PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(tag)) if tag.as_str() == "__it__" => {
+            "this object's owner".to_string()
+        }
         PlayerFilter::ControllerOf(_) => "that object's controller".to_string(),
         PlayerFilter::OwnerOf(_) => "that object's owner".to_string(),
         PlayerFilter::AliasedOwnerOf(_) | PlayerFilter::AliasedControllerOf(_) => {
@@ -1968,6 +1971,30 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace(" and gains this creature cant ", " and can't ")
         .replace(" and gains this permanent can't ", " and can't ")
         .replace(" and gains this permanent cant ", " and can't ");
+    normalized = normalized
+        .replace("Draw a card, you may", "Draw a card, then you may")
+        .replace("draw a card, you may", "draw a card, then you may");
+    normalized = normalized
+        .replace(
+            "onto the battlefield, this object's owner draws",
+            "onto the battlefield. This object's owner draws",
+        )
+        .replace(
+            "onto the battlefield, this artifact's owner draws",
+            "onto the battlefield. This artifact's owner draws",
+        )
+        .replace(
+            "onto the battlefield, this creature's owner draws",
+            "onto the battlefield. This creature's owner draws",
+        )
+        .replace(
+            "onto the battlefield, this enchantment's owner draws",
+            "onto the battlefield. This enchantment's owner draws",
+        )
+        .replace(
+            "onto the battlefield, this permanent's owner draws",
+            "onto the battlefield. This permanent's owner draws",
+        );
     normalized = normalized.replace(
         "Tap target creature or planeswalker. choose it. activated abilities of that permanent can't be activated this turn",
         "Tap target creature or planeswalker. Its activated abilities can't be activated this turn",
