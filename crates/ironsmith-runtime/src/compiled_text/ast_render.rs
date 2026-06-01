@@ -1047,6 +1047,7 @@ pub(super) fn substitute_legendary_source_reference(
     let uses_named_source_surface = lower.starts_with("this creature gets ")
         || conditional_static_self_surface
         || lower.contains("if this land has ")
+        || lower.contains(" counters on this artifact")
         || lower.starts_with("whenever this creature deals combat damage to a player")
         || lower.starts_with("whenever this creature or another ")
         || lower.contains(": this creature gets ")
@@ -1064,7 +1065,9 @@ pub(super) fn substitute_legendary_source_reference(
         .replace("This creature", source_name)
         .replace("this creature", source_name)
         .replace("This land", source_name)
-        .replace("this land", source_name);
+        .replace("this land", source_name)
+        .replace("This artifact", source_name)
+        .replace("this artifact", source_name);
     let lower_source_name = source_name.to_ascii_lowercase();
     if lower_source_name != source_name {
         substituted.replace(&lower_source_name, source_name)
@@ -2476,6 +2479,11 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 ability_idx += 1;
                 continue;
             }
+            if let Some(keyword) = describe_structural_station_keyword(ability) {
+                output.push(format!("Keyword ability {}: {keyword}", ability_idx + 1));
+                ability_idx += 1;
+                continue;
+            }
             if ability_idx + 1 < def.abilities.len()
                 && let Some(partner_with) =
                     describe_structural_partner_with_pair(ability, &def.abilities[ability_idx + 1])
@@ -2645,6 +2653,74 @@ fn ability_prefers_card_name_subject(ability: &Ability) -> bool {
     static_ability
         .enter_as_copy_as_enters()
         .is_some_and(|spec| spec.linked_exile_pair.is_some())
+}
+
+fn describe_structural_station_keyword(ability: &Ability) -> Option<&'static str> {
+    let AbilityKind::Activated(activated) = &ability.kind else {
+        return None;
+    };
+    if !matches!(activated.timing, ActivationTiming::SorcerySpeed)
+        || activated.activation_condition.is_some()
+        || !activated.choices.is_empty()
+        || !activated.mana_usage_restrictions.is_empty()
+    {
+        return None;
+    }
+    if !activated
+        .additional_restrictions
+        .iter()
+        .any(|restriction| restriction.eq_ignore_ascii_case("Activate only as a sorcery"))
+    {
+        return None;
+    }
+
+    let costs = activated.mana_cost.costs();
+    if !costs.iter().any(station_cost_chooses_tap_cost_creature)
+        || !costs.iter().any(station_cost_taps_chosen_creature)
+    {
+        return None;
+    }
+
+    let [effect] = activated.effects.flattened_default_effects() else {
+        return None;
+    };
+    let put = effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if put.counter_type != crate::CounterType::Charge
+        || !matches!(put.target.unhinted(), ChooseSpec::Source)
+    {
+        return None;
+    }
+    let Value::PowerOf(source) = put.amount.unhinted() else {
+        return None;
+    };
+    match source.unhinted() {
+        ChooseSpec::Tagged(tag) if tag.as_str() == "tap_cost_0" => Some("Station"),
+        _ => None,
+    }
+}
+
+fn station_cost_chooses_tap_cost_creature(cost: &crate::costs::Cost) -> bool {
+    let Some(effect) = cost.effect_ref() else {
+        return false;
+    };
+    let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() else {
+        return false;
+    };
+    choose.tag.as_str() == "tap_cost_0"
+        && choose.filter.controller == Some(PlayerFilter::You)
+        && choose.filter.card_types.contains(&CardType::Creature)
+        && choose.filter.other
+        && choose.filter.untapped
+}
+
+fn station_cost_taps_chosen_creature(cost: &crate::costs::Cost) -> bool {
+    let Some(effect) = cost.effect_ref() else {
+        return false;
+    };
+    let Some(tap) = effect.downcast_ref::<crate::effects::TapEffect>() else {
+        return false;
+    };
+    matches!(tap.target.unhinted(), ChooseSpec::Tagged(tag) if tag.as_str() == "tap_cost_0")
 }
 
 fn rewrite_additional_sacrifice_reference_surface(def: &CardDefinition, text: &str) -> String {

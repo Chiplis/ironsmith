@@ -2297,26 +2297,31 @@ fn parse_number_of_counters_on_source_value(filter_words: &[&str]) -> Option<Val
         return None;
     }
     idx += 1;
-    match filter_words.get(idx..) {
-        Some(["it"])
-        | Some(["this"])
-        | Some(["this", "card"])
-        | Some(["this", "creature"])
-        | Some(["this", "permanent"])
-        | Some(["this", "source"])
-        | Some(["this", "artifact"])
-        | Some(["this", "land"])
-        | Some(["this", "enchantment"])
-        | Some(["thiss"])
-        | Some(["thiss", "card"])
-        | Some(["thiss", "creature"])
-        | Some(["thiss", "permanent"])
-        | Some(["thiss", "source"])
-        | Some(["thiss", "artifact"])
-        | Some(["this", "equipment"])
-        | Some(["thiss", "land"])
-        | Some(["thiss", "enchantment"])
-        | Some(["thiss", "equipment"]) => Some(Value::CountersOnSource(counter_type)),
+    let source_words = filter_words.get(idx..)?;
+    if is_source_reference_words(source_words) {
+        return Some(Value::CountersOnSource(counter_type));
+    }
+
+    match source_words {
+        ["it"]
+        | ["this"]
+        | ["this", "card"]
+        | ["this", "creature"]
+        | ["this", "permanent"]
+        | ["this", "source"]
+        | ["this", "artifact"]
+        | ["this", "land"]
+        | ["this", "enchantment"]
+        | ["thiss"]
+        | ["thiss", "card"]
+        | ["thiss", "creature"]
+        | ["thiss", "permanent"]
+        | ["thiss", "source"]
+        | ["thiss", "artifact"]
+        | ["this", "equipment"]
+        | ["thiss", "land"]
+        | ["thiss", "enchantment"]
+        | ["thiss", "equipment"] => Some(Value::CountersOnSource(counter_type)),
         _ => None,
     }
 }

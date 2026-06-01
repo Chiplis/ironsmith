@@ -88,6 +88,7 @@ pub(super) fn is_keyword_phrase(phrase: &str) -> bool {
             | "provoke"
             | "riot"
             | "training"
+            | "station"
             | "persist"
             | "undying"
             | "partner"
