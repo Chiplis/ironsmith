@@ -136,8 +136,8 @@ pub use effect::{
     SupportEffect, SurveilEffect, SuspectEffect, TagAttachedToSourceEffect,
     TagMatchingObjectsEffect, TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect,
     TagTriggeringSourceEffect, TaggedEffect, TaggedLeavesAbilitySource, TakeInitiativeEffect,
-    TapEffect, TargetOnlyEffect, TicketCountersEffect, TransformEffect, UnearthEffect,
-    UnlessActionEffect, UnlessPaysEffect, UntapEffect, Until,
+    TapEffect, TargetOnlyEffect, TicketCountersEffect, TransformEffect, TurnFaceDownEffect,
+    UnearthEffect, UnlessActionEffect, UnlessPaysEffect, UntapEffect, Until,
     VariableCasualtyPlaneswalkerCopyEffect, VentureIntoDungeonEffect, VoteChoice, VoteEffect,
     VoteOption, WinTheGameEffect, WithIdEffect,
 };

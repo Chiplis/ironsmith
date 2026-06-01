@@ -84,6 +84,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::DealDistributedDamage { target, .. }
             | SubjectVerbActionAst::DealDamageEqualToPower { target, .. }
             | SubjectVerbActionAst::Tap { target }
+            | SubjectVerbActionAst::TurnFaceDown { target, .. }
             | SubjectVerbActionAst::Untap { target }
             | SubjectVerbActionAst::Destroy { target, .. }
             | SubjectVerbActionAst::Exile { target, .. }
@@ -682,6 +683,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Transform { .. }
         | SubjectVerbActionAst::Convert { .. }
         | SubjectVerbActionAst::Tap { .. }
+        | SubjectVerbActionAst::TurnFaceDown { .. }
         | SubjectVerbActionAst::Untap { .. }
         | SubjectVerbActionAst::Destroy { .. }
         | SubjectVerbActionAst::DestroyAll { .. }

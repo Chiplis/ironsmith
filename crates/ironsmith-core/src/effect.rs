@@ -594,6 +594,45 @@ impl TapEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct TurnFaceDownEffect {
+    pub target: ChooseSpec,
+    pub power: i32,
+    pub toughness: i32,
+    pub subtypes: Vec<Subtype>,
+}
+
+impl TurnFaceDownEffect {
+    pub fn with_spec(target: ChooseSpec) -> Self {
+        Self {
+            target,
+            power: 2,
+            toughness: 2,
+            subtypes: Vec::new(),
+        }
+    }
+
+    pub fn target(target: ChooseSpec) -> Self {
+        Self::with_spec(ChooseSpec::target(target))
+    }
+
+    pub fn targets(target: ChooseSpec, count: ChoiceCount) -> Self {
+        Self::with_spec(ChooseSpec::target(target).with_count(count))
+    }
+
+    pub fn with_characteristics(
+        mut self,
+        power: i32,
+        toughness: i32,
+        subtypes: Vec<Subtype>,
+    ) -> Self {
+        self.power = power;
+        self.toughness = toughness;
+        self.subtypes = subtypes;
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct UntapEffect {
     pub target: ChooseSpec,
 }

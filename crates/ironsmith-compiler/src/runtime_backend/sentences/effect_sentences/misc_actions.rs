@@ -6,6 +6,7 @@ use crate::cards::builders::{
 use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use crate::runtime_backend::lexer::token_slice_at_is;
 use crate::runtime_backend::parse_counter_type_from_tokens;
+use crate::runtime_backend::util::parse_subtype_flexible;
 
 const MONARCH_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["the", "monarch"], &["monarch"]]);
@@ -178,6 +179,81 @@ pub(crate) fn parse_switch(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
 
     Ok(EffectAst::subject_verb_switch_power_toughness(
         target, duration,
+    ))
+}
+
+pub(crate) fn parse_turn(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let Some(face_idx) = words.windows(2).position(|window| window == ["face", "down"]) else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported turn clause (clause: '{}')",
+            words.join(" ")
+        )));
+    };
+    if face_idx == 0 {
+        return Err(CardTextError::ParseError(
+            "turn face-down clause missing target".to_string(),
+        ));
+    }
+
+    let target = parse_target_phrase(&tokens[..face_idx])?;
+    let mut power = 2;
+    let mut toughness = 2;
+    let mut subtypes = Vec::new();
+    let tail = trim_commas(&tokens[face_idx + 2..]);
+    if !tail.is_empty() {
+        let tail = tail
+            .iter()
+            .filter(|token| token.kind != TokenKind::Period)
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut tail_words = crate::runtime_backend::token_word_refs(&tail);
+        while tail_words.first().is_some_and(|word| {
+            matches!(
+                *word,
+                "they're" | "they’re" | "theyre" | "they" | "it" | "it's" | "its" | "are"
+                    | "is"
+            )
+        }) {
+            tail_words.remove(0);
+        }
+        while tail_words
+            .first()
+            .is_some_and(|word| matches!(*word, "a" | "an" | "are" | "is"))
+        {
+            tail_words.remove(0);
+        }
+        if let Some(pt_word) = tail_words.first()
+            && let Ok((Value::Fixed(parsed_power), Value::Fixed(parsed_toughness))) =
+                parse_pt_modifier_values(pt_word)
+        {
+            power = parsed_power;
+            toughness = parsed_toughness;
+            for word in tail_words.iter().skip(1) {
+                if matches!(*word, "a" | "an" | "creature" | "creatures" | "and" | "or") {
+                    continue;
+                }
+                let Some(subtype) = parse_subtype_flexible(word) else {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported face-down characteristic word '{}' (clause: '{}')",
+                        word,
+                        words.join(" ")
+                    )));
+                };
+                if !subtypes.contains(&subtype) {
+                    subtypes.push(subtype);
+                }
+            }
+        } else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported face-down characteristics (clause: '{}')",
+                words.join(" ")
+            )));
+        }
+    }
+
+    Ok(EffectAst::subject_verb_turn_face_down(
+        target, power, toughness, subtypes,
     ))
 }
 

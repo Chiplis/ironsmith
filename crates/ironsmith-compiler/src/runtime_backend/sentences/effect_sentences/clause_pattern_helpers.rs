@@ -883,6 +883,7 @@ pub(crate) fn parse_verb_first_clause(
         "investigate" => Verb::Investigate,
         "proliferate" => Verb::Proliferate,
         "tap" => Verb::Tap,
+        "turn" => Verb::Turn,
         "attach" => Verb::Attach,
         "untap" => Verb::Untap,
         "scry" => Verb::Scry,

@@ -2513,6 +2513,26 @@ fn rewrite_line_tokens(line: &PreprocessedLine, tokens: &[OwnedLexToken]) -> Pre
     rewritten
 }
 
+fn collapse_turn_face_down_characteristic_followup(text: &str) -> Option<String> {
+    for marker in [
+        " face down. they're ",
+        " face down. they’re ",
+        " face down. they are ",
+        " face down. it's ",
+        " face down. it is ",
+    ] {
+        if let Some(idx) = text.find(marker) {
+            let mut collapsed = String::with_capacity(text.len().saturating_sub(2));
+            collapsed.push_str(&text[..idx]);
+            let replacement = marker.replacen('.', "", 1);
+            collapsed.push_str(&replacement);
+            collapsed.push_str(&text[idx + marker.len()..]);
+            return Some(collapsed);
+        }
+    }
+    None
+}
+
 fn try_parse_triggered_line_with_named_source_rewrite(
     builder: &CardDefinitionBuilder,
     line: &PreprocessedLine,
@@ -2698,6 +2718,54 @@ fn try_parse_labeled_line_dispatch(
         .is_some_and(|(_, _, cost_text, _)| looks_like_activation_cost_prefix(cost_text.as_str()));
 
     if line_starts_with_trigger_intro_tokens(&body_line.tokens) {
+        if let Some(collapsed_text) = collapse_turn_face_down_characteristic_followup(
+            body_line.info.normalized.normalized.as_str(),
+        ) {
+            let collapsed_line = rewrite_line_normalized(line, collapsed_text.as_str())?;
+            if let Ok(mut triggered) = parse_triggered_line_cst(&collapsed_line) {
+                if preserve_as_choice_label {
+                    triggered.chosen_option_label = Some(label.to_ascii_lowercase());
+                }
+                if looks_like_ability_word_label(label.as_str(), preserve_as_choice_label) {
+                    triggered.presentation_label = Some(label.trim().to_string());
+                }
+                let (triggered, next_idx) =
+                    extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
+                return Ok(Some(LineDispatchResult::single(
+                    RewriteLineCst::Triggered(triggered),
+                    next_idx,
+                )));
+            }
+            if let Some((leading_tokens, effect_tokens)) =
+                grammar::split_lexed_once_on_comma(&collapsed_line.tokens)
+                && leading_tokens.len() > 1
+                && !effect_tokens.is_empty()
+            {
+                let mut triggered = TriggeredLineCst {
+                    info: line.info.clone(),
+                    full_text: collapsed_text.clone(),
+                    full_parse_tokens: collapsed_line.tokens.clone(),
+                    trigger_text: render_token_slice(&leading_tokens[1..]).trim().to_string(),
+                    trigger_parse_tokens: leading_tokens[1..].to_vec(),
+                    effect_text: render_token_slice(effect_tokens).trim().to_string(),
+                    effect_parse_tokens: effect_tokens.to_vec(),
+                    max_triggers_per_turn: None,
+                    intervening_if: None,
+                    presentation_label: None,
+                    chosen_option_label: None,
+                };
+                if preserve_as_choice_label {
+                    triggered.chosen_option_label = Some(label.to_ascii_lowercase());
+                }
+                if looks_like_ability_word_label(label.as_str(), preserve_as_choice_label) {
+                    triggered.presentation_label = Some(label.trim().to_string());
+                }
+                return Ok(Some(LineDispatchResult::single(
+                    RewriteLineCst::Triggered(triggered),
+                    idx + 1,
+                )));
+            }
+        }
         if let Some(mut triggered) = try_parse_triggered_line_with_named_source_rewrite(
             &preprocessed.builder,
             line,

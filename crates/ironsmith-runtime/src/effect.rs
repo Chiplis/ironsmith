@@ -2537,6 +2537,12 @@ impl Effect {
         Self::new(TapEffect::target(target))
     }
 
+    /// Create a "turn target permanent face down" effect.
+    pub fn turn_face_down(target: ChooseSpec) -> Self {
+        use crate::effects::TurnFaceDownEffect;
+        Self::new(TurnFaceDownEffect::target(target))
+    }
+
     /// Create an "untap target permanent" effect.
     pub fn untap(target: ChooseSpec) -> Self {
         use crate::effects::UntapEffect;

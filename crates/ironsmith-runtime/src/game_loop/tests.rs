@@ -31411,6 +31411,173 @@ fn test_face_down_cast_matches_panoptic_filter_and_enters_battlefield_face_down(
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn illithid_harvester_plant_tadpoles_turns_only_selected_tapped_nontoken_targets_face_down() {
+    fn creature_card(name: &str) -> crate::card::Card {
+        CardBuilder::new(CardId::new(), name)
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .build()
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let illithid = CardDefinitionBuilder::new(
+        CardId::from_raw(87_010),
+        "Illithid Harvester // Plant Tadpoles",
+    )
+    .mana_cost(ManaCost::from_pips(vec![
+        vec![ManaSymbol::Generic(4)],
+        vec![ManaSymbol::Blue],
+    ]))
+    .card_types(vec![CardType::Creature])
+    .subtypes(vec![Subtype::Horror])
+    .power_toughness(PowerToughness::fixed(4, 4))
+    .parse_text(
+        "Ceremorphosis — When this creature enters, turn any number of target tapped nontoken creatures face down. They're 2/2 Horror creatures.",
+    )
+    .expect("Illithid Harvester // Plant Tadpoles should parse for runtime test");
+    let source_id = game.create_object_from_definition(&illithid, alice, Zone::Battlefield);
+
+    let tapped_one = game.create_object_from_card(
+        &creature_card("Tapped Nontoken One"),
+        alice,
+        Zone::Battlefield,
+    );
+    let tapped_two = game.create_object_from_card(
+        &creature_card("Tapped Nontoken Two"),
+        alice,
+        Zone::Battlefield,
+    );
+    let untapped = game.create_object_from_card(
+        &creature_card("Untapped Nontoken"),
+        alice,
+        Zone::Battlefield,
+    );
+    let token = game.new_object_id();
+    game.add_object(crate::object::Object::new_token(
+        token,
+        alice,
+        "Tapped Token".to_string(),
+        vec![CardType::Creature],
+        Vec::new(),
+        Some(3),
+        Some(3),
+        crate::color::ColorSet::COLORLESS,
+    ));
+    game.tap(tapped_one);
+    game.tap(tapped_two);
+    game.tap(token);
+
+    let etb_trigger = illithid
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered.clone()),
+            _ => None,
+        })
+        .expect("Illithid Harvester // Plant Tadpoles should have an ETB trigger");
+    let target_spec = etb_trigger
+        .choices
+        .first()
+        .cloned()
+        .expect("Ceremorphosis should target tapped nontoken creatures");
+    let event = TriggerEvent::new_with_provenance(
+        EnterBattlefieldEvent::new(source_id, Zone::Stack),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut dm = AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source_id, alice, &mut dm)
+        .with_triggering_event(event)
+        .with_targets(vec![
+            crate::effects::ResolvedTarget::Object(tapped_one),
+            crate::effects::ResolvedTarget::Object(tapped_two),
+        ])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: target_spec.clone(),
+            range: 0..2,
+        }]);
+
+    assert!(crate::effects::validate_target(
+        &game,
+        &crate::effects::ResolvedTarget::Object(tapped_one),
+        &target_spec,
+        &ctx,
+    ));
+    assert!(!crate::effects::validate_target(
+        &game,
+        &crate::effects::ResolvedTarget::Object(untapped),
+        &target_spec,
+        &ctx,
+    ));
+    assert!(!crate::effects::validate_target(
+        &game,
+        &crate::effects::ResolvedTarget::Object(token),
+        &target_spec,
+        &ctx,
+    ));
+
+    for effect in &etb_trigger.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Illithid Harvester // Plant Tadpoles ETB effect should resolve");
+    }
+
+    for target in [tapped_one, tapped_two] {
+        assert!(game.is_face_down(target));
+        assert_eq!(game.calculated_power(target), Some(2));
+        assert_eq!(game.calculated_toughness(target), Some(2));
+        assert!(game.calculated_subtypes(target).contains(&Subtype::Horror));
+    }
+    assert!(!game.is_face_down(untapped));
+    assert!(!game.is_face_down(token));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn illithid_harvester_plant_tadpoles_allows_zero_ceremorphosis_targets() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let illithid = CardDefinitionBuilder::new(
+        CardId::from_raw(87_011),
+        "Illithid Harvester // Plant Tadpoles",
+    )
+    .mana_cost(ManaCost::from_pips(vec![
+        vec![ManaSymbol::Generic(4)],
+        vec![ManaSymbol::Blue],
+    ]))
+    .card_types(vec![CardType::Creature])
+    .subtypes(vec![Subtype::Horror])
+    .power_toughness(PowerToughness::fixed(4, 4))
+    .parse_text(
+        "Ceremorphosis — When this creature enters, turn any number of target tapped nontoken creatures face down. They're 2/2 Horror creatures.",
+    )
+    .expect("Illithid Harvester // Plant Tadpoles should parse for zero-target runtime test");
+    let source_id = game.create_object_from_definition(&illithid, alice, Zone::Battlefield);
+    let etb_trigger = illithid
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered.clone()),
+            _ => None,
+        })
+        .expect("Illithid Harvester // Plant Tadpoles should have an ETB trigger");
+    let mut dm = AutoPassDecisionMaker;
+    let event = TriggerEvent::new_with_provenance(
+        EnterBattlefieldEvent::new(source_id, Zone::Stack),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut ctx = crate::effects::ExecutionContext::new(source_id, alice, &mut dm)
+        .with_triggering_event(event);
+
+    for effect in &etb_trigger.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("zero-target Ceremorphosis should resolve without targets");
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn aquamorph_entity_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(386300), "Aquamorph Entity")
         .mana_cost(ManaCost::from_pips(vec![

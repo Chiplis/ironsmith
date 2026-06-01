@@ -2856,6 +2856,7 @@ pub(crate) enum Verb {
     Investigate,
     Proliferate,
     Tap,
+    Turn,
     Attach,
     Remove,
     Return,

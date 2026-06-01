@@ -243,6 +243,7 @@ pub(crate) fn parse_effect_with_verb(
         Verb::Incubate => parse_incubate(tokens, subject),
         Verb::Proliferate => parse_proliferate(tokens),
         Verb::Tap => parse_tap(tokens),
+        Verb::Turn => parse_turn(tokens),
         Verb::Attach => parse_attach(tokens),
         Verb::Untap => parse_untap(tokens),
         Verb::Scry => parse_scry(tokens, subject),

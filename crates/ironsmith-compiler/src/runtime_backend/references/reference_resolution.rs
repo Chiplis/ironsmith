@@ -427,6 +427,9 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::Tap { target } => {
                     maybe_tag_target(target, frame, id_gen, "tapped")?;
                 }
+                SubjectVerbActionAst::TurnFaceDown { target, .. } => {
+                    maybe_tag_target(target, frame, id_gen, "turned_face_down")?;
+                }
                 SubjectVerbActionAst::Untap { target } => {
                     maybe_tag_target(target, frame, id_gen, "untapped")?;
                 }
@@ -1962,6 +1965,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Transform { .. }
             | SubjectVerbActionAst::Convert { .. }
             | SubjectVerbActionAst::Tap { .. }
+            | SubjectVerbActionAst::TurnFaceDown { .. }
             | SubjectVerbActionAst::Untap { .. }
             | SubjectVerbActionAst::Destroy { .. }
             | SubjectVerbActionAst::DestroyAll { .. }
@@ -2518,6 +2522,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                     + bind_unresolved_it_in_target(creature2, seed_tag)
             }
             SubjectVerbActionAst::Tap { target }
+            | SubjectVerbActionAst::TurnFaceDown { target, .. }
             | SubjectVerbActionAst::Untap { target }
             | SubjectVerbActionAst::Destroy { target, .. }
             | SubjectVerbActionAst::GainControl { target, .. }

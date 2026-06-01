@@ -14982,6 +14982,55 @@ fn test_keyword_marker_rejects_partial_trailing_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn illithid_harvester_plant_tadpoles_parses_ceremorphosis_trigger() {
+    let def = CardDefinitionBuilder::new(
+        CardId::from_raw(1),
+        "Illithid Harvester // Plant Tadpoles",
+    )
+    .mana_cost(ManaCost::from_pips(vec![
+        vec![ManaSymbol::Generic(4)],
+        vec![ManaSymbol::Blue],
+    ]))
+    .card_types(vec![CardType::Creature])
+    .subtypes(vec![Subtype::Horror])
+    .power_toughness(PowerToughness::fixed(4, 4))
+    .parse_text(
+        "Ceremorphosis — When this creature enters, turn any number of target tapped nontoken creatures face down. They're 2/2 Horror creatures.",
+    )
+    .expect("Illithid Harvester // Plant Tadpoles should parse strictly");
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Illithid Harvester // Plant Tadpoles should have an ETB trigger");
+    assert_eq!(triggered.choices.len(), 1);
+    assert!(
+        triggered.choices[0].count().is_any_number(),
+        "Ceremorphosis should allow any number of targets, got {:?}",
+        triggered.choices[0]
+    );
+
+    let debug = format!("{:?}", triggered.effects);
+    assert!(
+        debug.contains("TurnFaceDownEffect") && debug.contains("Horror"),
+        "expected reusable face-down effect with Horror characteristic, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Ceremorphosis")
+            && rendered.contains("turn any number of target nontoken tapped creatures face down")
+            && rendered.contains("They're 2/2 Horror creatures"),
+        "expected compiled Ceremorphosis wording, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_level_up_tiers_render_semantics() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Level-Up Tiers Probe")
         .card_types(vec![CardType::Creature])

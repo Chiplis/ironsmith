@@ -152,6 +152,10 @@ const VERB_SHAPES: &[VerbShapeEntry] = &[
         verb: Verb::Tap,
     },
     VerbShapeEntry {
+        pattern: clause_shape!(exact_any & [&["turns"], &["turn"]]),
+        verb: Verb::Turn,
+    },
+    VerbShapeEntry {
         pattern: clause_shape!(exact_any & [&["attaches"], &["attach"]]),
         verb: Verb::Attach,
     },

@@ -2555,6 +2555,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Transform { .. }
             | SubjectVerbActionAst::Convert { .. }
             | SubjectVerbActionAst::Tap { .. }
+            | SubjectVerbActionAst::TurnFaceDown { .. }
             | SubjectVerbActionAst::Untap { .. }
             | SubjectVerbActionAst::Destroy { .. }
             | SubjectVerbActionAst::DestroyAll { .. }

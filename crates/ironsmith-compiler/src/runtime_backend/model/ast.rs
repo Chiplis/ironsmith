@@ -1467,6 +1467,12 @@ pub(crate) enum SubjectVerbActionAst {
     Tap {
         target: TargetAst,
     },
+    TurnFaceDown {
+        target: TargetAst,
+        power: i32,
+        toughness: i32,
+        subtypes: Vec<Subtype>,
+    },
     Untap {
         target: TargetAst,
     },
@@ -2924,6 +2930,18 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("target", target)
                 .finish(),
             Self::Tap { target } => f.debug_tuple("Tap").field(target).finish(),
+            Self::TurnFaceDown {
+                target,
+                power,
+                toughness,
+                subtypes,
+            } => f
+                .debug_struct("TurnFaceDown")
+                .field("target", target)
+                .field("power", power)
+                .field("toughness", toughness)
+                .field("subtypes", subtypes)
+                .finish(),
             Self::Untap { target } => f.debug_tuple("Untap").field(target).finish(),
             Self::TapAll { filter } => f.debug_tuple("TapAll").field(filter).finish(),
             Self::UntapAll { filter } => f.debug_tuple("UntapAll").field(filter).finish(),
@@ -5826,6 +5844,24 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Tap { target },
+        )
+    }
+
+    pub(crate) fn subject_verb_turn_face_down(
+        target: TargetAst,
+        power: i32,
+        toughness: i32,
+        subtypes: Vec<Subtype>,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::TurnFaceDown {
+                target,
+                power,
+                toughness,
+                subtypes,
+            },
         )
     }
 

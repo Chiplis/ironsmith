@@ -4453,6 +4453,24 @@ fn compile_subject_verb_effect(
             let effect = tag_object_target_effect(base_effect, &spec, ctx, "tapped");
             Ok((vec![effect], choices))
         }
+        SubjectVerbActionAst::TurnFaceDown {
+            target,
+            power,
+            toughness,
+            subtypes,
+        } => {
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let effect = Effect::new(
+                crate::effects::TurnFaceDownEffect::with_spec(spec.clone()).with_characteristics(
+                    *power,
+                    *toughness,
+                    subtypes.clone(),
+                ),
+            );
+            let effect = tag_object_target_effect(effect, &spec, ctx, "turned_face_down");
+            Ok((vec![effect], choices))
+        }
         SubjectVerbActionAst::Untap { target } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;

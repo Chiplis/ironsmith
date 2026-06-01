@@ -30477,6 +30477,42 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(tap) = effect.downcast_ref::<crate::effects::TapEffect>() {
         return format!("Tap {}", describe_choose_spec(&tap.target));
     }
+    if let Some(turn_face_down) = effect.downcast_ref::<crate::effects::TurnFaceDownEffect>() {
+        let mut text = format!(
+            "Turn {} face down",
+            describe_choose_spec(&turn_face_down.target)
+        );
+        if turn_face_down.power != 2
+            || turn_face_down.toughness != 2
+            || !turn_face_down.subtypes.is_empty()
+        {
+            let subtype_text = if turn_face_down.subtypes.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    " {}",
+                    turn_face_down
+                        .subtypes
+                        .iter()
+                        .map(std::string::ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                )
+            };
+            if turn_face_down.target.is_single() {
+                text.push_str(&format!(
+                    ". It's a {}/{}{} creature",
+                    turn_face_down.power, turn_face_down.toughness, subtype_text
+                ));
+            } else {
+                text.push_str(&format!(
+                    ". They're {}/{}{} creatures",
+                    turn_face_down.power, turn_face_down.toughness, subtype_text
+                ));
+            }
+        }
+        return text;
+    }
     if let Some(untap) = effect.downcast_ref::<crate::effects::UntapEffect>() {
         return format!("Untap {}", describe_choose_spec(&untap.target));
     }

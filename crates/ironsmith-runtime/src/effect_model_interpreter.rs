@@ -628,6 +628,9 @@ where
     {
         return Ok(converted);
     }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::TurnFaceDownEffect>(&effect) {
+        return Ok(converted);
+    }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::TicketCountersEffect>(&effect)
     {
         return Ok(converted);

@@ -77,7 +77,7 @@ pub use ironsmith_core::{
     TagMatchingObjectsEffect, TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect,
     TagTriggeringSourceEffect, TaggedEffect as CoreTaggedEffect, TaggedLeavesAbilitySource,
     TakeInitiativeEffect, TapEffect, TargetOnlyEffect, TicketCountersEffect, TransformEffect,
-    UnearthEffect, UnlessActionEffect, UnlessPaysEffect, UntapEffect,
+    TurnFaceDownEffect, UnearthEffect, UnlessActionEffect, UnlessPaysEffect, UntapEffect,
     VariableCasualtyPlaneswalkerCopyEffect, VentureIntoDungeonEffect, WinTheGameEffect,
     WithIdEffect as CoreWithIdEffect,
 };

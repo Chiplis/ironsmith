@@ -59,7 +59,7 @@ use super::zone_handlers::{
     parse_discard, parse_end, parse_exchange, parse_exile, parse_flip, parse_get,
     parse_graveyard_owner_prefix, parse_mill, parse_pay, parse_regenerate, parse_remove,
     parse_return, parse_roll, parse_sacrifice, parse_scry, parse_skip, parse_surveil, parse_switch,
-    parse_tap, parse_untap, wrap_return_with_delayed_timing,
+    parse_tap, parse_turn, parse_untap, wrap_return_with_delayed_timing,
 };
 include!("resource_verbs.rs");
 include!("combat_verbs.rs");

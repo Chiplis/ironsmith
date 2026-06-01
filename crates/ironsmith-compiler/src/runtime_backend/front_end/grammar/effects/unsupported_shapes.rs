@@ -315,7 +315,10 @@ pub(crate) fn has_face_down_clause_sentence_lexed(
         && !primitives::contains_word(tokens, "then")
         && !primitives::contains_word(tokens, "manifest")
         && !primitives::contains_word(tokens, "pile");
-    !simple_exile_face_down
+    let simple_turn_face_down = words
+        .first()
+        .is_some_and(|word| matches!(*word, "turn" | "turns"));
+    !simple_exile_face_down && !simple_turn_face_down
 }
 
 pub(crate) fn has_return_each_creature_that_isnt_list_clause_sentence_lexed(
