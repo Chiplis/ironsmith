@@ -258,6 +258,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         filter: ObjectFilter,
         name: String,
     },
+    CountAsCardNamedForSpellEffect {
+        spell_name: String,
+        counted_name: String,
+    },
     AddSupertypes {
         filter: ObjectFilter,
         supertypes: Vec<Supertype>,
@@ -975,6 +979,13 @@ where
             StaticAbilityPayload::SetName { filter, name } => {
                 StaticAbilityPayload::SetName { filter, name }
             }
+            StaticAbilityPayload::CountAsCardNamedForSpellEffect {
+                spell_name,
+                counted_name,
+            } => StaticAbilityPayload::CountAsCardNamedForSpellEffect {
+                spell_name,
+                counted_name,
+            },
             StaticAbilityPayload::AddSupertypes { filter, supertypes } => {
                 StaticAbilityPayload::AddSupertypes { filter, supertypes }
             }
@@ -2839,6 +2850,23 @@ impl<
             id: Some(StaticAbilityId::SetName),
             label: format!("set name {name}"),
             payload: StaticAbilityPayload::SetName { filter, name },
+        }
+    }
+    pub fn count_as_card_named_for_spell_effect(
+        spell_name: impl Into<String>,
+        counted_name: impl Into<String>,
+    ) -> Self {
+        let spell_name = spell_name.into();
+        let counted_name = counted_name.into();
+        Self {
+            id: Some(StaticAbilityId::CountAsCardNamedForSpellEffect),
+            label: format!(
+                "If this card is in a graveyard, effects from spells named {spell_name} count it as a card named {counted_name}."
+            ),
+            payload: StaticAbilityPayload::CountAsCardNamedForSpellEffect {
+                spell_name,
+                counted_name,
+            },
         }
     }
     pub fn soulbond_shared_power_toughness(power: i32, toughness: i32) -> Self {

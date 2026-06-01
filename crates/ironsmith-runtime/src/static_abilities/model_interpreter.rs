@@ -1008,6 +1008,13 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::SetName { filter, name } => {
                 StaticAbility::set_name(filter.clone(), name.clone())
             }
+            ironsmith_core::StaticAbilityPayload::CountAsCardNamedForSpellEffect {
+                spell_name,
+                counted_name,
+            } => StaticAbility::count_as_card_named_for_spell_effect(
+                spell_name.clone(),
+                counted_name.clone(),
+            ),
             ironsmith_core::StaticAbilityPayload::AddSupertypes { filter, supertypes } => {
                 StaticAbility::add_supertypes(filter.clone(), supertypes.clone())
             }
@@ -1944,6 +1951,21 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
                 card_number: 1,
                 optional: *optional,
                 your_turns_only: *your_turns_only,
+            }),
+            _ => None,
+        }
+    }
+
+    fn count_as_card_named_for_spell_effect_spec(
+        &self,
+    ) -> Option<super::CountAsCardNamedForSpellEffectSpec> {
+        match self.payload() {
+            ironsmith_core::StaticAbilityPayload::CountAsCardNamedForSpellEffect {
+                spell_name,
+                counted_name,
+            } => Some(super::CountAsCardNamedForSpellEffectSpec {
+                spell_name: spell_name.clone(),
+                counted_name: counted_name.clone(),
             }),
             _ => None,
         }

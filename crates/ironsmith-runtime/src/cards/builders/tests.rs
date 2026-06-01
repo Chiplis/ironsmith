@@ -57803,3 +57803,92 @@ fn fatespinner_combat_phase_choice_skips_only_that_players_combat_phase_this_tur
     crate::turn::advance_phase(&mut game).expect("additional combat phase should be skipped");
     assert_eq!(game.turn.phase, crate::game_state::Phase::NextMain);
 }
+
+#[test]
+fn pardic_firecat_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Pardic Firecat");
+    let def = parse_oracle_card_definition("Pardic Firecat");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    let count_as_ability = def
+        .abilities
+        .iter()
+        .find(|ability| matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::CountAsCardNamedForSpellEffect
+        ))
+        .expect("Pardic Firecat should compile its Flame Burst graveyard count-as ability");
+
+    assert!(
+        count_as_ability.functions_in(&Zone::Graveyard),
+        "Pardic Firecat's count-as ability should function in graveyards"
+    );
+    assert!(
+        !count_as_ability.functions_in(&Zone::Battlefield),
+        "Pardic Firecat's count-as ability should not function on the battlefield"
+    );
+    assert!(
+        rendered.contains(
+            "If this card is in a graveyard, effects from spells named Flame Burst count it as a card named Flame Burst."
+        ),
+        "expected Pardic Firecat compiled text to preserve the Flame Burst count-as clause, got {rendered}"
+    );
+}
+
+fn resolve_flame_burst_with_pardic_firecat_in_zones(
+    flame_burst_source_zone: Zone,
+    pardic_zone: Zone,
+) -> i32 {
+    let flame_burst = parse_oracle_card_definition("Flame Burst");
+    let pardic_firecat = parse_oracle_card_definition("Pardic Firecat");
+    let mut game = crate::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.create_object_from_definition(&flame_burst, alice, Zone::Graveyard);
+    game.create_object_from_definition(&pardic_firecat, alice, pardic_zone);
+    let source = game.create_object_from_definition(&flame_burst, alice, flame_burst_source_zone);
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)]);
+    for effect in flame_burst
+        .spell_effect
+        .as_ref()
+        .expect("Flame Burst should have a spell effect")
+    {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Flame Burst damage should resolve");
+    }
+
+    game.life_total(bob)
+}
+
+#[test]
+fn pardic_firecat_in_graveyard_counts_for_flame_burst_damage() {
+    let bob_life = resolve_flame_burst_with_pardic_firecat_in_zones(Zone::Stack, Zone::Graveyard);
+    assert_eq!(
+        bob_life, 16,
+        "Flame Burst should deal 4 damage with one Flame Burst and Pardic Firecat in graveyards"
+    );
+}
+
+#[test]
+fn pardic_firecat_on_battlefield_does_not_count_for_flame_burst_damage() {
+    let bob_life = resolve_flame_burst_with_pardic_firecat_in_zones(Zone::Stack, Zone::Battlefield);
+    assert_eq!(
+        bob_life, 17,
+        "Flame Burst should deal only 3 damage when Pardic Firecat is not in a graveyard"
+    );
+}
+
+#[test]
+fn pardic_firecat_does_not_count_for_non_spell_flame_burst_effect_source() {
+    let bob_life =
+        resolve_flame_burst_with_pardic_firecat_in_zones(Zone::Battlefield, Zone::Graveyard);
+    assert_eq!(
+        bob_life, 17,
+        "Pardic Firecat should count only for effects from spells named Flame Burst"
+    );
+}
