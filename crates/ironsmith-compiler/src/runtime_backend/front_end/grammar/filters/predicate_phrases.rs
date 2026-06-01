@@ -118,6 +118,7 @@ const MORE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["more"]);
 const OTHER_OR_ANOTHER_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["another"], &["other"]]);
 const OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
+const CHOSEN_NAME_TAG: &str = "__chosen_name__";
 const PUT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["put"]);
 const YOU_REVEALED_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["you", "revealed"]);
@@ -1623,6 +1624,13 @@ fn parse_color_only_object_filter_words(words: &[&str]) -> Option<ObjectFilter> 
 }
 
 fn parse_this_way_object_filter_words(words: &[&str]) -> Option<ObjectFilter> {
+    let (words, needs_chosen_name) = if let Some(base_words) =
+        crate::runtime_backend::lexer::word_slice_strip_suffix(words, &["with", "chosen", "name"])
+    {
+        (base_words, true)
+    } else {
+        (words, false)
+    };
     let has_card_noun = words
         .last()
         .is_some_and(|word| CARD_OR_CARDS_WORD_PATTERN.matches_word(word));
@@ -1641,18 +1649,37 @@ fn parse_this_way_object_filter_words(words: &[&str]) -> Option<ObjectFilter> {
     ];
     for (candidate, stripped_card_noun) in candidates {
         if candidate.is_empty() {
-            return Some(ObjectFilter::default());
+            let mut filter = ObjectFilter::default();
+            if needs_chosen_name {
+                filter.tagged_constraints.push(TaggedObjectConstraint {
+                    tag: TagKey::from(CHOSEN_NAME_TAG),
+                    relation: TaggedOpbjectRelation::SameNameAsTagged,
+                });
+            }
+            return Some(filter);
         }
         let tokens = predicate_tokens_from_words(candidate);
         if let Ok(mut filter) = parse_object_filter(&tokens, false) {
             if stripped_card_noun {
                 filter.zone = None;
             }
+            if needs_chosen_name {
+                filter.tagged_constraints.push(TaggedObjectConstraint {
+                    tag: TagKey::from(CHOSEN_NAME_TAG),
+                    relation: TaggedOpbjectRelation::SameNameAsTagged,
+                });
+            }
             return Some(filter);
         }
         if let Some(mut filter) = parse_color_only_object_filter_words(candidate) {
             if stripped_card_noun {
                 filter.zone = None;
+            }
+            if needs_chosen_name {
+                filter.tagged_constraints.push(TaggedObjectConstraint {
+                    tag: TagKey::from(CHOSEN_NAME_TAG),
+                    relation: TaggedOpbjectRelation::SameNameAsTagged,
+                });
             }
             return Some(filter);
         }

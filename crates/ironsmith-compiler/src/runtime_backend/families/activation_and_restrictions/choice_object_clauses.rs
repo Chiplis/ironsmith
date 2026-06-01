@@ -398,6 +398,9 @@ pub(crate) fn parse_you_choose_objects_clause(
             clause_words.join(" ")
         )));
     }
+    if choose_words.ends_with(&["card", "name"]) {
+        return Ok(None);
+    }
     if OF_TAGGED_CHOICE_PATTERN.matches_words(&choose_words) {
         references_it = true;
         references_container_it = true;

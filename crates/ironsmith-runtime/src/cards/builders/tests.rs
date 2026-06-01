@@ -25993,6 +25993,116 @@ fn parse_choose_card_name_then_draw_for_each_card_exiled_from_hand_this_way() {
     );
 }
 
+#[test]
+fn parse_predict_oracle_strict_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Predict");
+
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Choose a card name, then target player mills a card")
+            && rendered.contains("If a card with the chosen name was milled this way")
+            && rendered.contains("Otherwise, draw a card"),
+        "expected Predict compiled text to preserve choose-name mill condition, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("ChooseCardNameEffect")
+            && debug.contains("MillEffect")
+            && debug.contains("ConditionalEffect")
+            && debug.contains("SameNameAsTagged"),
+        "expected Predict to lower to choose-name, tagged mill, and same-name condition, got {debug}"
+    );
+}
+
+#[test]
+fn predict_draws_two_when_milled_card_has_chosen_name() {
+    let (alice_hand, bob_graveyard) = execute_predict_with_top_card("Brainstorm", "Brainstorm");
+
+    assert_eq!(
+        alice_hand, 2,
+        "Predict should draw two when the milled card has the chosen name"
+    );
+    assert_eq!(
+        bob_graveyard,
+        vec!["Brainstorm".to_string()],
+        "Predict should mill the target player's top card"
+    );
+}
+
+#[test]
+fn predict_draws_one_when_milled_card_has_different_name() {
+    let (alice_hand, bob_graveyard) = execute_predict_with_top_card("Brainstorm", "Opt");
+
+    assert_eq!(
+        alice_hand, 1,
+        "Predict should draw one when the milled card does not have the chosen name"
+    );
+    assert_eq!(
+        bob_graveyard,
+        vec!["Opt".to_string()],
+        "Predict should still mill the target player's top card"
+    );
+}
+
+fn execute_predict_with_top_card(chosen_name: &str, top_card_name: &str) -> (usize, Vec<String>) {
+    struct PredictDecisionMaker {
+        chosen_name: String,
+    }
+
+    impl crate::decision::DecisionMaker for PredictDecisionMaker {
+        fn decide_text(
+            &mut self,
+            _game: &crate::GameState,
+            _ctx: &crate::decisions::context::TextInputContext,
+        ) -> String {
+            self.chosen_name.clone()
+        }
+    }
+
+    fn simple_card(name: &str) -> crate::card::Card {
+        CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Instant])
+            .build()
+    }
+
+    let def = parse_oracle_card_definition("Predict");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+
+    game.create_object_from_card(&simple_card("Alice Draw One"), alice, Zone::Library);
+    game.create_object_from_card(&simple_card("Alice Draw Two"), alice, Zone::Library);
+    game.create_object_from_card(&simple_card(top_card_name), bob, Zone::Library);
+
+    let mut dm = PredictDecisionMaker {
+        chosen_name: chosen_name.to_string(),
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)]);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        def.spell_effect.as_ref().expect("Predict spell effect"),
+        None,
+        &[],
+    )
+    .expect("Predict should resolve");
+
+    let alice_hand = game.player(alice).expect("Alice").hand.len();
+    let bob_graveyard = game
+        .player(bob)
+        .expect("Bob")
+        .graveyard
+        .iter()
+        .filter_map(|id| game.object(*id).map(|object| object.name.clone()))
+        .collect::<Vec<_>>();
+    (alice_hand, bob_graveyard)
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_destroy_then_search_target_opponent_library_preserves_destroy_clause() {
