@@ -16960,6 +16960,59 @@ impl DecisionMaker for ScriptedLifeBids {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+struct RecordingLifeBids {
+    responses: std::collections::VecDeque<(PlayerId, Option<u32>)>,
+    pending_bid: Option<(PlayerId, u32)>,
+    prompted_players: Vec<PlayerId>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl RecordingLifeBids {
+    fn new(responses: Vec<(PlayerId, Option<u32>)>) -> Self {
+        Self {
+            responses: responses.into(),
+            pending_bid: None,
+            prompted_players: Vec::new(),
+        }
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for RecordingLifeBids {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        let (expected_player, response) = self
+            .responses
+            .pop_front()
+            .expect("expected another life-bid prompt");
+        assert_eq!(ctx.player, expected_player, "life-bid prompt order mismatch");
+        self.prompted_players.push(ctx.player);
+        if let Some(bid) = response {
+            self.pending_bid = Some((ctx.player, bid));
+            true
+        } else {
+            false
+        }
+    }
+
+    fn decide_number(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::NumberContext,
+    ) -> u32 {
+        let (expected_player, bid) = self
+            .pending_bid
+            .take()
+            .expect("number prompt should follow a top-bid choice");
+        assert_eq!(ctx.player, expected_player, "life-bid number prompt mismatch");
+        bid
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn put_illicit_auction_on_stack(
     game: &mut GameState,
     controller: PlayerId,
@@ -17050,6 +17103,48 @@ fn illicit_auction_zero_bid_stands_for_controller_when_no_player_tops_it() {
         game.current_controller(creature_id),
         Some(alice),
         "the initial high bidder should gain control when no one tops the zero bid"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn illicit_auction_bidding_uses_turn_order_until_high_bid_stands() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    game.turn_store.turn_order = vec![bob, alice, charlie];
+    let creature_id = create_creature(&mut game, "Turn Order Bear", alice, 2, 2);
+
+    put_illicit_auction_on_stack(&mut game, bob, creature_id);
+    let mut bids = RecordingLifeBids::new(vec![
+        (alice, Some(3)),
+        (charlie, None),
+        (bob, Some(5)),
+        (alice, None),
+        (charlie, None),
+    ]);
+    resolve_stack_entry_with(&mut game, &mut bids).expect("Illicit Auction should resolve");
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        bids.prompted_players,
+        vec![alice, charlie, bob, alice, charlie],
+        "bidding should follow turn order from the spell controller through multiple rounds"
+    );
+    assert!(
+        bids.responses.is_empty(),
+        "the high bid should stand only after every other player declines to top it"
+    );
+    assert_eq!(
+        game.player(bob).expect("Bob should exist").life,
+        15,
+        "the final high bidder should lose life equal to the final high bid"
+    );
+    assert_eq!(
+        game.current_controller(creature_id),
+        Some(bob),
+        "the final high bidder should gain control of the target creature"
     );
 }
 

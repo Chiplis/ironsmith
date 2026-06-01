@@ -15,11 +15,24 @@ pub use ironsmith_core::LifeBidStart;
 
 fn active_players_in_turn_order(game: &GameState, start: PlayerId) -> Vec<PlayerId> {
     let mut players: Vec<PlayerId> = game
-        .players
+        .turn_store
+        .turn_order
         .iter()
-        .filter(|player| player.is_in_game())
-        .map(|player| player.id)
+        .copied()
+        .filter(|&player_id| {
+            game.player(player_id)
+                .is_some_and(|player| player.is_in_game())
+        })
         .collect();
+
+    if !players.contains(&start) {
+        players = game
+            .players
+            .iter()
+            .filter(|player| player.is_in_game())
+            .map(|player| player.id)
+            .collect();
+    }
 
     if let Some(start_pos) = players.iter().position(|&player_id| player_id == start) {
         players.rotate_left(start_pos);
