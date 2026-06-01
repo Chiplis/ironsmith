@@ -1433,11 +1433,12 @@ fn compile_subject_verb_effect(
         )),
         SubjectVerbActionAst::ShuffleLibrary => {
             let ast_is_explicit_you = matches!(player, PlayerAst::You | PlayerAst::Implicit);
+            let follows_search_collection = ctx
+                .last_object_tag
+                .as_ref()
+                .is_some_and(|tag| is_searched_collection_tag(tag));
             if !ast_is_explicit_you
-                && ctx
-                    .last_object_tag
-                    .as_ref()
-                    .is_some_and(|tag| is_searched_collection_tag(tag))
+                && follows_search_collection
                 && ctx
                     .last_player_filter
                     .as_ref()
@@ -1448,6 +1449,11 @@ fn compile_subject_verb_effect(
                         ctx.last_player_filter.clone().expect("checked above"),
                     )],
                     Vec::new(),
+                ))
+            } else if matches!(player, PlayerAst::That) && !ctx.iterated_player {
+                Ok((
+                    vec![Effect::shuffle_library_player(PlayerFilter::target_player())],
+                    vec![ChooseSpec::target_player()],
                 ))
             } else {
                 compile_player_role_effect(role, player, ctx, true, true, true, |subject| {

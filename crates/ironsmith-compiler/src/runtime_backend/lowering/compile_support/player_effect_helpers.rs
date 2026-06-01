@@ -295,9 +295,10 @@ impl LoweredSubject {
     pub(crate) fn bind_library_filter(
         &self,
         filter: &ObjectFilter,
-        _ctx: &mut EffectLoweringContext,
+        ctx: &mut EffectLoweringContext,
     ) -> Result<ObjectFilter, CardTextError> {
         let mut resolved = filter.clone();
+        self.apply_player_refs_to_filter(&mut resolved, ctx);
         if resolved.zone.is_none() {
             resolved.zone = Some(Zone::Library);
         }

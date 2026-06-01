@@ -276,7 +276,12 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             (vec![effect], choices)
         }
         EffectAst::IfResult { predicate, effects } => {
-            let condition = ctx.last_effect_id.ok_or_else(|| {
+            let condition = if matches!(predicate, IfResultPredicate::SearchedLibrary) {
+                ctx.last_library_search_effect_id.or(ctx.last_effect_id)
+            } else {
+                ctx.last_effect_id
+            }
+            .ok_or_else(|| {
                 CardTextError::ParseError("missing prior effect for if clause".to_string())
             })?;
             let (inner_effects, inner_choices) = with_preserved_lowering_context(

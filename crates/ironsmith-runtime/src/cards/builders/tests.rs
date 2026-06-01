@@ -8,8 +8,8 @@ use crate::compiled_text::{
 use crate::effects::{
     AddManaEffect, ChooseModeEffect, ChooseObjectsEffect, ConsultTopOfLibraryEffect,
     CreateTokenEffect, DestroyEffect, DrawCardsEffect, EffectExecutor, GainLifeEffect,
-    MoveToZoneEffect, ReturnFromGraveyardToHandEffect, TagTriggeringObjectEffect, TaggedEffect,
-    TargetOnlyEffect, UntapEffect,
+    IfEffect, MoveToZoneEffect, ReturnFromGraveyardToHandEffect, TagTriggeringObjectEffect,
+    TaggedEffect, TargetOnlyEffect, UntapEffect, WithIdEffect,
 };
 use crate::filter::ObjectFilterExt;
 use crate::object::AuraAttachmentFilter;
@@ -54048,6 +54048,245 @@ fn chandras_outburst_compiled_text_preserves_shuffle() {
     assert!(
         !rendered.contains("shuffle target"),
         "shuffle should not reference 'target player', got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn auditore_ambush_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Auditore Ambush");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let lower = rendered.to_ascii_lowercase();
+    let modal = def
+        .spell_effect
+        .as_ref()
+        .and_then(|effects| {
+            effects
+                .iter()
+                .find_map(|effect| effect.downcast_ref::<ChooseModeEffect>())
+        })
+        .expect("Auditore Ambush should lower to a modal spell effect");
+
+    assert_eq!(modal.modes.len(), 2, "Auditore Ambush should have two modes");
+    assert!(
+        matches!(modal.min_choose_count, crate::effect::Value::Fixed(1))
+            && matches!(modal.choose_count, crate::effect::Value::Fixed(2)),
+        "choose one or both should allow choosing one or two modes, got {modal:?}"
+    );
+    assert!(
+        lower.contains("target player searches their library and/or graveyard")
+            && lower.contains("if they search their library this way, they shuffle"),
+        "expected target-player multi-zone search and conditional shuffle text, got {rendered}"
+    );
+
+    let search_mode = &modal.modes[1];
+    let search_id = search_mode
+        .effects
+        .iter()
+        .find_map(|effect| {
+            let with_id = effect.downcast_ref::<WithIdEffect>()?;
+            with_id
+                .effect
+                .downcast_ref::<ChooseObjectsEffect>()
+                .filter(|choose| choose.is_search)
+                .map(|_| with_id.id)
+        })
+        .expect("library search should be effect-id tracked");
+    let shuffle_condition = search_mode
+        .effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<IfEffect>())
+        .expect("conditional library shuffle should lower to IfEffect");
+    assert_eq!(
+        shuffle_condition.condition, search_id,
+        "the shuffle condition must be keyed to the library search, not to moving a found card"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn auditore_ambush_runtime_returns_target_creature() {
+    use crate::effects::ResolvedTarget;
+
+    let def = parse_oracle_card_definition("Auditore Ambush");
+    let modal = def
+        .spell_effect
+        .as_ref()
+        .and_then(|effects| {
+            effects
+                .iter()
+                .find_map(|effect| effect.downcast_ref::<ChooseModeEffect>())
+        })
+        .expect("Auditore Ambush should lower to a modal spell effect");
+    let return_mode: crate::resolution::ResolutionProgram = modal.modes[0].effects.clone().into();
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let spell_source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let target_creature = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_501), "Ambushed Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(spell_source, alice, &mut dm)
+        .with_targets(vec![ResolvedTarget::Object(target_creature)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: crate::target::ChooseSpec::target_creature(),
+            range: 0..1,
+        }]);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        spell_source,
+        &return_mode,
+        None,
+        &[],
+    )
+    .expect("Auditore Ambush return mode should resolve");
+
+    let bob_hand_names: Vec<_> = game
+        .player(bob)
+        .expect("bob exists")
+        .hand
+        .iter()
+        .filter_map(|id| game.object(*id).map(|object| object.name.clone()))
+        .collect();
+    assert!(
+        bob_hand_names.iter().any(|name| name == "Ambushed Creature"),
+        "return mode should put the target creature into its owner's hand, got {bob_hand_names:?}"
+    );
+    assert!(
+        !game.battlefield.contains(&target_creature),
+        "return mode should remove the target creature from the battlefield"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn auditore_ambush_runtime_target_player_searches_for_ezio() {
+    use crate::effects::ResolvedTarget;
+
+    let def = parse_oracle_card_definition("Auditore Ambush");
+    let modal = def
+        .spell_effect
+        .as_ref()
+        .and_then(|effects| {
+            effects
+                .iter()
+                .find_map(|effect| effect.downcast_ref::<ChooseModeEffect>())
+        })
+        .expect("Auditore Ambush should lower to a modal spell effect");
+    let search_mode: crate::resolution::ResolutionProgram = modal.modes[1].effects.clone().into();
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let spell_source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    game.create_object_from_card(
+        &crate::card::CardBuilder::new(CardId::from_raw(91_502), "Ezio, Blade of Vengeance")
+            .card_types(vec![CardType::Creature])
+            .build(),
+        bob,
+        Zone::Library,
+    );
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(spell_source, alice, &mut dm)
+        .with_targets(vec![ResolvedTarget::Player(bob)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: crate::target::ChooseSpec::target_player(),
+            range: 0..1,
+        }]);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        spell_source,
+        &search_mode,
+        None,
+        &[],
+    )
+    .expect("Auditore Ambush search mode should resolve");
+
+    let bob_hand_names: Vec<_> = game
+        .player(bob)
+        .expect("bob exists")
+        .hand
+        .iter()
+        .filter_map(|id| game.object(*id).map(|object| object.name.clone()))
+        .collect();
+    assert!(
+        bob_hand_names
+            .iter()
+            .any(|name| name == "Ezio, Blade of Vengeance"),
+        "search mode should put the named Ezio card into the target player's hand, got {bob_hand_names:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn auditore_ambush_runtime_search_mode_allows_no_matching_card() {
+    use crate::effects::ResolvedTarget;
+
+    let def = parse_oracle_card_definition("Auditore Ambush");
+    let modal = def
+        .spell_effect
+        .as_ref()
+        .and_then(|effects| {
+            effects
+                .iter()
+                .find_map(|effect| effect.downcast_ref::<ChooseModeEffect>())
+        })
+        .expect("Auditore Ambush should lower to a modal spell effect");
+    let search_mode: crate::resolution::ResolutionProgram = modal.modes[1].effects.clone().into();
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let spell_source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    game.create_object_from_card(
+        &crate::card::CardBuilder::new(CardId::from_raw(91_503), "Not Ezio")
+            .card_types(vec![CardType::Creature])
+            .build(),
+        bob,
+        Zone::Library,
+    );
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(spell_source, alice, &mut dm)
+        .with_targets(vec![ResolvedTarget::Player(bob)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: crate::target::ChooseSpec::target_player(),
+            range: 0..1,
+        }]);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        spell_source,
+        &search_mode,
+        None,
+        &[],
+    )
+    .expect("Auditore Ambush search mode should resolve without a matching card");
+
+    let bob_hand_names: Vec<_> = game
+        .player(bob)
+        .expect("bob exists")
+        .hand
+        .iter()
+        .filter_map(|id| game.object(*id).map(|object| object.name.clone()))
+        .collect();
+    assert!(
+        bob_hand_names.is_empty(),
+        "search mode should not move a nonmatching card into hand, got {bob_hand_names:?}"
     );
 }
 
