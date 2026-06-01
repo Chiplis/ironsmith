@@ -109,6 +109,28 @@ const SACRIFICED_TOUGHNESS_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!
             &["sacrificed", "creatures", "toughness"],
         ]
 );
+const EXILED_POWER_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["the", "exiled", "card", "power"],
+            &["the", "exiled", "card's", "power"],
+            &["the", "exiled", "cards", "power"],
+            &["exiled", "card", "power"],
+            &["exiled", "card's", "power"],
+            &["exiled", "cards", "power"],
+        ]
+);
+const EXILED_TOUGHNESS_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["the", "exiled", "card", "toughness"],
+            &["the", "exiled", "card's", "toughness"],
+            &["the", "exiled", "cards", "toughness"],
+            &["exiled", "card", "toughness"],
+            &["exiled", "card's", "toughness"],
+            &["exiled", "cards", "toughness"],
+        ]
+);
 const EXPLOITED_POWER_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -749,12 +771,18 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
         if SACRIFICED_POWER_SEGMENT_PATTERN.matches_words(segment) {
             return Some(tagged_it_power);
         }
+        if EXILED_POWER_SEGMENT_PATTERN.matches_words(segment) {
+            return Some(tagged_it_power);
+        }
         if EXPLOITED_POWER_SEGMENT_PATTERN.matches_words(segment) {
             return Some(Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(
                 crate::tag::EXPLOITED_TAG,
             )))));
         }
         if SACRIFICED_TOUGHNESS_SEGMENT_PATTERN.matches_words(segment) {
+            return Some(tagged_it_toughness);
+        }
+        if EXILED_TOUGHNESS_SEGMENT_PATTERN.matches_words(segment) {
             return Some(tagged_it_toughness);
         }
         if EXPLOITED_TOUGHNESS_SEGMENT_PATTERN.matches_words(segment) {
@@ -823,9 +851,11 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
     if is_source_power_segment(tail)
         || TAGGED_POWER_SEGMENT_PATTERN.matches_words(tail)
         || SACRIFICED_POWER_SEGMENT_PATTERN.matches_words(tail)
+        || EXILED_POWER_SEGMENT_PATTERN.matches_words(tail)
     {
         let source = if THAT_WORD_PATTERN.matches_word(tail[0])
             || SACRIFICED_MARKER_PATTERN.matches_words(tail)
+            || EXILED_POWER_SEGMENT_PATTERN.matches_words(tail)
         {
             ChooseSpec::Tagged(TagKey::from(IT_TAG))
         } else {
@@ -837,9 +867,11 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
     if is_source_toughness_segment(tail)
         || TAGGED_TOUGHNESS_SEGMENT_PATTERN.matches_words(tail)
         || SACRIFICED_TOUGHNESS_SEGMENT_PATTERN.matches_words(tail)
+        || EXILED_TOUGHNESS_SEGMENT_PATTERN.matches_words(tail)
     {
         let source = if THAT_WORD_PATTERN.matches_word(tail[0])
             || SACRIFICED_MARKER_PATTERN.matches_words(tail)
+            || EXILED_TOUGHNESS_SEGMENT_PATTERN.matches_words(tail)
         {
             ChooseSpec::Tagged(TagKey::from(IT_TAG))
         } else {

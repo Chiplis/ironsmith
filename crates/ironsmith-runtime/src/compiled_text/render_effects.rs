@@ -29736,6 +29736,21 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(deal_damage) = effect.downcast_ref::<crate::effects::DealDamageEffect>() {
         if let Value::PowerOf(source) | Value::ToughnessOf(source) = &deal_damage.amount {
+            if matches!(
+                source.base(),
+                ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+            )
+            {
+                let stat = if matches!(&deal_damage.amount, Value::ToughnessOf(_)) {
+                    "toughness"
+                } else {
+                    "power"
+                };
+                return format!(
+                    "Deal damage equal to the exiled card's {stat} to {}",
+                    describe_choose_spec(&deal_damage.target)
+                );
+            }
             let target_matches_power_source = matches!(
                 (source.base(), deal_damage.target.base()),
                 (
