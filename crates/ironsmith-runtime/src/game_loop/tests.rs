@@ -5992,6 +5992,116 @@ fn singe_mind_ogre_reveals_a_random_card_from_target_players_hand_and_makes_them
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn ruin_raider_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(70_020), "Ruin Raider")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Orc, Subtype::Pirate])
+        .power_toughness(PowerToughness::fixed(3, 2))
+        .parse_text(
+            "Raid — At the beginning of your end step, if you attacked this turn, reveal the top card of your library and put that card into your hand. You lose life equal to the card's mana value.",
+        )
+        .expect("Ruin Raider should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn ruin_raider_end_step_event(player: PlayerId) -> TriggerEvent {
+    TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfEndStepEvent::new(player),
+        crate::provenance::ProvNodeId::default(),
+    )
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn ruin_raider_top_card(raw_id: u32, name: &str, mana_value: u8) -> crate::card::Card {
+    CardBuilder::new(CardId::from_raw(raw_id), name)
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(mana_value)]]))
+        .card_types(vec![CardType::Artifact])
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn ruin_raider_does_not_trigger_at_end_step_without_raid() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let ruin_raider = ruin_raider_definition();
+    let ruin_raider_id = game.create_object_from_definition(&ruin_raider, alice, Zone::Battlefield);
+    game.turn.active_player = alice;
+
+    let event = ruin_raider_end_step_event(alice);
+    let triggers = crate::triggers::check_triggers(&game, &event);
+
+    assert!(
+        triggers
+            .into_iter()
+            .all(|trigger| trigger.source != ruin_raider_id),
+        "Ruin Raider should not trigger if its controller did not attack this turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn ruin_raider_reveals_top_card_puts_it_into_hand_and_loses_life_after_raid() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let ruin_raider = ruin_raider_definition();
+    let ruin_raider_id = game.create_object_from_definition(&ruin_raider, alice, Zone::Battlefield);
+    let top_card = ruin_raider_top_card(70_021, "Ruin Raider Revealed Probe", 4);
+    let top_id = game.create_object_from_card(&top_card, alice, Zone::Library);
+    let top_stable = game.object(top_id).expect("top card exists").stable_id;
+    game.turn.active_player = alice;
+    game.turn_store
+        .turn_history
+        .players_attacked_this_turn
+        .insert(alice);
+
+    let event = ruin_raider_end_step_event(alice);
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &event) {
+        if trigger.source == ruin_raider_id {
+            trigger_queue.add(trigger);
+        }
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Ruin Raider should trigger at your end step after you attacked"
+    );
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Ruin Raider trigger should go on the stack");
+
+    let life_before = game.player(alice).expect("alice exists").life;
+    let mut dm = CaptureRevealDecisionMaker::default();
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Ruin Raider trigger should resolve");
+
+    assert!(
+        dm.view_calls.iter().any(|(_, subject, zone, public, cards)| {
+            *subject == alice && *zone == Zone::Library && *public && cards.contains(&top_id)
+        }),
+        "Ruin Raider should publicly reveal the top card of Alice's library"
+    );
+    let revealed_id = game
+        .find_object_by_stable_id(top_stable)
+        .expect("revealed card should still exist");
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .hand
+            .contains(&revealed_id),
+        "Ruin Raider should put the revealed card into its controller's hand"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        life_before - 4,
+        "Ruin Raider should make its controller lose life equal to the revealed card's mana value"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn dinrova_horror_returns_target_and_its_owner_discards() {
     struct ChooseDiscardCardDecisionMaker {

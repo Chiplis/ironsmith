@@ -997,6 +997,29 @@ fn jadar_ghoulcaller_strict_parser_and_compiled_text_regression() {
     );
 }
 
+#[test]
+fn ruin_raider_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Ruin Raider");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        ability_debug.contains("BeginningOfEndStepTrigger")
+            && ability_debug.contains("AttackedThisTurn")
+            && ability_debug.contains("RevealTopEffect")
+            && ability_debug.contains("MoveToZoneEffect")
+            && ability_debug.contains("LoseLifeEffect")
+            && ability_debug.contains("ManaValueOf"),
+        "Ruin Raider should structurally keep the raid trigger, top-card reveal, hand move, and mana-value life loss, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains(
+            "Raid — At the beginning of your end step, if you attacked this turn, reveal the top card of your library and put that card into your hand. You lose life equal to the card's mana value."
+        ),
+        "expected Ruin Raider compiled text to preserve the reveal-to-hand and mana-value life-loss clause, got {rendered}"
+    );
+}
+
 fn jadar_end_step_event(player: PlayerId) -> crate::triggers::TriggerEvent {
     crate::triggers::TriggerEvent::new_with_provenance(
         crate::events::phase::BeginningOfEndStepEvent::new(player),
