@@ -5,7 +5,7 @@ use crate::color::Color;
 use crate::color::ColorSet;
 use crate::cost::TotalCost;
 use crate::costs::Cost;
-use crate::effect::Effect;
+use crate::effect::{Effect, Value};
 use crate::filter::ObjectFilter;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::object::CounterType;
@@ -123,6 +123,11 @@ pub(crate) enum ActivationCostSegmentCst {
         count: u32,
     },
     RevealSourceFromHand,
+    RevealFromHand {
+        count: Value,
+        color_filter: Option<ColorSet>,
+        card_type: Option<CardType>,
+    },
     ReturnSelfToHand,
     ReturnChosenToHand {
         count: u32,
@@ -1603,6 +1608,64 @@ fn parse_reveal_segment_tokens(
         return Ok(ActivationCostSegmentCst::RevealSourceFromHand);
     }
 
+    if LEAF_FROM_YOUR_HAND_SUFFIX_PATTERN.matches_words(&lowered) {
+        let subject = &lowered[1..lowered.len().saturating_sub(3)];
+        if subject.is_empty() {
+            return Err(CardTextError::ParseError(
+                "rewrite reveal-from-hand parser found empty selector".to_string(),
+            ));
+        }
+
+        let mut idx = 0usize;
+        let count = if subject
+            .first()
+            .is_some_and(|word| LEAF_X_WORD_PATTERN.matches_word(word))
+        {
+            idx = 1;
+            Value::X
+        } else if let Some((parsed, consumed_words)) = parse_count_prefix_words(subject) {
+            idx = consumed_words;
+            Value::Fixed(parsed as i32)
+        } else {
+            idx = skip_articles(subject, idx);
+            Value::Fixed(1)
+        };
+        idx = skip_articles(subject, idx);
+
+        let mut color_filter = None;
+        if let Some(word) = subject.get(idx).copied()
+            && let Some(color) = parse_color_word(word)
+        {
+            color_filter = Some(color);
+            idx += 1;
+        }
+
+        let mut card_type = None;
+        if let Some(word) = subject.get(idx).copied()
+            && !CARD_OR_CARDS_WORD_PATTERN.matches_word(word)
+            && let Some(parsed) = parse_card_type_word(word)
+        {
+            card_type = Some(parsed);
+            idx += 1;
+        }
+
+        if !subject
+            .get(idx)
+            .is_some_and(|word| CARD_OR_CARDS_WORD_PATTERN.matches_word(word))
+            || idx + 1 != subject.len()
+        {
+            return Err(CardTextError::ParseError(format!(
+                "rewrite reveal-from-hand parser expected card selector in '{raw}'"
+            )));
+        }
+
+        return Ok(ActivationCostSegmentCst::RevealFromHand {
+            count,
+            color_filter,
+            card_type,
+        });
+    }
+
     Err(CardTextError::ParseError(format!(
         "rewrite reveal-cost parser does not yet support '{raw}'"
     )))
@@ -2109,6 +2172,18 @@ pub(crate) fn lower_activation_cost_cst(
             ActivationCostSegmentCst::RevealSourceFromHand => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 costs.push(Cost::effect(Effect::reveal_source_from_hand()));
+            }
+            ActivationCostSegmentCst::RevealFromHand {
+                count,
+                color_filter,
+                card_type,
+            } => {
+                flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                costs.push(Cost::effect(Effect::reveal_from_hand(
+                    count.clone(),
+                    *card_type,
+                    *color_filter,
+                )));
             }
             ActivationCostSegmentCst::ReturnSelfToHand => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);

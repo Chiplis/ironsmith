@@ -1691,6 +1691,18 @@ impl Effect {
         Self::new(crate::effects::RevealSourceFromHandEffect::new())
     }
 
+    pub fn reveal_from_hand(
+        count: impl Into<Value>,
+        card_type: Option<crate::types::CardType>,
+        color_filter: Option<crate::color::ColorSet>,
+    ) -> Self {
+        Self::new(crate::effects::RevealFromHandEffect::with_color_filter(
+            count,
+            card_type,
+            color_filter,
+        ))
+    }
+
     pub fn cipher() -> Self {
         Self::new(crate::effects::CipherEffect::new())
     }

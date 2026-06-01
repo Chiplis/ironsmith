@@ -1616,6 +1616,7 @@ where
         crate::effects::RetargetStackObjectEffect,
         crate::effects::ReturnAllToBattlefieldEffect,
         crate::effects::ReturnToHandEffect,
+        crate::effects::RevealFromHandEffect,
         crate::effects::RevealSourceFromHandEffect,
         crate::effects::RevealTaggedEffect,
         crate::effects::SacrificeTargetEffect,

@@ -2221,6 +2221,7 @@ pub(super) fn get_legal_reveal_from_hand_cards(
     player: PlayerId,
     source: ObjectId,
     card_type: Option<crate::types::CardType>,
+    color_filter: Option<crate::color::ColorSet>,
 ) -> Vec<ObjectId> {
     game.player(player)
         .map(|p| {
@@ -2231,12 +2232,20 @@ pub(super) fn get_legal_reveal_from_hand_cards(
                     if card_id == source {
                         return false;
                     }
-                    if let Some(ct) = card_type {
-                        game.object(card_id)
-                            .is_some_and(|obj| obj.has_card_type(ct))
-                    } else {
-                        true
+                    let Some(obj) = game.object(card_id) else {
+                        return false;
+                    };
+                    if let Some(ct) = card_type
+                        && !obj.has_card_type(ct)
+                    {
+                        return false;
                     }
+                    if let Some(required_colors) = color_filter {
+                        return game
+                            .current_colors(card_id)
+                            .is_some_and(|colors| !colors.intersection(required_colors).is_empty());
+                    }
+                    true
                 })
                 .collect()
         })
@@ -2342,11 +2351,12 @@ pub(super) fn card_cost_choice_description_and_candidates(
         ),
         ActivationCardCostChoice::RevealFromHand {
             card_type,
+            color_filter,
             description,
             ..
         } => (
             format!("Choose a card to reveal: {}", description),
-            get_legal_reveal_from_hand_cards(game, player, source, *card_type),
+            get_legal_reveal_from_hand_cards(game, player, source, *card_type, *color_filter),
         ),
         ActivationCardCostChoice::ReturnToHand {
             filter,
