@@ -1373,6 +1373,7 @@ pub struct MoveToZoneEffect {
     pub battlefield_controller: BattlefieldController,
     pub enters_tapped: bool,
     pub enters_attacking: bool,
+    pub enters_face_down: bool,
     pub transfer_exiled_with_source_links: bool,
 }
 
@@ -1385,6 +1386,7 @@ impl MoveToZoneEffect {
             battlefield_controller: BattlefieldController::Preserve,
             enters_tapped: false,
             enters_attacking: false,
+            enters_face_down: false,
             transfer_exiled_with_source_links: false,
         }
     }
@@ -1429,12 +1431,18 @@ impl MoveToZoneEffect {
         self.enters_attacking = true;
         self
     }
+
+    pub fn face_down(mut self) -> Self {
+        self.enters_face_down = true;
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReturnAllToBattlefieldEffect {
     pub filter: ObjectFilter,
     pub tapped: bool,
+    pub face_down: bool,
     pub battlefield_controller: BattlefieldController,
 }
 
@@ -1443,6 +1451,7 @@ impl ReturnAllToBattlefieldEffect {
         Self {
             filter,
             tapped,
+            face_down: false,
             battlefield_controller: BattlefieldController::Owner,
         }
     }
@@ -1454,6 +1463,11 @@ impl ReturnAllToBattlefieldEffect {
 
     pub fn under_you_control(mut self) -> Self {
         self.battlefield_controller = BattlefieldController::You;
+        self
+    }
+
+    pub fn face_down(mut self) -> Self {
+        self.face_down = true;
         self
     }
 }

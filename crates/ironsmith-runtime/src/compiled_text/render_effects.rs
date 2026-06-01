@@ -766,20 +766,41 @@ fn has_vote_winners_tag(filter: &ObjectFilter) -> bool {
 fn describe_return_all_to_battlefield_effect(
     return_all: &crate::effects::ReturnAllToBattlefieldEffect,
 ) -> String {
-    let mut filter_text = describe_for_each_filter(&return_all.filter);
+    let source_linked_exile = return_all.filter.zone == Some(Zone::Exile)
+        && return_all.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+        });
+    let mut filter_text = if source_linked_exile
+        && return_all.filter.card_types.len() == 1
+        && return_all.filter.card_types[0] == CardType::Creature
+        && return_all.filter.subtypes.is_empty()
+    {
+        "creature cards exiled with this enchantment".to_string()
+    } else {
+        describe_for_each_filter(&return_all.filter)
+    };
     filter_text = filter_text
         .replace("permanent card exiled", "permanent cards exiled")
         .replace("card exiled", "cards exiled")
         .replace(" card in your graveyard", " cards from your graveyard");
-    let owner_suffix = if filter_text.contains(" from your graveyard") {
-        ""
-    } else {
-        " under their owners' control"
+    let controller_suffix = match return_all.battlefield_controller {
+        crate::effects::BattlefieldController::Preserve
+        | crate::effects::BattlefieldController::Owner => {
+            if filter_text.contains(" from your graveyard") {
+                ""
+            } else {
+                " under their owners' control"
+            }
+        }
+        crate::effects::BattlefieldController::You => " under your control",
     };
+    let face_down_suffix = if return_all.face_down { " face down" } else { "" };
     format!(
-        "Return all {filter_text} to the battlefield{}{}",
+        "Return all {filter_text} to the battlefield{}{}{}",
         if return_all.tapped { " tapped" } else { "" },
-        owner_suffix,
+        face_down_suffix,
+        controller_suffix,
     )
 }
 
@@ -3846,6 +3867,84 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         matches!(apply.target_spec.as_ref(), Some(ChooseSpec::Tagged(candidate)) if candidate == tag)
     }
 
+    fn describe_return_all_face_down_then_become(effects: &[&Effect]) -> Option<String> {
+        let effects = if let Some(first) = effects.first()
+            && first
+                .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+                .is_some()
+        {
+            &effects[1..]
+        } else {
+            effects
+        };
+        let [return_effect, become_effect] = effects else {
+            return None;
+        };
+        let returned_tag = effect_tag(return_effect)?;
+        let return_all = unwrap_wrapped_effect(return_effect)
+            .downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>()?;
+        if !return_all.face_down {
+            return None;
+        }
+
+        let apply = tagged_apply_continuous(become_effect)?;
+        if !apply_targets_tag(apply, returned_tag)
+            || apply.until != Until::Forever
+            || apply.condition.is_some()
+            || !apply.runtime_modifications.is_empty()
+        {
+            return None;
+        }
+        let Some(crate::continuous::Modification::AddCardTypes(card_types)) = &apply.modification
+        else {
+            return None;
+        };
+        let mut power = None;
+        let mut toughness = None;
+        let mut subtypes = Vec::new();
+        for modification in &apply.additional_modifications {
+            match modification {
+                crate::continuous::Modification::SetPowerToughness {
+                    power: p,
+                    toughness: t,
+                    ..
+                } => {
+                    power = Some(p);
+                    toughness = Some(t);
+                }
+                crate::continuous::Modification::AddSubtypes(found) => {
+                    subtypes = found.clone();
+                }
+                _ => return None,
+            }
+        }
+        let (Some(power), Some(toughness)) = (power, toughness) else {
+            return None;
+        };
+        if !card_types.contains(&CardType::Artifact) || !card_types.contains(&CardType::Creature) {
+            return None;
+        }
+
+        let return_text = describe_return_all_to_battlefield_effect(return_all)
+            .replacen("Return all", "Put all", 1)
+            .replace(" to the battlefield", " onto the battlefield");
+        let subtype_text = subtypes
+            .iter()
+            .map(|subtype| subtype.display_name())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let descriptor = if subtype_text.is_empty() {
+            "artifact creatures".to_string()
+        } else {
+            format!("{subtype_text} artifact creatures")
+        };
+        Some(format!(
+            "{return_text}. They're {}/{} {descriptor}",
+            describe_value(power),
+            describe_value(toughness)
+        ))
+    }
+
     fn describe_return_then_conditional_animation(effects: &[Effect]) -> Option<String> {
         let [return_effect, conditional_effect] = effects else {
             return None;
@@ -4063,6 +4162,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
     if let Some(compact) = describe_tagged_pump_then_conditional_keyword(&raw_effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_return_all_face_down_then_become(&raw_effects) {
         return compact;
     }
     if let Some(compact) = describe_return_then_conditional_animation(effects) {
@@ -13977,6 +14079,45 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             && let Some(compact) = describe_draw_then_lose_life(draw, lose)
         {
             parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 2 < filtered.len()
+            && let Some(mill) = filtered[idx].downcast_ref::<crate::effects::MillEffect>()
+            && let Some(target_only) = filtered[idx + 1]
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+            && let Some(exile) = filtered[idx + 2].downcast_ref::<crate::effects::ExileEffect>()
+            && mill.player == PlayerFilter::target_player()
+            && target_only.target == ChooseSpec::target_player()
+            && !exile.face_down
+            && let ChooseSpec::All(filter) = &exile.spec
+            && filter.zone == Some(Zone::Graveyard)
+            && matches!(&filter.owner, Some(PlayerFilter::Target(inner)) if **inner == PlayerFilter::Any)
+            && filter.card_types.is_empty()
+            && filter.subtypes.is_empty()
+        {
+            parts.push(format!(
+                "Target player mills {}, then exiles their graveyard",
+                describe_card_count(&mill.count)
+            ));
+            idx += 3;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(mill) = filtered[idx].downcast_ref::<crate::effects::MillEffect>()
+            && let Some(exile) = filtered[idx + 1].downcast_ref::<crate::effects::ExileEffect>()
+            && mill.player == PlayerFilter::target_player()
+            && !exile.face_down
+            && let ChooseSpec::All(filter) = &exile.spec
+            && filter.zone == Some(Zone::Graveyard)
+            && matches!(&filter.owner, Some(PlayerFilter::Target(inner)) if **inner == PlayerFilter::Any)
+            && filter.card_types.is_empty()
+            && filter.subtypes.is_empty()
+        {
+            parts.push(format!(
+                "Target player mills {}, then exiles their graveyard",
+                describe_card_count(&mill.count)
+            ));
             idx += 2;
             continue;
         }
@@ -28818,6 +28959,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 } else {
                     ""
                 };
+                let face_down_suffix = if move_to_zone.enters_face_down {
+                    " face down"
+                } else {
+                    ""
+                };
                 let controller_suffix = match move_to_zone.battlefield_controller {
                     crate::effects::BattlefieldController::Preserve => "",
                     crate::effects::BattlefieldController::Owner => owner_control_suffix,
@@ -28829,11 +28975,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                         || crate::cards::is_sentence_helper_tag(tag.as_str(), "exiled"))
                 {
                     format!(
-                        "Return {target} to the battlefield{tapped_suffix}{attacking_suffix}{controller_suffix}"
+                        "Return {target} to the battlefield{tapped_suffix}{attacking_suffix}{face_down_suffix}{controller_suffix}"
                     )
                 } else {
                     format!(
-                        "Put {target} onto the battlefield{tapped_suffix}{attacking_suffix}{controller_suffix}"
+                        "Put {target} onto the battlefield{tapped_suffix}{attacking_suffix}{face_down_suffix}{controller_suffix}"
                     )
                 }
             }

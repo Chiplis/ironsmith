@@ -1166,6 +1166,7 @@ pub(crate) fn parse_each_player_put_permanent_cards_exiled_with_source_sentence(
         effects: vec![EffectAst::subject_verb_return_all_to_battlefield(
             filter,
             false,
+            false,
             ReturnControllerAst::Owner,
         )],
     }]))

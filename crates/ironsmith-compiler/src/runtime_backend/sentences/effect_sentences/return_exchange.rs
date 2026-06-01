@@ -438,6 +438,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             EffectAst::subject_verb_return_all_to_battlefield(
                 filter,
                 tapped,
+                false,
                 ReturnControllerAst::Owner,
             )
         } else if is_graveyard {
@@ -589,6 +590,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             EffectAst::subject_verb_return_all_to_battlefield(
                 filter,
                 tapped,
+                false,
                 ReturnControllerAst::Owner,
             )
         } else if is_graveyard {

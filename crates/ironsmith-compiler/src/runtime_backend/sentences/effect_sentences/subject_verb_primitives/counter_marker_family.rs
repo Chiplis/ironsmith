@@ -1073,6 +1073,7 @@ pub(crate) fn clone_return_effect_with_subtype(
             SubjectVerbActionAst::ReturnAllToBattlefield {
                 filter,
                 tapped,
+                face_down,
                 controller,
             } => {
                 let mut cloned_filter = filter.clone();
@@ -1080,6 +1081,7 @@ pub(crate) fn clone_return_effect_with_subtype(
                 Some(EffectAst::subject_verb_return_all_to_battlefield(
                     cloned_filter,
                     *tapped,
+                    *face_down,
                     *controller,
                 ))
             }

@@ -185,6 +185,7 @@ pub enum Subtype {
     Construct,
     Crab,
     Crocodile,
+    Cyberman,
     Dalek,
     Dauthi,
     Detective,
@@ -466,6 +467,7 @@ impl Subtype {
             Subtype::Construct,
             Subtype::Crab,
             Subtype::Crocodile,
+            Subtype::Cyberman,
             Subtype::Detective,
             Subtype::Doctor,
             Subtype::Demon,
@@ -785,6 +787,7 @@ impl Subtype {
                 | Subtype::Construct
                 | Subtype::Crab
                 | Subtype::Crocodile
+                | Subtype::Cyberman
                 | Subtype::Detective
                 | Subtype::Doctor
                 | Subtype::Demon

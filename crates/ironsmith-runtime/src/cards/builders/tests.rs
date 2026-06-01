@@ -40984,6 +40984,223 @@ fn assert_oracle_card_fails_strict(name: &str) {
     );
 }
 
+#[test]
+fn death_in_heaven_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Death in Heaven");
+    let def = parse_oracle_card_definition("Death in Heaven");
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "put all creature cards exiled with this enchantment onto the battlefield face down under your control"
+        ),
+        "Death in Heaven chapter III should render the source-linked face-down return, got {rendered}"
+    );
+    assert!(
+        rendered.contains("they're 2/2 cyberman artifact creatures"),
+        "Death in Heaven chapter III should render the Cyberman artifact-creature effect, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("ReturnAllToBattlefieldEffect")
+            && debug.contains("face_down: true")
+            && debug.contains("battlefield_controller: You")
+            && debug.contains(crate::tag::SOURCE_EXILED_TAG)
+            && debug.contains("Cyberman"),
+        "Death in Heaven should lower chapter III to a face-down source-linked return plus Cyberman continuous effect, got {debug}"
+    );
+}
+
+fn death_in_heaven_saga_trigger(
+    def: &CardDefinition,
+    trigger_index: usize,
+) -> &crate::ability::TriggeredAbility {
+    def.abilities
+        .iter()
+        .filter_map(|ability| {
+            let AbilityKind::Triggered(triggered) = &ability.kind else {
+                return None;
+            };
+            Some(triggered)
+        })
+        .nth(trigger_index)
+        .unwrap_or_else(|| panic!("Death in Heaven should have saga trigger index {trigger_index}"))
+}
+
+fn execute_death_in_heaven_trigger(
+    game: &mut crate::game_state::GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    triggered: &crate::ability::TriggeredAbility,
+    target_player: Option<PlayerId>,
+) {
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, controller);
+    if let Some(target_player) = target_player {
+        ctx = ctx
+            .with_targets(vec![crate::effects::ResolvedTarget::Player(target_player)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: triggered
+                    .choices
+                    .first()
+                    .expect("Death in Heaven chapters I/II should target a player")
+                    .clone(),
+                range: 0..1,
+            }]);
+    }
+    ctx.snapshot_targets(game);
+    if let Some(source_object) = game.object(source) {
+        ctx.tag_object(
+            "triggering",
+            crate::snapshot::ObjectSnapshot::from_object(source_object, game),
+        );
+    }
+
+    for effect in triggered.effects.flattened_default_effects() {
+        if effect
+            .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+            .is_some()
+        {
+            continue;
+        }
+        crate::effects::execute_effect(game, effect, &mut ctx).unwrap_or_else(|err| {
+            panic!("Death in Heaven saga effect should resolve: {err:?}; effect: {effect:#?}")
+        });
+    }
+}
+
+#[test]
+fn death_in_heaven_mills_exiles_then_returns_only_source_exiled_creatures_face_down() {
+    let def = parse_oracle_card_definition("Death in Heaven");
+    let chapter_one_two = death_in_heaven_saga_trigger(&def, 0);
+    let chapter_three = death_in_heaven_saga_trigger(&def, 1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let creature_card = crate::card::CardBuilder::new(CardId::new(), "Milled Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(5, 5))
+        .build();
+    let noncreature_card = crate::card::CardBuilder::new(CardId::new(), "Milled Spell")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let graveyard_creature_card =
+        crate::card::CardBuilder::new(CardId::new(), "Buried Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(4, 4))
+            .build();
+    let unrelated_creature = crate::card::CardBuilder::new(CardId::new(), "Unrelated Exile")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+
+    let creature_id = game.create_object_from_card(&creature_card, bob, Zone::Library);
+    let creature_stable_id = game
+        .object(creature_id)
+        .expect("milled creature should exist")
+        .stable_id;
+    let spell_id = game.create_object_from_card(&noncreature_card, bob, Zone::Library);
+    let spell_stable_id = game
+        .object(spell_id)
+        .expect("milled spell should exist")
+        .stable_id;
+    let graveyard_creature_id =
+        game.create_object_from_card(&graveyard_creature_card, bob, Zone::Graveyard);
+    let graveyard_creature_stable_id = game
+        .object(graveyard_creature_id)
+        .expect("graveyard creature should exist")
+        .stable_id;
+    let unrelated_id = game.create_object_from_card(&unrelated_creature, bob, Zone::Exile);
+    let unrelated_stable_id = game
+        .object(unrelated_id)
+        .expect("unrelated exiled creature should exist")
+        .stable_id;
+
+    execute_death_in_heaven_trigger(&mut game, source, alice, chapter_one_two, Some(bob));
+    assert!(
+        game.player(bob).expect("bob exists").library.is_empty(),
+        "Death in Heaven chapters I/II should mill two cards from the targeted player"
+    );
+    assert!(
+        game.player(bob).expect("bob exists").graveyard.is_empty(),
+        "Death in Heaven chapters I/II should exile the targeted player's graveyard after milling"
+    );
+
+    execute_death_in_heaven_trigger(&mut game, source, alice, chapter_three, None);
+
+    let returned_creature = game
+        .find_object_by_stable_id(creature_stable_id)
+        .expect("milled creature should still be tracked");
+    let returned = game
+        .object(returned_creature)
+        .expect("milled creature should be on the battlefield");
+    assert_eq!(returned.zone, Zone::Battlefield);
+    assert_eq!(game.controller_of(returned), alice);
+    assert!(
+        game.is_face_down(returned_creature),
+        "Death in Heaven chapter III should return creature cards face down"
+    );
+    assert_eq!(game.calculated_power(returned_creature), Some(2));
+    assert_eq!(game.calculated_toughness(returned_creature), Some(2));
+    assert!(
+        game.calculated_card_types(returned_creature)
+            .contains(&CardType::Artifact)
+    );
+    assert!(
+        game.calculated_card_types(returned_creature)
+            .contains(&CardType::Creature)
+    );
+    assert!(
+        game.calculated_subtypes(returned_creature)
+            .contains(&Subtype::Cyberman),
+        "returned face-down creature should be a Cyberman"
+    );
+    let returned_graveyard_creature = game
+        .find_object_by_stable_id(graveyard_creature_stable_id)
+        .expect("graveyard creature should still be tracked");
+    assert_eq!(
+        game.object(returned_graveyard_creature)
+            .expect("graveyard creature should be on the battlefield")
+            .zone,
+        Zone::Battlefield,
+        "Death in Heaven chapter III should also return creature cards already in the targeted graveyard"
+    );
+    assert_eq!(
+        game.controller_of(
+            game.object(returned_graveyard_creature)
+                .expect("graveyard creature should be on the battlefield"),
+        ),
+        alice
+    );
+    assert!(
+        game.is_face_down(returned_graveyard_creature),
+        "returned graveyard creature should enter face down"
+    );
+
+    let exiled_spell = game
+        .find_object_by_stable_id(spell_stable_id)
+        .expect("milled noncreature should still be tracked");
+    assert_eq!(
+        game.object(exiled_spell).expect("milled spell exists").zone,
+        Zone::Exile,
+        "Death in Heaven chapter III should not return noncreature cards"
+    );
+    let unrelated_after = game
+        .find_object_by_stable_id(unrelated_stable_id)
+        .expect("unrelated exiled creature should still be tracked");
+    assert_eq!(
+        game.object(unrelated_after)
+            .expect("unrelated exiled creature exists")
+            .zone,
+        Zone::Exile,
+        "Death in Heaven chapter III should not return creature cards exiled by other sources"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn losheel_clockwork_scholar_strict_parser_and_text_regression() {

@@ -2334,12 +2334,18 @@ fn compile_subject_verb_effect(
         SubjectVerbActionAst::ReturnAllToBattlefield {
             filter,
             tapped,
+            face_down,
             controller,
         } => {
             let return_all = crate::effects::ReturnAllToBattlefieldEffect::new(
                 resolve_it_tag(filter, &current_reference_env(ctx))?,
                 *tapped,
             );
+            let return_all = if *face_down {
+                return_all.face_down()
+            } else {
+                return_all
+            };
             let return_all = match controller {
                 ReturnControllerAst::Preserve | ReturnControllerAst::Owner => {
                     return_all.under_owner_control()
@@ -2361,6 +2367,7 @@ fn compile_subject_verb_effect(
             battlefield_controller,
             battlefield_tapped,
             battlefield_attacking,
+            battlefield_face_down,
             attached_to,
         } => {
             let (mut spec, mut choices) =
@@ -2426,6 +2433,11 @@ fn compile_subject_verb_effect(
                 } else {
                     move_effect
                 };
+                let move_effect = if *zone == Zone::Battlefield && *battlefield_face_down {
+                    move_effect.face_down()
+                } else {
+                    move_effect
+                };
                 let move_effect = match battlefield_controller {
                     ReturnControllerAst::Preserve => move_effect,
                     ReturnControllerAst::Owner => move_effect.under_owner_control(),
@@ -2482,6 +2494,11 @@ fn compile_subject_verb_effect(
             };
             let move_effect = if *zone == Zone::Battlefield && *battlefield_attacking {
                 move_effect.attacking()
+            } else {
+                move_effect
+            };
+            let move_effect = if *zone == Zone::Battlefield && *battlefield_face_down {
+                move_effect.face_down()
             } else {
                 move_effect
             };
