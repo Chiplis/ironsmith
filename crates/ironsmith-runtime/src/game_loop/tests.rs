@@ -19369,6 +19369,236 @@ fn test_enter_as_copy_with_no_candidates_keeps_original_characteristics() {
     assert_eq!(entered.base_toughness, Some(crate::card::PtValue::Fixed(4)));
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn sakashimas_student_test_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Sakashima's Student")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Ninja])
+        .power_toughness(PowerToughness::fixed(0, 0))
+        .parse_text(
+            "Ninjutsu {1}{U} ({1}{U}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)\nYou may have this creature enter as a copy of any creature on the battlefield, except it's a Ninja in addition to its other creature types.",
+        )
+        .expect("Sakashima's Student should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct ChooseSakashimaCopySourceDecisionMaker {
+    source_name: &'static str,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for ChooseSakashimaCopySourceDecisionMaker {
+    fn decide_options(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        ctx.options
+            .iter()
+            .find(|option| option.legal && option.description.contains(self.source_name))
+            .map(|option| vec![option.index])
+            .unwrap_or_default()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct PanicOnSakashimaCopyPrompt;
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for PanicOnSakashimaCopyPrompt {
+    fn decide_options(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        panic!(
+            "Sakashima's Student should not offer copy choices without another creature: {:?}",
+            ctx.options
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sakashimas_student_ninjutsu_cost_returns_unblocked_attacker_and_records_target() {
+    use crate::combat_state::{AttackerInfo, CombatState};
+    use crate::effect::OutcomeStatus;
+    use crate::effects::{EffectExecutor as _, ExecutionContext, NinjutsuCostEffect};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let student = sakashimas_student_test_definition();
+    let student_id = game.create_object_from_definition(&student, alice, Zone::Hand);
+    let attacker = CardDefinitionBuilder::new(CardId::new(), "Unblocked Attacker")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let attacker_id = game.create_object_from_definition(&attacker, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(attacker_id);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareBlockers);
+    game.combat = Some(CombatState {
+        attackers: vec![AttackerInfo {
+            creature: attacker_id,
+            target: AttackTarget::Player(bob),
+        }],
+        ..CombatState::default()
+    });
+
+    let mut ctx = ExecutionContext::new_default(student_id, alice);
+    let result = NinjutsuCostEffect::new()
+        .execute(&mut game, &mut ctx)
+        .expect("Sakashima's Student ninjutsu cost should resolve");
+
+    assert!(matches!(result.status, OutcomeStatus::Succeeded));
+    assert!(
+        game.player(alice)
+            .expect("Alice exists")
+            .hand
+            .iter()
+            .filter_map(|id| game.object(*id))
+            .any(|obj| obj.name == "Unblocked Attacker"),
+        "ninjutsu cost should return the unblocked attacker to hand"
+    );
+    assert!(
+        game.combat
+            .as_ref()
+            .is_some_and(|combat| combat.attackers.is_empty()),
+        "returned attacker should be removed from combat"
+    );
+    assert_eq!(
+        game.ninjutsu_attack_targets
+            .get(&student_id)
+            .and_then(|targets| targets.last())
+            .cloned(),
+        Some(AttackTarget::Player(bob)),
+        "ninjutsu cost should remember the original attack target for the entering Student"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sakashimas_student_ninjutsu_enters_tapped_attacking_as_copy_with_added_ninja_type() {
+    use crate::effect::OutcomeValue;
+    use crate::effects::{EffectExecutor as _, ExecutionContext, NinjutsuEffect};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let copy_source = CardDefinitionBuilder::new(CardId::new(), "Runeclaw Bear")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Bear])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    game.create_object_from_definition(&copy_source, alice, Zone::Battlefield);
+
+    let student = sakashimas_student_test_definition();
+    let student_id = game.create_object_from_definition(&student, alice, Zone::Hand);
+    game.ninjutsu_attack_targets
+        .insert(student_id, vec![AttackTarget::Player(bob)]);
+    game.combat = Some(crate::combat_state::CombatState::default());
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::CombatDamage);
+
+    let mut dm = ChooseSakashimaCopySourceDecisionMaker {
+        source_name: "Runeclaw Bear",
+    };
+    let mut ctx = ExecutionContext::new_default(student_id, alice).with_decision_maker(&mut dm);
+    let result = NinjutsuEffect::new()
+        .execute(&mut game, &mut ctx)
+        .expect("Sakashima's Student ninjutsu effect should resolve");
+    let entered_id = match result.value {
+        OutcomeValue::Objects(ids) => ids[0],
+        other => panic!("expected Sakashima's Student to enter, got {other:?}"),
+    };
+
+    let entered = game
+        .object(entered_id)
+        .expect("Sakashima's Student permanent should exist");
+    assert_eq!(entered.name, "Runeclaw Bear");
+    assert_eq!(entered.base_power, Some(PtValue::Fixed(2)));
+    assert_eq!(entered.base_toughness, Some(PtValue::Fixed(2)));
+    assert!(entered.subtypes.contains(&Subtype::Bear));
+    assert!(
+        entered.subtypes.contains(&Subtype::Ninja),
+        "copy exception should add Ninja to the copied creature types"
+    );
+    assert!(
+        !entered.subtypes.contains(&Subtype::Human),
+        "copying the Bear should replace original Human subtype before adding Ninja"
+    );
+    assert!(game.is_tapped(entered_id));
+    assert!(
+        game.combat
+            .as_ref()
+            .is_some_and(|combat| combat.attackers.iter().any(|info| {
+                info.creature == entered_id && info.target == AttackTarget::Player(bob)
+            })),
+        "ninjutsu should leave Sakashima's Student tapped and attacking the recorded player"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sakashimas_student_declined_copy_enters_with_its_own_characteristics() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let copy_source = CardDefinitionBuilder::new(CardId::new(), "Runeclaw Bear")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Bear])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    game.create_object_from_definition(&copy_source, alice, Zone::Battlefield);
+
+    let student = sakashimas_student_test_definition();
+    let student_id = game.create_object_from_definition(&student, alice, Zone::Hand);
+    let mut dm = AutoPassDecisionMaker;
+    let result = game
+        .move_object_with_etb_processing_with_dm(student_id, Zone::Battlefield, &mut dm)
+        .expect("Sakashima's Student should enter when its optional copy is declined");
+
+    let entered = game
+        .object(result.new_id)
+        .expect("Sakashima's Student permanent should exist");
+    assert_eq!(entered.name, "Sakashima's Student");
+    assert_eq!(entered.base_power, Some(PtValue::Fixed(0)));
+    assert_eq!(entered.base_toughness, Some(PtValue::Fixed(0)));
+    assert!(entered.subtypes.contains(&Subtype::Human));
+    assert!(entered.subtypes.contains(&Subtype::Ninja));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sakashimas_student_without_copy_candidate_enters_without_prompt() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let student = sakashimas_student_test_definition();
+    let student_id = game.create_object_from_definition(&student, alice, Zone::Hand);
+    let mut dm = PanicOnSakashimaCopyPrompt;
+    let result = game
+        .move_object_with_etb_processing_with_dm(student_id, Zone::Battlefield, &mut dm)
+        .expect("Sakashima's Student should enter without another creature to copy");
+
+    let entered = game
+        .object(result.new_id)
+        .expect("Sakashima's Student permanent should exist");
+    assert_eq!(entered.name, "Sakashima's Student");
+    assert_eq!(entered.base_power, Some(PtValue::Fixed(0)));
+    assert_eq!(entered.base_toughness, Some(PtValue::Fixed(0)));
+    assert!(entered.subtypes.contains(&Subtype::Human));
+    assert!(entered.subtypes.contains(&Subtype::Ninja));
+}
+
 fn the_mimeoplasm_test_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "The Mimeoplasm")
         .card_types(vec![CardType::Creature])
