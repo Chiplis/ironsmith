@@ -178,6 +178,7 @@ fn jetmirs_fixer_strict_parser_and_compiled_text_regression() {
 #[derive(Clone, Copy)]
 enum JetmirsFixerManaScenario {
     DirectNonTreasure,
+    AvailableTreasureUnspent,
     DirectTreasure,
     PreFloatedTreasure,
 }
@@ -221,6 +222,23 @@ fn resolve_jetmirs_fixer_activation(
             );
             game.create_object_from_definition(
                 &crate::cards::definitions::basic_forest(),
+                alice,
+                Zone::Battlefield,
+            );
+        }
+        JetmirsFixerManaScenario::AvailableTreasureUnspent => {
+            game.create_object_from_definition(
+                &crate::cards::definitions::basic_mountain(),
+                alice,
+                Zone::Battlefield,
+            );
+            game.create_object_from_definition(
+                &crate::cards::definitions::basic_forest(),
+                alice,
+                Zone::Battlefield,
+            );
+            game.create_object_from_definition(
+                &crate::cards::tokens::treasure_token_definition(),
                 alice,
                 Zone::Battlefield,
             );
@@ -351,6 +369,28 @@ fn jetmirs_fixer_activation_without_treasure_mana_gives_temporary_plus_one_plus_
         game.counter_count(fixer, crate::object::CounterType::PlusOnePlusOne),
         0,
         "ordinary activation should not put a +1/+1 counter on Jetmir's Fixer"
+    );
+    assert_eq!(game.calculated_power(fixer), Some(3));
+    assert_eq!(game.calculated_toughness(fixer), Some(3));
+}
+
+#[test]
+fn jetmirs_fixer_activation_ignores_available_but_unspent_treasure() {
+    let game = resolve_jetmirs_fixer_activation(JetmirsFixerManaScenario::AvailableTreasureUnspent);
+    let fixer = game
+        .battlefield
+        .iter()
+        .copied()
+        .find(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Jetmir's Fixer")
+        })
+        .expect("Jetmir's Fixer remains on battlefield");
+
+    assert_eq!(
+        game.counter_count(fixer, crate::object::CounterType::PlusOnePlusOne),
+        0,
+        "Treasure availability alone should not put a +1/+1 counter on Jetmir's Fixer"
     );
     assert_eq!(game.calculated_power(fixer), Some(3));
     assert_eq!(game.calculated_toughness(fixer), Some(3));
