@@ -343,6 +343,153 @@ fn thundermane_dragon_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn vortex_elemental_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Vortex Elemental");
+    let def = parse_oracle_card_definition("Vortex Elemental");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains(
+            "{U}: Put this creature and each creature blocking or blocked by it on top of their owners' libraries, then those players shuffle."
+        ),
+        "Vortex Elemental should render the source plus combatants library move, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "{3}{U}{U}: Target creature blocks this creature this turn if able."
+        ),
+        "Vortex Elemental should render its targeted must-block activation, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("MoveToZoneEffect")
+            && ability_debug.contains("ShuffleLibraryEffect")
+            && ability_debug.contains("in_combat_with_source: true")
+            && ability_debug.contains("TargetOnlyEffect")
+            && ability_debug.contains("MustBlockSpecificAttacker"),
+        "Vortex Elemental should structurally model both activated abilities, got {ability_debug}"
+    );
+}
+
+#[test]
+fn vortex_elemental_first_ability_moves_source_and_combatants_runtime() {
+    let def = parse_oracle_card_definition("Vortex Elemental");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Activated(activated) = &ability.kind else {
+                return None;
+            };
+            format!("{:?}", activated.effects)
+                .contains("MoveToZoneEffect")
+                .then_some(activated)
+        })
+        .expect("Vortex Elemental should have a library-move activated ability");
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let vortex = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let bear_def = CardDefinitionBuilder::new(CardId::from_raw(92_020), "Blocking Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let blocker = game.create_object_from_definition(&bear_def, bob, Zone::Battlefield);
+    let bystander = game.create_object_from_definition(&bear_def, bob, Zone::Battlefield);
+    game.combat = Some(crate::combat_state::CombatState {
+        attackers: vec![crate::combat_state::AttackerInfo {
+            creature: vortex,
+            target: crate::combat_state::AttackTarget::Player(bob),
+        }],
+        blockers: HashMap::from([(vortex, vec![blocker])]),
+        ..Default::default()
+    });
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(vortex, alice, &mut dm);
+    for effect in activated.effects.flattened_default_effects() {
+        effect
+            .0
+            .execute(&mut game, &mut ctx)
+            .expect("Vortex Elemental library-move ability should resolve");
+    }
+
+    assert!(
+        game.player(alice).is_some_and(|player| player.library.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Vortex Elemental")
+        })),
+        "Vortex Elemental should move itself to its owner's library"
+    );
+    assert!(
+        game.player(bob).is_some_and(|player| player.library.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Blocking Bear")
+        })),
+        "the creature blocking Vortex Elemental should move to its owner's library"
+    );
+    assert!(
+        game.battlefield.contains(&bystander),
+        "unrelated creatures not blocking or blocked by Vortex Elemental should remain on the battlefield"
+    );
+}
+
+#[test]
+fn vortex_elemental_second_ability_targets_one_creature_to_block_source_runtime() {
+    let def = parse_oracle_card_definition("Vortex Elemental");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Activated(activated) = &ability.kind else {
+                return None;
+            };
+            format!("{:?}", activated.effects)
+                .contains("MustBlockSpecificAttacker")
+                .then_some(activated)
+        })
+        .expect("Vortex Elemental should have a targeted must-block activated ability");
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let vortex = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let bear_def = CardDefinitionBuilder::new(CardId::from_raw(92_021), "Target Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let target = game.create_object_from_definition(&bear_def, bob, Zone::Battlefield);
+    let other = game.create_object_from_definition(&bear_def, bob, Zone::Battlefield);
+
+    assert!(
+        !game.must_block_attacker(target, vortex) && !game.must_block_attacker(other, vortex),
+        "no creature should be required to block before the activation resolves"
+    );
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(vortex, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target)]);
+    for effect in activated.effects.flattened_default_effects() {
+        effect
+            .0
+            .execute(&mut game, &mut ctx)
+            .expect("Vortex Elemental must-block ability should resolve");
+    }
+
+    assert!(
+        game.must_block_attacker(target, vortex),
+        "the targeted creature should be required to block Vortex Elemental"
+    );
+    assert!(
+        !game.must_block_attacker(other, vortex),
+        "non-targeted creatures should not be required to block Vortex Elemental"
+    );
+}
+
+#[test]
 fn king_darien_xlviii_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("King Darien XLVIII");
     let rendered = unprocessed_compiled_lines(&def).join("\n");

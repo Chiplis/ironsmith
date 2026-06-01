@@ -658,6 +658,13 @@ fn should_keep_and_for_put_rest_clause(
     should_keep_and_for_put_rest_clause_lexed(current, remaining)
 }
 
+fn should_keep_and_for_put_source_and_combatants_to_library(
+    current: &[OwnedLexToken],
+    remaining: &[OwnedLexToken],
+) -> bool {
+    should_keep_and_for_put_source_and_combatants_to_library_lexed(current, remaining)
+}
+
 fn should_keep_and_for_steps_and_phases_end(
     current: &[OwnedLexToken],
     remaining: &[OwnedLexToken],
@@ -695,6 +702,10 @@ pub(crate) fn split_effect_chain_on_and(tokens: &[OwnedLexToken]) -> Vec<Vec<Own
                 || should_keep_and_for_attachment_object_list(&current, &tokens[idx + 1..])
                 || should_keep_and_for_each_player_may_clause(&current, &tokens[idx + 1..])
                 || should_keep_and_for_put_rest_clause(&current, &tokens[idx + 1..])
+                || should_keep_and_for_put_source_and_combatants_to_library(
+                    &current,
+                    &tokens[idx + 1..],
+                )
                 || should_keep_and_for_steps_and_phases_end(&current, &tokens[idx + 1..])
                 || should_keep_and_for_exchange_zones(&current, &tokens[idx + 1..])
                 || should_keep_and_for_card_type_list(&current, &tokens[idx + 1..])
@@ -850,6 +861,49 @@ fn should_keep_and_for_put_rest_clause_lexed(
     grammar::contains_word(current, "put")
         && grammar::contains_word(current, "into")
         && grammar::contains_word(current, "hand")
+}
+
+fn should_keep_and_for_put_source_and_combatants_to_library_lexed(
+    current: &[OwnedLexToken],
+    remaining: &[OwnedLexToken],
+) -> bool {
+    let current_words = token_word_refs(current);
+    let remaining_words = token_word_refs(remaining);
+    if current_words.len() < 3 || remaining_words.len() < 7 {
+        return false;
+    }
+
+    current_words.first() == Some(&"put")
+        && current_words.get(1) == Some(&"this")
+        && remaining_words.first().is_some_and(|word| matches!(*word, "each" | "all"))
+        && remaining_words.iter().any(|word| *word == "blocking")
+        && remaining_words.iter().any(|word| *word == "blocked")
+        && remaining_words
+            .windows(3)
+            .any(|window| matches!(window, ["on", "top", "of"]))
+        && remaining_words
+            .iter()
+        .any(|word| matches!(*word, "library" | "libraries"))
+}
+
+fn should_keep_then_for_source_and_combatants_shuffle_lexed(
+    before_then: &[OwnedLexToken],
+    after_then: &[OwnedLexToken],
+) -> bool {
+    let before_words = token_word_refs(before_then);
+    let after_words = token_word_refs(after_then);
+
+    before_words.first() == Some(&"put")
+        && before_words.windows(2).any(|window| matches!(window, ["this", "creature"]))
+        && before_words.iter().any(|word| *word == "blocking")
+        && before_words.iter().any(|word| *word == "blocked")
+        && before_words
+            .windows(3)
+            .any(|window| matches!(window, ["on", "top", "of"]))
+        && before_words
+            .iter()
+            .any(|word| matches!(*word, "library" | "libraries"))
+        && after_words == ["those", "players", "shuffle"]
 }
 
 fn should_keep_and_for_steps_and_phases_end_lexed(
@@ -1063,6 +1117,7 @@ pub(crate) fn split_effect_chain_on_and_lexed(tokens: &[OwnedLexToken]) -> Vec<&
             || should_keep_and_for_attachment_object_list_lexed(current, remaining)
             || should_keep_and_for_each_player_may_clause_lexed(current, remaining)
             || should_keep_and_for_put_rest_clause_lexed(current, remaining)
+            || should_keep_and_for_put_source_and_combatants_to_library_lexed(current, remaining)
             || should_keep_and_for_steps_and_phases_end_lexed(current, remaining)
             || should_keep_and_for_exchange_zones_lexed(current, remaining)
             || should_keep_and_for_card_type_list_lexed(current, remaining)
@@ -1206,6 +1261,12 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                     grammar::words_match_any_prefix(before_then, CLASH_PREFIXES).is_some();
                 let after_then = trim_lexed_commas(&segment[then_idx + 1..]);
                 let after_words = token_word_refs(after_then);
+                if should_keep_then_for_source_and_combatants_shuffle_lexed(
+                    before_then,
+                    after_then,
+                ) {
+                    continue;
+                }
                 let has_back_ref = BACK_REFERENCE_WORD_PATTERN.matches_words(&after_words);
                 let has_nonverb_effect_head =
                     NONVERB_EFFECT_HEAD_WORD_PATTERN.matches_first_word(&after_words);

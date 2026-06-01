@@ -870,13 +870,17 @@ pub(crate) fn parse_must_block_if_able_clause(
     if subject_clause.is_empty() {
         return Ok(None);
     }
-    let blockers_filter =
-        parse_subject_object_filter(subject_clause.tokens())?.ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "unsupported blocker subject in must-block clause (clause: '{}')",
-                clause_text
-            ))
-        })?;
+    let subject_target = parse_target_phrase(subject_clause.tokens())?;
+    let blockers_filter = target_ast_to_object_filter(subject_target.clone()).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "unsupported blocker subject in must-block clause (clause: '{}')",
+            clause_text
+        ))
+    })?;
+    let subject_is_targeted = subject_clause
+        .word_refs()
+        .first()
+        .is_some_and(|word| *word == "target");
 
     let Some(tail_clause) = clause
         .from(block_idx + 1)
@@ -909,11 +913,25 @@ pub(crate) fn parse_must_block_if_able_clause(
         ))
     })?;
 
-    Ok(Some(EffectAst::subject_verb_cant(
-        crate::effect::Restriction::must_block_specific_attacker(blockers_filter, attacker_filter),
+    let cant_effect = EffectAst::subject_verb_cant(
+        crate::effect::Restriction::must_block_specific_attacker(
+            if subject_is_targeted {
+                ObjectFilter::tagged(TagKey::from(IT_TAG))
+            } else {
+                blockers_filter
+            },
+            attacker_filter,
+        ),
         duration,
         None,
-    )))
+    );
+    if subject_is_targeted {
+        return Ok(Some(EffectAst::Sequence {
+            effects: vec![EffectAst::subject_verb_target_only(subject_target), cant_effect],
+        }));
+    }
+
+    Ok(Some(cant_effect))
 }
 
 pub(crate) fn parse_until_duration_triggered_clause(

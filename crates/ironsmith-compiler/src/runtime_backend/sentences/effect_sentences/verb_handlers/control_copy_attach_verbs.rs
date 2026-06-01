@@ -517,6 +517,66 @@ pub(crate) fn parse_put_into_hand(
         }
     }
 
+    fn parse_source_and_combatants_top_library_move(
+        target_tokens: &[OwnedLexToken],
+        destination_tokens: &[OwnedLexToken],
+    ) -> Option<EffectAst> {
+        let and_idx = find_index(target_tokens, |token| token.as_word() == Some("and"))?;
+        let source_tokens = trim_commas(&target_tokens[..and_idx]);
+        let combatant_tokens = trim_commas(&target_tokens[and_idx + 1..]);
+        let source_words = crate::runtime_backend::token_word_refs(&source_tokens);
+        let combatant_words = crate::runtime_backend::token_word_refs(&combatant_tokens);
+        let destination_words = crate::runtime_backend::token_word_refs(destination_tokens);
+
+        if !is_source_reference_words(&source_words) {
+            return None;
+        }
+        if !destination_words
+            .iter()
+            .any(|word| CCA_LIBRARY_OR_LIBRARIES_WORD_PATTERN.matches_word(word))
+        {
+            return None;
+        }
+        if !matches!(combatant_words.as_slice(), ["each", "creature", ..] | ["all", "creatures", ..])
+            || !combatant_words.iter().any(|word| *word == "blocking")
+            || !combatant_words.iter().any(|word| *word == "blocked")
+            || !combatant_words.iter().any(|word| *word == "by")
+        {
+            return None;
+        }
+
+        let mut combatants = ObjectFilter::creature();
+        combatants.in_combat_with_source = true;
+
+        let mut target_filter = ObjectFilter::default();
+        target_filter.any_of = vec![ObjectFilter::source(), combatants];
+
+        let mut effects = vec![EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(target_tokens)),
+            Zone::Library,
+            true,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
+        )];
+
+        if destination_words
+            .windows(3)
+            .any(|window| matches!(window, ["those", "players", "shuffle"]))
+        {
+            effects.push(EffectAst::subject_verb(
+                SubjectVerbRoleAst::LibraryOwner,
+                PlayerAst::ItsOwner,
+                SubjectVerbActionAst::ShuffleLibrary,
+            ));
+        }
+
+        Some(EffectAst::ForEachObject {
+            filter: target_filter,
+            effects,
+        })
+    }
+
     fn expand_graveyard_or_hand_disjunction(
         mut target: TargetAst,
         target_tokens: &[OwnedLexToken],
@@ -956,11 +1016,19 @@ pub(crate) fn parse_put_into_hand(
                 clause_words.join(" ")
             )));
         }
-        if !super::super::grammar::primitives::contains_word(after_on_top_of, "library") {
+        if !crate::runtime_backend::token_word_refs(after_on_top_of)
+            .iter()
+            .any(|word| CCA_LIBRARY_OR_LIBRARIES_WORD_PATTERN.matches_word(word))
+        {
             return Err(CardTextError::ParseError(format!(
                 "unsupported put destination after 'on top of' (clause: '{}')",
                 clause_words.join(" ")
             )));
+        }
+        if let Some(effect) =
+            parse_source_and_combatants_top_library_move(&target_tokens, after_on_top_of)
+        {
+            return Ok(effect);
         }
         let target = if let Some(target) = parse_counted_card_target_prefix(&target_tokens)? {
             target

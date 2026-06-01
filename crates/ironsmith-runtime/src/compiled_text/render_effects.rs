@@ -3856,6 +3856,102 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         None
     }
 
+    fn filter_is_source_and_combatants(filter: &ObjectFilter) -> bool {
+        if filter.any_of.len() != 2 {
+            return false;
+        }
+
+        let mut combatants = ObjectFilter::creature();
+        combatants.in_combat_with_source = true;
+
+        let has_source = filter.any_of.iter().any(|part| part == &ObjectFilter::source());
+        let has_combatants = filter.any_of.iter().any(|part| part == &combatants);
+
+        has_source && has_combatants
+    }
+
+    fn describe_source_and_combatants_top_library_then_shuffle(
+        effects: &[Effect],
+    ) -> Option<String> {
+        if let [for_each_effect] = effects {
+            let for_each = for_each_effect.downcast_ref::<crate::effects::ForEachObject>()?;
+            if !filter_is_source_and_combatants(&for_each.filter) {
+                return None;
+            }
+            let [move_effect, shuffle_effect] = for_each.effects.as_slice() else {
+                return None;
+            };
+            let move_to_zone = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+            if move_to_zone.zone != Zone::Library || !move_to_zone.to_top {
+                return None;
+            }
+            match move_to_zone.target.base() {
+                ChooseSpec::Iterated => {}
+                ChooseSpec::Tagged(tag) if tag.as_str() == "__it__" => {}
+                _ => return None,
+            }
+            shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+            return Some(
+                "Put this creature and each creature blocking or blocked by it on top of their owners' libraries, then those players shuffle"
+                    .to_string(),
+            );
+        }
+
+        let [move_effect, shuffle_effect] = effects else {
+            return None;
+        };
+        let move_to_zone = unwrap_wrapped_effect(move_effect)
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+        if move_to_zone.zone != Zone::Library || !move_to_zone.to_top {
+            return None;
+        }
+        let ChooseSpec::Object(filter) = move_to_zone.target.base() else {
+            return None;
+        };
+        if !filter_is_source_and_combatants(filter) {
+            return None;
+        }
+        shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+
+        Some(
+            "Put this creature and each creature blocking or blocked by it on top of their owners' libraries, then those players shuffle"
+                .to_string(),
+        )
+    }
+
+    fn describe_target_creature_blocks_source(effects: &[Effect]) -> Option<String> {
+        let [target_effect, cant_effect] = effects else {
+            return None;
+        };
+        let target_tag = effect_tag(target_effect)?;
+        let target_only = unwrap_wrapped_effect(target_effect)
+            .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+        let ChooseSpec::Target(inner) = &target_only.target else {
+            return None;
+        };
+        let ChooseSpec::Object(target_filter) = inner.as_ref() else {
+            return None;
+        };
+        if target_filter != &ObjectFilter::creature() {
+            return None;
+        }
+
+        let cant = cant_effect.downcast_ref::<crate::effects::CantEffect>()?;
+        if cant.duration != Until::EndOfTurn {
+            return None;
+        }
+        let crate::effect::Restriction::MustBlockSpecificAttacker { blockers, attacker } =
+            &cant.restriction
+        else {
+            return None;
+        };
+        if blockers != &ObjectFilter::tagged(target_tag.clone()) || attacker != &ObjectFilter::source() {
+            return None;
+        }
+
+        Some("Target creature blocks this creature this turn if able".to_string())
+    }
+
     fn tagged_apply_continuous(effect: &Effect) -> Option<&crate::effects::ApplyContinuousEffect> {
         unwrap_wrapped_effect(effect).downcast_ref::<crate::effects::ApplyContinuousEffect>()
     }
@@ -4162,6 +4258,12 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
     if let Some(compact) = describe_tagged_pump_then_conditional_keyword(&raw_effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_source_and_combatants_top_library_then_shuffle(effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_target_creature_blocks_source(effects) {
         return compact;
     }
     if let Some(compact) = describe_return_all_face_down_then_become(&raw_effects) {
