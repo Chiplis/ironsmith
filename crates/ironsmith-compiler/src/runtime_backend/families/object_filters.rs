@@ -154,6 +154,8 @@ const OBJECT_FILTER_YOUR_LIBRARY_SUFFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["in", "your", "library"], &["from", "your", "library"]]);
 const OBJECT_FILTER_GRAVEYARD_SUFFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["in", "graveyard"], &["from", "graveyard"]]);
+const OBJECT_FILTER_ALL_GRAVEYARDS_SUFFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["in", "all", "graveyards"], &["from", "all", "graveyards"]]);
 const OBJECT_FILTER_HAND_SUFFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["in", "hand"], &["from", "hand"]]);
 const OBJECT_FILTER_LIBRARY_SUFFIX_PATTERN: ClauseShape<'static> =
@@ -328,6 +330,11 @@ fn parse_simple_object_filter_suffix(words: &[&str]) -> Option<(SimpleObjectFilt
             SimpleObjectFilterSuffix::OwnerZone(PlayerFilter::You, Zone::Library),
             3,
         ));
+    }
+    if tail(words, 3)
+        .is_some_and(|tail| OBJECT_FILTER_ALL_GRAVEYARDS_SUFFIX_PATTERN.matches_words(tail))
+    {
+        return Some((SimpleObjectFilterSuffix::Zone(Zone::Graveyard), 3));
     }
     if tail(words, 2)
         .is_some_and(|tail| OBJECT_FILTER_YOU_CONTROL_SUFFIX_PATTERN.matches_words(tail))

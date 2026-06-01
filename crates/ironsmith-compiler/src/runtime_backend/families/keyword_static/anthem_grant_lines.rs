@@ -495,6 +495,15 @@ const SOURCE_IS_MONSTROUS_CONDITION_PATTERN: ClauseShape<'static> = clause_shape
             &["its", "monstrous"],
         ]
 );
+const SOURCE_IS_ON_BATTLEFIELD_CONDITION_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["this", "creature", "is", "on", "the", "battlefield"],
+            &["this", "permanent", "is", "on", "the", "battlefield"],
+            &["this", "is", "on", "the", "battlefield"],
+            &["it", "is", "on", "the", "battlefield"],
+        ]
+);
 const SOURCE_DEVOURED_CREATURES_CONDITION_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -2836,6 +2845,9 @@ pub(crate) fn parse_static_condition_clause(
     }
     if SOURCE_IS_MONSTROUS_CONDITION_PATTERN.matches_words(&clause_words) {
         return Ok(crate::ConditionExpr::SourceIsMonstrous);
+    }
+    if SOURCE_IS_ON_BATTLEFIELD_CONDITION_PATTERN.matches_words(&clause_words) {
+        return Ok(crate::ConditionExpr::SourceIsInZone(Zone::Battlefield));
     }
     if SOURCE_DEVOURED_CREATURES_CONDITION_PATTERN.matches_words(&clause_words) {
         return Ok(crate::ConditionExpr::SourceDevouredCreaturesOrMore(1));
