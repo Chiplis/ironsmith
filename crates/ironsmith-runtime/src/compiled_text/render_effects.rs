@@ -33886,6 +33886,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                         "that source's controller".to_string()
                     }
                 }
+                crate::effects::RedirectNextTimeDamageDestination::TargetObject => {
+                    describe_choose_spec(
+                        redirect_next_time
+                            .destination_target
+                            .as_ref()
+                            .expect("redirect-next damage destination target"),
+                    )
+                }
             };
             return if let Some(target) = &redirect_next_time.target {
                 format!(
@@ -33924,6 +33932,21 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 } else {
                     "that source's controller"
                 }
+            ),
+            crate::effects::RedirectNextTimeDamageDestination::TargetObject => format!(
+                "The next time {source_text} would deal damage to {} this turn, that damage is dealt to {} instead",
+                describe_choose_spec(
+                    redirect_next_time
+                        .target
+                        .as_ref()
+                        .expect("redirect-next damage target")
+                ),
+                describe_choose_spec(
+                    redirect_next_time
+                        .destination_target
+                        .as_ref()
+                        .expect("redirect-next damage destination target")
+                )
             ),
         };
     }

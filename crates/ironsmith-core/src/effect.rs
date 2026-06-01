@@ -126,6 +126,7 @@ pub enum RedirectNextTimeDamageDestination {
     SourceObject,
     Controller,
     SourceController,
+    TargetObject,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3560,6 +3561,7 @@ pub struct RedirectNextTimeDamageToSourceEffect {
     pub source: RedirectNextTimeDamageSource,
     pub target: Option<ChooseSpec>,
     pub destination: RedirectNextTimeDamageDestination,
+    pub destination_target: Option<ChooseSpec>,
     pub all_this_turn: bool,
 }
 
@@ -3569,6 +3571,7 @@ impl RedirectNextTimeDamageToSourceEffect {
             source,
             target: Some(target),
             destination: RedirectNextTimeDamageDestination::SourceObject,
+            destination_target: None,
             all_this_turn: false,
         }
     }
@@ -3578,17 +3581,26 @@ impl RedirectNextTimeDamageToSourceEffect {
             source: RedirectNextTimeDamageSource::Target(source),
             target: None,
             destination: RedirectNextTimeDamageDestination::SourceController,
+            destination_target: None,
             all_this_turn: false,
         }
     }
 
     pub fn to_controller(mut self) -> Self {
         self.destination = RedirectNextTimeDamageDestination::Controller;
+        self.destination_target = None;
         self
     }
 
     pub fn to_source_controller(mut self) -> Self {
         self.destination = RedirectNextTimeDamageDestination::SourceController;
+        self.destination_target = None;
+        self
+    }
+
+    pub fn to_target(mut self, target: ChooseSpec) -> Self {
+        self.destination = RedirectNextTimeDamageDestination::TargetObject;
+        self.destination_target = Some(target);
         self
     }
 

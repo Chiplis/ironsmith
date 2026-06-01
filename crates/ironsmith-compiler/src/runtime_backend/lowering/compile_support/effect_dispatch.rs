@@ -1752,6 +1752,7 @@ fn compile_subject_verb_effect(
             source,
             target,
             destination,
+            destination_target,
             all_this_turn,
         } => {
             let source_spec = match source {
@@ -1765,29 +1766,42 @@ fn compile_subject_verb_effect(
                     )?)
                 }
             };
-            compile_effect_for_target(target, ctx, |spec| {
-                let effect = crate::effects::RedirectNextTimeDamageToSourceEffect::new(
-                    source_spec.clone(),
-                    spec,
-                );
-                let effect = match destination {
-                    crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceObject => {
-                        effect
-                    }
-                    crate::cards::builders::RedirectNextTimeDamageDestinationAst::Controller => {
-                        effect.to_controller()
-                    }
-                    crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceController => {
-                        effect.to_source_controller()
-                    }
-                };
-                let effect = if *all_this_turn {
-                    effect.all_this_turn()
-                } else {
+            let refs = current_reference_env(ctx);
+            let (protected_spec, mut choices) = resolve_target_spec_with_choices(target, &refs)?;
+            let mut effect = crate::effects::RedirectNextTimeDamageToSourceEffect::new(
+                source_spec,
+                protected_spec,
+            );
+            effect = match destination {
+                crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceObject => {
                     effect
-                };
-                Effect::new(effect)
-            })
+                }
+                crate::cards::builders::RedirectNextTimeDamageDestinationAst::Controller => {
+                    effect.to_controller()
+                }
+                crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceController => {
+                    effect.to_source_controller()
+                }
+                crate::cards::builders::RedirectNextTimeDamageDestinationAst::TargetObject => {
+                    let destination_target = destination_target.as_ref().ok_or_else(|| {
+                        CardTextError::ParseError(
+                            "missing redirected-next-time damage destination target".to_string(),
+                        )
+                    })?;
+                    let (destination_spec, destination_choices) =
+                        resolve_target_spec_with_choices(destination_target, &refs)?;
+                    for choice in destination_choices {
+                        push_choice(&mut choices, choice);
+                    }
+                    effect.to_target(destination_spec)
+                }
+            };
+            let effect = if *all_this_turn {
+                effect.all_this_turn()
+            } else {
+                effect
+            };
+            Ok((vec![Effect::new(effect)], choices))
         }
         SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController { source } => {
             compile_effect_for_target(source, ctx, |spec| {

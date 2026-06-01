@@ -29442,6 +29442,30 @@ fn jade_monolith_parses_and_renders_source_damage_redirect_to_you() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn generals_regalia_parses_and_renders_redirect_to_target_creature_you_control() {
+    let def = parse_oracle_card_definition("General's Regalia");
+
+    let joined = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        joined.contains(
+            "the next time a source of your choice would deal damage to you this turn, that damage is dealt to target creature you control instead"
+        ),
+        "expected General's Regalia redirect text in compiled output, got {joined}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("RedirectNextTimeDamageToSourceEffect")
+            && debug.contains("destination: TargetObject")
+            && debug.contains("destination_target: Some"),
+        "General's Regalia should lower to next-time damage redirection to a target object, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn oracles_attendants_parses_and_renders_all_damage_source_redirect_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Oracle's Attendants")
         .card_types(vec![CardType::Creature])

@@ -2102,15 +2102,24 @@ pub(crate) fn parse_redirect_next_damage_sentence(
         } else {
             return Ok(None);
         };
-        let destination = if destination_clause.matches_any_words(&[
+        let (destination, destination_target) = if destination_clause.matches_any_words(&[
             &["this"],
             &["it"],
             &["this", "creature"],
             &["this", "permanent"],
         ]) {
-            RedirectNextTimeDamageDestinationAst::SourceObject
+            (RedirectNextTimeDamageDestinationAst::SourceObject, None)
         } else if destination_clause.matches_any_words(&[&["you"]]) {
-            RedirectNextTimeDamageDestinationAst::Controller
+            (RedirectNextTimeDamageDestinationAst::Controller, None)
+        } else if destination_clause
+            .word_refs()
+            .first()
+            .is_some_and(|word| CLAUSE_TARGET_WORD_PATTERN.matches_word(word))
+        {
+            (
+                RedirectNextTimeDamageDestinationAst::TargetObject,
+                Some(parse_target_phrase(destination_clause.tokens())?),
+            )
         } else {
             return Err(CardTextError::ParseError(format!(
                 "unsupported redirected-next-time damage destination (clause: '{}')",
@@ -2118,13 +2127,21 @@ pub(crate) fn parse_redirect_next_damage_sentence(
             )));
         };
 
-        return Ok(Some(vec![
+        let effect = if let Some(destination_target) = destination_target {
+            EffectAst::subject_verb_redirect_next_time_damage_to_target(
+                source,
+                target,
+                destination_target,
+            )
+        } else {
             EffectAst::subject_verb_redirect_next_time_damage_to_source(
                 source,
                 target,
                 destination,
-            ),
-        ]));
+            )
+        };
+
+        return Ok(Some(vec![effect]));
     }
 
     if !CLAUSE_THE_NEXT_PREFIX_PATTERN.matches(clause) {

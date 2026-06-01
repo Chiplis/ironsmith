@@ -1084,6 +1084,7 @@ pub(crate) enum RedirectNextTimeDamageDestinationAst {
     SourceObject,
     Controller,
     SourceController,
+    TargetObject,
 }
 
 #[cfg(any(test, ironsmith_runtime_parser_tests))]

@@ -1386,6 +1386,7 @@ pub(crate) enum SubjectVerbActionAst {
         source: PreventNextTimeDamageSourceAst,
         target: TargetAst,
         destination: RedirectNextTimeDamageDestinationAst,
+        destination_target: Option<TargetAst>,
         all_this_turn: bool,
     },
     RedirectAllDamageThisTurnBySourceToSourceController {
@@ -2790,12 +2791,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 source,
                 target,
                 destination,
+                destination_target,
                 all_this_turn,
             } => f
                 .debug_struct("RedirectNextTimeDamageToSource")
                 .field("source", source)
                 .field("target", target)
                 .field("destination", destination)
+                .field("destination_target", destination_target)
                 .field("all_this_turn", all_this_turn)
                 .finish(),
             Self::RedirectAllDamageThisTurnBySourceToSourceController { source } => f
@@ -4666,6 +4669,25 @@ impl EffectAst {
                 source,
                 target,
                 destination,
+                destination_target: None,
+                all_this_turn: false,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_redirect_next_time_damage_to_target(
+        source: PreventNextTimeDamageSourceAst,
+        target: TargetAst,
+        destination_target: TargetAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::RedirectNextTimeDamageToSource {
+                source,
+                target,
+                destination: RedirectNextTimeDamageDestinationAst::TargetObject,
+                destination_target: Some(destination_target),
                 all_this_turn: false,
             },
         )
@@ -4683,6 +4705,7 @@ impl EffectAst {
                 source,
                 target,
                 destination,
+                destination_target: None,
                 all_this_turn: true,
             },
         )
