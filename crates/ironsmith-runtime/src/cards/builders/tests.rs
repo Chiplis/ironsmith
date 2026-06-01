@@ -26516,6 +26516,34 @@ fn parse_that_much_damage_trigger_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_torch_the_witness_strictly_parses_and_renders_excess_damage_branch() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Torch the Witness")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::X],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Torch the Witness deals twice X damage to target creature. If excess damage was dealt to that creature this way, investigate.",
+        )
+        .expect("Torch the Witness should parse strictly");
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("XTimes") && debug.contains("ExcessDamageDealt"),
+        "expected twice-X damage and excess-damage predicate in Torch the Witness definition, got {debug}"
+    );
+
+    let joined = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        joined.contains("Torch the Witness deals twice X damage to target creature")
+            && joined.contains("If excess damage was dealt to that creature this way, investigate"),
+        "expected Torch the Witness compiled text to preserve twice-X damage and excess-damage condition, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_gain_choice_of_keywords_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Gift Variant")
         .parse_text("Target creature gets +1/+1 and gains your choice of deathtouch or lifelink until end of turn.")

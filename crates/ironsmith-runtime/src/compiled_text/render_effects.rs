@@ -14936,6 +14936,9 @@ fn describe_damage_amount_clause(amount: &Value) -> (String, Option<String>) {
     if is_effect_count_reference(amount, None) {
         return ("that much".to_string(), None);
     }
+    if matches!(amount.unhinted(), Value::XTimes(2)) {
+        return ("twice X damage".to_string(), None);
+    }
     if let Some((amount_text, where_x)) = describe_damage_amount_with_revealed_count_where_x(amount)
     {
         return (amount_text, Some(where_x));
@@ -25916,6 +25919,10 @@ fn describe_with_id_if_clause(
         } else {
             "If you do".to_string()
         }
+    } else if let Some(target) = excess_damage_condition_target_from_effect(&with_id.effect)
+        && matches!(if_effect.predicate, EffectPredicate::ExcessDamageDealt)
+    {
+        format!("If excess damage was dealt to {target} this way")
     } else {
         match if_effect.predicate {
             EffectPredicate::Happened => "If it happened".to_string(),
@@ -29380,6 +29387,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if let Some(where_x) = describe_where_x_basis(&deal_damage.amount) {
             return format!(
                 "Deal X damage to {}, where X is {where_x}",
+                describe_choose_spec(&deal_damage.target)
+            );
+        }
+        if matches!(deal_damage.amount.unhinted(), Value::XTimes(2)) {
+            return format!(
+                "Deal twice X damage to {}",
                 describe_choose_spec(&deal_damage.target)
             );
         }
@@ -34760,6 +34773,25 @@ pub(super) fn describe_activation_timing_clause(timing: &ActivationTiming) -> Op
         ActivationTiming::DuringYourTurn => Some("Activate only during your turn"),
         ActivationTiming::DuringOpponentsTurn => Some("Activate only during an opponent's turn"),
     }
+}
+
+fn describe_excess_damage_condition_target(target: &ChooseSpec) -> String {
+    let described = describe_choose_spec(target);
+    if let Some(rest) = described.strip_prefix("target ") {
+        format!("that {rest}")
+    } else {
+        described
+    }
+}
+
+fn excess_damage_condition_target_from_effect(effect: &Effect) -> Option<String> {
+    if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageEffect>() {
+        return Some(describe_excess_damage_condition_target(&damage.target));
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return excess_damage_condition_target_from_effect(&tagged.effect);
+    }
+    None
 }
 
 pub(super) fn normalize_activation_restriction_clause(raw: &str) -> String {

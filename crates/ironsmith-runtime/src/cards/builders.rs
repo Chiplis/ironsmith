@@ -1321,6 +1321,7 @@ pub(crate) enum IfResultPredicate {
     Did,
     DidNot,
     DiesThisWay,
+    ExcessDamageDealt,
     WasDeclined,
     Value(crate::effect::Comparison),
 }
