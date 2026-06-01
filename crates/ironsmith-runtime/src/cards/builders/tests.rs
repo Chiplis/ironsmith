@@ -48024,9 +48024,9 @@ fn sail_into_the_west_strict_parser_text_and_structure_regression() {
     );
     assert!(
         rendered.contains(
-            "If return gets more votes, each player returns up to two cards from their graveyard to their hand"
+            "If return gets more votes, each player returns up to two cards from their graveyard to their hand, then you exile Sail into the West"
         ),
-        "expected return vote branch to render, got {rendered}"
+        "expected return vote branch and self-exile to render inside one conditional clause, got {rendered}"
     );
     assert!(
         rendered.contains(

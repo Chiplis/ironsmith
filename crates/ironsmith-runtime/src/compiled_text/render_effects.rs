@@ -432,7 +432,8 @@ fn describe_named_vote_conditional_sequence(effects: &[&Effect]) -> Option<Strin
         {
             return None;
         }
-        let body = describe_effect_list(&conditional.if_true)
+        let body = describe_effect_clause_list(&conditional.if_true)
+            .unwrap_or_else(|| describe_effect_list(&conditional.if_true))
             .trim()
             .trim_end_matches('.')
             .to_string();
