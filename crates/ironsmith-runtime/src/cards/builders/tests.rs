@@ -55525,3 +55525,152 @@ fn occult_epiphany_runtime_x_zero_draws_discards_and_creates_no_tokens() {
         "X=0 should create no Spirit tokens"
     );
 }
+
+fn fatespinner_triggered_ability(def: &CardDefinition) -> crate::ability::TriggeredAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered)
+                if triggered.trigger.display().contains("each opponent's upkeep") =>
+            {
+                Some(triggered.clone())
+            }
+            _ => None,
+        })
+        .expect("Fatespinner should compile an opponent-upkeep trigger")
+}
+
+struct ChooseFatespinnerPhase(&'static str);
+
+impl crate::decision::DecisionMaker for ChooseFatespinnerPhase {
+    fn decide_options(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        ctx.options
+            .iter()
+            .find(|option| option.description.eq_ignore_ascii_case(self.0))
+            .map(|option| vec![option.index])
+            .unwrap_or_else(|| vec![0])
+    }
+}
+
+fn resolve_fatespinner_upkeep_choice(
+    choice: &'static str,
+) -> (crate::game_state::GameState, PlayerId) {
+    use crate::effects::{ExecutionContext, execute_effect};
+
+    let def = parse_oracle_card_definition("Fatespinner");
+    let triggered = fatespinner_triggered_ability(&def);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let fatespinner_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.turn.active_player = bob;
+    game.turn.phase = crate::game_state::Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+
+    let event = crate::events::RawEvent::new(
+        crate::events::phase::BeginningOfUpkeepEvent::new(bob),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut dm = ChooseFatespinnerPhase(choice);
+    let mut ctx =
+        ExecutionContext::new(fatespinner_id, alice, &mut dm).with_triggering_event(event);
+    for effect in &triggered.effects {
+        execute_effect(&mut game, effect, &mut ctx).expect("Fatespinner trigger should resolve");
+    }
+
+    (game, bob)
+}
+
+#[test]
+fn fatespinner_oracle_parses_strictly_and_renders_choice_clause() {
+    assert_oracle_card_parses_strict("Fatespinner");
+    let def = parse_oracle_card_definition("Fatespinner");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert_eq!(
+        rendered,
+        "At the beginning of each opponent's upkeep, that player chooses draw step, main phase, or combat phase. The player skips each instance of the chosen step or phase this turn."
+    );
+}
+
+#[test]
+fn fatespinner_triggers_only_on_opponents_upkeep() {
+    let def = parse_oracle_card_definition("Fatespinner");
+    let triggered = fatespinner_triggered_ability(&def);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let fatespinner_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let ctx = crate::triggers::TriggerContext::for_source(fatespinner_id, alice, &game);
+    let controller_upkeep = crate::events::RawEvent::new(
+        crate::events::phase::BeginningOfUpkeepEvent::new(alice),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let opponent_upkeep = crate::events::RawEvent::new(
+        crate::events::phase::BeginningOfUpkeepEvent::new(bob),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    assert!(
+        !triggered.trigger.matches(&controller_upkeep, &ctx),
+        "Fatespinner should not trigger on its controller's upkeep"
+    );
+    assert!(
+        triggered.trigger.matches(&opponent_upkeep, &ctx),
+        "Fatespinner should trigger on an opponent's upkeep"
+    );
+}
+
+#[test]
+fn fatespinner_draw_step_choice_skips_only_that_players_draw_step() {
+    let (game, bob) = resolve_fatespinner_upkeep_choice("draw step");
+
+    assert!(game.turn_store.skip_next_draw_step.contains(&bob));
+    assert!(!game.turn_store.skip_current_turn_main_phases.contains(&bob));
+    assert!(!game.turn_store.skip_next_combat_phases.contains(&bob));
+}
+
+#[test]
+fn fatespinner_main_phase_choice_skips_each_remaining_main_phase_this_turn() {
+    let (mut game, bob) = resolve_fatespinner_upkeep_choice("main phase");
+
+    assert!(game.turn_store.skip_current_turn_main_phases.contains(&bob));
+    assert!(!game.turn_store.skip_next_draw_step.contains(&bob));
+    assert!(!game.turn_store.skip_next_combat_phases.contains(&bob));
+
+    crate::turn::advance_phase(&mut game).expect("first main phase should be skipped");
+    assert_eq!(game.turn.phase, crate::game_state::Phase::Combat);
+    crate::turn::advance_phase(&mut game).expect("second main phase should be skipped");
+    assert_eq!(game.turn.phase, crate::game_state::Phase::Ending);
+}
+
+#[test]
+fn fatespinner_combat_phase_choice_skips_only_that_players_combat_phase_this_turn() {
+    let (mut game, bob) = resolve_fatespinner_upkeep_choice("combat phase");
+
+    assert!(game.turn_store.skip_current_turn_combat_phases.contains(&bob));
+    assert!(!game.turn_store.skip_next_combat_phases.contains(&bob));
+    assert!(!game.turn_store.skip_next_draw_step.contains(&bob));
+    assert!(!game.turn_store.skip_current_turn_main_phases.contains(&bob));
+
+    crate::turn::advance_phase(&mut game).expect("first main phase should happen normally");
+    assert_eq!(game.turn.phase, crate::game_state::Phase::FirstMain);
+    crate::turn::advance_phase(&mut game).expect("combat phase should be skipped");
+    assert_eq!(game.turn.phase, crate::game_state::Phase::NextMain);
+
+    game.turn_store
+        .additional_phases
+        .push(crate::game_state::Phase::Combat);
+    crate::turn::advance_phase(&mut game).expect("additional combat phase should be skipped");
+    assert_eq!(game.turn.phase, crate::game_state::Phase::NextMain);
+}

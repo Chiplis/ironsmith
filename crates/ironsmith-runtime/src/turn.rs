@@ -175,6 +175,26 @@ pub fn advance_phase(game: &mut GameState) -> Result<(), TurnError> {
     } else {
         next_phase(current_phase)
     } {
+        if matches!(next, Phase::FirstMain | Phase::NextMain)
+            && game
+                .turn_store
+                .skip_current_turn_main_phases
+                .contains(&game.turn.active_player)
+        {
+            next = if matches!(next, Phase::FirstMain) {
+                Phase::Combat
+            } else {
+                Phase::Ending
+            };
+        }
+        if matches!(next, Phase::Combat)
+            && game
+                .turn_store
+                .skip_current_turn_combat_phases
+                .contains(&game.turn.active_player)
+        {
+            next = Phase::NextMain;
+        }
         if matches!(next, Phase::Combat)
             && game
                 .turn_store

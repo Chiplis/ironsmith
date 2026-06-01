@@ -2515,6 +2515,8 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::SkipTurn
             | SubjectVerbActionAst::SkipCombatPhases
             | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
+            | SubjectVerbActionAst::SkipMainPhasesThisTurn
+            | SubjectVerbActionAst::SkipCombatPhasesThisTurn
             | SubjectVerbActionAst::SkipDrawStep
             | SubjectVerbActionAst::PlayFromGraveyardUntilEot
             | SubjectVerbActionAst::ControlPlayer { .. }

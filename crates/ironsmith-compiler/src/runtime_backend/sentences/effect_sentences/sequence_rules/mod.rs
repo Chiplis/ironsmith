@@ -137,6 +137,10 @@ fn first_word_target(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "target")
 }
 
+fn first_word_that_or_the(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_in(sentences, sentence_idx, &["that", "the"])
+}
+
 fn first_word_reveal(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "reveal")
 }
@@ -414,6 +418,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 2,
         predicate: first_word_each,
         parser: generic_subject_verb_sequences::parse_each_player_shuffle_reveal_then_put_revealed_types_bottom,
+    },
+    SequenceRuleDef {
+        name: "choose-phase-then-skip-chosen-this-turn",
+        feature_tag: Some("choose-step-phase-skip"),
+        priority: 244,
+        consumed_sentences: 2,
+        predicate: first_word_that_or_the,
+        parser: generic_subject_verb_sequences::pairs::parse_choose_draw_main_or_combat_phase_then_skip_chosen_this_turn,
     },
     SequenceRuleDef {
         name: "copy-for-each-target-each-copy-different",

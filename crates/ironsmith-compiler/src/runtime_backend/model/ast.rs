@@ -1643,6 +1643,8 @@ pub(crate) enum SubjectVerbActionAst {
     SkipTurn,
     SkipCombatPhases,
     SkipNextCombatPhaseThisTurn,
+    SkipMainPhasesThisTurn,
+    SkipCombatPhasesThisTurn,
     SkipDrawStep,
     AdditionalPhases {
         phases: Vec<crate::effects::AdditionalPhase>,
@@ -3141,6 +3143,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::SkipTurn => f.write_str("SkipTurn"),
             Self::SkipCombatPhases => f.write_str("SkipCombatPhases"),
             Self::SkipNextCombatPhaseThisTurn => f.write_str("SkipNextCombatPhaseThisTurn"),
+            Self::SkipMainPhasesThisTurn => f.write_str("SkipMainPhasesThisTurn"),
+            Self::SkipCombatPhasesThisTurn => f.write_str("SkipCombatPhasesThisTurn"),
             Self::SkipDrawStep => f.write_str("SkipDrawStep"),
             Self::AdditionalPhases { phases } => f
                 .debug_tuple("AdditionalPhases")
@@ -6335,6 +6339,22 @@ impl EffectAst {
             SubjectVerbRoleAst::AffectedPlayer,
             player,
             SubjectVerbActionAst::SkipNextCombatPhaseThisTurn,
+        )
+    }
+
+    pub(crate) fn subject_verb_skip_main_phases_this_turn(player: PlayerAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::SkipMainPhasesThisTurn,
+        )
+    }
+
+    pub(crate) fn subject_verb_skip_combat_phases_this_turn(player: PlayerAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::SkipCombatPhasesThisTurn,
         )
     }
 

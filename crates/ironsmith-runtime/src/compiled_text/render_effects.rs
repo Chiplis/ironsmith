@@ -97,6 +97,64 @@ fn describe_discard_hand_add_mana_draw_sequence(effects: &[&Effect]) -> Option<S
     ))
 }
 
+fn describe_choose_phase_then_skip_chosen_this_turn(effects: &[&Effect]) -> Option<String> {
+    let [choose_effect, conditional_effect] = effects else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseNamedOptionEffect>()?;
+    let options = choose
+        .options
+        .iter()
+        .map(|option| option.to_ascii_lowercase())
+        .collect::<Vec<_>>();
+    if options != ["draw step", "main phase", "combat phase"] {
+        return None;
+    }
+
+    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let crate::effect::Condition::SourceChosenOption(draw_option) = &conditional.condition else {
+        return None;
+    };
+    if !draw_option.eq_ignore_ascii_case("draw step") || conditional.if_true.len() != 1 {
+        return None;
+    }
+    let draw_skip = conditional.if_true[0].downcast_ref::<crate::effects::SkipDrawStepEffect>()?;
+    if draw_skip.player != choose.chooser || conditional.if_false.len() != 1 {
+        return None;
+    }
+
+    let main_conditional = conditional.if_false[0]
+        .downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let crate::effect::Condition::SourceChosenOption(main_option) = &main_conditional.condition
+    else {
+        return None;
+    };
+    if !main_option.eq_ignore_ascii_case("main phase")
+        || main_conditional.if_true.len() != 1
+        || main_conditional.if_false.len() != 1
+    {
+        return None;
+    }
+    let main_skip = main_conditional.if_true[0]
+        .downcast_ref::<crate::effects::SkipMainPhasesThisTurnEffect>()?;
+    let combat_skip = main_conditional.if_false[0]
+        .downcast_ref::<crate::effects::SkipCombatPhasesThisTurnEffect>()?;
+    if main_skip.player != choose.chooser || combat_skip.player != choose.chooser {
+        return None;
+    }
+
+    let chooser = describe_player_filter(&choose.chooser);
+    let choose_verb = player_verb(&chooser, "choose", "chooses");
+    let skip_subject = if chooser == "that player" {
+        "The player".to_string()
+    } else {
+        capitalize_first(&chooser)
+    };
+    Some(format!(
+        "{chooser} {choose_verb} draw step, main phase, or combat phase. {skip_subject} skips each instance of the chosen step or phase this turn"
+    ))
+}
+
 fn title_case_vote_option(option: &str) -> String {
     option
         .split_whitespace()
@@ -5917,6 +5975,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
     if let Some(compact) = describe_search_name_conditional_put_then_shuffle(&visible_effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_choose_phase_then_skip_chosen_this_turn(&visible_effects) {
         return compact;
     }
     if let Some(compact) =
@@ -32437,6 +32498,20 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     {
         return format!(
             "{} skips their next combat phase this turn",
+            describe_player_filter(&skip_combat.player)
+        );
+    }
+    if let Some(skip_main) = effect.downcast_ref::<crate::effects::SkipMainPhasesThisTurnEffect>() {
+        return format!(
+            "{} skips each remaining main phase this turn",
+            describe_player_filter(&skip_main.player)
+        );
+    }
+    if let Some(skip_combat) = effect
+        .downcast_ref::<crate::effects::SkipCombatPhasesThisTurnEffect>()
+    {
+        return format!(
+            "{} skips each remaining combat phase this turn",
             describe_player_filter(&skip_combat.player)
         );
     }

@@ -250,6 +250,12 @@ pub struct TurnStore {
     /// Players who will skip all combat phases on their next turn.
     /// Checked and cleared when entering combat phase.
     pub skip_next_combat_phases: HashSet<PlayerId>,
+    /// Players who will skip each remaining combat phase this turn.
+    /// Cleared when the turn advances.
+    pub skip_current_turn_combat_phases: HashSet<PlayerId>,
+    /// Players who will skip each remaining main phase this turn.
+    /// Cleared when the turn advances.
+    pub skip_current_turn_main_phases: HashSet<PlayerId>,
     /// Unified owner for per-turn event and action history.
     pub turn_history: TurnHistory,
     /// Total number of spells cast during the immediately previous turn.
@@ -7137,6 +7143,8 @@ impl GameState {
         self.turn.step = Some(Step::Untap);
         self.turn_store.tracked_draw_step_player = None;
         self.turn_store.cards_drawn_this_draw_step = 0;
+        self.turn_store.skip_current_turn_combat_phases.clear();
+        self.turn_store.skip_current_turn_main_phases.clear();
 
         // Clear turn-based tracking
         self.turn_store.entered_battlefield_last_turn = self

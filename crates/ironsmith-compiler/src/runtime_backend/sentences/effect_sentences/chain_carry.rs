@@ -2297,6 +2297,8 @@ fn subject_verb_player_action_player_mut(effect: &mut EffectAst) -> Option<&mut 
                 | SubjectVerbActionAst::SkipTurn
                 | SubjectVerbActionAst::SkipCombatPhases
                 | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
+                | SubjectVerbActionAst::SkipMainPhasesThisTurn
+                | SubjectVerbActionAst::SkipCombatPhasesThisTurn
                 | SubjectVerbActionAst::SkipDrawStep
                 | SubjectVerbActionAst::RingTemptsYou
                 | SubjectVerbActionAst::VentureIntoDungeon { .. }
@@ -2369,6 +2371,8 @@ fn subject_verb_player_action_player(effect: &EffectAst) -> Option<PlayerAst> {
                 | SubjectVerbActionAst::SkipTurn
                 | SubjectVerbActionAst::SkipCombatPhases
                 | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
+                | SubjectVerbActionAst::SkipMainPhasesThisTurn
+                | SubjectVerbActionAst::SkipCombatPhasesThisTurn
                 | SubjectVerbActionAst::SkipDrawStep
                 | SubjectVerbActionAst::RingTemptsYou
                 | SubjectVerbActionAst::VentureIntoDungeon { .. }

@@ -4349,6 +4349,28 @@ impl SkipCombatPhasesEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct SkipMainPhasesThisTurnEffect {
+    pub player: PlayerFilter,
+}
+
+impl SkipMainPhasesThisTurnEffect {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SkipCombatPhasesThisTurnEffect {
+    pub player: PlayerFilter,
+}
+
+impl SkipCombatPhasesThisTurnEffect {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self { player }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ExchangeZonesEffect {
     pub player: PlayerFilter,
     pub zone1: crate::zone::Zone,

@@ -5323,6 +5323,16 @@ fn compile_subject_verb_effect(
                 Effect::skip_next_combat_phase_this_turn_player(subject.into_player_filter())
             })
         }
+        SubjectVerbActionAst::SkipMainPhasesThisTurn => {
+            compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
+                Effect::skip_main_phases_this_turn_player(subject.into_player_filter())
+            })
+        }
+        SubjectVerbActionAst::SkipCombatPhasesThisTurn => {
+            compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
+                Effect::skip_combat_phases_this_turn_player(subject.into_player_filter())
+            })
+        }
         SubjectVerbActionAst::SkipDrawStep => {
             compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
                 Effect::skip_draw_step_player(subject.into_player_filter())
