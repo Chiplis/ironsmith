@@ -830,6 +830,11 @@ fn apply_chosen_option_condition_to_activated(
         Some(existing) => crate::ConditionExpr::And(Box::new(existing), Box::new(condition)),
         None => condition,
     });
+    if let Some(threshold) = station_threshold_from_chosen_option_label(label) {
+        activated
+            .additional_restrictions
+            .push(format!("__ironsmith_station_threshold:{threshold}"));
+    }
 }
 
 fn rewrite_activated_display_text(line: &RewriteActivatedLine) -> Option<String> {

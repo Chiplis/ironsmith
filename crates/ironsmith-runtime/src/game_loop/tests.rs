@@ -39,6 +39,189 @@ fn setup_three_player_game() -> GameState {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn the_eternity_elevator_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(645_444), "The Eternity Elevator")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(5)]]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Spacecraft])
+        .parse_text(
+            "{T}: Add {C}{C}{C}.\n\
+             Station (Tap another creature you control: Put charge counters equal to its power on this Spacecraft. Station only as a sorcery.)\n\
+             20+ | {T}: Add X mana of any one color, where X is the number of charge counters on The Eternity Elevator.",
+        )
+        .expect("The Eternity Elevator should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn the_eternity_elevator_threshold_ability_index(def: &crate::cards::CardDefinition) -> usize {
+    def.abilities
+        .iter()
+        .position(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .any(|effect| {
+                    effect
+                        .downcast_ref::<crate::effects::AddManaOfAnyOneColorEffect>()
+                        .is_some()
+                }),
+            _ => false,
+        })
+        .expect("The Eternity Elevator should have a threshold any-one-color mana ability")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn the_eternity_elevator_threshold_mana_requires_twenty_charge_counters() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let elevator = the_eternity_elevator_definition();
+    let elevator_id = game.create_object_from_definition(&elevator, alice, Zone::Battlefield);
+    let threshold_ability_index = game
+        .object(elevator_id)
+        .expect("The Eternity Elevator should exist")
+        .abilities
+        .iter()
+        .position(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .any(|effect| {
+                    effect
+                        .downcast_ref::<crate::effects::AddManaOfAnyOneColorEffect>()
+                        .is_some()
+                }),
+            _ => false,
+        })
+        .expect("The Eternity Elevator object should have threshold mana ability");
+
+    assert!(
+        !crate::decision::compute_legal_actions(&game, alice)
+            .iter()
+            .any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateManaAbility { source, ability_index }
+                    if *source == elevator_id && *ability_index == threshold_ability_index
+            )),
+        "The Eternity Elevator's 20+ mana ability should be locked with no charge counters"
+    );
+
+    game.add_counters(elevator_id, crate::object::CounterType::Charge, 19)
+        .expect("charge counters should be addable to The Eternity Elevator");
+    assert!(
+        !crate::decision::compute_legal_actions(&game, alice)
+            .iter()
+            .any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateManaAbility { source, ability_index }
+                    if *source == elevator_id && *ability_index == threshold_ability_index
+            )),
+        "The Eternity Elevator's 20+ mana ability should remain locked at 19 charge counters"
+    );
+
+    game.add_counters(elevator_id, crate::object::CounterType::Charge, 1)
+        .expect("the twentieth charge counter should be addable");
+    assert!(
+        crate::decision::compute_legal_actions(&game, alice)
+            .iter()
+            .any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateManaAbility { source, ability_index }
+                    if *source == elevator_id && *ability_index == threshold_ability_index
+            )),
+        "The Eternity Elevator's 20+ mana ability should unlock at 20 charge counters"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn the_eternity_elevator_threshold_mana_counts_current_charge_counters() {
+    use crate::effects::{ExecutionContext, execute_effect};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let elevator = the_eternity_elevator_definition();
+    let threshold_ability_index = the_eternity_elevator_threshold_ability_index(&elevator);
+    let elevator_id = game.create_object_from_definition(&elevator, alice, Zone::Battlefield);
+    game.add_counters(elevator_id, crate::object::CounterType::Charge, 23)
+        .expect("charge counters should be addable to The Eternity Elevator");
+
+    let ability = match &elevator.abilities[threshold_ability_index].kind {
+        AbilityKind::Activated(activated) => activated,
+        _ => panic!("threshold ability should be activated"),
+    };
+    let [effect] = ability.effects.flattened_default_effects() else {
+        panic!("threshold ability should have one mana effect");
+    };
+    let mut ctx = ExecutionContext::new_default(elevator_id, alice);
+    execute_effect(&mut game, effect, &mut ctx)
+        .expect("The Eternity Elevator threshold mana ability should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").mana_pool.green,
+        23,
+        "The Eternity Elevator should add X mana of one color where X is its charge counters"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn the_eternity_elevator_station_adds_charge_counters_equal_to_tapped_creature_power() {
+    use crate::effects::{ExecutionContext, execute_effect};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let elevator = the_eternity_elevator_definition();
+    let elevator_id = game.create_object_from_definition(&elevator, alice, Zone::Battlefield);
+    let creature = CardBuilder::new(CardId::new(), "Station Helper")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Construct])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    let creature_id = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+
+    let station_ability = elevator
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated)
+                if activated.effects.flattened_default_effects().iter().any(|effect| {
+                    effect
+                        .downcast_ref::<crate::effects::PutCountersEffect>()
+                        .is_some_and(|put| put.counter_type == crate::object::CounterType::Charge)
+                }) => Some(activated),
+            _ => None,
+        })
+        .expect("The Eternity Elevator should have a station ability");
+    let [effect] = station_ability.effects.flattened_default_effects() else {
+        panic!("station ability should have one counter effect");
+    };
+
+    let creature_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(creature_id).expect("station helper exists"),
+        &game,
+    );
+    let mut ctx = ExecutionContext::new_default(elevator_id, alice);
+    ctx.tag_object("tap_cost_0", creature_snapshot);
+    execute_effect(&mut game, effect, &mut ctx)
+        .expect("The Eternity Elevator station ability should put counters on the source");
+
+    assert_eq!(
+        game.counter_count(elevator_id, crate::object::CounterType::Charge),
+        4,
+        "Station should put charge counters equal to the tapped creature's power on The Eternity Elevator"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn rampaging_aetherhood_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(74_200), "Rampaging Aetherhood")
         .mana_cost(ManaCost::from_pips(vec![

@@ -15,6 +15,48 @@ fn value_prefers_equal_to(value: &Value) -> bool {
     value_has_surface_hint(value, ValueSurfaceHint::EqualTo)
 }
 
+const STATION_THRESHOLD_RESTRICTION_PREFIX: &str = "__ironsmith_station_threshold:";
+
+fn station_threshold_prefix(activated: &crate::ability::ActivatedAbility) -> Option<String> {
+    let threshold = activated
+        .additional_restrictions
+        .iter()
+        .find_map(|restriction| {
+            restriction
+                .strip_prefix(STATION_THRESHOLD_RESTRICTION_PREFIX)
+                .and_then(|value| value.parse::<i32>().ok())
+        })?;
+    let crate::effect::Condition::ValueComparison {
+        left,
+        operator,
+        right,
+    } = activated.activation_condition.as_ref()?
+    else {
+        return None;
+    };
+    if !matches!(left, Value::CountersOnSource(crate::CounterType::Charge))
+        || !matches!(operator, crate::effect::ValueComparisonOperator::GreaterThanOrEqual)
+    {
+        return None;
+    }
+    let Value::Fixed(condition_threshold) = right else {
+        return None;
+    };
+    if threshold != *condition_threshold {
+        return None;
+    }
+    Some(format!("{threshold}+"))
+}
+
+fn prefix_rendered_ability_body(line: String, prefix: &str) -> String {
+    if let Some((heading, body)) = line.split_once(": ")
+        && is_render_heading_prefix(heading)
+    {
+        return format!("{heading}: {prefix}{body}");
+    }
+    format!("{prefix}{line}")
+}
+
 fn describe_pay_any_energy_amount(
     pay_any_energy: &crate::effects::PayAnyEnergyEffect,
 ) -> Option<&'static str> {
@@ -15199,7 +15241,9 @@ pub(super) fn describe_inline_ability_with_self_subject(
                 }
                 line.push_str(&payload);
             }
-            if let Some(condition) = &activated.activation_condition {
+            if let Some(prefix) = station_threshold_prefix(activated) {
+                line = prefix_rendered_ability_body(line, &format!("{prefix} | "));
+            } else if let Some(condition) = &activated.activation_condition {
                 let clause = describe_mana_activation_condition(condition);
                 if !clause.is_empty() {
                     if !line.is_empty() {
@@ -35244,6 +35288,9 @@ pub(super) fn collect_activation_restriction_clauses(
         if raw.starts_with("__ironsmith_class_level:") {
             continue;
         }
+        if raw.starts_with(STATION_THRESHOLD_RESTRICTION_PREFIX) {
+            continue;
+        }
         if raw
             .to_ascii_lowercase()
             .contains("exhaust ability only once")
@@ -38285,7 +38332,9 @@ pub(super) fn describe_ability(
                 }
                 line.push_str(&effects);
             }
-            if let Some(condition) = &activated.activation_condition {
+            if let Some(prefix) = station_threshold_prefix(activated) {
+                line = prefix_rendered_ability_body(line, &format!("{prefix} | "));
+            } else if let Some(condition) = &activated.activation_condition {
                 let clause = describe_mana_activation_condition(condition);
                 if !clause.is_empty() {
                     line.push_str(". ");

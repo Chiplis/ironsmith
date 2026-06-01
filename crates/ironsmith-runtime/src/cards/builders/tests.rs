@@ -37439,6 +37439,74 @@ fn parse_station_threshold_reminder_adds_creature_pt_support() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_the_eternity_elevator_station_threshold_mana_regression() {
+    assert_oracle_card_parses_strict("The Eternity Elevator");
+    let oracle = oracle_text_by_name()
+        .get("The Eternity Elevator")
+        .expect("missing oracle text for The Eternity Elevator")
+        .clone();
+    let def = CardDefinitionBuilder::new(CardId::new(), "The Eternity Elevator")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Spacecraft])
+        .parse_text(oracle)
+        .expect("The Eternity Elevator should parse with its type line");
+    let rendered = canonical_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("Station")
+            && rendered.contains(
+                "20+ | {T}: Add X mana of any one color, where X is the number of charge counters on The Eternity Elevator"
+            ),
+        "expected The Eternity Elevator to preserve station threshold mana text, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("Activate only if"),
+        "station threshold should render as a threshold prefix, got {rendered}"
+    );
+
+    let debug = format!("{def:?}");
+    assert!(
+        debug.contains("AddManaOfAnyOneColorEffect")
+            && debug.contains("CountersOnSource(Charge)")
+            && debug.contains("GreaterThanOrEqual")
+            && debug.contains("Fixed(20)"),
+        "expected threshold mana ability to count charge counters on source at 20+, got {debug}"
+    );
+}
+
+#[test]
+fn render_charge_counter_condition_does_not_imply_station_threshold() {
+    let mut mana_ability = Ability::mana(TotalCost::free(), vec![ManaSymbol::Green]);
+    let AbilityKind::Activated(activated) = &mut mana_ability.kind else {
+        panic!("mana ability should be activated");
+    };
+    activated.activation_condition = Some(Condition::ValueComparison {
+        left: Value::CountersOnSource(CounterType::Charge),
+        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::Fixed(3),
+    });
+
+    let def = CardDefinitionBuilder::new(CardId::new(), "Charge Gate")
+        .card_types(vec![CardType::Artifact])
+        .with_ability(mana_ability)
+        .build();
+    let rendered = canonical_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("Activate only if")
+            && rendered.contains("charge counters")
+            && rendered.contains("greater than or equal to 3"),
+        "ordinary charge-counter activation conditions should render as activation conditions, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("3+ |"),
+        "only station threshold lines should render with a numeric threshold prefix, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_eldritch_evolution_sacrifice_scaled_where_x_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Eldritch Evolution")
         .card_types(vec![CardType::Sorcery])
