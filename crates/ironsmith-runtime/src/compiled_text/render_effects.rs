@@ -19464,6 +19464,27 @@ pub(super) fn describe_for_each_devotion_damage(
     ))
 }
 
+fn describe_for_each_sacrifice_by_controller(
+    for_each: &crate::effects::ForEachObject,
+) -> Option<String> {
+    let [effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let sacrifice = effect.downcast_ref::<crate::effects::SacrificeTargetEffect>()?;
+    let target = sacrifice.target.base();
+    let sacrifices_iterated = matches!(target, ChooseSpec::Iterated)
+        || matches!(target, ChooseSpec::Tagged(tag) if tag.as_str() == "__it__");
+    if !sacrifices_iterated {
+        return None;
+    }
+
+    let description = for_each.filter.description();
+    let filter_text = strip_indefinite_article(&description);
+    Some(format!(
+        "Each {filter_text} is sacrificed by its controller"
+    ))
+}
+
 pub(super) fn describe_tap_then_damage_for_tapped_this_way(
     with_id: &crate::effects::WithIdEffect,
     deal: &crate::effects::DealDamageEffect,
@@ -28638,6 +28659,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return compact;
         }
         if let Some(compact) = describe_for_each_devotion_damage(for_each) {
+            return compact;
+        }
+        if let Some(compact) = describe_for_each_sacrifice_by_controller(for_each) {
             return compact;
         }
         if let Some(compact) = describe_for_each_prevent_combat_damage_unless_pays(for_each) {

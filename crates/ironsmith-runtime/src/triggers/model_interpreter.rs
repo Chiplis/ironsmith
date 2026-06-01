@@ -149,6 +149,9 @@ pub(crate) fn interpret_trigger_model(
             crate::triggers::Trigger::this_blocks_object(filter)
         }
         TriggerKind::Blocks { filter } => crate::triggers::Trigger::blocks(filter),
+        TriggerKind::BlocksOneOrMore { filter } => {
+            crate::triggers::Trigger::blocks_one_or_more(filter)
+        }
         TriggerKind::ThisBecomesBlocked => crate::triggers::Trigger::this_becomes_blocked(),
         TriggerKind::ThisBecomesBlockedByObject { filter } => {
             crate::triggers::Trigger::this_becomes_blocked_by_object(filter)
@@ -509,6 +512,9 @@ impl super::Trigger {
                 Self::attacks_one_or_more(filter)
             }
             ironsmith_core::DelayedTriggerSpec::Blocks(filter) => Self::blocks(filter),
+            ironsmith_core::DelayedTriggerSpec::BlocksOneOrMore(filter) => {
+                Self::blocks_one_or_more(filter)
+            }
             ironsmith_core::DelayedTriggerSpec::LeavesBattlefield(filter) => {
                 Self::leaves_battlefield(filter)
             }

@@ -50,6 +50,7 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::ThisBlocks => Trigger::this_blocks(),
         TriggerSpec::ThisBlocksObject(filter) => Trigger::this_blocks_object(filter),
         TriggerSpec::Blocks(filter) => Trigger::blocks(filter),
+        TriggerSpec::BlocksOneOrMore(filter) => Trigger::blocks_one_or_more(filter),
         TriggerSpec::ThisBecomesBlocked => Trigger::this_becomes_blocked(),
         TriggerSpec::ThisBecomesBlockedByObject(filter) => {
             Trigger::this_becomes_blocked_by_object(filter)

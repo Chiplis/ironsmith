@@ -136,6 +136,7 @@ pub(crate) enum TriggerSpec {
     ThisBlocks,
     ThisBlocksObject(ObjectFilter),
     Blocks(ObjectFilter),
+    BlocksOneOrMore(ObjectFilter),
     ThisBecomesBlocked,
     ThisBecomesBlockedByObject(ObjectFilter),
     ThisDies,
