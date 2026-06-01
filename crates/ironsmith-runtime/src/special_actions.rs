@@ -1601,11 +1601,16 @@ pub(crate) fn perform_activate_mana_ability_restricted_colors_with_events(
         let x_value_from_costs = cost_summary.x_value;
         drop(cost_ctx);
 
-        // Add mana to player's pool
+        // Add mana to player's pool. Keep the source type snapshot from before
+        // costs were paid, since mana sources like Treasure can sacrifice themselves.
         if let Some(player_data) = game.player_mut(player) {
             for symbol in mana.iter().copied() {
                 if mana_usage_restrictions.is_empty() {
-                    player_data.add_unrestricted_mana_from_source(symbol, permanent_id);
+                    player_data.add_unrestricted_mana_from_source_with_subtypes(
+                        symbol,
+                        permanent_id,
+                        source_snapshot.subtypes.clone(),
+                    );
                 } else {
                     player_data.add_restricted_mana(crate::ability::RestrictedManaUnit {
                         symbol,
@@ -1627,6 +1632,7 @@ pub(crate) fn perform_activate_mana_ability_restricted_colors_with_events(
         // Execute additional effects if present (for complex mana abilities like Ancient Tomb)
         if !effects.is_empty() {
             let mut effect_ctx = ExecutionContext::new(permanent_id, player, decision_maker)
+                .with_source_snapshot(source_snapshot.clone())
                 .with_mana_color_restriction(mana_color_restriction.clone())
                 .with_mana_usage_restrictions(mana_usage_restrictions)
                 .with_mana_source_chosen_creature_type(source_chosen_creature_type);

@@ -1,5 +1,6 @@
 use crate::ids::{ObjectId, PlayerId};
 use crate::mana::ManaSymbol;
+use crate::types::Subtype;
 use rand::{SeedableRng, rngs::StdRng};
 use std::collections::HashMap;
 
@@ -18,6 +19,7 @@ pub struct ManaPool {
 pub struct ManaPoolSource {
     pub symbol: ManaSymbol,
     pub source: ObjectId,
+    pub source_subtypes: Vec<Subtype>,
 }
 
 impl ManaPool {
@@ -706,12 +708,27 @@ impl Player {
     }
 
     pub fn add_unrestricted_mana_from_source(&mut self, symbol: ManaSymbol, source: ObjectId) {
-        self.mana_pool.add(symbol, 1);
-        self.mana_pool_sources
-            .push(ManaPoolSource { symbol, source });
+        self.add_unrestricted_mana_from_source_with_subtypes(symbol, source, Vec::new());
     }
 
-    pub fn remove_unrestricted_mana_source(&mut self, symbol: ManaSymbol) -> Option<ObjectId> {
+    pub fn add_unrestricted_mana_from_source_with_subtypes(
+        &mut self,
+        symbol: ManaSymbol,
+        source: ObjectId,
+        source_subtypes: Vec<Subtype>,
+    ) {
+        self.mana_pool.add(symbol, 1);
+        self.mana_pool_sources.push(ManaPoolSource {
+            symbol,
+            source,
+            source_subtypes,
+        });
+    }
+
+    pub fn remove_unrestricted_mana_source(
+        &mut self,
+        symbol: ManaSymbol,
+    ) -> Option<ManaPoolSource> {
         let tracked = self
             .mana_pool_sources
             .iter()
@@ -724,7 +741,7 @@ impl Player {
             .mana_pool_sources
             .iter()
             .position(|unit| unit.symbol == symbol)?;
-        Some(self.mana_pool_sources.remove(index).source)
+        Some(self.mana_pool_sources.remove(index))
     }
 
     pub fn empty_mana_pool(&mut self) {

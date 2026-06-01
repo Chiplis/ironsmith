@@ -129,6 +129,9 @@ pub(crate) fn credit_mana_symbols_from_context<I>(
         player_id,
         symbols,
         Some(ctx.source),
+        ctx.source_snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.subtypes.clone()),
         &ctx.mana.mana_usage_restrictions,
         ctx.mana.mana_source_chosen_creature_type,
     );
@@ -139,16 +142,26 @@ fn credit_mana_symbols_with_context<I>(
     player_id: PlayerId,
     symbols: I,
     source: Option<ObjectId>,
+    source_subtypes: Option<Vec<Subtype>>,
     restrictions: &[crate::ability::ManaUsageRestriction],
     source_chosen_creature_type: Option<Subtype>,
 ) where
     I: IntoIterator<Item = ManaSymbol>,
 {
+    let source_subtypes = source_subtypes
+        .or_else(|| {
+            source.and_then(|source| game.object(source).map(|object| object.subtypes.clone()))
+        })
+        .unwrap_or_default();
     if let Some(player) = game.player_mut(player_id) {
         for symbol in symbols {
             if restrictions.is_empty() {
                 if let Some(source) = source {
-                    player.add_unrestricted_mana_from_source(symbol, source);
+                    player.add_unrestricted_mana_from_source_with_subtypes(
+                        symbol,
+                        source,
+                        source_subtypes.clone(),
+                    );
                 } else {
                     player.mana_pool.add(symbol, 1);
                 }
@@ -177,6 +190,9 @@ pub(crate) fn credit_repeated_mana_symbol_from_context(
         symbol,
         count,
         Some(ctx.source),
+        ctx.source_snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.subtypes.clone()),
         &ctx.mana.mana_usage_restrictions,
         ctx.mana.mana_source_chosen_creature_type,
     );
@@ -188,6 +204,7 @@ fn credit_repeated_mana_symbol_with_context(
     symbol: ManaSymbol,
     count: u32,
     source: Option<ObjectId>,
+    source_subtypes: Option<Vec<Subtype>>,
     restrictions: &[crate::ability::ManaUsageRestriction],
     source_chosen_creature_type: Option<Subtype>,
 ) {
@@ -196,6 +213,7 @@ fn credit_repeated_mana_symbol_with_context(
         player_id,
         std::iter::repeat_n(symbol, count as usize),
         source,
+        source_subtypes,
         restrictions,
         source_chosen_creature_type,
     );

@@ -991,6 +991,14 @@ pub fn apply_priority_response_with_dm(
                         });
 
                 if can_pay_mana {
+                    let source_snapshot = game
+                        .object(*source)
+                        .map(|object| ObjectSnapshot::from_object(object, game));
+                    let source_subtypes = source_snapshot
+                        .as_ref()
+                        .map(|snapshot| snapshot.subtypes.clone())
+                        .unwrap_or_default();
+
                     // Pay all costs immediately
                     let mut cost_ctx = CostContext::new(*source, player, &mut *decision_maker)
                         .with_reason(crate::costs::PaymentReason::ActivateManaAbility)
@@ -1014,7 +1022,11 @@ pub fn apply_priority_response_with_dm(
                         if let Some(player_obj) = game.player_mut(player) {
                             for symbol in &mana_to_add {
                                 if mana_usage_restrictions.is_empty() {
-                                    player_obj.add_unrestricted_mana_from_source(*symbol, *source);
+                                    player_obj.add_unrestricted_mana_from_source_with_subtypes(
+                                        *symbol,
+                                        *source,
+                                        source_subtypes.clone(),
+                                    );
                                 } else {
                                     player_obj.add_restricted_mana(
                                         crate::ability::RestrictedManaUnit {
@@ -1028,16 +1040,13 @@ pub fn apply_priority_response_with_dm(
                                 }
                             }
                         }
-                        let snapshot = game
-                            .object(*source)
-                            .map(|obj| ObjectSnapshot::from_object(obj, game));
                         let event = crate::events::ManaAddedEvent::new(
                             *source,
                             player,
                             player,
                             mana_to_add.clone(),
                         )
-                        .with_snapshot(snapshot)
+                        .with_snapshot(source_snapshot.clone())
                         .into_trigger_event();
                         queue_triggers_from_event(game, trigger_queue, event, false);
                     }
@@ -1050,6 +1059,9 @@ pub fn apply_priority_response_with_dm(
                             .with_mana_source_chosen_creature_type(
                                 mana_source_chosen_creature_type,
                             );
+                        if let Some(snapshot) = source_snapshot.clone() {
+                            ctx = ctx.with_source_snapshot(snapshot);
+                        }
                         if let Some(x) = x_value_from_costs {
                             ctx = ctx.with_x(x);
                         }

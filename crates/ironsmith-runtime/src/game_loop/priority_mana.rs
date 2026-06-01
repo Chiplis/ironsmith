@@ -653,6 +653,7 @@ pub(super) fn add_any_color_pool_options(
 pub(super) struct SpentManaInfo {
     symbol: crate::mana::ManaSymbol,
     source: ObjectId,
+    source_subtypes: Vec<crate::types::Subtype>,
     source_chosen_creature_type: Option<crate::types::Subtype>,
     restrictions: Vec<crate::ability::ManaUsageRestriction>,
 }
@@ -908,11 +909,18 @@ pub(super) fn spend_pool_symbol(
                 unit.symbol == symbol && restricted_unit_is_payable(game, unit, payment_source)
             })
             .min_by_key(|(_, unit)| restricted_unit_priority(game, unit, payment_source))
-            .map(|(idx, unit)| (idx, restricted_unit_priority(game, unit, payment_source)))
+            .map(|(idx, unit)| {
+                let priority = restricted_unit_priority(game, unit, payment_source);
+                let source_subtypes = game
+                    .object(unit.source)
+                    .map(|object| object.subtypes.clone())
+                    .unwrap_or_default();
+                (idx, priority, source_subtypes)
+            })
     });
 
     let player_obj = game.player_mut(player)?;
-    if let Some((idx, priority)) = payable_restricted
+    if let Some((idx, priority, source_subtypes)) = payable_restricted
         && !(unrestricted_available && priority >= 2)
     {
         if !player_obj.mana_pool.remove(symbol, 1) {
@@ -922,18 +930,23 @@ pub(super) fn spend_pool_symbol(
         return Some(SpentManaInfo {
             symbol,
             source: unit.source,
+            source_subtypes,
             source_chosen_creature_type: unit.source_chosen_creature_type,
             restrictions: unit.restrictions,
         });
     }
 
     if unrestricted_available && player_obj.mana_pool.remove(symbol, 1) {
-        let source = player_obj
-            .remove_unrestricted_mana_source(symbol)
-            .unwrap_or(ObjectId::from_raw(0));
+        let source = player_obj.remove_unrestricted_mana_source(symbol);
         return Some(SpentManaInfo {
             symbol,
-            source,
+            source: source
+                .as_ref()
+                .map(|source| source.source)
+                .unwrap_or(ObjectId::from_raw(0)),
+            source_subtypes: source
+                .map(|source| source.source_subtypes)
+                .unwrap_or_default(),
             source_chosen_creature_type: None,
             restrictions: Vec::new(),
         });
@@ -1215,18 +1228,13 @@ pub(super) fn record_activation_mana_ability_payment(
     let _ = ability_index;
 }
 
-pub(super) fn mana_payment_action_uses_treasure_source(
-    game: &GameState,
-    action: &ManaPipPaymentAction,
-) -> bool {
-    let ManaPipPaymentAction::ActivateManaAbility { source_id, .. } = action else {
-        return false;
-    };
-    game.object(*source_id)
-        .is_some_and(|object| object.subtypes.contains(&crate::types::Subtype::Treasure))
-}
-
 fn spent_mana_uses_treasure_source(game: &GameState, spent: &SpentManaInfo) -> bool {
+    if spent
+        .source_subtypes
+        .contains(&crate::types::Subtype::Treasure)
+    {
+        return true;
+    }
     game.object(spent.source)
         .is_some_and(|object| object.subtypes.contains(&crate::types::Subtype::Treasure))
 }
@@ -2045,6 +2053,14 @@ pub(super) fn execute_pending_mana_ability(
     use crate::costs::CostContext;
     use crate::effects::ExecutionContext;
 
+    let source_snapshot = game
+        .object(pending.source)
+        .map(|object| ObjectSnapshot::from_object(object, game));
+    let source_subtypes = source_snapshot
+        .as_ref()
+        .map(|snapshot| snapshot.subtypes.clone())
+        .unwrap_or_default();
+
     // Pay the mana cost
     if !game.try_pay_mana_cost_with_reason(
         pending.activator,
@@ -2073,7 +2089,11 @@ pub(super) fn execute_pending_mana_ability(
         if let Some(player_obj) = game.player_mut(pending.activator) {
             for symbol in &pending.mana_to_add {
                 if pending.mana_usage_restrictions.is_empty() {
-                    player_obj.add_unrestricted_mana_from_source(*symbol, pending.source);
+                    player_obj.add_unrestricted_mana_from_source_with_subtypes(
+                        *symbol,
+                        pending.source,
+                        source_subtypes.clone(),
+                    );
                 } else {
                     player_obj.add_restricted_mana(crate::ability::RestrictedManaUnit {
                         symbol: *symbol,
@@ -2084,16 +2104,13 @@ pub(super) fn execute_pending_mana_ability(
                 }
             }
         }
-        let snapshot = game
-            .object(pending.source)
-            .map(|obj| ObjectSnapshot::from_object(obj, game));
         let event = crate::events::ManaAddedEvent::new(
             pending.source,
             pending.activator,
             pending.activator,
             pending.mana_to_add.clone(),
         )
-        .with_snapshot(snapshot)
+        .with_snapshot(source_snapshot.clone())
         .into_trigger_event();
         queue_triggers_from_event(game, trigger_queue, event, false);
     }
@@ -2104,6 +2121,9 @@ pub(super) fn execute_pending_mana_ability(
             .with_provenance(pending.provenance)
             .with_mana_usage_restrictions(pending.mana_usage_restrictions.clone())
             .with_mana_source_chosen_creature_type(pending.mana_source_chosen_creature_type);
+        if let Some(snapshot) = source_snapshot.clone() {
+            ctx = ctx.with_source_snapshot(snapshot);
+        }
         let emitted_events = crate::game_loop::execute_resolution_program(
             game,
             &mut ctx,

@@ -315,6 +315,19 @@ fn resolve_jetmirs_fixer_activation(
     )
     .expect("Jetmir's Fixer should pay the second colored pip and go on the stack");
 
+    let stack_entry = game.stack.last().expect("activation should be on the stack");
+    let should_have_treasure_label = matches!(
+        scenario,
+        JetmirsFixerManaScenario::DirectTreasure | JetmirsFixerManaScenario::PreFloatedTreasure
+    );
+    assert_eq!(
+        stack_entry
+            .optional_costs_paid
+            .was_paid_label("ManaFromTreasure"),
+        should_have_treasure_label,
+        "Treasure-mana payment label should match the selected payment source"
+    );
+
     crate::game_loop::resolve_stack_entry(&mut game)
         .expect("Jetmir's Fixer activation should resolve");
     game.refresh_continuous_state();
