@@ -52208,6 +52208,46 @@ fn enter_the_avatar_state_keeps_shared_duration_and_targeted_subtype_gain() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn scuttling_sentinel_parses_blue_crab_until_end_of_turn_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(651_777), "Scuttling Sentinel")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Green, ManaSymbol::Blue],
+            vec![ManaSymbol::Green, ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Crab, Subtype::Elf])
+        .power_toughness(PowerToughness::fixed(3, 2))
+        .parse_text(
+            "Flash\nVigilance\nWhen this creature enters, put a +1/+1 counter on another target creature you control. Until end of turn, that creature becomes a blue Crab in addition to its other types and gains hexproof.",
+        )
+        .expect("Scuttling Sentinel should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains("when this creature enters")
+            && rendered_lower.contains("another target creature you control")
+            && rendered_lower.contains(
+                "that creature becomes a blue crab in addition to its other types and gains hexproof until end of turn"
+            )
+            && !rendered_lower.contains("unsupported"),
+        "expected Scuttling Sentinel to render its blue Crab hexproof trigger cleanly, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("SetColors")
+            && debug.contains("AddSubtypes")
+            && debug.contains("Crab")
+            && debug.contains("Hexproof")
+            && debug.matches("EndOfTurn").count() >= 3,
+        "expected Scuttling Sentinel trigger to structurally set color, add Crab, and grant hexproof until end of turn, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn anti_venom_static_damage_replacement_compiles() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Anti-Venom, Horrifying Healer")
         .card_types(vec![CardType::Creature])

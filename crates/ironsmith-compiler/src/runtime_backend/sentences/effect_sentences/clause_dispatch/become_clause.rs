@@ -439,6 +439,34 @@ pub(crate) fn parse_become_clause(
         .map(|(_, head)| head)
         .unwrap_or(become_words);
     if !card_type_words.is_empty() {
+        let mut colors = crate::color::ColorSet::new();
+        let mut subtypes = Vec::new();
+        let mut all_color_or_subtype_words = true;
+        for word in card_type_words {
+            if AND_WORD_PATTERN.matches_word(word) {
+                continue;
+            }
+            if let Some(color) = parse_color(word) {
+                colors = colors.union(color);
+                continue;
+            }
+            if let Some(subtype) = parse_subtype_word_or_plural(word) {
+                push_unique_subtype(&mut subtypes, subtype);
+                continue;
+            }
+            all_color_or_subtype_words = false;
+            break;
+        }
+        if all_color_or_subtype_words && !colors.is_empty() && !subtypes.is_empty() {
+            return Ok(EffectAst::Sequence {
+                effects: vec![
+                    EffectAst::subject_verb_set_colors(target.clone(), colors, duration.clone()),
+                    EffectAst::subject_verb_add_subtypes(target, subtypes, duration),
+                ],
+            });
+        }
+    }
+    if !card_type_words.is_empty() {
         let mut card_types = Vec::new();
         let mut all_card_types = true;
         for word in card_type_words {
