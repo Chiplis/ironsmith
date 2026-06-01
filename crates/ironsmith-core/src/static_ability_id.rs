@@ -89,6 +89,7 @@ pub enum StaticAbilityId {
     ThisCreatureAssignsCombatDamageUsingToughness,
     CreaturesAssignCombatDamageUsingToughness,
     CreaturesYouControlAssignCombatDamageUsingToughness,
+    LethalDamageToCreaturesYouControlUsesPower,
     Anthem,
     GrantAbility,
     RemoveAbilityForFilter,
@@ -339,6 +340,7 @@ impl StaticAbilityId {
             | ThisCreatureAssignsCombatDamageUsingToughness
             | CreaturesAssignCombatDamageUsingToughness
             | CreaturesYouControlAssignCombatDamageUsingToughness
+            | LethalDamageToCreaturesYouControlUsesPower
             | Anthem
             | GrantAbility
             | RemoveAbilityForFilter
@@ -632,6 +634,7 @@ impl StaticAbilityId {
                 | ThisCreatureAssignsCombatDamageUsingToughness
                 | CreaturesAssignCombatDamageUsingToughness
                 | CreaturesYouControlAssignCombatDamageUsingToughness
+                | LethalDamageToCreaturesYouControlUsesPower
         )
     }
 

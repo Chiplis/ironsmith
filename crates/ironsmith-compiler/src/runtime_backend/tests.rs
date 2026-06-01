@@ -8156,6 +8156,32 @@ fn rewrite_grammar_combat_damage_using_toughness_probe_tracks_subject_variant() 
 }
 
 #[test]
+fn rewrite_grammar_zilortha_lethal_damage_power_static_line() {
+    let tokens = lex_line(
+        "Lethal damage dealt to creatures you control is determined by their power rather than their toughness.",
+        0,
+    )
+    .expect("rewrite lexer should classify Zilortha lethal-damage static line");
+
+    assert!(
+        super::grammar::abilities::is_lethal_damage_to_creatures_you_control_uses_power_line_lexed(
+            &tokens
+        ),
+        "grammar-owned lethal-damage power probe should match Zilortha's static line"
+    );
+
+    let parsed = super::keyword_static::parse_lethal_damage_to_creatures_you_control_uses_power_line(&tokens)
+        .expect("Zilortha lethal-damage static line should parse");
+
+    assert!(matches!(
+        parsed,
+        Some(ability)
+            if ability.id()
+                == crate::static_abilities::StaticAbilityId::LethalDamageToCreaturesYouControlUsesPower
+    ));
+}
+
+#[test]
 fn rewrite_grammar_players_cant_cycle_probe_matches_static_line() {
     let tokens = lex_line("Players can't cycle cards.", 0)
         .expect("rewrite lexer should classify anti-cycle static line");

@@ -24,6 +24,7 @@ use super::grammar::abilities::{
     is_if_source_you_control_with_mana_value_double_instead_marker_line_lexed,
     is_krrik_black_mana_life_payment_line_lexed,
     is_lands_dont_untap_during_their_controllers_untap_steps_line_lexed,
+    is_lethal_damage_to_creatures_you_control_uses_power_line_lexed,
     is_mana_group_slash_marker_line_lexed, is_may_assign_damage_as_unblocked_line_lexed,
     is_minimum_spell_total_mana_three_line_lexed, is_more_than_meets_the_eye_marker_line_lexed,
     is_no_maximum_hand_size_line_lexed, is_once_each_turn_play_from_exile_marker_guard_lexed,
@@ -649,6 +650,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         ),
         single_static_ability_ast_passthrough_rule!(parse_trigger_suppression_line_ast),
         single_static_ability_ast_rule!(parse_creatures_assign_combat_damage_using_toughness_line),
+        single_static_ability_ast_rule!(
+            parse_lethal_damage_to_creatures_you_control_uses_power_line
+        ),
         single_static_ability_ast_rule!(parse_players_cant_cycle_line),
         single_static_ability_ast_rule!(parse_starting_life_bonus_line),
         single_static_ability_ast_rule!(parse_buyback_cost_reduction_line),
@@ -4135,6 +4139,17 @@ pub(crate) fn parse_creatures_assign_combat_damage_using_toughness_line(
             ));
         }
         None => {}
+    }
+    Ok(None)
+}
+
+pub(crate) fn parse_lethal_damage_to_creatures_you_control_uses_power_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    if is_lethal_damage_to_creatures_you_control_uses_power_line_lexed(tokens) {
+        return Ok(Some(
+            StaticAbility::lethal_damage_to_creatures_you_control_uses_power(),
+        ));
     }
     Ok(None)
 }

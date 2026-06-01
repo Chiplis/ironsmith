@@ -1995,6 +1995,36 @@ pub(crate) fn parse_creatures_assign_combat_damage_using_toughness_line_lexed(
     None
 }
 
+pub(crate) fn is_lethal_damage_to_creatures_you_control_uses_power_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    primitives::parse_prefix(
+        tokens,
+        (
+            primitives::phrase(&[
+                "lethal",
+                "damage",
+                "dealt",
+                "to",
+                "creatures",
+                "you",
+                "control",
+                "is",
+                "determined",
+                "by",
+                "their",
+                "power",
+                "rather",
+                "than",
+                "their",
+                "toughness",
+            ]),
+            primitives::sentence_end(),
+        ),
+    )
+    .is_some_and(|(((), ()), remainder)| remainder.is_empty())
+}
+
 fn parse_players_cant_cycle_line<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<(), ErrMode<ContextError>> {

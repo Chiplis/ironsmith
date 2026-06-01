@@ -2278,6 +2278,10 @@ impl StaticAbility {
         Self::new(CreaturesYouControlAssignCombatDamageUsingToughness)
     }
 
+    pub fn lethal_damage_to_creatures_you_control_uses_power() -> Self {
+        Self::new(LethalDamageToCreaturesYouControlUsesPower)
+    }
+
     pub fn prevent_all_damage_dealt_to_creatures() -> Self {
         Self::new(PreventAllDamageDealtToCreatures)
     }

@@ -36087,6 +36087,26 @@ fn calamity_bearer_strict_parser_and_text_regression() {
 }
 
 #[test]
+fn zilortha_strength_incarnate_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition("Zilortha, Strength Incarnate");
+    let rendered_lines = canonical_compiled_lines(&def);
+
+    assert!(
+        def.abilities.iter().any(|ability| matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::LethalDamageToCreaturesYouControlUsesPower
+        )),
+        "Zilortha, Strength Incarnate should compile to a lethal-damage power static ability"
+    );
+    assert!(
+        rendered_lines.iter().any(|line| line
+            == "Lethal damage dealt to creatures you control is determined by their power rather than their toughness."),
+        "Zilortha, Strength Incarnate should render its lethal-damage clause, got {rendered_lines:?}"
+    );
+}
+
+#[test]
 fn calamity_bearer_runtime_doubles_giant_source_damage_to_players_and_permanents() {
     let def = parse_oracle_card_definition("Calamity Bearer");
     let mut game = crate::game_state::GameState::new(

@@ -285,10 +285,8 @@ fn check_permanent_sbas_with_view(
         };
         let calculated_subtypes = view.calculated_subtypes(obj_id);
 
-        // Creature with 0 or less toughness dies (unless indestructible)
-        // Check both:
-        // 1. CantEffectTracker (catches indestructibility from external sources)
-        // 2. Direct ability check (in case tracker hasn't been refreshed)
+        // Creature with 0 or less toughness dies. This is not destruction,
+        // so indestructible and regeneration do not stop it.
         // IMPORTANT: Use calculated_toughness to account for counters and effects!
         if view.object_has_card_type(obj_id, CardType::Creature) {
             let is_indestructible = !game.can_be_destroyed(obj_id)
@@ -298,7 +296,6 @@ fn check_permanent_sbas_with_view(
             // Use calculated toughness to include -1/-1 counters, pump effects, etc.
             if let Some(toughness) = view.calculated_toughness(obj_id)
                 && toughness <= 0
-                && !is_indestructible
             {
                 actions.push(StateBasedAction::ObjectDies(obj_id));
                 continue;
@@ -306,18 +303,19 @@ fn check_permanent_sbas_with_view(
 
             // Creature with lethal damage dies (unless indestructible)
             let damage_marked = game.damage_on(obj_id);
-            let toughness_for_lethal = view
-                .calculated_toughness(obj_id)
-                .or_else(|| obj.toughness());
-            if toughness_for_lethal
-                .is_some_and(|toughness| toughness > 0 && damage_marked >= toughness as u32)
+            let lethal_damage_threshold = lethal_damage_threshold_for_creature(game, view, obj_id);
+            if lethal_damage_threshold
+                .is_some_and(|threshold| threshold > 0 && damage_marked >= threshold as u32)
                 && !is_indestructible
             {
                 actions.push(StateBasedAction::ObjectDies(obj_id));
                 continue;
             }
 
-            if toughness_for_lethal.is_some_and(|toughness| toughness > 0)
+            let toughness_for_deathtouch = view
+                .calculated_toughness(obj_id)
+                .or_else(|| obj.toughness());
+            if toughness_for_deathtouch.is_some_and(|toughness| toughness > 0)
                 && game.has_deathtouch_damage_since_sba(obj_id)
                 && !is_indestructible
             {
@@ -390,6 +388,58 @@ fn check_permanent_sbas_with_view(
             }
         }
     }
+}
+
+fn lethal_damage_threshold_for_creature(
+    game: &GameState,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    creature_id: ObjectId,
+) -> Option<i32> {
+    let creature = game.object(creature_id)?;
+    let creature_controller = game.controller_of(creature);
+    let uses_power = game.battlefield.iter().any(|&source_id| {
+        game.controller_of_id(source_id) == Some(creature_controller)
+            && view.object_has_static_ability_id(
+                source_id,
+                StaticAbilityId::LethalDamageToCreaturesYouControlUsesPower,
+            )
+    });
+
+    if uses_power {
+        view.calculated_characteristics(creature_id)
+            .and_then(|chars| chars.power)
+            .or_else(|| creature.power())
+            .map(|power| power.max(1))
+    } else {
+        view.calculated_toughness(creature_id)
+            .or_else(|| creature.toughness())
+    }
+}
+
+fn is_damage_based_creature_death_sba(
+    game: &GameState,
+    view: &crate::derived_view::DerivedGameView<'_>,
+    creature_id: ObjectId,
+) -> bool {
+    if game.object(creature_id).is_none() {
+        return false;
+    }
+    if !view.object_has_card_type(creature_id, CardType::Creature) {
+        return false;
+    }
+    let toughness = view
+        .calculated_toughness(creature_id)
+        .or_else(|| game.object(creature_id).and_then(|object| object.toughness()));
+    if !toughness.is_some_and(|toughness| toughness > 0) {
+        return false;
+    }
+
+    let Some(threshold) = lethal_damage_threshold_for_creature(game, view, creature_id) else {
+        return false;
+    };
+    threshold > 0
+        && (game.damage_on(creature_id) >= threshold as u32
+            || game.has_deathtouch_damage_since_sba(creature_id))
 }
 
 fn check_role_sbas_with_view(
@@ -650,6 +700,17 @@ pub(crate) fn apply_state_based_actions_from_actions_with(
             })
         })
         .collect();
+    let damage_destroyed_object_ids: HashSet<ObjectId> = {
+        let view = crate::derived_view::DerivedGameView::from_effects(game, all_effects.to_vec());
+        actions
+            .iter()
+            .filter_map(|action| match action {
+                StateBasedAction::ObjectDies(obj_id) => Some(*obj_id),
+                _ => None,
+            })
+            .filter(|&obj_id| is_damage_based_creature_death_sba(game, &view, obj_id))
+            .collect()
+    };
 
     let mut any_applied = false;
     for action in actions {
@@ -657,7 +718,13 @@ pub(crate) fn apply_state_based_actions_from_actions_with(
         if matches!(action, StateBasedAction::LegendRuleViolation { .. }) {
             continue;
         }
-        apply_single_sba_with_snapshots(game, action, &pre_captured_snapshots, decision_maker);
+        apply_single_sba_with_snapshots(
+            game,
+            action,
+            &pre_captured_snapshots,
+            &damage_destroyed_object_ids,
+            decision_maker,
+        );
         any_applied = true;
     }
 
@@ -757,6 +824,7 @@ fn apply_single_sba_with_snapshots(
     game: &mut GameState,
     action: StateBasedAction,
     pre_captured_snapshots: &std::collections::HashMap<ObjectId, ObjectSnapshot>,
+    damage_destroyed_object_ids: &HashSet<ObjectId>,
     decision_maker: &mut dyn crate::decision::DecisionMaker,
 ) {
     match action {
@@ -767,16 +835,7 @@ fn apply_single_sba_with_snapshots(
             // - Rule 704.5f: 0 toughness -> put into graveyard directly, regeneration can't help
             // - Rules 704.5g-h: lethal damage or deathtouch damage -> destroyed,
             //   regeneration CAN replace this
-            let is_destroyed_by_damage_sba = game
-                .object(obj_id)
-                .map(|obj| {
-                    let toughness = game.calculated_toughness(obj_id).unwrap_or(0);
-                    let damage = game.damage_on(obj_id);
-                    toughness > 0
-                        && (obj.has_lethal_damage(damage)
-                            || game.has_deathtouch_damage_since_sba(obj_id))
-                })
-                .unwrap_or(false);
+            let is_destroyed_by_damage_sba = damage_destroyed_object_ids.contains(&obj_id);
 
             if is_destroyed_by_damage_sba {
                 // Damage-based SBAs are destruction, so process through the event
@@ -981,6 +1040,30 @@ mod tests {
             .card_types(vec![CardType::Creature])
             .power_toughness(PowerToughness::fixed(power, toughness))
             .build()
+    }
+
+    #[test]
+    fn zero_toughness_sba_ignores_indestructible() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let card = creature_card(399, "Indestructible Zero", 1, 0);
+        let creature_id = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        game.object_mut(creature_id)
+            .expect("indestructible zero should exist")
+            .abilities
+            .push(Ability::static_ability(StaticAbility::indestructible()));
+
+        let actions = check_state_based_actions(&game);
+        assert!(actions.contains(&StateBasedAction::ObjectDies(creature_id)));
+        assert!(apply_state_based_actions(&mut game));
+
+        assert!(
+            game.current_object_id_after_zone_change(creature_id)
+                .and_then(|id| game.object(id))
+                .is_some_and(|object| object.zone == Zone::Graveyard),
+            "0-toughness creature should go to the graveyard even with indestructible"
+        );
     }
 
     #[test]
