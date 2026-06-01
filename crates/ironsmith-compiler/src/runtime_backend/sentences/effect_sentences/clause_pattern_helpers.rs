@@ -1857,6 +1857,49 @@ pub(crate) fn parse_redirect_next_damage_sentence(
         ]));
     }
 
+    if clause_words.starts_with(&[
+        "all", "damage", "that", "would", "be", "dealt", "this", "turn", "by",
+    ]) {
+        let is_dealt_rel = clause
+            .from_word(9)
+            .unwrap_or_else(|| clause.from(clause.len()))
+            .find_phrase_start(&["is", "dealt", "to"])
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported redirected-source-damage destination (clause: '{}')",
+                    clause_text
+                ))
+            })?;
+        let is_dealt_idx = 9 + is_dealt_rel;
+        let source_clause = clause.between_words_trimmed(9, is_dealt_idx);
+        if source_clause.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing redirected-source-damage source (clause: '{}')",
+                clause_text
+            )));
+        }
+
+        let redirect_clause = clause
+            .after_words(is_dealt_idx + 3)
+            .unwrap_or_else(|| clause.from(clause.len()))
+            .trimmed();
+        if !redirect_clause.matches_any_words(&[
+            &["that", "spell's", "controller", "instead"],
+            &["that", "spells", "controller", "instead"],
+            &["that", "source's", "controller", "instead"],
+            &["that", "sources", "controller", "instead"],
+        ]) {
+            return Ok(None);
+        }
+
+        let source = parse_target_phrase(source_clause.tokens())?;
+        return Ok(Some(vec![
+            EffectAst::subject_verb_redirect_all_damage_this_turn_by_source_to_source_controller(
+                source,
+            ),
+        ]));
+    }
+
     if CLAUSE_ALL_DAMAGE_WOULD_BE_DEALT_TO_PREFIX_PATTERN.matches(clause) {
         let idx = 7usize;
         let this_turn_rel = LexedClause::new(

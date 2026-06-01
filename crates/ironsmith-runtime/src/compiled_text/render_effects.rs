@@ -33036,6 +33036,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                     format!("{desc} source")
                 }
             }
+            crate::effects::RedirectNextTimeDamageSource::Target(spec) => {
+                describe_choose_spec(spec)
+            }
         };
         if redirect_next_time.all_this_turn {
             let destination_text = match redirect_next_time.destination {
@@ -33043,20 +33046,51 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                     "this creature".to_string()
                 }
                 crate::effects::RedirectNextTimeDamageDestination::Controller => "you".to_string(),
+                crate::effects::RedirectNextTimeDamageDestination::SourceController => {
+                    if source_text.ends_with("spell") {
+                        "that spell's controller".to_string()
+                    } else {
+                        "that source's controller".to_string()
+                    }
+                }
             };
-            return format!(
-                "All damage that would be dealt to {} this turn by {source_text} is dealt to {destination_text} instead",
-                describe_choose_spec(&redirect_next_time.target)
-            );
+            return if let Some(target) = &redirect_next_time.target {
+                format!(
+                    "All damage that would be dealt to {} this turn by {source_text} is dealt to {destination_text} instead",
+                    describe_choose_spec(target)
+                )
+            } else {
+                format!(
+                    "All damage that would be dealt this turn by {source_text} is dealt to {destination_text} instead"
+                )
+            };
         }
         return match redirect_next_time.destination {
             crate::effects::RedirectNextTimeDamageDestination::SourceObject => format!(
                 "The next time {source_text} would deal damage to {} this turn, that damage is dealt to this creature instead",
-                describe_choose_spec(&redirect_next_time.target)
+                describe_choose_spec(
+                    redirect_next_time
+                        .target
+                        .as_ref()
+                        .expect("redirect-next damage target")
+                )
             ),
             crate::effects::RedirectNextTimeDamageDestination::Controller => format!(
                 "The next time {source_text} would deal damage to {} this turn, that source deals that damage to you instead",
-                describe_choose_spec(&redirect_next_time.target)
+                describe_choose_spec(
+                    redirect_next_time
+                        .target
+                        .as_ref()
+                        .expect("redirect-next damage target")
+                )
+            ),
+            crate::effects::RedirectNextTimeDamageDestination::SourceController => format!(
+                "The next time {source_text} would deal damage this turn, that damage is dealt to {} instead",
+                if source_text.ends_with("spell") {
+                    "that spell's controller"
+                } else {
+                    "that source's controller"
+                }
             ),
         };
     }

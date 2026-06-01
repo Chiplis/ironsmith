@@ -885,6 +885,9 @@ fn parse_effect_sentence_with_where_x_lexed(
             | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { target, .. }
             | SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget { target, .. }
             | SubjectVerbActionAst::RedirectNextTimeDamageToSource { target, .. }
+            | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
+                source: target,
+            }
             | SubjectVerbActionAst::RetargetStackObject { target, .. }
             | SubjectVerbActionAst::DealDamage { target, .. }
             | SubjectVerbActionAst::DealDistributedDamage { target, .. }

@@ -5,7 +5,9 @@ use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_objects_for_effect;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::DamageTarget;
-use crate::events::damage::matchers::{DamageSourceConstraint, DamageToPlayerOrObjectMatcher};
+use crate::events::damage::matchers::{
+    DamageFromSourceMatcher, DamageSourceConstraint, DamageToPlayerOrObjectMatcher,
+};
 use crate::events::traits::{EventKind, GameEventType, ReplacementMatcher};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
@@ -56,12 +58,14 @@ impl ReplacementMatcher for DamageSourceToSpecificObjectMatcher {
 pub enum RedirectNextTimeDamageSource {
     Choice,
     Filter(ObjectFilter),
+    Target(ChooseSpec),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RedirectNextTimeDamageDestination {
     SourceObject,
     Controller,
+    SourceController,
 }
 
 /// "The next time a source of your choice would deal damage to target creature this turn,
@@ -69,7 +73,7 @@ pub enum RedirectNextTimeDamageDestination {
 #[derive(Debug, Clone, PartialEq)]
 pub struct RedirectNextTimeDamageToSourceEffect {
     pub source: RedirectNextTimeDamageSource,
-    pub target: ChooseSpec,
+    pub target: Option<ChooseSpec>,
     pub destination: RedirectNextTimeDamageDestination,
     pub all_this_turn: bool,
 }
@@ -138,14 +142,28 @@ impl RedirectNextTimeDamageToSourceEffect {
     pub fn new(source: RedirectNextTimeDamageSource, target: ChooseSpec) -> Self {
         Self {
             source,
-            target,
+            target: Some(target),
             destination: RedirectNextTimeDamageDestination::SourceObject,
+            all_this_turn: false,
+        }
+    }
+
+    pub fn from_source_target(source: ChooseSpec) -> Self {
+        Self {
+            source: RedirectNextTimeDamageSource::Target(source),
+            target: None,
+            destination: RedirectNextTimeDamageDestination::SourceController,
             all_this_turn: false,
         }
     }
 
     pub fn to_controller(mut self) -> Self {
         self.destination = RedirectNextTimeDamageDestination::Controller;
+        self
+    }
+
+    pub fn to_source_controller(mut self) -> Self {
+        self.destination = RedirectNextTimeDamageDestination::SourceController;
         self
     }
 
@@ -161,14 +179,16 @@ impl EffectExecutor for RedirectNextTimeDamageToSourceEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let protected_target = resolve_objects_for_effect(game, ctx, &self.target)?
-            .into_iter()
-            .next()
-            .ok_or(ExecutionError::InvalidTarget)?;
-
         let source_constraint = match &self.source {
             RedirectNextTimeDamageSource::Filter(filter) => {
                 DamageSourceConstraint::Filter(filter.clone())
+            }
+            RedirectNextTimeDamageSource::Target(spec) => {
+                let source = resolve_objects_for_effect(game, ctx, spec)?
+                    .into_iter()
+                    .next()
+                    .ok_or(ExecutionError::InvalidTarget)?;
+                DamageSourceConstraint::Specific(source)
             }
             RedirectNextTimeDamageSource::Choice => {
                 let mut candidates = Vec::new();
@@ -220,17 +240,40 @@ impl EffectExecutor for RedirectNextTimeDamageToSourceEffect {
             RedirectNextTimeDamageDestination::Controller => {
                 RedirectTarget::ToPlayer(ctx.controller)
             }
+            RedirectNextTimeDamageDestination::SourceController => {
+                RedirectTarget::ToSourceController
+            }
         };
 
-        let replacement = ReplacementEffect::with_matcher(
-            ctx.source,
-            ctx.controller,
-            DamageSourceToSpecificObjectMatcher::new(source_constraint, protected_target),
-            ReplacementAction::Redirect {
-                target: redirect_target,
-                which: RedirectWhich::First,
-            },
-        );
+        let replacement = if let Some(target) = &self.target {
+            let protected_target = resolve_objects_for_effect(game, ctx, target)?
+                .into_iter()
+                .next()
+                .ok_or(ExecutionError::InvalidTarget)?;
+            ReplacementEffect::with_matcher(
+                ctx.source,
+                ctx.controller,
+                DamageSourceToSpecificObjectMatcher::new(source_constraint, protected_target),
+                ReplacementAction::Redirect {
+                    target: redirect_target,
+                    which: RedirectWhich::First,
+                },
+            )
+        } else {
+            let filter = match source_constraint {
+                DamageSourceConstraint::Specific(source) => ObjectFilter::specific(source),
+                DamageSourceConstraint::Filter(filter) => filter,
+            };
+            ReplacementEffect::with_matcher(
+                ctx.source,
+                ctx.controller,
+                DamageFromSourceMatcher::new(filter),
+                ReplacementAction::Redirect {
+                    target: redirect_target,
+                    which: RedirectWhich::First,
+                },
+            )
+        };
         if self.all_this_turn {
             game.effect_store
                 .replacement_effects
@@ -244,11 +287,14 @@ impl EffectExecutor for RedirectNextTimeDamageToSourceEffect {
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
-        Some(&self.target)
+        self.target.as_ref().or_else(|| match &self.source {
+            RedirectNextTimeDamageSource::Target(spec) => Some(spec),
+            _ => None,
+        })
     }
 
     fn target_description(&self) -> &'static str {
-        "target creature to protect and redirect from"
+        "damage source or protected target for redirection"
     }
 }
 
@@ -301,6 +347,20 @@ mod tests {
             .card_types(vec![CardType::Creature])
             .build();
         game.create_object_from_card(&card, controller, Zone::Battlefield)
+    }
+
+    fn create_sorcery_on_stack(
+        game: &mut crate::game_state::GameState,
+        name: &str,
+        controller: PlayerId,
+        card_id: u32,
+    ) -> crate::ids::ObjectId {
+        let card = CardBuilder::new(CardId::from_raw(card_id), name)
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        let object_id = game.create_object_from_card(&card, controller, Zone::Stack);
+        game.push_to_stack(crate::game_state::StackEntry::new(object_id, controller));
+        object_id
     }
 
     #[test]
@@ -386,6 +446,117 @@ mod tests {
             0,
             "next-time redirect should not register until end of turn"
         );
+    }
+
+    #[test]
+    fn reverberation_redirects_target_sorcery_spell_damage_to_that_spells_controller() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let target_sorcery = create_sorcery_on_stack(&mut game, "Target Sorcery", bob, 80_020);
+        let reverberation = CardBuilder::new(CardId::from_raw(80_021), "Reverberation")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let reverberation_id = game.create_object_from_card(&reverberation, alice, Zone::Stack);
+
+        let mut ctx = ExecutionContext::new_default(reverberation_id, alice)
+            .with_targets(vec![ResolvedTarget::Object(target_sorcery)]);
+        RedirectNextTimeDamageToSourceEffect::from_source_target(ChooseSpec::target(
+            ChooseSpec::Object(crate::target::ObjectFilter::spell().with_type(CardType::Sorcery)),
+        ))
+        .all_this_turn()
+        .execute(&mut game, &mut ctx)
+        .expect("Reverberation replacement should register");
+
+        let processed = crate::events::processing::process_damage_assignments_with_event(
+            &mut game,
+            target_sorcery,
+            DamageTarget::Player(alice),
+            3,
+            false,
+            EventCause::effect(),
+        );
+        let alice_damage: u32 = processed
+            .assignments
+            .iter()
+            .filter(|assignment| assignment.target == DamageTarget::Player(alice))
+            .map(|assignment| assignment.amount)
+            .sum();
+        let bob_damage: u32 = processed
+            .assignments
+            .iter()
+            .filter(|assignment| assignment.target == DamageTarget::Player(bob))
+            .map(|assignment| assignment.amount)
+            .sum();
+
+        assert_eq!(alice_damage, 0);
+        assert_eq!(bob_damage, 3);
+        assert!(!processed.replacement_prevented);
+
+        let second = crate::events::processing::process_damage_assignments_with_event(
+            &mut game,
+            target_sorcery,
+            DamageTarget::Player(alice),
+            2,
+            false,
+            EventCause::effect(),
+        );
+        let second_bob_damage: u32 = second
+            .assignments
+            .iter()
+            .filter(|assignment| assignment.target == DamageTarget::Player(bob))
+            .map(|assignment| assignment.amount)
+            .sum();
+        assert_eq!(second_bob_damage, 2, "effect should last for the turn");
+    }
+
+    #[test]
+    fn reverberation_does_not_redirect_damage_from_untargeted_sorcery_spell() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let target_sorcery = create_sorcery_on_stack(&mut game, "Target Sorcery", bob, 80_025);
+        let other_sorcery = create_sorcery_on_stack(&mut game, "Other Sorcery", bob, 80_026);
+        let reverberation = CardBuilder::new(CardId::from_raw(80_027), "Reverberation")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let reverberation_id = game.create_object_from_card(&reverberation, alice, Zone::Stack);
+
+        let mut ctx = ExecutionContext::new_default(reverberation_id, alice)
+            .with_targets(vec![ResolvedTarget::Object(target_sorcery)]);
+        RedirectNextTimeDamageToSourceEffect::from_source_target(ChooseSpec::target(
+            ChooseSpec::Object(crate::target::ObjectFilter::spell().with_type(CardType::Sorcery)),
+        ))
+        .all_this_turn()
+        .execute(&mut game, &mut ctx)
+        .expect("Reverberation replacement should register");
+
+        let processed = crate::events::processing::process_damage_assignments_with_event(
+            &mut game,
+            other_sorcery,
+            DamageTarget::Player(alice),
+            4,
+            false,
+            EventCause::effect(),
+        );
+        let alice_damage: u32 = processed
+            .assignments
+            .iter()
+            .filter(|assignment| assignment.target == DamageTarget::Player(alice))
+            .map(|assignment| assignment.amount)
+            .sum();
+        let bob_damage: u32 = processed
+            .assignments
+            .iter()
+            .filter(|assignment| assignment.target == DamageTarget::Player(bob))
+            .map(|assignment| assignment.amount)
+            .sum();
+
+        assert_eq!(alice_damage, 4);
+        assert_eq!(bob_damage, 0);
+        assert!(!processed.replacement_prevented);
     }
 
     #[test]

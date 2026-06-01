@@ -1750,6 +1750,9 @@ fn compile_subject_verb_effect(
                     crate::cards::builders::RedirectNextTimeDamageDestinationAst::Controller => {
                         effect.to_controller()
                     }
+                    crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceController => {
+                        effect.to_source_controller()
+                    }
                 };
                 let effect = if *all_this_turn {
                     effect.all_this_turn()
@@ -1757,6 +1760,15 @@ fn compile_subject_verb_effect(
                     effect
                 };
                 Effect::new(effect)
+            })
+        }
+        SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController { source } => {
+            compile_effect_for_target(source, ctx, |spec| {
+                Effect::new(
+                    crate::effects::RedirectNextTimeDamageToSourceEffect::from_source_target(spec)
+                        .to_source_controller()
+                        .all_this_turn(),
+                )
             })
         }
         SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget {

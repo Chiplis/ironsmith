@@ -150,6 +150,7 @@ pub enum PreventNextTimeDamageSourceAst<Filter = crate::target::ObjectFilter> {
 pub enum RedirectNextTimeDamageDestinationAst {
     SourceObject,
     Controller,
+    SourceController,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

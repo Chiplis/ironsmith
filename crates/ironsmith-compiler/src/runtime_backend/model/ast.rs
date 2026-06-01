@@ -1378,6 +1378,9 @@ pub(crate) enum SubjectVerbActionAst {
         destination: RedirectNextTimeDamageDestinationAst,
         all_this_turn: bool,
     },
+    RedirectAllDamageThisTurnBySourceToSourceController {
+        source: TargetAst,
+    },
     RedirectAllDamageThisTurnToTarget {
         player_filter: PlayerFilter,
         object_filter: ObjectFilter,
@@ -2774,6 +2777,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("target", target)
                 .field("destination", destination)
                 .field("all_this_turn", all_this_turn)
+                .finish(),
+            Self::RedirectAllDamageThisTurnBySourceToSourceController { source } => f
+                .debug_struct("RedirectAllDamageThisTurnBySourceToSourceController")
+                .field("source", source)
                 .finish(),
             Self::RedirectAllDamageThisTurnToTarget {
                 player_filter,
@@ -4633,6 +4640,16 @@ impl EffectAst {
                 destination,
                 all_this_turn: true,
             },
+        )
+    }
+
+    pub(crate) fn subject_verb_redirect_all_damage_this_turn_by_source_to_source_controller(
+        source: TargetAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController { source },
         )
     }
 

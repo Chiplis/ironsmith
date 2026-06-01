@@ -883,7 +883,8 @@ fn maybe_rewrite_future_zone_replacement_sentence(
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action: SubjectVerbActionAst::ExileInsteadOfGraveyardThisTurn
                     | SubjectVerbActionAst::PreventNextTimeDamage { .. }
-                    | SubjectVerbActionAst::RedirectNextTimeDamageToSource { .. },
+                    | SubjectVerbActionAst::RedirectNextTimeDamageToSource { .. }
+                    | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController { .. },
                 ..
             })
         )
@@ -2100,6 +2101,9 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
             | SubjectVerbActionAst::SacrificeSourceWhenLeaves { target }
             | SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget { target, .. }
             | SubjectVerbActionAst::RedirectNextTimeDamageToSource { target, .. }
+            | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
+                source: target,
+            }
             | SubjectVerbActionAst::PreventDamage { target, .. }
             | SubjectVerbActionAst::PreventAllDamageToTarget { target, .. }
             | SubjectVerbActionAst::PreventDamageToTargetPutCounters { target, .. }
@@ -2585,6 +2589,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }
             | SubjectVerbActionAst::PreventNextTimeDamage { .. }
             | SubjectVerbActionAst::RedirectNextTimeDamageToSource { .. }
+            | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController { .. }
             | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { .. }
             | SubjectVerbActionAst::PreventAllDamageToTarget { .. }
             | SubjectVerbActionAst::PreventAllDamageFromSourceFilter { .. }
@@ -2863,6 +2868,9 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
             | SubjectVerbActionAst::RedirectNextTimeDamageToSource {
                 target: effect_target,
                 ..
+            }
+            | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
+                source: effect_target,
             }
             | SubjectVerbActionAst::PreventDamage {
                 target: effect_target,
