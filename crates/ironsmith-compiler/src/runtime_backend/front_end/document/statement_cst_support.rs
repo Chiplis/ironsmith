@@ -36,6 +36,7 @@ pub(super) fn parse_statement_line_cst(
             Some(
                 structure::StatementLineFamily::PactNextUpkeep
                     | structure::StatementLineFamily::ExilePlayCostsMore
+                    | structure::StatementLineFamily::BidLife
             )
         )
         || (contains_token_word_sequence(
@@ -80,8 +81,9 @@ pub(super) fn parse_statement_line_cst(
     if matches!(
         line_family,
         Some(
-            structure::StatementLineFamily::PactNextUpkeep
-                | structure::StatementLineFamily::ExilePlayCostsMore
+                structure::StatementLineFamily::PactNextUpkeep
+                    | structure::StatementLineFamily::ExilePlayCostsMore
+                    | structure::StatementLineFamily::BidLife
         )
     ) {
         return Ok(Some(StatementLineCst {
@@ -226,6 +228,7 @@ fn looks_like_statement_line_tokens(tokens: &[OwnedLexToken]) -> bool {
                 | structure::StatementLineFamily::Divvy
                 | structure::StatementLineFamily::ArtRating
                 | structure::StatementLineFamily::ExilePlayCostsMore
+                | structure::StatementLineFamily::BidLife
                 | structure::StatementLineFamily::Vote
                 | structure::StatementLineFamily::Generic
         )

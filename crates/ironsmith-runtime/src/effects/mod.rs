@@ -105,9 +105,10 @@ pub use combat::{
 };
 pub use composition::{
     AdaptEffect, AmplifyEffect, AuraSwapEffect, BackupEffect, BeholdEffect, BolsterEffect,
-    CastEncodedCardCopyEffect, ChooseModeEffect, ChooseObjectsEffect, ChooseSpellCastHistoryEffect,
-    CipherEffect, ConditionalEffect, CounterAbilityEffect, CumulativeUpkeepEffect, DevourEffect,
-    EmitGiftGivenEffect, EmitKeywordActionEffect, ExecuteWithSourceEffect, ExploreEffect,
+    BidLifeEffect, CastEncodedCardCopyEffect, ChooseModeEffect, ChooseObjectsEffect,
+    ChooseSpellCastHistoryEffect, CipherEffect, ConditionalEffect, CounterAbilityEffect,
+    CumulativeUpkeepEffect, DevourEffect, EmitGiftGivenEffect, EmitKeywordActionEffect,
+    ExecuteWithSourceEffect, ExploreEffect,
     ForEachControllerOfTaggedEffect, ForEachObject, ForEachTaggedEffect, ForEachTaggedPlayerEffect,
     ForPlayersEffect, IfEffect, LocalRewriteEffect, ManaRestrictedEffect,
     ManifestCardFromHandEffect, ManifestDreadEffect, ManifestTopCardOfLibraryEffect, MayEffect,
@@ -115,8 +116,8 @@ pub use composition::{
     RepeatProcessEffect, RepeatProcessPromptEffect, SequenceEffect, SupportEffect, TagAllEffect,
     TagAttachedToSourceEffect, TagMatchingObjectsEffect, TagTriggeringDamageTargetEffect,
     TagTriggeringObjectEffect, TagTriggeringSourceEffect, TaggedEffect, TargetOnlyEffect,
-    UnlessActionEffect, UnlessPaysEffect, VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG, VoteChoice,
-    VoteEffect, VoteOption, VoteResult, WithIdEffect,
+    LifeBidStart, UnlessActionEffect, UnlessPaysEffect, VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG,
+    VoteChoice, VoteEffect, VoteOption, VoteResult, WithIdEffect,
 };
 pub use continuous::{ApplyContinuousEffect, ExchangeTextBoxesEffect, RuntimeModification};
 pub use control::{ExchangeControlEffect, GainControlEffect, SharedTypeConstraint};

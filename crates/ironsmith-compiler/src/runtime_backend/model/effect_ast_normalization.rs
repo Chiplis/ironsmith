@@ -56,6 +56,10 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
         | EffectAst::ForEachTaggedPlayer { effects, .. }
         | EffectAst::RepeatProcess { effects, .. }
         | EffectAst::RepeatEffects { effects, .. }
+        | EffectAst::BidLife {
+            winner_effects: effects,
+            ..
+        }
         | EffectAst::DelayedUntilNextEndStep { effects, .. }
         | EffectAst::DelayedUntilNextUpkeep { effects, .. }
         | EffectAst::DelayedUntilNextDrawStep { effects, .. }

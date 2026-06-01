@@ -4,6 +4,7 @@ pub use ironsmith_core::{
     AddManaOfAnyOneColorEffect, AddManaOfLandProducedTypesEffect, AdditionalLandPlaysEffect,
     AdditionalPhase, AdditionalPhasesEffect, AmassEffect, AmplifyEffect, AttachObjectsEffect,
     AttachToEffect, AuraSwapEffect, BackupEffect, BattlefieldController,
+    BidLifeEffect as CoreBidLifeEffect,
     BecomeBasicLandTypeChoiceEffect, BecomeColorChoiceEffect, BecomeCreatureTypeChoiceEffect,
     BecomeMonarchEffect, BecomeSaddledUntilEotEffect, BeholdEffect, BolsterEffect, CantEffect,
     CastSourceEffect, CastTaggedEffect, ChooseCardNameEffect, ChooseCardTypeEffect,
@@ -34,7 +35,7 @@ pub use ironsmith_core::{
     GrantNextSpellCostReductionEffect, GrantPlayTaggedDuration, GrantPlayTaggedEffect,
     GrantTaggedSpellFreeCastUntilEndOfTurnEffect, GrantTaggedSpellLifeCostByManaValueEffect,
     HauntExileEffect as CoreHauntExileEffect, IfEffect as CoreIfEffect, IncubateEffect,
-    InvestigateEffect, LearnEffect, LibraryBottomOrder, LibraryConsultMode,
+    InvestigateEffect, LearnEffect, LibraryBottomOrder, LibraryConsultMode, LifeBidStart,
     LocalRewriteEffect as CoreLocalRewriteEffect, LookAtHandEffect, LookAtObjectsEffect,
     LookAtTopCardsEffect, LoseLifeEffect, LoseTheGameEffect,
     ManaRestrictedEffect as CoreManaRestrictedEffect, ManifestCardFromHandEffect,
@@ -102,6 +103,7 @@ pub type TaggedEffect = CoreTaggedEffect<Effect>;
 pub type ReflexiveTriggerEffect = CoreReflexiveTriggerEffect<Effect>;
 pub type RepeatEffectsEffect = ironsmith_core::RepeatEffectsEffect<Effect>;
 pub type RepeatProcessEffect = ironsmith_core::RepeatProcessEffect<Effect>;
+pub type BidLifeEffect = CoreBidLifeEffect<Effect>;
 pub type VoteChoice = ironsmith_core::VoteChoice<Effect>;
 pub type VoteEffect = ironsmith_core::VoteEffect<Effect>;
 pub type GrantEffect = CoreGrantEffect<crate::grant::Grantable, crate::grant::GrantDuration>;

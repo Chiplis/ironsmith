@@ -178,6 +178,27 @@ fn compile_effect_inner(
             choices,
         ));
     }
+    if let EffectAst::BidLife {
+        target,
+        starting_bid,
+        winner_effects,
+    } = effect
+    {
+        let refs = current_reference_env(ctx);
+        let (target_spec, mut choices) = resolve_target_spec_with_choices(target, &refs)?;
+        let (winner_effects, winner_choices) = compile_effects(winner_effects, ctx)?;
+        for choice in winner_choices {
+            push_choice(&mut choices, choice);
+        }
+        return Ok((
+            vec![Effect::new(crate::effects::BidLifeEffect::new(
+                target_spec,
+                crate::effects::LifeBidStart::Fixed(*starting_bid),
+                winner_effects,
+            ))],
+            choices,
+        ));
+    }
     if let EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
         player,
         zone_owner,

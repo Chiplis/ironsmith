@@ -1719,6 +1719,10 @@ fn rewrite_copy_count_to_times_paid_label_rewrite(effects: &mut [EffectAst], lab
             | EffectAst::ForEachPlayerDid { effects, .. }
             | EffectAst::ForEachTaggedPlayer { effects, .. }
             | EffectAst::RepeatProcess { effects, .. }
+            | EffectAst::BidLife {
+                winner_effects: effects,
+                ..
+            }
             | EffectAst::DelayedUntilNextEndStep { effects, .. }
             | EffectAst::DelayedUntilNextUpkeep { effects, .. }
             | EffectAst::DelayedUntilNextDrawStep { effects, .. }
