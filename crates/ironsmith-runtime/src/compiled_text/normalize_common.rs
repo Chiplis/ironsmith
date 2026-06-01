@@ -10309,6 +10309,17 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         crate::effect::Restriction::LoseLife(filter) => {
             format!("{} can't lose life", describe_player_set_filter(filter))
         }
+        crate::effect::Restriction::DamageCauseLifeLoss(filter) => match filter {
+            PlayerFilter::You => "damage doesn't cause you to lose life".to_string(),
+            PlayerFilter::Any => "damage doesn't cause players to lose life".to_string(),
+            PlayerFilter::IteratedPlayer => {
+                "damage doesn't cause that player to lose life".to_string()
+            }
+            _ => format!(
+                "damage doesn't cause {} to lose life",
+                describe_player_filter(filter)
+            ),
+        },
         crate::effect::Restriction::ChangeLifeTotal(filter) => {
             format!(
                 "{} can't have life total changed",
