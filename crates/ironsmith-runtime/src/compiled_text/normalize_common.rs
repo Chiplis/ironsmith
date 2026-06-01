@@ -10534,6 +10534,7 @@ pub(super) fn describe_effect_predicate(predicate: &EffectPredicate) -> String {
         EffectPredicate::Happened => "happened".to_string(),
         EffectPredicate::DidNotHappen => "that doesn't happen".to_string(),
         EffectPredicate::HappenedNotReplaced => "happened and was not replaced".to_string(),
+        EffectPredicate::ExcessDamageDealt => "excess damage was dealt this way".to_string(),
         EffectPredicate::Value(cmp) => format!("its count {}", describe_comparison(cmp)),
         EffectPredicate::Chosen => "was chosen".to_string(),
         EffectPredicate::WasDeclined => "was declined".to_string(),

@@ -196,6 +196,7 @@ pub enum ExecutionFact {
     AffectedObjectMemory(Vec<OutcomeObjectMemory>),
     PlayerAffectedObjectMemory(Vec<(PlayerId, Vec<OutcomeObjectMemory>)>),
     PlayerCounts(Vec<(PlayerId, i32)>),
+    ExcessDamageDealt,
     ChosenOptions(Vec<usize>),
     ChosenNumber(u32),
     OtherNumber(u32),
@@ -779,6 +780,9 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
                 Self::Happened.evaluate_outcome(outcome)
                     && !outcome.has_execution_fact(|fact| matches!(fact, ExecutionFact::Replaced))
                     && outcome.status != OutcomeStatus::Replaced
+            }
+            Self::ExcessDamageDealt => {
+                outcome.has_execution_fact(|fact| matches!(fact, ExecutionFact::ExcessDamageDealt))
             }
             Self::Value(cmp) => outcome.as_count().is_some_and(|n| cmp.evaluate(n)),
             Self::Chosen => {

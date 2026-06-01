@@ -2668,6 +2668,13 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         return Some((Value::EventValue(EventValueSpec::Amount), words.len()));
     }
 
+    if words
+        .get(..2)
+        .is_some_and(|prefix| matches!(prefix, ["twice", x] if X_WORD_PATTERN.matches_word(x)))
+    {
+        return Some((Value::XTimes(2), 2));
+    }
+
     if X_WORD_PATTERN.matches_word(words[0]) {
         return Some((Value::X, 1));
     }

@@ -449,6 +449,7 @@ pub enum IfResultPredicate {
     Did,
     DidNot,
     DiesThisWay,
+    ExcessDamageDealt,
     WasDeclined,
     Value(ironsmith_core::Comparison),
 }

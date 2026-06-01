@@ -93,6 +93,11 @@ const WOULD_DIE_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
 );
 const EXCESS_DAMAGE_THIS_WAY_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["it", "deals", "excess", "damage", "this", "way"]);
+const EXCESS_DAMAGE_WAS_DEALT_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix & ["excess", "damage", "was", "dealt", "to"];
+    suffix & ["this", "way"];
+    contains_words & ["creature"]
+);
 const POWER_BECOMES_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(prefix_any & [&["its", "power", "becomes"], &["it", "power", "becomes"]]; suffix & ["this", "way"]);
 
 fn modal_words_match_shape(words: &[&str], shape: &ClauseShape<'static>) -> bool {
@@ -254,9 +259,15 @@ pub(crate) fn parse_if_result_predicate_lexed(
         return Some(IfResultPredicate::DiesThisWay);
     }
 
-    if modal_words_match_shape(&words, &EXCESS_DAMAGE_THIS_WAY_PATTERN)
-        || (words.len() == 5 && modal_words_match_shape(&words, &POWER_BECOMES_THIS_WAY_PATTERN))
-    {
+    if modal_words_match_shape(&words, &EXCESS_DAMAGE_WAS_DEALT_THIS_WAY_PATTERN) {
+        return Some(IfResultPredicate::ExcessDamageDealt);
+    }
+
+    if modal_words_match_shape(&words, &EXCESS_DAMAGE_THIS_WAY_PATTERN) {
+        return Some(IfResultPredicate::Did);
+    }
+
+    if words.len() == 5 && modal_words_match_shape(&words, &POWER_BECOMES_THIS_WAY_PATTERN) {
         return Some(IfResultPredicate::Did);
     }
 

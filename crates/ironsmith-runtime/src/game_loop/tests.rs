@@ -933,6 +933,130 @@ fn from_under_the_floorboards_paid_madness_uses_x_token_and_life_branch() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn torch_the_witness_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(74_260), "Torch the Witness")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::X],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Torch the Witness deals twice X damage to target creature. If excess damage was dealt to that creature this way, investigate.",
+        )
+        .expect("Torch the Witness should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn clue_tokens_controlled_by(game: &GameState, player: PlayerId) -> Vec<ObjectId> {
+    game.battlefield
+        .iter()
+        .copied()
+        .filter(|id| {
+            game.object(*id).is_some_and(|object| {
+                game.controller_of(object) == player
+                    && object.kind == ObjectKind::Token
+                    && object.name == "Clue"
+            })
+        })
+        .collect()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_torch_the_witness_on_stack(
+    game: &mut GameState,
+    controller: PlayerId,
+    target: ObjectId,
+    x_value: u32,
+) {
+    let def = torch_the_witness_definition();
+    let spell_id = game.create_object_from_definition(&def, controller, Zone::Stack);
+    game.object_mut(spell_id)
+        .expect("Torch on stack")
+        .x_value = Some(x_value);
+    game.push_to_stack(
+        StackEntry::new(spell_id, controller)
+            .with_x(x_value)
+            .with_targets(vec![Target::Object(target)]),
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn torch_the_witness_targets_only_battlefield_creatures() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let spell = torch_the_witness_definition();
+    let effects = spell.spell_effect.as_ref().expect("Torch should have effects");
+
+    let creature = create_creature(&mut game, "Witness Target", bob, 2, 2);
+    let artifact = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(74_261), "Noncreature Evidence")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+
+    let requirements = extract_target_requirements(&game, effects, alice, None);
+    assert_eq!(requirements.len(), 1, "Torch should have one target requirement");
+    let legal_targets = &requirements[0].legal_targets;
+    assert!(
+        legal_targets.contains(&Target::Object(creature)),
+        "battlefield creatures should be legal Torch targets, got {legal_targets:?}"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Object(artifact)),
+        "noncreature artifacts should not be legal Torch targets, got {legal_targets:?}"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Player(bob)),
+        "players should not be legal Torch targets, got {legal_targets:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn torch_the_witness_investigates_when_twice_x_deals_excess_damage() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let target = create_creature(&mut game, "Small Witness", bob, 2, 3);
+
+    put_torch_the_witness_on_stack(&mut game, alice, target, 2);
+    resolve_stack_entry(&mut game).expect("Torch the Witness should resolve");
+
+    assert_eq!(
+        clue_tokens_controlled_by(&game, alice).len(),
+        1,
+        "twice X should deal 4 damage to a 3-toughness creature and investigate for excess damage"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn torch_the_witness_does_not_investigate_without_excess_damage() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let target = create_creature(&mut game, "Large Witness", bob, 2, 5);
+
+    put_torch_the_witness_on_stack(&mut game, alice, target, 2);
+    resolve_stack_entry(&mut game).expect("Torch the Witness should resolve");
+
+    assert_eq!(
+        game.damage_on(target),
+        4,
+        "twice X should deal 4 damage when X is 2"
+    );
+    assert_eq!(
+        clue_tokens_controlled_by(&game, alice).len(),
+        0,
+        "Torch should not investigate when the damage is not excess"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn put_test_cards_in_zone(game: &mut GameState, player: PlayerId, zone: Zone, count: u32) {
     for index in 0..count {
         let card = CardBuilder::new(

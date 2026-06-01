@@ -81,6 +81,7 @@ pub enum EffectPredicate {
     Happened,
     DidNotHappen,
     HappenedNotReplaced,
+    ExcessDamageDealt,
     Value(crate::effect_model::Comparison),
     Chosen,
     WasDeclined,

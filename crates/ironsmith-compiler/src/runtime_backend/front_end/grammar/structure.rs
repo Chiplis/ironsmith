@@ -175,6 +175,11 @@ const OBJECT_DAMAGE_WOULD_DIE_THIS_WAY_PATTERN: ClauseShape<'static> = clause_sh
 );
 const EXCESS_DAMAGE_THIS_WAY_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["it", "deals", "excess", "damage", "this", "way"]);
+const EXCESS_DAMAGE_WAS_DEALT_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix & ["excess", "damage", "was", "dealt", "to"];
+    suffix & ["this", "way"];
+    contains_words & ["creature"]
+);
 const YOU_LOSE_FLIP_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["you", "lose"], &["you", "lost"]]; contains_words & ["flip"]);
 const PLAYER_SHORT_NEGATED_RESULT_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -795,6 +800,9 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
             | ["it", "power", "becomes", _, "this", "way"]
     ) {
         return Some(IfResultPredicate::Did);
+    }
+    if EXCESS_DAMAGE_WAS_DEALT_THIS_WAY_PATTERN.matches_words(words) {
+        return Some(IfResultPredicate::ExcessDamageDealt);
     }
     if EXCESS_DAMAGE_THIS_WAY_PATTERN.matches_words(words) {
         return Some(IfResultPredicate::Did);
