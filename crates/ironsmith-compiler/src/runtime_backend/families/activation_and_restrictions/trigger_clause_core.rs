@@ -187,6 +187,8 @@ const BEGINNING_DRAW_STEP_TRIGGER_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_words & ["beginning", "draw", "step"]);
 const BEGINNING_COMBAT_TRIGGER_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_words & ["beginning", "combat"]);
+const END_OF_COMBAT_TRIGGER_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["end", "of", "combat"], &["the", "end", "of", "combat"]]);
 const BEGINNING_FIRST_MAIN_PHASE_TRIGGER_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_words & ["beginning", "first", "main", "phase"]);
 const BEGINNING_SECOND_MAIN_PHASE_TRIGGER_PATTERN: ClauseShape<'static> =
@@ -4073,6 +4075,7 @@ pub(crate) fn parse_trigger_clause_lexed(
         _ if BEGINNING_COMBAT_TRIGGER_PATTERN.matches_words(&words) => Ok(
             TriggerSpec::BeginningOfCombat(parse_possessive_clause_player_filter(&words)),
         ),
+        _ if END_OF_COMBAT_TRIGGER_PATTERN.matches_words(&words) => Ok(TriggerSpec::EndOfCombat),
         _ => Err(CardTextError::ParseError(format!(
             "unsupported trigger clause (clause: '{}')",
             words.join(" ")

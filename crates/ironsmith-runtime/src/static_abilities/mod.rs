@@ -297,6 +297,12 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    fn rule_restriction_parts(
+        &self,
+    ) -> Option<(&crate::effect::Restriction, Option<&crate::ConditionExpr>)> {
+        None
+    }
+
     /// Clone this ability into a boxed trait object.
     fn clone_box(&self) -> Box<dyn StaticAbilityKind> {
         StaticAbilityKindClone::clone_boxed(self)
@@ -1177,6 +1183,12 @@ impl StaticAbility {
 
     pub fn with_condition(&self, condition: crate::ConditionExpr) -> Option<Self> {
         self.0.with_static_condition(condition)
+    }
+
+    pub fn rule_restriction_parts(
+        &self,
+    ) -> Option<(&crate::effect::Restriction, Option<&crate::ConditionExpr>)> {
+        self.0.rule_restriction_parts()
     }
 
     /// Generate continuous effects for this ability.

@@ -63,6 +63,7 @@ fn phase_step_trigger_has_no_object_reference(trigger: &TriggerSpec) -> bool {
         TriggerSpec::BeginningOfUpkeep(_)
             | TriggerSpec::BeginningOfDrawStep(_)
             | TriggerSpec::BeginningOfCombat(_)
+            | TriggerSpec::EndOfCombat
             | TriggerSpec::BeginningOfEndStep(_)
             | TriggerSpec::BeginningOfPrecombatMain(_)
             | TriggerSpec::BeginningOfPostcombatMain(_)

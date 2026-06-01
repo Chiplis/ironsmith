@@ -1601,6 +1601,12 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         self.leaf_static_ability()?.with_condition(condition)
     }
 
+    fn rule_restriction_parts(
+        &self,
+    ) -> Option<(&crate::effect::Restriction, Option<&crate::ConditionExpr>)> {
+        self.leaf_static_ability()?.rule_restriction_parts()
+    }
+
     fn generate_effects(
         &self,
         source: ObjectId,

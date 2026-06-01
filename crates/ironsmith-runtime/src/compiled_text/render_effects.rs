@@ -510,6 +510,145 @@ fn direct_wrapped_effect_tag(effect: &Effect) -> Option<&crate::TagKey> {
         .map(|tagged| &tagged.tag)
 }
 
+fn unwrap_id_and_tag_wrappers(effect: &Effect) -> &Effect {
+    if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+        return unwrap_id_and_tag_wrappers(&tag_all.effect);
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return unwrap_id_and_tag_wrappers(&tagged.effect);
+    }
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return unwrap_id_and_tag_wrappers(with_id.effect.as_ref());
+    }
+    effect
+}
+
+fn describe_each_object_filter(filter: &ObjectFilter) -> String {
+    if filter.zone == Some(Zone::Battlefield)
+        && filter.card_types == [CardType::Creature]
+        && filter.controller.is_none()
+        && filter.in_combat_with_source
+    {
+        return "creature blocking or blocked by this creature".to_string();
+    }
+    strip_leading_article(&filter.description()).to_string()
+}
+
+fn describes_counter_conditioned_untap_restriction(
+    apply: &crate::effects::ApplyContinuousEffect,
+    filter: &ObjectFilter,
+    counter_type: CounterType,
+) -> bool {
+    if !matches!(
+        &apply.target,
+        crate::continuous::EffectTarget::Filter(candidate) if candidate == filter
+    )
+        || apply.target_spec.is_some()
+        || apply.until != Until::Forever
+        || apply.condition.is_some()
+        || !apply.additional_modifications.is_empty()
+        || !apply.runtime_modifications.is_empty()
+    {
+        return false;
+    }
+    let Some(crate::continuous::Modification::AddAbility(ability)) = &apply.modification else {
+        return false;
+    };
+    let Some((crate::effect::Restriction::Untap(restricted), condition)) =
+        ability.rule_restriction_parts()
+    else {
+        return false;
+    };
+    let mut source_with_counter = ObjectFilter::source();
+    source_with_counter.with_counter = Some(crate::filter::CounterConstraint::Typed(counter_type));
+    restricted == &ObjectFilter::source()
+        && matches!(condition, Some(crate::ConditionExpr::SourceMatches(filter)) if filter == &source_with_counter)
+        && ability
+            .display()
+            .contains("doesn't untap during its controller's untap step")
+}
+
+fn activated_remove_counter_ability_display(
+    ability: &Ability,
+    counter_type: CounterType,
+) -> Option<String> {
+    let AbilityKind::Activated(activated) = &ability.kind else {
+        return None;
+    };
+    if !activated.choices.is_empty() {
+        return None;
+    }
+    let [effect] = activated.effects.flattened_default_effects() else {
+        return None;
+    };
+    let remove = unwrap_id_and_tag_wrappers(effect)
+        .downcast_ref::<crate::effects::RemoveCountersEffect>()?;
+    if remove.counter_type == counter_type
+        && remove.count == Value::Fixed(1)
+        && matches!(remove.target.base(), ChooseSpec::Source)
+    {
+        Some(describe_inline_ability(ability))
+    } else {
+        None
+    }
+}
+
+fn describe_counter_lockdown_grant_effects(effects: &[Effect]) -> Option<String> {
+    let [put_effect, tap_effect, restriction_effect, activation_effect] = effects else {
+        return None;
+    };
+    let for_each = put_effect.downcast_ref::<crate::effects::ForEachObject>()?;
+    let [inner_put_effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let put = inner_put_effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if put.amount != Value::Fixed(1)
+        || put.target_count.is_some()
+        || put.distributed
+        || !matches!(put.target.base(), ChooseSpec::Iterated)
+    {
+        return None;
+    }
+
+    let tap = tap_effect.downcast_ref::<crate::effects::TapEffect>()?;
+    if !matches!(&tap.target, ChooseSpec::All(filter) if filter == &for_each.filter) {
+        return None;
+    }
+
+    let restriction = restriction_effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if !describes_counter_conditioned_untap_restriction(
+        restriction,
+        &for_each.filter,
+        put.counter_type,
+    ) {
+        return None;
+    }
+
+    let activation = activation_effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if !matches!(
+        &activation.target,
+        crate::continuous::EffectTarget::Filter(candidate) if candidate == &for_each.filter
+    )
+        || activation.target_spec.is_some()
+        || activation.until != Until::Forever
+        || activation.condition.is_some()
+        || !activation.additional_modifications.is_empty()
+        || !activation.runtime_modifications.is_empty()
+    {
+        return None;
+    }
+    let Some(crate::continuous::Modification::AddAbilityGeneric(ability)) = &activation.modification
+    else {
+        return None;
+    };
+    let remove_ability = activated_remove_counter_ability_display(ability, put.counter_type)?;
+    let counter = describe_counter_type(put.counter_type);
+    let subject = describe_each_object_filter(&for_each.filter);
+    Some(format!(
+        "put a {counter} counter on each {subject} and tap those creatures. Each of those creatures doesn't untap during its controller's untap step for as long as it has a {counter} counter on it. Each of those creatures gains \"{remove_ability}\""
+    ))
+}
+
 fn describe_spell_mastery_reanimation_effects(effects: &[&Effect]) -> Option<String> {
     let [move_effect, conditional_effect] = effects else {
         return None;
@@ -4128,6 +4267,9 @@ fn describe_revealed_cards_opponent_may_put_or_draw(effects: &[&Effect]) -> Opti
 }
 
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
+    if let Some(compact) = describe_counter_lockdown_grant_effects(effects) {
+        return compact;
+    }
     if let Some(compact) = describe_reveal_top_to_hand_then_lose_mana_value_effects(effects) {
         return compact;
     }

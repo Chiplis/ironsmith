@@ -591,6 +591,12 @@ impl StaticAbilityKind for RuleRestriction {
         Some(StaticAbility::new(self.clone().with_condition(condition)))
     }
 
+    fn rule_restriction_parts(
+        &self,
+    ) -> Option<(&crate::effect::Restriction, Option<&crate::ConditionExpr>)> {
+        Some((&self.restriction, self.condition.as_ref()))
+    }
+
     fn is_active(&self, game: &GameState, source: ObjectId) -> bool {
         let Some(condition) = &self.condition else {
             return true;

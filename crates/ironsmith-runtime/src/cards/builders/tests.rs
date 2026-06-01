@@ -41957,6 +41957,238 @@ fn assert_oracle_card_parses_strict(name: &str) {
     );
 }
 
+#[test]
+fn dread_wight_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Dread Wight");
+    let rendered = compiled_text_lines(&def).join(" ");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        def.abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, AbilityKind::Triggered(_))),
+        "Dread Wight should parse its end-of-combat trigger strictly"
+    );
+    assert!(
+        rendered.contains(
+            "At end of combat, put a paralyzation counter on each creature blocking or blocked by this creature and tap those creatures"
+        ) && rendered.contains(
+            "Each of those creatures doesn't untap during its controller's untap step for as long as it has a paralyzation counter on it"
+        ) && rendered.contains(
+            "Each of those creatures gains \"{4}: Remove a paralyzation counter from this creature\""
+        ),
+        "Dread Wight compiled text should preserve the paralyzation counter/tap/untap/granted-activation clauses, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("EndOfCombatTrigger")
+            && ability_debug.contains("PutCountersEffect")
+            && ability_debug.contains("TapEffect")
+            && ability_debug.contains("SourceMatches")
+            && ability_debug.contains("RemoveCountersEffect"),
+        "Dread Wight should lower to end-of-combat counter, tap, conditional untap restriction, and remove-counter ability effects, got {ability_debug}"
+    );
+}
+
+#[test]
+fn dread_wight_end_of_combat_paralyzes_only_creatures_in_combat_with_it() {
+    let def = parse_oracle_card_definition("Dread Wight");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Dread Wight should have a triggered ability");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let paralyzation = crate::object::CounterType::Named("paralyzation");
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let blocker_def = CardDefinitionBuilder::new(CardId::new(), "Blocking Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let bystander_def = CardDefinitionBuilder::new(CardId::new(), "Bystander Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let blocker = game.create_object_from_definition(&blocker_def, bob, Zone::Battlefield);
+    let bystander = game.create_object_from_definition(&bystander_def, bob, Zone::Battlefield);
+
+    let trigger_ctx = crate::triggers::TriggerContext::for_source(source, alice, &game);
+    let end_of_combat = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::phase::EndOfCombatEvent::new(),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert!(
+        triggered.trigger.matches(&end_of_combat, &trigger_ctx),
+        "Dread Wight's trigger should fire at end of combat"
+    );
+
+    let mut combat = crate::combat_state::CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: source,
+        target: crate::combat_state::AttackTarget::Player(bob),
+    });
+    combat.blockers.insert(source, vec![blocker]);
+    game.combat = Some(combat);
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &triggered.effects,
+        None,
+        &[],
+    )
+    .expect("Dread Wight end-of-combat trigger should resolve");
+
+    assert_eq!(
+        game.counter_count(blocker, paralyzation),
+        1,
+        "the creature blocking Dread Wight should get a paralyzation counter"
+    );
+    assert!(
+        game.is_tapped(blocker),
+        "the creature blocking Dread Wight should be tapped"
+    );
+    assert_eq!(
+        game.counter_count(bystander, paralyzation),
+        0,
+        "unrelated creatures should not get paralyzation counters"
+    );
+
+    game.combat = None;
+    game.tap(bystander);
+    game.turn.active_player = bob;
+    game.turn.phase = crate::game_state::Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Untap);
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    crate::turn::execute_untap_step_with(&mut game, &mut dm);
+    assert!(
+        game.is_tapped(blocker),
+        "a creature with a paralyzation counter should not untap during its controller's untap step"
+    );
+    assert!(
+        !game.is_tapped(bystander),
+        "an unaffected creature should untap normally"
+    );
+
+    let remove_counter_program = game
+        .current_characteristics(blocker)
+        .expect("blocked creature should still exist")
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) if activated
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .any(|effect| {
+                    effect
+                        .downcast_ref::<crate::effects::WithIdEffect>()
+                        .and_then(|with_id| {
+                            with_id
+                                .effect
+                                .downcast_ref::<crate::effects::RemoveCountersEffect>()
+                        })
+                        .is_some_and(|remove| remove.counter_type == paralyzation)
+                }) => {
+                Some(activated.effects.clone())
+            }
+            _ => None,
+        })
+        .expect("the blocked creature should gain the paralyzation counter-removal ability");
+    let mut remove_ctx = crate::effects::ExecutionContext::new_default(blocker, bob);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut remove_ctx,
+        bob,
+        blocker,
+        &remove_counter_program,
+        None,
+        &[],
+    )
+    .expect("granted remove-counter ability should resolve");
+    assert_eq!(
+        game.counter_count(blocker, paralyzation),
+        0,
+        "the granted activation should remove the paralyzation counter"
+    );
+
+    crate::turn::execute_untap_step_with(&mut game, &mut dm);
+    assert!(
+        !game.is_tapped(blocker),
+        "after its paralyzation counter is removed, the creature should untap normally"
+    );
+}
+
+#[test]
+fn dread_wight_end_of_combat_paralyzes_creatures_it_blocked() {
+    let def = parse_oracle_card_definition("Dread Wight");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Dread Wight should have a triggered ability");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let paralyzation = crate::object::CounterType::Named("paralyzation");
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let attacker_def = CardDefinitionBuilder::new(CardId::new(), "Blocked Attacker")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let bystander_def = CardDefinitionBuilder::new(CardId::new(), "Bystander Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let attacker = game.create_object_from_definition(&attacker_def, bob, Zone::Battlefield);
+    let bystander = game.create_object_from_definition(&bystander_def, bob, Zone::Battlefield);
+
+    let mut combat = crate::combat_state::CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: attacker,
+        target: crate::combat_state::AttackTarget::Player(alice),
+    });
+    combat.blockers.insert(attacker, vec![source]);
+    game.combat = Some(combat);
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &triggered.effects,
+        None,
+        &[],
+    )
+    .expect("Dread Wight end-of-combat trigger should resolve");
+
+    assert_eq!(
+        game.counter_count(attacker, paralyzation),
+        1,
+        "the creature blocked by Dread Wight should get a paralyzation counter"
+    );
+    assert!(
+        game.is_tapped(attacker),
+        "the creature blocked by Dread Wight should be tapped"
+    );
+    assert_eq!(
+        game.counter_count(bystander, paralyzation),
+        0,
+        "unrelated creatures should not get paralyzation counters"
+    );
+}
+
 fn assert_oracle_card_fails_strict(name: &str) {
     let oracle = oracle_text_by_name()
         .get(name)

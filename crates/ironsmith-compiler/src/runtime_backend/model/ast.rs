@@ -326,6 +326,7 @@ pub(crate) enum TriggerSpec {
     BeginningOfUpkeep(PlayerFilter),
     BeginningOfDrawStep(PlayerFilter),
     BeginningOfCombat(PlayerFilter),
+    EndOfCombat,
     BeginningOfEndStep(PlayerFilter),
     BeginningOfPrecombatMain(PlayerFilter),
     BeginningOfPostcombatMain(PlayerFilter),

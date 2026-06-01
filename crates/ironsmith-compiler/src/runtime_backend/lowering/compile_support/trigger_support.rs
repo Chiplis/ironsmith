@@ -373,6 +373,7 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::BeginningOfUpkeep(player) => Trigger::beginning_of_upkeep(player),
         TriggerSpec::BeginningOfDrawStep(player) => Trigger::beginning_of_draw_step(player),
         TriggerSpec::BeginningOfCombat(player) => Trigger::beginning_of_combat(player),
+        TriggerSpec::EndOfCombat => Trigger::end_of_combat(),
         TriggerSpec::BeginningOfEndStep(player) => Trigger::beginning_of_end_step(player),
         TriggerSpec::BeginningOfPrecombatMain(player) => {
             Trigger::beginning_of_precombat_main_phase(player)
@@ -502,6 +503,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::BeginningOfUpkeep(_)
         | TriggerSpec::BeginningOfDrawStep(_)
         | TriggerSpec::BeginningOfCombat(_)
+        | TriggerSpec::EndOfCombat
         | TriggerSpec::BeginningOfEndStep(_)
         | TriggerSpec::BeginningOfPrecombatMain(_)
         | TriggerSpec::BeginningOfPostcombatMain(_)

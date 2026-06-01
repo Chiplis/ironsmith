@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime_backend::GrantedAbilityAst;
 use crate::runtime_backend::ast::{SubjectVerbEffectAst, SubjectVerbSubjectAst};
 use crate::runtime_backend::grammar::structure::{
     StatementLineFamily, classify_statement_line_family_lexed,
@@ -875,6 +876,85 @@ pub(crate) fn lower_special_rewrite_triggered_chunk(
             }],
             max_triggers_per_turn: line.max_triggers_per_turn,
         }));
+    }
+
+    let effect_sentences = split_lexed_sentences(effect_parse_tokens);
+    if effect_sentences.len() == 3 {
+        let second_words = crate::runtime_backend::token_word_refs(effect_sentences[1]);
+        if word_slice_contains_word(&second_words, "untap")
+            && word_slice_contains_word(&second_words, "counter")
+            && word_slice_contains_phrase(&second_words, &["for", "as", "long", "as"])
+        {
+            let trigger = parse_trigger_clause_lexed(trigger_parse_tokens)?;
+            let first_effects = parse_effect_sentences_lexed(effect_sentences[0])?;
+            let third_effects = parse_effect_sentences_lexed(effect_sentences[2])?;
+            let counter_parts = first_effects.iter().find_map(|effect| {
+                let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::PutCountersAll {
+                            counter_type,
+                            count,
+                            filter,
+                        },
+                    ..
+                }) = effect
+                else {
+                    return None;
+                };
+                let mut source_with_counter = ObjectFilter::source();
+                source_with_counter.with_counter = Some(
+                    crate::filter::CounterConstraint::Typed(*counter_type),
+                );
+                let ability = crate::static_abilities::StaticAbility::restriction(
+                    crate::effect::Restriction::untap(ObjectFilter::source()),
+                    "This creature doesn't untap during its controller's untap step".to_string(),
+                )
+                .with_condition(crate::ConditionExpr::SourceMatches(source_with_counter));
+                Some((
+                    *counter_type,
+                    count.clone(),
+                    filter.clone(),
+                    EffectAst::subject_verb_grant_abilities_all(
+                        filter.clone(),
+                        vec![GrantedAbilityAst::StaticAbility(ability)],
+                        crate::effect::Until::Forever,
+                    ),
+                ))
+            });
+            let granted_activation = third_effects.into_iter().find_map(|effect| {
+                let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect else {
+                    return None;
+                };
+                match action {
+                    SubjectVerbActionAst::GrantAbilitiesAll {
+                        abilities,
+                        duration,
+                        ..
+                    }
+                    | SubjectVerbActionAst::GrantAbilitiesToTarget {
+                        abilities,
+                        duration,
+                        ..
+                    } => Some((abilities, duration)),
+                    _ => None,
+                }
+            });
+            if let (Some((counter_type, count, filter, counter_grant)), Some((abilities, duration))) =
+                (counter_parts, granted_activation)
+            {
+                let effects = vec![
+                    EffectAst::subject_verb_put_counters_all(counter_type, count, filter.clone()),
+                    EffectAst::subject_verb_tap_all(filter.clone()),
+                    counter_grant,
+                    EffectAst::subject_verb_grant_abilities_all(filter, abilities, duration),
+                ];
+                return Ok(Some(LineAst::Triggered {
+                    trigger,
+                    effects,
+                    max_triggers_per_turn: line.max_triggers_per_turn,
+                }));
+            }
+        }
     }
 
     if let Some(_amount) =
