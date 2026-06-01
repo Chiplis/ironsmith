@@ -1103,32 +1103,44 @@ pub(super) fn try_parse_divvy_sentence_sequence(
 
     if first_sentence_has_prefix(
         &sentence_words,
-        &[
-            "search",
-            "your",
-            "library",
-            "for",
-            "up",
-            "to",
-            "four",
-            "cards",
-            "with",
-            "different",
-            "names",
-            "and",
-            "reveal",
-            "them",
-        ],
-    ) && sentence_has_phrase(
-        &sentence_words,
-        &[
-            "target", "opponent", "chooses", "two", "of", "those", "cards",
-        ],
-    ) && sentence_has_phrase(
-        &sentence_words,
-        &["put", "the", "chosen", "cards", "into", "your", "graveyard"],
-    ) && sentence_has_phrase(&sentence_words, &["the", "rest", "into", "your", "hand"])
+        &["search", "your", "library", "for", "up", "to", "four"],
+    ) && sentence_has_phrase(&sentence_words, &["cards", "with", "different", "names"])
+        && sentence_has_phrase(&sentence_words, &["reveal", "them"])
+        && sentence_has_phrase(
+            &sentence_words,
+            &["put", "the", "chosen", "cards", "into", "your", "graveyard"],
+        )
+        && sentence_has_phrase(&sentence_words, &["shuffle"])
     {
+        let choose_player = if sentence_has_phrase(
+            &sentence_words,
+            &[
+                "target", "opponent", "chooses", "two", "of", "those", "cards",
+            ],
+        ) {
+            PlayerAst::TargetOpponent
+        } else if sentence_has_phrase(
+            &sentence_words,
+            &["an", "opponent", "chooses", "two", "of", "those", "cards"],
+        ) {
+            PlayerAst::Opponent
+        } else {
+            return Ok(None);
+        };
+        let (rest_zone, rest_enters_tapped) = if sentence_has_phrase(
+            &sentence_words,
+            &["the", "rest", "into", "your", "hand"],
+        ) {
+            (Zone::Hand, false)
+        } else if sentence_has_phrase(
+            &sentence_words,
+            &["the", "rest", "onto", "the", "battlefield", "tapped"],
+        ) {
+            (Zone::Battlefield, true)
+        } else {
+            return Ok(None);
+        };
+
         let mut effects = parse_effect_sentence_lexed(sentences[0].lowered())?;
         effects.push(EffectAst::subject_verb_tag_matching_objects(
             ObjectFilter::tagged(TagKey::from(IT_TAG)),
@@ -1139,7 +1151,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
             count: ChoiceCount::exactly(2),
             count_value: None,
-            player: PlayerAst::TargetOpponent,
+            player: choose_player,
             tag: TagKey::from("divvy_chosen"),
             zones: vec![Zone::Library],
             search_mode: None,
@@ -1159,10 +1171,10 @@ pub(super) fn try_parse_divvy_sentence_sequence(
                 if_true: Vec::new(),
                 if_false: vec![EffectAst::subject_verb_move_to_zone(
                     TargetAst::Tagged(TagKey::from(IT_TAG), None),
-                    Zone::Hand,
+                    rest_zone,
                     false,
                     ReturnControllerAst::Preserve,
-                    false,
+                    rest_enters_tapped,
                     None,
                 )],
             }],
