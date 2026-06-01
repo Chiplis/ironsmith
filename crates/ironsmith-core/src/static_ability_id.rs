@@ -119,6 +119,7 @@ pub enum StaticAbilityId {
     GrantObjectAbilityForFilter,
     SetColors,
     SetName,
+    CountAsCardNamedForSpellEffect,
     MakeColorless,
     AddSupertypes,
     RemoveSupertypes,
@@ -379,6 +380,7 @@ impl StaticAbilityId {
             | GrantObjectAbilityForFilter
             | SetColors
             | SetName
+            | CountAsCardNamedForSpellEffect
             | MakeColorless
             | AddSupertypes
             | RemoveSupertypes

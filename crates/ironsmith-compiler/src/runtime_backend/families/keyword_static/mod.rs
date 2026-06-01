@@ -3024,6 +3024,63 @@ fn parse_static_ability_ast_line_lowered(
     Ok(None)
 }
 
+fn title_case_count_as_card_name(words: &[&str]) -> String {
+    words
+        .iter()
+        .filter(|word| !word.is_empty())
+        .map(|word| {
+            let mut chars = word.chars();
+            if let Some(first) = chars.next() {
+                let mut out = first.to_ascii_uppercase().to_string();
+                out.push_str(chars.as_str());
+                out
+            } else {
+                String::new()
+            }
+        })
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn parse_count_as_card_named_for_spell_effect_line(
+    words: &[&str],
+) -> Option<StaticAbility> {
+    const GRAVEYARD_PREFIXES: &[&[&str]] = &[
+        &["if", "this", "card", "is", "in", "a", "graveyard"],
+        &["if", "this", "card", "is", "in", "your", "graveyard"],
+    ];
+    if !GRAVEYARD_PREFIXES
+        .iter()
+        .any(|prefix| words.starts_with(prefix))
+    {
+        return None;
+    }
+
+    let effects_idx = word_slice_find_phrase_start(words, &["effects", "from", "spells", "named"])?;
+    let spell_name_start = effects_idx + 4;
+    let count_idx = word_slice_find_word(words.get(spell_name_start..).unwrap_or_default(), "count")?
+        + spell_name_start;
+    let spell_name_words = words.get(spell_name_start..count_idx)?;
+    if spell_name_words.is_empty()
+        || !words
+            .get(count_idx..count_idx + 6)
+            .is_some_and(|tail| tail == ["count", "it", "as", "a", "card", "named"])
+    {
+        return None;
+    }
+
+    let counted_name_words = words.get(count_idx + 6..)?;
+    if counted_name_words.is_empty() {
+        return None;
+    }
+
+    Some(StaticAbility::count_as_card_named_for_spell_effect(
+        title_case_count_as_card_name(spell_name_words),
+        title_case_count_as_card_name(counted_name_words),
+    ))
+}
+
 fn parse_static_ability_ast_line_early_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
@@ -3076,6 +3133,9 @@ fn parse_static_ability_ast_line_early_lexed(
     }
 
     let words = parser_token_word_refs(tokens);
+    if let Some(ability) = parse_count_as_card_named_for_spell_effect_line(&words) {
+        return Ok(Some(vec![ability.into()]));
+    }
     if SOURCE_CAN_BLOCK_PREFIX_PATTERN.matches_words(&words) {
         let mut idx = 4usize;
         if words

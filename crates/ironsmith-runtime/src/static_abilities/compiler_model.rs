@@ -23,6 +23,14 @@ impl StaticAbility {
             .and_then(|count| count.parse::<u32>().ok())
     }
 
+    fn parse_count_as_card_named_for_spell_effect_label(label: &str) -> Option<(String, String)> {
+        let prefix = "If this card is in a graveyard, effects from spells named ";
+        let middle = " count it as a card named ";
+        let rest = label.strip_prefix(prefix)?.trim_end_matches('.');
+        let (spell_name, counted_name) = rest.split_once(middle)?;
+        Some((spell_name.to_string(), counted_name.to_string()))
+    }
+
     pub fn from_compiler_model_parts(
         id: Option<StaticAbilityId>,
         label: String,
@@ -232,6 +240,18 @@ impl StaticAbility {
             Some(StaticAbilityId::DrawReplacementDouble) => Self::draw_replacement_double(),
             Some(StaticAbilityId::DrawReplacementSkipEmptyLibrary) => {
                 Self::draw_replacement_skip_empty_library()
+            }
+            Some(StaticAbilityId::CountAsCardNamedForSpellEffect) => {
+                let (spell_name, counted_name) =
+                    Self::parse_count_as_card_named_for_spell_effect_label(&label).ok_or_else(
+                        || StaticAbilityModelConversionError {
+                            detail: format!(
+                                "id={:?}, label={label}",
+                                StaticAbilityId::CountAsCardNamedForSpellEffect
+                            ),
+                        },
+                    )?;
+                Self::count_as_card_named_for_spell_effect(spell_name, counted_name)
             }
             Some(StaticAbilityId::ExileWouldDieInstead) => {
                 Self::exile_would_die_instead(crate::target::ObjectFilter::creature())
