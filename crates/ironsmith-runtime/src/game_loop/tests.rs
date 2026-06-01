@@ -42031,6 +42031,110 @@ fn quandrix_apprentice_magecraft_can_decline_the_land_pick() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn see_the_truth_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(91_120), "See the Truth")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Look at the top three cards of your library. Put one of those cards into your hand and the rest on the bottom of your library in any order. If this spell was cast from anywhere other than your hand, put each of those cards into your hand instead.",
+        )
+        .expect("See the Truth should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn add_see_the_truth_library_cards(game: &mut GameState, player: PlayerId) {
+    for (idx, name) in ["Alpine Grizzly", "Bear Cub", "Centaur Courser"]
+        .into_iter()
+        .enumerate()
+    {
+        game.create_object_from_card(
+            &CardBuilder::new(CardId::from_raw(91_121 + idx as u32), name)
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(2, 2))
+                .build(),
+            player,
+            Zone::Library,
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_see_the_truth_with_casting_method(
+    casting_method: crate::alternative_cast::CastingMethod,
+) -> GameState {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let def = see_the_truth_definition();
+    add_see_the_truth_library_cards(&mut game, alice);
+
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut entry = crate::game_state::StackEntry::new(spell_id, alice);
+    entry.casting_method = casting_method;
+    game.push_to_stack(entry);
+
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm).expect("See the Truth should resolve");
+    game
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn see_the_truth_cast_from_hand_puts_one_looked_card_into_hand() {
+    let game =
+        resolve_see_the_truth_with_casting_method(crate::alternative_cast::CastingMethod::Normal);
+    let alice = PlayerId::from_index(0);
+    let player = game.player(alice).expect("alice exists");
+
+    assert_eq!(
+        player.hand.len(),
+        1,
+        "See the Truth cast normally from hand should put exactly one looked card into hand"
+    );
+    assert_eq!(
+        player.library.len(),
+        2,
+        "See the Truth cast from hand should leave the other two looked cards in the library"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn see_the_truth_cast_from_exile_puts_each_looked_card_into_hand() {
+    let game = resolve_see_the_truth_with_casting_method(
+        crate::alternative_cast::CastingMethod::PlayFrom {
+            source: ObjectId::from_raw(91_130),
+            zone: Zone::Exile,
+            use_alternative: None,
+        },
+    );
+    let alice = PlayerId::from_index(0);
+    let player = game.player(alice).expect("alice exists");
+    let mut hand_names: Vec<_> = player
+        .hand
+        .iter()
+        .filter_map(|&id| game.object(id).map(|obj| obj.name.clone()))
+        .collect();
+    hand_names.sort();
+
+    assert_eq!(
+        hand_names,
+        vec![
+            "Alpine Grizzly".to_string(),
+            "Bear Cub".to_string(),
+            "Centaur Courser".to_string(),
+        ],
+        "See the Truth cast from exile should put each looked card into hand"
+    );
+    assert!(
+        player.library.is_empty(),
+        "the non-hand replacement should not leave looked cards on the bottom of the library"
+    );
+}
+
 // ============================================================================
 // Saga Integration Tests
 // ============================================================================

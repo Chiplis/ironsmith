@@ -636,6 +636,7 @@ pub(crate) fn compile_condition_from_predicate_ast(
             Condition::SameColorManaSpentToCastThisSpellAtLeast(*amount)
         }
         PredicateAst::ThisSpellWasCastFromZone(zone) => Condition::ThisSpellWasCastFromZone(*zone),
+        PredicateAst::ThisSpellWasCastFromNonHand => Condition::ThisSpellWasCastFromNonHand,
         PredicateAst::ValueComparison {
             left,
             operator,

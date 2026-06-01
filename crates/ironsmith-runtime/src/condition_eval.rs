@@ -99,6 +99,29 @@ fn this_spell_was_cast_from_zone(
     }
 }
 
+fn this_spell_was_cast_from_non_hand(
+    game: &GameState,
+    source: ObjectId,
+    ctx: &ExecutionContext,
+) -> bool {
+    match &ctx.casting_method {
+        crate::alternative_cast::CastingMethod::Normal
+        | crate::alternative_cast::CastingMethod::FaceDown
+        | crate::alternative_cast::CastingMethod::SplitOtherHalf
+        | crate::alternative_cast::CastingMethod::Fuse => false,
+        crate::alternative_cast::CastingMethod::GrantedFlashback
+        | crate::alternative_cast::CastingMethod::GrantedEscape { .. } => true,
+        crate::alternative_cast::CastingMethod::PlayFrom { zone, .. }
+        | crate::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom { zone, .. } => {
+            *zone != Zone::Hand
+        }
+        crate::alternative_cast::CastingMethod::Alternative(idx) => game
+            .object(source)
+            .and_then(|obj| obj.alternative_casts.get(*idx))
+            .is_some_and(|method| method.cast_from_zone() != Zone::Hand),
+    }
+}
+
 fn this_spell_escaped(game: &GameState, source: ObjectId, ctx: &ExecutionContext) -> bool {
     if ctx.optional_costs_paid.was_paid_label("Escape") || source_escaped(game, source) {
         return true;
@@ -799,6 +822,7 @@ fn evaluate_condition_shared_core(
         Condition::TaggedObjectWasCast(_) => None,
         Condition::ThisSpellEscaped => Some(source_escaped(game, ctx.source)),
         Condition::ThisSpellWasCastFromZone(_) => None,
+        Condition::ThisSpellWasCastFromNonHand => None,
         Condition::NoSpellsWereCastLastTurn => {
             Some(game.turn_store.spells_cast_last_turn_total == 0)
         }
@@ -962,6 +986,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::SourceWasCast => {}
         Condition::ThisSpellEscaped => {}
         Condition::ThisSpellWasCastFromZone(..) => {}
+        Condition::ThisSpellWasCastFromNonHand => {}
         Condition::NoSpellsWereCastLastTurn => {}
         Condition::ItIsNight => {}
         Condition::SpellsWereCastLastTurnOrMore(..) => {}
@@ -1158,6 +1183,7 @@ pub fn evaluate_condition_external(
             .object(ctx.source)
             .is_some_and(|obj| obj.optional_costs_paid.was_kicked()),
         Condition::ThisSpellWasCastFromZone(_) => false,
+        Condition::ThisSpellWasCastFromNonHand => false,
         Condition::ThisSpellPaidLabel(label) => game
             .object(ctx.source)
             .is_some_and(|obj| obj.optional_costs_paid.was_paid_label(label)),
@@ -2058,6 +2084,7 @@ fn evaluate_condition_simple(
             .is_some_and(|obj| obj.optional_costs_paid.was_kicked()),
         Condition::ThisSpellEscaped => source_escaped(game, source),
         Condition::ThisSpellWasCastFromZone(_) => false,
+        Condition::ThisSpellWasCastFromNonHand => false,
         Condition::ThisSpellPaidLabel(label) => game
             .object(source)
             .is_some_and(|obj| obj.optional_costs_paid.was_paid_label(label)),
@@ -3166,6 +3193,9 @@ fn evaluate_condition(
         Condition::ThisSpellEscaped => Ok(this_spell_escaped(game, ctx.source, ctx)),
         Condition::ThisSpellWasCastFromZone(zone) => {
             Ok(this_spell_was_cast_from_zone(game, ctx.source, ctx, *zone))
+        }
+        Condition::ThisSpellWasCastFromNonHand => {
+            Ok(this_spell_was_cast_from_non_hand(game, ctx.source, ctx))
         }
         Condition::ThisSpellPaidLabel(label) => {
             Ok(resolve_value(game, &Value::WasPaidLabel(label.clone()), ctx)? != 0)

@@ -707,6 +707,7 @@ pub enum Condition {
     SourceWasCast,
     ThisSpellEscaped,
     ThisSpellWasCastFromZone(Zone),
+    ThisSpellWasCastFromNonHand,
     PlayerTappedLandForManaThisTurn {
         player: PlayerFilter,
     },

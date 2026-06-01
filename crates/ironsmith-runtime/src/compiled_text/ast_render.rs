@@ -460,6 +460,13 @@ fn describe_single_self_replacement_segment(
     let default_text = describe_effect_list(&segment.default_effects);
     let replacement_text = describe_effect_list(&branch.replacement_effects);
     let condition_text = super::normalize_common::describe_condition(&branch.condition);
+    if let Some(looked_cards_text) = describe_looked_cards_non_hand_self_replacement(
+        &segment.default_effects,
+        &branch.replacement_effects,
+        &condition_text,
+    ) {
+        return Some(looked_cards_text);
+    }
     if let Some(local_rewrite_text) = describe_rendered_optional_zone_rewrite_self_replacement(
         &default_text,
         &replacement_text,
@@ -504,6 +511,80 @@ fn describe_single_self_replacement_segment(
     Some(format!(
         "{default_text}. If {condition_text}, {} instead",
         rewrite_self_replacement_referent_phrase(&default_text, &replacement_text)
+    ))
+}
+
+fn describe_looked_cards_non_hand_self_replacement(
+    default_effects: &[Effect],
+    replacement_effects: &[Effect],
+    condition_text: &str,
+) -> Option<String> {
+    if condition_text != "this spell was cast from anywhere other than your hand" {
+        return None;
+    }
+
+    let [default_look, choose, move_chosen, remainder] = default_effects else {
+        return None;
+    };
+    let [replacement_look, move_all] = replacement_effects else {
+        return None;
+    };
+
+    let default_look = default_look.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let replacement_look = replacement_look.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    if default_look != replacement_look
+        || default_look.reveal
+        || default_look.player != PlayerFilter::You
+    {
+        return None;
+    }
+
+    let choose = choose.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if choose.count.min != 1
+        || choose.count.max != Some(1)
+        || choose.chooser != PlayerFilter::You
+        || choose.filter.zone != Some(Zone::Library)
+        || !choose
+            .filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.tag == default_look.tag)
+    {
+        return None;
+    }
+
+    let move_chosen = unwrap_tagged_effect(move_chosen)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_chosen.zone != Zone::Hand
+        || !matches!(&move_chosen.target, ChooseSpec::Tagged(tag) if tag == &choose.tag)
+    {
+        return None;
+    }
+
+    let remainder = remainder
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+    if remainder.tag != default_look.tag
+        || remainder.keep_tagged.as_ref() != Some(&choose.tag)
+        || remainder.player != PlayerFilter::You
+    {
+        return None;
+    }
+
+    let move_all = unwrap_tagged_effect(move_all)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_all.zone != Zone::Hand
+        || !matches!(&move_all.target, ChooseSpec::Tagged(tag) if tag == &default_look.tag)
+    {
+        return None;
+    }
+
+    let count_text = describe_value(&default_look.count);
+    let order_suffix = match remainder.order {
+        crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => " in any order",
+        crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
+    };
+    Some(format!(
+        "Look at the top {count_text} cards of your library. Put one of those cards into your hand and the rest on the bottom of your library{order_suffix}. If {condition_text}, put each of those cards into your hand instead"
     ))
 }
 

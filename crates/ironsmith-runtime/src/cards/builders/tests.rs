@@ -48625,6 +48625,28 @@ fn parse_consult_the_star_charts_kicker_count_override() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_see_the_truth_cast_non_hand_self_replacement() {
+    let def = parse_oracle_card_definition("See the Truth");
+    let program = def.spell_effect.as_ref().expect("See the Truth spell effect");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert_eq!(program.segments.len(), 1);
+    assert_eq!(program.segments[0].self_replacements.len(), 1);
+    assert_eq!(
+        program.segments[0].self_replacements[0].condition,
+        crate::effect::Condition::ThisSpellWasCastFromNonHand,
+        "See the Truth should branch on being cast from a non-hand zone"
+    );
+    assert_eq!(def.name(), "See the Truth");
+    assert_eq!(
+        rendered,
+        "Look at the top 3 cards of your library. Put one of those cards into your hand and the rest on the bottom of your library in any order. If this spell was cast from anywhere other than your hand, put each of those cards into your hand instead.",
+        "expected See the Truth compiled text to preserve the exact non-hand all-cards replacement"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_aangs_journey_kicked_search_slots_as_self_replacement() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Aang's Journey Variant")
         .card_types(vec![CardType::Sorcery])

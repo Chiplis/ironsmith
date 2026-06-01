@@ -154,6 +154,48 @@ const ONTO_BATTLEFIELD_TAPPED_ZONE_PREFIX_PATTERN: ClauseShape<'static> = clause
 const ONTO_BATTLEFIELD_ZONE_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["onto", "the", "battlefield"], &["onto", "battlefield"]]);
 const PUT_REST_BOTTOM_LIBRARY_PATTERN: ClauseShape<'static> = clause_shape!(prefix_any & [&["put"], &["puts"]]; contains_words & ["rest", "bottom", "library"]);
+const PUT_ONE_LOOKED_CARD_INTO_HAND_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["put", "one", "of", "them", "into", "your", "hand"],
+            &["put", "one", "of", "those", "cards", "into", "your", "hand"],
+            &["put", "one", "into", "your", "hand"],
+        ]
+);
+const PUT_OTHER_LOOKED_CARDS_ON_BOTTOM_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases &[&[
+        &["other", "on", "bottom"],
+        &["other", "onto", "bottom"],
+        &["rest", "on", "bottom"],
+        &["rest", "onto", "bottom"],
+    ]];
+    contains_words &["library"]
+);
+const IF_CAST_NON_HAND_PUT_EACH_LOOKED_INTO_HAND_INSTEAD_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact
+        & [
+            "if",
+            "this",
+            "spell",
+            "was",
+            "cast",
+            "from",
+            "anywhere",
+            "other",
+            "than",
+            "your",
+            "hand",
+            "put",
+            "each",
+            "of",
+            "those",
+            "cards",
+            "into",
+            "your",
+            "hand",
+            "instead",
+        ]
+);
 const WITHOUT_PAYING_ITS_MANA_COST_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["without", "paying", "its", "mana", "cost"]);
 const REVEALED_CARDS_INTO_HAND_TAIL_PATTERN: ClauseShape<'static> =
@@ -2024,6 +2066,86 @@ pub(crate) fn parse_look_at_top_split_hand_bottom_exile_then_play_exiled(
     ));
 
     Ok(Some(effects))
+}
+
+pub(crate) fn parse_look_at_top_put_one_hand_bottom_cast_non_hand_put_all_hand(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((player, count, reveal_top)) =
+        parse_top_cards_view_sentence(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+    if reveal_top {
+        return Ok(None);
+    }
+
+    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
+    let second_words = crate::runtime_backend::front_end::lexer::LexedClause::new(&second_tokens)
+        .word_refs();
+    if !PUT_ONE_LOOKED_CARD_INTO_HAND_PATTERN.matches_words(&second_words) {
+        return Ok(None);
+    }
+    let content_words = non_article_word_refs(&second_words);
+    if !PUT_OTHER_LOOKED_CARDS_ON_BOTTOM_PATTERN.matches_words(&content_words) {
+        return Ok(None);
+    }
+
+    let third_words = TokenWordView::new(sentences[sentence_idx + 2].lowered());
+    if !IF_CAST_NON_HAND_PUT_EACH_LOOKED_INTO_HAND_INSTEAD_PATTERN
+        .matches_words(&third_words.word_refs())
+    {
+        return Ok(None);
+    }
+
+    let looked_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "looked");
+    let hand_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "hand");
+    let mut hand_filter = ObjectFilter::tagged(looked_tag.clone());
+    hand_filter.zone = Some(Zone::Library);
+
+    let look_effect = EffectAst::subject_verb_look_at_top_cards(player, count, looked_tag.clone());
+    let default_effects = vec![
+        look_effect.clone(),
+        EffectAst::ChooseObjects {
+            filter: hand_filter,
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player,
+            tag: hand_tag.clone(),
+        },
+        EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(hand_tag.clone(), None),
+            Zone::Hand,
+            false,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
+        ),
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            looked_tag.clone(),
+            Some(hand_tag),
+            crate::cards::builders::LibraryBottomOrderAst::ChooserChooses,
+            player,
+        ),
+    ];
+    let replacement_effects = vec![
+        look_effect,
+        EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(looked_tag, None),
+            Zone::Hand,
+            false,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
+        ),
+    ];
+
+    Ok(Some(vec![EffectAst::SelfReplacement {
+        predicate: PredicateAst::ThisSpellWasCastFromNonHand,
+        if_true: replacement_effects,
+        if_false: default_effects,
+    }]))
 }
 
 pub(crate) fn parse_top_cards_put_match_onto_battlefield_and_match_into_hand_rest_bottom(
