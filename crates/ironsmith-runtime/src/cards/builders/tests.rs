@@ -142,6 +142,197 @@ fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
     );
 }
 
+fn jetmirs_fixer_definition_for_test() -> CardDefinition {
+    let oracle = oracle_text_by_name()
+        .get("Jetmir's Fixer")
+        .expect("missing oracle text for Jetmir's Fixer")
+        .clone();
+    CardDefinitionBuilder::new(CardId::new(), "Jetmir's Fixer")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red], vec![ManaSymbol::Green]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Cat, Subtype::Warrior])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(oracle)
+        .expect("Jetmir's Fixer should parse strictly")
+}
+
+#[test]
+fn jetmirs_fixer_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Jetmir's Fixer");
+    let def = jetmirs_fixer_definition_for_test();
+    let rendered = canonical_compiled_lines(&def).join("\n");
+    let debug = format!("{def:#?}");
+
+    assert!(
+        rendered.contains(
+            "If mana from a Treasure was spent to activate this ability, put a +1/+1 counter on this creature instead"
+        ),
+        "expected Treasure-mana activation clause in compiled text, got {rendered}"
+    );
+    assert!(
+        debug.contains("ManaFromTreasure") && debug.contains("PutCountersEffect"),
+        "expected paid-label condition and +1/+1 counter branch, got {debug}"
+    );
+}
+
+fn resolve_jetmirs_fixer_activation(use_treasure_mana: bool) -> crate::game_state::GameState {
+    use crate::decision::{GameProgress, LegalAction, SelectFirstDecisionMaker};
+    use crate::game_loop::{PriorityLoopState, PriorityResponse, apply_priority_response_with_dm};
+    use crate::game_state::Phase;
+    use crate::tests::test_helpers::setup_two_player_game;
+    use crate::triggers::TriggerQueue;
+
+    fn assert_needs_pip_payment(progress: GameProgress, context: &str) {
+        assert!(
+            matches!(
+                progress,
+                GameProgress::NeedsDecisionCtx(
+                    crate::decisions::context::DecisionContext::SelectOptions(_)
+                )
+            ),
+            "expected {context} to ask for a mana-pip payment"
+        );
+    }
+
+    let mut game = setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let def = jetmirs_fixer_definition_for_test();
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    if use_treasure_mana {
+        game.create_object_from_definition(
+            &crate::cards::tokens::treasure_token_definition(),
+            alice,
+            Zone::Battlefield,
+        );
+        game.create_object_from_definition(
+            &crate::cards::definitions::basic_forest(),
+            alice,
+            Zone::Battlefield,
+        );
+    } else {
+        game.player_mut(alice)
+            .expect("Alice should exist")
+            .mana_pool
+            .add(ManaSymbol::Red, 1);
+        game.player_mut(alice)
+            .expect("Alice should exist")
+            .mana_pool
+            .add(ManaSymbol::Green, 1);
+    }
+
+    let ability_index = def
+        .abilities
+        .iter()
+        .enumerate()
+        .find_map(|(idx, ability)| match &ability.kind {
+            AbilityKind::Activated(_) => Some(idx),
+            _ => None,
+        })
+        .expect("Jetmir's Fixer should have an activated ability");
+
+    let activate_action = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source: id, ability_index: idx }
+                    if *id == source && *idx == ability_index
+            )
+        })
+        .expect("Jetmir's Fixer activation should be legal");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    state.auto_choose_single_pip_payment = false;
+    let mut decision_maker = SelectFirstDecisionMaker;
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut decision_maker,
+    )
+    .expect("Jetmir's Fixer activation should start paying mana");
+    assert_needs_pip_payment(progress, "the first colored pip");
+
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::ManaPipPayment(0),
+        &mut decision_maker,
+    )
+    .expect("Jetmir's Fixer should pay the first colored pip");
+    assert_needs_pip_payment(progress, "the second colored pip");
+
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::ManaPipPayment(0),
+        &mut decision_maker,
+    )
+    .expect("Jetmir's Fixer should pay the second colored pip and go on the stack");
+
+    crate::game_loop::resolve_stack_entry(&mut game)
+        .expect("Jetmir's Fixer activation should resolve");
+    game.refresh_continuous_state();
+    game
+}
+
+#[test]
+fn jetmirs_fixer_activation_without_treasure_mana_gives_temporary_plus_one_plus_one() {
+    let game = resolve_jetmirs_fixer_activation(false);
+    let fixer = game
+        .battlefield
+        .iter()
+        .copied()
+        .find(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Jetmir's Fixer")
+        })
+        .expect("Jetmir's Fixer remains on battlefield");
+
+    assert_eq!(
+        game.counter_count(fixer, crate::object::CounterType::PlusOnePlusOne),
+        0,
+        "ordinary activation should not put a +1/+1 counter on Jetmir's Fixer"
+    );
+    assert_eq!(game.calculated_power(fixer), Some(3));
+    assert_eq!(game.calculated_toughness(fixer), Some(3));
+}
+
+#[test]
+fn jetmirs_fixer_activation_with_treasure_mana_puts_counter_instead() {
+    let game = resolve_jetmirs_fixer_activation(true);
+    let fixer = game
+        .battlefield
+        .iter()
+        .copied()
+        .find(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Jetmir's Fixer")
+        })
+        .expect("Jetmir's Fixer remains on battlefield");
+
+    assert_eq!(
+        game.counter_count(fixer, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "Treasure-mana activation should put a +1/+1 counter on Jetmir's Fixer"
+    );
+    assert_eq!(
+        game.calculated_power(fixer),
+        Some(3),
+        "instead branch should not also apply the temporary +1/+1 effect"
+    );
+    assert_eq!(game.calculated_toughness(fixer), Some(3));
+}
+
 #[test]
 fn commander_liara_portyr_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Commander Liara Portyr");

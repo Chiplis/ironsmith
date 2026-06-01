@@ -655,6 +655,9 @@ pub struct PendingActivation {
     pub display_mana_pips: Vec<Vec<crate::mana::ManaSymbol>>,
     /// Ordered trace of cost payments performed so far.
     pub payment_trace: Vec<CostStep>,
+    /// Labels satisfied by the activation payment, used by resolution-time "was spent"
+    /// checks.
+    pub optional_costs_paid: OptionalCostsPaid,
     /// True after activating a mana ability that is not undo-safe while paying
     /// this activation's mana costs.
     pub undo_locked_by_mana: bool,
@@ -734,6 +737,7 @@ impl PendingActivation {
             mana_cost_to_pay,
             display_mana_pips: Vec::new(),
             payment_trace,
+            optional_costs_paid: OptionalCostsPaid::default(),
             undo_locked_by_mana: false,
             remaining_mana_pips: Vec::new(),
             remaining_cost_steps,

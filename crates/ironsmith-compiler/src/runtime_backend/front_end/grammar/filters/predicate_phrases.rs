@@ -186,6 +186,10 @@ const COST_PAID_INSTEAD_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["cost", "was", "paid"], &["cost", "wasnt", "paid"]]);
 const COST_NOT_PAID_INSTEAD_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["cost", "was", "not", "paid"]);
+const MANA_FROM_TREASURE_SPENT_TO_ACTIVATE_THIS_ABILITY_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & [
+        "mana", "from", "treasure", "was", "spent", "to", "activate", "this", "ability"
+    ]);
 const GETS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["gets"]);
 const MORE_VOTES_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["more", "votes"]);
 const MORE_VOTES_OR_TIED_TAIL_PATTERN: ClauseShape<'static> =
@@ -3670,6 +3674,11 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
     if THAT_WAS_KICKED_PATTERN.matches_words(&filtered) {
         return Ok(PredicateAst::TargetWasKicked);
+    }
+    if MANA_FROM_TREASURE_SPENT_TO_ACTIVATE_THIS_ABILITY_PATTERN.matches_words(&filtered) {
+        return Ok(PredicateAst::ThisSpellPaidLabel(
+            "ManaFromTreasure".to_string(),
+        ));
     }
 
     if YOU_HAVE_FULL_PARTY_PATTERN.matches_words(&filtered) {

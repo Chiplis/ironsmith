@@ -1212,6 +1212,17 @@ pub(super) fn record_activation_mana_ability_payment(
     let _ = ability_index;
 }
 
+pub(super) fn mana_payment_action_uses_treasure_source(
+    game: &GameState,
+    action: &ManaPipPaymentAction,
+) -> bool {
+    let ManaPipPaymentAction::ActivateManaAbility { source_id, .. } = action else {
+        return false;
+    };
+    game.object(*source_id)
+        .is_some_and(|object| object.subtypes.contains(&crate::types::Subtype::Treasure))
+}
+
 /// Execute a pip payment action.
 /// Execute a pip payment action.
 /// Returns true if the pip was actually paid (mana consumed or life paid),
@@ -2236,6 +2247,7 @@ pub(super) fn apply_pip_payment_response_activation(
     }
 
     let action = &options[choice].action;
+    let uses_treasure_source = mana_payment_action_uses_treasure_source(game, action);
 
     // Execute the payment action
     let pip_paid = execute_pip_payment_action(
@@ -2250,6 +2262,9 @@ pub(super) fn apply_pip_payment_response_activation(
         &mut pending.payment_trace,
         None,
     )?;
+    if pip_paid && uses_treasure_source {
+        pending.optional_costs_paid.mark_label_paid("ManaFromTreasure");
+    }
     queue_mana_ability_event_for_action(
         game,
         trigger_queue,
