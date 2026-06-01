@@ -235,6 +235,8 @@ pub struct TurnStore {
     /// Additional phases inserted after the current phase.
     /// These are consumed before the normal turn sequence advances.
     pub additional_phases: Vec<Phase>,
+    /// Number of combat phases that have started during the current turn.
+    pub combat_phases_started_this_turn: u32,
     /// Normal phase to resume after inserted additional phases finish.
     pub additional_phase_continuation: Option<Phase>,
     /// Players who will skip their next turn.
@@ -7149,6 +7151,7 @@ impl GameState {
         self.turn.step = Some(Step::Untap);
         self.turn_store.tracked_draw_step_player = None;
         self.turn_store.cards_drawn_this_draw_step = 0;
+        self.turn_store.combat_phases_started_this_turn = 0;
         self.turn_store.skip_current_turn_combat_phases.clear();
         self.turn_store.skip_current_turn_main_phases.clear();
 
@@ -7180,6 +7183,13 @@ impl GameState {
         if let Some(player) = self.player_mut(next_player) {
             player.begin_turn();
         }
+    }
+
+    pub fn mark_combat_phase_started(&mut self) {
+        self.turn_store.combat_phases_started_this_turn = self
+            .turn_store
+            .combat_phases_started_this_turn
+            .saturating_add(1);
     }
 
     /// Add a player-control effect.

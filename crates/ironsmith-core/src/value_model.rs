@@ -746,6 +746,7 @@ pub enum Condition {
     TargetHasGreatestPowerAmongCreatures,
     TargetManaValueLteColorsSpentToCastThisSpell,
     ItIsNight,
+    FirstCombatPhaseOfTurn,
     SourceIsTapped,
     SourceIsSaddled,
     SourceDevouredCreaturesOrMore(u32),

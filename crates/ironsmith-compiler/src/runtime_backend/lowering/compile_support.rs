@@ -178,6 +178,7 @@ pub(crate) fn compile_condition_from_predicate_ast(
     let refs = current_reference_env(ctx);
     Ok(match predicate {
         PredicateAst::ItIsNight => Condition::ItIsNight,
+        PredicateAst::FirstCombatPhaseOfTurn => Condition::FirstCombatPhaseOfTurn,
         PredicateAst::ItIsLandCard => {
             let mut filter = ObjectFilter {
                 zone: None,

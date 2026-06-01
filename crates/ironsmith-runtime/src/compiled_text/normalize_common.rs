@@ -11460,6 +11460,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::NoSpellsWereCastLastTurn => "no spells were cast last turn".to_string(),
         Condition::ItIsNight => "it's night".to_string(),
+        Condition::FirstCombatPhaseOfTurn => "it's the first combat phase of the turn".to_string(),
         Condition::SpellsWereCastLastTurnOrMore(count) => {
             let count_text = small_number_word(*count)
                 .unwrap_or_else(|| count.to_string());

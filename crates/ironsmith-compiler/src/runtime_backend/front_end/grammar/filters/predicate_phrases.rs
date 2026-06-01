@@ -741,6 +741,19 @@ const YOU_CAST_ANOTHER_SPELL_THIS_TURN_PATTERN: ClauseShape<'static> = clause_sh
 const THIS_TURN_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this", "turn"]);
 const IT_IS_NIGHT_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["its", "night"], &["it", "is", "night"], &["it", "night"]]);
+const FIRST_COMBAT_PHASE_OF_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &[
+                "its", "the", "first", "combat", "phase", "of", "the", "turn",
+            ],
+            &[
+                "it", "is", "the", "first", "combat", "phase", "of", "the", "turn",
+            ],
+            &["it", "first", "combat", "phase", "of", "turn"],
+            &["it", "the", "first", "combat", "phase", "of", "the", "turn"],
+        ]
+);
 const SOURCE_DEALT_COMBAT_DAMAGE_TO_PLAYER_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -4345,6 +4358,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::ItIsNight);
     }
 
+    if FIRST_COMBAT_PHASE_OF_TURN_PATTERN.matches_words(&filtered) {
+        return Ok(PredicateAst::FirstCombatPhaseOfTurn);
+    }
+
     if SOURCE_DEALT_COMBAT_DAMAGE_TO_PLAYER_THIS_TURN_PATTERN.matches_words(&filtered) {
         return Ok(PredicateAst::SourceDealtCombatDamageToPlayerThisTurn);
     }
@@ -4521,6 +4538,17 @@ mod tests {
         let parsed = parse_predicate(&predicate_tokens)?;
 
         assert_eq!(parsed, PredicateAst::ItIsNight);
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_accepts_first_combat_phase_of_turn() -> Result<(), CardTextError> {
+        let tokens = lex_line("If it's the first combat phase of the turn", 0)?;
+        let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        assert_eq!(parsed, PredicateAst::FirstCombatPhaseOfTurn);
         Ok(())
     }
 
