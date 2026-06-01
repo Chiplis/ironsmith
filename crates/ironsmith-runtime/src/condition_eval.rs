@@ -455,6 +455,37 @@ mod tests {
             "expected Wave of Rats condition to fail without combat damage"
         );
     }
+
+    #[test]
+    fn first_combat_phase_condition_requires_started_first_combat() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = game.players[0].id;
+        let source = game.new_object_id();
+        let ctx = ExecutionContext::new_default(source, alice);
+        let condition = Condition::FirstCombatPhaseOfTurn;
+
+        game.turn.phase = crate::game_state::Phase::Combat;
+        game.turn_store.combat_phases_started_this_turn = 0;
+        assert!(
+            !evaluate_condition(&game, &condition, &ctx)
+                .expect("first combat condition should evaluate"),
+            "combat phase without a started combat count should not pass"
+        );
+
+        game.turn_store.combat_phases_started_this_turn = 1;
+        assert!(
+            evaluate_condition(&game, &condition, &ctx)
+                .expect("first combat condition should evaluate"),
+            "first started combat phase should pass"
+        );
+
+        game.turn_store.combat_phases_started_this_turn = 2;
+        assert!(
+            !evaluate_condition(&game, &condition, &ctx)
+                .expect("first combat condition should evaluate"),
+            "later combat phases should not pass"
+        );
+    }
 }
 
 fn player_has_card_in_hand_matching(
@@ -829,7 +860,7 @@ fn evaluate_condition_shared_core(
         Condition::ItIsNight => Some(game.is_night),
         Condition::FirstCombatPhaseOfTurn => Some(
             game.turn.phase == crate::game_state::Phase::Combat
-                && game.turn_store.combat_phases_started_this_turn <= 1,
+                && game.turn_store.combat_phases_started_this_turn == 1,
         ),
         Condition::SpellsWereCastLastTurnOrMore(count) => {
             Some(game.turn_store.spells_cast_last_turn_total >= *count)
@@ -1196,7 +1227,7 @@ pub fn evaluate_condition_external(
         Condition::ItIsNight => game.is_night,
         Condition::FirstCombatPhaseOfTurn => {
             game.turn.phase == crate::game_state::Phase::Combat
-                && game.turn_store.combat_phases_started_this_turn <= 1
+                && game.turn_store.combat_phases_started_this_turn == 1
         }
         Condition::ThisSpellEscaped => source_escaped(game, ctx.source),
         Condition::ThisSpellWasKicked => game
@@ -2107,7 +2138,7 @@ fn evaluate_condition_simple(
         Condition::ItIsNight => game.is_night,
         Condition::FirstCombatPhaseOfTurn => {
             game.turn.phase == crate::game_state::Phase::Combat
-                && game.turn_store.combat_phases_started_this_turn <= 1
+                && game.turn_store.combat_phases_started_this_turn == 1
         }
         Condition::ThisSpellWasKicked => game
             .object(source)
@@ -2872,7 +2903,7 @@ fn evaluate_condition(
         Condition::ItIsNight => Ok(game.is_night),
         Condition::FirstCombatPhaseOfTurn => Ok(
             game.turn.phase == crate::game_state::Phase::Combat
-                && game.turn_store.combat_phases_started_this_turn <= 1,
+                && game.turn_store.combat_phases_started_this_turn == 1,
         ),
         Condition::YouControl(filter) => {
             let filter_ctx = ctx.filter_context(game);

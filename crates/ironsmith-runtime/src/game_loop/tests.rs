@@ -22214,6 +22214,70 @@ fn hexplate_wallbreaker_buffs_equipped_creature() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn hexplate_wallbreaker_for_mirrodin_creates_and_equips_rebel() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let hexplate_id = game.create_object_from_definition(
+        &hexplate_wallbreaker_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    let event = TriggerEvent::new_with_provenance(
+        crate::events::ZoneChangeEvent::with_cause(
+            hexplate_id,
+            Zone::Stack,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::from_game_rule(),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in check_triggers(&game, &event) {
+        trigger_queue.add(trigger);
+    }
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("For Mirrodin trigger should go on the stack");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "For Mirrodin should queue one ETB trigger"
+    );
+
+    resolve_stack_entry(&mut game).expect("For Mirrodin trigger should resolve");
+
+    let rebels = game
+        .battlefield
+        .iter()
+        .copied()
+        .filter(|id| {
+            game.object(*id).is_some_and(|object| {
+                object.name == "Rebel"
+                    && object.kind == ObjectKind::Token
+                    && object.has_subtype(Subtype::Rebel)
+                    && game.controller_of(object) == alice
+            })
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(rebels.len(), 1, "For Mirrodin should create one Rebel token");
+    let rebel_id = rebels[0];
+
+    assert_eq!(game.calculated_power(rebel_id), Some(4));
+    assert_eq!(game.calculated_toughness(rebel_id), Some(4));
+    assert_eq!(
+        game.object(hexplate_id).and_then(|object| object.attached_to),
+        Some(crate::object::AttachmentTarget::Object(rebel_id))
+    );
+    assert!(
+        game.object(rebel_id)
+            .is_some_and(|object| object.attachments.contains(&hexplate_id)),
+        "Rebel token should track Hexplate as an attachment"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn hexplate_wallbreaker_first_combat_attack_untaps_attackers_and_adds_combat() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
