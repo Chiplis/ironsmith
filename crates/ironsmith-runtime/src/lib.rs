@@ -67,8 +67,7 @@ mod tests;
 pub(crate) mod test_prelude {
     pub(crate) use crate::effect::EffectId;
     pub(crate) use crate::{
-        ChoiceCount, ChooseSpec, CounterType, Effect, ManaCost, ObjectFilter, PlayerFilter, Until,
-        Value,
+        ChoiceCount, ChooseSpec, CounterType, Effect, ObjectFilter, PlayerFilter, Until, Value,
     };
 }
 

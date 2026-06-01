@@ -246,6 +246,52 @@ fn karn_living_legacy_minus_one_ability(
         .expect("Karn, Living Legacy should have a -1 pay-any-mana loyalty ability")
 }
 
+fn karn_living_legacy_plus_one_ability(
+    def: &CardDefinition,
+) -> &crate::ability::ActivatedAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Activated(activated) = &ability.kind else {
+                return None;
+            };
+            format!("{:?}", activated.effects)
+                .contains("CreateTokenEffect")
+                .then_some(activated)
+        })
+        .expect("Karn, Living Legacy should have a +1 Powerstone loyalty ability")
+}
+
+fn karn_living_legacy_minus_seven_ability(
+    def: &CardDefinition,
+) -> &crate::ability::ActivatedAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Activated(activated) = &ability.kind else {
+                return None;
+            };
+            format!("{:?}", activated.effects)
+                .contains("CreateEmblemEffect")
+                .then_some(activated)
+        })
+        .expect("Karn, Living Legacy should have a -7 emblem loyalty ability")
+}
+
+fn pay_activated_ability_cost(
+    game: &mut crate::game_state::GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    activated: &crate::ability::ActivatedAbility,
+) {
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::costs::CostContext::new(source, controller, &mut dm);
+    for cost in activated.mana_cost.costs() {
+        cost.pay(game, &mut ctx)
+            .expect("activated ability cost should be payable");
+    }
+}
+
 fn create_named_library_card(
     game: &mut crate::game_state::GameState,
     owner: PlayerId,
@@ -437,6 +483,123 @@ fn karn_living_legacy_minus_one_zero_mana_moves_no_cards() {
         player.library,
         vec![bottom, top],
         "paying zero mana should leave the library unchanged"
+    );
+}
+
+#[test]
+fn karn_living_legacy_plus_one_adds_loyalty_and_creates_tapped_powerstone() {
+    let def = parse_oracle_card_definition("Karn, Living Legacy");
+    let activated = karn_living_legacy_plus_one_ability(&def);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let karn = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    pay_activated_ability_cost(&mut game, karn, alice, activated);
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(karn, alice, &mut dm);
+    for effect in activated.effects.flattened_default_effects() {
+        effect
+            .0
+            .execute(&mut game, &mut ctx)
+            .expect("Karn, Living Legacy +1 should create a Powerstone");
+    }
+
+    assert_eq!(
+        game.counter_count(karn, crate::object::CounterType::Loyalty),
+        1,
+        "Karn, Living Legacy +1 should pay its loyalty cost before resolving"
+    );
+    let powerstones = game
+        .battlefield
+        .iter()
+        .copied()
+        .filter(|id| {
+            game.object(*id).is_some_and(|object| {
+                object.name == "Powerstone"
+                    && object.kind == crate::object::ObjectKind::Token
+                    && game.controller_of(object) == alice
+            })
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        powerstones.len(),
+        1,
+        "Karn, Living Legacy +1 should create exactly one Powerstone token"
+    );
+    assert!(
+        game.is_tapped(powerstones[0]),
+        "Karn, Living Legacy +1 should create the Powerstone tapped"
+    );
+}
+
+#[test]
+fn karn_living_legacy_minus_seven_creates_damage_emblem_with_artifact_tap_cost() {
+    let def = parse_oracle_card_definition("Karn, Living Legacy");
+    let activated = karn_living_legacy_minus_seven_ability(&def);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let karn = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.object_mut(karn)
+        .expect("Karn should exist")
+        .counters
+        .insert(crate::object::CounterType::Loyalty, 7);
+
+    pay_activated_ability_cost(&mut game, karn, alice, activated);
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(karn, alice, &mut dm);
+    for effect in activated.effects.flattened_default_effects() {
+        effect
+            .0
+            .execute(&mut game, &mut ctx)
+            .expect("Karn, Living Legacy -7 should create an emblem");
+    }
+
+    assert_eq!(
+        game.counter_count(karn, crate::object::CounterType::Loyalty),
+        0,
+        "Karn, Living Legacy -7 should remove seven loyalty counters as a cost"
+    );
+    let emblem = game
+        .command_zone
+        .iter()
+        .copied()
+        .find(|id| game.object(*id).is_some_and(|object| object.name == "Emblem"))
+        .expect("Karn, Living Legacy -7 should create an emblem in the command zone");
+    let emblem_activated = game
+        .object(emblem)
+        .expect("emblem should exist")
+        .abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Activated(activated) = &ability.kind else {
+                return None;
+            };
+            Some(activated.clone())
+        })
+        .expect("Karn emblem should have an activated damage ability");
+
+    let artifact = create_untapped_powerstone_source(&mut game, alice);
+    pay_activated_ability_cost(&mut game, emblem, alice, &emblem_activated);
+    let mut damage_dm = crate::decision::AutoPassDecisionMaker;
+    let mut damage_ctx = crate::effects::ExecutionContext::new(emblem, alice, &mut damage_dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)]);
+    for effect in emblem_activated.effects.flattened_default_effects() {
+        effect
+            .0
+            .execute(&mut game, &mut damage_ctx)
+            .expect("Karn emblem damage ability should resolve");
+    }
+
+    assert!(
+        game.is_tapped(artifact),
+        "Karn emblem ability should tap an untapped artifact you control as its cost"
+    );
+    assert_eq!(
+        game.player(bob).expect("Bob should exist").life,
+        19,
+        "Karn emblem ability should deal 1 damage to its target"
     );
 }
 
