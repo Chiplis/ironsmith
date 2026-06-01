@@ -8026,6 +8026,7 @@ fn describe_effect_metric_value(
         }
         crate::effect::EffectMetric::IteratedPlayerCount => "that many".to_string(),
         crate::effect::EffectMetric::OtherNumber => "the other result".to_string(),
+        crate::effect::EffectMetric::DistinctNumbers => "the number of different results".to_string(),
     };
     match offset {
         Some(0) | None => base,

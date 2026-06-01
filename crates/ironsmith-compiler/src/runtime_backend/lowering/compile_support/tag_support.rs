@@ -880,6 +880,10 @@ pub(crate) fn effect_references_event_derived_amount(effect: &EffectAst) -> bool
                     _ => false,
                 }
         }
+        EffectAst::RepeatEffects { count, effects } => {
+            value_references_event_derived_amount(count)
+                || effects.iter().any(effect_references_event_derived_amount)
+        }
         _ => {
             let mut references = false;
             for_each_nested_effects(effect, true, |nested| {

@@ -24249,6 +24249,77 @@ fn clown_car_etb_applies_odd_even_result_branches_per_die_for_x_rolls() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn circuits_act_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Circuits Act")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Roll three six-sided dice. For each different result, create a 1/1 white Clown Robot artifact creature token.",
+        )
+        .expect("Circuits Act should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_circuits_act_with_rolls(rolls: &[u32]) -> usize {
+    use crate::effects::{ExecutionContext, execute_effect};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    for roll in rolls {
+        game.force_next_die_roll(*roll);
+    }
+
+    let circuits_act = circuits_act_definition();
+    let source_id = game.create_object_from_definition(&circuits_act, alice, Zone::Stack);
+    let spell_effect = circuits_act
+        .spell_effect
+        .as_ref()
+        .expect("Circuits Act should have spell effects");
+    let mut ctx = ExecutionContext::new_default(source_id, alice);
+    for effect in spell_effect {
+        execute_effect(&mut game, effect, &mut ctx)
+            .expect("Circuits Act spell effect should resolve");
+    }
+
+    game.battlefield
+        .iter()
+        .filter(|&&id| {
+            game.object(id).is_some_and(|obj| {
+                obj.name == "Clown"
+                    && game.controller_of(obj) == alice
+                    && obj.card_types.contains(&CardType::Artifact)
+                    && obj.card_types.contains(&CardType::Creature)
+                    && obj.subtypes.contains(&Subtype::Clown)
+                    && obj.subtypes.contains(&Subtype::Robot)
+            })
+        })
+        .count()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn circuits_act_creates_tokens_for_each_distinct_die_result() {
+    assert_eq!(
+        resolve_circuits_act_with_rolls(&[1, 1, 1]),
+        1,
+        "three matching results should create one Clown Robot token"
+    );
+    assert_eq!(
+        resolve_circuits_act_with_rolls(&[1, 2, 1]),
+        2,
+        "duplicate results should not create an extra token for the repeated result"
+    );
+    assert_eq!(
+        resolve_circuits_act_with_rolls(&[1, 2, 3]),
+        3,
+        "three different results should create three Clown Robot tokens"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn complaints_clerk_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Complaints Clerk")
         .card_types(vec![CardType::Creature])

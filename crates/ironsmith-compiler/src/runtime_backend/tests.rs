@@ -14243,3 +14243,22 @@ fn clown_car_parses_roll_x_six_sided_dice_with_odd_even_result_clauses() {
         "expected repeat roll plus odd/even result branches for Clown Car, got {debug}"
     );
 }
+
+#[test]
+fn circuits_act_parses_roll_three_dice_with_different_result_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Circuits Act")
+        .parse_text(
+            "Roll three six-sided dice. For each different result, create a 1/1 white Clown Robot artifact creature token.",
+        )
+        .expect("Circuits Act text should parse");
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("RepeatEffects")
+            && debug.contains("RollDieEffect")
+            && debug.contains("DistinctNumbers")
+            && debug.contains("CreateToken")
+            && debug.contains("Clown")
+            && debug.contains("Robot"),
+        "expected roll-three-dice plus different-result token creation for Circuits Act, got {debug}"
+    );
+}

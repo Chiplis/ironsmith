@@ -1412,6 +1412,9 @@ fn effect_can_supply_event_derived_amount_for(effect: &EffectAst, consumer: &Eff
     if !effect_references_event_derived_amount(consumer) {
         return false;
     }
+    if effect_references_only_distinct_numbers_metric(consumer) {
+        return effect_can_supply_distinct_numbers_metric(effect);
+    }
     if effect_references_only_other_number_metric(consumer) {
         return matches!(
             effect,
@@ -1422,6 +1425,56 @@ fn effect_can_supply_event_derived_amount_for(effect: &EffectAst, consumer: &Eff
         );
     }
     true
+}
+
+fn effect_can_supply_distinct_numbers_metric(effect: &EffectAst) -> bool {
+    match effect {
+        EffectAst::RepeatEffects { effects, .. } => {
+            effects.iter().any(effect_can_supply_distinct_numbers_metric)
+        }
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::RollDie { .. }
+                | SubjectVerbActionAst::RollDiceChooseResult { .. },
+            ..
+        }) => true,
+        _ => false,
+    }
+}
+
+fn effect_references_only_distinct_numbers_metric(effect: &EffectAst) -> bool {
+    let mut saw_distinct_numbers = false;
+    let mut saw_other_event_value = false;
+    visit_effect_values(effect, &mut |value| {
+        if value_references_only_distinct_numbers_metric(value) {
+            saw_distinct_numbers = true;
+        } else if value_references_event_derived_amount(value) {
+            saw_other_event_value = true;
+        }
+    });
+    saw_distinct_numbers && !saw_other_event_value
+}
+
+fn value_references_only_distinct_numbers_metric(value: &Value) -> bool {
+    match value {
+        Value::SurfaceHinted { value, .. } => value_references_only_distinct_numbers_metric(value),
+        Value::PendingEffectMetric {
+            metric: EffectMetric::DistinctNumbers,
+            ..
+        }
+        | Value::PendingEffectMetricOffset {
+            metric: EffectMetric::DistinctNumbers,
+            ..
+        } => true,
+        Value::Add(left, right) | Value::Min(left, right) => {
+            value_references_only_distinct_numbers_metric(left)
+                || value_references_only_distinct_numbers_metric(right)
+        }
+        Value::Scaled(value, _) | Value::HalfRoundedDown(value) => {
+            value_references_only_distinct_numbers_metric(value)
+        }
+        _ => false,
+    }
 }
 
 fn effect_references_only_other_number_metric(effect: &EffectAst) -> bool {
@@ -1464,6 +1517,7 @@ fn visit_effect_values(effect: &EffectAst, visit: &mut impl FnMut(&Value)) {
         EffectAst::SubjectVerb(subject_verb) => {
             visit_subject_verb_action_values(&subject_verb.action, visit);
         }
+        EffectAst::RepeatEffects { count, .. } => visit(count),
         _ => {}
     }
     for_each_nested_effects(effect, true, |nested| {
@@ -3724,6 +3778,69 @@ mod tests {
             }
             other => panic!("expected draw effect, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn annotate_effect_sequence_binds_distinct_numbers_only_to_prior_dice_results() {
+        let effects = vec![
+            EffectAst::RepeatEffects {
+                count: Value::Fixed(3),
+                effects: vec![EffectAst::subject_verb_roll_die_with_die_text(
+                    PlayerAst::Implicit,
+                    6,
+                    Some("six-sided die".to_string()),
+                )],
+            },
+            EffectAst::RepeatEffects {
+                count: Value::PendingEffectMetric {
+                    source: EffectMetricSource::Outcome,
+                    metric: EffectMetric::DistinctNumbers,
+                },
+                effects: vec![EffectAst::subject_verb(
+                    SubjectVerbRoleAst::AffectedPlayer,
+                    PlayerAst::You,
+                    SubjectVerbActionAst::Draw {
+                        count: Value::Fixed(1),
+                    },
+                )],
+            },
+        ];
+
+        let annotated = annotate_effect_sequence(
+            &effects,
+            &ModelReferenceImports::default(),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("annotate dice distinct-results sequence");
+
+        assert_eq!(annotated.effects[0].assigned_effect_id, Some(EffectId(0)));
+        assert_eq!(
+            annotated.effects[1].in_env.last_effect_id,
+            ModelRefState::Known(EffectId(0))
+        );
+
+        let non_dice_effects = vec![
+            EffectAst::subject_verb(
+                SubjectVerbRoleAst::AffectedPlayer,
+                PlayerAst::You,
+                SubjectVerbActionAst::Draw {
+                    count: Value::Fixed(1),
+                },
+            ),
+            effects[1].clone(),
+        ];
+        let annotated = annotate_effect_sequence(
+            &non_dice_effects,
+            &ModelReferenceImports::default(),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("annotate non-dice distinct-results sequence");
+        assert_eq!(
+            annotated.effects[1].in_env.last_effect_id,
+            ModelRefState::Unknown
+        );
     }
 
     #[test]

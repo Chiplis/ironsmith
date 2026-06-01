@@ -35279,6 +35279,43 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 repeated
             );
         }
+        if matches!(
+            repeat.count.unhinted(),
+            Value::EffectMetric {
+                metric: crate::effect::EffectMetric::DistinctNumbers,
+                ..
+            } | Value::PendingEffectMetric {
+                metric: crate::effect::EffectMetric::DistinctNumbers,
+                ..
+            }
+        ) {
+            return format!("For each different result, {repeated}");
+        }
+        if repeat.effects.len() == 1
+            && let Some(roll_die) = repeat.effects[0].downcast_ref::<crate::effects::RollDieEffect>()
+        {
+            let player = describe_player_filter(&roll_die.player);
+            let count_text = match repeat.count.unhinted() {
+                Value::Fixed(n) => number_word(*n).unwrap_or_else(|| n.to_string()),
+                other => describe_value(other),
+            };
+            let die_text = roll_die
+                .die_text
+                .as_deref()
+                .map(|text| {
+                    text.strip_suffix(" die")
+                        .map(|base| format!("{base} dice"))
+                        .unwrap_or_else(|| text.to_string())
+                })
+                .unwrap_or_else(|| format!("d{}", roll_die.sides));
+            if player == "you" {
+                return format!("Roll {count_text} {die_text}");
+            }
+            return format!(
+                "{player} {} {count_text} {die_text}",
+                player_verb(&player, "roll", "rolls"),
+            );
+        }
         return format!(
             "Repeat {} {} times",
             repeated,

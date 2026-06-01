@@ -360,6 +360,16 @@ fn resolve_effect_metric(
                 _ => None,
             })
             .unwrap_or(0),
+        EffectMetric::DistinctNumbers => outcome
+            .execution_facts
+            .iter()
+            .filter_map(|fact| match fact {
+                crate::effect::ExecutionFact::ChosenNumber(value)
+                | crate::effect::ExecutionFact::OtherNumber(value) => Some(*value),
+                _ => None,
+            })
+            .collect::<std::collections::HashSet<_>>()
+            .len() as i32,
     };
 
     Ok(resolved)

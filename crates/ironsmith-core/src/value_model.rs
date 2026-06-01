@@ -35,6 +35,7 @@ pub enum EffectMetric {
     GreatestPlayerCount,
     IteratedPlayerCount,
     OtherNumber,
+    DistinctNumbers,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

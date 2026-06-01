@@ -5718,10 +5718,6 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_roll_die(player: PlayerAst, sides: u32) -> Self {
-        Self::subject_verb_roll_die_with_die_text(player, sides, None)
-    }
-
     pub(crate) fn subject_verb_roll_die_with_die_text(
         player: PlayerAst,
         sides: u32,

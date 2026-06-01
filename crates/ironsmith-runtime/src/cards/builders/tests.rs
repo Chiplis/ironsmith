@@ -6568,7 +6568,7 @@ fn test_parse_clown_car_compiled_text_keeps_odd_even_branches_and_token_identity
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("roll") && rendered.contains("d6"),
+        rendered.contains("roll") && (rendered.contains("d6") || rendered.contains("six-sided")),
         "expected roll clause in compiled text, got {rendered}"
     );
     assert!(
@@ -6589,6 +6589,43 @@ fn test_parse_clown_car_compiled_text_keeps_odd_even_branches_and_token_identity
     assert!(
         rendered.contains("+1/+1 counter") && rendered.contains("this vehicle"),
         "expected even-result +1/+1 counter branch in compiled text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_circuits_act_counts_different_die_results_for_tokens() {
+    let def = parse_oracle_card_definition("Circuits Act");
+
+    let spell_debug = format!("{:?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("RepeatEffects")
+            && spell_debug.contains("RollDieEffect")
+            && spell_debug.contains("DistinctNumbers")
+            && spell_debug.contains("CreateToken")
+            && spell_debug.contains("Clown")
+            && spell_debug.contains("Robot"),
+        "expected Circuits Act to roll three dice and create tokens for distinct results, got {spell_debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("roll three") && rendered.contains("six-sided dice"),
+        "expected Circuits Act compiled text to keep the three-dice roll, got {rendered}"
+    );
+    assert!(
+        rendered.contains("for each different result"),
+        "expected Circuits Act compiled text to keep the different-result clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("1/1")
+            && rendered.contains("white")
+            && rendered.contains("clown")
+            && rendered.contains("robot")
+            && rendered.contains("artifact creature token"),
+        "expected Circuits Act compiled text to keep the Clown Robot token payload, got {rendered}"
     );
 }
 
@@ -46812,6 +46849,7 @@ strict_parse_card_test!(strict_parse_blast_zone, "Blast Zone");
 strict_parse_card_test!(strict_parse_bridge_from_below, "Bridge from Below");
 strict_parse_card_test!(strict_parse_cabal_ritual, "Cabal Ritual");
 strict_parse_card_test!(strict_parse_cavern_of_souls, "Cavern of Souls");
+strict_parse_card_test!(strict_parse_circuits_act, "Circuits Act");
 strict_parse_card_test!(strict_parse_clown_car, "Clown Car");
 strict_parse_card_test!(strict_parse_encroaching_mycosynth, "Encroaching Mycosynth");
 strict_parse_card_test!(strict_parse_escaped_null, "Escaped Null");

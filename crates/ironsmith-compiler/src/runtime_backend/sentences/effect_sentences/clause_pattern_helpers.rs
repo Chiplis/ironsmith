@@ -8,6 +8,7 @@ use crate::static_abilities::StaticAbilityId;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 use crate::{ChoiceCount, Supertype};
+use ironsmith_core::{EffectMetric, EffectMetricSource};
 
 use super::super::activation_and_restrictions::activation_restriction_clauses::starts_with_target_indicator;
 use super::super::activation_and_restrictions::trigger_subject_filters::title_case_token_word;
@@ -653,6 +654,7 @@ const ODD_EVEN_RESULT_PREFIXES: &[&[&str]] = &[
     &["for", "each", "odd", "result"],
     &["for", "each", "even", "result"],
 ];
+const DIFFERENT_RESULT_PREFIX: &[&str] = &["for", "each", "different", "result"];
 
 const ODD_RESULT_VALUES_D6: &[i32] = &[1, 3, 5];
 const EVEN_RESULT_VALUES_D6: &[i32] = &[2, 4, 6];
@@ -2562,7 +2564,11 @@ pub(crate) fn parse_keyword_mechanic_clause(
             }
             return Ok(Some(EffectAst::RepeatEffects {
                 count,
-                effects: vec![EffectAst::subject_verb_roll_die(PlayerAst::Implicit, 6)],
+                effects: vec![EffectAst::subject_verb_roll_die_with_die_text(
+                    PlayerAst::Implicit,
+                    6,
+                    Some("six-sided die".to_string()),
+                )],
             }));
         }
         return Err(CardTextError::ParseError(format!(
@@ -2596,6 +2602,34 @@ pub(crate) fn parse_keyword_mechanic_clause(
         let effect = parse_effect_with_verb(verb, None, &tail_tokens[1..])?;
         return Ok(Some(EffectAst::IfResult {
             predicate: IfResultPredicate::Value(predicate),
+            effects: vec![effect],
+        }));
+    }
+
+    if let Some(tail_clause) = clause.strip_prefix_clause(DIFFERENT_RESULT_PREFIX) {
+        let mut tail_clause = tail_clause.trimmed();
+        while CLAUSE_THEN_OR_YOU_WORD_PATTERN.matches_clause_first_word(tail_clause) {
+            tail_clause = tail_clause.from(1).trimmed();
+        }
+        let tail_tokens = tail_clause.tokens();
+        let Some((verb, verb_idx)) = find_verb(tail_tokens) else {
+            return Err(CardTextError::ParseError(format!(
+                "missing action after different-result clause (clause: '{}')",
+                clause_text
+            )));
+        };
+        if verb_idx != 0 {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported different-result action prefix (clause: '{}')",
+                clause_text
+            )));
+        }
+        let effect = parse_effect_with_verb(verb, None, &tail_tokens[1..])?;
+        return Ok(Some(EffectAst::RepeatEffects {
+            count: Value::PendingEffectMetric {
+                source: EffectMetricSource::Outcome,
+                metric: EffectMetric::DistinctNumbers,
+            },
             effects: vec![effect],
         }));
     }

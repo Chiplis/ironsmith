@@ -166,6 +166,7 @@ fn compile_effect_inner(
         ));
     }
     if let EffectAst::RepeatEffects { count, effects } = effect {
+        let resolved_count = resolve_value_it_tag(count, &current_reference_env(ctx))?;
         let mut compiled_effects = Vec::new();
         let mut choices = Vec::new();
         for child in effects {
@@ -174,7 +175,7 @@ fn compile_effect_inner(
             choices.append(&mut child_choices);
         }
         return Ok((
-            vec![Effect::repeat_effects(count.clone(), compiled_effects)],
+            vec![Effect::repeat_effects(resolved_count, compiled_effects)],
             choices,
         ));
     }
