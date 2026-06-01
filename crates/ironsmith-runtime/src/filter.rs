@@ -1722,6 +1722,17 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
 
+        if let Some(player_filter) = &self.dealt_damage_to_player_this_turn {
+            let dealt_damage_to_matching_player = game.players.iter().any(|player| {
+                player.is_in_game()
+                    && player_filter.matches_player(player.id, ctx)
+                    && game.source_dealt_damage_to_player_this_turn(object.id, player.id)
+            });
+            if !dealt_damage_to_matching_player {
+                return false;
+            }
+        }
+
         if self.drawn_this_turn
             && !game
                 .turn_store
@@ -3874,6 +3885,12 @@ impl ObjectFilterExt for ObjectFilter {
 
         if self.was_dealt_damage_this_turn {
             parts.push("that was dealt damage this turn".to_string());
+        }
+        if let Some(player) = &self.dealt_damage_to_player_this_turn {
+            parts.push(format!(
+                "that dealt damage to {} this turn",
+                describe_player_filter(player)
+            ));
         }
         if self.drawn_this_turn {
             parts.push("drawn this turn".to_string());

@@ -28388,6 +28388,200 @@ fn parse_destroy_target_creature_dealt_damage_this_turn() {
     );
 }
 
+fn spear_of_heliod_destroy_activated_ability(
+    def: &CardDefinition,
+) -> &crate::ability::ActivatedAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated)
+                if activated.effects.flattened_default_effects().iter().any(|effect| {
+                    effect.downcast_ref::<DestroyEffect>().is_some()
+                }) => Some(activated),
+            _ => None,
+        })
+        .expect("Spear of Heliod should have a destroy activated ability")
+}
+
+fn spear_of_heliod_destroy_filter(
+    activated: &crate::ability::ActivatedAbility,
+) -> &crate::target::ObjectFilter {
+    let effects = activated.effects.flattened_default_effects();
+    let destroy = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<DestroyEffect>())
+        .expect("Spear of Heliod activated ability should destroy a target creature");
+    let ChooseSpec::Target(inner) = destroy.spec.unhinted() else {
+        panic!("Spear destroy effect should be targeted, got {:?}", destroy.spec);
+    };
+    let ChooseSpec::Object(filter) = inner.unhinted() else {
+        panic!("Spear destroy target should be an object filter, got {inner:?}");
+    };
+    filter
+}
+
+fn create_spear_runtime_creature(
+    game: &mut crate::game_state::GameState,
+    controller: PlayerId,
+    name: &str,
+) -> ObjectId {
+    let def = CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    game.create_object_from_definition(&def, controller, Zone::Battlefield)
+}
+
+fn record_spear_player_damage(
+    game: &mut crate::game_state::GameState,
+    source: ObjectId,
+    player: PlayerId,
+) {
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            source,
+            crate::events::DamageTarget::Player(player),
+            2,
+            false,
+            crate::events::cause::EventCause::effect(),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    game.record_turn_history_event(&event);
+}
+
+#[test]
+fn spear_of_heliod_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Spear of Heliod");
+    let rendered = unprocessed_compiled_lines(&def).join(" ").to_ascii_lowercase();
+    let activated = spear_of_heliod_destroy_activated_ability(&def);
+    let target_filter = spear_of_heliod_destroy_filter(activated);
+
+    assert!(
+        (rendered.contains("creatures you control get +1/+1")
+            || rendered.contains("each creature you control gets +1/+1"))
+            && rendered.contains("destroy target creature that dealt damage to you this turn"),
+        "expected Spear of Heliod compiled text to keep anthem and combat-history destroy target, got {rendered}"
+    );
+    assert_eq!(
+        target_filter.dealt_damage_to_player_this_turn,
+        Some(PlayerFilter::You),
+        "Spear of Heliod target filter should structurally require damage dealt to you this turn"
+    );
+    assert!(
+        target_filter
+            .description()
+            .contains("that dealt damage to you this turn"),
+        "Spear of Heliod target filter description should preserve the player damage-history clause, got {}",
+        target_filter.description()
+    );
+}
+
+#[test]
+fn spear_of_heliod_anthem_and_damage_history_destroy_runtime() {
+    let def = parse_oracle_card_definition("Spear of Heliod");
+    let activated = spear_of_heliod_destroy_activated_ability(&def);
+    let target_filter = spear_of_heliod_destroy_filter(activated);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let spear = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(spear);
+    let alice_creature = create_spear_runtime_creature(&mut game, alice, "Alice Hoplite");
+    let bob_creature = create_spear_runtime_creature(&mut game, bob, "Bob Raider");
+    let bob_other_creature = create_spear_runtime_creature(&mut game, bob, "Bob Bystander");
+
+    assert_eq!(
+        game.current_power(alice_creature),
+        Some(3),
+        "Spear of Heliod should give Alice's creatures +1/+1"
+    );
+    assert_eq!(
+        game.current_toughness(alice_creature),
+        Some(3),
+        "Spear of Heliod should give Alice's creatures +1/+1"
+    );
+    assert_eq!(
+        game.current_power(bob_creature),
+        Some(2),
+        "Spear of Heliod should not pump opposing creatures"
+    );
+
+    let filter_ctx =
+        crate::effects::ExecutionContext::new_default(spear, alice).filter_context(&game);
+    assert!(
+        !target_filter.matches(
+            game.object(bob_creature).expect("Bob Raider should exist"),
+            &filter_ctx,
+            &game,
+        ),
+        "Spear should not be able to target a creature before it deals damage to you"
+    );
+    record_spear_player_damage(&mut game, bob_other_creature, bob);
+    let filter_ctx =
+        crate::effects::ExecutionContext::new_default(spear, alice).filter_context(&game);
+    assert!(
+        !target_filter.matches(
+            game.object(bob_other_creature)
+                .expect("Bob Bystander should exist"),
+            &filter_ctx,
+            &game,
+        ),
+        "Spear should not target a creature that dealt damage to a different player"
+    );
+
+    record_spear_player_damage(&mut game, bob_creature, alice);
+    let filter_ctx =
+        crate::effects::ExecutionContext::new_default(spear, alice).filter_context(&game);
+    assert!(
+        target_filter.matches(
+            game.object(bob_creature).expect("Bob Raider should exist"),
+            &filter_ctx,
+            &game,
+        ),
+        "Spear should target a creature that dealt damage to you this turn"
+    );
+
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .white = 3;
+    crate::cost::can_pay_cost(&game, spear, alice, &activated.mana_cost).expect(
+        "Spear activation cost should be payable with three white mana and an untapped source",
+    );
+    let mut dm = crate::decision::AutoPassDecisionMaker::default();
+    crate::special_actions::pay_total_cost_with_choice(
+        &mut game,
+        alice,
+        spear,
+        &activated.mana_cost,
+        crate::costs::PaymentReason::ActivateAbility,
+        &mut dm,
+    )
+    .expect("Spear activation cost should be paid");
+    assert!(game.is_tapped(spear), "Spear activation cost should tap it");
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").mana_pool.total(),
+        0,
+        "Spear activation cost should spend {{1}}{{W}}{{W}}"
+    );
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(spear, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(bob_creature)]);
+    for effect in activated.effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Spear destroy activation should resolve");
+    }
+    assert!(
+        game.player(bob)
+            .expect("Bob should exist")
+            .graveyard
+            .iter()
+            .any(|id| game.object(*id).is_some_and(|object| object.name == "Bob Raider")),
+        "Spear should destroy the creature that dealt damage to you this turn"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_exile_target_creature_and_target_land_sentence() {
