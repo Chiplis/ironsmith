@@ -143,6 +143,179 @@ fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn karn_living_legacy_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Karn, Living Legacy");
+    let def = parse_oracle_card_definition("Karn, Living Legacy");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert!(
+        ability_debug.contains("PayAnyManaEffect")
+            && ability_debug.contains("LookAtTopCardsEffect")
+            && ability_debug.contains("ChooseObjectsEffect")
+            && ability_debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+        "Karn, Living Legacy should structurally model paying any mana, looking at that many cards, choosing one, and bottoming the rest, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains(
+            "Pay any amount of mana. Look at that many cards from the top of your library, then put one of those cards into your hand and the rest on the bottom of your library in a random order"
+        ),
+        "Karn, Living Legacy -1 should render the paid-mana look-and-choose clause, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("top X cards") && !rendered.contains("from your hand"),
+        "Karn, Living Legacy -1 should not fall back to X wording or move cards from hand, got {rendered}"
+    );
+}
+
+struct KarnLivingLegacyDecisionMaker {
+    mana_to_pay: u32,
+}
+
+impl crate::decision::DecisionMaker for KarnLivingLegacyDecisionMaker {
+    fn decide_number(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::NumberContext,
+    ) -> u32 {
+        self.mana_to_pay.clamp(ctx.min, ctx.max)
+    }
+}
+
+fn karn_living_legacy_minus_one_ability(
+    def: &CardDefinition,
+) -> &crate::ability::ActivatedAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Activated(activated) = &ability.kind else {
+                return None;
+            };
+            format!("{:?}", activated.effects)
+                .contains("PayAnyManaEffect")
+                .then_some(activated)
+        })
+        .expect("Karn, Living Legacy should have a -1 pay-any-mana loyalty ability")
+}
+
+fn create_named_library_card(
+    game: &mut crate::game_state::GameState,
+    owner: PlayerId,
+    name: &str,
+) -> ObjectId {
+    let card = crate::card::CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    game.create_object_from_card(&card, owner, Zone::Library)
+}
+
+#[test]
+fn karn_living_legacy_minus_one_pays_mana_and_moves_one_looked_card_to_hand() {
+    let def = parse_oracle_card_definition("Karn, Living Legacy");
+    let activated = karn_living_legacy_minus_one_ability(&def);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let karn = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    create_named_library_card(&mut game, alice, "Karn Runtime Bottom Card");
+    create_named_library_card(&mut game, alice, "Karn Runtime Second Card");
+    create_named_library_card(&mut game, alice, "Karn Runtime Top Card");
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 3);
+
+    let mut dm = KarnLivingLegacyDecisionMaker { mana_to_pay: 2 };
+    let mut ctx = crate::effects::ExecutionContext::new(karn, alice, &mut dm);
+    for effect in activated.effects.flattened_default_effects() {
+        effect
+            .0
+            .execute(&mut game, &mut ctx)
+            .expect("Karn, Living Legacy -1 effect should resolve");
+    }
+
+    let hand = game
+        .player(alice)
+        .expect("Alice should exist")
+        .hand
+        .iter()
+        .filter_map(|id| game.object(*id).map(|object| object.name.clone()))
+        .collect::<Vec<_>>();
+    let library = game
+        .player(alice)
+        .expect("Alice should exist")
+        .library
+        .iter()
+        .filter_map(|id| game.object(*id).map(|object| object.name.clone()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        game.player(alice)
+            .expect("Alice should exist")
+            .mana_pool
+            .total(),
+        1,
+        "Karn, Living Legacy should pay exactly the chosen amount of mana"
+    );
+    assert_eq!(
+        hand.len(),
+        1,
+        "Karn, Living Legacy should put exactly one looked-at card into hand"
+    );
+    assert!(
+        hand.iter()
+            .any(|name| name == "Karn Runtime Second Card" || name == "Karn Runtime Top Card"),
+        "Karn, Living Legacy should choose from the cards looked at, got hand {hand:?}"
+    );
+    assert_eq!(
+        library.len(),
+        2,
+        "Karn, Living Legacy should leave exactly the unchosen looked card and the unlooked card in the library"
+    );
+    assert!(
+        library.first().is_some_and(|name| {
+            name == "Karn Runtime Second Card" || name == "Karn Runtime Top Card"
+        }),
+        "Karn, Living Legacy should put the unchosen looked-at card on the bottom of the library, got {library:?}"
+    );
+    assert_eq!(
+        library.last().map(String::as_str),
+        Some("Karn Runtime Bottom Card"),
+        "Karn, Living Legacy should leave cards beyond the paid amount above the bottomed card, got {library:?}"
+    );
+}
+
+#[test]
+fn karn_living_legacy_minus_one_zero_mana_moves_no_cards() {
+    let def = parse_oracle_card_definition("Karn, Living Legacy");
+    let activated = karn_living_legacy_minus_one_ability(&def);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let karn = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let bottom = create_named_library_card(&mut game, alice, "Karn Zero Bottom Card");
+    let top = create_named_library_card(&mut game, alice, "Karn Zero Top Card");
+
+    let mut dm = KarnLivingLegacyDecisionMaker { mana_to_pay: 0 };
+    let mut ctx = crate::effects::ExecutionContext::new(karn, alice, &mut dm);
+    for effect in activated.effects.flattened_default_effects() {
+        effect
+            .0
+            .execute(&mut game, &mut ctx)
+            .expect("Karn, Living Legacy -1 zero-mana branch should resolve without moving cards");
+    }
+
+    let player = game.player(alice).expect("Alice should exist");
+    assert!(
+        player.hand.is_empty(),
+        "paying zero mana should look at zero cards and put no card into hand"
+    );
+    assert_eq!(
+        player.library,
+        vec![bottom, top],
+        "paying zero mana should leave the library unchanged"
+    );
+}
+
+#[test]
 fn commander_liara_portyr_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Commander Liara Portyr");
     let ability_debug = format!("{:#?}", def.abilities);

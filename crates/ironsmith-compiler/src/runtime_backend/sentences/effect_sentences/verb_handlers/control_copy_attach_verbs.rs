@@ -690,6 +690,7 @@ pub(crate) fn parse_put_into_hand(
     }
     let has_it = CCA_IT_MARKER_PATTERN.matches_words(&clause_words);
     let has_them = CCA_THEM_MARKER_PATTERN.matches_words(&clause_words);
+    let has_those = clause_words.contains(&"those");
     let has_hand = CCA_HAND_MARKER_PATTERN.matches_words(&clause_words);
     let has_into = CCA_INTO_MARKER_PATTERN.matches_words(&clause_words);
 
@@ -734,9 +735,9 @@ pub(crate) fn parse_put_into_hand(
         ));
     }
 
-    if has_hand && has_into && (has_it || has_them) {
+    if has_hand && has_into && (has_it || has_them || has_those) {
         // "Put N of them into your hand and the rest on the bottom of your library in any order."
-        if has_them
+        if (has_them || has_those)
             && CCA_REST_BOTTOM_LIBRARY_MARKER_PATTERN.matches_words(&clause_words)
             && CCA_AND_OR_THEN_WORD_PATTERN.matches_words(&clause_words)
         {
@@ -745,7 +746,20 @@ pub(crate) fn parse_put_into_hand(
             if token_slice_at_is(tokens, idx, "of") {
                 idx += 1;
             }
-            if !token_slice_at_is(tokens, idx, "them") {
+            if token_slice_at_is(tokens, idx, "them") {
+                idx += 1;
+            } else if token_slice_at_is(tokens, idx, "those") {
+                idx += 1;
+                if token_slice_at_is_any(tokens, idx, &["card", "cards"]) {
+                    idx += 1;
+                }
+            } else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported multi-destination put clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+            if !token_slice_at_is(tokens, idx, "into") {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported multi-destination put clause (clause: '{}')",
                     clause_words.join(" ")
@@ -758,7 +772,7 @@ pub(crate) fn parse_put_into_hand(
         }
 
         // "Put N of them into your hand and the rest into your graveyard."
-        if has_them
+        if (has_them || has_those)
             && CCA_REST_GRAVEYARD_MARKER_PATTERN.matches_words(&clause_words)
             && CCA_AND_OR_THEN_WORD_PATTERN.matches_words(&clause_words)
         {
@@ -768,7 +782,20 @@ pub(crate) fn parse_put_into_hand(
             if token_slice_at_is(tokens, idx, "of") {
                 idx += 1;
             }
-            if !token_slice_at_is(tokens, idx, "them") {
+            if token_slice_at_is(tokens, idx, "them") {
+                idx += 1;
+            } else if token_slice_at_is(tokens, idx, "those") {
+                idx += 1;
+                if token_slice_at_is_any(tokens, idx, &["card", "cards"]) {
+                    idx += 1;
+                }
+            } else {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported multi-destination put clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+            if !token_slice_at_is(tokens, idx, "into") {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported multi-destination put clause (clause: '{}')",
                     clause_words.join(" ")

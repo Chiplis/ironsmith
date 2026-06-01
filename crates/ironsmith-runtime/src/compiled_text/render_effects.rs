@@ -2992,6 +2992,10 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         return describe_structural_multisentence_effect_list(rest);
     }
 
+    if let Some(compact) = describe_pay_any_mana_look_choose_hand_rest_bottom_structural(effects) {
+        return Some(compact);
+    }
+
     if let Some(compact) = describe_untap_attacking_then_additional_combat(effects) {
         return Some(compact);
     }
@@ -3025,6 +3029,68 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         .or_else(|| describe_exile_then_free_cast_while_exiled_structural(effects))
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
         .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
+}
+
+fn describe_pay_any_mana_look_choose_hand_rest_bottom_structural(
+    effects: &[Effect],
+) -> Option<String> {
+    let [pay_effect, look_effect, choose_effect, move_chosen_effect, remainder_effect] = effects
+    else {
+        return None;
+    };
+
+    let pay_with_id = pay_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let pay_any_mana = pay_with_id
+        .effect
+        .downcast_ref::<crate::effects::PayAnyManaEffect>()?;
+    if pay_any_mana.player != ChooseSpec::Player(PlayerFilter::You) || pay_any_mana.min_amount != 0
+    {
+        return None;
+    }
+
+    let look = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    if look.player != PlayerFilter::You
+        || look.reveal
+        || !is_effect_count_reference(&look.count, Some(pay_with_id.id))
+    {
+        return None;
+    }
+
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if choose.chooser != PlayerFilter::You
+        || choose.is_search
+        || choose.count.min != 1
+        || choose.count.max != Some(1)
+        || choose_primary_zone(choose) != Some(Zone::Library)
+        || !choose.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == look.tag
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        })
+    {
+        return None;
+    }
+
+    let move_chosen = move_chosen_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    if !for_each_moves_tag_to_hand(move_chosen, choose.tag.as_str()) {
+        return None;
+    }
+
+    let remainder = remainder_effect
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+    if remainder.tag != look.tag
+        || remainder.keep_tagged.as_ref() != Some(&choose.tag)
+        || remainder.player != PlayerFilter::You
+    {
+        return None;
+    }
+    let order_text = match remainder.order {
+        crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
+        crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => "",
+    };
+
+    Some(format!(
+        "Pay any amount of mana. Look at that many cards from the top of your library, then put one of those cards into your hand and the rest on the bottom of your library{order_text}"
+    ))
 }
 
 fn is_all_attacking_creatures(spec: &ChooseSpec) -> bool {
