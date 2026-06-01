@@ -3165,6 +3165,10 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         return Some(compact);
     }
 
+    if let Some(compact) = describe_each_player_repeat_pay_life_tokens_sequence(effects) {
+        return Some(compact);
+    }
+
     if effects.len() == 3 {
         let refs = effects.iter().collect::<Vec<_>>();
         if let Some(compact) = describe_discard_hand_add_mana_draw_sequence(&refs) {
@@ -3195,6 +3199,88 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
         .or_else(|| describe_choose_name_target_mills_conditional_draw(effects))
         .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
+}
+
+fn unwrap_with_id(effect: &Effect) -> (&Effect, Option<crate::effect::EffectId>) {
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return (&with_id.effect, Some(with_id.id));
+    }
+    (effect, None)
+}
+
+fn describe_each_player_repeat_pay_life_tokens_sequence(effects: &[Effect]) -> Option<String> {
+    let [repeat_effect, token_effect] = effects else {
+        return None;
+    };
+    let (repeat_unwrapped, repeat_id) = unwrap_with_id(repeat_effect);
+    let repeat = repeat_unwrapped.downcast_ref::<crate::effects::RepeatProcessEffect>()?;
+    if !matches!(repeat.predicate, crate::effect::EffectPredicate::Happened) {
+        return None;
+    }
+    let [pay_players_effect] = repeat.effects.as_slice() else {
+        return None;
+    };
+    let (pay_players_unwrapped, _) = unwrap_with_id(pay_players_effect);
+    let pay_players = pay_players_unwrapped.downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    if pay_players.filter != PlayerFilter::Any || !pay_players.starting_with_controller {
+        return None;
+    }
+    let [pay_life_effect] = pay_players.effects.as_slice() else {
+        return None;
+    };
+    let pay_life = pay_life_effect.downcast_ref::<crate::effects::PayAnyLifeEffect>()?;
+    if pay_life.min_amount != 0
+        || pay_life.player != ChooseSpec::Player(PlayerFilter::IteratedPlayer)
+    {
+        return None;
+    }
+
+    let token_players = token_effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    if token_players.filter != PlayerFilter::Any {
+        return None;
+    }
+    let [create_effect] = token_players.effects.as_slice() else {
+        return None;
+    };
+    let create = unwrap_basic_tag_wrappers(create_effect)
+        .downcast_ref::<crate::effects::CreateTokenEffect>()?;
+    if create.controller != PlayerFilter::IteratedPlayer
+        || !create.token.card.is_token
+        || create.token.card.name != "Rat"
+    {
+        return None;
+    }
+    if !create
+        .token
+        .card
+        .card_types
+        .contains(&crate::types::CardType::Creature)
+        || !create.token.card.subtypes.contains(&crate::types::Subtype::Rat)
+        || create.token.card.color_indicator != Some(crate::color::ColorSet::BLACK)
+        || !create
+            .token
+            .card
+            .power_toughness
+            .is_some_and(|pt| {
+                matches!(pt.power, crate::card::PtValue::Fixed(1))
+                    && matches!(pt.toughness, crate::card::PtValue::Fixed(1))
+            })
+    {
+        return None;
+    }
+    let Value::EffectMetric {
+        effect_id,
+        source: crate::effect::EffectMetricSource::Outcome,
+        metric: crate::effect::EffectMetric::IteratedPlayerCount,
+    } = &create.count
+    else {
+        return None;
+    };
+    if repeat_id != Some(*effect_id) {
+        return None;
+    }
+
+    Some("Starting with you, each player may pay any amount of life. Repeat this process until no one pays life. Each player creates a 1/1 black Rat creature token for each 1 life they paid this way".to_string())
 }
 
 fn describe_reveal_top_to_hand_then_lose_mana_value_effects(effects: &[Effect]) -> Option<String> {
@@ -16773,6 +16859,7 @@ mod tests {
                     PlayerFilter::IteratedPlayer,
                 )),
             ]))],
+            starting_with_controller: false,
         })];
 
         assert_eq!(
@@ -17479,6 +17566,7 @@ mod tests {
                     party.clone(),
                     PlayerFilter::IteratedPlayer,
                 ))],
+                starting_with_controller: false,
             }),
             Effect::new(crate::effects::GainLifeEffect::you(party)),
         ];
@@ -33342,6 +33430,18 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return format!("Pay {amount}");
         }
         return format!("{payer} {} {amount}", player_verb(&payer, "pay", "pays"));
+    }
+    if let Some(pay_any_life) = effect.downcast_ref::<crate::effects::PayAnyLifeEffect>() {
+        let payer = describe_choose_spec(&pay_any_life.player);
+        let payment = match pay_any_life.min_amount {
+            0 => "any amount of life".to_string(),
+            1 => "one or more life".to_string(),
+            amount => format!("{amount} or more life"),
+        };
+        if payer == "you" {
+            return format!("Pay {payment}");
+        }
+        return format!("{payer} {} {payment}", player_verb(&payer, "pay", "pays"));
     }
     if let Some(energy) = effect.downcast_ref::<crate::effects::EnergyCountersEffect>() {
         let player = describe_player_filter(&energy.player);

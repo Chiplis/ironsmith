@@ -345,10 +345,13 @@ fn resolve_effect_metric(
             };
             outcome
                 .player_counts()
-                .and_then(|counts| {
-                    counts.iter().find_map(|(count_player, count)| {
-                        (*count_player == player_id).then_some(*count)
-                    })
+                .map(|counts| {
+                    counts
+                        .iter()
+                        .filter_map(|(count_player, count)| {
+                            (*count_player == player_id).then_some(*count)
+                        })
+                        .sum()
                 })
                 .unwrap_or(0)
         }

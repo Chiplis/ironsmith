@@ -197,6 +197,237 @@ fn archon_of_coronation_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn plague_of_vermin_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Plague of Vermin");
+    let def = parse_oracle_card_definition("Plague of Vermin");
+    let effect_debug = format!("{:#?}", def.spell_effect);
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert!(
+        effect_debug.contains("RepeatProcessEffect")
+            && effect_debug.contains("PayAnyLifeEffect")
+            && effect_debug.contains("ForPlayersEffect")
+            && effect_debug.contains("CreateTokenEffect")
+            && effect_debug.contains("IteratedPlayerCount"),
+        "Plague of Vermin should lower to repeat per-player life payments and per-player token counts, got {effect_debug}"
+    );
+    assert!(
+        rendered.contains("Starting with you, each player may pay any amount of life")
+            && rendered.contains("Repeat this process until no one pays life")
+            && rendered.contains(
+                "Each player creates a 1/1 black Rat creature token for each 1 life they paid this way"
+            ),
+        "expected repeated life-payment token text to be preserved, got {rendered}"
+    );
+}
+
+#[test]
+fn plague_of_vermin_runtime_uses_each_players_paid_life_for_rat_tokens() {
+    struct PlaguePayments {
+        payments: Vec<u32>,
+        next: usize,
+    }
+
+    impl crate::decision::DecisionMaker for PlaguePayments {
+        fn decide_number(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::NumberContext,
+        ) -> u32 {
+            let payment = self.payments.get(self.next).copied().unwrap_or(ctx.min);
+            self.next += 1;
+            payment.clamp(ctx.min, ctx.max)
+        }
+    }
+
+    fn rat_tokens_controlled_by(
+        game: &crate::game_state::GameState,
+        controller: PlayerId,
+    ) -> usize {
+        game.objects_in_zone(Zone::Battlefield)
+            .into_iter()
+            .filter(|id| {
+                let Some(object) = game.object(*id) else {
+                    return false;
+                };
+                object.kind == crate::object::ObjectKind::Token
+                    && object.name == "Rat"
+                    && object.card_types.contains(&CardType::Creature)
+                    && object.subtypes.contains(&Subtype::Rat)
+                    && object.color_override == Some(crate::color::ColorSet::BLACK)
+                    && matches!(object.base_power, Some(crate::card::PtValue::Fixed(1)))
+                    && matches!(object.base_toughness, Some(crate::card::PtValue::Fixed(1)))
+                    && game.controller_of(object) == controller
+            })
+            .count()
+    }
+
+    let def = parse_oracle_card_definition("Plague of Vermin");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut dm = PlaguePayments {
+        payments: vec![2, 1, 0, 0],
+        next: 0,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+    let effects = &def
+        .spell_effect
+        .as_ref()
+        .expect("Plague of Vermin should have spell effects")
+        .segments[0]
+        .default_effects;
+
+    for effect in effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Plague of Vermin effect should resolve");
+    }
+
+    assert_eq!(
+        game.player(alice).expect("alice").life,
+        18,
+        "Alice should pay exactly 2 life across the repeated process"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob").life,
+        19,
+        "Bob should pay exactly 1 life across the repeated process"
+    );
+    assert_eq!(rat_tokens_controlled_by(&game, alice), 2);
+    assert_eq!(rat_tokens_controlled_by(&game, bob), 1);
+    assert_eq!(
+        dm.next, 4,
+        "the repeated process should ask both players again and stop when no one pays"
+    );
+}
+
+#[test]
+fn plague_of_vermin_runtime_sums_life_paid_across_multiple_rounds() {
+    struct PlaguePayments {
+        payments: Vec<u32>,
+        next: usize,
+    }
+
+    impl crate::decision::DecisionMaker for PlaguePayments {
+        fn decide_number(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::NumberContext,
+        ) -> u32 {
+            let payment = self.payments.get(self.next).copied().unwrap_or(ctx.min);
+            self.next += 1;
+            payment.clamp(ctx.min, ctx.max)
+        }
+    }
+
+    fn rat_tokens_controlled_by(
+        game: &crate::game_state::GameState,
+        controller: PlayerId,
+    ) -> usize {
+        game.objects_in_zone(Zone::Battlefield)
+            .into_iter()
+            .filter(|id| {
+                let Some(object) = game.object(*id) else {
+                    return false;
+                };
+                object.kind == crate::object::ObjectKind::Token
+                    && object.name == "Rat"
+                    && game.controller_of(object) == controller
+            })
+            .count()
+    }
+
+    let def = parse_oracle_card_definition("Plague of Vermin");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut dm = PlaguePayments {
+        payments: vec![2, 1, 3, 0, 0, 0],
+        next: 0,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+    let effects = &def
+        .spell_effect
+        .as_ref()
+        .expect("Plague of Vermin should have spell effects")
+        .segments[0]
+        .default_effects;
+
+    for effect in effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Plague of Vermin effect should resolve");
+    }
+
+    assert_eq!(game.player(alice).expect("alice").life, 15);
+    assert_eq!(game.player(bob).expect("bob").life, 19);
+    assert_eq!(rat_tokens_controlled_by(&game, alice), 5);
+    assert_eq!(rat_tokens_controlled_by(&game, bob), 1);
+    assert_eq!(dm.next, 6);
+}
+
+#[test]
+fn plague_of_vermin_runtime_starts_payment_rounds_with_spell_controller() {
+    struct RecordingPayments {
+        payments: HashMap<PlayerId, Vec<u32>>,
+        prompted_players: Vec<PlayerId>,
+    }
+
+    impl crate::decision::DecisionMaker for RecordingPayments {
+        fn decide_number(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::NumberContext,
+        ) -> u32 {
+            self.prompted_players.push(ctx.player);
+            self.payments
+                .get_mut(&ctx.player)
+                .and_then(|payments| payments.pop())
+                .unwrap_or(ctx.min)
+                .clamp(ctx.min, ctx.max)
+        }
+    }
+
+    let def = parse_oracle_card_definition("Plague of Vermin");
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    game.turn_store.turn_order = vec![charlie, bob, alice];
+    let source = game.create_object_from_definition(&def, bob, Zone::Stack);
+    let mut dm = RecordingPayments {
+        payments: HashMap::from([
+            (bob, vec![0, 1]),
+            (alice, vec![0, 0]),
+            (charlie, vec![0, 0]),
+        ]),
+        prompted_players: Vec::new(),
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(source, bob, &mut dm);
+    let effects = &def
+        .spell_effect
+        .as_ref()
+        .expect("Plague of Vermin should have spell effects")
+        .segments[0]
+        .default_effects;
+
+    for effect in effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Plague of Vermin effect should resolve");
+    }
+
+    assert_eq!(
+        dm.prompted_players,
+        vec![bob, alice, charlie, bob, alice, charlie],
+        "payment rounds should start with the spell controller and continue in turn order"
+    );
+}
+
+#[test]
 fn commander_liara_portyr_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Commander Liara Portyr");
     let ability_debug = format!("{:#?}", def.abilities);

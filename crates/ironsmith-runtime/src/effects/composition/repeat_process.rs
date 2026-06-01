@@ -45,7 +45,7 @@ impl EffectExecutor for RepeatProcessEffect {
             status,
             value,
             all_events,
-            all_execution_facts,
+            EffectOutcome::merge_execution_facts(all_execution_facts),
         ))
     }
 }

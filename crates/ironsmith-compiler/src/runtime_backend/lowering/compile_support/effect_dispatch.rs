@@ -5344,6 +5344,25 @@ fn compile_subject_verb_effect(
                 },
             )
         }
+        SubjectVerbActionAst::PayAnyLife { min_amount } => {
+            let subject = resolve_subject_verb_subject(role, player, ctx, false, false, true)?;
+            compile_player_effect_from_resolved_filter(
+                subject.into_player_filter(),
+                subject.into_choices(),
+                || {
+                    Effect::new(crate::effects::PayAnyLifeEffect::new(
+                        ChooseSpec::Player(PlayerFilter::You),
+                        *min_amount,
+                    ))
+                },
+                |filter| {
+                    Effect::new(crate::effects::PayAnyLifeEffect::new(
+                        ChooseSpec::Player(filter),
+                        *min_amount,
+                    ))
+                },
+            )
+        }
         SubjectVerbActionAst::PayMana { cost } => {
             compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
                 Effect::new(crate::effects::PayManaEffect::new(
@@ -5948,6 +5967,26 @@ fn per_player_partition_value_for_filter(value: Value, player_filter: &PlayerFil
             metric: ironsmith_core::EffectMetric::IteratedPlayerCount,
         },
         Value::EffectValueOffset(effect_id, offset) => Value::EffectMetricOffset {
+            effect_id,
+            source: ironsmith_core::EffectMetricSource::Outcome,
+            metric: ironsmith_core::EffectMetric::IteratedPlayerCount,
+            offset,
+        },
+        Value::EffectMetric {
+            effect_id,
+            source: ironsmith_core::EffectMetricSource::Outcome,
+            metric: ironsmith_core::EffectMetric::Count,
+        } => Value::EffectMetric {
+            effect_id,
+            source: ironsmith_core::EffectMetricSource::Outcome,
+            metric: ironsmith_core::EffectMetric::IteratedPlayerCount,
+        },
+        Value::EffectMetricOffset {
+            effect_id,
+            source: ironsmith_core::EffectMetricSource::Outcome,
+            metric: ironsmith_core::EffectMetric::Count,
+            offset,
+        } => Value::EffectMetricOffset {
             effect_id,
             source: ironsmith_core::EffectMetricSource::Outcome,
             metric: ironsmith_core::EffectMetric::IteratedPlayerCount,

@@ -2001,6 +2001,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::LoseGame
             | SubjectVerbActionAst::WinGame
             | SubjectVerbActionAst::PayAnyEnergy { .. }
+            | SubjectVerbActionAst::PayAnyLife { .. }
             | SubjectVerbActionAst::PayMana { .. }
             | SubjectVerbActionAst::DiscardHand
             | SubjectVerbActionAst::Detain { .. }
@@ -2485,6 +2486,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::LoseGame
             | SubjectVerbActionAst::WinGame
             | SubjectVerbActionAst::PayAnyEnergy { .. }
+            | SubjectVerbActionAst::PayAnyLife { .. }
             | SubjectVerbActionAst::PayMana { .. }
             | SubjectVerbActionAst::DiscardHand => 0,
             SubjectVerbActionAst::LoseLife { amount }

@@ -95,7 +95,7 @@ pub use grant_tagged_spell_life_cost_by_mana_value::GrantTaggedSpellLifeCostByMa
 pub use lose_the_game::LoseTheGameEffect;
 pub use may_cast_matching_spell::MayCastMatchingSpellWithoutPayingManaCostEffect;
 pub use may_cast_miracle::MayCastForMiracleCostEffect;
-pub use pay_energy::{PayAnyEnergyEffect, PayEnergyEffect};
+pub use pay_energy::{PayAnyEnergyEffect, PayAnyLifeEffect, PayEnergyEffect};
 pub use poison_counters::PoisonCountersEffect;
 pub use ring_tempts_you::RingTemptsYouEffect;
 pub use roll_dice_choose_result::RollDiceChooseResultEffect;

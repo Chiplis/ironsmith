@@ -908,6 +908,18 @@ impl Effect {
         Self::new(crate::effects::ForPlayersEffect {
             filter: _filter,
             effects: _effects,
+            starting_with_controller: false,
+        })
+    }
+
+    pub fn for_players_starting_with_controller(
+        filter: crate::target::PlayerFilter,
+        effects: Vec<Effect>,
+    ) -> Self {
+        Self::new(crate::effects::ForPlayersEffect {
+            filter,
+            effects,
+            starting_with_controller: true,
         })
     }
 
@@ -915,6 +927,7 @@ impl Effect {
         Self::new(crate::effects::ForPlayersEffect {
             filter: crate::target::PlayerFilter::Opponent,
             effects,
+            starting_with_controller: false,
         })
     }
 
