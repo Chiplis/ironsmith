@@ -424,11 +424,9 @@ pub fn distribute_trample_damage(
         let existing_damage = game.damage_on(blocker.id);
         let lethal = if has_deathtouch {
             1
-        } else if let Some(toughness) = game
-            .calculated_toughness(blocker.id)
-            .or_else(|| blocker.toughness())
+        } else if let Some(threshold) = lethal_damage_threshold_for_creature(game, blocker)
         {
-            (toughness - existing_damage as i32).max(0) as u32
+            (threshold - existing_damage as i32).max(0) as u32
         } else {
             0
         };
@@ -469,11 +467,9 @@ pub fn distribute_combat_damage_to_creatures(
         let existing_damage = game.damage_on(creature.id);
         let lethal = if has_deathtouch {
             1
-        } else if let Some(toughness) = game
-            .calculated_toughness(creature.id)
-            .or_else(|| creature.toughness())
+        } else if let Some(threshold) = lethal_damage_threshold_for_creature(game, creature)
         {
-            (toughness - existing_damage as i32).max(0) as u32
+            (threshold - existing_damage as i32).max(0) as u32
         } else {
             0
         };
@@ -491,6 +487,29 @@ pub fn distribute_combat_damage_to_creatures(
     }
 
     distribution
+}
+
+pub(crate) fn lethal_damage_threshold_for_creature(
+    game: &crate::game_state::GameState,
+    creature: &Object,
+) -> Option<i32> {
+    let creature_controller = game.controller_of(creature);
+    let uses_power = game.battlefield.iter().any(|&source_id| {
+        game.controller_of_id(source_id) == Some(creature_controller)
+            && game.object_has_static_ability_id(
+                source_id,
+                StaticAbilityId::LethalDamageToCreaturesYouControlUsesPower,
+            )
+    });
+
+    if uses_power {
+        game.calculated_power(creature.id)
+            .or_else(|| creature.power())
+            .map(|power| power.max(1))
+    } else {
+        game.calculated_toughness(creature.id)
+            .or_else(|| creature.toughness())
+    }
 }
 
 #[cfg(test)]

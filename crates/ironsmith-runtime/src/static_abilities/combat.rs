@@ -1949,6 +1949,12 @@ define_combat_ability!(
     "Each creature you control assigns combat damage equal to its toughness rather than its power"
 );
 
+define_combat_ability!(
+    LethalDamageToCreaturesYouControlUsesPower,
+    LethalDamageToCreaturesYouControlUsesPower,
+    "Lethal damage dealt to creatures you control is determined by their power rather than their toughness"
+);
+
 #[cfg(test)]
 mod tests {
     use super::*;

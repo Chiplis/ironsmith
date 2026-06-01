@@ -327,12 +327,11 @@ fn distribute_explicit_trample_damage(
         let blocker_id = blocker_ids[index];
         let lethal = if has_deathtouch {
             1
-        } else if let Some(toughness) = game
-            .calculated_toughness(blocker.id)
-            .or_else(|| blocker.toughness())
+        } else if let Some(threshold) =
+            crate::rules::damage::lethal_damage_threshold_for_creature(game, blocker)
         {
             let existing_damage = game.damage_on(blocker.id);
-            (toughness - existing_damage as i32).max(0) as u32
+            (threshold - existing_damage as i32).max(0) as u32
         } else {
             0
         };
@@ -364,12 +363,11 @@ fn distribute_explicit_damage_to_creatures(
 
     for (index, recipient) in recipients.iter().enumerate() {
         let recipient_id = recipient_ids[index];
-        let lethal = if let Some(toughness) = game
-            .calculated_toughness(recipient.id)
-            .or_else(|| recipient.toughness())
+        let lethal = if let Some(threshold) =
+            crate::rules::damage::lethal_damage_threshold_for_creature(game, recipient)
         {
             let existing_damage = game.damage_on(recipient.id);
-            (toughness - existing_damage as i32).max(0) as u32
+            (threshold - existing_damage as i32).max(0) as u32
         } else {
             0
         };

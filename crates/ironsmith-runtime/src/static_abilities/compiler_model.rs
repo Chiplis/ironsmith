@@ -130,6 +130,9 @@ impl StaticAbility {
             Some(StaticAbilityId::ThisCreatureAssignsCombatDamageUsingToughness) => {
                 Self::this_creature_assigns_combat_damage_using_toughness()
             }
+            Some(StaticAbilityId::LethalDamageToCreaturesYouControlUsesPower) => {
+                Self::lethal_damage_to_creatures_you_control_uses_power()
+            }
             Some(StaticAbilityId::BlackManaMayBePaidWithLife) => {
                 Self::krrik_black_mana_may_be_paid_with_life()
             }

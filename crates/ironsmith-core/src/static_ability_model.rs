@@ -3262,6 +3262,12 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
+    pub fn lethal_damage_to_creatures_you_control_uses_power() -> Self {
+        Self::identified(
+            StaticAbilityId::LethalDamageToCreaturesYouControlUsesPower,
+            "lethal damage to creatures you control uses power",
+        )
+    }
     pub fn players_cant_cycle() -> Self {
         Self {
             id: Some(StaticAbilityId::PlayersCantCycle),

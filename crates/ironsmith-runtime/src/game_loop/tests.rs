@@ -21732,6 +21732,201 @@ fn test_unblocked_attacker_uses_toughness_for_combat_damage_when_static_applies(
 }
 
 #[test]
+fn test_zilortha_strength_incarnate_power_sets_lethal_damage_for_your_creatures() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let zilortha = CardDefinitionBuilder::new(CardId::new(), "Zilortha, Strength Incarnate")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(7, 3))
+        .parse_text(
+            "Trample\n\
+             Lethal damage dealt to creatures you control is determined by their power rather than their toughness.",
+        )
+        .expect("Zilortha, Strength Incarnate should parse for runtime test");
+    let zilortha_id = game.create_object_from_definition(&zilortha, alice, Zone::Battlefield);
+    assert!(game.current_has_static_ability_id(
+        zilortha_id,
+        crate::static_abilities::StaticAbilityId::LethalDamageToCreaturesYouControlUsesPower,
+    ));
+
+    let high_power_creature = create_creature(&mut game, "Alice's High-Power Creature", alice, 5, 2);
+    game.mark_damage(high_power_creature, 4);
+    crate::rules::state_based::apply_state_based_actions(&mut game);
+
+    assert!(
+        game.battlefield.contains(&high_power_creature),
+        "Zilortha should let Alice's 5/2 survive 4 marked damage because lethal damage uses power"
+    );
+
+    game.mark_damage(high_power_creature, 1);
+    assert_eq!(
+        game.damage_on(high_power_creature),
+        5,
+        "marked damage should remain between SBA checks until cleanup"
+    );
+    assert!(
+        crate::rules::state_based::check_state_based_actions(&game)
+            .contains(&crate::rules::state_based::StateBasedAction::ObjectDies(
+                high_power_creature,
+            )),
+        "Zilortha should make 5 damage lethal to Alice's 5-power creature"
+    );
+    crate::rules::state_based::apply_state_based_actions(&mut game);
+
+    assert!(
+        game.current_object_id_after_zone_change(high_power_creature)
+            .and_then(|id| game.object(id))
+            .is_some_and(|object| object.zone == Zone::Graveyard),
+        "Zilortha should make Alice's 5/2 die once marked damage reaches its power"
+    );
+}
+
+#[test]
+fn test_zilortha_strength_incarnate_only_changes_lethal_damage_for_controller_creatures() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let zilortha = CardDefinitionBuilder::new(CardId::new(), "Zilortha, Strength Incarnate")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(7, 3))
+        .parse_text(
+            "Trample\n\
+             Lethal damage dealt to creatures you control is determined by their power rather than their toughness.",
+        )
+        .expect("Zilortha, Strength Incarnate should parse for runtime test");
+    let zilortha_id = game.create_object_from_definition(&zilortha, alice, Zone::Battlefield);
+    assert!(game.current_has_static_ability_id(
+        zilortha_id,
+        crate::static_abilities::StaticAbilityId::LethalDamageToCreaturesYouControlUsesPower,
+    ));
+
+    let alice_low_power_creature =
+        create_creature(&mut game, "Alice's Low-Power Creature", alice, 2, 5);
+    let bob_low_power_creature = create_creature(&mut game, "Bob's Low-Power Creature", bob, 2, 5);
+
+    game.mark_damage(alice_low_power_creature, 2);
+    game.mark_damage(bob_low_power_creature, 2);
+    assert!(
+        crate::rules::state_based::check_state_based_actions(&game).contains(
+            &crate::rules::state_based::StateBasedAction::ObjectDies(alice_low_power_creature),
+        ),
+        "Zilortha should make 2 damage lethal to Alice's 2-power creature"
+    );
+    crate::rules::state_based::apply_state_based_actions(&mut game);
+
+    assert!(
+        game.current_object_id_after_zone_change(alice_low_power_creature)
+            .and_then(|id| game.object(id))
+            .is_some_and(|object| object.zone == Zone::Graveyard),
+        "Zilortha should make Alice's 2/5 die from 2 marked damage because lethal damage uses power"
+    );
+    assert!(
+        game.battlefield.contains(&bob_low_power_creature),
+        "Zilortha should not change lethal damage for Bob's creatures"
+    );
+}
+
+#[test]
+fn test_zilortha_strength_incarnate_lethal_damage_interacts_with_deathtouch_and_trample() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let zilortha = CardDefinitionBuilder::new(CardId::new(), "Zilortha, Strength Incarnate")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(7, 3))
+        .parse_text(
+            "Trample\n\
+             Lethal damage dealt to creatures you control is determined by their power rather than their toughness.",
+        )
+        .expect("Zilortha, Strength Incarnate should parse for runtime test");
+    game.create_object_from_definition(&zilortha, alice, Zone::Battlefield);
+
+    let deathtouch_victim = create_creature(&mut game, "Alice's Zero-Power Creature", alice, 0, 5);
+    game.mark_damage(deathtouch_victim, 1);
+    game.mark_deathtouch_damage_since_sba(deathtouch_victim);
+    crate::rules::state_based::apply_state_based_actions(&mut game);
+
+    assert!(
+        game.current_object_id_after_zone_change(deathtouch_victim)
+            .and_then(|id| game.object(id))
+            .is_some_and(|object| object.zone == Zone::Graveyard),
+        "deathtouch damage should still destroy Alice's creature even when Zilortha makes its power 0 the lethal threshold"
+    );
+
+    let zero_power_victim = create_creature(&mut game, "Alice's Damaged Zero-Power Creature", alice, 0, 5);
+    game.mark_damage(zero_power_victim, 1);
+    crate::rules::state_based::apply_state_based_actions(&mut game);
+
+    assert!(
+        game.current_object_id_after_zone_change(zero_power_victim)
+            .and_then(|id| game.object(id))
+            .is_some_and(|object| object.zone == Zone::Graveyard),
+        "Zilortha should destroy Alice's 0-power creature once it has at least 1 damage marked"
+    );
+
+    let trampler = CardDefinitionBuilder::new(CardId::new(), "Bob's Trampler")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(5, 5))
+        .parse_text("Trample")
+        .expect("trample attacker should parse");
+    let attacker_id = game.create_object_from_definition(&trampler, bob, Zone::Battlefield);
+    let blocker_id = create_creature(&mut game, "Alice's High-Power Blocker", alice, 5, 2);
+
+    let mut combat = CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: attacker_id,
+        target: AttackTarget::Player(alice),
+    });
+    combat.blockers.insert(attacker_id, vec![blocker_id]);
+
+    let events = execute_combat_damage_step(&mut game, &combat, false);
+    assert_eq!(
+        game.player(alice).unwrap().life,
+        20,
+        "Zilortha should make the trampler assign all 5 damage to Alice's 5-power blocker"
+    );
+    assert!(
+        events.iter().any(|event| event.target
+            == DamageEventTarget::Object(blocker_id)
+            && event.amount == 5),
+        "combat damage should assign lethal damage by blocker power under Zilortha, got {events:?}"
+    );
+
+    let second_trampler = CardDefinitionBuilder::new(CardId::new(), "Bob's Second Trampler")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(5, 5))
+        .parse_text("Trample")
+        .expect("second trample attacker should parse");
+    let second_attacker_id = game.create_object_from_definition(&second_trampler, bob, Zone::Battlefield);
+    let zero_power_blocker = create_creature(&mut game, "Alice's Zero-Power Blocker", alice, 0, 5);
+
+    let mut second_combat = CombatState::default();
+    second_combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: second_attacker_id,
+        target: AttackTarget::Player(alice),
+    });
+    second_combat
+        .blockers
+        .insert(second_attacker_id, vec![zero_power_blocker]);
+
+    let second_events = execute_combat_damage_step(&mut game, &second_combat, false);
+    assert_eq!(
+        game.player(alice).unwrap().life,
+        16,
+        "Zilortha should require 1 assigned damage before trampling over a 0-power blocker"
+    );
+    assert!(
+        second_events.iter().any(|event| event.target
+            == DamageEventTarget::Object(zero_power_blocker)
+            && event.amount == 1),
+        "combat damage should assign 1 lethal damage to a 0-power blocker under Zilortha, got {second_events:?}"
+    );
+}
+
+#[test]
 fn test_blocked_attacker_deals_damage_to_blocker() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
