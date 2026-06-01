@@ -80,6 +80,66 @@ impl DecisionMaker for PowerLeakDecisionMaker {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+struct PowerLeakActivateManaDecisionMaker {
+    mana_to_pay: u32,
+    activations_before_pay: usize,
+    mana_payment_prompts: usize,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for PowerLeakActivateManaDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        true
+    }
+
+    fn decide_options(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        if ctx.description.starts_with("Pay mana for") {
+            self.mana_payment_prompts += 1;
+
+            if self.mana_payment_prompts <= self.activations_before_pay
+                && let Some(activation) = ctx
+                    .options
+                    .iter()
+                    .find(|opt| opt.legal && opt.description.starts_with("Tap "))
+            {
+                return vec![activation.index];
+            }
+
+            if let Some(pay) = ctx
+                .options
+                .iter()
+                .find(|opt| opt.legal && opt.description == "Choose mana amount to pay")
+            {
+                return vec![pay.index];
+            }
+        }
+
+        ctx.options
+            .iter()
+            .filter(|opt| opt.legal)
+            .map(|opt| opt.index)
+            .take(ctx.min)
+            .collect()
+    }
+
+    fn decide_number(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::NumberContext,
+    ) -> u32 {
+        self.mana_to_pay.clamp(ctx.min, ctx.max)
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn setup_power_leak_attached_to_bob_enchantment(game: &mut GameState) -> ObjectId {
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
@@ -165,6 +225,44 @@ fn power_leak_paid_mana_prevents_that_much_damage() {
         game.player(bob).expect("bob exists").mana_pool.total(),
         0,
         "Power Leak should spend the chosen mana"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn power_leak_can_activate_mana_abilities_to_pay() {
+    let mut game = setup_game();
+    let bob = PlayerId::from_index(1);
+    setup_power_leak_attached_to_bob_enchantment(&mut game);
+    let mountain_def = crate::cards::definitions::basic_mountain();
+    let first_mountain = game.create_object_from_definition(&mountain_def, bob, Zone::Battlefield);
+    let second_mountain = game.create_object_from_definition(&mountain_def, bob, Zone::Battlefield);
+
+    put_power_leak_upkeep_trigger_on_stack(&mut game);
+    let mut dm = PowerLeakActivateManaDecisionMaker {
+        mana_to_pay: 2,
+        activations_before_pay: 2,
+        mana_payment_prompts: 0,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Power Leak trigger should resolve");
+
+    assert_eq!(
+        game.player(bob).expect("bob exists").life,
+        20,
+        "tapping mana sources during resolution should pay two and prevent all damage"
+    );
+    assert!(
+        game.is_tapped(first_mountain) && game.is_tapped(second_mountain),
+        "Power Leak payment should activate Bob's available mana abilities"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").mana_pool.total(),
+        0,
+        "Power Leak should spend the mana produced during payment"
+    );
+    assert_eq!(
+        dm.mana_payment_prompts, 3,
+        "Power Leak should allow repeated mana ability activation before choosing an amount"
     );
 }
 

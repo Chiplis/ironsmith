@@ -19,14 +19,14 @@ use crate::target::{ChooseSpec, PlayerFilter};
 pub type PayManaEffect = ironsmith_core::PayManaEffect;
 pub type PayAnyManaEffect = ironsmith_core::PayAnyManaEffect;
 
+const MAX_PAYMENT_STEPS: usize = 32;
+
 fn try_pay_interactively(
     effect: &PayManaEffect,
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     player_id: PlayerId,
 ) -> bool {
-    const MAX_PAYMENT_STEPS: usize = 32;
-
     for _ in 0..MAX_PAYMENT_STEPS {
         let adjusted_cost = game.adjust_mana_cost_for_payment_reason(
             player_id,
@@ -41,61 +41,13 @@ fn try_pay_interactively(
             0,
             crate::costs::PaymentReason::Effect,
         );
-        let mana_abilities = get_available_mana_abilities(game, player_id, &mut ctx.decision_maker);
-
-        if !can_pay_now && mana_abilities.is_empty() {
-            return false;
-        }
-        let mut choices = Vec::new();
-        let mut options = Vec::new();
-
-        if can_pay_now {
-            choices.push(PayManaChoice::PayNow);
-            options.push(SelectableOption::new(choices.len() - 1, "Pay mana cost"));
-        }
-
-        for (permanent_id, ability_index, description) in mana_abilities {
-            choices.push(PayManaChoice::ActivateManaAbility {
-                permanent_id,
-                ability_index,
-            });
-            options.push(SelectableOption::new(
-                choices.len() - 1,
-                format!(
-                    "Tap {}: {}",
-                    describe_permanent(game, permanent_id),
-                    description
-                ),
-            ));
-        }
-
-        if choices.is_empty() {
-            return false;
-        }
-
-        let source_name = game
-            .object(ctx.source)
-            .map(|obj| obj.name.clone())
-            .unwrap_or_else(|| "effect".to_string());
-        let decision_ctx =
-            SelectOptionsContext::mana_payment(player_id, ctx.source, source_name, options);
-        let selected = ctx.decision_maker.decide_options(game, &decision_ctx);
-        if ctx.decision_maker.awaiting_choice() {
-            return false;
-        }
-        let Some(selected_idx) = selected.first().copied() else {
-            if can_pay_now {
-                return game.try_pay_mana_cost_with_reason(
-                    player_id,
-                    Some(ctx.source),
-                    &adjusted_cost,
-                    0,
-                    crate::costs::PaymentReason::Effect,
-                );
-            }
-            return false;
-        };
-        let Some(choice) = choices.get(selected_idx).copied() else {
+        let Some(choice) = choose_mana_payment_step(
+            game,
+            ctx,
+            player_id,
+            can_pay_now,
+            "Pay mana cost",
+        ) else {
             return false;
         };
 
@@ -217,63 +169,84 @@ impl EffectExecutor for PayAnyManaEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_from_spec(game, &self.player, ctx)?;
-        let available = game
-            .player(player_id)
-            .map(|player| player.mana_pool.total())
-            .unwrap_or(0);
 
-        if available < self.min_amount {
-            return Ok(EffectOutcome::count(0));
+        for _ in 0..MAX_PAYMENT_STEPS {
+            let available = game
+                .player(player_id)
+                .map(|player| player.mana_pool.total())
+                .unwrap_or(0);
+            let can_choose_amount = available >= self.min_amount;
+            let Some(choice) = choose_mana_payment_step(
+                game,
+                ctx,
+                player_id,
+                can_choose_amount,
+                "Choose mana amount to pay",
+            ) else {
+                return Ok(EffectOutcome::count(0));
+            };
+
+            match choice {
+                PayManaChoice::PayNow => {
+                    let number_spec = if self.min_amount == 0 {
+                        NumberSpec::up_to(ctx.source, available, "Choose how much mana to pay")
+                    } else {
+                        NumberSpec::range(
+                            ctx.source,
+                            self.min_amount,
+                            available,
+                            "Choose how much mana to pay",
+                        )
+                    };
+
+                    let chosen = make_decision_with_fallback(
+                        game,
+                        &mut ctx.decision_maker,
+                        player_id,
+                        Some(ctx.source),
+                        number_spec,
+                        FallbackStrategy::Maximum,
+                    );
+                    if ctx.decision_maker.awaiting_choice() {
+                        return Ok(EffectOutcome::count(0));
+                    }
+                    let chosen = chosen.clamp(self.min_amount, available);
+
+                    if chosen == 0 {
+                        return Ok(EffectOutcome::count(0)
+                            .with_execution_fact(ExecutionFact::ChosenNumber(0)));
+                    }
+
+                    let cost = mana_cost_for_generic_amount(chosen);
+                    if game.try_pay_mana_cost_with_reason(
+                        player_id,
+                        Some(ctx.source),
+                        &cost,
+                        0,
+                        crate::costs::PaymentReason::Effect,
+                    ) {
+                        return Ok(EffectOutcome::count(chosen as i32)
+                            .with_execution_fact(ExecutionFact::ChosenNumber(chosen)));
+                    }
+                    return Ok(EffectOutcome::count(0));
+                }
+                PayManaChoice::ActivateManaAbility {
+                    permanent_id,
+                    ability_index,
+                } => {
+                    let action = SpecialAction::ActivateManaAbility {
+                        permanent_id,
+                        ability_index,
+                    };
+
+                    if perform(action, game, player_id, &mut ctx.decision_maker).is_err() {
+                        return Ok(EffectOutcome::count(0));
+                    }
+                }
+            }
         }
 
-        let number_spec = if self.min_amount == 0 {
-            NumberSpec::up_to(ctx.source, available, "Choose how much mana to pay")
-        } else {
-            NumberSpec::range(
-                ctx.source,
-                self.min_amount,
-                available,
-                "Choose how much mana to pay",
-            )
-        };
-
-        let chosen = make_decision_with_fallback(
-            game,
-            &mut ctx.decision_maker,
-            player_id,
-            Some(ctx.source),
-            number_spec,
-            FallbackStrategy::Maximum,
-        );
-        if ctx.decision_maker.awaiting_choice() {
-            return Ok(EffectOutcome::count(0));
-        }
-        let chosen = chosen.clamp(self.min_amount, available);
-
-        if chosen == 0 {
-            return Ok(EffectOutcome::count(0).with_execution_fact(ExecutionFact::ChosenNumber(0)));
-        }
-
-        let mut remaining = chosen;
-        let mut symbols = Vec::new();
-        while remaining > 0 {
-            let chunk = remaining.min(u8::MAX as u32) as u8;
-            symbols.push(crate::mana::ManaSymbol::Generic(chunk));
-            remaining -= u32::from(chunk);
-        }
-        let cost = crate::mana::ManaCost::from_symbols(symbols);
-        if game.try_pay_mana_cost_with_reason(
-            player_id,
-            Some(ctx.source),
-            &cost,
-            0,
-            crate::costs::PaymentReason::Effect,
-        ) {
-            Ok(EffectOutcome::count(chosen as i32)
-                .with_execution_fact(ExecutionFact::ChosenNumber(chosen)))
-        } else {
-            Ok(EffectOutcome::count(0))
-        }
+        Ok(EffectOutcome::count(0))
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -296,6 +269,73 @@ enum PayManaChoice {
         permanent_id: ObjectId,
         ability_index: usize,
     },
+}
+
+fn choose_mana_payment_step(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    player_id: PlayerId,
+    can_pay_now: bool,
+    pay_option_description: &'static str,
+) -> Option<PayManaChoice> {
+    let mana_abilities = get_available_mana_abilities(game, player_id, &mut ctx.decision_maker);
+
+    if !can_pay_now && mana_abilities.is_empty() {
+        return None;
+    }
+
+    let mut choices = Vec::new();
+    let mut options = Vec::new();
+
+    if can_pay_now {
+        choices.push(PayManaChoice::PayNow);
+        options.push(SelectableOption::new(
+            choices.len() - 1,
+            pay_option_description,
+        ));
+    }
+
+    for (permanent_id, ability_index, description) in mana_abilities {
+        choices.push(PayManaChoice::ActivateManaAbility {
+            permanent_id,
+            ability_index,
+        });
+        options.push(SelectableOption::new(
+            choices.len() - 1,
+            format!(
+                "Tap {}: {}",
+                describe_permanent(game, permanent_id),
+                description
+            ),
+        ));
+    }
+
+    let source_name = game
+        .object(ctx.source)
+        .map(|obj| obj.name.clone())
+        .unwrap_or_else(|| "effect".to_string());
+    let decision_ctx =
+        SelectOptionsContext::mana_payment(player_id, ctx.source, source_name, options);
+    let selected = ctx.decision_maker.decide_options(game, &decision_ctx);
+    if ctx.decision_maker.awaiting_choice() {
+        return None;
+    }
+    let Some(selected_idx) = selected.first().copied() else {
+        return can_pay_now.then_some(PayManaChoice::PayNow);
+    };
+
+    choices.get(selected_idx).copied()
+}
+
+fn mana_cost_for_generic_amount(amount: u32) -> crate::mana::ManaCost {
+    let mut remaining = amount;
+    let mut symbols = Vec::new();
+    while remaining > 0 {
+        let chunk = remaining.min(u8::MAX as u32) as u8;
+        symbols.push(crate::mana::ManaSymbol::Generic(chunk));
+        remaining -= u32::from(chunk);
+    }
+    crate::mana::ManaCost::from_symbols(symbols)
 }
 
 fn get_available_mana_abilities(
