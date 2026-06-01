@@ -694,6 +694,195 @@ fn resolve_alacrian_armory_trigger_for_target(
     }
 }
 
+#[derive(Default)]
+struct ChooseTopOfLibraryReplacement;
+
+impl crate::decision::DecisionMaker for ChooseTopOfLibraryReplacement {
+    fn decide_options(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        ctx.options
+            .iter()
+            .find(|option| option.description == "Top of library")
+            .map(|option| vec![option.index])
+            .unwrap_or_default()
+    }
+}
+
+fn whirlpool_whelm_mana_value_card(name: &str, mana_value: u8) -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
+            mana_value,
+        )]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build()
+}
+
+fn whirlpool_whelm_game(
+    controller_top_mana_value: u8,
+    opponent_top_mana_value: u8,
+) -> (
+    crate::game_state::GameState,
+    CardDefinition,
+    PlayerId,
+    PlayerId,
+    ObjectId,
+    ObjectId,
+) {
+    let def = parse_oracle_card_definition("Whirlpool Whelm");
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let target_def = whirlpool_whelm_mana_value_card("Bob's Target Creature", 2);
+    let target = game.create_object_from_definition(&target_def, bob, Zone::Battlefield);
+
+    let alice_top = whirlpool_whelm_mana_value_card("Alice Clash Card", controller_top_mana_value);
+    let bob_top = whirlpool_whelm_mana_value_card("Bob Clash Card", opponent_top_mana_value);
+    game.create_object_from_definition(&alice_top, alice, Zone::Library);
+    game.create_object_from_definition(&bob_top, bob, Zone::Library);
+
+    (game, def, alice, bob, source, target)
+}
+
+fn resolve_whirlpool_whelm<D: crate::decision::DecisionMaker>(
+    game: &mut crate::game_state::GameState,
+    def: &CardDefinition,
+    controller: PlayerId,
+    source: ObjectId,
+    target: ObjectId,
+    decision_maker: &mut D,
+) {
+    let mut ctx = crate::effects::ExecutionContext::new(source, controller, decision_maker)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target)]);
+    ctx.snapshot_targets(game);
+
+    for effect in def
+        .spell_effect
+        .as_ref()
+        .expect("Whirlpool Whelm should have a spell effect")
+        .flattened_default_effects()
+    {
+        crate::effects::execute_effect(game, effect, &mut ctx)
+            .expect("Whirlpool Whelm spell effect should resolve");
+    }
+}
+
+#[test]
+fn whirlpool_whelm_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Whirlpool Whelm");
+    let def = parse_oracle_card_definition("Whirlpool Whelm");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let debug = format!("{:#?}", def.spell_effect);
+
+    assert!(
+        rendered.contains("Clash with an opponent, then return target creature to its owner's hand")
+            && rendered
+                .contains("If you win, you may put that creature on top of its owner's library instead"),
+        "Whirlpool Whelm should preserve its clash replacement wording, got {rendered}"
+    );
+    assert!(
+        debug.contains("ClashEffect")
+            && debug.contains("LocalRewriteEffect")
+            && debug.contains("RegisterZoneReplacementEffect")
+            && debug.contains("replacement_zone: Library"),
+        "Whirlpool Whelm should structurally lower the win branch as an optional local zone replacement, got {debug}"
+    );
+}
+
+#[test]
+fn whirlpool_whelm_win_branch_can_put_target_on_owners_library() {
+    let (mut game, def, alice, bob, source, target) = whirlpool_whelm_game(5, 1);
+    let stable_id = game
+        .object(target)
+        .expect("target should start on the battlefield")
+        .stable_id;
+    let mut decision_maker = ChooseTopOfLibraryReplacement;
+
+    resolve_whirlpool_whelm(&mut game, &def, alice, source, target, &mut decision_maker);
+
+    let moved = game
+        .find_object_by_stable_id(stable_id)
+        .expect("target should still exist after Whirlpool Whelm resolves");
+    assert_eq!(
+        game.object(moved).expect("moved target should exist").zone,
+        Zone::Library,
+        "winning the clash and choosing the replacement should put the target into its owner's library"
+    );
+    assert_eq!(
+        game.player(bob)
+            .expect("Bob should exist")
+            .library
+            .last()
+            .copied(),
+        Some(moved),
+        "the replaced destination should be the top of the target owner's library"
+    );
+}
+
+#[test]
+fn whirlpool_whelm_win_branch_can_decline_replacement_to_return_target() {
+    let (mut game, def, alice, bob, source, target) = whirlpool_whelm_game(5, 1);
+    let stable_id = game
+        .object(target)
+        .expect("target should start on the battlefield")
+        .stable_id;
+    let mut decision_maker = crate::decision::AutoPassDecisionMaker;
+
+    resolve_whirlpool_whelm(&mut game, &def, alice, source, target, &mut decision_maker);
+
+    let moved = game
+        .find_object_by_stable_id(stable_id)
+        .expect("target should still exist after Whirlpool Whelm resolves");
+    assert_eq!(
+        game.object(moved).expect("moved target should exist").zone,
+        Zone::Hand,
+        "declining the optional win replacement should return the target to its owner's hand"
+    );
+    assert!(
+        game.player(bob)
+            .expect("Bob should exist")
+            .hand
+            .contains(&moved),
+        "the declined replacement should leave the target in its owner's hand"
+    );
+}
+
+#[test]
+fn whirlpool_whelm_lost_clash_returns_target_without_replacement() {
+    let (mut game, def, alice, bob, source, target) = whirlpool_whelm_game(1, 5);
+    let stable_id = game
+        .object(target)
+        .expect("target should start on the battlefield")
+        .stable_id;
+    let mut decision_maker = ChooseTopOfLibraryReplacement;
+
+    resolve_whirlpool_whelm(&mut game, &def, alice, source, target, &mut decision_maker);
+
+    let moved = game
+        .find_object_by_stable_id(stable_id)
+        .expect("target should still exist after Whirlpool Whelm resolves");
+    assert_eq!(
+        game.object(moved).expect("moved target should exist").zone,
+        Zone::Hand,
+        "losing the clash should return the target without offering the library replacement"
+    );
+    assert!(
+        game.player(bob)
+            .expect("Bob should exist")
+            .hand
+            .contains(&moved),
+        "the lost-clash branch should put the target into its owner's hand"
+    );
+}
+
 #[test]
 fn alacrian_armory_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Alacrian Armory");
