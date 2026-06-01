@@ -8549,6 +8549,28 @@ fn parse_prevent_all_damage_by_opponents_creatures_effect_clause() {
 }
 
 #[test]
+fn parse_reverberation_target_sorcery_damage_redirect_effect_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Reverberation")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "All damage that would be dealt this turn by target sorcery spell is dealt to that spell's controller instead.",
+        )
+        .expect("Reverberation target-sorcery redirect clause should parse");
+
+    let spell_debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        spell_debug.contains("redirectnexttimedamagetosourceeffect")
+            && spell_debug.contains("source: target")
+            && spell_debug.contains("target: none")
+            && spell_debug.contains("destination: sourcecontroller")
+            && spell_debug.contains("all_this_turn: true")
+            && spell_debug.contains("target")
+            && spell_debug.contains("sorcery"),
+        "expected targeted sorcery source redirected to its controller, got {spell_debug}"
+    );
+}
+
+#[test]
 fn rewrite_grammar_attached_prevent_all_damage_to_enchanted_creature_line() {
     let tokens = lex_line(
         "Prevent all damage that would be dealt to enchanted creature.",

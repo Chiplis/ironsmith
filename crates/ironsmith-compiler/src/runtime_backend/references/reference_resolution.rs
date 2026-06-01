@@ -723,6 +723,9 @@ fn advance_reference_frame_for_effect(
                 }
                 SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget { target, .. }
                 | SubjectVerbActionAst::RedirectNextTimeDamageToSource { target, .. }
+                | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
+                    source: target,
+                }
                 | SubjectVerbActionAst::PreventDamage { target, .. }
                 | SubjectVerbActionAst::PreventAllDamageToTarget { target, .. }
                 | SubjectVerbActionAst::PreventDamageToTargetPutCounters { target, .. }
@@ -1988,6 +1991,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }
             | SubjectVerbActionAst::PreventNextTimeDamage { .. }
             | SubjectVerbActionAst::RedirectNextTimeDamageToSource { .. }
+            | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController { .. }
             | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { .. }
             | SubjectVerbActionAst::PreventAllDamageToTarget { .. }
             | SubjectVerbActionAst::PreventAllDamageFromSourceFilter { .. }
@@ -2767,6 +2771,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 bind_unresolved_it_in_prevent_next_source(source, seed_tag)
                     + bind_unresolved_it_in_target(target, seed_tag)
             }
+            SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
+                source,
+            } => bind_unresolved_it_in_target(source, seed_tag),
             SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget {
                 object_filter,
                 target,

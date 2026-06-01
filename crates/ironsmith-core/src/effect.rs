@@ -117,12 +117,14 @@ pub enum PreventNextTimeDamageTarget {
 pub enum RedirectNextTimeDamageSource {
     Choice,
     Filter(crate::filter_model::ObjectFilter),
+    Target(crate::target_model::ChooseSpec),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RedirectNextTimeDamageDestination {
     SourceObject,
     Controller,
+    SourceController,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3513,8 +3515,22 @@ impl RedirectNextTimeDamageToSourceEffect {
         }
     }
 
+    pub fn from_source_target(source: ChooseSpec) -> Self {
+        Self {
+            source: RedirectNextTimeDamageSource::Target(source),
+            target: None,
+            destination: RedirectNextTimeDamageDestination::SourceController,
+            all_this_turn: false,
+        }
+    }
+
     pub fn to_controller(mut self) -> Self {
         self.destination = RedirectNextTimeDamageDestination::Controller;
+        self
+    }
+
+    pub fn to_source_controller(mut self) -> Self {
+        self.destination = RedirectNextTimeDamageDestination::SourceController;
         self
     }
 

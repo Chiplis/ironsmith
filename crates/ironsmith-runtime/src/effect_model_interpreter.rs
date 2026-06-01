@@ -990,16 +990,26 @@ where
             ironsmith_core::RedirectNextTimeDamageSource::Filter(filter) => {
                 crate::effects::RedirectNextTimeDamageSource::Filter(filter.clone())
             }
+            ironsmith_core::RedirectNextTimeDamageSource::Target(spec) => {
+                crate::effects::RedirectNextTimeDamageSource::Target(spec.clone())
+            }
         };
-        let Some(target) = payload.target.clone() else {
-            return Err(hooks.unsupported_effect(
-                "redirect next time damage to source without a protected target".to_string(),
-            ));
+        let effect = if let Some(target) = payload.target.clone() {
+            crate::effects::RedirectNextTimeDamageToSourceEffect::new(source, target)
+        } else {
+            crate::effects::RedirectNextTimeDamageToSourceEffect {
+                source,
+                target: None,
+                destination: crate::effects::RedirectNextTimeDamageDestination::SourceObject,
+                all_this_turn: false,
+            }
         };
-        let effect = crate::effects::RedirectNextTimeDamageToSourceEffect::new(source, target);
         let effect = match payload.destination {
             ironsmith_core::RedirectNextTimeDamageDestination::SourceObject => effect,
             ironsmith_core::RedirectNextTimeDamageDestination::Controller => effect.to_controller(),
+            ironsmith_core::RedirectNextTimeDamageDestination::SourceController => {
+                effect.to_source_controller()
+            }
         };
         let effect = if payload.all_this_turn {
             effect.all_this_turn()

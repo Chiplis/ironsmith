@@ -26206,6 +26206,26 @@ fn harsh_judgment_strict_parser_and_compiled_text_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn reverberation_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Reverberation");
+
+    let compiled = unprocessed_compiled_lines(&def).join(" ");
+    assert_eq!(
+        compiled,
+        "All damage that would be dealt this turn by target sorcery spell is dealt to that spell's controller instead."
+    );
+
+    let spell_debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        spell_debug.contains("redirectnexttimedamagetosourceeffect")
+            && spell_debug.contains("sorcery")
+            && spell_debug.contains("sourcecontroller"),
+        "expected Reverberation to compile into a targeted sorcery damage redirect, got {spell_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_red_noncombat_damage_minimum_replacement_line() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Deepest Might Variant")
         .card_types(vec![CardType::Creature])
