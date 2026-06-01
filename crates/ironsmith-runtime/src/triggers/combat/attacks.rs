@@ -285,6 +285,9 @@ impl TriggerMatcher for AttacksTrigger {
                 self.min_total_attackers,
             );
         }
+        if display_filter.source {
+            return format!("Whenever this creature attacks{target_tail}");
+        }
         format!(
             "Whenever {} attacks{target_tail}",
             display_filter.description()

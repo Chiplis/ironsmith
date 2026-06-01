@@ -967,12 +967,16 @@ pub(super) fn run_partner_variant_keyword_line_family(
         return Ok(None);
     }
 
+    let visible_label = raw
+        .split_once('(')
+        .map(|(head, _)| head)
+        .unwrap_or(raw)
+        .trim()
+        .trim_end_matches('.')
+        .trim()
+        .to_string();
     let partner_line = rewrite_line_normalized(ctx.line, "Partner")?;
     if let Some(mut keyword_line) = parse_keyword_line_cst(&partner_line)? {
-        let visible_label = source_before_reminder_or_period(raw, &ctx.line.tokens)
-            .unwrap_or(raw)
-            .trim()
-            .to_string();
         keyword_line.text = visible_label;
         return Ok(Some(LineDispatchResult::single(
             RewriteLineCst::Keyword(keyword_line),
@@ -982,9 +986,9 @@ pub(super) fn run_partner_variant_keyword_line_family(
 
     Ok(Some(LineDispatchResult::single(
         RewriteLineCst::Static(StaticLineCst {
-            info: partner_line.info.clone(),
-            text: partner_line.info.normalized.normalized.clone(),
-            parse_tokens: partner_line.tokens.clone(),
+            info: ctx.line.info.clone(),
+            text: visible_label,
+            parse_tokens: ctx.line.tokens.clone(),
             chosen_option_label: None,
         }),
         ctx.idx + 1,
@@ -995,6 +999,12 @@ fn tokens_start_with_partner_variant_separator(tokens: &[OwnedLexToken]) -> bool
     let words = TokenWordView::new(tokens);
     if !words.starts_with(PARTNER_PREFIX) {
         return false;
+    }
+    if words.len() > PARTNER_PREFIX.len()
+        && words.get(PARTNER_PREFIX.len()) != Some("with")
+        && words.token_index_for_word_index(0) == words.token_index_for_word_index(1)
+    {
+        return true;
     }
     let Some(separator_idx) = words.token_index_after_words(PARTNER_PREFIX.len()) else {
         return false;
@@ -1234,6 +1244,7 @@ mod tests {
             "Partner—Character select",
             "Partner - Character select",
             "Partner–Character select",
+            "Partner-Friends forever",
         ] {
             let tokens = lex_line(line, 0).expect("partner variant line should lex");
             assert!(
@@ -1331,6 +1342,7 @@ fn partner_with_name_from_line(line: &PreprocessedLine) -> Option<String> {
     (!name.is_empty()).then(|| name.to_string())
 }
 
+#[cfg(test)]
 fn source_before_reminder_or_period<'a>(
     raw_line: &'a str,
     tokens: &[OwnedLexToken],

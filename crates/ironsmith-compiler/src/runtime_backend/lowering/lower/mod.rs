@@ -130,9 +130,9 @@ use super::restriction_support::{
 use super::token_primitives::{
     find_index, iter_contains, lexed_tokens_contain_non_prefix_instead,
     remove_copy_exception_type_removal_lexed, rewrite_followup_intro_to_if_lexed, slice_contains,
-    slice_ends_with, slice_starts_with, split_em_dash_label_prefix, str_contains, str_find,
-    str_split_once, str_split_once_char, str_strip_prefix, str_strip_suffix,
-    word_view_has_any_prefix, word_view_has_prefix,
+    slice_ends_with, slice_starts_with, split_em_dash_label_prefix,
+    split_em_dash_label_prefix_tokens, str_contains, str_find, str_split_once, str_split_once_char,
+    str_strip_prefix, str_strip_suffix, word_view_has_any_prefix, word_view_has_prefix,
 };
 use super::util::{
     classify_instead_followup_text, classify_instead_followup_tokens,

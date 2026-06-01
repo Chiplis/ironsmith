@@ -1331,6 +1331,146 @@ fn clue_tokens_controlled_by(game: &GameState, player: PlayerId) -> Vec<ObjectId
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn sophina_spearsage_deserter_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(105_941), "Sophina, Spearsage Deserter")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::White],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Soldier])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Menace\nWhenever Sophina, Spearsage Deserter attacks, investigate once for each nontoken attacking creature. (To investigate, create a Clue token. It's an artifact with \"{2}, Sacrifice this artifact: Draw a card.\")\nPartner—Friends forever (You can have two commanders if both have this ability.)",
+        )
+        .expect("Sophina, Spearsage Deserter should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sophina_spearsage_deserter_strict_parse_and_compiled_text_preserve_investigate_count() {
+    let def = sophina_spearsage_deserter_definition();
+
+    let rendered_lines = crate::compiled_text::compiled_text_lines(&def);
+    let rendered = rendered_lines.join(" ");
+    assert_eq!(
+        rendered_lines,
+        vec![
+            "Menace".to_string(),
+            "Whenever Sophina, Spearsage Deserter attacks, investigate once for each nontoken attacking creature.".to_string(),
+            "Partner—Friends forever".to_string(),
+        ],
+        "Sophina compiled text should preserve the exact attack trigger, investigate count, and Partner variant label, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("InvestigateEffect")
+            && debug.contains("Count")
+            && debug.contains("attacking: true")
+            && debug.contains("nontoken: true"),
+        "Sophina should structurally investigate for each nontoken attacking creature, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sophina_spearsage_deserter_attack_trigger_counts_nontoken_attackers_and_ignores_tokens() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let sophina = sophina_spearsage_deserter_definition();
+    let sophina_id = game.create_object_from_definition(&sophina, alice, Zone::Battlefield);
+    let nontoken_attacker = create_creature(&mut game, "Nontoken Attacker", alice, 2, 2);
+    let token_attacker = create_creature(&mut game, "Token Attacker", alice, 1, 1);
+    game.object_mut(token_attacker)
+        .expect("token attacker should exist")
+        .kind = ObjectKind::Token;
+
+    for creature in [sophina_id, nontoken_attacker, token_attacker] {
+        game.remove_summoning_sickness(creature);
+    }
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    let declarations = vec![
+        AttackerDeclaration {
+            creature: sophina_id,
+            target: AttackTarget::Player(bob),
+        },
+        AttackerDeclaration {
+            creature: nontoken_attacker,
+            target: AttackTarget::Player(bob),
+        },
+        AttackerDeclaration {
+            creature: token_attacker,
+            target: AttackTarget::Player(bob),
+        },
+    ];
+    apply_attacker_declarations(&mut game, &mut combat, &mut trigger_queue, &declarations)
+        .expect("Sophina and other creatures should be able to attack");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Sophina attack trigger should go on stack");
+    assert_eq!(game.stack.len(), 1, "Sophina should create one attack trigger");
+
+    resolve_stack_entry(&mut game).expect("Sophina attack trigger should resolve");
+
+    assert_eq!(
+        clue_tokens_controlled_by(&game, alice).len(),
+        2,
+        "Sophina should investigate for Sophina and the other nontoken attacker, but not the token attacker"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sophina_spearsage_deserter_does_not_trigger_when_only_other_creatures_attack() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let sophina = sophina_spearsage_deserter_definition();
+    let sophina_id = game.create_object_from_definition(&sophina, alice, Zone::Battlefield);
+    let other_attacker = create_creature(&mut game, "Other Attacker", alice, 2, 2);
+    game.remove_summoning_sickness(sophina_id);
+    game.remove_summoning_sickness(other_attacker);
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    let declarations = vec![AttackerDeclaration {
+        creature: other_attacker,
+        target: AttackTarget::Player(bob),
+    }];
+    apply_attacker_declarations(&mut game, &mut combat, &mut trigger_queue, &declarations)
+        .expect("other creature should be able to attack without Sophina");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("putting non-Sophina attack triggers on stack should succeed");
+
+    assert!(
+        game.stack.is_empty(),
+        "Sophina should not trigger when only another creature attacks"
+    );
+    assert_eq!(
+        clue_tokens_controlled_by(&game, alice).len(),
+        0,
+        "Sophina should not investigate without its own attack trigger"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn put_torch_the_witness_on_stack(
     game: &mut GameState,
     controller: PlayerId,
