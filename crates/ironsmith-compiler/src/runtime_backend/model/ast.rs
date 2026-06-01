@@ -3428,6 +3428,9 @@ pub(crate) enum EffectAst {
         starting_bid: u32,
         winner_effects: Vec<EffectAst>,
     },
+    SecretNumberBidLifeLoss {
+        minimum: u32,
+    },
     VoteStart {
         options: Vec<String>,
         secret: bool,

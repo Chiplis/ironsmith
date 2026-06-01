@@ -15268,6 +15268,71 @@ fn compiled_text_illicit_auction_mentions_high_bidder_reward() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+const GOBLIN_GAME_ORACLE: &str = concat!(
+    "Each player hides at least one item, then all players reveal them simultaneously. ",
+    "Each player loses life equal to the number of items they revealed. ",
+    "The player who revealed the fewest items then loses half their life, rounded up. ",
+    "If two or more players are tied for fewest, each loses half their life, rounded up."
+);
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_oracle_goblin_game_secret_number_bid_life_loss() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(36_710), "Goblin Game")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(GOBLIN_GAME_ORACLE)
+        .expect("Goblin Game should parse strictly");
+
+    let effects = def
+        .spell_effect
+        .as_ref()
+        .expect("Goblin Game should have spell effects")
+        .flattened_default_effects();
+    assert_eq!(
+        effects.len(),
+        1,
+        "expected one secret-number life-loss effect, got {effects:?}"
+    );
+    let secret_bid = effects[0]
+        .downcast_ref::<crate::effects::SecretNumberBidLifeLossEffect>()
+        .unwrap_or_else(|| {
+            panic!(
+                "Goblin Game should lower to secret-number life loss, got {:?}",
+                effects[0]
+            )
+        });
+    assert_eq!(secret_bid.minimum, 1, "Goblin Game requires at least one item");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn compiled_text_goblin_game_preserves_fewest_and_tied_fewest_clauses() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(36_710), "Goblin Game")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(GOBLIN_GAME_ORACLE)
+        .expect("Goblin Game should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Each player hides at least one item")
+            && rendered.contains("loses life equal to the number of items they revealed")
+            && rendered.contains("The player who revealed the fewest items")
+            && rendered.contains("If two or more players are tied for fewest"),
+        "compiled text should preserve Goblin Game's hidden-item and fewest-player clauses, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_parse_level_up_tiers_render_semantics() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Level-Up Tiers Probe")

@@ -159,6 +159,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ForEachTaggedPlayer { .. } => {}
         EffectAst::RepeatProcess { .. } => {}
         EffectAst::BidLife { .. } => {}
+        EffectAst::SecretNumberBidLifeLoss { .. } => {}
         EffectAst::VoteStart { .. } => {}
         EffectAst::VoteStartObjects { .. } => {}
         EffectAst::VoteOption { .. } => {}

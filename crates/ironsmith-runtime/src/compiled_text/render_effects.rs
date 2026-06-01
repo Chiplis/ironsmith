@@ -31696,6 +31696,18 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             "Each player may bid life for control of {target}. You start the bidding with a bid of {starting_bid}. In turn order, each player may top the high bid. The bidding ends if the high bid stands. The high bidder loses life equal to the high bid and gains control of the creature. This effect lasts indefinitely"
         );
     }
+    if let Some(secret_bid) = effect.downcast_ref::<crate::effects::SecretNumberBidLifeLossEffect>()
+    {
+        let minimum = secret_bid.minimum.max(1);
+        let minimum_text = if minimum == 1 {
+            "at least one item".to_string()
+        } else {
+            format!("at least {minimum} items")
+        };
+        return format!(
+            "Each player hides {minimum_text}, then all players reveal them simultaneously. Each player loses life equal to the number of items they revealed. The player who revealed the fewest items then loses half their life, rounded up. If two or more players are tied for fewest, each loses half their life, rounded up"
+        );
+    }
     if let Some(gain_control) = effect.downcast_ref::<crate::effects::GainControlEffect>() {
         return format!(
             "Gain control of {} {}",

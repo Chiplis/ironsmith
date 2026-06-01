@@ -93,6 +93,22 @@ const DRAW_CREATE_TREASURE_LOSE_LIFE_PATTERN: ClauseShape<'static> = clause_shap
             "tokens", "then", "lose", "that", "much", "life",
         ]
 );
+const SECRET_NUMBER_BID_HIDE_PATTERN: ClauseShape<'static> = clause_shape!(exact & [
+    "each", "player", "hides", "at", "least", "one", "item", "then", "all", "players",
+    "reveal", "them", "simultaneously",
+]);
+const SECRET_NUMBER_BID_LOSE_REVEALED_PATTERN: ClauseShape<'static> = clause_shape!(exact & [
+    "each", "player", "loses", "life", "equal", "to", "the", "number", "of", "items", "they",
+    "revealed",
+]);
+const SECRET_NUMBER_BID_FEWEST_LOSES_PATTERN: ClauseShape<'static> = clause_shape!(exact & [
+    "the", "player", "who", "revealed", "the", "fewest", "items", "then", "loses", "half",
+    "their", "life", "rounded", "up",
+]);
+const SECRET_NUMBER_BID_TIED_FEWEST_PATTERN: ClauseShape<'static> = clause_shape!(exact & [
+    "if", "two", "or", "more", "players", "are", "tied", "for", "fewest", "each", "loses",
+    "half", "their", "life", "rounded", "up",
+]);
 const SOURCE_LEAVES_RETURN_FOLLOWUP_PATTERN: ClauseShape<'static> = ClauseShape::new()
     .prefix(&["return"])
     .contains_words(&["when", "leaves", "battlefield", "control"])
@@ -2001,6 +2017,25 @@ fn parse_bid_life_for_control_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<Eff
     }])
 }
 
+fn parse_secret_number_bid_life_loss_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    let sentences = split_lexed_sentences(tokens);
+    let [hide, lose_revealed, fewest_loses, tied_fewest] = sentences.as_slice() else {
+        return None;
+    };
+    if !SECRET_NUMBER_BID_HIDE_PATTERN.matches_words(&parser_token_word_refs(hide))
+        || !SECRET_NUMBER_BID_LOSE_REVEALED_PATTERN
+            .matches_words(&parser_token_word_refs(lose_revealed))
+        || !SECRET_NUMBER_BID_FEWEST_LOSES_PATTERN
+            .matches_words(&parser_token_word_refs(fewest_loses))
+        || !SECRET_NUMBER_BID_TIED_FEWEST_PATTERN
+            .matches_words(&parser_token_word_refs(tied_fewest))
+    {
+        return None;
+    }
+
+    Some(vec![EffectAst::SecretNumberBidLifeLoss { minimum: 1 }])
+}
+
 pub(crate) fn parse_exact_card_effect_bundle_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
@@ -2029,6 +2064,9 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
         return Some(effects);
     }
     if let Some(effects) = parse_bid_life_for_control_bundle(tokens) {
+        return Some(effects);
+    }
+    if let Some(effects) = parse_secret_number_bid_life_loss_bundle(tokens) {
         return Some(effects);
     }
     if let Some(effects) = parse_draw_create_treasure_lose_life_bundle(tokens) {

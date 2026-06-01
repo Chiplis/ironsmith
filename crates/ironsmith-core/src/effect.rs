@@ -6004,6 +6004,17 @@ impl<E> BidLifeEffect<E> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct SecretNumberBidLifeLossEffect {
+    pub minimum: u32,
+}
+
+impl SecretNumberBidLifeLossEffect {
+    pub fn new(minimum: u32) -> Self {
+        Self { minimum }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct LoseLifeEffect {
     pub amount: Value,
     pub player: PlayerFilter,

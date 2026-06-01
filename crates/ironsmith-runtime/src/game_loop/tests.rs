@@ -17259,6 +17259,125 @@ fn illicit_auction_bidding_uses_turn_order_until_high_bid_stands() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+const GOBLIN_GAME_ORACLE: &str = concat!(
+    "Each player hides at least one item, then all players reveal them simultaneously. ",
+    "Each player loses life equal to the number of items they revealed. ",
+    "The player who revealed the fewest items then loses half their life, rounded up. ",
+    "If two or more players are tied for fewest, each loses half their life, rounded up."
+);
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn goblin_game_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(36_710), "Goblin Game")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(GOBLIN_GAME_ORACLE)
+        .expect("Goblin Game should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_goblin_game_on_stack(game: &mut GameState, controller: PlayerId) {
+    let definition = goblin_game_definition();
+    let spell_id = game.create_object_from_definition(&definition, controller, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, controller));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct ScriptedHiddenItemCounts {
+    choices: std::collections::VecDeque<(PlayerId, u32)>,
+    prompted_players: Vec<PlayerId>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl ScriptedHiddenItemCounts {
+    fn new(choices: Vec<(PlayerId, u32)>) -> Self {
+        Self {
+            choices: choices.into(),
+            prompted_players: Vec::new(),
+        }
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for ScriptedHiddenItemCounts {
+    fn decide_number(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::NumberContext,
+    ) -> u32 {
+        assert_eq!(ctx.min, 1, "Goblin Game must require at least one item");
+        let (expected_player, choice) = self
+            .choices
+            .pop_front()
+            .expect("expected another hidden-item prompt");
+        assert_eq!(ctx.player, expected_player, "hidden-item prompt order mismatch");
+        self.prompted_players.push(ctx.player);
+        choice
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn goblin_game_unique_fewest_loses_item_count_then_half_life() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    put_goblin_game_on_stack(&mut game, alice);
+    let mut choices = ScriptedHiddenItemCounts::new(vec![(alice, 3), (bob, 5)]);
+    resolve_stack_entry_with(&mut game, &mut choices).expect("Goblin Game should resolve");
+
+    assert_eq!(
+        choices.prompted_players,
+        vec![alice, bob],
+        "Goblin Game should prompt each player in turn order starting with the controller"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        8,
+        "Alice revealed the fewest items, so she loses half her remaining 17 life rounded up"
+    );
+    assert_eq!(
+        game.player(bob).expect("Bob should exist").life,
+        15,
+        "Bob should only lose life equal to the 5 items he revealed"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn goblin_game_tied_fewest_players_each_lose_half_life() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+
+    put_goblin_game_on_stack(&mut game, alice);
+    let mut choices = ScriptedHiddenItemCounts::new(vec![(alice, 2), (bob, 2), (charlie, 4)]);
+    resolve_stack_entry_with(&mut game, &mut choices).expect("Goblin Game should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        9,
+        "Alice tied for fewest, so after losing 2 life she loses half her remaining 18 life"
+    );
+    assert_eq!(
+        game.player(bob).expect("Bob should exist").life,
+        9,
+        "Bob tied for fewest, so after losing 2 life he loses half his remaining 18 life"
+    );
+    assert_eq!(
+        game.player(charlie).expect("Charlie should exist").life,
+        16,
+        "Charlie did not tie for fewest and should only lose life equal to revealed items"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn beamsplitter_mage_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(82_200), "Beamsplitter Mage")
         .mana_cost(ManaCost::from_pips(vec![

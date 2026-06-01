@@ -9,9 +9,10 @@ use super::line_family_handlers::{
     run_learn_line_family, run_max_speed_labeled_line_family,
     run_non_turn_conditional_untap_line_family, run_partner_variant_keyword_line_family,
     run_partner_with_keyword_line_family, run_split_top_and_face_down_look_line_family,
-    run_split_top_look_and_top_land_play_line_family, run_start_your_engines_line_family,
-    run_statement_line_family, run_statement_probe_line_family, run_static_line_family,
-    run_station_line_family, run_station_threshold_line_family, run_surge_line_family,
+    run_secret_number_bid_life_loss_line_family, run_split_top_look_and_top_land_play_line_family,
+    run_start_your_engines_line_family, run_statement_line_family, run_statement_probe_line_family,
+    run_static_line_family, run_station_line_family, run_station_threshold_line_family,
+    run_surge_line_family,
     run_trailing_keyword_activation_line_family, run_triggered_line_family,
     run_unsupported_line_family, run_ward_or_echo_static_prefix_line_family,
 };
@@ -50,7 +51,7 @@ struct LineFamilyRuleDef {
     run: LineFamilyRuleFn,
 }
 
-const LINE_FAMILY_RULES: [LineFamilyRuleDef; 31] = [
+const LINE_FAMILY_RULES: [LineFamilyRuleDef; 32] = [
     LineFamilyRuleDef {
         id: "trailing-keyword-activation",
         priority: 10,
@@ -212,6 +213,12 @@ const LINE_FAMILY_RULES: [LineFamilyRuleDef; 31] = [
         priority: 77,
         heads: &[],
         run: run_additional_combat_after_this_phase_line_family,
+    },
+    LineFamilyRuleDef {
+        id: "secret-number-bid-life-loss",
+        priority: 79,
+        heads: &["each"],
+        run: run_secret_number_bid_life_loss_line_family,
     },
     LineFamilyRuleDef {
         id: "statement-probe",

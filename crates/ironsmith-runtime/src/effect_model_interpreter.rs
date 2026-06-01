@@ -783,6 +783,12 @@ where
             convert_effects(payload.winner_effects.iter().cloned(), hooks)?,
         )));
     }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::SecretNumberBidLifeLossEffect>(&effect)
+    {
+        return Ok(Effect::new(
+            crate::effects::SecretNumberBidLifeLossEffect::new(payload.minimum),
+        ));
+    }
     if let Some(converted) = hooks.runtime_external_model_effect_hook(&effect)? {
         return Ok(converted);
     }

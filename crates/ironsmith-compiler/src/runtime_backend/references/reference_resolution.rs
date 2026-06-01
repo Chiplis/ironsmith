@@ -1165,6 +1165,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::ForEachOpponentDid { .. }
         | EffectAst::ForEachPlayerDid { .. }
         | EffectAst::DirectionalAdjacentPlayerControl { .. }
+        | EffectAst::SecretNumberBidLifeLoss { .. }
         | EffectAst::VoteStart { .. }
         | EffectAst::VoteStartObjects { .. }
         | EffectAst::VoteOption { .. }

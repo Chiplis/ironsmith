@@ -160,6 +160,22 @@ const ADDITIONAL_COMBAT_AFTER_THIS_MAIN_PHASE_LINE: &[&str] = &[
     "main",
     "phase",
 ];
+const SECRET_NUMBER_BID_HIDE_PATTERN: ClauseShape<'static> = clause_shape!(exact & [
+    "each", "player", "hides", "at", "least", "one", "item", "then", "all", "players",
+    "reveal", "them", "simultaneously",
+]);
+const SECRET_NUMBER_BID_LOSE_REVEALED_PATTERN: ClauseShape<'static> = clause_shape!(exact & [
+    "each", "player", "loses", "life", "equal", "to", "the", "number", "of", "items", "they",
+    "revealed",
+]);
+const SECRET_NUMBER_BID_FEWEST_LOSES_PATTERN: ClauseShape<'static> = clause_shape!(exact & [
+    "the", "player", "who", "revealed", "the", "fewest", "items", "then", "loses", "half",
+    "their", "life", "rounded", "up",
+]);
+const SECRET_NUMBER_BID_TIED_FEWEST_PATTERN: ClauseShape<'static> = clause_shape!(exact & [
+    "if", "two", "or", "more", "players", "are", "tied", "for", "fewest", "each", "loses",
+    "half", "their", "life", "rounded", "up",
+]);
 
 fn line_starts_with_words(line: &PreprocessedLine, words: &[&str]) -> bool {
     token_slice_starts_with(&line.tokens, words)
@@ -1222,6 +1238,41 @@ pub(super) fn run_non_turn_conditional_untap_line_family(
         ],
         next_idx: ctx.idx + 1,
     }))
+}
+
+pub(super) fn run_secret_number_bid_life_loss_line_family(
+    ctx: &LineDispatchContext<'_>,
+) -> Result<Option<LineDispatchResult>, CardTextError> {
+    if !is_secret_number_bid_life_loss_line(ctx.line) {
+        return Ok(None);
+    }
+
+    Ok(Some(LineDispatchResult::single(
+        RewriteLineCst::Statement(StatementLineCst {
+            info: ctx.line.info.clone(),
+            text: ctx.line.info.normalized.normalized.clone(),
+            parse_tokens: ctx.line.tokens.clone(),
+            parse_groups: vec![ctx.line.tokens.clone()],
+        }),
+        ctx.idx + 1,
+    )))
+}
+
+fn is_secret_number_bid_life_loss_line(line: &PreprocessedLine) -> bool {
+    let sentences = split_lexed_sentences(&line.tokens);
+    let [hide, lose_revealed, fewest_loses, tied_fewest] = sentences.as_slice() else {
+        return false;
+    };
+    SECRET_NUMBER_BID_HIDE_PATTERN.matches_words(&token_word_refs(hide))
+        && SECRET_NUMBER_BID_LOSE_REVEALED_PATTERN.matches_words(&token_word_refs(
+            lose_revealed,
+        ))
+        && SECRET_NUMBER_BID_FEWEST_LOSES_PATTERN.matches_words(&token_word_refs(
+            fewest_loses,
+        ))
+        && SECRET_NUMBER_BID_TIED_FEWEST_PATTERN.matches_words(&token_word_refs(
+            tied_fewest,
+        ))
 }
 
 pub(super) fn run_statement_probe_line_family(

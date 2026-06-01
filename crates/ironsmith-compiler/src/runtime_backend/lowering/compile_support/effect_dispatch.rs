@@ -199,6 +199,12 @@ fn compile_effect_inner(
             choices,
         ));
     }
+    if let EffectAst::SecretNumberBidLifeLoss { minimum } = effect {
+        return Ok((
+            vec![Effect::new(crate::effects::SecretNumberBidLifeLossEffect::new(*minimum))],
+            Vec::new(),
+        ));
+    }
     if let EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
         player,
         zone_owner,
