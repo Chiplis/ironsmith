@@ -1157,8 +1157,10 @@ impl PlayerFilterExt for PlayerFilter {
 
             PlayerFilter::Attacking => ctx.attacking_player.is_some_and(|ap| player == ap),
 
-            // Resolved from the triggering event during effect execution.
-            PlayerFilter::DamagedPlayer => false,
+            PlayerFilter::DamagedPlayer => ctx
+                .tagged_players
+                .get("damaged_player")
+                .is_some_and(|players| players.contains(&player)),
 
             PlayerFilter::EffectController => false,
 

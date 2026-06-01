@@ -441,6 +441,33 @@ pub fn resolve_value(
                 .count() as i32;
             Ok(count * *multiplier)
         }
+        Value::GreatestCount(filter) => {
+            let filter_ctx = ctx.filter_context(game);
+            let Some(controller_filter) = &filter.controller else {
+                let count = value_candidate_ids_for_filter(game, filter, ctx)
+                    .iter()
+                    .filter_map(|&id| game.object(id))
+                    .filter(|obj| filter.matches(obj, &filter_ctx, game))
+                    .count();
+                return Ok(count as i32);
+            };
+
+            let mut greatest = 0i32;
+            for player in game.players.iter().filter(|player| player.is_in_game()) {
+                if !controller_filter.matches_player(player.id, &filter_ctx) {
+                    continue;
+                }
+                let mut player_filter = filter.clone();
+                player_filter.controller = Some(crate::filter::PlayerFilter::Specific(player.id));
+                let count = value_candidate_ids_for_filter(game, &player_filter, ctx)
+                    .iter()
+                    .filter_map(|&id| game.object(id))
+                    .filter(|obj| player_filter.matches(obj, &filter_ctx, game))
+                    .count() as i32;
+                greatest = greatest.max(count);
+            }
+            Ok(greatest)
+        }
         Value::TotalPower(filter) => {
             let filter_ctx = ctx.filter_context(game);
             if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {

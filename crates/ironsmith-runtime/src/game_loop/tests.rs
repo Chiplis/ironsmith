@@ -23697,6 +23697,80 @@ fn test_ragavan_trigger_exiles_top_card_of_damaged_players_library() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn cavern_hoard_dragon_combat_damage_trigger_counts_damaged_players_artifacts() {
+    fn create_artifact(game: &mut GameState, owner: PlayerId, name: &str) {
+        let card = CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Artifact])
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Battlefield);
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::CombatDamage);
+
+    let dragon = CardDefinitionBuilder::new(CardId::from_raw(119_956), "Cavern-Hoard Dragon")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(7)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Dragon])
+        .power_toughness(PowerToughness::fixed(6, 6))
+        .parse_text(
+            "This spell costs {X} less to cast, where X is the greatest number of artifacts an opponent controls.\nFlying, trample, haste\nWhenever this creature deals combat damage to a player, you create a Treasure token for each artifact that player controls.",
+        )
+        .expect("Cavern-Hoard Dragon should parse for trigger runtime test");
+    let dragon_id = game.create_object_from_definition(&dragon, alice, Zone::Battlefield);
+
+    create_artifact(&mut game, alice, "Alice Artifact");
+    create_artifact(&mut game, bob, "Bob Artifact One");
+    create_artifact(&mut game, bob, "Bob Artifact Two");
+    create_artifact(&mut game, bob, "Bob Artifact Three");
+    let battlefield_before = game.battlefield.len();
+
+    let damage_event = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            dragon_id,
+            crate::events::DamageTarget::Player(bob),
+            6,
+            true,
+            crate::events::cause::EventCause::combat_damage(dragon_id),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in check_triggers(&game, &damage_event) {
+        trigger_queue.add(trigger);
+    }
+    assert_eq!(trigger_queue.entries.len(), 1, "dragon should trigger once");
+    put_triggers_on_stack(&mut game, &mut trigger_queue).expect("dragon trigger should stack");
+    resolve_stack_entry(&mut game).expect("dragon trigger should resolve");
+
+    let treasure_count = game
+        .battlefield
+        .iter()
+        .filter_map(|&id| game.object(id))
+        .filter(|obj| obj.name == "Treasure")
+        .count();
+    assert_eq!(
+        treasure_count, 3,
+        "Cavern-Hoard Dragon should create one Treasure for each artifact the damaged player controls"
+    );
+    assert_eq!(
+        game.battlefield.len(),
+        battlefield_before + 3,
+        "caster's own artifact should not be counted by the damage trigger"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn ancient_bronze_dragon_trigger_uses_die_result_for_up_to_two_targets() {
     struct SelectUpToTwoDecisionMaker;
     impl DecisionMaker for SelectUpToTwoDecisionMaker {
