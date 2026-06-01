@@ -974,7 +974,8 @@ fn rewrite_spell_resolution_damage_source(def: &CardDefinition, rendered: &str) 
     }
     let rendered = rewrite_damage_phrases_for_permanent_abilities(rendered, &def.card.name, false)
         .replace("Exile this source", &format!("Exile {}", def.card.name));
-    rewrite_standalone_spell_self_exile(&rendered, &def.card.name)
+    let rendered = rewrite_standalone_spell_self_exile(&rendered, &def.card.name);
+    rewrite_inline_spell_self_exile(&rendered, &def.card.name)
 }
 
 fn rewrite_standalone_spell_self_exile(rendered: &str, card_name: &str) -> String {
@@ -990,6 +991,29 @@ fn rewrite_standalone_spell_self_exile(rendered: &str, card_name: &str) -> Strin
             after.chars().next(),
             None | Some('.') | Some(',') | Some(';')
         ) {
+            out.push_str(&replacement);
+        } else {
+            out.push_str(needle);
+        }
+        rest = after;
+    }
+
+    out.push_str(rest);
+    out
+}
+
+fn rewrite_inline_spell_self_exile(rendered: &str, card_name: &str) -> String {
+    let needle = "exile this";
+    let replacement = format!("you exile {card_name}");
+    let mut out = String::with_capacity(rendered.len() + card_name.len() + 4);
+    let mut rest = rendered;
+
+    while let Some(idx) = rest.find(needle) {
+        out.push_str(&rest[..idx]);
+        let after = &rest[idx + needle.len()..];
+        if out.ends_with("then ")
+            && matches!(after.chars().next(), None | Some('.') | Some(',') | Some(';'))
+        {
             out.push_str(&replacement);
         } else {
             out.push_str(needle);

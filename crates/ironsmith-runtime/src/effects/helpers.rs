@@ -2638,10 +2638,11 @@ pub fn resolve_objects_for_effect_with_choice_description(
             let description = choice_description
                 .clone()
                 .unwrap_or_else(|| format!("Choose {}", filter.description()));
+            let choosing_player = ctx.iteration.iterated_player.unwrap_or(ctx.controller);
             view_hidden_candidate_objects(
                 game,
                 ctx,
-                game.controlling_player_for(ctx.controller),
+                game.controlling_player_for(choosing_player),
                 &candidates,
                 description,
                 false,
@@ -2654,10 +2655,11 @@ pub fn resolve_objects_for_effect_with_choice_description(
 
         let description =
             choice_description.unwrap_or_else(|| format!("Choose {}", filter.description()));
+        let choosing_player = ctx.iteration.iterated_player.unwrap_or(ctx.controller);
         let chosen: Vec<ObjectId> = make_decision(
             game,
             ctx.decision_maker,
-            ctx.controller,
+            choosing_player,
             Some(ctx.source),
             ChooseObjectsSpec::new(ctx.source, description, candidates.clone(), min, Some(max)),
         );

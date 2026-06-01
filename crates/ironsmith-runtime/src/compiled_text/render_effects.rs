@@ -388,6 +388,74 @@ fn describe_planeswalk_chaos_vote_sequence(effects: &[&Effect]) -> Option<String
     )
 }
 
+fn describe_named_vote_conditional_sequence(effects: &[&Effect]) -> Option<String> {
+    let [vote_effect, followups @ ..] = effects else {
+        return None;
+    };
+    if followups.is_empty() {
+        return None;
+    }
+
+    let vote = vote_effect.downcast_ref::<crate::effects::VoteEffect>()?;
+    let ironsmith_core::VoteChoice::NamedOptions(options) = &vote.choice else {
+        return None;
+    };
+    if vote.secret
+        || vote.controller_extra_votes != 0
+        || vote.controller_optional_extra_votes != 0
+        || options.len() < 2
+        || !options
+            .iter()
+            .all(|option| option.effects_per_vote.is_empty())
+    {
+        return None;
+    }
+
+    let option_names = options
+        .iter()
+        .map(|option| option.name.clone())
+        .collect::<Vec<_>>();
+    let mut clauses = Vec::new();
+    for effect in followups {
+        let conditional = effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+        if !conditional.if_false.is_empty() {
+            return None;
+        }
+        let condition_option = match &conditional.condition {
+            Condition::VoteOptionGetsMoreVotes(option)
+            | Condition::VoteOptionGetsMoreVotesOrTied(option) => option,
+            _ => return None,
+        };
+        if !option_names
+            .iter()
+            .any(|option| option.eq_ignore_ascii_case(condition_option))
+        {
+            return None;
+        }
+        let body = describe_effect_clause_list(&conditional.if_true)
+            .unwrap_or_else(|| describe_effect_list(&conditional.if_true))
+            .trim()
+            .trim_end_matches('.')
+            .to_string();
+        if body.is_empty() {
+            return None;
+        }
+        clauses.push(format!(
+            "If {}, {}",
+            describe_condition(&conditional.condition),
+            lowercase_first(&body)
+        ));
+    }
+
+    let mut text = format!(
+        "Will of the council — Starting with you, each player votes for {}",
+        join_with_or(&option_names)
+    );
+    text.push_str(". ");
+    text.push_str(&clauses.join(". "));
+    Some(text)
+}
+
 fn library_position_from_top_text(position: &Value, one_as_on_top: bool) -> String {
     if let Value::Fixed(value) = position
         && let Ok(value) = u32::try_from(*value)
@@ -1396,6 +1464,61 @@ fn describe_each_player_may_discard_hand_draw_commander_value(
         "Each player may discard their hand and draw cards equal to the greatest mana value of a commander they own on the battlefield or in the command zone"
             .to_string()
     })
+}
+
+fn describe_each_player_may_discard_hand_draw(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    if for_players.filter != PlayerFilter::Any {
+        return None;
+    }
+    let [may_effect] = for_players.effects.as_slice() else {
+        return None;
+    };
+    let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+    if may.decider.is_some() {
+        return None;
+    }
+    let [discard_effect, draw_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let discard = discard_effect.downcast_ref::<crate::effects::DiscardHandEffect>()?;
+    let draw = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    if discard.player != PlayerFilter::IteratedPlayer
+        || draw.player != PlayerFilter::IteratedPlayer
+    {
+        return None;
+    }
+    Some(format!(
+        "Each player may discard their hand and draw {}",
+        describe_card_count(&draw.count)
+    ))
+}
+
+fn describe_each_player_return_from_graveyard_to_hand(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    if for_players.filter != PlayerFilter::Any {
+        return None;
+    }
+    let [return_effect] = for_players.effects.as_slice() else {
+        return None;
+    };
+    let return_from_gy = unwrap_basic_tag_wrappers(return_effect)
+        .downcast_ref::<crate::effects::ReturnFromGraveyardToHandEffect>()?;
+    if return_from_gy.random {
+        return None;
+    }
+    let ChooseSpec::Object(filter) = return_from_gy.target.base() else {
+        return None;
+    };
+    if filter.zone != Some(Zone::Graveyard) || filter.owner != Some(PlayerFilter::IteratedPlayer) {
+        return None;
+    }
+    let target_text = describe_choose_spec_without_graveyard_zone(&return_from_gy.target);
+    Some(format!(
+        "Each player returns {target_text} from their graveyard to their hand"
+    ))
 }
 
 #[derive(Clone, Copy)]
@@ -3048,6 +3171,9 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
             return Some(compact);
         }
         if let Some(compact) = describe_planeswalk_chaos_vote_sequence(&refs) {
+            return Some(compact);
+        }
+        if let Some(compact) = describe_named_vote_conditional_sequence(&refs) {
             return Some(compact);
         }
     }
@@ -28772,6 +28898,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
+        if let Some(compact) = describe_each_player_return_from_graveyard_to_hand(for_players) {
+            return compact;
+        }
+        if let Some(compact) = describe_each_player_may_discard_hand_draw(for_players) {
+            return compact;
+        }
         if let Some(compact) =
             describe_each_player_may_discard_hand_draw_commander_value(for_players)
         {
