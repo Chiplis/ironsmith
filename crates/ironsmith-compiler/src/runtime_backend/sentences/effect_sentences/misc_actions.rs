@@ -93,6 +93,71 @@ fn subject_verb_player_effect(
     })
 }
 
+fn parse_experience_counter_count(
+    tokens: &[OwnedLexToken],
+    clause_words: &[&str],
+) -> Result<Option<Value>, CardTextError> {
+    let (base_count, mut word_idx) = if clause_words
+        .first()
+        .is_some_and(|word| matches!(*word, "a" | "an" | "another" | "one"))
+    {
+        (Value::Fixed(1), 1usize)
+    } else if let Some((value, used_tokens)) = parse_value(tokens) {
+        (
+            value,
+            crate::runtime_backend::token_word_refs(&tokens[..used_tokens]).len(),
+        )
+    } else {
+        (Value::Fixed(1), 0usize)
+    };
+
+    if clause_words.get(word_idx) != Some(&"experience")
+        || !clause_words
+            .get(word_idx + 1)
+            .is_some_and(|word| matches!(*word, "counter" | "counters"))
+    {
+        return Ok(None);
+    }
+    word_idx += 2;
+
+    let tail_token_idx = token_index_for_word_index(tokens, word_idx).unwrap_or(tokens.len());
+    let tail_tokens = &tokens[tail_token_idx..];
+    let tail_words = crate::runtime_backend::token_word_refs(tail_tokens);
+    if tail_words.is_empty() {
+        return Ok(Some(base_count));
+    }
+    if !FOR_EACH_PREFIX_PATTERN.matches_words(&tail_words) {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported trailing experience-counter get clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    let Some((per_count, used_words)) =
+        crate::runtime_backend::util::parse_for_each_count_value_words(&tail_words)
+    else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported experience-counter get-for-each clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    };
+    if used_words != tail_words.len() {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported trailing experience-counter get-for-each clause (clause: '{}')",
+            clause_words.join(" ")
+        )));
+    }
+
+    match base_count {
+        Value::Fixed(1) => Ok(Some(per_count)),
+        Value::Fixed(multiplier) => Ok(Some(Value::Scaled(Box::new(per_count), multiplier))),
+        _ => Err(CardTextError::ParseError(format!(
+            "unsupported dynamic experience-counter get-for-each base count (clause: '{}')",
+            clause_words.join(" ")
+        ))),
+    }
+}
+
 pub(crate) fn parse_become(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
@@ -653,20 +718,8 @@ pub(crate) fn parse_get(
         return Ok(EffectAst::subject_verb_energy_counters(player, count));
     }
 
-    if grammar::contains_word(tokens, "experience")
-        && (grammar::contains_word(tokens, "counter") || grammar::contains_word(tokens, "counters"))
-    {
+    if let Some(count) = parse_experience_counter_count(tokens, &clause_words)? {
         let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
-        let count = if matches!(
-            clause_words.first().copied(),
-            Some("a" | "an" | "another" | "one")
-        ) {
-            Value::Fixed(1)
-        } else {
-            parse_value(tokens)
-                .map(|(value, _)| value)
-                .unwrap_or(Value::Fixed(1))
-        };
         return Ok(EffectAst::subject_verb_experience_counters(player, count));
     }
 

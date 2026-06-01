@@ -33709,9 +33709,27 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(experience) = effect.downcast_ref::<crate::effects::ExperienceCountersEffect>() {
         let player = describe_player_filter(&experience.player);
+        let verb = player_verb(&player, "get", "gets");
+        match &experience.count {
+            Value::Count(filter) => {
+                return format!(
+                    "{player} {verb} an experience counter for each {}",
+                    describe_for_each_count_filter(filter)
+                );
+            }
+            Value::Scaled(value, multiplier) if *multiplier > 0 => {
+                if let Value::Count(filter) = value.as_ref() {
+                    return format!(
+                        "{player} {verb} {multiplier} experience counters for each {}",
+                        describe_for_each_count_filter(filter)
+                    );
+                }
+            }
+            _ => {}
+        }
         return format!(
             "{player} {} {} experience counter{}",
-            player_verb(&player, "get", "gets"),
+            verb,
             describe_value(&experience.count),
             if matches!(&experience.count, Value::Fixed(1)) {
                 ""

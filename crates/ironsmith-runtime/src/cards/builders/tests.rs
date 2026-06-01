@@ -891,6 +891,49 @@ fn ezuri_claw_of_progress_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn experience_counter_for_each_get_clause_keeps_dynamic_count() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Experience Template")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "When this creature enters, you get an experience counter for each creature you control.",
+        )
+        .expect("experience-counter for-each get clause should parse");
+
+    let debug = format!("{def:#?}");
+    let compact = debug.split_whitespace().collect::<String>();
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        debug.contains("ExperienceCountersEffect")
+            && compact.contains("Count(ObjectFilter")
+            && compact.contains("card_types:[Creature")
+            && compact.contains("controller:Some(You"),
+        "expected experience-counter count to be driven by a creature-count Value, got {debug}"
+    );
+    assert!(
+        rendered.contains("you get an experience counter for each creature you control"),
+        "expected dynamic experience-counter text to preserve the for-each count, got {rendered}"
+    );
+}
+
+#[test]
+fn unsupported_experience_counter_for_each_tail_does_not_lower_to_one() {
+    let err = CardDefinitionBuilder::new(CardId::new(), "Experience Unsupported Template")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "When this creature enters, you get an experience counter for each player who discarded a card this turn.",
+        )
+        .expect_err("unsupported experience-counter for-each tail should not parse as one counter");
+
+    let message = format!("{err:?}");
+    assert!(
+        message.contains("experience-counter get-for-each"),
+        "expected unsupported for-each tail to fail in experience-counter parsing, got {message}"
+    );
+}
+
+#[test]
 fn ezuri_experience_trigger_resolves_for_your_small_creature_entering() {
     let def = parse_oracle_card_definition("Ezuri, Claw of Progress");
     let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
