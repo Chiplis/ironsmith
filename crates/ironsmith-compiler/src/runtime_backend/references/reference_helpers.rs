@@ -423,6 +423,12 @@ pub(crate) fn resolve_restriction_it_tag(
                 resolve_it_tag(filter, refs)?,
             )
         }
+        Restriction::UntapMoreThanOneDuringUntapStep(player, filter) => {
+            Restriction::UntapMoreThanOneDuringUntapStep(
+                resolve_contextual_player_filter(player, refs)?,
+                resolve_it_tag(filter, refs)?,
+            )
+        }
         Restriction::DrawCards(player) => {
             Restriction::DrawCards(resolve_contextual_player_filter(player, refs)?)
         }

@@ -4517,6 +4517,33 @@ fn test_parse_players_cant_cast_more_than_one_spell_each_turn() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn damping_field_parses_artifact_untap_limit() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Damping Field")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text("Players can't untap more than one artifact during their untap steps.")
+        .expect("Damping Field should parse strictly");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("RuleRestriction")
+            && debug.contains("UntapMoreThanOneDuringUntapStep")
+            && debug.contains("Any")
+            && debug.contains("Artifact"),
+        "expected Damping Field to lower to an artifact untap-step limit, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("players can't untap more than one artifact during their untap steps")
+            || rendered.contains("players cant untap more than one artifact during their untap steps"),
+        "expected Damping Field compiled text to preserve the artifact untap limit, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_canonist_style_nonartifact_cast_limit() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Canonist Variant")
         .parse_text("Each player who has cast a nonartifact spell this turn can't cast additional nonartifact spells.")

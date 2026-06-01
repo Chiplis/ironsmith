@@ -3341,7 +3341,8 @@ fn bind_unresolved_it_in_restriction(
         | Restriction::AttackOrBlock(filter)
         | Restriction::ActivateAbilitiesOf(filter)
         | Restriction::ActivateTapAbilitiesOf(filter)
-        | Restriction::ActivateNonManaAbilitiesOf(filter) => {
+        | Restriction::ActivateNonManaAbilitiesOf(filter)
+        | Restriction::UntapMoreThanOneDuringUntapStep(_, filter) => {
             bind_unresolved_it_in_filter(filter, seed_tag)
         }
         Restriction::BlockSpecificAttacker { blockers, attacker }

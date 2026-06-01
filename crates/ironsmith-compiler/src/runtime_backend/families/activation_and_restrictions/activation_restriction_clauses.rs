@@ -276,6 +276,14 @@ const PLAYER_GET_POISON_COUNTERS_TAIL_PATTERN: ClauseShape<'static> = clause_sha
 );
 const PLAYER_CAST_MORE_THAN_ONE_SPELL_EACH_TURN_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["cast", "more", "than", "one", "spell", "each", "turn"]);
+const PLAYER_UNTAP_MORE_THAN_ONE_DURING_UNTAP_STEPS_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(
+        prefix & ["untap", "more", "than", "one"];
+        suffix_any & [
+            &["during", "their", "untap", "step"],
+            &["during", "their", "untap", "steps"],
+        ]
+    );
 const BE_PREVENTED_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["be", "prevented"]);
 const ATTACK_YOU_OR_PLANESWALKERS_YOU_CONTROL_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["attack", "you", "or", "planeswalkers", "you", "control"]);
@@ -537,6 +545,39 @@ fn player_negated_restriction_from_tail(
     } else {
         None
     }
+}
+
+fn player_untap_more_than_one_restriction_from_tail(
+    words: &[&str],
+    tokens: &[OwnedLexToken],
+    player: PlayerFilter,
+) -> Result<Option<crate::effect::Restriction>, CardTextError> {
+    if !PLAYER_UNTAP_MORE_THAN_ONE_DURING_UNTAP_STEPS_TAIL_PATTERN.matches_words(words) {
+        return Ok(None);
+    }
+    let Some(during_idx) = words
+        .iter()
+        .position(|word| DURING_WORD_PATTERN.matches_word(word))
+    else {
+        return Ok(None);
+    };
+    if during_idx <= 4 {
+        return Ok(None);
+    }
+    let object_tokens = trim_commas(&tokens[4..during_idx]);
+    let Some(object_filter) = parse_subject_object_filter(&object_tokens)? else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported untap-limit object filter (clause: '{}')",
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
+        )));
+    };
+
+    Ok(Some(
+        crate::effect::Restriction::untap_more_than_one_during_untap_step_matching(
+            player,
+            object_filter,
+        ),
+    ))
 }
 
 pub(crate) fn format_negated_restriction_display(tokens: &[OwnedLexToken]) -> String {
@@ -1660,6 +1701,16 @@ pub(crate) fn parse_negated_object_restriction_clause(
     if let Some(player) = player_subject {
         if is_mana_retention_tail(&remainder_words) {
             return Ok(None);
+        }
+        if let Some(restriction) = player_untap_more_than_one_restriction_from_tail(
+            &remainder_words,
+            &remainder_tokens,
+            player.clone(),
+        )? {
+            return Ok(Some(ParsedCantRestriction {
+                restriction,
+                target: None,
+            }));
         }
         let Some(restriction) = player_negated_restriction_from_tail(&remainder_words, player)
         else {

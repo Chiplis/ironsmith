@@ -611,6 +611,10 @@ pub struct CantEffectTracker {
     /// without hard-coding one tracker set per variant.
     pub cant_cast_limit_filters: HashMap<PlayerId, Vec<crate::target::ObjectFilter>>,
 
+    /// Per-player untap-step limits for matching permanents.
+    /// Example: "Players can't untap more than one artifact during their untap steps."
+    pub untap_step_limit_filters: HashMap<PlayerId, Vec<(crate::target::ObjectFilter, usize)>>,
+
     /// Players who can't draw cards.
     /// Example: Notion Thief redirecting draws
     pub cant_draw: HashSet<PlayerId>,
@@ -879,6 +883,11 @@ impl CantEffectTracker {
                 self.add_cast_limit_filter(player, filter);
             }
         }
+        for (player, limits) in other.untap_step_limit_filters {
+            for (filter, limit) in limits {
+                self.add_untap_step_limit_filter(player, filter, limit);
+            }
+        }
         self.cant_draw.extend(other.cant_draw);
         self.cant_draw_extra_cards
             .extend(other.cant_draw_extra_cards);
@@ -927,6 +936,7 @@ impl CantEffectTracker {
         self.cant_activate_tap_abilities_of.clear();
         self.cant_activate_non_mana_abilities_of.clear();
         self.cant_cast_limit_filters.clear();
+        self.untap_step_limit_filters.clear();
         self.cant_draw.clear();
         self.cant_draw_extra_cards.clear();
         self.cant_get_poison_counters.clear();
@@ -1173,6 +1183,34 @@ impl CantEffectTracker {
         player: PlayerId,
     ) -> Option<&[crate::target::ObjectFilter]> {
         self.cant_cast_limit_filters.get(&player).map(Vec::as_slice)
+    }
+
+    /// Add an untap-step limit for matching permanents.
+    pub fn add_untap_step_limit_filter(
+        &mut self,
+        player: PlayerId,
+        object_filter: crate::target::ObjectFilter,
+        limit: usize,
+    ) {
+        let limits = self.untap_step_limit_filters.entry(player).or_default();
+        if !limits
+            .iter()
+            .any(|(existing_filter, existing_limit)| {
+                existing_filter == &object_filter && *existing_limit == limit
+            })
+        {
+            limits.push((object_filter, limit));
+        }
+    }
+
+    /// Get active untap-step limits for a player, if any.
+    pub fn untap_step_limits_for_player(
+        &self,
+        player: PlayerId,
+    ) -> Option<&[(crate::target::ObjectFilter, usize)]> {
+        self.untap_step_limit_filters
+            .get(&player)
+            .map(Vec::as_slice)
     }
 
     /// Check if a player can cast an additional spell matching a specific filter this turn.

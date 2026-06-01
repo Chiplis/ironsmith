@@ -1155,7 +1155,8 @@ pub(crate) fn restriction_references_tag(
         | Restriction::AttackOrBlock(filter)
         | Restriction::ActivateAbilitiesOf(filter)
         | Restriction::ActivateTapAbilitiesOf(filter)
-        | Restriction::ActivateNonManaAbilitiesOf(filter) => Some(filter),
+        | Restriction::ActivateNonManaAbilitiesOf(filter)
+        | Restriction::UntapMoreThanOneDuringUntapStep(_, filter) => Some(filter),
         _ => None,
     };
     if let Some(filter) = maybe_filter {

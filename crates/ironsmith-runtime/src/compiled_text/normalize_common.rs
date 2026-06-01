@@ -10291,6 +10291,13 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             describe_player_set_filter(filter),
             describe_cast_limit_spell_filter(spell_filter)
         ),
+        crate::effect::Restriction::UntapMoreThanOneDuringUntapStep(filter, object_filter) => {
+            format!(
+                "{} can't untap more than one {} during their untap steps",
+                describe_player_set_filter(filter),
+                object_filter.description()
+            )
+        }
         crate::effect::Restriction::DrawCards(filter) => {
             format!("{} can't draw cards", describe_player_set_filter(filter))
         }

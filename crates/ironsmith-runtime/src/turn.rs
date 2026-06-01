@@ -312,7 +312,7 @@ pub fn execute_untap_step(game: &mut GameState) {
 /// This variant prompts for optional "you may choose not to untap ..." abilities.
 pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl DecisionMaker) {
     use crate::ability::AbilityKind;
-    use crate::decisions::context::BooleanContext;
+    use crate::decisions::context::{BooleanContext, SelectObjectsContext, SelectableObject};
     use crate::effect::Until;
     use crate::static_abilities::StaticAbilityId;
 
@@ -370,7 +370,7 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
     let permanents: Vec<_> = permanents.into_iter().collect();
 
     // First pass: collect which permanents should untap
-    let should_untap: std::collections::HashSet<_> = permanents
+    let mut should_untap: std::collections::HashSet<_> = permanents
         .iter()
         .filter_map(|&id| {
             let obj = game.object(id)?;
@@ -409,6 +409,57 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
             }
         })
         .collect();
+
+    if let Some(limits) = game
+        .effect_store
+        .cant_effects
+        .untap_step_limits_for_player(active_player)
+    {
+        for (filter, limit) in limits.to_vec() {
+            let filter_ctx = game.filter_context_for(active_player, None);
+            let mut matching: Vec<_> = should_untap
+                .iter()
+                .copied()
+                .filter(|id| game.is_tapped(*id))
+                .filter(|id| {
+                    game.object(*id).is_some_and(|object| {
+                        game.controller_of(object) == active_player
+                            && filter.matches(object, &filter_ctx, game)
+                    })
+                })
+                .collect();
+            matching.sort_unstable();
+            if matching.len() <= limit {
+                continue;
+            }
+
+            let candidates = matching
+                .iter()
+                .filter_map(|id| {
+                    game.object(*id)
+                        .map(|object| SelectableObject::new(*id, object.name.clone()))
+                })
+                .collect();
+            let choice_ctx = SelectObjectsContext::new(
+                active_player,
+                None,
+                format!("choose {limit} matching permanent(s) to untap"),
+                candidates,
+                limit,
+                Some(limit),
+            );
+            let chosen: std::collections::HashSet<_> = decision_maker
+                .decide_objects(game, &choice_ctx)
+                .into_iter()
+                .take(limit)
+                .collect();
+            for id in matching {
+                if !chosen.contains(&id) {
+                    should_untap.remove(&id);
+                }
+            }
+        }
+    }
 
     // Second pass: untap eligible permanents and remove summoning sickness from all
     for id in permanents {
@@ -700,11 +751,12 @@ mod tests {
     use super::*;
     use crate::ability::Ability;
     use crate::card::CardBuilder;
+    use crate::decision::SelectFirstDecisionMaker;
     use crate::effect::{Restriction, Until};
     use crate::ids::{CardId, ObjectId};
     use crate::object::Object;
     use crate::static_abilities::StaticAbility;
-    use crate::target::ObjectFilter;
+    use crate::target::{ObjectFilter, PlayerFilter};
     use crate::types::CardType;
     use crate::zone::Zone;
 
@@ -726,6 +778,34 @@ mod tests {
         for ability in abilities {
             obj.abilities.push(Ability::static_ability(ability));
         }
+        game.add_object(obj);
+        id
+    }
+
+    fn create_enchantment(
+        game: &mut GameState,
+        name: &str,
+        controller: PlayerId,
+        abilities: Vec<StaticAbility>,
+    ) -> ObjectId {
+        let id = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(id.0 as u32), name)
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        let mut obj = Object::from_card(id, &card, controller, Zone::Battlefield);
+        for ability in abilities {
+            obj.abilities.push(Ability::static_ability(ability));
+        }
+        game.add_object(obj);
+        id
+    }
+
+    fn create_creature(game: &mut GameState, name: &str, controller: PlayerId) -> ObjectId {
+        let id = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(id.0 as u32), name)
+            .card_types(vec![CardType::Creature])
+            .build();
+        let obj = Object::from_card(id, &card, controller, Zone::Battlefield);
         game.add_object(obj);
         id
     }
@@ -843,6 +923,128 @@ mod tests {
         assert!(
             game.is_tapped(cant_untap_artifact),
             "can't-untap restriction should prevent untapping"
+        );
+    }
+
+    #[test]
+    fn damping_field_limits_controller_to_one_artifact_untap() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let _damping_field = create_enchantment(
+            &mut game,
+            "Damping Field",
+            alice,
+            vec![StaticAbility::restriction(
+                Restriction::untap_more_than_one_during_untap_step_matching(
+                    PlayerFilter::Any,
+                    ObjectFilter::artifact(),
+                ),
+                "Players can't untap more than one artifact during their untap steps.".to_string(),
+            )],
+        );
+        let first = create_artifact(&mut game, "First Relic", alice, vec![]);
+        let second = create_artifact(&mut game, "Second Relic", alice, vec![]);
+        let creature = create_creature(&mut game, "Nonartifact Companion", alice);
+        game.tap(first);
+        game.tap(second);
+        game.tap(creature);
+
+        let mut dm = SelectFirstDecisionMaker;
+        execute_untap_step_with(&mut game, &mut dm);
+
+        let untapped_artifacts = [first, second]
+            .iter()
+            .filter(|id| !game.is_tapped(**id))
+            .count();
+        assert_eq!(
+            untapped_artifacts, 1,
+            "Damping Field should allow exactly one artifact to untap"
+        );
+        assert!(
+            !game.is_tapped(creature),
+            "Damping Field should not count nonartifact permanents"
+        );
+    }
+
+    #[test]
+    fn damping_field_allows_only_artifact_to_untap() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let _damping_field = create_enchantment(
+            &mut game,
+            "Damping Field",
+            alice,
+            vec![StaticAbility::restriction(
+                Restriction::untap_more_than_one_during_untap_step_matching(
+                    PlayerFilter::Any,
+                    ObjectFilter::artifact(),
+                ),
+                "Players can't untap more than one artifact during their untap steps.".to_string(),
+            )],
+        );
+        let artifact = create_artifact(&mut game, "Only Relic", alice, vec![]);
+        game.tap(artifact);
+
+        let mut dm = SelectFirstDecisionMaker;
+        execute_untap_step_with(&mut game, &mut dm);
+
+        assert!(
+            !game.is_tapped(artifact),
+            "Damping Field should allow a player to untap one artifact"
+        );
+    }
+
+    #[test]
+    fn damping_field_does_not_limit_off_turn_untaps() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.active_player = bob;
+
+        let _damping_field = create_enchantment(
+            &mut game,
+            "Damping Field",
+            alice,
+            vec![StaticAbility::restriction(
+                Restriction::untap_more_than_one_during_untap_step_matching(
+                    PlayerFilter::Any,
+                    ObjectFilter::artifact(),
+                ),
+                "Players can't untap more than one artifact during their untap steps.".to_string(),
+            )],
+        );
+        let _seedborn_like = create_artifact(
+            &mut game,
+            "Seedborn Relic",
+            alice,
+            vec![StaticAbility::untap_during_each_other_players_untap_step(
+                ObjectFilter::permanent().you_control(),
+                "Untap all permanents you control during each other player's untap step"
+                    .to_string(),
+            )],
+        );
+        let alices_first = create_artifact(&mut game, "Alice First Relic", alice, vec![]);
+        let alices_second = create_artifact(&mut game, "Alice Second Relic", alice, vec![]);
+        let bobs_first = create_artifact(&mut game, "Bob First Relic", bob, vec![]);
+        let bobs_second = create_artifact(&mut game, "Bob Second Relic", bob, vec![]);
+        for id in [alices_first, alices_second, bobs_first, bobs_second] {
+            game.tap(id);
+        }
+
+        let mut dm = SelectFirstDecisionMaker;
+        execute_untap_step_with(&mut game, &mut dm);
+
+        assert!(
+            !game.is_tapped(alices_first) && !game.is_tapped(alices_second),
+            "Damping Field should not limit Alice's Seedborn-style off-turn untaps"
+        );
+        let bobs_untapped_artifacts = [bobs_first, bobs_second]
+            .iter()
+            .filter(|id| !game.is_tapped(**id))
+            .count();
+        assert_eq!(
+            bobs_untapped_artifacts, 1,
+            "Damping Field should still limit the active player during their untap step"
         );
     }
 

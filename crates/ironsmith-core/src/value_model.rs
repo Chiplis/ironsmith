@@ -270,6 +270,7 @@ pub enum Restriction {
     ActivateTapAbilitiesOf(ObjectFilter),
     ActivateNonManaAbilitiesOf(ObjectFilter),
     CastMoreThanOneSpellEachTurn(PlayerFilter, ObjectFilter),
+    UntapMoreThanOneDuringUntapStep(PlayerFilter, ObjectFilter),
     DrawCards(PlayerFilter),
     DrawExtraCards(PlayerFilter),
     PoisonCounters(PlayerFilter),
@@ -438,6 +439,13 @@ impl Restriction {
 
     pub fn cast_more_than_one_spell_each_turn(filter: PlayerFilter) -> Self {
         Self::cast_more_than_one_spell_each_turn_matching(filter, ObjectFilter::default())
+    }
+
+    pub fn untap_more_than_one_during_untap_step_matching(
+        filter: PlayerFilter,
+        object_filter: ObjectFilter,
+    ) -> Self {
+        Self::UntapMoreThanOneDuringUntapStep(filter, object_filter)
     }
 
     pub fn cast_more_than_one_noncreature_spell_each_turn(filter: PlayerFilter) -> Self {
