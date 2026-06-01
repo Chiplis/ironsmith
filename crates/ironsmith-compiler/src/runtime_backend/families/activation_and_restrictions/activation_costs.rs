@@ -1703,6 +1703,7 @@ pub(crate) fn parse_cant_clause(
                 | crate::effect::Restriction::SearchLibraries(_)
                 | crate::effect::Restriction::CastSpellsMatching(_, _)
                 | crate::effect::Restriction::ActivateNonManaAbilities(_)
+                | crate::effect::Restriction::ActivateNonManaNonLoyaltyAbilities(_)
                 | crate::effect::Restriction::ActivateAbilitiesOf(_)
                 | crate::effect::Restriction::ActivateTapAbilitiesOf(_)
                 | crate::effect::Restriction::ActivateNonManaAbilitiesOf(_)
