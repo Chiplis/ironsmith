@@ -33462,6 +33462,37 @@ fn parse_then_if_conditional_sentence_is_preserved() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_betor_kin_to_all_total_toughness_threshold_chain() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(353_001), "Betor, Kin to All")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(5, 7))
+        .parse_text(
+            "Flying\nAt the beginning of your end step, if creatures you control have total toughness 10 or greater, draw a card. Then if creatures you control have total toughness 20 or greater, untap each creature you control. Then if creatures you control have total toughness 40 or greater, each opponent loses half their life, rounded up.",
+        )
+        .expect("Betor, Kin to All should parse strict oracle text");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        !rendered.contains("unsupported predicate") && !rendered.contains("unsupported effect"),
+        "Betor, Kin to All should compile without unsupported output, got {rendered}"
+    );
+    assert!(
+        rendered.contains("if creatures you control have total toughness 10 or greater")
+            && rendered.contains("then if creatures you control have total toughness 20 or greater")
+            && rendered.contains("then if creatures you control have total toughness 40 or greater"),
+        "expected all total-toughness threshold clauses, got {rendered}"
+    );
+    assert!(
+        rendered.contains("untap each creature you control")
+            && rendered.contains("each opponent loses half their life, rounded up"),
+        "expected Betor's threshold effects in compiled text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_additional_cost_and_trigger_when_on_same_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Additional Cost Split Variant")
         .card_types(vec![CardType::Creature])

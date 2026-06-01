@@ -9655,6 +9655,190 @@ fn cloud_ex_soldier_attack_trigger_skips_treasures_below_power_7() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn betor_kin_to_all_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(353_010), "Betor, Kin to All")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Spirit, Subtype::Dragon])
+        .power_toughness(PowerToughness::fixed(5, 7))
+        .parse_text(
+            "Flying\nAt the beginning of your end step, if creatures you control have total toughness 10 or greater, draw a card. Then if creatures you control have total toughness 20 or greater, untap each creature you control. Then if creatures you control have total toughness 40 or greater, each opponent loses half their life, rounded up.",
+        )
+        .expect("Betor, Kin to All should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn set_alice_end_step(game: &mut GameState) {
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::Ending;
+    game.turn.step = Some(crate::game_state::Step::End);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn add_betor_draw_card(game: &mut GameState, card_id: u32) {
+    let alice = PlayerId::from_index(0);
+    let library_card = CardBuilder::new(CardId::from_raw(card_id), "Betor Draw Card")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    game.create_object_from_card(&library_card, alice, Zone::Library);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn betor_kin_to_all_does_not_trigger_below_total_toughness_10() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    game.create_object_from_definition(&betor_kin_to_all_definition(), alice, Zone::Battlefield);
+    create_creature(&mut game, "Small Kin", alice, 1, 2);
+
+    set_alice_end_step(&mut game);
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Betor should not trigger below total toughness 10"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn betor_kin_to_all_draws_only_at_total_toughness_10() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.create_object_from_definition(&betor_kin_to_all_definition(), alice, Zone::Battlefield);
+    let ally = create_creature(&mut game, "Ten Toughness Ally", alice, 1, 3);
+    game.tap(ally);
+    add_betor_draw_card(&mut game, 353_011);
+
+    let hand_before = game.player(alice).expect("Alice exists").hand.len();
+    let bob_life_before = game.player(bob).expect("Bob exists").life;
+    set_alice_end_step(&mut game);
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert_eq!(trigger_queue.entries.len(), 1, "Betor should trigger at total toughness 10");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Betor end-step trigger should go on stack");
+    resolve_stack_entry(&mut game).expect("Betor trigger should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("Alice exists").hand.len(),
+        hand_before + 1,
+        "Betor should draw a card at total toughness 10"
+    );
+    assert!(
+        game.is_tapped(ally),
+        "Betor should not untap creatures below total toughness 20"
+    );
+    assert_eq!(
+        game.player(bob).expect("Bob exists").life,
+        bob_life_before,
+        "Betor should not make opponents lose life below total toughness 40"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn betor_kin_to_all_draws_and_untaps_at_total_toughness_20() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let betor = game.create_object_from_definition(
+        &betor_kin_to_all_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    let ally = create_creature(&mut game, "Twenty Toughness Ally", alice, 1, 13);
+    game.tap(betor);
+    game.tap(ally);
+    add_betor_draw_card(&mut game, 353_012);
+
+    let hand_before = game.player(alice).expect("Alice exists").hand.len();
+    let bob_life_before = game.player(bob).expect("Bob exists").life;
+    set_alice_end_step(&mut game);
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert_eq!(trigger_queue.entries.len(), 1, "Betor should trigger at total toughness 20");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Betor end-step trigger should go on stack");
+    resolve_stack_entry(&mut game).expect("Betor trigger should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("Alice exists").hand.len(),
+        hand_before + 1,
+        "Betor should draw a card at total toughness 20"
+    );
+    assert!(
+        !game.is_tapped(betor) && !game.is_tapped(ally),
+        "Betor should untap each creature you control at total toughness 20"
+    );
+    assert_eq!(
+        game.player(bob).expect("Bob exists").life,
+        bob_life_before,
+        "Betor should not make opponents lose life below total toughness 40"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn betor_kin_to_all_applies_all_thresholds_at_total_toughness_40() {
+    let mut game = setup_three_player_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+
+    let betor = game.create_object_from_definition(
+        &betor_kin_to_all_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    let ally = create_creature(&mut game, "Forty Toughness Ally", alice, 1, 33);
+    game.tap(betor);
+    game.tap(ally);
+    add_betor_draw_card(&mut game, 353_013);
+
+    let hand_before = game.player(alice).expect("Alice exists").hand.len();
+    let alice_life_before = game.player(alice).expect("Alice exists").life;
+    set_alice_end_step(&mut game);
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert_eq!(trigger_queue.entries.len(), 1, "Betor should trigger at total toughness 40");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Betor end-step trigger should go on stack");
+    resolve_stack_entry(&mut game).expect("Betor trigger should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("Alice exists").hand.len(),
+        hand_before + 1,
+        "Betor should draw a card at total toughness 40"
+    );
+    assert!(
+        !game.is_tapped(betor) && !game.is_tapped(ally),
+        "Betor should untap each creature you control at total toughness 40"
+    );
+    assert_eq!(
+        game.player(bob).expect("Bob exists").life,
+        10,
+        "Betor should make each opponent lose half their life, rounded up"
+    );
+    assert_eq!(
+        game.player(charlie).expect("Charlie exists").life,
+        10,
+        "Betor should affect every opponent"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice exists").life,
+        alice_life_before,
+        "Betor should not make its controller lose life"
+    );
+}
+
 fn bridge_from_below_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(472), "Bridge from Below")
         .card_types(vec![CardType::Enchantment])

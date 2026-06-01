@@ -12205,6 +12205,21 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 return format!("{subject} drawn {count_text} or more cards this turn");
             }
             if let (
+                Value::TotalPower(filter) | Value::TotalToughness(filter),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(count),
+            ) = (left, operator, right)
+                && *count >= 0
+            {
+                let subject = describe_count_filter_value_subject(filter);
+                let metric = if matches!(left, Value::TotalPower(_)) {
+                    "power"
+                } else {
+                    "toughness"
+                };
+                return format!("{subject} have total {metric} {count} or greater");
+            }
+            if let (
                 Value::Count(filter),
                 crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                 Value::Fixed(count),

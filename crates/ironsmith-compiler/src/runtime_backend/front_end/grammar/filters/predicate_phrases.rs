@@ -1995,6 +1995,45 @@ fn parse_counted_objects_have_counter_predicate(words: &[&str]) -> Option<Predic
     })
 }
 
+fn parse_objects_have_total_metric_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let have_idx = find_index(words, |word| HAS_OR_HAVE_WORD_PATTERN.matches_word(word))?;
+    if have_idx == 0 || words.len() < have_idx + 5 {
+        return None;
+    }
+
+    let tail = &words[have_idx + 1..];
+    if tail.first().copied() != Some("total") {
+        return None;
+    }
+    let metric = *tail.get(1)?;
+    if !POWER_OR_TOUGHNESS_WORD_PATTERN.matches_word(metric) {
+        return None;
+    }
+    let (comparison, used) = predicate_quantity_prefix(&tail[2..])?;
+    if used != tail.len() - 2 {
+        return None;
+    }
+    let (operator, amount) = comparison_to_value_comparison_operator(comparison)?;
+
+    let object_words = &words[..have_idx];
+    let object_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(object_words);
+    let other = object_tokens
+        .first()
+        .is_some_and(|token| OTHER_OR_ANOTHER_WORD_PATTERN.matches_token(token));
+    let filter = parse_object_filter(&object_tokens, other).ok()?;
+    let left = if POWER_WORD_PATTERN.matches_word(metric) {
+        Value::TotalPower(filter)
+    } else {
+        Value::TotalToughness(filter)
+    };
+
+    Some(PredicateAst::ValueComparison {
+        left,
+        operator,
+        right: Value::Fixed(amount),
+    })
+}
+
 fn parse_happily_style_conjoined_predicate(words: &[&str]) -> Option<PredicateAst> {
     let cleaned = word_refs_except(words, &[","]);
     let words = cleaned.as_slice();
@@ -2833,6 +2872,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         && let Some(count) = comparison_to_at_least_threshold(&comparison)
     {
         return Ok(PredicateAst::SourcePowerAtLeast(count));
+    }
+
+    if let Some(predicate) = parse_objects_have_total_metric_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     if filtered.len() >= 10 && THERE_ARE_PREFIX_PATTERN.matches_words(&filtered) {
@@ -4816,6 +4859,28 @@ mod tests {
         let parsed = parse_predicate(&predicate_tokens)?;
 
         assert_eq!(parsed, PredicateAst::SourcePowerAtLeast(7));
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_supports_objects_you_control_have_total_toughness_or_greater()
+    -> Result<(), CardTextError> {
+        let tokens = lex_line(
+            "If creatures you control have total toughness 10 or greater",
+            0,
+        )?;
+        let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        assert_eq!(
+            parsed,
+            PredicateAst::ValueComparison {
+                left: Value::TotalToughness(ObjectFilter::creature().you_control()),
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(10),
+            }
+        );
         Ok(())
     }
 

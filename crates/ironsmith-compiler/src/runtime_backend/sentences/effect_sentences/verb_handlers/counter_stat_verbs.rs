@@ -1093,7 +1093,20 @@ fn parse_half_life_value(tokens: &[OwnedLexToken], player: PlayerAst) -> Option<
         return None;
     }
 
-    let player_filter = player_filter_for_life_reference(player)?;
+    let referenced_player = if clause_words
+        .iter()
+        .any(|word| matches!(*word, "their" | "theirs"))
+        || clause_words
+            .windows(2)
+            .any(|words| matches!(words, ["that", "player"] | ["that", "players"]))
+    {
+        PlayerAst::That
+    } else if clause_words.iter().any(|word| matches!(*word, "your")) {
+        PlayerAst::You
+    } else {
+        player
+    };
+    let player_filter = player_filter_for_life_reference(referenced_player)?;
     let rounded_down = ROUNDED_DOWN_MARKER_PATTERN.matches_words(&clause_words);
     if rounded_down {
         Some(Value::HalfLifeTotalRoundedDown(player_filter))

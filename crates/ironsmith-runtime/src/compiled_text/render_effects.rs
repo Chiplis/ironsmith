@@ -2136,10 +2136,16 @@ fn describe_for_players_simple_iterated_action(
             ChooseSpec::Player(PlayerFilter::IteratedPlayer)
         )
     {
+        let amount = describe_half_life_amount_for_same_player(
+            &lose.amount,
+            &PlayerFilter::IteratedPlayer,
+        )
+        .map(str::to_string)
+        .unwrap_or_else(|| describe_life_amount_phrase(&lose.amount));
         return Some(format!(
             "{subject} {} {}",
             verb("lose", "loses"),
-            describe_life_amount_phrase(&lose.amount)
+            amount
         ));
     }
     if let Some(gain) = effect.downcast_ref::<crate::effects::GainLifeEffect>()
@@ -21305,6 +21311,24 @@ fn singularize_for_each_basis(basis: &str) -> String {
     basis.to_string()
 }
 
+fn singularize_each_target(target: &str) -> String {
+    let mut words = target.split_whitespace().collect::<Vec<_>>();
+    for word in &mut words {
+        *word = match *word {
+            "artifacts" => "artifact",
+            "cards" => "card",
+            "creatures" => "creature",
+            "enchantments" => "enchantment",
+            "lands" => "land",
+            "permanents" => "permanent",
+            "planeswalkers" => "planeswalker",
+            _ => continue,
+        };
+        break;
+    }
+    words.join(" ")
+}
+
 fn describe_tagged_creature_power_count_basis(spec: &ChooseSpec) -> Option<&'static str> {
     match spec.base() {
         ChooseSpec::Tagged(tag)
@@ -30542,7 +30566,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         return format!("Tap {}", describe_choose_spec(&tap.target));
     }
     if let Some(untap) = effect.downcast_ref::<crate::effects::UntapEffect>() {
-        return format!("Untap {}", describe_choose_spec(&untap.target));
+        let target = describe_choose_spec(&untap.target);
+        if let Some(each_target) = target.strip_prefix("all ") {
+            return format!("Untap each {}", singularize_each_target(each_target));
+        }
+        return format!("Untap {target}");
     }
     if let Some(phase_out) = effect.downcast_ref::<crate::effects::PhaseOutEffect>() {
         if let ChooseSpec::All(filter) = phase_out.spec.base()
