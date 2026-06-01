@@ -1624,7 +1624,7 @@ pub(crate) fn parse_investigate(
             )));
         }
 
-        let each_count = parse_investigate_for_each_count(filter_tokens)?;
+        let each_count = parse_investigate_for_each_count(filter_tokens)?.into_unhinted();
         count = match (count, each_count) {
             (Value::Fixed(1), Value::Count(filter)) => {
                 Value::CountScaled(filter, 1).with_surface_hint(ValueSurfaceHint::ForEach)

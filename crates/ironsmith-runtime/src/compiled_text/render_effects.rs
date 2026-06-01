@@ -33384,7 +33384,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             (Value::Fixed(1), "you") => "Investigate".to_string(),
             (Value::Count(filter), "you") => {
                 format!(
-                    "Investigate once for each {}",
+                    "Investigate for each {}",
                     describe_for_each_count_filter(filter)
                 )
             }
@@ -33397,7 +33397,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             (Value::Fixed(1), _) => format!("{player} investigates"),
             (Value::Fixed(amount), _) => format!("{player} investigates {amount} times"),
             (Value::Count(filter), _) => format!(
-                "{player} investigates once for each {}",
+                "{player} investigates for each {}",
                 describe_for_each_count_filter(filter)
             ),
             (Value::CountScaled(filter, multiplier), _) if *multiplier == 1 => format!(
