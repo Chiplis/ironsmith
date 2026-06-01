@@ -46377,6 +46377,16 @@ fn mycosynth_fiend_runtime_counts_only_opponents_poison_counters() {
         (Some(7), Some(7)),
         "Mycosynth Fiend should count only opponents' poison counters, not its controller's"
     );
+
+    game.set_current_controller(fiend, PlayerId::from_index(1));
+    let controlled_chars = game
+        .calculated_characteristics(fiend)
+        .expect("Mycosynth Fiend should update after control changes");
+    assert_eq!(
+        (controlled_chars.power, controlled_chars.toughness),
+        (Some(8), Some(8)),
+        "Mycosynth Fiend should count opponents relative to its current controller"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
