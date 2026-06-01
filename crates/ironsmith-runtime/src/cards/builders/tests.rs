@@ -37146,6 +37146,314 @@ fn chandras_regulator_runtime_copies_triggering_loyalty_ability() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn chandras_regulator_test_chandra_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(4), "Chandra Test Walker")
+        .card_types(vec![CardType::Planeswalker])
+        .subtypes(vec![Subtype::Chandra])
+        .loyalty(3)
+        .parse_text("+1: Draw a card.")
+        .expect("test Chandra loyalty ability should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn chandras_regulator_main_phase_game() -> (crate::game_state::GameState, PlayerId) {
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+    (game, alice)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn chandras_regulator_drive_activation<D: crate::decision::DecisionMaker>(
+    game: &mut crate::game_state::GameState,
+    trigger_queue: &mut crate::triggers::TriggerQueue,
+    state: &mut crate::game_loop::PriorityLoopState,
+    mut progress: crate::decision::GameProgress,
+    decision_maker: &mut D,
+    discard_choice: Option<ObjectId>,
+) -> crate::decision::GameProgress {
+    for _ in 0..12 {
+        progress = match progress {
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectOptions(ctx),
+            ) => {
+                let option = ctx
+                    .options
+                    .iter()
+                    .find(|option| {
+                        option.legal
+                            && discard_choice.is_some()
+                            && option.description.to_ascii_lowercase().contains("discard")
+                    })
+                    .or_else(|| ctx.options.iter().find(|option| option.legal))
+                    .unwrap_or_else(|| panic!("expected a legal activation option, got {ctx:?}"));
+                let description = ctx.description.to_ascii_lowercase();
+                let response = if description.contains("mana payment") {
+                    crate::game_loop::PriorityResponse::ManaPayment(option.index)
+                } else {
+                    crate::game_loop::PriorityResponse::NextCostChoice(option.index)
+                };
+                crate::game_loop::apply_priority_response_with_dm(
+                    game,
+                    trigger_queue,
+                    state,
+                    &response,
+                    decision_maker,
+                )
+                .expect("activation option should apply")
+            }
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectObjects(_),
+            ) => crate::game_loop::apply_priority_response_with_dm(
+                game,
+                trigger_queue,
+                state,
+                &crate::game_loop::PriorityResponse::CardCostChoice(
+                    discard_choice.expect("discard cost should choose a hand card"),
+                ),
+                decision_maker,
+            )
+            .expect("discard choice should apply"),
+            other => return other,
+        };
+    }
+
+    panic!("activation did not finish after expected cost prompts; last progress was {progress:?}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn chandras_regulator_game_loop_copies_chandra_loyalty_after_paying_one() {
+    let regulator = chandras_regulator_definition();
+    let chandra = chandras_regulator_test_chandra_definition();
+    let (mut game, alice) = chandras_regulator_main_phase_game();
+    game.create_object_from_definition(&regulator, alice, Zone::Battlefield);
+    let chandra_id = game.create_object_from_definition(&chandra, alice, Zone::Battlefield);
+    for idx in 0..2 {
+        let draw_card = CardBuilder::new(CardId::new(), format!("Draw Card {idx}"))
+            .card_types(vec![CardType::Artifact])
+            .build();
+        game.create_object_from_card(&draw_card, alice, Zone::Library);
+    }
+
+    let ability_index = game
+        .object(chandra_id)
+        .expect("test Chandra should exist")
+        .abilities
+        .iter()
+        .position(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated.is_loyalty_ability(),
+            _ => false,
+        })
+        .expect("test Chandra should have a loyalty ability");
+    let activate_action = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| matches!(
+            action,
+            crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                if *source == chandra_id && *idx == ability_index
+        ))
+        .expect("Chandra loyalty ability should be activatable through legal actions");
+
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    let mut state = crate::game_loop::PriorityLoopState::new(game.players_in_game());
+    let mut activation_dm = crate::decision::SelectFirstDecisionMaker;
+    let progress = crate::game_loop::apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &crate::game_loop::PriorityResponse::PriorityAction(activate_action),
+        &mut activation_dm,
+    )
+    .expect("activating Chandra's loyalty ability should start");
+    chandras_regulator_drive_activation(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        progress,
+        &mut activation_dm,
+        None,
+    );
+
+    crate::game_loop::put_triggers_on_stack_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut activation_dm,
+    )
+    .expect("Chandra's Regulator trigger should be put on the stack");
+    assert_eq!(
+        game.stack.len(),
+        2,
+        "the original Chandra ability and Regulator trigger should be stacked"
+    );
+
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+    let mut trigger_dm = crate::decision::SelectFirstDecisionMaker;
+    crate::game_loop::resolve_stack_entry_with(&mut game, &mut trigger_dm)
+        .expect("Regulator trigger should resolve, pay {1}, and copy the loyalty ability");
+    assert_eq!(
+        game.stack.iter().filter(|entry| entry.is_ability).count(),
+        2,
+        "paying for Chandra's Regulator should leave the original and copied loyalty abilities on the stack"
+    );
+    assert_eq!(
+        game.player(alice)
+            .expect("Alice should exist")
+            .mana_pool
+            .total(),
+        0,
+        "Regulator trigger should spend the {{1}} payment"
+    );
+
+    crate::game_loop::resolve_stack_entry_with(&mut game, &mut trigger_dm)
+        .expect("copied Chandra loyalty ability should resolve");
+    crate::game_loop::resolve_stack_entry_with(&mut game, &mut trigger_dm)
+        .expect("original Chandra loyalty ability should resolve");
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").hand.len(),
+        2,
+        "the copied and original Chandra abilities should each draw a card"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn chandras_regulator_activate_draw_with_discard(
+    discard_card: crate::card::Card,
+) -> crate::game_state::GameState {
+    let regulator = chandras_regulator_definition();
+    let (mut game, alice) = chandras_regulator_main_phase_game();
+    let regulator_id = game.create_object_from_definition(&regulator, alice, Zone::Battlefield);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+    let discard_id = game.create_object_from_card(&discard_card, alice, Zone::Hand);
+    let discard_stable_id = game
+        .object(discard_id)
+        .expect("discard card should exist")
+        .stable_id;
+    let draw_card = CardBuilder::new(CardId::new(), "Drawn Card")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    game.create_object_from_card(&draw_card, alice, Zone::Library);
+
+    let ability_index = game
+        .object(regulator_id)
+        .expect("Chandra's Regulator should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Chandra's Regulator should have an activated draw ability");
+    let activate_action = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| matches!(
+            action,
+            crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                if *source == regulator_id && *idx == ability_index
+        ))
+        .expect("Regulator draw ability should be legal with matching discard fuel");
+
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    let mut state = crate::game_loop::PriorityLoopState::new(game.players_in_game());
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let progress = crate::game_loop::apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &crate::game_loop::PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Regulator draw activation should start");
+    chandras_regulator_drive_activation(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        progress,
+        &mut dm,
+        Some(discard_id),
+    );
+
+    assert!(game.is_tapped(regulator_id), "activation cost should tap Regulator");
+    let discarded_id = game
+        .find_object_by_stable_id(discard_stable_id)
+        .expect("discarded card should still be tracked by stable id");
+    assert!(
+        game.player(alice)
+            .expect("Alice should exist")
+            .graveyard
+            .contains(&discarded_id),
+        "activation cost should move the chosen card to the graveyard"
+    );
+
+    crate::game_loop::resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Regulator draw ability should resolve");
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").hand.len(),
+        1,
+        "Regulator draw ability should draw after paying the discard cost"
+    );
+    game
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn chandras_regulator_draw_activation_can_discard_a_mountain_card() {
+    let mountain = CardBuilder::new(CardId::new(), "Test Mountain")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Mountain])
+        .build();
+
+    chandras_regulator_activate_draw_with_discard(mountain);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn chandras_regulator_draw_activation_can_discard_a_red_card() {
+    let red_card = CardBuilder::new(CardId::new(), "Red Test Card")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+
+    chandras_regulator_activate_draw_with_discard(red_card);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn chandras_regulator_draw_activation_rejects_nonred_nonmountain_discard() {
+    let regulator = chandras_regulator_definition();
+    let (mut game, alice) = chandras_regulator_main_phase_game();
+    let regulator_id = game.create_object_from_definition(&regulator, alice, Zone::Battlefield);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+    let blue_card = CardBuilder::new(CardId::new(), "Blue Test Card")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    game.create_object_from_card(&blue_card, alice, Zone::Hand);
+
+    assert!(
+        !crate::decision::compute_legal_actions(&game, alice)
+            .into_iter()
+            .any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, .. }
+                    if source == regulator_id
+            )),
+        "Regulator draw ability should be illegal without a Mountain card or red card to discard"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_panoptic_projektor_full_text_compiles() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Panoptic Projektor")
