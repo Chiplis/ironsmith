@@ -1111,6 +1111,8 @@ const IT_IS_OR_ITS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["it", "is"], &["it", "s"]]);
 const IN_ADDITION_TO_ITS_OTHER_TYPES_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["in", "addition", "to", "its", "other", "types"]);
+const IN_ADDITION_TO_ITS_OTHER_CREATURE_TYPES_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["in", "addition", "to", "its", "other", "creature", "types"]);
 const COPY_POWER_TOUGHNESS_FROM_SELF_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
         & [
@@ -5378,7 +5380,12 @@ pub(crate) fn parse_enter_as_copy_as_enters_line(
             }
 
             let mut remainder_start = cursor;
-            if IN_ADDITION_TO_ITS_OTHER_TYPES_PREFIX_PATTERN.matches_words(&tail[remainder_start..])
+            if IN_ADDITION_TO_ITS_OTHER_CREATURE_TYPES_PREFIX_PATTERN
+                .matches_words(&tail[remainder_start..])
+            {
+                remainder_start += 7;
+            } else if IN_ADDITION_TO_ITS_OTHER_TYPES_PREFIX_PATTERN
+                .matches_words(&tail[remainder_start..])
             {
                 remainder_start += 6;
             }

@@ -21467,6 +21467,49 @@ fn parse_auton_soldier_copy_exception_with_nonlegendary_artifact_and_myriad() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_sakashimas_student_copy_exception_adds_ninja_subtype() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Sakashima's Student")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Ninja])
+        .power_toughness(crate::card::PowerToughness::fixed(0, 0))
+        .parse_text(
+            "Ninjutsu {1}{U} ({1}{U}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)\nYou may have this creature enter as a copy of any creature on the battlefield, except it's a Ninja in addition to its other creature types.",
+        )
+        .expect("Sakashima's Student should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains("return an unblocked attacker you control")
+            && rendered_lower.contains("put this card onto the battlefield tapped and attacking")
+            && rendered_lower.contains(
+                "copy of any creature on the battlefield except it's a ninja in addition to its other creature types"
+            ),
+        "expected Sakashima's Student compiled text to include ninjutsu behavior and the Ninja copy exception, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("NinjutsuCostEffect") && debug.contains("NinjutsuEffect"),
+        "expected Sakashima's Student to lower ninjutsu as a hand activated ability, got {debug}"
+    );
+    assert!(
+        debug.contains("added_subtypes") && debug.contains("Ninja"),
+        "expected copy-as-enters lowering to record the added Ninja subtype, got {debug}"
+    );
+    assert!(
+        !debug.to_ascii_lowercase().contains("unsupported"),
+        "expected Sakashima's Student parse to avoid unsupported placeholders, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_reveal_card_this_way_trigger_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Primitive Etchings Variant")
         .parse_text(
