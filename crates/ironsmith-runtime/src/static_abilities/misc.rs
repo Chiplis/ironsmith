@@ -122,6 +122,15 @@ fn enters_with_counters_where_x_value(count: &Value) -> Option<String> {
     prefers_where_x.then(|| describe_value(count))
 }
 
+fn describe_enters_with_counters_equal_to_value(count: &Value) -> String {
+    let value = describe_value(count);
+    if let Some(rest) = value.strip_prefix("1 plus ") {
+        format!("one plus {rest}")
+    } else {
+        value
+    }
+}
+
 fn describe_discard_filter_card_phrase(filter: &ObjectFilter) -> String {
     let mut phrase = filter.description().trim().to_string();
     if phrase.is_empty() {
@@ -1118,6 +1127,12 @@ impl StaticAbilityKind for EntersWithCounters {
         if let Some(where_x_value) = enters_with_counters_where_x_value(&self.count) {
             return format!(
                 "Enters the battlefield with X {counter} counters on it, where X is {where_x_value}"
+            );
+        }
+        if self.count.has_surface_hint(ValueSurfaceHint::EqualTo) {
+            return format!(
+                "Enters the battlefield with a number of {counter} counters on it equal to {}",
+                describe_enters_with_counters_equal_to_value(&self.count)
             );
         }
 
