@@ -76,6 +76,30 @@ mod next_turn_cant;
 type ClauseDispatchCompatWords<'a> = TokenWordView<'a>;
 
 const PREVENT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["prevent"]);
+const ONLY_CHOSEN_CREATURES_CAN_ATTACK_DURING_THAT_COMBAT_PHASE_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any
+        &[
+            &[
+                "only", "the", "chosen", "creatures", "can", "attack", "during", "that",
+                "combat", "phase",
+            ],
+            &[
+                "only", "chosen", "creatures", "can", "attack", "during", "that", "combat",
+                "phase",
+            ],
+        ]);
+const ONLY_CHOSEN_CREATURES_CAN_BLOCK_DURING_THAT_COMBAT_PHASE_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any
+        &[
+            &[
+                "only", "the", "chosen", "creatures", "can", "block", "during", "that",
+                "combat", "phase",
+            ],
+            &[
+                "only", "chosen", "creatures", "can", "block", "during", "that", "combat",
+                "phase",
+            ],
+        ]);
 const CONTROL_PLAYER_SUBJECT_PATTERNS: &[&[&str]] = &[
     &["you"],
     &["that", "player"],
@@ -1322,6 +1346,28 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(EffectAst::subject_verb_emit_keyword_action(
             crate::events::KeywordActionKind::ChaosEnsues,
             1,
+        ));
+    }
+
+    if ONLY_CHOSEN_CREATURES_CAN_ATTACK_DURING_THAT_COMBAT_PHASE_PATTERN.matches_words(&clause_words)
+    {
+        return Ok(EffectAst::subject_verb_cant(
+            crate::effect::Restriction::attack(
+                ObjectFilter::creature().not_tagged(TagKey::from(IT_TAG)),
+            ),
+            Until::EndOfCombat,
+            None,
+        ));
+    }
+
+    if ONLY_CHOSEN_CREATURES_CAN_BLOCK_DURING_THAT_COMBAT_PHASE_PATTERN.matches_words(&clause_words)
+    {
+        return Ok(EffectAst::subject_verb_cant(
+            crate::effect::Restriction::block(
+                ObjectFilter::creature().not_tagged(TagKey::from(IT_TAG)),
+            ),
+            Until::EndOfCombat,
+            None,
         ));
     }
 

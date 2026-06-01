@@ -57118,6 +57118,153 @@ fn parse_full_throttle_two_additional_combats() {
 }
 
 #[test]
+fn last_night_together_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Last Night Together");
+
+    let def = parse_oracle_card_definition("Last Night Together");
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join(" ");
+    let debug = format!("{:#?}", def.spell_effect);
+
+    assert!(
+        rendered.contains("Choose two target creatures")
+            && rendered.contains("Put two +1/+1 counters on each of them")
+            && rendered.contains("They gain vigilance, indestructible, and haste until end of turn")
+            && rendered.contains("After this main phase, there is an additional combat phase")
+            && rendered.contains("Only the chosen creatures can attack during that combat phase"),
+        "expected Last Night Together compiled text to preserve the full chosen-creature combat restriction, got {rendered}"
+    );
+    assert!(
+        debug.contains("AdditionalPhasesEffect")
+            && debug.contains("CantEffect")
+            && debug.contains("EndOfCombat"),
+        "expected Last Night Together to lower to additional combat plus end-of-combat attack restriction, got {debug}"
+    );
+}
+
+#[test]
+fn last_night_together_runtime_limits_attackers_to_chosen_creatures_for_that_combat() {
+    let def = parse_oracle_card_definition("Last Night Together");
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let chosen_one = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(71_001), "Chosen One")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    let chosen_two = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(71_002), "Chosen Two")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    let unchosen = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(71_003), "Unchosen Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    for creature in [chosen_one, chosen_two, unchosen] {
+        game.remove_summoning_sickness(creature);
+        game.tap(creature);
+    }
+
+    let effects = def
+        .spell_effect
+        .as_ref()
+        .expect("Last Night Together should have a spell effect")
+        .flattened_default_effects();
+    let target_spec = effects[0]
+        .0
+        .get_target_spec()
+        .expect("Last Night Together should start with target selection")
+        .clone();
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_targets(vec![
+            crate::effects::ResolvedTarget::Object(chosen_one),
+            crate::effects::ResolvedTarget::Object(chosen_two),
+        ])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: target_spec,
+            range: 0..2,
+        }]);
+    ctx.snapshot_targets(&game);
+
+    for effect in effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap_or_else(|err| {
+            panic!("Last Night Together effect should resolve: {err:?}; effect={effect:?}")
+        });
+    }
+
+    assert_eq!(
+        game.turn_store.additional_phases,
+        vec![crate::game_state::Phase::Combat],
+        "Last Night Together should insert an additional combat phase"
+    );
+    for chosen in [chosen_one, chosen_two] {
+        assert!(!game.is_tapped(chosen), "chosen creatures should be untapped");
+        assert_eq!(
+            game.counter_count(chosen, crate::object::CounterType::PlusOnePlusOne),
+            2,
+            "chosen creatures should get two +1/+1 counters"
+        );
+        assert!(game.object_has_static_ability_id(chosen, StaticAbilityId::Vigilance));
+        assert!(game.object_has_static_ability_id(chosen, StaticAbilityId::Indestructible));
+        assert!(game.object_has_static_ability_id(chosen, StaticAbilityId::Haste));
+        assert!(game.can_attack(chosen), "chosen creatures should be allowed to attack");
+    }
+    assert!(
+        !game.can_attack(unchosen),
+        "unchosen creatures should be prohibited from attacking during that combat"
+    );
+
+    crate::turn::advance_phase(&mut game).expect("advance to the inserted combat phase");
+    assert_eq!(game.turn.phase, crate::game_state::Phase::Combat);
+    assert!(!game.can_attack(unchosen));
+
+    let late_unchosen = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(71_004), "Late Unchosen Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    game.remove_summoning_sickness(late_unchosen);
+    game.update_cant_effects();
+    assert!(
+        !game.can_attack(late_unchosen),
+        "creatures that enter before that combat are still not chosen and cannot attack"
+    );
+
+    game.turn.step = None;
+    crate::turn::advance_phase(&mut game).expect("advance out of the restricted combat phase");
+    game.update_cant_effects();
+    assert!(
+        game.can_attack(unchosen),
+        "the chosen-creatures-only restriction should expire after that combat phase"
+    );
+    assert!(
+        game.can_attack(late_unchosen),
+        "late unchosen creatures should be able to attack after the restricted combat ends"
+    );
+}
+
+#[test]
 fn parse_must_be_blocked_each_combat_this_turn_if_able() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Must Be Blocked Variant")
         .mana_cost(ManaCost::from_pips(vec![

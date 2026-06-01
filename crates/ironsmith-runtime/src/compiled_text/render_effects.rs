@@ -14503,6 +14503,30 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             continue;
         }
         if idx + 1 < filtered.len()
+            && let Some(for_each) = filtered[idx].downcast_ref::<crate::effects::ForEachObject>()
+            && let Some(tagged) = filtered[idx + 1].downcast_ref::<crate::effects::TaggedEffect>()
+            && let Some(compact) =
+                describe_for_each_chosen_put_counters_then_gain_keywords(for_each, tagged)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(additional_phases) = filtered[idx]
+                .downcast_ref::<crate::effects::AdditionalPhasesEffect>()
+            && let Some(cant) = filtered[idx + 1].downcast_ref::<crate::effects::CantEffect>()
+            && let Some(compact) =
+                describe_additional_combat_then_chosen_attack_or_block_restriction(
+                    additional_phases,
+                    cant,
+                )
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
             && let Some(tagged) = filtered[idx].downcast_ref::<crate::effects::TaggedEffect>()
             && let Some(cant) = filtered[idx + 1].downcast_ref::<crate::effects::CantEffect>()
             && let Some(compact) = describe_tagged_target_then_cant_restriction(tagged, cant)
@@ -21003,6 +21027,114 @@ pub(super) fn describe_choose_then_cant_pile_restriction(
         }
     };
     Some(sentence)
+}
+
+pub(super) fn describe_additional_combat_then_chosen_attack_or_block_restriction(
+    additional_phases: &crate::effects::AdditionalPhasesEffect,
+    cant: &crate::effects::CantEffect,
+) -> Option<String> {
+    if additional_phases.phases != [crate::effects::AdditionalPhase::Combat]
+        || cant.duration != crate::effect::Until::EndOfCombat
+    {
+        return None;
+    }
+
+    let (filter, verb) = match &cant.restriction {
+        crate::effect::Restriction::Attack(filter) => (filter, "attack"),
+        crate::effect::Restriction::Block(filter) => (filter, "block"),
+        _ => return None,
+    };
+    let references_chosen_tag = filter.tagged_constraints.iter().all(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+    }) && filter.tagged_constraints.iter().any(|constraint| {
+        let tag = constraint.tag.as_str();
+        matches!(tag, "__it__" | "it")
+            || tag.starts_with("targeted_")
+            || tag.starts_with("untapped_")
+    });
+    if !references_chosen_tag {
+        return None;
+    }
+    let mut base_filter = filter.clone();
+    base_filter.tagged_constraints.clear();
+    if base_filter != ObjectFilter::creature() {
+        return None;
+    }
+
+    Some(format!(
+        "After this main phase, there is an additional combat phase. Only the chosen creatures can {verb} during that combat phase"
+    ))
+}
+
+pub(super) fn describe_for_each_chosen_put_counters_then_gain_keywords(
+    for_each: &crate::effects::ForEachObject,
+    tagged: &crate::effects::TaggedEffect,
+) -> Option<String> {
+    let tag = for_each.filter.tagged_constraints.iter().find_map(|constraint| {
+        (constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
+            .then_some(&constraint.tag)
+    })?;
+    let [put_effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let put = put_effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if !matches!(put.target, ChooseSpec::Iterated) || put.target_count.is_some() || put.distributed
+    {
+        return None;
+    }
+
+    let apply = tagged
+        .effect
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if apply.until != crate::effect::Until::EndOfTurn
+        || apply.condition.is_some()
+        || !apply.runtime_modifications.is_empty()
+        || !matches!(apply.target_spec.as_ref(), Some(ChooseSpec::Tagged(found)) if found == tag)
+    {
+        return None;
+    }
+
+    fn keyword_label(ability: &crate::static_abilities::StaticAbility) -> Option<String> {
+        Some(
+            match ability.id() {
+                crate::static_abilities::StaticAbilityId::Flying => "flying",
+                crate::static_abilities::StaticAbilityId::FirstStrike => "first strike",
+                crate::static_abilities::StaticAbilityId::DoubleStrike => "double strike",
+                crate::static_abilities::StaticAbilityId::Deathtouch => "deathtouch",
+                crate::static_abilities::StaticAbilityId::Haste => "haste",
+                crate::static_abilities::StaticAbilityId::Hexproof => "hexproof",
+                crate::static_abilities::StaticAbilityId::Indestructible => "indestructible",
+                crate::static_abilities::StaticAbilityId::Lifelink => "lifelink",
+                crate::static_abilities::StaticAbilityId::Menace => "menace",
+                crate::static_abilities::StaticAbilityId::Reach => "reach",
+                crate::static_abilities::StaticAbilityId::Trample => "trample",
+                crate::static_abilities::StaticAbilityId::Vigilance => "vigilance",
+                _ => return None,
+            }
+            .to_string(),
+        )
+    }
+
+    let mut keywords = Vec::new();
+    let Some(crate::continuous::Modification::AddAbility(ability)) = &apply.modification else {
+        return None;
+    };
+    keywords.push(keyword_label(ability)?);
+    for modification in &apply.additional_modifications {
+        let crate::continuous::Modification::AddAbility(ability) = modification else {
+            return None;
+        };
+        keywords.push(keyword_label(ability)?);
+    }
+    if keywords.is_empty() {
+        return None;
+    }
+
+    Some(format!(
+        "Put {} on each of them. They gain {} until end of turn",
+        describe_put_counter_phrase(&put.amount, put.counter_type),
+        join_with_and(&keywords),
+    ))
 }
 
 pub(super) fn describe_tagged_target_then_cant_restriction(

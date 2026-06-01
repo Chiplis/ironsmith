@@ -167,6 +167,7 @@ pub fn advance_phase(game: &mut GameState) -> Result<(), TurnError> {
     }
 
     let current_phase = game.turn.phase;
+    let leaving_combat = matches!(current_phase, Phase::Combat);
 
     if let Some(mut next) = if !game.turn_store.additional_phases.is_empty() {
         Some(game.turn_store.additional_phases.remove(0))
@@ -203,6 +204,9 @@ pub fn advance_phase(game: &mut GameState) -> Result<(), TurnError> {
         {
             next = Phase::NextMain;
         }
+        if leaving_combat {
+            game.cleanup_restrictions_end_of_combat();
+        }
         game.turn.phase = next;
         if matches!(next, Phase::Combat) {
             game.mark_combat_phase_started();
@@ -211,6 +215,9 @@ pub fn advance_phase(game: &mut GameState) -> Result<(), TurnError> {
         game.turn.priority_player = Some(game.turn.active_player);
         Ok(())
     } else {
+        if leaving_combat {
+            game.cleanup_restrictions_end_of_combat();
+        }
         // End of turn - advance to next player
         game.next_turn();
         Ok(())
