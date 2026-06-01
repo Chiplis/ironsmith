@@ -2116,6 +2116,12 @@ pub(crate) fn parse_redirect_next_damage_sentence(
             .first()
             .is_some_and(|word| CLAUSE_TARGET_WORD_PATTERN.matches_word(word))
         {
+            if destination_clause.contains_word("choice") {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported redirected-next-time damage destination (clause: '{}')",
+                    clause_text
+                )));
+            }
             (
                 RedirectNextTimeDamageDestinationAst::TargetObject,
                 Some(parse_target_phrase(destination_clause.tokens())?),
