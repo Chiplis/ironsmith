@@ -2939,6 +2939,7 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         .or_else(|| describe_draw_discard_then_create_structural(effects))
         .or_else(|| describe_reveal_top_choice_to_hand_rest_graveyard_structural(effects))
         .or_else(|| describe_gain_control_untap_haste_structural(effects))
+        .or_else(|| describe_exile_then_free_cast_while_exiled_structural(effects))
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
         .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
 }
@@ -3431,6 +3432,42 @@ fn describe_choose_top_exile_then_play_structural(effects: &[Effect]) -> Option<
     let verb = if grant.allow_land { "play" } else { "cast" };
     Some(format!(
         "Exile the top card of your library. You may {verb} that card this turn"
+    ))
+}
+
+fn describe_exile_then_free_cast_while_exiled_structural(effects: &[Effect]) -> Option<String> {
+    let [move_effect, grant_play_effect, grant_free_cast_effect] = effects else {
+        return None;
+    };
+    let tag = structural_effect_tag(move_effect)?;
+    let move_to_zone = unwrap_structural_effect_tag(move_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let grant_play = grant_play_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let grant_free_cast = grant_free_cast_effect
+        .downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>()?;
+    if move_to_zone.zone != Zone::Exile
+        || grant_play.tag != *tag
+        || grant_free_cast.tag != *tag
+        || grant_play.player != grant_free_cast.player
+        || grant_play.duration != crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled
+        || grant_free_cast.duration != crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled
+        || grant_play.allow_land
+        || grant_play.allow_any_color_for_cast
+        || grant_free_cast.zone != Some(Zone::Exile)
+        || grant_free_cast.while_on_top_of_library
+    {
+        return None;
+    }
+    if !matches!(
+        grant_play.player,
+        PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(ref owner_tag)) if owner_tag == tag
+    ) {
+        return None;
+    }
+
+    Some(format!(
+        "Exile {}. For as long as that card remains exiled, its owner may cast it without paying its mana cost",
+        describe_choose_spec(&move_to_zone.target)
     ))
 }
 
@@ -33952,8 +33989,20 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             Some(crate::zone::Zone::OutsideGame) => " from outside the game",
             None => "",
         };
+        let timing_text = match grant_tagged_spell_free_cast.duration {
+            crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn => "this turn",
+            crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd => {
+                "until the end of your next turn"
+            }
+            crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled => {
+                "for as long as it remains exiled"
+            }
+            crate::effects::GrantPlayTaggedDuration::ForAsLongAsYouControlSource => {
+                "for as long as you control this source"
+            }
+        };
         return format!(
-            "{} may cast {object_text}{zone_text} this turn without paying {cost_text}",
+            "{} may cast {object_text}{zone_text} {timing_text} without paying {cost_text}",
             describe_player_filter(&grant_tagged_spell_free_cast.player),
         );
     }

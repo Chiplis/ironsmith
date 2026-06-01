@@ -3005,6 +3005,7 @@ impl<E> VoteEffect<E> {
 pub struct GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
     pub tag: crate::tag::TagKey,
     pub player: PlayerFilter,
+    pub duration: GrantPlayTaggedDuration,
     pub while_on_top_of_library: bool,
     pub zone: Option<crate::zone::Zone>,
 }
@@ -3014,6 +3015,7 @@ impl GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
         Self {
             tag: tag.into(),
             player,
+            duration: GrantPlayTaggedDuration::UntilEndOfTurn,
             while_on_top_of_library: false,
             zone: Some(crate::zone::Zone::Exile),
         }
@@ -3021,6 +3023,11 @@ impl GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
 
     pub fn while_on_top_of_library(mut self) -> Self {
         self.while_on_top_of_library = true;
+        self
+    }
+
+    pub fn for_as_long_as_exiled(mut self) -> Self {
+        self.duration = GrantPlayTaggedDuration::ForAsLongAsExiled;
         self
     }
 

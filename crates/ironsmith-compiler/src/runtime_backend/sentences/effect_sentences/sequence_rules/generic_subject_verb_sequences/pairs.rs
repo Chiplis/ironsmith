@@ -432,6 +432,7 @@ pub(crate) fn parse_look_at_top_then_exile_face_down_then_play_while_exiled(
             SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
                 player: permission_player,
                 allow_land,
+                without_paying_mana_cost,
                 allow_any_color_for_cast,
                 ..
             },
@@ -449,6 +450,7 @@ pub(crate) fn parse_look_at_top_then_exile_face_down_then_play_while_exiled(
             looked_tag,
             permission_player,
             allow_land,
+            without_paying_mana_cost,
             allow_any_color_for_cast,
         ),
     ]))

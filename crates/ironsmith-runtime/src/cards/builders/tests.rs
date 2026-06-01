@@ -21500,18 +21500,44 @@ fn parse_fastbond_additional_land_permission_is_explicitly_unsupported() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn parse_for_as_long_as_play_permission_is_explicitly_unsupported() {
-    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Elite Spellbinder Variant")
-        .card_types(vec![CardType::Creature])
+fn parse_release_to_the_wind_owner_while_exiled_free_cast_permission() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Release to the Wind Variant")
+        .card_types(vec![CardType::Instant])
         .parse_text(
-            "Flying\nWhen this creature enters, look at target opponent's hand. You may exile a nonland card from it. For as long as that card remains exiled, its owner may play it.",
+            "Exile target nonland permanent. For as long as that card remains exiled, its owner may cast it without paying its mana cost.",
         )
-        .expect_err("for-as-long-as play permission should stay unsupported");
+        .expect("Release to the Wind owner while-exiled free-cast permission should parse");
 
-    let debug = format!("{err:?}").to_ascii_lowercase();
+    let debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
     assert!(
-        debug.contains("unsupported for-as-long-as play/cast permission clause"),
-        "expected explicit for-as-long-as play permission error, got {debug}"
+        debug.contains("grantplaytaggedeffect")
+            && debug.contains("granttaggedspellfreecastuntilendofturneffect")
+            && debug.contains("foraslongasexiled")
+            && debug.contains("ownerof"),
+        "expected Release to the Wind owner while-exiled free-cast permission, got {debug}"
+    );
+}
+
+#[test]
+fn release_to_the_wind_oracle_parses_and_renders_while_exiled_free_cast_permission() {
+    let def = parse_oracle_card_definition("Release to the Wind");
+
+    let spell_debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        spell_debug.contains("movetozoneeffect")
+            && spell_debug.contains("excluded_card_types")
+            && spell_debug.contains("land")
+            && spell_debug.contains("grantplaytaggedeffect")
+            && spell_debug.contains("granttaggedspellfreecastuntilendofturneffect")
+            && spell_debug.contains("foraslongasexiled")
+            && spell_debug.contains("ownerof"),
+        "Release to the Wind should structurally exile a nonland permanent and grant its owner a while-exiled free-cast permission, got {spell_debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert_eq!(
+        rendered,
+        "Exile target nonland permanent. For as long as that card remains exiled, its owner may cast it without paying its mana cost."
     );
 }
 

@@ -627,6 +627,7 @@ fn parse_exile_top_library_then_play_bundle(
                 SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
                     player,
                     allow_land,
+                    without_paying_mana_cost,
                     allow_any_color_for_cast,
                     ..
                 },
@@ -635,6 +636,7 @@ fn parse_exile_top_library_then_play_bundle(
             tag,
             player,
             allow_land,
+            without_paying_mana_cost,
             allow_any_color_for_cast,
         ),
         _ => return Ok(None),
