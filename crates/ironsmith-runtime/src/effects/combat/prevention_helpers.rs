@@ -45,9 +45,37 @@ pub fn register_prevention_shield(
     damage_filter: DamageFilter,
     follow_up_effects: Vec<Effect>,
 ) -> PreventionShieldId {
+    register_prevention_shield_with_lifetime(
+        game,
+        ctx,
+        protected,
+        amount,
+        duration,
+        damage_filter,
+        follow_up_effects,
+        false,
+    )
+}
+
+/// Build and register a prevention shield on the game state with explicit event lifetime.
+pub fn register_prevention_shield_with_lifetime(
+    game: &mut GameState,
+    ctx: &ExecutionContext,
+    protected: PreventionTarget,
+    amount: Option<u32>,
+    duration: Until,
+    damage_filter: DamageFilter,
+    follow_up_effects: Vec<Effect>,
+    expires_after_next_matching_event: bool,
+) -> PreventionShieldId {
     let shield = PreventionShield::new(ctx.source, ctx.controller, protected, amount, duration)
         .with_filter(damage_filter)
         .with_follow_up_effects(follow_up_effects);
+    let shield = if expires_after_next_matching_event {
+        shield.with_expires_after_next_matching_event()
+    } else {
+        shield
+    };
     game.effect_store.prevention_effects.add_shield(shield)
 }
 

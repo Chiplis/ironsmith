@@ -58,6 +58,9 @@ pub struct PreventionShield {
     /// Effects to execute using the prevented amount when this shield prevents damage.
     pub follow_up_effects: Vec<Effect>,
 
+    /// Whether this shield expires after the first damage event it matches.
+    pub expires_after_next_matching_event: bool,
+
     /// Turn this shield was created (for end-of-turn cleanup)
     pub created_turn: u32,
 }
@@ -80,6 +83,7 @@ impl PreventionShield {
             duration,
             damage_filter: DamageFilter::default(),
             follow_up_effects: Vec::new(),
+            expires_after_next_matching_event: false,
             created_turn: 0, // Set when added to manager
         }
     }
@@ -93,6 +97,12 @@ impl PreventionShield {
     /// Execute these effects with the amount of damage this shield prevented.
     pub fn with_follow_up_effects(mut self, effects: Vec<Effect>) -> Self {
         self.follow_up_effects = effects;
+        self
+    }
+
+    /// Expire after the first matching damage event, even if unused capacity remains.
+    pub fn with_expires_after_next_matching_event(mut self) -> Self {
+        self.expires_after_next_matching_event = true;
         self
     }
 
@@ -329,6 +339,7 @@ impl PreventionEffectManager {
 
         let mut remaining = damage;
         let mut follow_ups = Vec::new();
+        let mut matched_one_event_shields = Vec::new();
 
         // Find applicable shields
         let shield_ids: Vec<PreventionShieldId> = self
@@ -350,25 +361,31 @@ impl PreventionEffectManager {
                 break;
             }
 
-            if let Some(shield) = self.get_shield_mut(id)
-                && can_be_prevented
-            {
-                // Normal prevention - reduce damage and consume shield
-                let prevented = shield.reduce(remaining);
-                remaining -= prevented;
-                if prevented > 0 && !shield.follow_up_effects.is_empty() {
-                    follow_ups.push(PreventionFollowUp {
-                        source: shield.source,
-                        controller: shield.controller,
-                        prevented,
-                        effects: shield.follow_up_effects.clone(),
-                    });
+            if let Some(shield) = self.get_shield_mut(id) {
+                if shield.expires_after_next_matching_event {
+                    matched_one_event_shields.push(id);
+                }
+                if can_be_prevented {
+                    // Normal prevention - reduce damage and consume shield
+                    let prevented = shield.reduce(remaining);
+                    remaining -= prevented;
+                    if prevented > 0 && !shield.follow_up_effects.is_empty() {
+                        follow_ups.push(PreventionFollowUp {
+                            source: shield.source,
+                            controller: shield.controller,
+                            prevented,
+                            effects: shield.follow_up_effects.clone(),
+                        });
+                    }
                 }
             }
-            // If can't be prevented: shield is "applied" but doesn't prevent
-            // and doesn't get consumed (per Rule 615.12)
+            // If damage can't be prevented, shields don't reduce damage or
+            // spend capacity. Event-scoped shields still expire after matching.
         }
 
+        for id in matched_one_event_shields {
+            self.remove_shield(id);
+        }
         // Clean up exhausted shields
         self.cleanup_exhausted();
 
@@ -426,6 +443,7 @@ impl PreventionEffectManager {
 
         let mut remaining = damage;
         let mut follow_ups = Vec::new();
+        let mut matched_one_event_shields = Vec::new();
 
         // Find applicable shields
         let shield_ids: Vec<PreventionShieldId> = self
@@ -447,22 +465,28 @@ impl PreventionEffectManager {
                 break;
             }
 
-            if let Some(shield) = self.get_shield_mut(id)
-                && can_be_prevented
-            {
-                let prevented = shield.reduce(remaining);
-                remaining -= prevented;
-                if prevented > 0 && !shield.follow_up_effects.is_empty() {
-                    follow_ups.push(PreventionFollowUp {
-                        source: shield.source,
-                        controller: shield.controller,
-                        prevented,
-                        effects: shield.follow_up_effects.clone(),
-                    });
+            if let Some(shield) = self.get_shield_mut(id) {
+                if shield.expires_after_next_matching_event {
+                    matched_one_event_shields.push(id);
+                }
+                if can_be_prevented {
+                    let prevented = shield.reduce(remaining);
+                    remaining -= prevented;
+                    if prevented > 0 && !shield.follow_up_effects.is_empty() {
+                        follow_ups.push(PreventionFollowUp {
+                            source: shield.source,
+                            controller: shield.controller,
+                            prevented,
+                            effects: shield.follow_up_effects.clone(),
+                        });
+                    }
                 }
             }
         }
 
+        for id in matched_one_event_shields {
+            self.remove_shield(id);
+        }
         // Clean up exhausted shields
         self.cleanup_exhausted();
 

@@ -170,6 +170,58 @@ fn power_leak_paid_mana_prevents_that_much_damage() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn power_leak_overpaid_prevention_does_not_prevent_later_damage() {
+    use crate::effects::EffectExecutor as _;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    setup_power_leak_attached_to_bob_enchantment(&mut game);
+    game.player_mut(bob)
+        .expect("bob exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 5);
+
+    put_power_leak_upkeep_trigger_on_stack(&mut game);
+    let mut dm = PowerLeakDecisionMaker {
+        accept_payment: true,
+        mana_to_pay: 5,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Power Leak trigger should resolve");
+
+    assert_eq!(
+        game.player(bob).expect("bob exists").life,
+        20,
+        "overpaying should still prevent the 2 Power Leak damage"
+    );
+    assert!(
+        game.effect_store.prevention_effects.shields().is_empty(),
+        "excess Power Leak prevention should not remain as a shield"
+    );
+
+    let later_source_card = CardBuilder::new(CardId::from_raw(102_003), "Later Damage Source")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let later_source = game.create_object_from_card(&later_source_card, alice, Zone::Battlefield);
+    let later_damage = crate::effects::DealDamageEffect::new(
+        3,
+        ChooseSpec::Player(PlayerFilter::Specific(bob)),
+    );
+    let mut later_dm = AutoPassDecisionMaker;
+    let mut later_ctx = crate::effects::ExecutionContext::new(later_source, alice, &mut later_dm);
+    later_damage
+        .execute(&mut game, &mut later_ctx)
+        .expect("later damage should resolve");
+
+    assert_eq!(
+        game.player(bob).expect("bob exists").life,
+        17,
+        "later damage in the same turn should not be prevented by excess Power Leak payment"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn power_leak_declined_payment_deals_full_damage() {
     let mut game = setup_game();
     let bob = PlayerId::from_index(1);

@@ -1629,32 +1629,50 @@ fn compile_subject_verb_effect(
             target,
             duration,
             source_of_your_choice,
+            expires_after_next_matching_event,
         } => {
             let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
             if let TargetAst::Object(filter, explicit_target_span, _) = target
                 && explicit_target_span.is_none()
             {
                 let filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+                let prevent_effect = crate::effects::PreventDamageEffect::new(
+                    amount,
+                    ChooseSpec::Iterated,
+                    duration.clone(),
+                );
+                let prevent_effect = if *expires_after_next_matching_event {
+                    prevent_effect.expires_after_next_matching_event()
+                } else {
+                    prevent_effect
+                };
                 let effect = Effect::for_each(
                     filter,
-                    vec![Effect::prevent_damage(
-                        amount,
-                        ChooseSpec::Iterated,
-                        duration.clone(),
-                    )],
+                    vec![Effect::new(prevent_effect)],
                 );
                 Ok((vec![effect], Vec::new()))
             } else {
                 compile_effect_for_target(target, ctx, |spec| {
-                    if *source_of_your_choice {
-                        Effect::prevent_damage_with_source_choice(
+                    let effect = if *source_of_your_choice {
+                        crate::effects::PreventDamageEffect::new(
                             amount.clone(),
                             spec,
                             duration.clone(),
                         )
+                        .with_source_of_your_choice()
                     } else {
-                        Effect::prevent_damage(amount.clone(), spec, duration.clone())
-                    }
+                        crate::effects::PreventDamageEffect::new(
+                            amount.clone(),
+                            spec,
+                            duration.clone(),
+                        )
+                    };
+                    let effect = if *expires_after_next_matching_event {
+                        effect.expires_after_next_matching_event()
+                    } else {
+                        effect
+                    };
+                    Effect::new(effect)
                 })
             }
         }

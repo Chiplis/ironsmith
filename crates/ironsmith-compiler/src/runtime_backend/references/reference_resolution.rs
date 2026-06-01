@@ -1822,6 +1822,7 @@ fn pay_damage_prevention_reordered(
                 target,
                 duration,
                 source_of_your_choice,
+                ..
             },
     }) = prevention
     else {
@@ -1844,6 +1845,7 @@ fn pay_damage_prevention_reordered(
                 target: payment_player_target,
                 duration: duration.clone(),
                 source_of_your_choice: *source_of_your_choice,
+                expires_after_next_matching_event: true,
             },
         }),
         damage,

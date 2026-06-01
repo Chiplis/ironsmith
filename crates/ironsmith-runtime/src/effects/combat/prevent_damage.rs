@@ -1,6 +1,8 @@
 //! Prevent damage effect implementation.
 
-use super::prevention_helpers::{register_prevention_shield, resolve_prevention_target_from_spec};
+use super::prevention_helpers::{
+    register_prevention_shield_with_lifetime, resolve_prevention_target_from_spec,
+};
 use crate::effect::{Effect, EffectOutcome, Until, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_value;
@@ -43,6 +45,8 @@ pub struct PreventDamageEffect {
     pub follow_up_effects: Vec<Effect>,
     /// Whether the source is chosen as the effect resolves.
     pub source_of_your_choice: bool,
+    /// Whether the shield expires after the first matching damage event.
+    pub expires_after_next_matching_event: bool,
 }
 
 impl PreventDamageEffect {
@@ -55,6 +59,7 @@ impl PreventDamageEffect {
             damage_filter: DamageFilter::all(),
             follow_up_effects: Vec::new(),
             source_of_your_choice: false,
+            expires_after_next_matching_event: false,
         }
     }
 
@@ -77,6 +82,12 @@ impl PreventDamageEffect {
     /// Execute these effects using the amount this shield prevented.
     pub fn with_follow_up_effects(mut self, effects: Vec<Effect>) -> Self {
         self.follow_up_effects = effects;
+        self
+    }
+
+    /// Expire after the first matching damage event, even if unused capacity remains.
+    pub fn expires_after_next_matching_event(mut self) -> Self {
+        self.expires_after_next_matching_event = true;
         self
     }
 }
@@ -139,9 +150,12 @@ impl EffectExecutor for PreventDamageEffect {
             };
             damage_filter.from_specific_source = Some(chosen_source);
         }
+        if self.expires_after_next_matching_event {
+            damage_filter.from_specific_source = Some(ctx.source);
+        }
 
         let protected = resolve_prevention_target_from_spec(game, &self.target, ctx)?;
-        register_prevention_shield(
+        register_prevention_shield_with_lifetime(
             game,
             ctx,
             protected,
@@ -149,6 +163,7 @@ impl EffectExecutor for PreventDamageEffect {
             self.duration.clone(),
             damage_filter,
             self.follow_up_effects.clone(),
+            self.expires_after_next_matching_event,
         );
 
         Ok(EffectOutcome::resolved())

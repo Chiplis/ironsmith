@@ -1016,6 +1016,7 @@ pub(crate) enum SubjectVerbActionAst {
         target: TargetAst,
         duration: Until,
         source_of_your_choice: bool,
+        expires_after_next_matching_event: bool,
     },
     PreventAllDamageToTarget {
         target: TargetAst,
@@ -2190,12 +2191,17 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 amount,
                 target,
                 duration,
+                expires_after_next_matching_event,
                 ..
             } => f
                 .debug_struct("PreventDamage")
                 .field("amount", amount)
                 .field("target", target)
                 .field("duration", duration)
+                .field(
+                    "expires_after_next_matching_event",
+                    expires_after_next_matching_event,
+                )
                 .finish(),
             Self::PreventAllDamageToTarget { target, duration } => f
                 .debug_struct("PreventAllDamageToTarget")
@@ -3652,6 +3658,22 @@ impl EffectAst {
         duration: Until,
         source_of_your_choice: bool,
     ) -> Self {
+        Self::subject_verb_prevent_damage_with_options(
+            amount,
+            target,
+            duration,
+            source_of_your_choice,
+            false,
+        )
+    }
+
+    pub(crate) fn subject_verb_prevent_damage_with_options(
+        amount: Value,
+        target: TargetAst,
+        duration: Until,
+        source_of_your_choice: bool,
+        expires_after_next_matching_event: bool,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3660,6 +3682,7 @@ impl EffectAst {
                 target,
                 duration,
                 source_of_your_choice,
+                expires_after_next_matching_event,
             },
         )
     }

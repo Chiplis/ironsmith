@@ -590,6 +590,7 @@ where
             hooks,
         )?);
         prevent.source_of_your_choice = payload.source_of_your_choice;
+        prevent.expires_after_next_matching_event = payload.expires_after_next_matching_event;
         return Ok(Effect::new(prevent));
     }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::LoseTheGameEffect>(&effect) {

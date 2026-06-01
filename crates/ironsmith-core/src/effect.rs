@@ -3489,6 +3489,7 @@ pub struct PreventDamageEffect<E> {
     pub until: Until,
     pub follow_up_effects: Vec<E>,
     pub source_of_your_choice: bool,
+    pub expires_after_next_matching_event: bool,
 }
 
 impl<E> PreventDamageEffect<E> {
@@ -3499,6 +3500,7 @@ impl<E> PreventDamageEffect<E> {
             until,
             follow_up_effects: Vec::new(),
             source_of_your_choice: false,
+            expires_after_next_matching_event: false,
         }
     }
 
@@ -3509,6 +3511,11 @@ impl<E> PreventDamageEffect<E> {
 
     pub fn with_source_of_your_choice(mut self) -> Self {
         self.source_of_your_choice = true;
+        self
+    }
+
+    pub fn expires_after_next_matching_event(mut self) -> Self {
+        self.expires_after_next_matching_event = true;
         self
     }
 }
