@@ -515,6 +515,9 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::LookAtHand { target } => {
                     track_target_player(target, frame);
                 }
+                SubjectVerbActionAst::LookAtTarget { target } => {
+                    maybe_tag_target(target, frame, id_gen, "targeted")?;
+                }
                 SubjectVerbActionAst::Counter { target }
                 | SubjectVerbActionAst::CounterUnlessPays { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "countered")?;
@@ -1934,6 +1937,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::EmitKeywordAction { .. }
             | SubjectVerbActionAst::Amass { .. }
             | SubjectVerbActionAst::LookAtObjects { .. }
+            | SubjectVerbActionAst::LookAtTarget { .. }
             | SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { .. }
             | SubjectVerbActionAst::PutSomeIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::Bolster { .. }
@@ -2666,6 +2670,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             }
             SubjectVerbActionAst::LookAtObjects { filter } => {
                 bind_unresolved_it_in_filter(filter, seed_tag)
+            }
+            SubjectVerbActionAst::LookAtTarget { target } => {
+                bind_unresolved_it_in_target(target, seed_tag)
             }
             SubjectVerbActionAst::PutIntoHand { object } => {
                 bind_unresolved_it_in_object_ref_ast(object, seed_tag)

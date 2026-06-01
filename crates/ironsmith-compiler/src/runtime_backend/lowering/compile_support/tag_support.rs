@@ -88,6 +88,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::Destroy { target, .. }
             | SubjectVerbActionAst::Exile { target, .. }
             | SubjectVerbActionAst::LookAtHand { target }
+            | SubjectVerbActionAst::LookAtTarget { target }
             | SubjectVerbActionAst::Counter { target }
             | SubjectVerbActionAst::CounterUnlessPays { target, .. }
             | SubjectVerbActionAst::PutCounters { target, .. }
@@ -596,6 +597,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::RevealTagged { .. }
         | SubjectVerbActionAst::RevealCardsFromHand { .. }
         | SubjectVerbActionAst::LookAtObjects { .. }
+        | SubjectVerbActionAst::LookAtTarget { .. }
         | SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { .. }
         | SubjectVerbActionAst::PutSomeIntoHandRestOnBottomOfLibrary { .. }
         | SubjectVerbActionAst::EmitKeywordAction { .. }

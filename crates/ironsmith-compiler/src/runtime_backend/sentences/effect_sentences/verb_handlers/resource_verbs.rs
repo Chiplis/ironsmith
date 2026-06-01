@@ -544,6 +544,17 @@ pub(crate) fn parse_look(
         return Ok(EffectAst::subject_verb_look_at_hand(target));
     }
 
+    if let Some(filter) = match hand_words.as_slice() {
+        ["target", "face", "down", "creature"]
+        | ["target", "face", "down", "creatures"] => Some(ObjectFilter::creature().face_down()),
+        ["target", "face", "down", "permanent"]
+        | ["target", "face", "down", "permanents"] => Some(ObjectFilter::permanent().face_down()),
+        _ => None,
+    } {
+        let target = TargetAst::Object(filter, span_from_tokens(&hand_tokens), None);
+        return Ok(EffectAst::subject_verb_look_at_target(target));
+    }
+
     let Some(top_idx) = find_index(&clause_tokens, |t| {
         RESOURCE_TOP_WORD_PATTERN.matches_token(t)
     }) else {

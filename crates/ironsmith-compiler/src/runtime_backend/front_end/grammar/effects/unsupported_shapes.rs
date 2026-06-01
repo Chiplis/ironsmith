@@ -313,6 +313,16 @@ pub(crate) fn has_face_down_clause_sentence_lexed(
         return false;
     }
 
+    if matches!(
+        words,
+        ["look", "at", "target", "face", "down", "creature"]
+            | ["look", "at", "target", "face", "down", "creatures"]
+            | ["look", "at", "target", "face", "down", "permanent"]
+            | ["look", "at", "target", "face", "down", "permanents"]
+    ) {
+        return false;
+    }
+
     let simple_exile_face_down = primitives::words_match_any_prefix(tokens, EXILE_PREFIXES)
         .is_some()
         && !primitives::contains_word(tokens, "then")

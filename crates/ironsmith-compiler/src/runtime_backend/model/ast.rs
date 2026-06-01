@@ -952,6 +952,9 @@ pub(crate) enum SubjectVerbActionAst {
     LookAtObjects {
         filter: ObjectFilter,
     },
+    LookAtTarget {
+        target: TargetAst,
+    },
     PutIntoHand {
         object: ObjectRefAst,
     },
@@ -2099,6 +2102,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("LookAtObjects")
                 .field("filter", filter)
                 .finish(),
+            Self::LookAtTarget { target } => {
+                f.debug_tuple("LookAtTarget").field(target).finish()
+            }
             Self::PutIntoHand { object } => f.debug_tuple("PutIntoHand").field(object).finish(),
             Self::MayMoveToZone { target, zone } => f
                 .debug_struct("MayMoveToZone")
@@ -5631,6 +5637,14 @@ impl EffectAst {
             SubjectVerbRoleAst::AffectedPlayer,
             player,
             SubjectVerbActionAst::LookAtObjects { filter },
+        )
+    }
+
+    pub(crate) fn subject_verb_look_at_target(target: TargetAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::LookAtTarget { target },
         )
     }
 
