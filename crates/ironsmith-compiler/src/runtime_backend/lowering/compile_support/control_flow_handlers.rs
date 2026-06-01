@@ -691,6 +691,7 @@ pub(crate) fn effect_predicate_from_if_result(predicate: IfResultPredicate) -> E
     match predicate {
         IfResultPredicate::Did => EffectPredicate::Happened,
         IfResultPredicate::DidNot => EffectPredicate::DidNotHappen,
+        IfResultPredicate::SearchedLibrary => EffectPredicate::Happened,
         IfResultPredicate::DiesThisWay => EffectPredicate::HappenedNotReplaced,
         IfResultPredicate::WasDeclined => EffectPredicate::WasDeclined,
         IfResultPredicate::Value(cmp) => EffectPredicate::Value(cmp),

@@ -43,6 +43,23 @@ const BATTLEFIELD_HAND_OTHER_ONE_MARKER_PATTERN: ClauseShape<'static> =
 const TAPPED_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["tapped"]);
 const YOUR_OR_THEIR_LIBRARY_FOR_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["your", "library", "for"], &["their", "library", "for"]]);
+const YOUR_OR_THEIR_LIBRARY_GRAVEYARD_FOR_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["your", "library", "and/or", "graveyard", "for"],
+            &["their", "library", "and/or", "graveyard", "for"],
+            &["your", "library", "and", "graveyard", "for"],
+            &["their", "library", "and", "graveyard", "for"],
+            &["your", "library", "and", "or", "graveyard", "for"],
+            &["their", "library", "and", "or", "graveyard", "for"],
+            &["your", "graveyard", "and/or", "library", "for"],
+            &["their", "graveyard", "and/or", "library", "for"],
+            &["your", "graveyard", "and", "library", "for"],
+            &["their", "graveyard", "and", "library", "for"],
+            &["your", "graveyard", "and", "or", "library", "for"],
+            &["their", "graveyard", "and", "or", "library", "for"],
+        ]
+);
 const CONTROLLER_GRAVEYARD_HAND_LIBRARY_FOR_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
         & [
@@ -872,7 +889,16 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
     let mut forced_library_owner: Option<PlayerFilter> = None;
     let mut search_zones_override: Option<Vec<Zone>> = None;
 
-    if YOUR_OR_THEIR_LIBRARY_FOR_PREFIX_PATTERN.matches_words(search_body_words) {
+    if YOUR_OR_THEIR_LIBRARY_GRAVEYARD_FOR_PREFIX_PATTERN.matches_words(search_body_words) {
+        forced_library_owner = Some(match chooser {
+            PlayerAst::Target => PlayerFilter::target_player(),
+            PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
+            PlayerAst::Opponent => PlayerFilter::Opponent,
+            PlayerAst::That => PlayerFilter::IteratedPlayer,
+            _ => PlayerFilter::You,
+        });
+        search_zones_override = Some(vec![Zone::Library, Zone::Graveyard]);
+    } else if YOUR_OR_THEIR_LIBRARY_FOR_PREFIX_PATTERN.matches_words(search_body_words) {
         // Keep player from parsed subject/default context.
     } else if CONTROLLER_GRAVEYARD_HAND_LIBRARY_FOR_PREFIX_PATTERN.matches_words(search_body_words)
     {

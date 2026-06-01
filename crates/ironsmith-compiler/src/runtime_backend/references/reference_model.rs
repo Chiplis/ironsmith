@@ -15,6 +15,7 @@ pub(crate) enum RefState<T> {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ReferenceFrame {
     pub(crate) last_effect_id: Option<EffectId>,
+    pub(crate) last_library_search_effect_id: Option<EffectId>,
     pub(crate) last_object_tag: Option<String>,
     pub(crate) last_it_choice_is_set: bool,
     pub(crate) last_player_filter: Option<PlayerFilter>,
@@ -31,6 +32,7 @@ impl ReferenceFrame {
     pub(crate) fn from_lowering_frame(frame: &LoweringFrame) -> Self {
         Self {
             last_effect_id: frame.last_effect_id,
+            last_library_search_effect_id: frame.last_library_search_effect_id,
             last_object_tag: frame.last_object_tag.clone(),
             last_it_choice_is_set: frame.last_it_choice_is_set,
             last_player_filter: frame.last_player_filter.clone(),
@@ -47,6 +49,7 @@ impl ReferenceFrame {
     pub(crate) fn to_lowering_frame(&self) -> LoweringFrame {
         LoweringFrame {
             last_effect_id: self.last_effect_id,
+            last_library_search_effect_id: self.last_library_search_effect_id,
             last_object_tag: self.last_object_tag.clone(),
             last_it_choice_is_set: self.last_it_choice_is_set,
             last_revealed_tag: None,
@@ -96,6 +99,7 @@ pub(crate) struct ReferenceImports {
     pub(crate) last_player_filter: Option<PlayerFilter>,
     pub(crate) source_object_antecedent: bool,
     pub(crate) last_effect_id: Option<EffectId>,
+    pub(crate) last_library_search_effect_id: Option<EffectId>,
 }
 
 impl ReferenceImports {
@@ -105,6 +109,7 @@ impl ReferenceImports {
             && self.last_player_filter.is_none()
             && !self.source_object_antecedent
             && self.last_effect_id.is_none()
+            && self.last_library_search_effect_id.is_none()
     }
 
     pub(crate) fn with_last_object_tag(tag: impl Into<TagKey>) -> Self {
@@ -122,6 +127,7 @@ impl ReferenceImports {
             last_player_filter: frame.last_player_filter.clone(),
             source_object_antecedent: frame.source_object_antecedent,
             last_effect_id: frame.last_effect_id,
+            last_library_search_effect_id: frame.last_library_search_effect_id,
         }
     }
 
@@ -137,6 +143,7 @@ pub(crate) struct ReferenceEnv {
     pub(crate) last_player_filter: RefState<PlayerFilter>,
     pub(crate) source_object_antecedent: bool,
     pub(crate) last_effect_id: RefState<EffectId>,
+    pub(crate) last_library_search_effect_id: RefState<EffectId>,
     pub(crate) iterated_player: bool,
     pub(crate) allow_life_event_value: bool,
     pub(crate) bind_unbound_x_to_last_effect: bool,
@@ -150,6 +157,7 @@ impl Default for ReferenceEnv {
             last_player_filter: RefState::Unknown,
             source_object_antecedent: false,
             last_effect_id: RefState::Unknown,
+            last_library_search_effect_id: RefState::Unknown,
             iterated_player: false,
             allow_life_event_value: false,
             bind_unbound_x_to_last_effect: false,
@@ -173,6 +181,9 @@ impl ReferenceEnv {
             last_effect_id: RefState::from_option(
                 imports.last_effect_id.or(initial_last_effect_id),
             ),
+            last_library_search_effect_id: RefState::from_option(
+                imports.last_library_search_effect_id,
+            ),
             iterated_player,
             allow_life_event_value,
             bind_unbound_x_to_last_effect,
@@ -188,6 +199,9 @@ impl ReferenceEnv {
             last_player_filter: RefState::from_option(frame.last_player_filter.clone()),
             source_object_antecedent: frame.source_object_antecedent,
             last_effect_id: RefState::from_option(frame.last_effect_id),
+            last_library_search_effect_id: RefState::from_option(
+                frame.last_library_search_effect_id,
+            ),
             iterated_player: frame.iterated_player,
             allow_life_event_value: frame.allow_life_event_value,
             bind_unbound_x_to_last_effect: frame.bind_unbound_x_to_last_effect,
@@ -205,6 +219,10 @@ impl ReferenceEnv {
     ) -> ReferenceFrame {
         ReferenceFrame {
             last_effect_id: self.last_effect_id.clone().into_option(),
+            last_library_search_effect_id: self
+                .last_library_search_effect_id
+                .clone()
+                .into_option(),
             last_object_tag: self
                 .last_object_tag
                 .clone()
@@ -264,6 +282,7 @@ pub(crate) struct ReferenceExports {
     pub(crate) last_player_filter: RefState<PlayerFilter>,
     pub(crate) source_object_antecedent: bool,
     pub(crate) last_effect_id: RefState<EffectId>,
+    pub(crate) last_library_search_effect_id: RefState<EffectId>,
     pub(crate) iterated_player: bool,
 }
 
@@ -275,6 +294,7 @@ impl Default for ReferenceExports {
             last_player_filter: RefState::Unknown,
             source_object_antecedent: false,
             last_effect_id: RefState::Unknown,
+            last_library_search_effect_id: RefState::Unknown,
             iterated_player: false,
         }
     }
@@ -288,6 +308,7 @@ impl ReferenceExports {
             last_player_filter: env.last_player_filter.clone(),
             source_object_antecedent: env.source_object_antecedent,
             last_effect_id: env.last_effect_id.clone(),
+            last_library_search_effect_id: env.last_library_search_effect_id.clone(),
             iterated_player: env.iterated_player,
         }
     }
@@ -300,6 +321,10 @@ impl ReferenceExports {
             source_object_antecedent: left.source_object_antecedent
                 && right.source_object_antecedent,
             last_effect_id: RefState::join(&left.last_effect_id, &right.last_effect_id),
+            last_library_search_effect_id: RefState::join(
+                &left.last_library_search_effect_id,
+                &right.last_library_search_effect_id,
+            ),
             iterated_player: left.iterated_player && right.iterated_player,
         }
     }
@@ -311,6 +336,10 @@ impl ReferenceExports {
             last_player_filter: self.last_player_filter.clone().into_option(),
             source_object_antecedent: self.source_object_antecedent,
             last_effect_id: self.last_effect_id.clone().into_option(),
+            last_library_search_effect_id: self
+                .last_library_search_effect_id
+                .clone()
+                .into_option(),
         }
     }
 }
