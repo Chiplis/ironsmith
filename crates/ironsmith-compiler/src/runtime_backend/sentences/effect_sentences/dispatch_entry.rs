@@ -46,6 +46,7 @@ use super::super::value_helpers::parse_value_from_lexed;
 use super::bundle_rules::{
     parse_exact_card_effect_bundle_lexed, parse_same_sentence_copy_and_may_cast_copy,
 };
+use super::chain_carry::bind_counted_counter_number_references;
 use super::consult_family;
 use super::divvy::try_parse_divvy_sentence_sequence;
 use super::looked_cards_family;
@@ -1354,6 +1355,7 @@ fn parse_effect_sentences_from_sentence_inputs(
     if let Some(last_sentence) = sentences.last() {
         parser_trace("parse_effect_sentences:done", last_sentence.lowered());
     }
+    bind_counted_counter_number_references(&mut effects);
     Ok(effects)
 }
 

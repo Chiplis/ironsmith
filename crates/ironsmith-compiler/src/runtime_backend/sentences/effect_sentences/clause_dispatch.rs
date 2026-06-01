@@ -27,10 +27,10 @@ use super::super::object_filters::parse_object_filter;
 use super::super::permission_helpers::parse_cast_or_play_tagged_clause;
 use super::super::token_primitives::find_index as find_token_index;
 use super::super::util::{
-    contains_until_end_of_turn, parse_card_type, parse_color, parse_number, parse_subject,
-    parse_subtype_flexible, parse_target_phrase, parse_value, parser_trace, parser_trace_stack,
-    span_from_tokens, starts_with_until_end_of_turn, token_index_for_word_index, trim_commas,
-    word_refs_except,
+    contains_until_end_of_turn, parse_card_type, parse_color, parse_counter_type_word,
+    parse_number, parse_subject, parse_subtype_flexible, parse_target_phrase, parse_value,
+    parser_trace, parser_trace_stack, span_from_tokens, starts_with_until_end_of_turn,
+    token_index_for_word_index, trim_commas, word_refs_except,
 };
 use super::chain_carry::{parse_leading_player_may, remove_first_word, remove_through_first_word};
 use super::clause_pattern_helpers::{ClauseShape, clause_shape, extract_subject_player};
@@ -221,6 +221,7 @@ const TARGET_ONLY_RESTRICTION_WORD_PATTERN: ClauseShape<'static> = clause_shape!
             "blocked", "except", "unless", "attack", "attacks", "block", "blocks",
         ]]
 );
+const COUNTED_COUNTER_OBJECTS_TAG: &str = "__ironsmith_counted_counter_objects";
 
 fn dispatch_find_phrase_shape(
     words: &[&str],
@@ -318,6 +319,62 @@ fn parse_copular_base_pt_animation_clause(
     }
 
     parse_become_clause(subject_tokens, rest_tokens).map(Some)
+}
+
+fn parse_count_counters_on_filter_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let clause = LexedClause::new(tokens).trimmed();
+    let words = clause.word_refs();
+    if !word_slice_starts_with(&words, &["count"]) {
+        return Ok(None);
+    }
+
+    let mut idx = 1usize;
+    if words.get(idx).copied() == Some("the") {
+        idx += 1;
+    }
+    if words.get(idx..idx + 2) != Some(&["number", "of"][..]) {
+        return Ok(None);
+    }
+    idx += 2;
+
+    if words.get(idx).is_some_and(|word| matches!(*word, "a" | "an" | "one")) {
+        idx += 1;
+    }
+
+    let Some(counter_word) = words.get(idx).copied() else {
+        return Ok(None);
+    };
+    let Some(counter_type) = parse_counter_type_word(counter_word) else {
+        return Ok(None);
+    };
+    idx += 1;
+
+    if !words
+        .get(idx)
+        .is_some_and(|word| matches!(*word, "counter" | "counters"))
+        || words.get(idx + 1).copied() != Some("on")
+    {
+        return Ok(None);
+    }
+    idx += 2;
+
+    let Some(filter_token_idx) = token_index_for_word_index(tokens, idx) else {
+        return Ok(None);
+    };
+    let filter_tokens = trim_commas(&tokens[filter_token_idx..]);
+    if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let mut filter = parse_object_filter(&filter_tokens, false)?;
+    filter.with_counter = Some(crate::filter::CounterConstraint::Typed(counter_type));
+    Ok(Some(EffectAst::subject_verb_tag_matching_objects(
+        filter,
+        vec![Zone::Battlefield],
+        TagKey::from(COUNTED_COUNTER_OBJECTS_TAG),
+    )))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -795,6 +852,10 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     let clause_words = clause_word_view.to_word_refs();
 
     if let Some(effect) = parse_for_each_prevent_damage_clause(tokens)? {
+        return Ok(effect);
+    }
+
+    if let Some(effect) = parse_count_counters_on_filter_clause(tokens)? {
         return Ok(effect);
     }
 

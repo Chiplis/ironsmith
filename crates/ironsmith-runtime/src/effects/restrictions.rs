@@ -2,12 +2,12 @@
 
 use std::collections::HashSet;
 
-use crate::effect::{EffectOutcome, Restriction, Until};
+use crate::effect::{EffectOutcome, Restriction, Until, Value};
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::filter::ObjectFilterExt;
+use crate::filter::{Comparison, ObjectFilterExt, resolve_filter_comparison_rhs_value};
 use crate::game_state::GameState;
-use crate::target::ObjectFilter;
+use crate::target::{ChooseSpec, ObjectFilter};
 pub use ironsmith_core::CantEffect;
 
 fn collapse_tagged_filter_to_specific_objects(
@@ -122,6 +122,73 @@ fn collapse_filter_to_current_matching_objects(
     }
 }
 
+fn is_tagged_counter_value(value: &Value) -> bool {
+    match value {
+        Value::SurfaceHinted { value, .. } => is_tagged_counter_value(value),
+        Value::CountersOn(spec, _) => matches!(spec.as_ref(), ChooseSpec::Tagged(_)),
+        _ => false,
+    }
+}
+
+fn freeze_tagged_counter_comparison(
+    comparison: &mut Option<Comparison>,
+    ctx: &ExecutionContext,
+    game: &GameState,
+) {
+    let Some(frozen) = comparison.as_ref().and_then(|comparison| {
+        let filter_ctx = ctx.filter_context(game);
+        match comparison {
+            Comparison::EqualExpr(value) if is_tagged_counter_value(value) => {
+                resolve_filter_comparison_rhs_value(value, game, &filter_ctx, None)
+                    .map(Comparison::Equal)
+            }
+            Comparison::NotEqualExpr(value) if is_tagged_counter_value(value) => {
+                resolve_filter_comparison_rhs_value(value, game, &filter_ctx, None)
+                    .map(Comparison::NotEqual)
+            }
+            Comparison::LessThanExpr(value) if is_tagged_counter_value(value) => {
+                resolve_filter_comparison_rhs_value(value, game, &filter_ctx, None)
+                    .map(Comparison::LessThan)
+            }
+            Comparison::LessThanOrEqualExpr(value) if is_tagged_counter_value(value) => {
+                resolve_filter_comparison_rhs_value(value, game, &filter_ctx, None)
+                    .map(Comparison::LessThanOrEqual)
+            }
+            Comparison::GreaterThanExpr(value) if is_tagged_counter_value(value) => {
+                resolve_filter_comparison_rhs_value(value, game, &filter_ctx, None)
+                    .map(Comparison::GreaterThan)
+            }
+            Comparison::GreaterThanOrEqualExpr(value) if is_tagged_counter_value(value) => {
+                resolve_filter_comparison_rhs_value(value, game, &filter_ctx, None)
+                    .map(Comparison::GreaterThanOrEqual)
+            }
+            _ => None,
+        }
+    }) else {
+        return;
+    };
+    *comparison = Some(frozen);
+}
+
+fn freeze_tagged_counter_values_for_resolution(
+    filter: &ObjectFilter,
+    ctx: &ExecutionContext,
+    game: &GameState,
+) -> ObjectFilter {
+    let mut frozen = filter.clone();
+    freeze_tagged_counter_comparison(&mut frozen.color_count, ctx, game);
+    freeze_tagged_counter_comparison(&mut frozen.power, ctx, game);
+    freeze_tagged_counter_comparison(&mut frozen.toughness, ctx, game);
+    freeze_tagged_counter_comparison(&mut frozen.total_power_toughness, ctx, game);
+    freeze_tagged_counter_comparison(&mut frozen.mana_value, ctx, game);
+    frozen.any_of = frozen
+        .any_of
+        .iter()
+        .map(|filter| freeze_tagged_counter_values_for_resolution(filter, ctx, game))
+        .collect();
+    frozen
+}
+
 fn normalize_restriction_for_resolution(
     restriction: &Restriction,
     ctx: &ExecutionContext,
@@ -146,9 +213,10 @@ fn normalize_restriction_for_resolution(
                 player.clone(),
             )
         }
-        Restriction::Block(filter) => Restriction::block(
-            collapse_filter_to_current_matching_objects(filter, ctx, game),
-        ),
+        Restriction::Block(filter) => {
+            let filter = freeze_tagged_counter_values_for_resolution(filter, ctx, game);
+            Restriction::block(collapse_filter_to_current_matching_objects(&filter, ctx, game))
+        }
         _ => restriction.clone(),
     }
 }

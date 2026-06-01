@@ -3928,6 +3928,63 @@ fn describe_choose_color_then_chosen_color_mana(effects: &[&Effect]) -> Option<S
     None
 }
 
+const COUNTED_COUNTER_OBJECTS_TAG: &str = "__ironsmith_counted_counter_objects";
+
+fn describe_count_counters_then_cant_block(effects: &[&Effect]) -> Option<String> {
+    let [count_effect, cant_effect] = effects else {
+        return None;
+    };
+    let count = count_effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    if count.tag.as_str() != COUNTED_COUNTER_OBJECTS_TAG {
+        return None;
+    }
+    let counter_type = match count.filter.with_counter {
+        Some(crate::filter::CounterConstraint::Typed(counter_type)) => counter_type,
+        _ => return None,
+    };
+
+    let cant = cant_effect.downcast_ref::<crate::effects::CantEffect>()?;
+    if cant.duration != Until::EndOfTurn {
+        return None;
+    }
+    let crate::effect::Restriction::Block(block_filter) = &cant.restriction else {
+        return None;
+    };
+    let Some(crate::filter::Comparison::LessThanOrEqualExpr(value)) = block_filter.power.as_ref()
+    else {
+        return None;
+    };
+    let Value::CountersOn(spec, Some(value_counter_type)) = value.as_ref() else {
+        return None;
+    };
+    if *value_counter_type != counter_type {
+        return None;
+    }
+    let ChooseSpec::Tagged(value_tag) = spec.as_ref() else {
+        return None;
+    };
+    if value_tag != &count.tag {
+        return None;
+    }
+    let mut count_filter = count.filter.clone();
+    count_filter.with_counter = None;
+
+    let counted = pluralize_noun_phrase(strip_leading_article(&count_filter.description()));
+    let blockers = if block_filter.card_types == vec![CardType::Creature]
+        && block_filter.controller == Some(PlayerFilter::Opponent)
+    {
+        "Creatures your opponents control".to_string()
+    } else {
+        let mut base = block_filter.clone();
+        base.power = None;
+        capitalize_first(&pluralize_noun_phrase(strip_leading_article(&base.description())))
+    };
+    Some(format!(
+        "Count the number of {} counters on {counted}. {blockers} with power less than or equal to that number can't block this turn",
+        describe_counter_type(counter_type)
+    ))
+}
+
 fn describe_revealed_cards_opponent_may_put_or_draw(effects: &[&Effect]) -> Option<String> {
     let [look_effect, may_effect, fallback_effect] = effects else {
         return None;
@@ -4010,6 +4067,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     }
 
     let raw_effects = effects.iter().collect::<Vec<_>>();
+    if let Some(compact) = describe_count_counters_then_cant_block(&raw_effects) {
+        return compact;
+    }
     if let Some(compact) = describe_choose_color_then_chosen_color_mana(&raw_effects) {
         return compact;
     }

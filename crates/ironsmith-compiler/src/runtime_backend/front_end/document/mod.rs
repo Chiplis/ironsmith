@@ -469,6 +469,10 @@ fn triggered_effect_tokens_have_trailing_static_sentences(tokens: &[OwnedLexToke
 }
 
 fn sentence_is_static_after_trigger_effect(tokens: &[OwnedLexToken]) -> bool {
+    let words = token_word_refs(tokens);
+    if words.windows(2).any(|window| window == ["that", "number"]) {
+        return false;
+    }
     looks_like_self_enters_with_x_counters_static_sentence(tokens)
         || matches!(parse_static_ability_ast_line_lexed(tokens), Ok(Some(_)))
 }

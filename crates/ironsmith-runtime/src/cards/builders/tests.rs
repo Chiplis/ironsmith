@@ -41636,6 +41636,158 @@ fn assert_oracle_card_parses_strict(name: &str) {
     );
 }
 
+fn rumbling_ruin_trigger(def: &CardDefinition) -> &crate::ability::TriggeredAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Rumbling Ruin should have an enters triggered ability")
+}
+
+fn create_vanilla_creature(
+    game: &mut crate::game_state::GameState,
+    id: u32,
+    name: &str,
+    controller: PlayerId,
+    power: i32,
+    toughness: i32,
+) -> ObjectId {
+    let card = CardBuilder::new(CardId::from_raw(id), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(power, toughness))
+        .build();
+    game.create_object_from_card(&card, controller, Zone::Battlefield)
+}
+
+fn resolve_rumbling_ruin_trigger(
+    game: &mut crate::game_state::GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    triggered: &crate::ability::TriggeredAbility,
+) {
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, controller);
+    for effect in triggered.effects.flattened_default_effects() {
+        crate::effects::execute_effect(game, effect, &mut ctx)
+            .expect("Rumbling Ruin trigger effect should resolve");
+    }
+}
+
+#[test]
+fn rumbling_ruin_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Rumbling Ruin");
+    let def = parse_oracle_card_definition("Rumbling Ruin");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("count the number of +1/+1 counters on creatures you control")
+            && rendered.contains(
+                "Creatures your opponents control with power less than or equal to that number can't block this turn"
+            ),
+        "Rumbling Ruin should render the count-and-block restriction exactly, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", rumbling_ruin_trigger(&def));
+    assert!(
+        debug.contains("TagMatchingObjectsEffect")
+            && debug.contains("CantEffect")
+            && debug.contains("CountersOn")
+            && debug.contains("Tagged")
+            && debug.contains("PlusOnePlusOne"),
+        "Rumbling Ruin should structurally count +1/+1 counters for the block restriction, got {debug}"
+    );
+}
+
+#[test]
+fn rumbling_ruin_runtime_counts_plus_one_counters_for_block_restriction() {
+    let def = parse_oracle_card_definition("Rumbling Ruin");
+    let triggered = rumbling_ruin_trigger(&def);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let ruin = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let counted_a = create_vanilla_creature(&mut game, 91_501, "Countered Ally A", alice, 2, 2);
+    let counted_b = create_vanilla_creature(&mut game, 91_502, "Countered Ally B", alice, 2, 2);
+    game.object_mut(counted_a)
+        .expect("countered ally A should exist")
+        .add_counters(crate::object::CounterType::PlusOnePlusOne, 2);
+    game.object_mut(counted_b)
+        .expect("countered ally B should exist")
+        .add_counters(crate::object::CounterType::PlusOnePlusOne, 1);
+
+    let equal_power_blocker =
+        create_vanilla_creature(&mut game, 91_503, "Equal Power Blocker", bob, 3, 3);
+    let greater_power_blocker =
+        create_vanilla_creature(&mut game, 91_504, "Greater Power Blocker", bob, 4, 4);
+
+    resolve_rumbling_ruin_trigger(&mut game, ruin, alice, triggered);
+
+    let attacker = game.object(ruin).expect("Rumbling Ruin should exist").clone();
+    let equal = game
+        .object(equal_power_blocker)
+        .expect("equal-power blocker should exist")
+        .clone();
+    let greater = game
+        .object(greater_power_blocker)
+        .expect("greater-power blocker should exist")
+        .clone();
+    assert!(
+        !crate::rules::combat::can_block(&attacker, &equal, &game),
+        "opponent creature with power equal to the counted counters should be unable to block"
+    );
+    assert!(
+        crate::rules::combat::can_block(&attacker, &greater, &game),
+        "opponent creature with power greater than the counted counters should still block"
+    );
+
+    game.object_mut(counted_b)
+        .expect("countered ally B should still exist")
+        .add_counters(crate::object::CounterType::PlusOnePlusOne, 1);
+    game.update_cant_effects();
+    assert!(
+        crate::rules::combat::can_block(&attacker, &greater, &game),
+        "the counted number should be locked when the trigger resolves"
+    );
+}
+
+#[test]
+fn rumbling_ruin_runtime_zero_counters_only_stops_zero_power_blockers() {
+    let def = parse_oracle_card_definition("Rumbling Ruin");
+    let triggered = rumbling_ruin_trigger(&def);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let ruin = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let zero_power_blocker =
+        create_vanilla_creature(&mut game, 91_505, "Zero Power Blocker", bob, 0, 1);
+    let one_power_blocker =
+        create_vanilla_creature(&mut game, 91_506, "One Power Blocker", bob, 1, 1);
+
+    resolve_rumbling_ruin_trigger(&mut game, ruin, alice, triggered);
+
+    let attacker = game.object(ruin).expect("Rumbling Ruin should exist").clone();
+    let zero = game
+        .object(zero_power_blocker)
+        .expect("zero-power blocker should exist")
+        .clone();
+    let one = game
+        .object(one_power_blocker)
+        .expect("one-power blocker should exist")
+        .clone();
+    assert!(
+        !crate::rules::combat::can_block(&attacker, &zero, &game),
+        "zero counted counters should still stop zero-power opposing creatures"
+    );
+    assert!(
+        crate::rules::combat::can_block(&attacker, &one, &game),
+        "opposing creatures with power greater than zero should block when no +1/+1 counters are counted"
+    );
+}
+
 fn assert_oracle_card_fails_strict(name: &str) {
     let oracle = oracle_text_by_name()
         .get(name)

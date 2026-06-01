@@ -727,7 +727,7 @@ impl ParityRequirementRuntimeExt for ParityRequirement {
     }
 }
 
-fn resolve_filter_comparison_rhs_value(
+pub(crate) fn resolve_filter_comparison_rhs_value(
     rhs: &crate::effect::Value,
     game: &crate::game_state::GameState,
     ctx: &FilterContext,
@@ -945,13 +945,17 @@ fn resolve_filter_comparison_rhs_value(
             }
             ChooseSpec::Tagged(tag) => {
                 let snapshots = ctx.tagged_objects.get(tag)?;
-                let snapshot = snapshots.first()?;
-                Some(match counter_type {
-                    Some(counter_type) => {
-                        snapshot.counters.get(counter_type).copied().unwrap_or(0) as i32
-                    }
-                    None => total_counters(&snapshot.counters),
-                })
+                Some(
+                    snapshots
+                        .iter()
+                        .map(|snapshot| match counter_type {
+                            Some(counter_type) => {
+                                snapshot.counters.get(counter_type).copied().unwrap_or(0) as i32
+                            }
+                            None => total_counters(&snapshot.counters),
+                        })
+                        .sum(),
+                )
             }
             _ => None,
         },

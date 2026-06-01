@@ -49,6 +49,7 @@ use super::{
 };
 
 const ENCHANTED_TAG_NAME: &str = "enchanted";
+const COUNTED_COUNTER_OBJECTS_TAG: &str = "__ironsmith_counted_counter_objects";
 const SENTENCE_HELPER_REVEALED_TAG_PREFIX: &str = "__sentence_helper_revealed";
 #[allow(unused_imports)]
 use crate::cards::builders::{
@@ -56,7 +57,7 @@ use crate::cards::builders::{
     SubjectVerbEffectAst, SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan,
 };
 use crate::effect::{ChoiceCount, Until, Value};
-use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::types::Subtype;
 use crate::zone::Zone;
 
@@ -1248,7 +1249,90 @@ pub(crate) fn parse_effect_chain_inner_lexed(
     collapse_token_copy_next_end_step_exile_followup_lexed(&mut effects, tokens);
     collapse_token_copy_next_end_step_sacrifice_followup_lexed(&mut effects, tokens);
     collapse_token_copy_end_of_combat_exile_followup_lexed(&mut effects, tokens);
+    bind_counted_counter_number_references(&mut effects);
     Ok(effects)
+}
+
+pub(super) fn bind_counted_counter_number_references(effects: &mut [EffectAst]) {
+    let mut counted_filter: Option<ObjectFilter> = None;
+    for effect in effects {
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::TagMatchingObjects { filter, tag, .. },
+            ..
+        }) = effect
+            && tag.as_str() == COUNTED_COUNTER_OBJECTS_TAG
+        {
+            counted_filter = Some(filter.clone());
+            continue;
+        }
+
+        let Some(filter) = counted_filter.clone() else {
+            continue;
+        };
+        bind_counted_counter_number_reference_in_effect(effect, &filter);
+    }
+}
+
+fn bind_counted_counter_number_reference_in_effect(
+    effect: &mut EffectAst,
+    counted_filter: &ObjectFilter,
+) {
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::Cant { restriction, .. },
+        ..
+    }) = effect
+    {
+        bind_counted_counter_number_reference_in_restriction(restriction, counted_filter);
+    }
+    let _ = for_each_nested_effects_mut(effect, true, |nested| {
+        for nested_effect in nested {
+            bind_counted_counter_number_reference_in_effect(nested_effect, counted_filter);
+        }
+    });
+}
+
+fn bind_counted_counter_number_reference_in_restriction(
+    restriction: &mut crate::effect::Restriction,
+    counted_filter: &ObjectFilter,
+) {
+    let crate::effect::Restriction::Block(filter) = restriction else {
+        return;
+    };
+    let Some(power) = filter.power.as_mut() else {
+        return;
+    };
+    let counter_type = match counted_filter.with_counter {
+        Some(crate::filter::CounterConstraint::Typed(counter_type)) => Some(counter_type),
+        Some(crate::filter::CounterConstraint::Any) | None => None,
+    };
+    replace_event_amount_comparison_value(
+        power,
+        Value::CountersOn(
+            Box::new(ChooseSpec::Tagged(TagKey::from(COUNTED_COUNTER_OBJECTS_TAG))),
+            counter_type,
+        ),
+    );
+}
+
+fn replace_event_amount_comparison_value(
+    comparison: &mut crate::filter::Comparison,
+    replacement: Value,
+) {
+    use crate::effect::EventValueSpec;
+    use crate::filter::Comparison;
+
+    let value = match comparison {
+        Comparison::EqualExpr(value)
+        | Comparison::NotEqualExpr(value)
+        | Comparison::LessThanExpr(value)
+        | Comparison::LessThanOrEqualExpr(value)
+        | Comparison::GreaterThanExpr(value)
+        | Comparison::GreaterThanOrEqualExpr(value) => value,
+        _ => return,
+    };
+    if matches!(value.as_ref(), Value::EventValue(EventValueSpec::Amount)) {
+        *value = Box::new(replacement);
+    }
 }
 
 fn is_orphan_rounded_up_where_x_tail(

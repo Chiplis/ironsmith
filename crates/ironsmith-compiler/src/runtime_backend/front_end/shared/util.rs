@@ -1181,6 +1181,7 @@ const EVENT_AMOUNT_VALUE_PATTERNS: &[(ClauseShape<'static>, usize)] = &[
         clause_shape!(prefix_any & [&["that", "many"], &["that", "much"], &["that", "amount"]]),
         2,
     ),
+    (clause_shape!(prefix & ["that", "number"]), 2),
     (
         clause_shape!(prefix & ["the", "amount", "of", "e", "paid", "this", "way"]),
         7,
