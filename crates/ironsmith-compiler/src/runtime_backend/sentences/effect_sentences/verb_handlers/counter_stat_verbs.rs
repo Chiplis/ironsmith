@@ -887,6 +887,9 @@ pub(crate) fn parse_life_equal_to_value(
         {
             return Ok(Some(value));
         }
+        if let Some(value) = parse_possessive_target_stat_value(value_tokens, &value_words) {
+            return Ok(Some(value));
+        }
 
         if let Some((value, used)) = parse_value(value_tokens)
             && used == value_tokens.len()
@@ -930,6 +933,36 @@ pub(crate) fn parse_life_equal_to_value(
         "missing life amount in equal-to clause (clause: '{}')",
         clause_words.join(" ")
     )))
+}
+
+fn parse_possessive_target_stat_value(tokens: &[OwnedLexToken], words: &[&str]) -> Option<Value> {
+    let (stat_len, constructor): (usize, fn(Box<ChooseSpec>) -> Value) = match words {
+        [.., "power"] => (1, Value::PowerOf),
+        [.., "toughness"] => (1, Value::ToughnessOf),
+        [.., "mana", "value"] => (2, Value::ManaValueOf),
+        _ => return None,
+    };
+    let target_len = tokens.len().checked_sub(stat_len)?;
+    if target_len == 0 {
+        return None;
+    }
+
+    let mut target_tokens = tokens[..target_len].to_vec();
+    let possessive = target_tokens.last_mut()?;
+    let word = possessive.as_word()?;
+    let base = word
+        .strip_suffix("'s")
+        .or_else(|| word.strip_suffix("’s"))
+        .or_else(|| word.strip_suffix("‘s"))?
+        .to_string();
+    if base.is_empty() || !possessive.replace_word(base) {
+        return None;
+    }
+
+    let target = parse_target_phrase(&target_tokens).ok()?;
+    let spec =
+        crate::runtime_backend::references::reference_helpers::choose_spec_for_target(&target);
+    Some(constructor(Box::new(spec)))
 }
 
 pub(crate) fn parse_life_amount_from_trailing(

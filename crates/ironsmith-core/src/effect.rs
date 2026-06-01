@@ -105,6 +105,7 @@ pub enum ReplacementApplyMode {
 #[derive(Debug, Clone, PartialEq)]
 pub enum PreventNextTimeDamageSource {
     Choice,
+    Target(ChooseSpec),
     Filter(crate::filter_model::ObjectFilter),
 }
 

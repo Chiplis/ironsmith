@@ -294,6 +294,39 @@ fn maybe_tag_target(
     Ok(())
 }
 
+fn maybe_tag_value_object_target(
+    value: &Value,
+    frame: &mut ReferenceFrame,
+    id_gen: &mut IdGenContext,
+    prefix: &str,
+) {
+    if !frame.auto_tag_object_targets {
+        return;
+    }
+    let Some(spec) = value_object_target_spec(value) else {
+        return;
+    };
+    if let Some(tag) = propagated_or_generated_object_tag(spec, id_gen, prefix) {
+        frame.last_object_tag = Some(tag);
+    }
+}
+
+fn value_object_target_spec(value: &Value) -> Option<&ChooseSpec> {
+    match value {
+        Value::SurfaceHinted { value, .. } => value_object_target_spec(value),
+        Value::Add(left, right) => {
+            value_object_target_spec(left).or_else(|| value_object_target_spec(right))
+        }
+        Value::PowerOf(spec)
+        | Value::ToughnessOf(spec)
+        | Value::ManaValueOf(spec)
+        | Value::CountersOn(spec, _) => {
+            (spec.is_target() && choose_spec_targets_object(spec)).then_some(spec.as_ref())
+        }
+        _ => None,
+    }
+}
+
 fn propagated_or_generated_object_tag(
     spec: &ChooseSpec,
     id_gen: &mut IdGenContext,
@@ -378,6 +411,9 @@ fn advance_reference_frame_for_effect(
                     if frame.auto_tag_object_targets {
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "amassed"));
                     }
+                }
+                SubjectVerbActionAst::GainLife { amount } => {
+                    maybe_tag_value_object_target(amount, frame, id_gen, "targeted");
                 }
                 SubjectVerbActionAst::Explore { target } => {
                     maybe_tag_target(target, frame, id_gen, "explored")?;
@@ -3217,10 +3253,14 @@ fn bind_unresolved_it_in_prevent_next_source(
     source: &mut PreventNextTimeDamageSourceAst,
     seed_tag: &TagKey,
 ) -> usize {
-    if let PreventNextTimeDamageSourceAst::Filter(filter) = source {
-        bind_unresolved_it_in_filter(filter, seed_tag)
-    } else {
-        0
+    match source {
+        PreventNextTimeDamageSourceAst::Target(target) => {
+            bind_unresolved_it_in_target(target, seed_tag)
+        }
+        PreventNextTimeDamageSourceAst::Filter(filter) => {
+            bind_unresolved_it_in_filter(filter, seed_tag)
+        }
+        PreventNextTimeDamageSourceAst::Choice => 0,
     }
 }
 

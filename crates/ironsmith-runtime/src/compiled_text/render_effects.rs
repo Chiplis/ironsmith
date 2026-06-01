@@ -28567,6 +28567,57 @@ fn describe_remove_counter_phrase(
     }
 }
 
+fn prevent_next_time_tagged_source_text_filter(
+    source: &crate::effects::PreventNextTimeDamageSource,
+) -> bool {
+    match source {
+        crate::effects::PreventNextTimeDamageSource::Target(spec) => {
+            prevent_next_time_target_source_is_tagged(spec)
+        }
+        crate::effects::PreventNextTimeDamageSource::Filter(filter) => {
+            prevent_next_time_tagged_source_text(filter).is_some()
+        }
+        crate::effects::PreventNextTimeDamageSource::Choice => false,
+    }
+}
+
+fn prevent_next_time_target_source_text(spec: &ChooseSpec) -> String {
+    match spec.base() {
+        ChooseSpec::Object(filter) => prevent_next_time_tagged_source_text(filter)
+            .unwrap_or_else(|| describe_choose_spec(spec)),
+        ChooseSpec::Tagged(_) => "that source".to_string(),
+        _ => describe_choose_spec(spec),
+    }
+}
+
+fn prevent_next_time_target_source_is_tagged(spec: &ChooseSpec) -> bool {
+    match spec.base() {
+        ChooseSpec::Object(filter) => prevent_next_time_tagged_source_text(filter).is_some(),
+        ChooseSpec::Tagged(_) => true,
+        _ => false,
+    }
+}
+
+fn prevent_next_time_tagged_source_text(filter: &ObjectFilter) -> Option<String> {
+    let has_tagged_source = filter.tagged_constraints.iter().any(|constraint| {
+        matches!(
+            constraint.relation,
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        )
+    });
+    if !has_tagged_source {
+        return None;
+    }
+
+    if filter.card_types.contains(&CardType::Creature) {
+        Some("that creature".to_string())
+    } else if let Some(card_type) = filter.card_types.first() {
+        Some(format!("that {}", card_type.name()))
+    } else {
+        Some("that source".to_string())
+    }
+}
+
 pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
         if let Some(compact) = describe_reveal_until_sequence(sequence) {
@@ -33560,6 +33611,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             crate::effects::PreventNextTimeDamageSource::Choice => {
                 "a source of your choice".to_string()
             }
+            crate::effects::PreventNextTimeDamageSource::Target(spec) => {
+                prevent_next_time_target_source_text(spec)
+            }
+            crate::effects::PreventNextTimeDamageSource::Filter(filter)
+                if prevent_next_time_tagged_source_text(filter).is_some() =>
+            {
+                prevent_next_time_tagged_source_text(filter).unwrap()
+            }
             crate::effects::PreventNextTimeDamageSource::Filter(filter) => {
                 let desc = filter.description();
                 if desc.is_empty() {
@@ -33573,8 +33632,17 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             crate::effects::PreventNextTimeDamageTarget::AnyTarget => "any target".to_string(),
             crate::effects::PreventNextTimeDamageTarget::You => "you".to_string(),
         };
+        let omits_any_target = matches!(
+            prevent_next_time.target,
+            crate::effects::PreventNextTimeDamageTarget::AnyTarget
+        ) && prevent_next_time_tagged_source_text_filter(&prevent_next_time.source);
+        let target_clause = if omits_any_target {
+            String::new()
+        } else {
+            format!(" to {target_text}")
+        };
         let mut rendered = format!(
-            "The next time {source_text} would deal damage to {target_text} this turn, prevent that damage"
+            "The next time {source_text} would deal damage{target_clause} this turn, prevent that damage"
         );
         if prevent_next_time.reflect_damage_to_source_controller {
             rendered.push_str(

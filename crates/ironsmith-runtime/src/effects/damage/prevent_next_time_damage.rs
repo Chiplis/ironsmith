@@ -8,6 +8,7 @@ use crate::Value;
 use crate::effect::{Effect, EffectOutcome, EventValueSpec};
 use crate::effects::DealDamageEffect;
 use crate::effects::EffectExecutor;
+use crate::effects::helpers::resolve_objects_for_effect;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::damage::matchers::{
     DamageSourceConstraint, DamageTargetConstraint, PreventableDamageConstraintMatcher,
@@ -21,6 +22,8 @@ use crate::target::{ChooseSpec, ObjectFilter, ObjectRef, PlayerFilter};
 pub enum PreventNextTimeDamageSource {
     /// Choose a specific source as the effect resolves ("a source of your choice").
     Choice,
+    /// Use an already selected target as the source ("that creature").
+    Target(ChooseSpec),
     /// Match any source that satisfies a filter ("a red source", "an artifact source", etc.).
     Filter(ObjectFilter),
 }
@@ -79,6 +82,14 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
 
         let mut chosen_source = None;
         let source_constraint = match &self.source {
+            PreventNextTimeDamageSource::Target(spec) => {
+                let Some(source) = resolve_objects_for_effect(game, ctx, spec)?.into_iter().next()
+                else {
+                    return Ok(EffectOutcome::count(0));
+                };
+                chosen_source = Some(source);
+                DamageSourceConstraint::Specific(source)
+            }
             PreventNextTimeDamageSource::Filter(filter) => {
                 DamageSourceConstraint::Filter(filter.clone())
             }

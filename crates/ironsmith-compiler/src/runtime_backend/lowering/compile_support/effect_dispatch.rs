@@ -1585,6 +1585,13 @@ fn compile_subject_verb_effect(
                 PreventNextTimeDamageSourceAst::Choice => {
                     crate::effects::PreventNextTimeDamageSource::Choice
                 }
+                PreventNextTimeDamageSourceAst::Target(target) => {
+                    let (spec, _) = resolve_target_spec_with_choices(
+                        target,
+                        &current_reference_env(ctx),
+                    )?;
+                    crate::effects::PreventNextTimeDamageSource::Target(spec)
+                }
                 PreventNextTimeDamageSourceAst::Filter(filter) => {
                     crate::effects::PreventNextTimeDamageSource::Filter(resolve_it_tag(
                         filter,
@@ -1757,6 +1764,11 @@ fn compile_subject_verb_effect(
             let source_spec = match source {
                 PreventNextTimeDamageSourceAst::Choice => {
                     crate::effects::RedirectNextTimeDamageSource::Choice
+                }
+                PreventNextTimeDamageSourceAst::Target(_) => {
+                    return Err(CardTextError::ParseError(
+                        "target-referenced redirect damage source is unsupported".to_string(),
+                    ));
                 }
                 PreventNextTimeDamageSourceAst::Filter(filter) => {
                     crate::effects::RedirectNextTimeDamageSource::Filter(resolve_it_tag(
@@ -5926,12 +5938,47 @@ where
     let (player_filter, choices) = subject.into_parts();
     let value = per_player_partition_value_for_filter(value, &player_filter);
     let you_value = per_player_partition_value_for_filter(you_value, &PlayerFilter::You);
-    compile_player_effect_from_resolved_filter(
+    let mut prelude_effects = Vec::new();
+    let mut merged_choices = choices.clone();
+    if let Some(spec) = value_object_target_spec(&value)
+        && ctx.auto_tag_object_targets
+    {
+        let effect = tag_object_target_effect(
+            Effect::new(crate::effects::TargetOnlyEffect::new(spec.clone())),
+            &spec,
+            ctx,
+            "targeted",
+        );
+        prelude_effects.push(effect);
+        push_choice(&mut merged_choices, spec);
+    }
+    let (mut effects, choices) = compile_player_effect_from_resolved_filter(
         player_filter,
         choices,
         || build_you(you_value),
         |filter| build_other(value, filter),
-    )
+    )?;
+    prelude_effects.append(&mut effects);
+    for choice in choices {
+        push_choice(&mut merged_choices, choice);
+    }
+    Ok((prelude_effects, merged_choices))
+}
+
+fn value_object_target_spec(value: &Value) -> Option<ChooseSpec> {
+    match value {
+        Value::SurfaceHinted { value, .. } => value_object_target_spec(value),
+        Value::Add(left, right) => {
+            value_object_target_spec(left).or_else(|| value_object_target_spec(right))
+        }
+        Value::PowerOf(spec)
+        | Value::ToughnessOf(spec)
+        | Value::ManaValueOf(spec)
+        | Value::CountersOn(spec, _) => {
+            (spec.is_target() && choose_spec_targets_object(spec)).then(|| (**spec).clone())
+        }
+        _ => None,
+    }
 }
 
 fn per_player_partition_value_for_filter(value: Value, player_filter: &PlayerFilter) -> Value {

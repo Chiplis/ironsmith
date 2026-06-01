@@ -141,8 +141,12 @@ pub enum RetargetModeAst<
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PreventNextTimeDamageSourceAst<Filter = crate::target::ObjectFilter> {
+pub enum PreventNextTimeDamageSourceAst<
+    Filter = crate::target::ObjectFilter,
+    Target = TargetAst<crate::target::PlayerFilter, crate::target::ObjectFilter>,
+> {
     Choice,
+    Target(Target),
     Filter(Filter),
 }
 

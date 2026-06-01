@@ -1075,6 +1075,7 @@ pub(crate) enum RetargetModeAst {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum PreventNextTimeDamageSourceAst {
     Choice,
+    Target(TargetAst),
     Filter(ObjectFilter),
 }
 
