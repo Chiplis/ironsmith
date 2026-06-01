@@ -2331,6 +2331,7 @@ fn subject_verb_player_action_player_mut(effect: &mut EffectAst) -> Option<&mut 
                 | SubjectVerbActionAst::PayEnergy { .. }
                 | SubjectVerbActionAst::PayAnyEnergy { .. }
                 | SubjectVerbActionAst::PayAnyLife { .. }
+                | SubjectVerbActionAst::PayAnyMana { .. }
                 | SubjectVerbActionAst::PayMana { .. }
                 | SubjectVerbActionAst::DoubleManaPool
                 | SubjectVerbActionAst::EmptyManaPool
@@ -2406,6 +2407,7 @@ fn subject_verb_player_action_player(effect: &EffectAst) -> Option<PlayerAst> {
                 | SubjectVerbActionAst::PayEnergy { .. }
                 | SubjectVerbActionAst::PayAnyEnergy { .. }
                 | SubjectVerbActionAst::PayAnyLife { .. }
+                | SubjectVerbActionAst::PayAnyMana { .. }
                 | SubjectVerbActionAst::PayMana { .. }
                 | SubjectVerbActionAst::DoubleManaPool
                 | SubjectVerbActionAst::EmptyManaPool

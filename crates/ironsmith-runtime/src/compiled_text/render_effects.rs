@@ -70,6 +70,14 @@ fn describe_pay_any_energy_amount(
     }
 }
 
+fn describe_pay_any_mana_amount(pay_any_mana: &crate::effects::PayAnyManaEffect) -> String {
+    match pay_any_mana.min_amount {
+        0 => "any amount of mana".to_string(),
+        1 => "one or more mana".to_string(),
+        amount => format!("{amount} or more mana"),
+    }
+}
+
 fn describe_discard_hand_add_mana_draw_sequence(effects: &[&Effect]) -> Option<String> {
     let [discard_effect, mana_effect, draw_effect] = effects else {
         return None;
@@ -4322,8 +4330,40 @@ fn describe_revealed_cards_opponent_may_put_or_draw(effects: &[&Effect]) -> Opti
     ))
 }
 
+fn describe_may_pay_any_mana_prevent_then_damage_effects(effects: &[Effect]) -> Option<String> {
+    let [may_effect, prevent_effect, damage_effect] = effects else {
+        return None;
+    };
+    let may_with_id = may_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let may = may_with_id
+        .effect
+        .downcast_ref::<crate::effects::MayEffect>()?;
+    let [pay_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let pay = pay_effect.downcast_ref::<crate::effects::PayAnyManaEffect>()?;
+    let prevent = prevent_effect.downcast_ref::<crate::effects::PreventDamageEffect>()?;
+    if !is_effect_count_reference(&prevent.amount, Some(may_with_id.id)) {
+        return None;
+    }
+    let damage = damage_effect.downcast_ref::<crate::effects::DealDamageEffect>()?;
+    if prevent.target != damage.target {
+        return None;
+    }
+    let payer = describe_choose_spec(&pay.player);
+    let target = describe_choose_spec(&damage.target);
+    let payment = describe_pay_any_mana_amount(pay);
+    Some(format!(
+        "{payer} may pay {payment}. This source deals {} damage to {target}. Prevent X of that damage, where X is the amount of mana {payer} paid this way",
+        describe_value(&damage.amount)
+    ))
+}
+
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     if let Some(compact) = describe_reveal_top_to_hand_then_lose_mana_value_effects(effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_may_pay_any_mana_prevent_then_damage_effects(effects) {
         return compact;
     }
     if let Some(compact) = describe_structural_multisentence_effect_list(effects) {
@@ -14986,6 +15026,9 @@ pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
 
     let effect_refs = effects.iter().collect::<Vec<_>>();
     if let Some(compact) = describe_choose_color_then_chosen_color_mana(&effect_refs) {
+        return Some(compact);
+    }
+    if let Some(compact) = describe_may_pay_any_mana_prevent_then_damage_effects(effects) {
         return Some(compact);
     }
 
@@ -33467,6 +33510,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             1 => "one or more life".to_string(),
             amount => format!("{amount} or more life"),
         };
+        if payer == "you" {
+            return format!("Pay {payment}");
+        }
+        return format!("{payer} {} {payment}", player_verb(&payer, "pay", "pays"));
+    }
+    if let Some(pay_any_mana) = effect.downcast_ref::<crate::effects::PayAnyManaEffect>() {
+        let payer = describe_choose_spec(&pay_any_mana.player);
+        let payment = describe_pay_any_mana_amount(pay_any_mana);
         if payer == "you" {
             return format!("Pay {payment}");
         }

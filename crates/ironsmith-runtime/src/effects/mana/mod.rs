@@ -32,5 +32,5 @@ pub use add_scaled_mana::AddScaledManaEffect;
 pub use double_mana_pool::DoubleManaPoolEffect;
 pub use empty_mana_pool::EmptyManaPoolEffect;
 pub use grant_mana_ability_until_eot::GrantManaAbilityUntilEotEffect;
-pub use pay_mana::PayManaEffect;
+pub use pay_mana::{PayAnyManaEffect, PayManaEffect};
 pub use retain_mana_until_end_of_turn::RetainManaUntilEndOfTurnEffect;

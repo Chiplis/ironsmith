@@ -21,6 +21,34 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::OnceLock;
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_power_leak_pay_any_mana_prevent_paid_damage_text() {
+    let def = parse_oracle_card_definition("Power Leak");
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("PayAnyManaEffect")
+            && debug.contains("PreventDamageEffect")
+            && debug.contains("DealDamageEffect"),
+        "Power Leak should parse pay-any-mana, prevention, and damage effects, got {debug}"
+    );
+
+    let rendered = canonical_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("At the beginning of the upkeep of enchanted enchantment's controller"),
+        "Power Leak should keep the enchanted-enchantment trigger surface, got {rendered}"
+    );
+    assert!(
+        rendered.contains("that player may pay any amount of mana")
+            && (rendered.contains("This Aura deals 2 damage to that player")
+                || rendered.contains("This enchantment deals 2 damage to that player"))
+            && rendered.contains(
+                "Prevent X of that damage, where X is the amount of mana that player paid this way"
+            ),
+        "Power Leak should render the pay/prevent paid-damage clause, got {rendered}"
+    );
+}
+
 #[test]
 fn test_creature_with_keywords() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Test Creature")

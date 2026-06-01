@@ -18,10 +18,27 @@ impl DebugSafeLine {
 }
 
 pub(super) fn normalize_debug_safe_surface(lines: Vec<RawRenderedLine>) -> Vec<DebugSafeLine> {
-    lines
+    let mut lines = lines
         .into_iter()
         .filter_map(DebugSafeLine::from_raw)
-        .collect()
+        .collect::<Vec<_>>();
+    normalize_enchanted_enchantment_controller_surface(&mut lines);
+    lines
+}
+
+fn normalize_enchanted_enchantment_controller_surface(lines: &mut [DebugSafeLine]) {
+    let enchants_enchantment = lines
+        .iter()
+        .any(|line| line.0.eq_ignore_ascii_case("Enchant enchantment"));
+    if !enchants_enchantment {
+        return;
+    }
+    for line in lines {
+        line.0 = line.0.replace(
+            "enchanted permanent's controller",
+            "enchanted enchantment's controller",
+        );
+    }
 }
 
 fn mechanical_cleanup(line: String) -> String {

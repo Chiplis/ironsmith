@@ -371,6 +371,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::WinGame
             | SubjectVerbActionAst::PayAnyEnergy { .. }
             | SubjectVerbActionAst::PayAnyLife { .. }
+            | SubjectVerbActionAst::PayAnyMana { .. }
             | SubjectVerbActionAst::PayMana { .. }
             | SubjectVerbActionAst::DiscardHand
             | SubjectVerbActionAst::Detain { .. }

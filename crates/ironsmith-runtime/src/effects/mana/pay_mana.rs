@@ -1,9 +1,10 @@
 //! Pay mana effect implementation.
 
 use crate::ability::ActivatedAbilityRuntimeExt as _;
-use crate::decision::DecisionMaker;
+use crate::decision::{DecisionMaker, FallbackStrategy};
+use crate::decisions::{NumberSpec, make_decision_with_fallback};
 use crate::decisions::context::{SelectOptionsContext, SelectableOption};
-use crate::effect::EffectOutcome;
+use crate::effect::{EffectOutcome, ExecutionFact};
 use crate::effects::helpers::resolve_player_from_spec;
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -16,6 +17,7 @@ use crate::target::{ChooseSpec, PlayerFilter};
 ///
 /// Returns `Count(1)` when paid, `Impossible` when the player can't pay.
 pub type PayManaEffect = ironsmith_core::PayManaEffect;
+pub type PayAnyManaEffect = ironsmith_core::PayAnyManaEffect;
 
 fn try_pay_interactively(
     effect: &PayManaEffect,
@@ -205,6 +207,85 @@ impl CostExecutableEffect for PayManaEffect {
                 "not enough mana available to pay cost".to_string(),
             ))
         }
+    }
+}
+
+impl EffectExecutor for PayAnyManaEffect {
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let player_id = resolve_player_from_spec(game, &self.player, ctx)?;
+        let available = game
+            .player(player_id)
+            .map(|player| player.mana_pool.total())
+            .unwrap_or(0);
+
+        if available < self.min_amount {
+            return Ok(EffectOutcome::count(0));
+        }
+
+        let number_spec = if self.min_amount == 0 {
+            NumberSpec::up_to(ctx.source, available, "Choose how much mana to pay")
+        } else {
+            NumberSpec::range(
+                ctx.source,
+                self.min_amount,
+                available,
+                "Choose how much mana to pay",
+            )
+        };
+
+        let chosen = make_decision_with_fallback(
+            game,
+            &mut ctx.decision_maker,
+            player_id,
+            Some(ctx.source),
+            number_spec,
+            FallbackStrategy::Maximum,
+        );
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+        let chosen = chosen.clamp(self.min_amount, available);
+
+        if chosen == 0 {
+            return Ok(EffectOutcome::count(0).with_execution_fact(ExecutionFact::ChosenNumber(0)));
+        }
+
+        let mut remaining = chosen;
+        let mut symbols = Vec::new();
+        while remaining > 0 {
+            let chunk = remaining.min(u8::MAX as u32) as u8;
+            symbols.push(crate::mana::ManaSymbol::Generic(chunk));
+            remaining -= u32::from(chunk);
+        }
+        let cost = crate::mana::ManaCost::from_symbols(symbols);
+        if game.try_pay_mana_cost_with_reason(
+            player_id,
+            Some(ctx.source),
+            &cost,
+            0,
+            crate::costs::PaymentReason::Effect,
+        ) {
+            Ok(EffectOutcome::count(chosen as i32)
+                .with_execution_fact(ExecutionFact::ChosenNumber(chosen)))
+        } else {
+            Ok(EffectOutcome::count(0))
+        }
+    }
+
+    fn get_target_spec(&self) -> Option<&ChooseSpec> {
+        if self.player.is_target() {
+            Some(&self.player)
+        } else {
+            None
+        }
+    }
+
+    fn target_description(&self) -> &'static str {
+        "player to pay mana"
     }
 }
 

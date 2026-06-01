@@ -1247,6 +1247,45 @@ pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Val
                 "the",
                 "amount",
                 "of",
+                "mana",
+                "that",
+                "player",
+                "paid",
+                "this",
+                "way",
+            ],
+        )
+        | Some(
+            [
+                "amount",
+                "of",
+                "mana",
+                "that",
+                "player",
+                "paid",
+                "this",
+                "way",
+            ],
+        )
+        | Some(
+            [
+                "the",
+                "amount",
+                "of",
+                "mana",
+                "paid",
+                "this",
+                "way",
+            ],
+        )
+        | Some(["amount", "of", "mana", "paid", "this", "way"]) => {
+            return Some(Value::EventValue(EventValueSpec::Amount));
+        }
+        Some(
+            [
+                "the",
+                "amount",
+                "of",
                 "damage",
                 "it",
                 "dealt",

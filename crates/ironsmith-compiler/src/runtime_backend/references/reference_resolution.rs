@@ -101,6 +101,7 @@ pub(crate) fn annotate_effect_sequence(
     config: EffectReferenceResolutionConfig,
     id_gen: IdGenContext,
 ) -> Result<AnnotatedEffectSequence, CardTextError> {
+    let effects = normalize_pay_damage_prevention_sequence(effects);
     let env = ReferenceEnv::from_imports(
         imports,
         config.initial_iterated_player,
@@ -109,7 +110,7 @@ pub(crate) fn annotate_effect_sequence(
         config.initial_last_effect_id,
     );
     let mut id_gen = id_gen;
-    annotate_effect_sequence_with_env_internal(effects, env, config, &mut id_gen)
+    annotate_effect_sequence_with_env_internal(&effects, env, config, &mut id_gen)
 }
 
 fn lowering_reference_frame(frame: &ReferenceFrame) -> ReferenceEnv {
@@ -1735,6 +1736,7 @@ fn resolve_effect_sequence_references_with_state(
     id_gen: &mut IdGenContext,
     mut state: EffectReferenceResolutionState,
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    let effects = normalize_pay_damage_prevention_sequence(effects);
     let mut resolved = Vec::with_capacity(effects.len());
 
     for (idx, effect) in effects.iter().enumerate() {
@@ -1747,7 +1749,7 @@ fn resolve_effect_sequence_references_with_state(
         };
         let _ = effects_reference_it_tag(remaining) || effects_reference_its_controller(remaining);
         let assigned_effect_id =
-            maybe_assign_effect_result_id(effects, idx, id_gen, state.allow_life_event_value);
+            maybe_assign_effect_result_id(&effects, idx, id_gen, state.allow_life_event_value);
         state.last_effect_id = if matches!(
             effect,
             EffectAst::ResolvedIfResult { .. }
@@ -1768,6 +1770,160 @@ fn resolve_effect_sequence_references_with_state(
     }
 
     Ok(resolved)
+}
+
+fn normalize_pay_damage_prevention_sequence(effects: &[EffectAst]) -> Vec<EffectAst> {
+    let mut normalized = Vec::with_capacity(effects.len());
+    let mut idx = 0;
+    while idx < effects.len() {
+        if idx + 2 < effects.len()
+            && let Some((payment, prevention, damage)) = pay_damage_prevention_reordered(
+                &effects[idx],
+                &effects[idx + 1],
+                &effects[idx + 2],
+            )
+        {
+            normalized.push(payment);
+            normalized.push(prevention);
+            normalized.push(damage);
+            idx += 3;
+        } else {
+            normalized.push(effects[idx].clone());
+            idx += 1;
+        }
+    }
+    normalized
+}
+
+fn pay_damage_prevention_reordered(
+    payment: &EffectAst,
+    damage: &EffectAst,
+    prevention: &EffectAst,
+) -> Option<(EffectAst, EffectAst, EffectAst)> {
+    if !effect_is_pay_any_mana(payment) {
+        return None;
+    }
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::DealDamage {
+                target: damage_target,
+                ..
+            },
+        ..
+    }) = damage
+    else {
+        return None;
+    };
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        subject,
+        action:
+            SubjectVerbActionAst::PreventDamage {
+                amount,
+                target,
+                duration,
+                source_of_your_choice,
+            },
+    }) = prevention
+    else {
+        return None;
+    };
+    if !matches!(target, TargetAst::AnyTarget(_)) || !value_references_event_derived_amount(amount)
+    {
+        return None;
+    }
+    let payment_player_target = pay_any_mana_player_filter(payment)
+        .map(|filter| TargetAst::Player(filter, None))
+        .unwrap_or_else(|| damage_target.clone());
+    let damage = replace_deal_damage_target(damage, payment_player_target.clone())?;
+    Some((
+        payment.clone(),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject: subject.clone(),
+            action: SubjectVerbActionAst::PreventDamage {
+                amount: amount.clone(),
+                target: payment_player_target,
+                duration: duration.clone(),
+                source_of_your_choice: *source_of_your_choice,
+            },
+        }),
+        damage,
+    ))
+}
+
+fn replace_deal_damage_target(effect: &EffectAst, target: TargetAst) -> Option<EffectAst> {
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst { subject, action }) = effect else {
+        return None;
+    };
+    let SubjectVerbActionAst::DealDamage { amount, .. } = action else {
+        return None;
+    };
+    Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        subject: subject.clone(),
+        action: SubjectVerbActionAst::DealDamage {
+            amount: amount.clone(),
+            target,
+        },
+    }))
+}
+
+fn pay_any_mana_player_filter(effect: &EffectAst) -> Option<PlayerFilter> {
+    fn from_player_ast(player: PlayerAst) -> Option<PlayerFilter> {
+        match player {
+            PlayerAst::You => Some(PlayerFilter::You),
+            PlayerAst::Any => Some(PlayerFilter::Any),
+            PlayerAst::Opponent => Some(PlayerFilter::Opponent),
+            PlayerAst::Target | PlayerAst::TargetOpponent => {
+                Some(PlayerFilter::Target(Box::new(PlayerFilter::Any)))
+            }
+            PlayerAst::That | PlayerAst::Implicit => Some(PlayerFilter::IteratedPlayer),
+            PlayerAst::Defending => Some(PlayerFilter::Defending),
+            PlayerAst::Attacking => Some(PlayerFilter::Attacking),
+            _ => None,
+        }
+    }
+
+    match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject,
+            action: SubjectVerbActionAst::PayAnyMana { .. },
+        }) => from_player_ast(subject.player),
+        EffectAst::MayByPlayer { player, effects } => {
+            if effect_is_pay_any_mana(&EffectAst::May {
+                effects: effects.clone(),
+            }) {
+                from_player_ast(*player)
+            } else {
+                None
+            }
+        }
+        EffectAst::May { effects } => match effects.as_slice() {
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                subject,
+                action: SubjectVerbActionAst::PayAnyMana { .. },
+            })] => from_player_ast(subject.player),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn effect_is_pay_any_mana(effect: &EffectAst) -> bool {
+    match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::PayAnyMana { .. },
+            ..
+        }) => true,
+        EffectAst::May { effects } | EffectAst::MayByPlayer { effects, .. } => {
+            matches!(
+                effects.as_slice(),
+                [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::PayAnyMana { .. },
+                    ..
+                })]
+            )
+        }
+        _ => false,
+    }
 }
 
 fn advance_reference_env_for_effect(
@@ -2004,6 +2160,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::WinGame
             | SubjectVerbActionAst::PayAnyEnergy { .. }
             | SubjectVerbActionAst::PayAnyLife { .. }
+            | SubjectVerbActionAst::PayAnyMana { .. }
             | SubjectVerbActionAst::PayMana { .. }
             | SubjectVerbActionAst::DiscardHand
             | SubjectVerbActionAst::Detain { .. }
@@ -2489,6 +2646,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::WinGame
             | SubjectVerbActionAst::PayAnyEnergy { .. }
             | SubjectVerbActionAst::PayAnyLife { .. }
+            | SubjectVerbActionAst::PayAnyMana { .. }
             | SubjectVerbActionAst::PayMana { .. }
             | SubjectVerbActionAst::DiscardHand => 0,
             SubjectVerbActionAst::LoseLife { amount }

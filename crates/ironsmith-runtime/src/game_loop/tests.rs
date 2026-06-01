@@ -39,6 +39,166 @@ fn setup_three_player_game() -> GameState {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn power_leak_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(102_001), "Power Leak")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(
+            "Enchant enchantment\n\
+             At the beginning of the upkeep of enchanted enchantment's controller, that player may pay any amount of mana. This Aura deals 2 damage to that player. Prevent X of that damage, where X is the amount of mana that player paid this way.",
+        )
+        .expect("Power Leak should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct PowerLeakDecisionMaker {
+    accept_payment: bool,
+    mana_to_pay: u32,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for PowerLeakDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        self.accept_payment
+    }
+
+    fn decide_number(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::NumberContext,
+    ) -> u32 {
+        self.mana_to_pay.clamp(ctx.min, ctx.max)
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn setup_power_leak_attached_to_bob_enchantment(game: &mut GameState) -> ObjectId {
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let host = CardBuilder::new(CardId::from_raw(102_002), "Bob Enchantment")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let host_id = game.create_object_from_card(&host, bob, Zone::Battlefield);
+    let power_leak = power_leak_definition();
+    let aura_id = game.create_object_from_definition(&power_leak, alice, Zone::Battlefield);
+    game.object_mut(aura_id)
+        .expect("Power Leak should exist")
+        .attached_to = Some(crate::object::AttachmentTarget::Object(host_id));
+    game.object_mut(host_id)
+        .expect("enchanted enchantment should exist")
+        .attachments
+        .push(aura_id);
+    aura_id
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_power_leak_upkeep_trigger_on_stack(game: &mut GameState) {
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(bob);
+
+    let mut trigger_queue = TriggerQueue::new();
+    generate_and_queue_step_triggers(game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Power Leak should trigger on the enchanted enchantment controller's upkeep"
+    );
+    put_triggers_on_stack(game, &mut trigger_queue).expect("Power Leak trigger should stack");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn power_leak_does_not_trigger_on_other_players_upkeeps() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    setup_power_leak_attached_to_bob_enchantment(&mut game);
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let mut trigger_queue = TriggerQueue::new();
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+
+    assert_eq!(
+        trigger_queue.entries.len(),
+        0,
+        "Power Leak should not trigger on a player other than the enchanted enchantment's controller"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn power_leak_paid_mana_prevents_that_much_damage() {
+    let mut game = setup_game();
+    let bob = PlayerId::from_index(1);
+    setup_power_leak_attached_to_bob_enchantment(&mut game);
+    game.player_mut(bob)
+        .expect("bob exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+
+    put_power_leak_upkeep_trigger_on_stack(&mut game);
+    let mut dm = PowerLeakDecisionMaker {
+        accept_payment: true,
+        mana_to_pay: 2,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Power Leak trigger should resolve");
+
+    assert_eq!(
+        game.player(bob).expect("bob exists").life,
+        20,
+        "paying two mana should prevent all 2 damage from Power Leak"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").mana_pool.total(),
+        0,
+        "Power Leak should spend the chosen mana"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn power_leak_declined_payment_deals_full_damage() {
+    let mut game = setup_game();
+    let bob = PlayerId::from_index(1);
+    setup_power_leak_attached_to_bob_enchantment(&mut game);
+    game.player_mut(bob)
+        .expect("bob exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+
+    put_power_leak_upkeep_trigger_on_stack(&mut game);
+    let mut dm = PowerLeakDecisionMaker {
+        accept_payment: false,
+        mana_to_pay: 0,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Power Leak trigger should resolve");
+
+    assert_eq!(
+        game.player(bob).expect("bob exists").life,
+        18,
+        "declining the payment should leave the full 2 damage unprevented"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").mana_pool.total(),
+        2,
+        "declining should not spend mana"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn the_eternity_elevator_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(645_444), "The Eternity Elevator")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(5)]]))

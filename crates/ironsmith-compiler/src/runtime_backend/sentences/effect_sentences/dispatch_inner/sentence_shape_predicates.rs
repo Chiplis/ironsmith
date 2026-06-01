@@ -1253,7 +1253,16 @@ fn parse_effect_sentence_with_where_x_lexed(
     .with_surface_hint(ValueSurfaceHint::WhereXIs);
 
     let search_like = SENTENCE_SEARCH_WORD_PATTERN.matches_word_at(&stripped_words, 0);
-    let mut effects = if search_like && !trailing_after_where.is_empty() {
+    let mut effects = if matches!(
+        stripped_words.as_slice(),
+        ["prevent", "x", "of", "that", "damage"] | ["prevent", "x", "damage"]
+    ) {
+        vec![EffectAst::subject_verb_prevent_damage(
+            Value::X,
+            TargetAst::AnyTarget(None),
+            crate::effect::Until::EndOfTurn,
+        )]
+    } else if search_like && !trailing_after_where.is_empty() {
         let mut recombined = stripped.clone();
         recombined.extend(trailing_after_where.clone());
         parse_effect_sentence_lexed(&recombined)?

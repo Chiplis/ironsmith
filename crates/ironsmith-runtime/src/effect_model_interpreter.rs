@@ -1606,6 +1606,7 @@ where
         crate::effects::MoveToZoneEffect,
         crate::effects::PayAnyEnergyEffect,
         crate::effects::PayAnyLifeEffect,
+        crate::effects::PayAnyManaEffect,
         crate::effects::PayEnergyEffect,
         crate::effects::PayManaEffect,
         crate::effects::PopulateEffect,
