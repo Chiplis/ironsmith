@@ -3585,6 +3585,7 @@ pub struct RegisterZoneReplacementEffect {
     pub from_zone: Option<crate::zone::Zone>,
     pub to_zone: Option<crate::zone::Zone>,
     pub replacement_zone: crate::zone::Zone,
+    pub battlefield_controller: BattlefieldController,
     pub mode: ReplacementApplyMode,
     pub optional: bool,
     pub choice_description: Option<String>,
@@ -3603,10 +3604,16 @@ impl RegisterZoneReplacementEffect {
             from_zone,
             to_zone,
             replacement_zone,
+            battlefield_controller: BattlefieldController::Preserve,
             mode,
             optional: false,
             choice_description: None,
         }
+    }
+
+    pub fn under_you_control(mut self) -> Self {
+        self.battlefield_controller = BattlefieldController::You;
+        self
     }
 
     pub fn optional(mut self, description: impl Into<String>) -> Self {

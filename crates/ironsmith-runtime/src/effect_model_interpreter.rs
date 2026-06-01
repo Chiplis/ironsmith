@@ -1152,6 +1152,7 @@ where
             converted.optional = true;
             converted.choice_description = payload.choice_description.clone();
         }
+        converted.battlefield_controller = payload.battlefield_controller;
         return Ok(Effect::new(converted));
     }
     if let Some(converted) =

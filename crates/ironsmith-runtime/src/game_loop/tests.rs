@@ -35685,6 +35685,203 @@ fn test_force_of_negation_resolution_counters_and_exiles_target_spell() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_desertion_counters_creature_spell_onto_battlefield_under_your_control() {
+    use crate::game_loop::resolve_stack_entry;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let creature_card = CardBuilder::new(CardId::new(), "Desertion Target Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let creature_id = game.create_object_from_card(&creature_card, bob, Zone::Stack);
+    let creature_stable_id = game
+        .object(creature_id)
+        .expect("creature spell should exist on the stack")
+        .stable_id;
+    game.push_to_stack(StackEntry::new(creature_id, bob));
+
+    let desertion_def = CardDefinitionBuilder::new(CardId::new(), "Desertion")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Counter target spell. If an artifact or creature spell is countered this way, put that card onto the battlefield under your control instead of into its owner's graveyard.",
+        )
+        .expect("Desertion should parse for runtime tests");
+    let desertion_id = game.create_object_from_definition(&desertion_def, alice, Zone::Stack);
+    game.push_to_stack(
+        StackEntry::new(desertion_id, alice).with_targets(vec![Target::Object(creature_id)]),
+    );
+
+    resolve_stack_entry(&mut game).expect("Desertion should resolve");
+
+    let moved_creature_id = game
+        .find_object_by_stable_id(creature_stable_id)
+        .expect("countered creature should still be findable by stable id");
+    let moved_creature = game
+        .object(moved_creature_id)
+        .expect("countered creature should still exist after resolution");
+    assert_eq!(
+        moved_creature.zone,
+        Zone::Battlefield,
+        "Desertion should put the countered creature spell onto the battlefield"
+    );
+    assert_eq!(
+        moved_creature.owner, bob,
+        "Desertion should not change the card's owner"
+    );
+    assert_eq!(
+        game.controller_of_id(moved_creature_id),
+        Some(alice),
+        "Desertion should put the countered creature under its controller's control"
+    );
+    assert!(
+        !game.stack.iter().any(|entry| entry.object_id == creature_id),
+        "countered creature spell should leave the stack"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_desertion_counters_artifact_spell_onto_battlefield_under_your_control() {
+    use crate::game_loop::resolve_stack_entry;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let artifact_card = CardBuilder::new(CardId::new(), "Desertion Target Artifact")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let artifact_id = game.create_object_from_card(&artifact_card, bob, Zone::Stack);
+    let artifact_stable_id = game
+        .object(artifact_id)
+        .expect("artifact spell should exist on the stack")
+        .stable_id;
+    game.push_to_stack(StackEntry::new(artifact_id, bob));
+
+    let desertion_def = CardDefinitionBuilder::new(CardId::new(), "Desertion")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Counter target spell. If an artifact or creature spell is countered this way, put that card onto the battlefield under your control instead of into its owner's graveyard.",
+        )
+        .expect("Desertion should parse for runtime tests");
+    let desertion_id = game.create_object_from_definition(&desertion_def, alice, Zone::Stack);
+    game.push_to_stack(
+        StackEntry::new(desertion_id, alice).with_targets(vec![Target::Object(artifact_id)]),
+    );
+
+    resolve_stack_entry(&mut game).expect("Desertion should resolve");
+
+    let moved_artifact_id = game
+        .find_object_by_stable_id(artifact_stable_id)
+        .expect("countered artifact should still be findable by stable id");
+    let moved_artifact = game
+        .object(moved_artifact_id)
+        .expect("countered artifact should still exist after resolution");
+    assert_eq!(
+        moved_artifact.zone,
+        Zone::Battlefield,
+        "Desertion should put the countered artifact spell onto the battlefield"
+    );
+    assert_eq!(
+        moved_artifact.owner, bob,
+        "Desertion should not change the card's owner"
+    );
+    assert_eq!(
+        game.controller_of_id(moved_artifact_id),
+        Some(alice),
+        "Desertion should put the countered artifact under its controller's control"
+    );
+    assert!(
+        !game.stack.iter().any(|entry| entry.object_id == artifact_id),
+        "countered artifact spell should leave the stack"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_desertion_counters_nonartifact_noncreature_spell_to_graveyard() {
+    use crate::game_loop::resolve_stack_entry;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let instant_card = CardBuilder::new(CardId::new(), "Desertion Target Instant")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let instant_id = game.create_object_from_card(&instant_card, bob, Zone::Stack);
+    let instant_stable_id = game
+        .object(instant_id)
+        .expect("instant spell should exist on the stack")
+        .stable_id;
+    game.push_to_stack(StackEntry::new(instant_id, bob));
+
+    let desertion_def = CardDefinitionBuilder::new(CardId::new(), "Desertion")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Counter target spell. If an artifact or creature spell is countered this way, put that card onto the battlefield under your control instead of into its owner's graveyard.",
+        )
+        .expect("Desertion should parse for runtime tests");
+    let desertion_id = game.create_object_from_definition(&desertion_def, alice, Zone::Stack);
+    game.push_to_stack(
+        StackEntry::new(desertion_id, alice).with_targets(vec![Target::Object(instant_id)]),
+    );
+
+    resolve_stack_entry(&mut game).expect("Desertion should resolve");
+
+    let moved_instant_id = game
+        .find_object_by_stable_id(instant_stable_id)
+        .expect("countered instant should still be findable by stable id");
+    let moved_instant = game
+        .object(moved_instant_id)
+        .expect("countered instant should still exist after resolution");
+    assert_eq!(
+        moved_instant.zone,
+        Zone::Graveyard,
+        "Desertion should counter a nonartifact noncreature spell normally"
+    );
+    assert_eq!(
+        moved_instant.owner, bob,
+        "countered instant should be in its owner's graveyard"
+    );
+    assert!(
+        !game.stack.iter().any(|entry| entry.object_id == instant_id),
+        "countered instant spell should leave the stack"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_force_of_negation_exiles_nexus_of_fate_instead_of_shuffling_it() {
     use crate::cards::builders::CardDefinitionBuilder;
     use crate::game_loop::resolve_stack_entry;

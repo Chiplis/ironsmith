@@ -1,8 +1,11 @@
 use crate::effect::EffectOutcome;
 use crate::effects::helpers::resolve_objects_for_effect;
-use crate::effects::{EffectExecutionCategory, EffectExecutor, ReplacementApplyMode};
+use crate::effects::{
+    BattlefieldController, EffectExecutionCategory, EffectExecutor, ReplacementApplyMode,
+};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
+use crate::ids::ObjectId;
 use crate::replacement::{ReplacementAction, ReplacementEffect};
 use crate::target::{ChooseSpec, ObjectFilter};
 use crate::zone::Zone;
@@ -14,6 +17,7 @@ pub struct RegisterZoneReplacementEffect {
     pub from_zone: Option<Zone>,
     pub to_zone: Option<Zone>,
     pub replacement_zone: Zone,
+    pub battlefield_controller: BattlefieldController,
     pub mode: ReplacementApplyMode,
     pub optional: bool,
     pub choice_description: Option<String>,
@@ -32,10 +36,16 @@ impl RegisterZoneReplacementEffect {
             from_zone,
             to_zone,
             replacement_zone,
+            battlefield_controller: BattlefieldController::Preserve,
             mode,
             optional: false,
             choice_description: None,
         }
+    }
+
+    pub fn under_you_control(mut self) -> Self {
+        self.battlefield_controller = BattlefieldController::You;
+        self
     }
 
     pub fn optional(mut self, description: impl Into<String>) -> Self {
@@ -62,6 +72,8 @@ impl RegisterZoneReplacementEffect {
                     self.replacement_zone,
                     self.optional,
                     self.choice_description.clone(),
+                    self.battlefield_controller,
+                    object_id,
                 );
                 ReplacementEffect::with_matcher(
                     ctx.source,
@@ -83,6 +95,8 @@ pub(crate) fn zone_replacement_action(
     replacement_zone: Zone,
     optional: bool,
     choice_description: Option<String>,
+    battlefield_controller: BattlefieldController,
+    object_id: ObjectId,
 ) -> ReplacementAction {
     if optional {
         let mut destinations = Vec::new();
@@ -96,6 +110,18 @@ pub(crate) fn zone_replacement_action(
             destinations,
             description: choice_description.unwrap_or_else(|| "Choose a destination".to_string()),
         };
+    }
+
+    if replacement_zone == Zone::Battlefield
+        && battlefield_controller != BattlefieldController::Preserve
+    {
+        let mut move_effect = crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::SpecificObject(object_id),
+            Zone::Battlefield,
+            false,
+        );
+        move_effect.battlefield_controller = battlefield_controller;
+        return ReplacementAction::Instead(vec![crate::effect::Effect::new(move_effect)]);
     }
 
     ReplacementAction::ChangeDestination(replacement_zone)

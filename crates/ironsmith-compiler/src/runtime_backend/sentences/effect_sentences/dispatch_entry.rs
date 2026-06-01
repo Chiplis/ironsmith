@@ -73,6 +73,7 @@ use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseSha
 use crate::target::{
     ChooseSpec, ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation,
 };
+use crate::types::CardType;
 use crate::zone::Zone;
 use ironsmith_core::ValueSurfaceHint;
 use std::cell::OnceCell;
@@ -103,6 +104,11 @@ const GRAVEYARD_PHRASE: &[&str] = &["graveyard"];
 const EXILE_PHRASE: &[&str] = &["exile"];
 const HAND_PHRASE: &[&str] = &["hand"];
 const LIBRARY_PHRASE: &[&str] = &["library"];
+const BATTLEFIELD_PHRASE: &[&str] = &["battlefield"];
+const UNDER_YOUR_CONTROL_PHRASE: &[&str] = &["under", "your", "control"];
+const ARTIFACT_PHRASE: &[&str] = &["artifact"];
+const CREATURE_PHRASE: &[&str] = &["creature"];
+const SPELL_PHRASE: &[&str] = &["spell"];
 const WOULD_DIE_THIS_TURN_PHRASE: &[&str] = &["would", "die", "this", "turn"];
 const DEALT_DAMAGE_THIS_WAY_PHRASE: &[&str] = &["dealt", "damage", "this", "way"];
 const DEALT_DAMAGE_BY_PHRASE: &[&str] = &["dealt", "damage", "by"];
@@ -727,6 +733,23 @@ fn future_zone_replacement_from_sentence_text(sentence_text: &str) -> Option<Eff
 
 fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     let target = || TargetAst::Tagged(TagKey::from(IT_TAG), None);
+    let countered_spell_target = || {
+        if sentence_contains(tokens, ARTIFACT_PHRASE)
+            && sentence_contains(tokens, CREATURE_PHRASE)
+            && sentence_contains(tokens, SPELL_PHRASE)
+        {
+            let mut filter = ObjectFilter::default().in_zone(Zone::Stack);
+            filter.card_types = vec![CardType::Artifact, CardType::Creature];
+            filter.has_mana_cost = true;
+            filter.tagged_constraints.push(TaggedObjectConstraint {
+                tag: TagKey::from(IT_TAG),
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            });
+            TargetAst::Object(filter, None, None)
+        } else {
+            target()
+        }
+    };
     if sentence_contains(tokens, COUNTERED_THIS_WAY_PHRASE)
         && sentence_contains(tokens, INSTEAD_OF_PHRASE)
         && sentence_contains(tokens, GRAVEYARD_PHRASE)
@@ -765,6 +788,21 @@ fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) -> Opt
             Some(Zone::Stack),
             Some(Zone::Graveyard),
             Zone::Library,
+            ZoneReplacementDurationAst::OneShot,
+        ));
+    }
+
+    if sentence_contains(tokens, COUNTERED_THIS_WAY_PHRASE)
+        && sentence_contains(tokens, INSTEAD_OF_PHRASE)
+        && sentence_contains(tokens, GRAVEYARD_PHRASE)
+        && sentence_contains(tokens, BATTLEFIELD_PHRASE)
+        && sentence_contains(tokens, UNDER_YOUR_CONTROL_PHRASE)
+    {
+        return Some(EffectAst::subject_verb_register_zone_replacement_under_you_control(
+            countered_spell_target(),
+            Some(Zone::Stack),
+            Some(Zone::Graveyard),
+            Zone::Battlefield,
             ZoneReplacementDurationAst::OneShot,
         ));
     }

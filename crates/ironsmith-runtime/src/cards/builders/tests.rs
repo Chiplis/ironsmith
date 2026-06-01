@@ -47967,6 +47967,31 @@ fn parse_counter_then_exile_clause_registers_future_zone_replacement() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_desertion_oracle_registers_battlefield_replacement() {
+    let def = parse_oracle_card_definition("Desertion");
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("LocalRewriteEffect")
+            && debug.contains("RegisterZoneReplacementEffect")
+            && debug.contains("replacement_zone: Battlefield")
+            && debug.contains("battlefield_controller: You")
+            && debug.contains("Artifact")
+            && debug.contains("Creature"),
+        "expected Desertion to lower its countered artifact/creature replacement structurally, got {debug}"
+    );
+
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Counter target spell")
+            && rendered.contains("If an artifact or creature spell is countered this way")
+            && rendered.contains("put that card onto the battlefield under your control instead of into its owner's graveyard"),
+        "expected Desertion compiled text to preserve the conditional instead replacement, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_fatal_push_revolt_stays_self_replacement() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Fatal Push Variant")
         .card_types(vec![CardType::Instant])

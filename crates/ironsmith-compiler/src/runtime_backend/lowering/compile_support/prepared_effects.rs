@@ -353,14 +353,54 @@ fn extract_local_zone_replacement_followups(
         if register.mode != crate::effects::ReplacementApplyMode::OneShot {
             return None;
         }
-        if choose_spec_contains_it_tag(&register.target)
-            && let Some(target_spec) = &antecedent_target
-        {
-            register.target = target_spec.clone();
+        if let Some(target_spec) = &antecedent_target {
+            if choose_spec_contains_it_tag(&register.target) {
+                register.target = target_spec.clone();
+            } else if let Some(rebound) =
+                rebound_tagged_filter_to_antecedent_target(&register.target, target_spec)
+            {
+                register.target = rebound;
+            }
         }
         replacements.push(register);
     }
     Some(replacements)
+}
+
+fn rebound_tagged_filter_to_antecedent_target(
+    replacement_target: &ChooseSpec,
+    antecedent_target: &ChooseSpec,
+) -> Option<ChooseSpec> {
+    let ChooseSpec::Object(replacement_filter) = replacement_target else {
+        return None;
+    };
+    if replacement_filter.tagged_constraints.is_empty() {
+        return None;
+    }
+
+    fn merge_filter(mut base: ObjectFilter, replacement: &ObjectFilter) -> ObjectFilter {
+        if !replacement.card_types.is_empty() {
+            base.card_types = replacement.card_types.clone();
+        }
+        if replacement.has_mana_cost {
+            base.has_mana_cost = true;
+        }
+        base
+    }
+
+    match antecedent_target {
+        ChooseSpec::Object(base) => Some(ChooseSpec::Object(merge_filter(
+            base.clone(),
+            replacement_filter,
+        ))),
+        ChooseSpec::Target(inner) => match inner.as_ref() {
+            ChooseSpec::Object(base) => Some(ChooseSpec::Target(Box::new(ChooseSpec::Object(
+                merge_filter(base.clone(), replacement_filter),
+            )))),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 fn normalize_two_target_counter_then_fight(effects: Vec<Effect>) -> Vec<Effect> {

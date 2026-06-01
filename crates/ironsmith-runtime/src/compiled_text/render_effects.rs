@@ -15,6 +15,24 @@ fn value_prefers_equal_to(value: &Value) -> bool {
     value_has_surface_hint(value, ValueSurfaceHint::EqualTo)
 }
 
+fn countered_this_way_referent_from_target(target: &ChooseSpec) -> Option<&'static str> {
+    let filter = match target {
+        ChooseSpec::Object(filter) => filter,
+        ChooseSpec::Target(inner) => match inner.as_ref() {
+            ChooseSpec::Object(filter) => filter,
+            _ => return None,
+        },
+        _ => return None,
+    };
+    if filter.has_mana_cost
+        && filter.card_types.contains(&CardType::Artifact)
+        && filter.card_types.contains(&CardType::Creature)
+    {
+        return Some("an artifact or creature spell");
+    }
+    None
+}
+
 fn describe_pay_any_energy_amount(
     pay_any_energy: &crate::effects::PayAnyEnergyEffect,
 ) -> Option<&'static str> {
@@ -33333,7 +33351,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             .iter()
             .map(|register| {
                 let target = describe_choose_spec(&register.target);
-                let referent = if target.contains("spell") {
+                let referent = if let Some(referent) =
+                    countered_this_way_referent_from_target(&register.target)
+                {
+                    referent.to_string()
+                } else if target.contains("spell") {
                     "that spell".to_string()
                 } else if target.contains("creature") {
                     "that creature".to_string()
@@ -33345,6 +33367,18 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 if register.from_zone == Some(Zone::Stack)
                     && register.to_zone == Some(Zone::Graveyard)
                 {
+                    if register.replacement_zone == Zone::Battlefield {
+                        let controller_suffix = match register.battlefield_controller {
+                            crate::effects::BattlefieldController::You => " under your control",
+                            crate::effects::BattlefieldController::Owner => {
+                                " under its owner's control"
+                            }
+                            crate::effects::BattlefieldController::Preserve => "",
+                        };
+                        return format!(
+                            "If {referent} is countered this way, put that card onto the battlefield{controller_suffix} instead of into its owner's graveyard"
+                        );
+                    }
                     return format!(
                         "If {referent} is countered this way, it goes to {:?} instead of graveyard",
                         register.replacement_zone
@@ -33395,6 +33429,21 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             crate::effects::ReplacementApplyMode::Resolution => "",
         };
         let replacement = format!("{:?}", register.replacement_zone).to_ascii_lowercase();
+        if register.from_zone == Some(Zone::Stack)
+            && register.to_zone == Some(Zone::Graveyard)
+            && register.replacement_zone == Zone::Battlefield
+        {
+            let referent = countered_this_way_referent_from_target(&register.target)
+                .unwrap_or(target.as_str());
+            let controller_suffix = match register.battlefield_controller {
+                crate::effects::BattlefieldController::You => " under your control",
+                crate::effects::BattlefieldController::Owner => " under its owner's control",
+                crate::effects::BattlefieldController::Preserve => "",
+            };
+            return format!(
+                "If {referent} is countered this way, put that card onto the battlefield{controller_suffix} instead of into its owner's graveyard"
+            );
+        }
         if register.optional {
             return format!(
                 "If {target} would go{from}{to}{duration}, you may put it into {replacement} instead"

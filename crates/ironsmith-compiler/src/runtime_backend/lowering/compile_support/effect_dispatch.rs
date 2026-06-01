@@ -1093,6 +1093,7 @@ fn compile_subject_verb_effect(
             from_zone,
             to_zone,
             replacement_zone,
+            battlefield_controller,
             duration,
             optional,
             choice_description,
@@ -1111,6 +1112,7 @@ fn compile_subject_verb_effect(
                 *replacement_zone,
                 mode,
             );
+            replacement.battlefield_controller = *battlefield_controller;
             if *optional {
                 replacement.optional = true;
                 replacement.choice_description = choice_description.clone();

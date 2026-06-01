@@ -5,7 +5,7 @@ use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::events::ReplacementPriority;
 use crate::game_state::GameState;
 use crate::replacement::ReplacementEffect;
-use crate::target::ObjectFilter;
+use crate::target::{ChooseSpec, ObjectFilter};
 
 /// Execute an effect while temporary replacement effects are scoped to that execution.
 ///
@@ -40,10 +40,22 @@ fn resolve_zone_replacements(
                     replacement.replacement_zone,
                     replacement.optional,
                     replacement.choice_description.clone(),
+                    replacement.battlefield_controller,
+                    object_id,
                 ),
             )
         })
         .collect())
+}
+
+fn should_rebind_invalid_replacement_target(target: &ChooseSpec) -> bool {
+    match target {
+        ChooseSpec::Tagged(_) => true,
+        ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
+            should_rebind_invalid_replacement_target(inner)
+        }
+        _ => false,
+    }
 }
 
 impl EffectExecutor for LocalRewriteEffect {
@@ -68,6 +80,9 @@ impl EffectExecutor for LocalRewriteEffect {
                     effect.with_priority_override(ReplacementPriority::SelfReplacement)
                 })),
                 Err(ExecutionError::InvalidTarget) => {
+                    if !should_rebind_invalid_replacement_target(&replacement.target) {
+                        continue;
+                    }
                     let Some(target_spec) = &fallback_target else {
                         continue;
                     };
