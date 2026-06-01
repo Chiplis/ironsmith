@@ -245,11 +245,17 @@ pub(super) fn try_compile_flow_and_iteration_effect(
 
             let previous_last_player_filter = ctx.last_player_filter.clone();
             let (inner_effects, inner_choices) = compile_effects(effects, ctx)?;
-            let (alt_effects, alt_choices) = compile_effects(alternative, ctx)?;
             let player_filter = resolve_unless_player_filter(
                 *player,
                 &current_reference_env(ctx),
                 previous_last_player_filter,
+            )?;
+            let (alt_effects, alt_choices) = with_preserved_lowering_context(
+                ctx,
+                |ctx| {
+                    ctx.last_player_filter = Some(player_filter.clone());
+                },
+                |ctx| compile_effects(alternative, ctx),
             )?;
             if !matches!(*player, PlayerAst::Implicit) {
                 ctx.last_player_filter = Some(player_filter.clone());

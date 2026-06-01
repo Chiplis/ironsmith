@@ -4315,6 +4315,8 @@ fn compile_subject_verb_effect(
                     &PlayerFilter::Target(Box::new(filter.clone())),
                 );
             }
+            let (resolved_target, _) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             let (mut effects, choices) =
                 compile_tagged_effect_for_target(target, ctx, "damaged", |spec| {
                     Effect::deal_damage(resolved_amount.clone(), spec)
@@ -4322,7 +4324,19 @@ fn compile_subject_verb_effect(
             if let TargetAst::Player(filter, _) | TargetAst::PlayerOrPlaneswalker(filter, _) =
                 target
             {
-                ctx.last_player_filter = Some(PlayerFilter::Target(Box::new(filter.clone())));
+                let filter = match resolved_target.unhinted() {
+                    ChooseSpec::Target(inner) => match inner.unhinted() {
+                        ChooseSpec::Player(filter) | ChooseSpec::PlayerOrPlaneswalker(filter) => {
+                            PlayerFilter::Target(Box::new(filter.clone()))
+                        }
+                        _ => PlayerFilter::Target(Box::new(filter.clone())),
+                    },
+                    ChooseSpec::Player(filter) | ChooseSpec::PlayerOrPlaneswalker(filter) => {
+                        filter.clone()
+                    }
+                    _ => PlayerFilter::Target(Box::new(filter.clone())),
+                };
+                ctx.last_player_filter = Some(filter);
             } else if target_is_any_damage_target(target) {
                 let tag = ctx.next_tag("damaged");
                 ctx.last_object_tag = Some(tag.clone());

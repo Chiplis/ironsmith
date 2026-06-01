@@ -976,6 +976,62 @@ pub(crate) fn parse_sentence_unless_pays(
     parse_sentence_unless_pays_matched(clause, &matched)
 }
 
+pub(crate) fn parse_sentence_damage_unless_player_takes_action(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let pattern = LexPattern::new(UNLESS_PAYS_PATTERN_ATOMS);
+    let Some(matched) = clause.match_pattern(pattern) else {
+        return Ok(None);
+    };
+    parse_sentence_damage_unless_player_takes_action_matched(clause, &matched)
+}
+
+pub(crate) fn parse_sentence_damage_unless_player_takes_action_matched(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    _matched: &LexPatternMatch<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((before_clause, after_clause)) = clause.split_once_on_word("unless") else {
+        return Ok(None);
+    };
+    let effects = parse_effect_chain(before_clause.trimmed().tokens())?;
+    if effects.len() != 1
+        || !matches!(
+            effects.first(),
+            Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::DealDamage { .. },
+                ..
+            }))
+        )
+    {
+        return Ok(None);
+    }
+
+    let after_clause = after_clause.trimmed();
+    let after_words = after_clause.word_refs();
+    let (player, action_clause) = if after_words.starts_with(&["that", "player"])
+        || after_words.starts_with(&["the", "player"])
+    {
+        (PlayerAst::That, after_clause.after_words(2))
+    } else if after_words.starts_with(&["they"]) {
+        (PlayerAst::That, after_clause.after_words(1))
+    } else {
+        return Ok(None);
+    };
+    let Some(action_clause) = action_clause else {
+        return Ok(None);
+    };
+    let alternative = parse_effect_chain(action_clause.trimmed().tokens())?;
+    if alternative.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(vec![EffectAst::UnlessAction {
+        effects,
+        alternative,
+        player,
+    }]))
+}
+
 pub(crate) fn parse_sentence_unless_pays_matched(
     clause: SubjectVerbPrimitiveClause<'_>,
     _matched: &LexPatternMatch<'_>,

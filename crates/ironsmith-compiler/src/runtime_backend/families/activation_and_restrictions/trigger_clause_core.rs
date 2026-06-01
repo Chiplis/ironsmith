@@ -3093,6 +3093,36 @@ pub(crate) fn parse_trigger_clause_lexed(
         let subject = &words[..put_word_idx];
         if let Some(player) = parse_trigger_subject_player_filter(subject) {
             let tail = &words[put_word_idx + 1..];
+            let onto_battlefield_start = tail
+                .windows(3)
+                .position(|window| window == ["onto", "the", "battlefield"])
+                .or_else(|| {
+                    tail.windows(2)
+                        .position(|window| window == ["onto", "battlefield"])
+                });
+            if let Some(onto_battlefield_start) = onto_battlefield_start
+                && onto_battlefield_start > 0
+            {
+                let word_view = ActivationRestrictionCompatWords::new(tokens);
+                let object_start_word = put_word_idx + 1;
+                let object_end_word = object_start_word + onto_battlefield_start;
+                let object_start_token = word_view
+                    .token_index_for_word_index(object_start_word)
+                    .unwrap_or(tokens.len());
+                let object_end_token = word_view
+                    .token_index_for_word_index(object_end_word)
+                    .unwrap_or(tokens.len());
+                if object_start_token < object_end_token && object_end_token <= tokens.len() {
+                    let object_tokens = strip_leading_articles(&tokens[object_start_token..object_end_token]);
+                    if let Ok(mut filter) = parse_object_filter_lexed(&object_tokens, false) {
+                        filter.controller = Some(player);
+                        return Ok(TriggerSpec::EntersBattlefield {
+                            filter,
+                            cause_filter: None,
+                        });
+                    }
+                }
+            }
             if NAME_STICKER_PUT_TAIL_PATTERN.matches_words(tail) {
                 return Ok(TriggerSpec::KeywordAction {
                     action: crate::events::KeywordActionKind::NameSticker,

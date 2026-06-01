@@ -410,6 +410,31 @@ impl ZoneChangeTrigger {
             };
         }
 
+        if self.from == ZonePattern::Any
+            && self.to == ZonePattern::Specific(Zone::Battlefield)
+            && self.player == PlayerRelation::Any
+            && self.count_mode == CountMode::Each
+            && self.object_filter.controller == Some(PlayerFilter::Any)
+        {
+            let mut object_filter = self.object_filter.clone();
+            object_filter.controller = None;
+            let object_desc = subject_description_for_zone_change(&object_filter);
+            let has_article = object_desc.starts_with("a ")
+                || object_desc.starts_with("an ")
+                || object_desc.starts_with("the ")
+                || object_desc.starts_with("this ")
+                || object_desc.starts_with("that ")
+                || object_desc.starts_with("another ")
+                || object_desc.starts_with("enchanted ")
+                || object_desc.starts_with("equipped ");
+            let object_text = if has_article {
+                object_desc
+            } else {
+                format!("a {object_desc}")
+            };
+            return format!("Whenever a player puts {object_text} onto the battlefield");
+        }
+
         let mut parts = vec!["Whenever".to_string()];
 
         // Player relation

@@ -686,6 +686,23 @@ pub(crate) fn parse_deal_damage_with_amount(
         });
     }
 
+    let target_word_refs = crate::runtime_backend::token_word_refs(target_tokens);
+    if let Some(unless_idx) = target_word_refs
+        .iter()
+        .position(|word| *word == "unless")
+        .and_then(|word_idx| token_index_for_word_index(target_tokens, word_idx))
+    {
+        let pre_target_tokens = trim_commas(&target_tokens[..unless_idx]);
+        if !pre_target_tokens.is_empty() {
+            let target = parse_target_phrase(&pre_target_tokens)?;
+            let effects = vec![EffectAst::subject_verb_damage(amount.clone(), target)];
+            let clause = SubjectVerbPrimitiveClause::new(target_tokens);
+            if let Some(unless_effect) = try_build_unless(effects, clause, unless_idx)? {
+                return Ok(unless_effect);
+            }
+        }
+    }
+
     if let Some(spec) = split_trailing_if_clause_lexed(target_tokens) {
         let target = parse_target_phrase(spec.leading_tokens)?;
         return Ok(EffectAst::Conditional {

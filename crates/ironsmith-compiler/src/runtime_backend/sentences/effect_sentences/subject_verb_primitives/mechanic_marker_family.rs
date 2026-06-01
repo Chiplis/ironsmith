@@ -731,6 +731,33 @@ pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive
         parse_sentence_target_player_reveals_random_card_from_hand,
         parse_sentence_target_player_reveals_random_card_from_hand_matched
     ),
+    primitive_with_pattern_parser!(
+        "unless-action-before-subject-verb",
+        190,
+        PreDiagnostic,
+        &[
+            LexRuleHeadHint::Single("unless"),
+            LexRuleHeadHint::Single("for"),
+            LexRuleHeadHint::Single("each"),
+            LexRuleHeadHint::Single("this")
+        ],
+        UNLESS_PAYS_PATTERN_ATOMS,
+        parse_sentence_unless_pays,
+        parse_sentence_unless_pays_matched
+    ),
+    primitive_with_pattern_parser!(
+        "damage-unless-player-takes-action",
+        195,
+        PreDiagnostic,
+        &[
+            LexRuleHeadHint::Single("this"),
+            LexRuleHeadHint::Single("it"),
+            LexRuleHeadHint::Single("that")
+        ],
+        UNLESS_PAYS_PATTERN_ATOMS,
+        parse_sentence_damage_unless_player_takes_action,
+        parse_sentence_damage_unless_player_takes_action_matched
+    ),
 ];
 
 pub(crate) static PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX: LazyLock<LexRuleHintIndex> =
@@ -1376,7 +1403,8 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
         &[
             LexRuleHeadHint::Single("unless"),
             LexRuleHeadHint::Single("for"),
-            LexRuleHeadHint::Single("each")
+            LexRuleHeadHint::Single("each"),
+            LexRuleHeadHint::Single("this")
         ],
         UNLESS_PAYS_PATTERN_ATOMS,
         parse_sentence_unless_pays,

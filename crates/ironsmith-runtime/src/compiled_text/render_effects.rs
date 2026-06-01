@@ -27612,6 +27612,77 @@ pub(super) fn describe_effect(effect: &Effect) -> String {
     with_effect_render_depth(|| describe_effect_impl(effect))
 }
 
+fn unless_action_player_subject(player: &PlayerFilter) -> String {
+    match player {
+        PlayerFilter::You => "you".to_string(),
+        PlayerFilter::Specific(_)
+        | PlayerFilter::TaggedPlayer(_)
+        | PlayerFilter::Active
+        | PlayerFilter::DamagedPlayer
+        | PlayerFilter::IteratedPlayer
+        | PlayerFilter::ControllerOf(_)
+        | PlayerFilter::OwnerOf(_)
+        | PlayerFilter::AliasedOwnerOf(_)
+        | PlayerFilter::AliasedControllerOf(_) => "the player".to_string(),
+        _ => describe_player_filter(player),
+    }
+}
+
+fn controlled_object_filter_for_player<'a>(
+    spec: &'a ChooseSpec,
+    player: &PlayerFilter,
+) -> Option<&'a ObjectFilter> {
+    match spec.unhinted() {
+        ChooseSpec::WithCount(inner, count) if count.is_single() => {
+            controlled_object_filter_for_player(inner, player)
+        }
+        ChooseSpec::Target(inner) => controlled_object_filter_for_player(inner, player),
+        ChooseSpec::Object(filter) if filter.controller.as_ref() == Some(player) => Some(filter),
+        _ => None,
+    }
+}
+
+fn describe_unless_action_put_counters_alternative(
+    put_counters: &crate::effects::PutCountersEffect,
+    player: &PlayerFilter,
+) -> Option<String> {
+    if put_counters.distributed
+        || put_counters
+            .target_count
+            .is_some_and(|count| !count.is_single())
+    {
+        return None;
+    }
+    let filter = controlled_object_filter_for_player(&put_counters.target, player)?;
+    let mut object_filter = filter.clone();
+    object_filter.controller = None;
+    object_filter.zone = None;
+    let object_text = with_indefinite_article(strip_leading_article(&object_filter.description()));
+    let control_text = match player {
+        PlayerFilter::You => "you control",
+        _ => "they control",
+    };
+    let subject = unless_action_player_subject(player);
+    let verb = player_verb(&subject, "put", "puts");
+    Some(format!(
+        "{subject} {verb} {} on {object_text} {control_text}",
+        describe_put_counter_phrase(&put_counters.amount, put_counters.counter_type)
+    ))
+}
+
+fn describe_unless_action_inner_text(unless_action: &crate::effects::UnlessActionEffect) -> String {
+    let mut inner_text = describe_effect_list(&unless_action.effects);
+    if let [effect] = unless_action.effects.as_slice()
+        && let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageEffect>()
+        && let ChooseSpec::Player(player) = damage.target.unhinted()
+        && player == &unless_action.player
+    {
+        let player_text = describe_player_filter(player);
+        inner_text = inner_text.replace(&format!("to {player_text}"), "to that player");
+    }
+    inner_text
+}
+
 fn describe_unless_any_player_pays_search_prefix(
     unless_pays: &crate::effects::UnlessPaysEffect,
     payment_text: &str,
@@ -29564,7 +29635,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(unless_action) = effect.downcast_ref::<crate::effects::UnlessActionEffect>() {
-        let inner_text = describe_effect_list(&unless_action.effects);
+        let inner_text = describe_unless_action_inner_text(unless_action);
         if unless_action.alternative.len() == 1
             && let Some(pay_mana) =
                 unless_action.alternative[0].downcast_ref::<crate::effects::PayManaEffect>()
@@ -29614,6 +29685,16 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 "{} unless {} {} or {}",
                 inner_text, player, first_choice, second_choice
             );
+        }
+        if unless_action.alternative.len() == 1
+            && let Some(put_counters) = unless_action.alternative[0]
+                .downcast_ref::<crate::effects::PutCountersEffect>()
+            && let Some(alt_clause) = describe_unless_action_put_counters_alternative(
+                put_counters,
+                &unless_action.player,
+            )
+        {
+            return format!("{inner_text} unless {alt_clause}");
         }
         let alt_text = describe_effect_list(&unless_action.alternative);
         let player = describe_player_filter(&unless_action.player);

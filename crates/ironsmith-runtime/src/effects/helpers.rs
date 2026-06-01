@@ -2181,6 +2181,13 @@ fn resolve_controller_of(
         ObjectRef::Tagged(tag) => {
             if let Some(snapshot) = ctx.get_tagged(tag) {
                 Ok(snapshot.controller)
+            } else if let Some(snapshot) = ctx
+                .filter_context(game)
+                .tagged_objects
+                .get(tag)
+                .and_then(|snapshots| snapshots.first())
+            {
+                Ok(snapshot.controller)
             } else {
                 Err(ExecutionError::TagNotFound(tag.to_string()))
             }
@@ -2215,6 +2222,13 @@ fn resolve_owner_of(
         }
         ObjectRef::Tagged(tag) => {
             if let Some(snapshot) = ctx.get_tagged(tag) {
+                Ok(snapshot.owner)
+            } else if let Some(snapshot) = ctx
+                .filter_context(game)
+                .tagged_objects
+                .get(tag)
+                .and_then(|snapshots| snapshots.first())
+            {
                 Ok(snapshot.owner)
             } else {
                 Err(ExecutionError::TagNotFound(tag.to_string()))

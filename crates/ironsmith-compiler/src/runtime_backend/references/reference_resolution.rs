@@ -289,7 +289,23 @@ fn maybe_tag_target(
     {
         frame.last_object_tag = Some(tag);
     }
-    track_target_player(target, frame);
+    match target {
+        TargetAst::Player(filter, _) | TargetAst::PlayerOrPlaneswalker(filter, _) => {
+            frame.last_player_filter = Some(match spec.unhinted() {
+                ChooseSpec::Target(inner) => match inner.unhinted() {
+                    ChooseSpec::Player(filter) | ChooseSpec::PlayerOrPlaneswalker(filter) => {
+                        PlayerFilter::Target(Box::new(filter.clone()))
+                    }
+                    _ => PlayerFilter::Target(Box::new(filter.clone())),
+                },
+                ChooseSpec::Player(filter) | ChooseSpec::PlayerOrPlaneswalker(filter) => {
+                    filter.clone()
+                }
+                _ => PlayerFilter::Target(Box::new(filter.clone())),
+            });
+        }
+        _ => track_target_player(target, frame),
+    }
     Ok(())
 }
 

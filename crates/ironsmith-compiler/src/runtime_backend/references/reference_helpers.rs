@@ -23,6 +23,22 @@ pub(crate) fn resolve_unless_player_filter(
         && !refs.iterated_player
         && refs
             .known_last_player_filter()
+            .is_some_and(PlayerFilter::mentions_iterated_player)
+        && previous_last_player_filter
+            .as_ref()
+            .is_some_and(|filter| !filter.mentions_iterated_player())
+    {
+        return previous_last_player_filter.ok_or_else(|| {
+            CardTextError::InvariantViolation(
+                "expected previous non-iterated player filter for unless-player resolution"
+                    .to_string(),
+            )
+        });
+    }
+    if matches!(player, PlayerAst::That)
+        && !refs.iterated_player
+        && refs
+            .known_last_player_filter()
             .is_some_and(is_you_player_filter)
         && previous_last_player_filter
             .as_ref()

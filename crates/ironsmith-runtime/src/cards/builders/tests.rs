@@ -143,6 +143,146 @@ fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn thelons_chant_strict_parser_compiled_text_and_bound_player_regression() {
+    let def = parse_oracle_card_definition("Thelon's Chant");
+    let rendered = compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.contains(
+            "Whenever a player puts a Swamp onto the battlefield, this enchantment deals 3 damage to that player unless the player puts a -1/-1 counter on a creature they control."
+        ),
+        "Thelon's Chant should preserve the Swamp controller's unless-action text, got {rendered}"
+    );
+
+    let triggered = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .nth(1)
+        .expect("Thelon's Chant should have a Swamp-entered triggered ability");
+    let [segment] = triggered.effects.segments.as_slice() else {
+        panic!("expected a single resolution segment, got {:#?}", triggered.effects);
+    };
+    let [effect] = segment.default_effects.as_slice() else {
+        panic!("expected a single default effect, got {:#?}", segment.default_effects);
+    };
+    let unless = effect
+        .downcast_ref::<crate::effects::UnlessActionEffect>()
+        .expect("Swamp trigger should lower to UnlessActionEffect");
+    let expected_player = PlayerFilter::ControllerOf(ObjectRef::Tagged(crate::TagKey::from(
+        "triggering",
+    )));
+    assert_eq!(unless.player, expected_player);
+
+    let damage = unless.effects[0]
+        .downcast_ref::<crate::effects::DealDamageEffect>()
+        .expect("unless default should deal damage");
+    assert_eq!(damage.target, ChooseSpec::Player(expected_player.clone()));
+
+    let counters = unless.alternative[0]
+        .downcast_ref::<crate::effects::PutCountersEffect>()
+        .expect("unless alternative should put a -1/-1 counter");
+    let ChooseSpec::WithCount(inner, count) = &counters.target else {
+        panic!("counter target should choose one controlled creature, got {:#?}", counters.target);
+    };
+    assert!(count.is_single());
+    let ChooseSpec::Object(filter) = inner.as_ref() else {
+        panic!("counter target should be an object filter, got {inner:#?}");
+    };
+    assert_eq!(filter.controller, Some(expected_player));
+    assert!(filter.card_types.contains(&CardType::Creature));
+}
+
+#[test]
+fn thelons_chant_swamp_trigger_alternative_targets_that_players_creature_runtime() {
+    struct AcceptAlternative;
+
+    impl crate::decision::DecisionMaker for AcceptAlternative {
+        fn decide_boolean(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            true
+        }
+    }
+
+    let def = parse_oracle_card_definition("Thelon's Chant");
+    let triggered = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .nth(1)
+        .expect("Thelon's Chant should have a Swamp-entered triggered ability");
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let chant_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let alice_creature = crate::card::CardBuilder::new(CardId::from_raw(70_001), "Alice Bear")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let alice_creature_id = game.create_object_from_card(&alice_creature, alice, Zone::Battlefield);
+    let bob_creature = crate::card::CardBuilder::new(CardId::from_raw(70_002), "Bob Bear")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let bob_creature_id = game.create_object_from_card(&bob_creature, bob, Zone::Battlefield);
+    let swamp = crate::card::CardBuilder::new(CardId::from_raw(70_003), "Bob Swamp")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Swamp])
+        .build();
+    let swamp_id = game.create_object_from_card(&swamp, bob, Zone::Battlefield);
+    let event = crate::events::RawEvent::new(
+        crate::events::zones::ZoneChangeEvent::with_cause(
+            swamp_id,
+            Zone::Hand,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::from_game_rule(),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let trigger_ctx = crate::triggers::TriggerContext::for_source(chant_id, alice, &game);
+    assert!(
+        triggered.trigger.matches(&event, &trigger_ctx),
+        "Thelon's Chant should trigger when Bob puts a Swamp onto the battlefield"
+    );
+
+    let mut dm = AcceptAlternative;
+    let mut ctx = crate::effects::ExecutionContext::new(chant_id, alice, &mut dm)
+        .with_triggering_event(event);
+    for effect in triggered.effects.flattened_default_effects() {
+        effect
+            .0
+            .execute(&mut game, &mut ctx)
+            .expect("Thelon's Chant Swamp trigger should resolve");
+    }
+
+    assert_eq!(
+        game.player(bob).expect("Bob should exist").life,
+        20,
+        "accepting the alternative should prevent damage to the Swamp's controller"
+    );
+    assert_eq!(
+        game.counter_count(bob_creature_id, crate::object::CounterType::MinusOneMinusOne),
+        1,
+        "the alternative should put a -1/-1 counter on Bob's creature"
+    );
+    assert_eq!(
+        game.counter_count(alice_creature_id, crate::object::CounterType::MinusOneMinusOne),
+        0,
+        "the alternative should not target Alice's creature"
+    );
+}
+
+#[test]
 fn commander_liara_portyr_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Commander Liara Portyr");
     let ability_debug = format!("{:#?}", def.abilities);
