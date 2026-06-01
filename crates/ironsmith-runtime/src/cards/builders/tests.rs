@@ -41995,6 +41995,57 @@ fn assert_oracle_card_parses_strict(name: &str) {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cheering_fanatic_strict_parser_renders_chosen_name_cost_reduction() {
+    let def = parse_oracle_card_definition("Cheering Fanatic");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Cheering Fanatic should have an attack trigger");
+
+    assert_eq!(
+        triggered.trigger.display(),
+        "Whenever this creature attacks",
+        "Cheering Fanatic should trigger from attacking"
+    );
+
+    let effects = triggered.effects.flattened_default_effects();
+    assert!(
+        effects.iter().any(|effect| effect
+            .downcast_ref::<crate::effects::ChooseCardNameEffect>()
+            .is_some()),
+        "Cheering Fanatic should choose a card name before granting the cost reduction"
+    );
+    let reduction = effects
+        .iter()
+        .find_map(|effect| {
+            effect.downcast_ref::<crate::effects::GrantNextSpellCostReductionEffect>()
+        })
+        .expect("Cheering Fanatic should grant a temporary matching-spell cost reduction");
+    assert_eq!(reduction.player, PlayerFilter::Any);
+    assert_eq!(reduction.filter.name.as_deref(), Some("{chosen name}"));
+    assert_eq!(reduction.filter.cast_by, None);
+    assert!(reduction.applies_to_all_matching_this_turn);
+    assert!(
+        matches!(reduction.generic_reduction, Some(Value::Fixed(1))),
+        "Cheering Fanatic should reduce matching spells by one generic mana, got {:?}",
+        reduction.generic_reduction
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("spells with the chosen name cost {1} less to cast this turn"),
+        "Cheering Fanatic should render the chosen-name temporary cost reduction, got {rendered}"
+    );
+}
+
 fn assert_oracle_card_fails_strict(name: &str) {
     let oracle = oracle_text_by_name()
         .get(name)

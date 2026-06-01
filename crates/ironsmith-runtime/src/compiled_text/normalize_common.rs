@@ -135,6 +135,23 @@ pub(super) fn describe_cast_limit_spell_filter(filter: &ObjectFilter) -> String 
     if filter == &ObjectFilter::default() {
         return "spell".to_string();
     }
+    if filter.name.as_deref() == Some("{chosen name}") {
+        let mut base = filter.clone();
+        base.name = None;
+        if base == ObjectFilter::default() {
+            return "spell with the chosen name".to_string();
+        }
+    }
+    if filter.tagged_constraints.len() == 1
+        && filter.tagged_constraints[0].tag.as_str() == "__chosen_name__"
+        && filter.tagged_constraints[0].relation == TaggedOpbjectRelation::SameNameAsTagged
+    {
+        let mut base = filter.clone();
+        base.tagged_constraints.clear();
+        if base == ObjectFilter::default() {
+            return "spell with the chosen name".to_string();
+        }
+    }
     if filter == &ObjectFilter::default().without_type(CardType::Creature) {
         return "noncreature spell".to_string();
     }

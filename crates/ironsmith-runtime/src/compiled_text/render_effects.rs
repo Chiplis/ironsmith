@@ -34989,7 +34989,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 .generic_reduction
                 .as_ref()
                 .map(|value| match value {
-                    Value::Fixed(amount) => (amount.to_string(), String::new()),
+                    Value::Fixed(amount) => (format!("{{{amount}}}"), String::new()),
                     Value::X => ("{X}".to_string(), String::new()),
                     _ => (
                         "{X}".to_string(),
@@ -35019,6 +35019,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             } else {
                 format!("{spell_text} spells")
             };
+            if grant_next_spell_cost_reduction.filter.cast_by.is_none()
+                && grant_next_spell_cost_reduction.filter.zone.is_none()
+            {
+                return format!(
+                    "{} cost {} less to cast this turn{}",
+                    plural_spell_text, reduction, where_suffix,
+                );
+            }
             return format!(
                 "{} this turn cost {} less to cast{}",
                 plural_spell_text, reduction, where_suffix,

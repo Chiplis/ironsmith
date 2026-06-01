@@ -32971,6 +32971,105 @@ fn commander_liara_portyr_runtime_has_no_reduction_without_attacked_players() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cheering_fanatic_runtime_reduces_only_spells_with_chosen_name_this_turn() {
+    struct ChooseLightningBoltName;
+
+    impl DecisionMaker for ChooseLightningBoltName {
+        fn decide_text(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::TextInputContext,
+        ) -> String {
+            "Lightning Bolt".to_string()
+        }
+    }
+
+    fn generic_spell(name: &str) -> crate::cards::CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), name)
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+            .card_types(vec![CardType::Sorcery])
+            .with_spell_effect(vec![Effect::draw(1)])
+            .build()
+    }
+
+    fn effective_cost_text(game: &GameState, player: PlayerId, spell_id: ObjectId) -> String {
+        let spell = game.object(spell_id).expect("spell should exist");
+        crate::decision::calculate_effective_mana_cost(
+            game,
+            player,
+            spell,
+            spell.mana_cost.as_ref().expect("spell mana cost"),
+        )
+        .to_oracle()
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let cheering = CardDefinitionBuilder::new(CardId::from_raw(56_400), "Cheering Fanatic")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Goblin])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "Whenever this creature attacks, choose a card name. \
+             Spells with the chosen name cost {1} less to cast this turn.",
+        )
+        .expect("Cheering Fanatic should parse for runtime regression");
+    let triggered = cheering
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Cheering Fanatic should have an attack trigger");
+    let cheering_id = game.create_object_from_definition(&cheering, alice, Zone::Battlefield);
+
+    let lightning = generic_spell("Lightning Bolt");
+    let other_spell = generic_spell("Giant Growth");
+    let alice_lightning = game.create_object_from_definition(&lightning, alice, Zone::Hand);
+    let bob_lightning = game.create_object_from_definition(&lightning, bob, Zone::Hand);
+    let alice_other = game.create_object_from_definition(&other_spell, alice, Zone::Hand);
+
+    let mut decision_maker = ChooseLightningBoltName;
+    let mut ctx = crate::effects::ExecutionContext::new_default(cheering_id, alice)
+        .with_decision_maker(&mut decision_maker);
+    for effect in triggered.effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Cheering Fanatic attack trigger effect should resolve");
+    }
+
+    assert_eq!(
+        effective_cost_text(&game, alice, alice_lightning),
+        "{1}",
+        "the chosen Lightning Bolt should cost one less for Cheering Fanatic's controller"
+    );
+    assert_eq!(
+        effective_cost_text(&game, bob, bob_lightning),
+        "{1}",
+        "Cheering Fanatic's unqualified cost reduction should apply to other players too"
+    );
+    assert_eq!(
+        effective_cost_text(&game, alice, alice_other),
+        "{2}",
+        "spells without the chosen name should not be reduced"
+    );
+
+    game.turn.turn_number += 1;
+    game.cleanup_temporary_spell_cost_reductions_end_of_turn();
+    assert_eq!(
+        effective_cost_text(&game, alice, alice_lightning),
+        "{2}",
+        "Cheering Fanatic's reduction should expire after this turn"
+    );
+}
+
 #[test]
 fn test_face_down_cast_matches_panoptic_filter_and_enters_battlefield_face_down() {
     let mut game = setup_game();
