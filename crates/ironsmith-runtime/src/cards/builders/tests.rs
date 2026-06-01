@@ -48012,6 +48012,309 @@ fn travel_through_caradhras_runtime_mines_votes_return_graveyard_cards_without_s
 }
 
 #[test]
+fn sail_into_the_west_strict_parser_text_and_structure_regression() {
+    let def = parse_oracle_card_definition("Sail into the West");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+
+    assert!(
+        rendered.contains(
+            "Will of the council — Starting with you, each player votes for return or embark"
+        ),
+        "expected will-of-the-council vote opening to render, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "If return gets more votes, each player returns up to two cards from their graveyard to their hand"
+        ),
+        "expected return vote branch to render, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "If embark gets more votes or the vote is tied, each player may discard their hand and draw seven cards"
+        ),
+        "expected embark vote branch to render, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("Unsupported effect"),
+        "Sail into the West should parse strictly without unsupported placeholders, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.spell_effect);
+    let compact_debug = debug.split_whitespace().collect::<String>();
+    assert!(
+        debug.contains("VoteEffect")
+            && debug.contains("VoteOptionGetsMoreVotes")
+            && debug.contains("VoteOptionGetsMoreVotesOrTied")
+            && debug.contains("ForPlayersEffect")
+            && debug.contains("ReturnFromGraveyardToHandEffect")
+            && compact_debug.contains("owner:Some(IteratedPlayer")
+            && debug.contains("DiscardHandEffect")
+            && debug.contains("DrawCardsEffect")
+            && debug.contains("MoveToZoneEffect"),
+        "expected vote conditions, iterated-player graveyard return, optional wheel, and self-exile structurally, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct SailVoteDecisionMaker {
+    votes: Vec<usize>,
+    may_accept: HashMap<PlayerId, bool>,
+    object_choice_players: Vec<PlayerId>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl crate::decision::DecisionMaker for SailVoteDecisionMaker {
+    fn decide_options(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        if !self.votes.is_empty() {
+            vec![self.votes.remove(0)]
+        } else {
+            ctx.options
+                .iter()
+                .filter(|option| option.legal)
+                .map(|option| option.index)
+                .take(ctx.min)
+                .collect()
+        }
+    }
+
+    fn decide_boolean(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        self.may_accept.get(&ctx.player).copied().unwrap_or(false)
+    }
+
+    fn decide_objects(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        self.object_choice_players.push(ctx.player);
+        let max = ctx.max.unwrap_or(ctx.candidates.len()).max(ctx.min);
+        ctx.candidates
+            .iter()
+            .filter(|candidate| candidate.legal)
+            .map(|candidate| candidate.id)
+            .take(max)
+            .collect()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn sail_test_card(id: u32, name: &str) -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(id), name)
+        .card_types(vec![CardType::Sorcery])
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn sail_owner_zone_names(
+    game: &crate::game_state::GameState,
+    owner: PlayerId,
+    zone: Zone,
+) -> Vec<String> {
+    let mut names = game
+        .objects_in_zone(zone)
+        .into_iter()
+        .filter_map(|id| {
+            game.object(id).and_then(|object| {
+                (object.owner == owner).then(|| object.name.clone())
+            })
+        })
+        .collect::<Vec<_>>();
+    names.sort();
+    names
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_sail_into_the_west_with_votes(
+    votes: Vec<usize>,
+    may_accept: HashMap<PlayerId, bool>,
+) -> (crate::game_state::GameState, SailVoteDecisionMaker) {
+    let def = parse_oracle_card_definition("Sail into the West");
+    let program = def
+        .spell_effect
+        .as_ref()
+        .expect("Sail into the West should compile to spell effects");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+
+    for (idx, name) in [
+        "Sail Alice Grave One",
+        "Sail Alice Grave Two",
+        "Sail Alice Grave Three",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let card = sail_test_card(92_001 + idx as u32, name);
+        game.create_object_from_definition(&card, alice, Zone::Graveyard);
+    }
+    let bob_grave = sail_test_card(92_010, "Sail Bob Grave One");
+    game.create_object_from_definition(&bob_grave, bob, Zone::Graveyard);
+
+    for (idx, owner, zone, prefix, count) in [
+        (20_u32, alice, Zone::Hand, "Sail Alice Hand", 2_u32),
+        (30_u32, bob, Zone::Hand, "Sail Bob Hand", 3_u32),
+        (40_u32, alice, Zone::Library, "Sail Alice Library", 7_u32),
+        (50_u32, bob, Zone::Library, "Sail Bob Library", 7_u32),
+    ] {
+        for n in 0..count {
+            let card = sail_test_card(92_000 + idx + n, &format!("{prefix} {}", n + 1));
+            game.create_object_from_definition(&card, owner, zone);
+        }
+    }
+
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut dm = SailVoteDecisionMaker {
+        votes,
+        may_accept,
+        object_choice_players: Vec::new(),
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        program,
+        None,
+        &[],
+    )
+    .expect("Sail into the West should resolve");
+    (game, dm)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sail_into_the_west_runtime_return_votes_return_each_players_graveyard_cards_and_exile_source() {
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let (game, dm) = resolve_sail_into_the_west_with_votes(vec![0, 0], HashMap::new());
+
+    assert_eq!(
+        dm.object_choice_players,
+        vec![alice, bob],
+        "each player should choose cards from their own graveyard for the return branch"
+    );
+    assert_eq!(
+        sail_owner_zone_names(&game, alice, Zone::Hand).len(),
+        4,
+        "Alice should keep two hand cards and return up to two graveyard cards"
+    );
+    assert_eq!(
+        sail_owner_zone_names(&game, alice, Zone::Graveyard).len(),
+        1,
+        "Alice should leave the third graveyard card behind because the branch is up to two"
+    );
+    assert_eq!(
+        sail_owner_zone_names(&game, bob, Zone::Hand).len(),
+        4,
+        "Bob should keep three hand cards and return his one graveyard card"
+    );
+    assert_eq!(
+        sail_owner_zone_names(&game, bob, Zone::Graveyard).len(),
+        0,
+        "Bob's only graveyard card should be returned"
+    );
+    assert_eq!(
+        travel_zone_names(&game, Zone::Exile),
+        vec!["Sail into the West".to_string()],
+        "return votes should exile Sail into the West after returning cards"
+    );
+    assert_eq!(
+        sail_owner_zone_names(&game, alice, Zone::Library).len(),
+        7,
+        "embark draw branch should not run when return gets more votes"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sail_into_the_west_runtime_tied_vote_runs_embark_with_each_player_may_decision() {
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut may_accept = HashMap::new();
+    may_accept.insert(alice, true);
+    may_accept.insert(bob, false);
+
+    let (game, dm) = resolve_sail_into_the_west_with_votes(vec![0, 1], may_accept);
+
+    assert!(
+        dm.object_choice_players.is_empty(),
+        "return branch should not ask for graveyard choices when the vote is tied"
+    );
+    assert_eq!(
+        sail_owner_zone_names(&game, alice, Zone::Hand).len(),
+        7,
+        "Alice accepted the embark may choice, discarded her hand, and drew seven cards"
+    );
+    assert_eq!(
+        sail_owner_zone_names(&game, alice, Zone::Library).len(),
+        0,
+        "Alice should draw seven cards from her library"
+    );
+    assert_eq!(
+        sail_owner_zone_names(&game, bob, Zone::Hand).len(),
+        3,
+        "Bob declined the embark may choice and should keep his hand"
+    );
+    assert_eq!(
+        sail_owner_zone_names(&game, bob, Zone::Library).len(),
+        7,
+        "Bob declined, so he should not draw cards"
+    );
+    assert!(
+        travel_zone_names(&game, Zone::Exile).is_empty(),
+        "embark branch should not exile Sail into the West"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sail_into_the_west_runtime_embark_more_votes_draws_for_accepting_players() {
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut may_accept = HashMap::new();
+    may_accept.insert(alice, true);
+    may_accept.insert(bob, true);
+
+    let (game, dm) = resolve_sail_into_the_west_with_votes(vec![1, 1], may_accept);
+
+    assert!(
+        dm.object_choice_players.is_empty(),
+        "return branch should not ask for graveyard choices when embark gets more votes"
+    );
+    assert_eq!(
+        sail_owner_zone_names(&game, alice, Zone::Hand).len(),
+        7,
+        "Alice should draw seven after accepting embark"
+    );
+    assert_eq!(
+        sail_owner_zone_names(&game, bob, Zone::Hand).len(),
+        7,
+        "Bob should draw seven after accepting embark"
+    );
+    assert_eq!(
+        sail_owner_zone_names(&game, alice, Zone::Graveyard).len(),
+        5,
+        "Alice's three graveyard cards plus two discarded hand cards should stay in graveyard"
+    );
+    assert_eq!(
+        sail_owner_zone_names(&game, bob, Zone::Graveyard).len(),
+        4,
+        "Bob's one graveyard card plus three discarded hand cards should stay in graveyard"
+    );
+}
+
+#[test]
 fn dungeon_regression_cards_render_key_mechanics() {
     let crawler = parse_oracle_card_definition("Dungeon Crawler");
     let crawler_lines = unprocessed_compiled_lines(&crawler).join(" ");

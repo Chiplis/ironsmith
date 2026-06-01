@@ -363,6 +363,12 @@ fn statement_group_should_parse_as_effects_first(tokens: &[OwnedLexToken]) -> bo
     if linked_statement_should_stay_grouped(tokens) {
         return true;
     }
+    if matches!(
+        classify_statement_line_family_lexed(tokens),
+        Some(StatementLineFamily::Vote)
+    ) {
+        return true;
+    }
 
     let words = token_word_refs(tokens);
     if words

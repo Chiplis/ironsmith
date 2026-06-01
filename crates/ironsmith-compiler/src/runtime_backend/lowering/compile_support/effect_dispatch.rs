@@ -5001,7 +5001,10 @@ fn compile_subject_verb_effect(
             let (mut spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             let from_graveyard = target_mentions_graveyard(target);
-            if from_graveyard && format!("{spec:?}").contains("IteratedPlayer") {
+            if from_graveyard
+                && !ctx.iterated_player
+                && format!("{spec:?}").contains("IteratedPlayer")
+            {
                 replace_iterated_player_with_target_player_in_choose_spec(&mut spec);
             }
             let effect = tag_object_target_effect(
