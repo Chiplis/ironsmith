@@ -12062,6 +12062,24 @@ fn rewrite_lexed_effect_entrypoint_supports_investigate_for_each_creatures_died(
 }
 
 #[test]
+fn rewrite_lexed_effect_entrypoint_supports_investigate_once_for_each_attacking_creature() {
+    let text = "Investigate once for each nontoken attacking creature.";
+    let lexed = lex_line(text, 0)
+        .expect("rewrite lexer should classify investigate-once-for-each effect");
+    let native = super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("lexed investigate-once-for-each parser should succeed");
+
+    let debug = format!("{native:?}");
+    assert!(
+        debug.contains("Investigate")
+            && debug.contains("Count")
+            && debug.contains("attacking: true")
+            && debug.contains("nontoken: true"),
+        "expected dynamic nontoken attacking creature count in investigate clause, got {debug}"
+    );
+}
+
+#[test]
 fn rewrite_cost_reduction_line_rejects_unmodeled_activate_if_condition() {
     let tokens = lex_line(
         "this ability costs 1 less to activate if you control an artifact.",

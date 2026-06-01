@@ -1615,6 +1615,34 @@ pub(crate) fn parse_investigate(
 
     let trailing = trim_commas(&tokens[used..]);
     let trailing_words = token_word_refs(&trailing);
+    if token_slice_first_is(&trailing, "for") && token_slice_at_is(&trailing, 1, "each") {
+        let filter_tokens = &trailing[2..];
+        if filter_tokens.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing filter after 'for each' in investigate clause (clause: '{}')",
+                token_word_refs(tokens).join(" ")
+            )));
+        }
+
+        let each_count = parse_investigate_for_each_count(filter_tokens)?;
+        count = match (count, each_count) {
+            (Value::Fixed(1), Value::Count(filter)) => {
+                Value::CountScaled(filter, 1).with_surface_hint(ValueSurfaceHint::ForEach)
+            }
+            (Value::Fixed(1), each_count) => each_count,
+            (Value::Fixed(multiplier), Value::Count(filter)) => {
+                Value::CountScaled(filter, multiplier)
+                    .with_surface_hint(ValueSurfaceHint::ForEach)
+            }
+            (multiplier, each_count) => {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported scaled investigate for-each clause (count: '{multiplier:?}', each: '{each_count:?}')"
+                )));
+            }
+        };
+        return Ok(EffectAst::subject_verb_investigate(player, count));
+    }
+
     if matches!(count, Value::X)
         && CREATE_TIME_OR_TIMES_WORD_PATTERN.matches_word_at(&trailing_words, 0)
         && let Some(where_idx) = CREATE_WHERE_WORD_PATTERN.find_word(&trailing_words)

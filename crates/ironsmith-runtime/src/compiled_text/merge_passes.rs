@@ -26,7 +26,10 @@ pub(super) fn is_keyword_phrase(phrase: &str) -> bool {
     if lower.starts_with("hexproof from ") {
         return true;
     }
-    if lower.starts_with("partner with ") {
+    if lower.starts_with("partner with ")
+        || lower.starts_with("partner-")
+        || lower.starts_with("partner\u{2014}")
+    {
         return true;
     }
     if lower.starts_with("ward ") {

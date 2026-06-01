@@ -33384,24 +33384,24 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             (Value::Fixed(1), "you") => "Investigate".to_string(),
             (Value::Count(filter), "you") => {
                 format!(
-                    "Investigate for each {}",
+                    "Investigate once for each {}",
                     describe_for_each_count_filter(filter)
                 )
             }
             (Value::CountScaled(filter, multiplier), "you") if *multiplier == 1 => {
                 format!(
-                    "Investigate for each {}",
+                    "Investigate once for each {}",
                     describe_for_each_count_filter(filter)
                 )
             }
             (Value::Fixed(1), _) => format!("{player} investigates"),
             (Value::Fixed(amount), _) => format!("{player} investigates {amount} times"),
             (Value::Count(filter), _) => format!(
-                "{player} investigates for each {}",
+                "{player} investigates once for each {}",
                 describe_for_each_count_filter(filter)
             ),
             (Value::CountScaled(filter, multiplier), _) if *multiplier == 1 => format!(
-                "{player} investigates for each {}",
+                "{player} investigates once for each {}",
                 describe_for_each_count_filter(filter)
             ),
             _ if player == "you" => format!("Investigate {}", describe_value(&investigate.count)),
@@ -36568,7 +36568,7 @@ pub(super) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
         return Some("Partner".to_string());
     }
     if text.starts_with("partner-") || text.starts_with("partner\u{2014}") {
-        return Some(raw_text.to_string());
+        return Some(raw_text.trim_end_matches('.').to_string());
     }
     if text.starts_with("partner with ") {
         return Some(raw_text.to_string());

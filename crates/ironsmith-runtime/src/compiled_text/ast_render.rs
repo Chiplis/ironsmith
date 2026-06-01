@@ -1076,6 +1076,7 @@ pub(super) fn substitute_legendary_source_reference(
         || conditional_static_self_surface
         || lower.contains("if this land has ")
         || lower.contains(" counters on this artifact")
+        || lower.starts_with("whenever this creature attacks")
         || lower.starts_with("whenever this creature deals combat damage to a player")
         || lower.starts_with("whenever this creature or another ")
         || lower.contains(": this creature gets ")
@@ -1084,7 +1085,11 @@ pub(super) fn substitute_legendary_source_reference(
         return line.to_string();
     }
 
-    let source_name = card.name.split(',').next().unwrap_or(&card.name).trim();
+    let source_name = if lower.starts_with("whenever this creature attacks") {
+        card.name.as_str()
+    } else {
+        card.name.split(',').next().unwrap_or(&card.name).trim()
+    };
     if source_name.is_empty() {
         return line.to_string();
     }
