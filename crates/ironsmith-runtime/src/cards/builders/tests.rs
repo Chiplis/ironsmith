@@ -15297,10 +15297,11 @@ fn faerie_slumber_party_compiled_text_keeps_returned_creature_condition() {
 
     assert!(
         rendered.contains("return all creatures to their owners' hands")
-            && rendered.contains("controlled a creature returned this way")
-            && rendered.contains("create two 1/1 blue faerie creature tokens")
+            && rendered.contains(
+                "for each opponent who controlled a creature returned this way, you create two 1/1 blue faerie creature tokens"
+            )
             && rendered.contains("block only creatures with flying"),
-        "expected Faerie Slumber Party compiled text to preserve return, condition, token count, and blocking restriction, got {rendered}"
+        "expected Faerie Slumber Party compiled text to preserve return, controller identity, condition, token count, and blocking restriction, got {rendered}"
     );
 }
 
