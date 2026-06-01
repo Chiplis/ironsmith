@@ -13,7 +13,7 @@ const YOU_TARGET_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & [
 const OPPONENT_TARGET_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["opponent"], &["opponents"]]);
 const PLAYER_TARGET_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["player"], &["players"]]);
+    clause_shape!(prefix_any & [&["player"], &["players"], &["a", "player"]]);
 const OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
 const UNTIL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["until"]);
 const OTHER_OR_ANOTHER_WORD_PATTERN: ClauseShape<'static> =
@@ -1415,6 +1415,7 @@ pub(super) fn parse_object_filter_inner(
         let mut spell_filter = filter.clone();
         spell_filter.any_of.clear();
         spell_filter.zone = Some(Zone::Stack);
+        spell_filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
         spell_filter.card_types.clear();
         spell_filter.all_card_types.clear();
         spell_filter.subtypes.clear();
@@ -1438,6 +1439,7 @@ pub(super) fn parse_object_filter_inner(
         let mut spell_filter = filter.clone();
         spell_filter.any_of.clear();
         spell_filter.zone = Some(Zone::Stack);
+        spell_filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
         spell_filter.has_mana_cost = false;
         if spell_filter.card_types.is_empty()
             && spell_filter.all_card_types.is_empty()
@@ -1465,6 +1467,7 @@ pub(super) fn parse_object_filter_inner(
             filter.card_types = permanent_type_defaults.clone();
         }
         filter.zone = Some(Zone::Stack);
+        filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
     } else {
         if saw_permanent && filter.card_types.is_empty() && filter.all_card_types.is_empty() {
             filter.card_types = permanent_type_defaults.clone();
@@ -1486,6 +1489,7 @@ pub(super) fn parse_object_filter_inner(
             }
         } else if saw_spell {
             filter.zone = Some(Zone::Stack);
+            filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
         } else if saw_permanent || saw_permanent_type || saw_subtype {
             filter.zone = Some(Zone::Battlefield);
         }

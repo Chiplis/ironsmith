@@ -14774,6 +14774,190 @@ fn molten_hydra_activated_damage_is_zero_when_no_counters_are_removed() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn outwit_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Outwit")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Instant])
+        .parse_text("Counter target spell that targets a player.")
+        .expect("Outwit should parse strictly for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn outwit_counter_target_spec(def: &crate::cards::CardDefinition) -> crate::target::ChooseSpec {
+    def.spell_effect
+        .as_ref()
+        .expect("Outwit should have spell effects")
+        .flattened_default_effects()
+        .iter()
+        .find_map(|effect| {
+            if let Some(counter) = effect.downcast_ref::<crate::effects::CounterEffect>() {
+                return Some(counter.target.clone());
+            }
+            effect
+                .downcast_ref::<crate::effects::TaggedEffect>()
+                .and_then(|tagged| {
+                    tagged
+                        .effect
+                        .downcast_ref::<crate::effects::CounterEffect>()
+                })
+                .map(|counter| counter.target.clone())
+        })
+        .expect("Outwit should lower to a CounterEffect")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn push_outwit_test_damage_spell(
+    game: &mut GameState,
+    controller: PlayerId,
+    targets: Vec<Target>,
+) -> ObjectId {
+    let spell = CardDefinitionBuilder::new(CardId::new(), "Lightning Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Lightning Probe deals 1 damage to any target.")
+        .expect("damage spell should parse");
+    let spell_id = game.create_object_from_definition(&spell, controller, Zone::Stack);
+    let target_len = targets.len();
+    game.push_to_stack(
+        StackEntry::new(spell_id, controller)
+            .with_targets(targets)
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: crate::target::ChooseSpec::AnyTarget,
+                range: 0..target_len,
+            }]),
+    );
+    spell_id
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn outwit_target_requirements_only_allow_spells_targeting_players() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let outwit = outwit_definition();
+    let creature = create_creature(&mut game, "Target Dummy", alice, 1, 1);
+
+    let player_targeting_spell =
+        push_outwit_test_damage_spell(&mut game, bob, vec![Target::Player(alice)]);
+    let creature_targeting_spell =
+        push_outwit_test_damage_spell(&mut game, bob, vec![Target::Object(creature)]);
+    let ability_source = create_creature(&mut game, "Ability Source", bob, 1, 1);
+    game.push_to_stack(
+        StackEntry::ability(ability_source, bob, vec![Effect::gain_life(1)])
+            .with_targets(vec![Target::Player(alice)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: crate::target::ChooseSpec::Player(crate::target::PlayerFilter::Any),
+                range: 0..1,
+            }]),
+    );
+
+    let target_requirements = super::targeting::extract_target_requirements(
+        &game,
+        outwit
+            .spell_effect
+            .as_ref()
+            .expect("Outwit should have spell effects")
+            .flattened_default_effects(),
+        alice,
+        None,
+    );
+
+    assert_eq!(
+        target_requirements.len(),
+        1,
+        "Outwit should require one target spell"
+    );
+    assert!(
+        target_requirements[0]
+            .legal_targets
+            .contains(&Target::Object(player_targeting_spell)),
+        "Outwit should be able to target a spell that targets a player"
+    );
+    assert!(
+        !target_requirements[0]
+            .legal_targets
+            .contains(&Target::Object(creature_targeting_spell)),
+        "Outwit should not be able to target a spell that targets only a creature"
+    );
+    assert!(
+        !target_requirements[0]
+            .legal_targets
+            .contains(&Target::Object(ability_source)),
+        "Outwit should not be able to target an ability that targets a player"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn outwit_counters_spell_targeting_any_player() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let outwit = outwit_definition();
+    let target_spec = outwit_counter_target_spec(&outwit);
+    let target_spell = push_outwit_test_damage_spell(&mut game, bob, vec![Target::Player(alice)]);
+    let outwit_id = game.create_object_from_definition(&outwit, alice, Zone::Stack);
+
+    game.push_to_stack(
+        StackEntry::new(outwit_id, alice)
+            .with_targets(vec![Target::Object(target_spell)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: target_spec,
+                range: 0..1,
+            }]),
+    );
+
+    resolve_stack_entry(&mut game).expect("Outwit should resolve");
+
+    assert!(
+        !game.stack.iter().any(|entry| entry.object_id == target_spell),
+        "Outwit should remove the player-targeting spell from the stack"
+    );
+    assert!(
+        game.player(bob)
+            .expect("Bob should exist")
+            .graveyard
+            .iter()
+            .any(|id| game
+                .object(*id)
+                .is_some_and(|object| object.name == "Lightning Probe")),
+        "Outwit should counter the targeted spell into its controller's graveyard"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn outwit_fizzles_if_target_spell_does_not_target_a_player() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let outwit = outwit_definition();
+    let target_spec = outwit_counter_target_spec(&outwit);
+    let creature = create_creature(&mut game, "Target Dummy", alice, 1, 1);
+    let creature_targeting_spell =
+        push_outwit_test_damage_spell(&mut game, bob, vec![Target::Object(creature)]);
+    let outwit_id = game.create_object_from_definition(&outwit, alice, Zone::Stack);
+
+    game.push_to_stack(
+        StackEntry::new(outwit_id, alice)
+            .with_targets(vec![Target::Object(creature_targeting_spell)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: target_spec,
+                range: 0..1,
+            }]),
+    );
+
+    resolve_stack_entry(&mut game).expect("Outwit with an illegal target should fizzle cleanly");
+
+    assert!(
+        game.stack
+            .iter()
+            .any(|entry| entry.object_id == creature_targeting_spell),
+        "Outwit should not counter a spell that targets only a creature"
+    );
+}
+
 #[test]
 fn protected_stack_spell_still_resolves_after_failed_counterspell() {
     let mut game = setup_game();
