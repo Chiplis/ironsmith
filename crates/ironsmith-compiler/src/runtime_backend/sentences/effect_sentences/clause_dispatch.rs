@@ -631,6 +631,56 @@ fn parse_for_each_prevent_damage_clause(
     Ok(Some(EffectAst::ForEachObject { filter, effects }))
 }
 
+fn parse_for_each_counter_group_removed_this_way_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let words = ClauseDispatchCompatWords::new(tokens).to_word_refs();
+    if !matches!(words.as_slice(), ["for", "each", ..] | ["each", ..]) {
+        return Ok(None);
+    }
+
+    let count_start = if words.first() == Some(&"each") { 1 } else { 2 };
+    let Some((group_size, used_tokens)) = parse_number(&tokens[count_start..]) else {
+        return Ok(None);
+    };
+    if group_size == 0 {
+        return Err(CardTextError::ParseError(format!(
+            "counter group size must be positive (clause: '{}')",
+            words.join(" ")
+        )));
+    }
+
+    let after_count = count_start + used_tokens;
+    let Some(counter_word_idx) = words
+        .iter()
+        .enumerate()
+        .skip(after_count)
+        .find_map(|(idx, word)| matches!(*word, "counter" | "counters").then_some(idx))
+    else {
+        return Ok(None);
+    };
+    if words.get(counter_word_idx + 1..counter_word_idx + 4) != Some(&["removed", "this", "way"])
+    {
+        return Ok(None);
+    }
+
+    let tail_word_idx = counter_word_idx + 4;
+    let tail_token_idx = token_index_for_word_index(tokens, tail_word_idx).unwrap_or(tokens.len());
+    let tail_tokens = trim_commas(&tokens[tail_token_idx..]);
+    if tail_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing effect after counter group clause (clause: '{}')",
+            words.join(" ")
+        )));
+    }
+
+    let effects = parse_effect_chain_with_subject_verb_primitives(&tail_tokens)?;
+    Ok(Some(EffectAst::RepeatEffects {
+        count: Value::DividedRoundedDown(Box::new(Value::X), group_size as i32),
+        effects,
+    }))
+}
+
 fn parse_cast_any_number_from_among_tagged_clause(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     let clause_word_view = ClauseDispatchCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
@@ -795,6 +845,10 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     let clause_words = clause_word_view.to_word_refs();
 
     if let Some(effect) = parse_for_each_prevent_damage_clause(tokens)? {
+        return Ok(effect);
+    }
+
+    if let Some(effect) = parse_for_each_counter_group_removed_this_way_clause(tokens)? {
         return Ok(effect);
     }
 

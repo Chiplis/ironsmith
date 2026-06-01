@@ -1452,7 +1452,9 @@ fn value_references_only_other_number_metric(value: &Value) -> bool {
             value_references_only_other_number_metric(left)
                 || value_references_only_other_number_metric(right)
         }
-        Value::Scaled(value, _) | Value::HalfRoundedDown(value) => {
+        Value::Scaled(value, _)
+        | Value::DividedRoundedDown(value, _)
+        | Value::HalfRoundedDown(value) => {
             value_references_only_other_number_metric(value)
         }
         _ => false,
@@ -2275,7 +2277,9 @@ fn resolve_effect_result_value(
             resolve_effect_result_value(left, state)?;
             resolve_effect_result_value(right, state)?;
         }
-        Value::Scaled(inner, _) | Value::HalfRoundedDown(inner) => {
+        Value::Scaled(inner, _)
+        | Value::DividedRoundedDown(inner, _)
+        | Value::HalfRoundedDown(inner) => {
             resolve_effect_result_value(inner, state)?;
         }
         Value::SurfaceHinted { value, .. } => {

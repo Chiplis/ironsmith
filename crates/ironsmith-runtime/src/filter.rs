@@ -832,6 +832,10 @@ fn resolve_filter_comparison_rhs_value(
             resolve_filter_comparison_rhs_value(inner, game, ctx, stack_entry)
                 .map(|value| value * multiplier)
         }
+        Value::DividedRoundedDown(inner, divisor) if *divisor != 0 => {
+            resolve_filter_comparison_rhs_value(inner, game, ctx, stack_entry)
+                .map(|value| value.div_euclid(*divisor))
+        }
         Value::Min(left, right) => Some(
             resolve_filter_comparison_rhs_value(left, game, ctx, stack_entry)?.min(
                 resolve_filter_comparison_rhs_value(right, game, ctx, stack_entry)?,

@@ -2946,6 +2946,17 @@ fn resolve_value_direct(
                 game,
             ) * *multiplier
         }
+        Value::DividedRoundedDown(value, divisor) => resolve_value_direct(
+            value,
+            objects,
+            effects,
+            battlefield,
+            commanders,
+            source,
+            controller,
+            game,
+        )
+        .div_euclid(*divisor),
         Value::Min(left, right) => resolve_value_direct(
             left,
             objects,
@@ -4025,6 +4036,9 @@ fn resolve_value_with_context(
         }
         Value::Scaled(value, multiplier) => {
             resolve_value_with_context(value, ctx, source, controller) * *multiplier
+        }
+        Value::DividedRoundedDown(value, divisor) => {
+            resolve_value_with_context(value, ctx, source, controller).div_euclid(*divisor)
         }
         Value::Min(left, right) => resolve_value_with_context(left, ctx, source, controller)
             .min(resolve_value_with_context(right, ctx, source, controller)),

@@ -2477,6 +2477,12 @@ fn describe_comparison(cmp: &Comparison) -> String {
             Value::CountScaled(filter, factor) => {
                 format!("{factor} times the number of {}", filter.description())
             }
+            Value::DividedRoundedDown(value, divisor) => {
+                format!(
+                    "{} divided by {divisor}, rounded down",
+                    describe_value_expr(value)
+                )
+            }
             Value::LandsEnteredBattlefieldThisTurn(player) => {
                 format!(
                     "the number of lands that entered the battlefield under {:?}'s control this turn",

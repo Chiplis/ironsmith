@@ -88,6 +88,20 @@ fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<&'static str
     }
 }
 
+fn spell_cast_trigger_targets_source(trigger: &TriggerSpec) -> bool {
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => spell_cast_trigger_targets_source(trigger),
+        TriggerSpec::SpellCast {
+            filter: Some(filter),
+            ..
+        } => filter
+            .targets_object
+            .as_deref()
+            .is_some_and(|target_filter| target_filter.source),
+        _ => false,
+    }
+}
+
 fn retarget_it_target_to_source(target: &mut TargetAst) {
     match target {
         TargetAst::Tagged(tag, span) if tag.as_str() == IT_TAG => {
@@ -292,6 +306,12 @@ pub(crate) fn rewrite_prepare_effects_with_trigger_context_for_lowering(
     {
         retarget_phase_step_it_targets_to_source(&mut normalized);
     }
+    if let Some(trigger) = trigger
+        && spell_cast_trigger_targets_source(trigger)
+        && !has_phase_step_it_prelude
+    {
+        retarget_phase_step_it_targets_to_source(&mut normalized);
+    }
     let default_last_object_tag = if imports.last_object_tag.is_none()
         && !has_local_target_prelude
         && (effects_reference_it_tag(&normalized) || effects_reference_its_controller(&normalized))
@@ -432,6 +452,9 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
         );
     }
     if phase_step_trigger_has_no_object_reference(&trigger) && !has_phase_step_it_prelude {
+        retarget_phase_step_it_targets_to_source(&mut body_effects);
+    }
+    if spell_cast_trigger_targets_source(&trigger) && !has_phase_step_it_prelude {
         retarget_phase_step_it_targets_to_source(&mut body_effects);
     }
 

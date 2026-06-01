@@ -374,8 +374,9 @@ pub(crate) fn value_references_tag(value: &Value, tag: &str) -> bool {
         Value::Add(left, right) => {
             value_references_tag(left, tag) || value_references_tag(right, tag)
         }
-        Value::Scaled(value, _) => value_references_tag(value, tag),
-        Value::HalfRoundedDown(value) => value_references_tag(value, tag),
+        Value::Scaled(value, _)
+        | Value::DividedRoundedDown(value, _)
+        | Value::HalfRoundedDown(value) => value_references_tag(value, tag),
         Value::Count(filter) | Value::CountScaled(filter, _) => filter
             .tagged_constraints
             .iter()
@@ -493,7 +494,9 @@ pub(crate) fn value_references_event_derived_amount(value: &Value) -> bool {
             value_references_event_derived_amount(left)
                 || value_references_event_derived_amount(right)
         }
-        Value::Scaled(value, _) | Value::HalfRoundedDown(value) => {
+        Value::Scaled(value, _)
+        | Value::DividedRoundedDown(value, _)
+        | Value::HalfRoundedDown(value) => {
             value_references_event_derived_amount(value)
         }
         _ => false,

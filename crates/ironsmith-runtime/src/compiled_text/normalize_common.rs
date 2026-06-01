@@ -8061,6 +8061,9 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 format!("{factor} times {}", describe_value(value))
             }
         }
+        Value::DividedRoundedDown(value, divisor) => {
+            format!("{} divided by {divisor}, rounded down", describe_value(value))
+        }
         Value::Min(left, right) => {
             format!("the lesser of {} and {}", describe_value(left), describe_value(right))
         }
