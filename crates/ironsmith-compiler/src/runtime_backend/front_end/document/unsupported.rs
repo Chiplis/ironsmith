@@ -96,10 +96,6 @@ const UNSUPPORTED_CONTAINS_RULES: &[UnsupportedWordRule] = &[
         message: "unsupported aura-copy attachment fanout clause",
     },
     UnsupportedWordRule {
-        phrase: &["target", "face", "down", "creature"],
-        message: "unsupported face-down clause",
-    },
-    UnsupportedWordRule {
         phrase: &[
             "with",
             "islandwalk",

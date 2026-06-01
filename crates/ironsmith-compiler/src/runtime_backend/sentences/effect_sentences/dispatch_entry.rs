@@ -2469,6 +2469,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::RevealTagged { .. }
             | SubjectVerbActionAst::RevealCardsFromHand { .. }
             | SubjectVerbActionAst::LookAtObjects { .. }
+            | SubjectVerbActionAst::LookAtTarget { .. }
             | SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { .. }
             | SubjectVerbActionAst::PutSomeIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::EmitKeywordAction { .. }

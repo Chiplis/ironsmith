@@ -14940,6 +14940,129 @@ fn spy_network_runtime_reorders_your_top_four_library_cards() {
     );
 }
 
+#[derive(Debug)]
+struct SmokeTellerViewCall {
+    viewer: PlayerId,
+    subject: PlayerId,
+    zone: Zone,
+    cards: Vec<ObjectId>,
+}
+
+#[derive(Debug, Default)]
+struct SmokeTellerCaptureDm {
+    calls: Vec<SmokeTellerViewCall>,
+}
+
+impl crate::decision::DecisionMaker for SmokeTellerCaptureDm {
+    fn view_cards(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        viewer: PlayerId,
+        cards: &[ObjectId],
+        ctx: &crate::decisions::context::ViewCardsContext,
+    ) {
+        self.calls.push(SmokeTellerViewCall {
+            viewer,
+            subject: ctx.subject,
+            zone: ctx.zone,
+            cards: cards.to_vec(),
+        });
+    }
+}
+
+fn smoke_teller_creature(name: &str) -> crate::card::Card {
+    crate::card::CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build()
+}
+
+fn smoke_teller_add_creature(
+    game: &mut crate::game_state::GameState,
+    controller: PlayerId,
+    name: &str,
+) -> ObjectId {
+    let card = smoke_teller_creature(name);
+    game.create_object_from_card(&card, controller, Zone::Battlefield)
+}
+
+fn smoke_teller_activated_effects(def: &CardDefinition) -> &[Effect] {
+    let ability = def.abilities.first().expect("Smoke Teller activated ability");
+    let AbilityKind::Activated(activated) = &ability.kind else {
+        panic!("Smoke Teller should have an activated ability, got {ability:?}");
+    };
+    activated
+        .effects
+        .segments
+        .first()
+        .expect("Smoke Teller resolution segment")
+        .default_effects
+        .as_slice()
+}
+
+#[test]
+fn smoke_teller_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Smoke Teller");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert_eq!(rendered, "{1}{U}: Look at target face-down creature.");
+
+    let debug = format!("{:#?}", smoke_teller_activated_effects(&def));
+    assert!(debug.contains("TargetOnlyEffect"), "{debug}");
+    assert!(debug.contains("LookAtObjectsEffect"), "{debug}");
+}
+
+#[test]
+fn smoke_teller_targets_and_views_only_the_selected_face_down_creature() {
+    let def = parse_oracle_card_definition("Smoke Teller");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let face_down = smoke_teller_add_creature(&mut game, bob, "Face-Down Creature");
+    let face_up = smoke_teller_add_creature(&mut game, bob, "Face-Up Creature");
+    game.set_face_down(face_down);
+
+    let choice = def
+        .abilities
+        .first()
+        .and_then(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated.choices.first(),
+            _ => None,
+        })
+        .expect("Smoke Teller should require a target");
+    let ChooseSpec::Target(inner) = choice else {
+        panic!("Smoke Teller should use a target object choice, got {choice:?}");
+    };
+    let ChooseSpec::Object(filter) = inner.as_ref() else {
+        panic!("Smoke Teller should target a filtered object, got {choice:?}");
+    };
+    let filter_ctx = crate::filter::FilterContext::default();
+    assert!(
+        filter.matches(game.object(face_down).expect("face-down object"), &filter_ctx, &game),
+        "target filter should allow face-down creatures"
+    );
+    assert!(
+        !filter.matches(game.object(face_up).expect("face-up object"), &filter_ctx, &game),
+        "target filter should reject face-up creatures"
+    );
+
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let mut dm = SmokeTellerCaptureDm::default();
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(face_down)]);
+    for effect in smoke_teller_activated_effects(&def) {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Smoke Teller target and look effects should resolve");
+    }
+
+    assert_eq!(dm.calls.len(), 1, "expected one view call, got {dm:?}");
+    assert_eq!(dm.calls[0].viewer, alice);
+    assert_eq!(dm.calls[0].subject, alice);
+    assert_eq!(dm.calls[0].zone, Zone::Battlefield);
+    assert_eq!(dm.calls[0].cards, vec![face_down]);
+    assert!(!dm.calls[0].cards.contains(&face_up));
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_keeper_of_the_mind_target_condition_survives_rendering() {

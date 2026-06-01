@@ -1623,6 +1623,18 @@ fn is_tagged_only_filter(filter: &ObjectFilter, tag: &crate::TagKey) -> bool {
     normalized == ObjectFilter::tagged(tag.clone())
 }
 
+fn describe_target_then_look_at_tagged_object(effects: &[&Effect]) -> Option<String> {
+    let [target_effect, look_effect] = effects else {
+        return None;
+    };
+    let (target_tag, target_only) = tagged_target_only_effect(target_effect)?;
+    let look = look_effect.downcast_ref::<crate::effects::LookAtObjectsEffect>()?;
+    if look.viewer != PlayerFilter::You || !is_tagged_only_filter(&look.filter, target_tag) {
+        return None;
+    }
+    Some(format!("Look at {}", describe_choose_spec(&target_only.target)))
+}
+
 fn describe_choose_same_controller_targets_then_sacrifice_one(
     effects: &[&Effect],
 ) -> Option<String> {
@@ -14987,6 +14999,17 @@ pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
     let effect_refs = effects.iter().collect::<Vec<_>>();
     if let Some(compact) = describe_choose_color_then_chosen_color_mana(&effect_refs) {
         return Some(compact);
+    }
+
+    if effects.len() >= 2
+        && let Some(first) = describe_target_then_look_at_tagged_object(&effect_refs[..2])
+    {
+        if effects.len() == 2 {
+            return Some(first);
+        }
+        let rest = describe_effect_clause_list(&effects[2..])
+            .unwrap_or_else(|| lowercase_first(&describe_effect_list(&effects[2..])));
+        return Some(format!("{first}. {rest}"));
     }
 
     if effects.len() >= 3
