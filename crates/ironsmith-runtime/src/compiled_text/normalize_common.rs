@@ -379,6 +379,10 @@ pub(super) fn repeated_energy_symbols(count: usize) -> String {
 pub(super) fn describe_energy_payment_amount(value: &Value) -> String {
     match value {
         Value::Fixed(amount) if *amount > 0 => repeated_energy_symbols(*amount as usize),
+        Value::ManaValueOf(spec) => format!(
+            "an amount of {{E}} equal to {}",
+            super::render_effects::describe_dynamic_counter_basis(spec, "mana value")
+        ),
         _ => format!("{} energy counter(s)", describe_value(value)),
     }
 }

@@ -1,6 +1,6 @@
 use crate::cards::builders::{
     CardTextError, EffectAst, IT_TAG, IdGenContext, PlayerAst, PredicateAst, SubjectVerbActionAst,
-    SubjectVerbEffectAst, SubjectVerbRoleAst, TargetAst, TriggerSpec,
+    SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst, TriggerSpec,
 };
 use crate::effect::{EffectId, EventValueSpec};
 use crate::filter::{Comparison, TaggedOpbjectRelation};
@@ -9,8 +9,6 @@ use crate::target::ObjectRef;
 use crate::{ObjectFilter, PlayerFilter, Value};
 use ironsmith_core::{EffectMetric, EffectMetricSource};
 
-#[cfg(test)]
-use crate::TagKey;
 #[cfg(test)]
 use crate::cards::builders::{ObjectRefAst, PreventNextTimeDamageSourceAst, RetargetModeAst};
 #[cfg(test)]
@@ -51,9 +49,10 @@ pub(crate) struct EffectReferenceResolutionConfig {
     pub(crate) force_auto_tag_object_targets: bool,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct EffectReferenceResolutionState {
     last_effect_id: Option<EffectId>,
+    last_object_tag: Option<TagKey>,
     allow_life_event_value: bool,
     bind_unbound_x_to_last_effect: bool,
 }
@@ -676,6 +675,7 @@ fn advance_reference_frame_for_effect(
                     permanent2,
                     ..
                 } => {
+                    let _ = next_reference_tag(id_gen, "exchange_first");
                     frame.last_object_tag = Some(next_reference_tag(id_gen, "exchanged"));
                     track_target_player(permanent1, frame);
                     track_target_player(permanent2, frame);
@@ -1172,6 +1172,7 @@ fn advance_reference_frame_for_effect(
 fn effect_reference_resolution_state(env: &ReferenceEnv) -> EffectReferenceResolutionState {
     EffectReferenceResolutionState {
         last_effect_id: env.last_effect_id.clone().into_option(),
+        last_object_tag: env.known_last_object_tag().cloned(),
         allow_life_event_value: env.allow_life_event_value,
         bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
     }
@@ -1599,6 +1600,7 @@ fn resolve_effect_references_in_effect(
             id_gen,
             EffectReferenceResolutionState {
                 last_effect_id: Some(condition),
+                last_object_tag: state.last_object_tag.clone(),
                 allow_life_event_value: state.allow_life_event_value,
                 bind_unbound_x_to_last_effect: true,
             },
@@ -1619,6 +1621,7 @@ fn resolve_effect_references_in_effect(
             id_gen,
             EffectReferenceResolutionState {
                 last_effect_id: Some(condition),
+                last_object_tag: state.last_object_tag.clone(),
                 allow_life_event_value: state.allow_life_event_value,
                 bind_unbound_x_to_last_effect: true,
             },
@@ -1658,6 +1661,7 @@ fn resolve_effect_references_in_effect(
     {
         let nested_state = EffectReferenceResolutionState {
             last_effect_id: state.last_effect_id,
+            last_object_tag: state.last_object_tag.clone(),
             allow_life_event_value: trigger_supports_event_amount(trigger),
             bind_unbound_x_to_last_effect: state.bind_unbound_x_to_last_effect,
         };
@@ -1665,9 +1669,10 @@ fn resolve_effect_references_in_effect(
         return Ok(effect);
     }
 
-    resolve_effect_result_values_in_fields(&mut effect, state)?;
+    resolve_effect_result_values_in_fields(&mut effect, &state)?;
     try_for_each_nested_effects_mut(&mut effect, true, |nested| {
-        let resolved = resolve_effect_sequence_references_with_state(nested, id_gen, state)?;
+        let resolved =
+            resolve_effect_sequence_references_with_state(nested, id_gen, state.clone())?;
         nested.clone_from_slice(&resolved);
         Ok::<_, CardTextError>(())
     })?;
@@ -1683,7 +1688,7 @@ fn resolve_effect_sequence_references_with_state(
 
     for (idx, effect) in effects.iter().enumerate() {
         let saved_last_effect_id = state.last_effect_id;
-        let effect = resolve_effect_references_in_effect(effect.clone(), id_gen, state)?;
+        let effect = resolve_effect_references_in_effect(effect.clone(), id_gen, state.clone())?;
         let remaining = if idx + 1 < effects.len() {
             &effects[idx + 1..]
         } else {
@@ -1804,7 +1809,7 @@ fn advance_reference_env_for_effect(
 
 fn resolve_effect_result_values_in_fields(
     effect: &mut EffectAst,
-    state: EffectReferenceResolutionState,
+    state: &EffectReferenceResolutionState,
 ) -> Result<(), CardTextError> {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
@@ -2148,6 +2153,9 @@ fn resolve_effect_result_values_in_fields(
                 resolve_effect_result_value(count_value, state)?;
             }
         }
+        EffectAst::UnlessPays { cost, .. } => {
+            resolve_effect_result_values_in_total_cost(cost, state)?;
+        }
         EffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. } => {}
         _ => {}
     }
@@ -2156,7 +2164,7 @@ fn resolve_effect_result_values_in_fields(
 
 fn resolve_effect_result_values_in_total_cost(
     cost: &mut crate::cost::TotalCost,
-    state: EffectReferenceResolutionState,
+    state: &EffectReferenceResolutionState,
 ) -> Result<(), CardTextError> {
     match cost.kind() {
         ironsmith_core::TotalCostKind::All(_) => {
@@ -2179,7 +2187,7 @@ fn resolve_effect_result_values_in_total_cost(
 
 fn resolve_effect_result_values_in_cost_component(
     component: &mut crate::costs::Cost,
-    state: EffectReferenceResolutionState,
+    state: &EffectReferenceResolutionState,
 ) -> Result<(), CardTextError> {
     match component {
         crate::costs::Cost::DynamicMana(dynamic) => {
@@ -2203,7 +2211,7 @@ fn resolve_effect_result_values_in_cost_component(
 
 fn resolve_effect_result_value(
     value: &mut Value,
-    state: EffectReferenceResolutionState,
+    state: &EffectReferenceResolutionState,
 ) -> Result<(), CardTextError> {
     match value {
         Value::X if state.bind_unbound_x_to_last_effect => {
@@ -2221,6 +2229,9 @@ fn resolve_effect_result_value(
         }
         Value::SurfaceHinted { value, .. } => {
             resolve_effect_result_value(value, state)?;
+        }
+        Value::PowerOf(spec) | Value::ToughnessOf(spec) | Value::ManaValueOf(spec) => {
+            resolve_effect_value_choose_spec(spec, state)?;
         }
         Value::PendingEffectMetric { source, metric } => {
             let id = state.last_effect_id.ok_or_else(|| {
@@ -2299,6 +2310,31 @@ fn resolve_effect_result_value(
                 metric: EffectMetric::LifeLost,
                 offset: *offset,
             };
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn resolve_effect_value_choose_spec(
+    spec: &mut ChooseSpec,
+    state: &EffectReferenceResolutionState,
+) -> Result<(), CardTextError> {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. } => resolve_effect_value_choose_spec(spec, state)?,
+        ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG => {
+            if let Some(last_object_tag) = &state.last_object_tag
+                && last_object_tag.as_str() != IT_TAG
+            {
+                *tag = last_object_tag.clone();
+            }
+        }
+        ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
+            resolve_effect_value_choose_spec(inner, state)?;
+        }
+        ChooseSpec::WithCountValue(inner, _, value) => {
+            resolve_effect_value_choose_spec(inner, state)?;
+            resolve_effect_result_value(value, state)?;
         }
         _ => {}
     }

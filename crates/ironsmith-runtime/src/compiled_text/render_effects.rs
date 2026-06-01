@@ -20053,6 +20053,13 @@ pub(super) fn describe_choose_then_sacrifice(
         if refers_to_triggering_object {
             return Some(format!("{player} {verb} it"));
         }
+        if choose.filter.card_types.contains(&CardType::Creature)
+            && choose.filter.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            })
+        {
+            return Some(format!("{player} {verb} that creature"));
+        }
         if let Some(rest) = chosen.strip_prefix(&format!("{player}'s ")) {
             let chosen_kind = with_indefinite_article(rest);
             return Some(format!("{player} {verb} {chosen_kind} of their choice"));
@@ -21164,7 +21171,7 @@ fn describe_dynamic_counter_amount_phrase(
     Some((amount_text, basis))
 }
 
-fn describe_dynamic_counter_basis(spec: &ChooseSpec, attribute: &str) -> String {
+pub(super) fn describe_dynamic_counter_basis(spec: &ChooseSpec, attribute: &str) -> String {
     if spec.is_target() {
         return format!("that creature's {attribute}");
     }

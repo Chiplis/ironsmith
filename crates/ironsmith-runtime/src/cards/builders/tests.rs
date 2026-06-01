@@ -42543,6 +42543,63 @@ fn parse_sporeweb_weaver_strict_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn volatile_stormdrake_strict_parser_text_and_structure_regression() {
+    assert_oracle_card_parses_strict("Volatile Stormdrake");
+    let def = parse_oracle_card_definition("Volatile Stormdrake");
+    let rendered_lines = canonical_compiled_lines(&def);
+    let rendered = rendered_lines.join("\n");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert_eq!(
+        rendered_lines,
+        vec![
+            "Flying, hexproof from activated and triggered abilities".to_string(),
+            "When this creature enters, exchange control of this creature and target creature an opponent controls. If you do, you get {E}{E}{E}{E}. You sacrifice that creature unless you pay an amount of {E} equal to that creature's mana value."
+                .to_string(),
+        ],
+        "unexpected Volatile Stormdrake compiled text"
+    );
+    assert!(
+        rendered.contains("hexproof from activated and triggered abilities")
+            && rendered.contains("sacrifice that creature unless you pay an amount of {E} equal to that creature's mana value"),
+        "Volatile Stormdrake compiled text should preserve ability-scoped hexproof and dynamic energy sacrifice text, got {rendered}"
+    );
+
+    let hexproof_from = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::HexproofFrom =>
+            {
+                static_ability.hexproof_from_filter()
+            }
+            _ => None,
+        })
+        .expect("Volatile Stormdrake should have hexproof from activated and triggered abilities");
+    assert!(
+        hexproof_from.any_of.iter().any(|filter| {
+            filter.zone == Some(Zone::Stack)
+                && filter.stack_kind == Some(crate::filter::StackObjectKind::ActivatedAbility)
+        }) && hexproof_from.any_of.iter().any(|filter| {
+            filter.zone == Some(Zone::Stack)
+                && filter.stack_kind == Some(crate::filter::StackObjectKind::TriggeredAbility)
+        }),
+        "expected ability-scoped hexproof-from stack filters, got {hexproof_from:?}"
+    );
+    assert!(
+        ability_debug.contains("ExchangeControlEffect")
+            && ability_debug.contains("EnergyCountersEffect")
+            && ability_debug.contains("UnlessPaysEffect")
+            && ability_debug.contains("PayEnergyEffect")
+            && ability_debug.contains("ManaValueOf")
+            && ability_debug.contains("exchanged_"),
+        "expected exchange, energy, unless-pay, and tagged mana-value payment in Volatile Stormdrake, got {ability_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn sporeweb_weaver_hexproof_from_blue_blocks_only_opposing_blue_sources() {
     let def = parse_oracle_card_definition("Sporeweb Weaver");
     let mut game =

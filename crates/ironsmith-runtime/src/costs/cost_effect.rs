@@ -206,8 +206,44 @@ fn simple_exile_from_graveyard_filter(
     (filter == &expected).then_some(card_type)
 }
 
+fn pay_energy_cost_precheck(
+    effect: &Effect,
+    game: &GameState,
+    ctx: &CostContext,
+) -> Option<Result<(), CostPaymentError>> {
+    let pay_energy = effect.downcast_ref::<crate::effects::PayEnergyEffect>()?;
+    let exec_ctx = ExecutionContext::new_default(ctx.source, ctx.payer)
+        .with_tagged_objects(ctx.tagged_objects.clone());
+    let payer =
+        crate::effects::helpers::resolve_player_from_spec(game, &pay_energy.player, &exec_ctx)
+            .map_err(|_| {
+                CostPaymentError::Other("unable to resolve player for energy cost".to_string())
+            });
+    let needed = crate::effects::helpers::resolve_value(game, &pay_energy.amount, &exec_ctx)
+        .map(|value| value.max(0) as u32)
+        .map_err(|_| CostPaymentError::Other("unable to resolve energy amount".to_string()));
+    Some(match (payer, needed) {
+        (Ok(payer), Ok(needed)) => {
+            if game
+                .player(payer)
+                .is_some_and(|player| player.energy_counters >= needed)
+            {
+                Ok(())
+            } else {
+                Err(CostPaymentError::Other(
+                    "not enough energy counters".to_string(),
+                ))
+            }
+        }
+        (Err(err), _) | (_, Err(err)) => Err(err),
+    })
+}
+
 impl CostPayer for CostEffect {
     fn can_pay(&self, game: &GameState, ctx: &CostContext) -> Result<(), CostPaymentError> {
+        if let Some(result) = pay_energy_cost_precheck(&self.effect, game, ctx) {
+            return result;
+        }
         self.effect
             .0
             .can_execute_as_cost_with_reason(game, ctx.source, ctx.payer, ctx.reason)

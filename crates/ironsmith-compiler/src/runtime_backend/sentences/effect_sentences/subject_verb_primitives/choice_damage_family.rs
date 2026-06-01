@@ -3,6 +3,7 @@ use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseSha
 use crate::runtime_backend::front_end::lex_patterns::{
     LexCaptureKind, LexCaptureRole, LexPattern, LexPatternAtom, LexPatternMatch,
 };
+use crate::target::ChooseSpec;
 
 const REVEAL_HAND_SUFFIXES: &[&[&str]] = &[
     &["in", "your", "hand"],
@@ -1126,6 +1127,24 @@ pub(crate) fn parse_sentence_unless_pays_matched(
         }
     }
 
+    if let Some((prefix_tokens, trailing_tokens)) =
+        split_trailing_then_sacrifice_clause(effect_clause.tokens())
+    {
+        let mut effects = parse_effect_chain(prefix_tokens)?;
+        let trailing_effects = parse_effect_chain(trailing_tokens)?;
+        if !effects.is_empty()
+            && !trailing_effects.is_empty()
+            && let Some(unless_effect) = try_build_referential_energy_sacrifice_unless(
+                trailing_effects,
+                clause,
+                unless_idx,
+            )?
+        {
+            effects.push(unless_effect);
+            return Ok(Some(effects));
+        }
+    }
+
     let effects = parse_effect_chain(effect_clause.tokens())?;
     if effects.is_empty() {
         return Ok(None);
@@ -1135,4 +1154,63 @@ pub(crate) fn parse_sentence_unless_pays_matched(
         return Ok(Some(vec![unless_effect]));
     }
     Ok(None)
+}
+
+fn split_trailing_then_sacrifice_clause(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+    for idx in (0..tokens.len()).rev() {
+        let token = &tokens[idx];
+        if !token.as_word().is_some_and(|word| word == "then") {
+            continue;
+        }
+        let before = crate::runtime_backend::front_end::lexer::trim_lexed_commas(&tokens[..idx]);
+        let after = crate::runtime_backend::front_end::lexer::trim_lexed_commas(&tokens[idx + 1..]);
+        if before.is_empty() || after.is_empty() {
+            continue;
+        }
+        if after
+            .first()
+            .and_then(OwnedLexToken::as_word)
+            .is_some_and(|word| word == "sacrifice")
+        {
+            return Some((before, after));
+        }
+    }
+    None
+}
+
+fn try_build_referential_energy_sacrifice_unless(
+    effects: Vec<EffectAst>,
+    clause: SubjectVerbPrimitiveClause<'_>,
+    unless_idx: usize,
+) -> Result<Option<EffectAst>, CardTextError> {
+    let unless_clause = clause.from(unless_idx + 1).trimmed();
+    let words = unless_clause.word_refs();
+    if !words.starts_with(&["you", "pay"])
+        || !words.windows(2).any(|window| window == ["equal", "to"])
+        || !words.windows(3).any(|window| window == ["its", "mana", "value"])
+        || !unless_clause.tokens().iter().any(is_energy_payment_token)
+    {
+        return try_build_unless(effects, clause, unless_idx);
+    }
+
+    Ok(Some(EffectAst::UnlessPays {
+        effects,
+        player: PlayerAst::You,
+        cost: crate::cost::TotalCost::from_cost(crate::costs::Cost::energy(
+            Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))),
+        )),
+    }))
+}
+
+fn is_energy_payment_token(token: &OwnedLexToken) -> bool {
+    if token.kind == crate::runtime_backend::lexer::TokenKind::ManaGroup {
+        return token
+            .slice
+            .trim_start_matches('{')
+            .trim_end_matches('}')
+            .eq_ignore_ascii_case("e");
+    }
+    token.as_word().is_some_and(|word| word == "energy")
 }

@@ -209,6 +209,257 @@ fn assaultron_dominator_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn volatile_stormdrake_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(74_300), "Volatile Stormdrake")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Drake])
+        .power_toughness(PowerToughness::fixed(3, 2))
+        .parse_text(
+            "Flying, hexproof from activated and triggered abilities\n\
+             When this creature enters, exchange control of this creature and target creature an opponent controls. If you do, you get {E}{E}{E}{E}, then sacrifice that creature unless you pay an amount of {E} equal to its mana value.",
+        )
+        .expect("Volatile Stormdrake should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct VolatileStormdrakeDecisionMaker {
+    pay_unless: bool,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for VolatileStormdrakeDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        self.pay_unless
+    }
+
+    fn decide_targets(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::TargetsContext,
+    ) -> Vec<crate::Target> {
+        ctx.requirements
+            .iter()
+            .flat_map(|requirement| {
+                let count = requirement
+                    .max_targets
+                    .unwrap_or(1)
+                    .max(requirement.min_targets)
+                    .min(requirement.legal_targets.len());
+                requirement.legal_targets.iter().take(count).copied()
+            })
+            .collect()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_three_mana_value_bob_creature(game: &mut GameState) -> ObjectId {
+    let bob = PlayerId::from_index(1);
+    let target = CardBuilder::new(CardId::from_raw(74_301), "Three-Drop Target")
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(3)]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    game.create_object_from_card(&target, bob, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_volatile_stormdrake_enters_trigger_on_stack(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    stormdrake_id: ObjectId,
+    decision_maker: &mut dyn DecisionMaker,
+) {
+    let event = crate::events::RawEvent::new(
+        crate::events::ZoneChangeEvent::with_cause(
+            stormdrake_id,
+            Zone::Stack,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::from_game_rule(),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    for trigger in crate::triggers::check_triggers(game, &event) {
+        if trigger.source == stormdrake_id {
+            trigger_queue.add(trigger);
+        }
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Volatile Stormdrake should trigger when it enters"
+    );
+    put_triggers_on_stack_with_dm(game, trigger_queue, decision_maker)
+        .expect("Volatile Stormdrake enters trigger should go on the stack");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn volatile_stormdrake_enters_pays_energy_equal_to_exchanged_creature_mana_value() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let stormdrake = volatile_stormdrake_definition();
+    let stormdrake_id = game.create_object_from_definition(&stormdrake, alice, Zone::Battlefield);
+    let target_id = create_three_mana_value_bob_creature(&mut game);
+    let mut dm = VolatileStormdrakeDecisionMaker { pay_unless: true };
+
+    put_volatile_stormdrake_enters_trigger_on_stack(
+        &mut game,
+        &mut trigger_queue,
+        stormdrake_id,
+        &mut dm,
+    );
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Volatile Stormdrake enters trigger should resolve");
+
+    assert_eq!(game.controller_of_id(stormdrake_id), Some(bob));
+    assert_eq!(game.controller_of_id(target_id), Some(alice));
+    assert!(
+        game.battlefield.contains(&target_id),
+        "paying three energy should keep the exchanged creature on the battlefield"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").energy_counters,
+        1,
+        "Alice should get four energy, then pay the exchanged creature's mana value of three"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn volatile_stormdrake_enters_declining_payment_sacrifices_exchanged_creature() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let stormdrake = volatile_stormdrake_definition();
+    let stormdrake_id = game.create_object_from_definition(&stormdrake, alice, Zone::Battlefield);
+    let target_id = create_three_mana_value_bob_creature(&mut game);
+    let mut dm = VolatileStormdrakeDecisionMaker { pay_unless: false };
+
+    put_volatile_stormdrake_enters_trigger_on_stack(
+        &mut game,
+        &mut trigger_queue,
+        stormdrake_id,
+        &mut dm,
+    );
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Volatile Stormdrake enters trigger should resolve when payment is declined");
+
+    assert_eq!(game.controller_of_id(stormdrake_id), Some(bob));
+    assert!(
+        !game.battlefield.contains(&target_id),
+        "declining the energy payment should sacrifice the exchanged creature"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").energy_counters,
+        4,
+        "declining payment should keep the four energy gained before the unless branch"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn volatile_stormdrake_enters_invalid_target_skips_if_you_do_branch() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let stormdrake = volatile_stormdrake_definition();
+    let stormdrake_id = game.create_object_from_definition(&stormdrake, alice, Zone::Battlefield);
+    let target_id = create_three_mana_value_bob_creature(&mut game);
+    let mut dm = VolatileStormdrakeDecisionMaker { pay_unless: true };
+
+    put_volatile_stormdrake_enters_trigger_on_stack(
+        &mut game,
+        &mut trigger_queue,
+        stormdrake_id,
+        &mut dm,
+    );
+    game.move_object(
+        target_id,
+        Zone::Graveyard,
+        crate::events::cause::EventCause::from_game_rule(),
+    );
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Volatile Stormdrake enters trigger with invalid target should resolve safely");
+
+    assert_eq!(game.controller_of_id(stormdrake_id), Some(alice));
+    assert_eq!(
+        game.player(alice).expect("alice exists").energy_counters,
+        0,
+        "if the exchange does not happen, the if-you-do energy and sacrifice branch should be skipped"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn volatile_stormdrake_hexproof_from_abilities_blocks_abilities_not_spells() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let stormdrake = volatile_stormdrake_definition();
+    let stormdrake_id = game.create_object_from_definition(&stormdrake, alice, Zone::Battlefield);
+    let source_card = CardBuilder::new(CardId::from_raw(74_302), "Targeting Source")
+        .card_types(vec![CardType::Instant])
+        .build();
+
+    let activated_source = game.create_object_from_card(&source_card, bob, Zone::Stack);
+    game.push_to_stack(StackEntry::ability(
+        activated_source,
+        bob,
+        crate::resolution::ResolutionProgram::from_effects(Vec::<Effect>::new()),
+    ));
+    assert_eq!(
+        crate::targeting::can_target_object(&game, stormdrake_id, activated_source, bob),
+        crate::targeting::TargetingResult::Invalid(
+            crate::targeting::TargetingInvalidReason::HasHexproofFrom
+        ),
+        "opposing activated abilities should not be able to target Volatile Stormdrake"
+    );
+    game.stack.clear();
+
+    let triggered_source = game.create_object_from_card(&source_card, bob, Zone::Stack);
+    let trigger_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfUpkeepEvent::new(bob),
+        crate::provenance::ProvNodeId::default(),
+    );
+    game.push_to_stack(
+        StackEntry::ability(
+            triggered_source,
+            bob,
+            crate::resolution::ResolutionProgram::from_effects(Vec::<Effect>::new()),
+        )
+        .with_triggering_event(trigger_event),
+    );
+    assert_eq!(
+        crate::targeting::can_target_object(&game, stormdrake_id, triggered_source, bob),
+        crate::targeting::TargetingResult::Invalid(
+            crate::targeting::TargetingInvalidReason::HasHexproofFrom
+        ),
+        "opposing triggered abilities should not be able to target Volatile Stormdrake"
+    );
+    game.stack.clear();
+
+    let spell_source = game.create_object_from_card(&source_card, bob, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_source, bob));
+    assert!(
+        crate::targeting::can_target_object(&game, stormdrake_id, spell_source, bob).is_legal(),
+        "hexproof from activated and triggered abilities should not block spells"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 struct AssaultronDecisionMaker {
     pay_energy: bool,
     mode_index: usize,

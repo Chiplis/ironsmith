@@ -1748,9 +1748,6 @@ pub(crate) fn can_pay_total_cost_with_reason_in_context(
     reason: crate::costs::PaymentReason,
     execution_ctx: &mut ExecutionContext<'_>,
 ) -> Result<(), CostPaymentError> {
-    use crate::costs::{CostCheckContext, can_pay_with_check_context};
-
-    let check_ctx = CostCheckContext::new(source, payer).with_reason(reason);
     match cost.kind() {
         ironsmith_core::TotalCostKind::All(costs) => {
             for component in costs {
@@ -1764,7 +1761,11 @@ pub(crate) fn can_pay_total_cost_with_reason_in_context(
                 )?;
                 game.validate_cost_for_payment_reason(payer, source, &adjusted_component, reason)
                     .map_err(|err| err)?;
-                can_pay_with_check_context(&*adjusted_component.0, game, &check_ctx)?;
+                let mut check_dm = crate::decision::CliDecisionMaker;
+                let mut cost_ctx = crate::costs::CostContext::new(source, payer, &mut check_dm)
+                    .with_reason(reason);
+                cost_ctx.tagged_objects = execution_ctx.tagged_objects.clone();
+                adjusted_component.0.can_pay(game, &cost_ctx)?;
             }
             Ok(())
         }
@@ -2333,6 +2334,7 @@ fn pay_component_in_context(
     let mut cost_ctx = CostContext::new(source, payer, execution_ctx.decision_maker)
         .with_reason(reason)
         .with_provenance(provenance);
+    cost_ctx.tagged_objects = execution_ctx.tagged_objects.clone();
     pay_component_without_execution_context(game, component, &mut cost_ctx)
 }
 
