@@ -104,11 +104,9 @@ pub(crate) fn parse_directional_adjacent_player_control(
         return Ok(None);
     }
 
-    let Some(object_tokens) = token_range_for_word_range(
-        choice_sentence,
-        choice_prefix.len(),
-        choice_suffix_start,
-    ) else {
+    let Some(object_tokens) =
+        token_range_for_word_range(choice_sentence, choice_prefix.len(), choice_suffix_start)
+    else {
         return Ok(None);
     };
     let object_tokens = trim_commas(object_tokens);
@@ -262,12 +260,12 @@ const CHOOSE_DRAW_MAIN_OR_COMBAT_PHASE_PATTERN: ClauseShape<'static> = clause_sh
     exact_any
         & [
             &[
-                "that", "player", "chooses", "draw", "step", "main", "phase", "or",
-                "combat", "phase",
+                "that", "player", "chooses", "draw", "step", "main", "phase", "or", "combat",
+                "phase",
             ],
             &[
-                "that", "player", "choose", "draw", "step", "main", "phase", "or",
-                "combat", "phase",
+                "that", "player", "choose", "draw", "step", "main", "phase", "or", "combat",
+                "phase",
             ],
             &[
                 "the", "player", "chooses", "draw", "step", "main", "phase", "or", "combat",
@@ -283,20 +281,20 @@ const SKIPS_CHOSEN_STEP_OR_PHASE_THIS_TURN_PATTERN: ClauseShape<'static> = claus
     exact_any
         & [
             &[
-                "that", "player", "skips", "each", "instance", "of", "the", "chosen", "step",
-                "or", "phase", "this", "turn",
+                "that", "player", "skips", "each", "instance", "of", "the", "chosen", "step", "or",
+                "phase", "this", "turn",
             ],
             &[
-                "that", "player", "skip", "each", "instance", "of", "the", "chosen", "step",
-                "or", "phase", "this", "turn",
+                "that", "player", "skip", "each", "instance", "of", "the", "chosen", "step", "or",
+                "phase", "this", "turn",
             ],
             &[
-                "the", "player", "skips", "each", "instance", "of", "the", "chosen", "step",
-                "or", "phase", "this", "turn",
+                "the", "player", "skips", "each", "instance", "of", "the", "chosen", "step", "or",
+                "phase", "this", "turn",
             ],
             &[
-                "the", "player", "skip", "each", "instance", "of", "the", "chosen", "step",
-                "or", "phase", "this", "turn",
+                "the", "player", "skip", "each", "instance", "of", "the", "chosen", "step", "or",
+                "phase", "this", "turn",
             ],
         ]
 );

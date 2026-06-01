@@ -21,9 +21,9 @@ use super::super::activation_and_restrictions::{
 };
 use super::super::grammar::structure::{IfClausePredicateSpec, split_if_clause_lexed};
 use super::super::lexer::{
-    LexStream, OwnedLexToken, TokenKind, parser_token_word_positions, parser_token_word_refs,
-    split_lexed_sentences, token_slice_all_are_kind, token_slice_at_is, token_slice_first_is,
-    token_slice_starts_with, token_word_refs, trim_lexed_commas,
+    LexStream, OwnedLexToken, TokenKind, lex_line, parser_token_word_positions,
+    parser_token_word_refs, split_lexed_sentences, token_slice_all_are_kind, token_slice_at_is,
+    token_slice_first_is, token_slice_starts_with, token_word_refs, trim_lexed_commas,
 };
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::super::search_library_support::{
@@ -277,16 +277,19 @@ pub(crate) fn split_labeled_effect_prefix_lexed(
     Some(rest)
 }
 
-fn labeled_prefix_words(prefix: &str) -> Vec<&str> {
-    prefix
-        .split_whitespace()
-        .map(|word| word.trim_matches(|ch: char| !ch.is_ascii_alphanumeric()))
-        .filter(|word| !word.is_empty())
-        .collect()
+fn labeled_prefix_tokens(prefix: &str) -> Option<Vec<OwnedLexToken>> {
+    lex_line(prefix.trim(), 0).ok()
 }
 
 pub(crate) fn is_labeled_ability_prefix_text(prefix: &str) -> bool {
-    let words = labeled_prefix_words(prefix);
+    let Some(tokens) = labeled_prefix_tokens(prefix) else {
+        return false;
+    };
+    let words = parser_token_word_refs(&tokens);
+    is_labeled_ability_prefix_words(&words)
+}
+
+fn is_labeled_ability_prefix_words(words: &[&str]) -> bool {
     if words.is_empty() {
         return false;
     }
@@ -299,7 +302,7 @@ pub(crate) fn is_labeled_ability_prefix_text(prefix: &str) -> bool {
     }
 
     if matches!(
-        words.as_slice(),
+        words,
         ["spell", "mastery"]
             | ["totem", "armor"]
             | ["fateful", "hour"]
@@ -380,10 +383,16 @@ pub(crate) fn is_labeled_ability_prefix_text(prefix: &str) -> bool {
 }
 
 pub(crate) fn preserve_labeled_ability_prefix_for_parse_text(prefix: &str) -> bool {
-    let words = labeled_prefix_words(prefix);
+    let Some(tokens) = labeled_prefix_tokens(prefix) else {
+        return false;
+    };
+    let words = parser_token_word_refs(&tokens);
     let Some(first) = words.first().copied() else {
         return false;
     };
+    if words.as_slice() == ["max", "speed"] {
+        return true;
+    }
 
     matches!(
         first,
@@ -410,7 +419,10 @@ pub(crate) fn preserve_labeled_ability_prefix_for_parse_text(prefix: &str) -> bo
 }
 
 fn is_generic_ability_label_prefix_text(prefix: &str) -> bool {
-    let words = labeled_prefix_words(prefix);
+    let Some(tokens) = labeled_prefix_tokens(prefix) else {
+        return false;
+    };
+    let words = parser_token_word_refs(&tokens);
     if words.is_empty() || words.len() > 4 {
         return false;
     }
@@ -422,10 +434,11 @@ fn is_generic_ability_label_prefix_text(prefix: &str) -> bool {
 }
 
 fn starts_with_if_clause_text(text: &str) -> bool {
-    let trimmed = text.trim_start();
-    trimmed
-        .split_whitespace()
-        .next()
+    let Some(tokens) = lex_line(text.trim_start(), 0).ok() else {
+        return false;
+    };
+    parser_token_word_refs(&tokens)
+        .first()
         .is_some_and(|word| IF_WORD_PATTERN.matches_word(word))
 }
 

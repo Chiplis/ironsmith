@@ -424,8 +424,7 @@ pub fn distribute_trample_damage(
         let existing_damage = game.damage_on(blocker.id);
         let lethal = if has_deathtouch {
             1
-        } else if let Some(threshold) = lethal_damage_threshold_for_creature(game, blocker)
-        {
+        } else if let Some(threshold) = lethal_damage_threshold_for_creature(game, blocker) {
             (threshold - existing_damage as i32).max(0) as u32
         } else {
             0
@@ -467,8 +466,7 @@ pub fn distribute_combat_damage_to_creatures(
         let existing_damage = game.damage_on(creature.id);
         let lethal = if has_deathtouch {
             1
-        } else if let Some(threshold) = lethal_damage_threshold_for_creature(game, creature)
-        {
+        } else if let Some(threshold) = lethal_damage_threshold_for_creature(game, creature) {
             (threshold - existing_damage as i32).max(0) as u32
         } else {
             0

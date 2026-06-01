@@ -10,7 +10,7 @@ use super::lexer::{
     OwnedLexToken, TokenWordView, contains_token_word_sequence, lex_line, render_token_slice,
 };
 
-const ACTIVATE_ONLY_ONCE_EACH_TURN_TEXT: &str = "activate only once each turn";
+const ACTIVATE_ONLY_ONCE_EACH_TURN_PHRASE: &[&str] = &["activate", "only", "once", "each", "turn"];
 const ACTIVATE_ONLY_ONCE_EACH_TURN_AND_PREFIX: &[&str] =
     &["activate", "only", "once", "each", "turn", "and"];
 const AND_ONLY_ONCE_EACH_TURN_SUFFIX: &[&str] = &["and", "only", "once", "each", "turn"];
@@ -142,7 +142,7 @@ pub(crate) fn apply_pending_activation_restriction(
     let restriction = if parsed_timing.is_some() && !timing_applied {
         Some(normalize_restriction_text(restriction))
     } else {
-        normalize_activation_restriction(restriction, parsed_timing.as_ref())
+        normalize_activation_restriction(restriction, &tokens, parsed_timing.as_ref())
     };
     if let Some(restriction) = restriction {
         ability.additional_restrictions.push(restriction);
@@ -216,18 +216,17 @@ fn normalize_restriction_text(text: &str) -> String {
 
 fn normalize_activation_restriction(
     restriction: &str,
+    tokens: &[OwnedLexToken],
     timing: Option<&ActivationTiming>,
 ) -> Option<String> {
     if timing != Some(&ActivationTiming::OncePerTurn) {
         return Some(restriction.to_string());
     }
-    let mut normalized = restriction.to_ascii_lowercase();
-    if normalized == ACTIVATE_ONLY_ONCE_EACH_TURN_TEXT {
+    let tokens = restriction_tokens_without_terminal_period(tokens);
+    let words = TokenWordView::new(tokens);
+    if words.word_refs() == ACTIVATE_ONLY_ONCE_EACH_TURN_PHRASE {
         return None;
     }
-
-    let tokens = lex_line(normalized.as_str(), 0).ok()?;
-    let words = TokenWordView::new(&tokens);
     let mut start = 0usize;
     let mut end = tokens.len();
 
@@ -247,11 +246,19 @@ fn normalize_activation_restriction(
         end = range.start;
     }
 
-    normalized = render_token_slice(&tokens[start..end]).trim().to_string();
+    let normalized = render_token_slice(&tokens[start..end]).trim().to_string();
     if normalized.is_empty() {
         None
     } else {
         Some(normalized)
+    }
+}
+
+fn restriction_tokens_without_terminal_period(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    if tokens.last().is_some_and(|token| token.parser_text == ".") {
+        &tokens[..tokens.len().saturating_sub(1)]
+    } else {
+        tokens
     }
 }
 

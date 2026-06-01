@@ -5149,14 +5149,15 @@ mod effect_parse_tests {
     use crate::effects::CantEffect;
     use crate::effects::{
         AddManaOfAnyColorEffect, AddManaOfAnyOneColorEffect, AddManaOfLandProducedTypesEffect,
-        AddScaledManaEffect, CreateTokenCopyEffect, DestroyEffect, DiscardEffect, DrawCardsEffect,
-        DoubleCountersEffect, EnergyCountersEffect, ExchangeControlEffect, ExchangeValuesEffect,
-        ExchangeZonesEffect, ExileInsteadOfGraveyardEffect, FatesealEffect, ForEachObject,
-        ForPlayersEffect, GrantBySpecEffect, LookAtHandEffect, ModifyPowerToughnessForEachEffect,
-        PutCountersEffect, RemoveCountersEffect, RemoveUpToAnyCountersEffect,
-        ReturnFromGraveyardToBattlefieldEffect, SacrificeEffect, SetBasePowerToughnessEffect,
-        SetLifeTotalEffect, SkipCombatPhasesEffect, SkipDrawStepEffect,
-        SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, SurveilEffect, TaggedEffect, TapEffect,
+        AddScaledManaEffect, CreateTokenCopyEffect, DestroyEffect, DiscardEffect,
+        DoubleCountersEffect, DrawCardsEffect, EnergyCountersEffect, ExchangeControlEffect,
+        ExchangeValuesEffect, ExchangeZonesEffect, ExileInsteadOfGraveyardEffect, FatesealEffect,
+        ForEachObject, ForPlayersEffect, GrantBySpecEffect, LookAtHandEffect,
+        ModifyPowerToughnessForEachEffect, PutCountersEffect, RemoveCountersEffect,
+        RemoveUpToAnyCountersEffect, ReturnFromGraveyardToBattlefieldEffect, SacrificeEffect,
+        SetBasePowerToughnessEffect, SetLifeTotalEffect, SkipCombatPhasesEffect,
+        SkipDrawStepEffect, SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, SurveilEffect,
+        TaggedEffect, TapEffect,
     };
     use crate::ids::CardId;
     use crate::mana::{ManaCost, ManaSymbol};
@@ -6688,7 +6689,10 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
         assert_eq!(double.counter_type, Some(CounterType::PlusOnePlusOne));
         let ChooseSpec::All(filter) = &double.target else {
-            panic!("expected non-targeted all-creatures spec, got {:?}", double.target);
+            panic!(
+                "expected non-targeted all-creatures spec, got {:?}",
+                double.target
+            );
         };
         assert!(filter.card_types.contains(&CardType::Creature));
         assert_eq!(filter.controller, Some(PlayerFilter::You));

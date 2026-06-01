@@ -22,17 +22,15 @@ use super::super::lexer::{
     word_slice_strip_any_prefix,
 };
 use super::super::token_primitives::{slice_contains, str_strip_suffix};
-use super::filters::{
-    parse_object_filter_with_grammar_entrypoint, parse_spell_filter_with_grammar_entrypoint,
-};
+use super::conditions::{ControlConditionOptions, parse_control_condition};
+use super::filters::parse_spell_filter_with_grammar_entrypoint;
 use super::primitives;
 use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
     ClauseShape, clause_shape,
 };
 use crate::runtime_backend::util::{
     parse_card_type, parse_counter_type_from_tokens, parse_counter_type_word,
-    parse_greater_than_or_equal_quantity_prefix, parse_less_than_or_equal_quantity_prefix,
-    parse_number, strip_leading_article_word_refs,
+    parse_less_than_or_equal_quantity_prefix, parse_number, strip_leading_article_word_refs,
 };
 use crate::runtime_backend::value_helpers::parse_filter_comparison_tokens;
 
@@ -242,13 +240,6 @@ const YOUR_GRAVEYARD_ZONE_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
             &["in", "the", "graveyard"],
         ]
 );
-const ACTIVATE_ONLY_IF_MAX_SPEED_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["activate", "only", "if", "you", "have", "max", "speed"],
-            &["activate", "only", "if", "you", "have", "maximum", "speed"],
-        ]
-);
 const ACTIVATE_ONLY_IF_CREATURES_TOTAL_POWER_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix
         & [
@@ -305,15 +296,6 @@ const CREATURE_WITH_POWER_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
         ]
 );
 const POWER_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["power"]);
-const ARTIFACT_CONTROL_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["an", "artifact"],
-            &["a", "artifact"],
-            &["artifact"],
-            &["artifacts"],
-        ]
-);
 const EACH_TURN_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["each", "turn"]);
 const WHENEVER_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["whenever"]);
 const BLACK_MANA_GROUP_TEXT: &str = "{b}";
@@ -1277,40 +1259,6 @@ pub(crate) fn parse_triggered_times_each_turn_lexed(tokens: &[OwnedLexToken]) ->
     parse_triggered_times_each_turn_from_words(&words.to_word_refs())
 }
 
-fn player_controls_at_least_condition_from_control_tail(
-    control_tail: &[&str],
-) -> Option<ConditionExpr> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(control_tail);
-    let (count, used) =
-        parse_greater_than_or_equal_quantity_prefix(&tokens, false, false, "activation condition")
-            .ok()
-            .flatten()?;
-    let filter_words = control_tail.get(used..)?;
-    let filter = capture_counted_object_filter_tail(filter_words)?;
-
-    Some(ConditionExpr::PlayerControlsAtLeast {
-        player: PlayerFilter::You,
-        filter,
-        count,
-    })
-}
-
-fn capture_counted_object_filter_tail(words: &[&str]) -> Option<ObjectFilter> {
-    if words.is_empty() {
-        return None;
-    }
-
-    let filter_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
-    let Ok(mut filter) = parse_object_filter_with_grammar_entrypoint(&filter_tokens, false) else {
-        return None;
-    };
-    if filter.zone.is_none() {
-        filter.zone = Some(Zone::Battlefield);
-    }
-
-    Some(filter)
-}
-
 pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Option<ConditionExpr> {
     let words = TokenWordView::new(tokens);
     if words.len() < 5 {
@@ -1390,12 +1338,15 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
             subtypes,
         });
     }
-    if ACTIVATE_ONLY_IF_MAX_SPEED_PATTERN.matches_words(&word_refs) {
-        return Some(ConditionExpr::ValueComparison {
-            left: crate::effect::Value::Speed(PlayerFilter::You),
-            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
-            right: crate::effect::Value::Fixed(4),
-        });
+    if let Some(status_tokens) = tokens.get(3..)
+        && let Some(condition) =
+            crate::runtime_backend::grammar::conditions::parse_player_status_condition(
+                status_tokens,
+            )
+        && condition.status
+            == crate::runtime_backend::grammar::conditions::PlayerStatusAst::MaxSpeed
+    {
+        return Some(condition.condition_expr());
     }
     if ACTIVATE_ONLY_IF_CREATURES_TOTAL_POWER_PREFIX_PATTERN.matches_words(&word_refs) {
         let comparison_words = (9..words.len())
@@ -1428,13 +1379,13 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
         }
         return None;
     }
-    if !ACTIVATE_ONLY_IF_YOU_CONTROL_PREFIX_PATTERN.matches_words(&word_refs) {
-        return None;
-    }
-
-    let control_tail = (5..words.len())
-        .filter_map(|idx| words.get(idx))
-        .collect::<Vec<_>>();
+    let control_condition_tokens =
+        if ACTIVATE_ONLY_IF_YOU_CONTROL_PREFIX_PATTERN.matches_words(&word_refs) {
+            tokens.get(3..)?
+        } else {
+            return None;
+        };
+    let control_tail = word_refs.get(5..)?.to_vec();
     if CREATURE_WITH_POWER_PREFIX_PATTERN.matches_words(&control_tail) {
         let power_idx = POWER_WORD_PATTERN.find_word(&control_tail)?;
         let comparison_words = &control_tail[power_idx + 1..];
@@ -1447,16 +1398,14 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
         }
         return None;
     }
-    if let Some(condition) = player_controls_at_least_condition_from_control_tail(&control_tail) {
-        return Some(condition);
-    }
-    if ARTIFACT_CONTROL_TAIL_PATTERN.matches_words(&control_tail) {
-        let mut filter = ObjectFilter::artifact();
-        filter.zone = Some(Zone::Battlefield);
+    if let Some(control_condition) =
+        parse_control_condition(control_condition_tokens, ControlConditionOptions::default())
+    {
+        let count = control_condition.at_least_count()?;
         return Some(ConditionExpr::PlayerControlsAtLeast {
-            player: PlayerFilter::You,
-            filter,
-            count: 1,
+            player: control_condition.player_filter?,
+            filter: control_condition.filter,
+            count,
         });
     }
 
@@ -1644,6 +1593,26 @@ mod tests {
         let spec = parse_exile_to_countered_exile_instead_of_graveyard_spec_lexed(&tokens).unwrap();
         assert_eq!(spec.player, PlayerFilter::You);
         assert_eq!(spec.counter_type, CounterType::Charge);
+    }
+
+    #[test]
+    fn activation_max_speed_condition_uses_player_status_capture() {
+        for text in [
+            "Activate only if you have max speed.",
+            "Activate only if you have maximum speed.",
+        ] {
+            let tokens = lex_line(text, 0).unwrap();
+            let condition = parse_activation_condition_lexed(&tokens).unwrap();
+            assert_eq!(
+                condition,
+                ConditionExpr::ValueComparison {
+                    left: crate::effect::Value::Speed(PlayerFilter::You),
+                    operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                    right: crate::effect::Value::Fixed(4),
+                },
+                "{text}"
+            );
+        }
     }
 }
 
@@ -2987,33 +2956,16 @@ pub(crate) fn is_this_subject_reference_lexed(tokens: &[OwnedLexToken]) -> bool 
 pub(crate) fn parse_source_tap_status_condition_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ConditionExpr> {
-    [
-        (
-            &["this", "creature", "is", "tapped"][..],
-            ConditionExpr::SourceIsTapped,
-        ),
-        (
-            &["this", "permanent", "is", "tapped"][..],
-            ConditionExpr::SourceIsTapped,
-        ),
-        (&["it", "is", "tapped"][..], ConditionExpr::SourceIsTapped),
-        (
-            &["this", "creature", "is", "untapped"][..],
-            ConditionExpr::SourceIsUntapped,
-        ),
-        (
-            &["this", "permanent", "is", "untapped"][..],
-            ConditionExpr::SourceIsUntapped,
-        ),
-        (
-            &["it", "is", "untapped"][..],
-            ConditionExpr::SourceIsUntapped,
-        ),
-    ]
-    .into_iter()
-    .find_map(|(phrase, condition)| {
-        matches_exact_phrase_line_lexed(tokens, phrase).then_some(condition)
-    })
+    let condition = super::conditions::parse_subject_status_condition(tokens)?;
+    if matches!(
+        condition.state,
+        super::conditions::StatusConditionStateAst::Tapped
+            | super::conditions::StatusConditionStateAst::Untapped
+    ) {
+        condition.condition_expr()
+    } else {
+        None
+    }
 }
 
 pub(crate) fn is_enchanted_land_is_chosen_type_line_lexed(tokens: &[OwnedLexToken]) -> bool {

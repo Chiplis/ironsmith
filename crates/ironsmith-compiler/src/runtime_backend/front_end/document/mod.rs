@@ -39,9 +39,9 @@ use super::keyword_registry::{parse_keyword_line_cst, rewrite_keyword_dash_parse
 use super::keyword_static::parse_if_this_spell_costs_less_to_cast_line_lexed;
 use super::leaf::{lower_activation_cost_cst, parse_activation_cost_tokens_rewrite};
 use super::lexer::{
-    LexStream, OwnedLexToken, TokenKind, TokenWordView, contains_token_word_sequence,
-    find_token_kind, find_token_word, lex_line, render_token_slice, token_slice_ends_with,
-    token_slice_first_is, token_slice_last_kind, token_slice_starts_with,
+    LexStream, OwnedLexToken, TokenKind, TokenWordPiece, TokenWordView,
+    contains_token_word_sequence, find_token_kind, find_token_word, lex_line, render_token_slice,
+    token_slice_ends_with, token_slice_first_is, token_slice_last_kind, token_slice_starts_with,
     token_slice_starts_with_any, token_slice_words_eq, token_slice_words_eq_any, token_word_refs,
     trim_lexed_commas,
 };
@@ -52,15 +52,14 @@ use super::rule_engine::{LexRuleHeadHint, LexRuleHintIndex, build_lex_rule_hint_
 use super::token_primitives::{
     clone_sentence_chunk_tokens, find_index as find_token_index, lexed_head_words,
     lexed_tokens_contain_non_prefix_instead, remove_copy_exception_type_removal_lexed,
-    rewrite_followup_intro_to_if_lexed, split_em_dash_label_prefix,
-    split_em_dash_label_prefix_tokens, str_contains, str_contains_char, str_ends_with_char,
-    str_split_once, str_split_once_char, str_starts_with, str_starts_with_char, str_strip_prefix,
-    str_strip_suffix,
+    rewrite_followup_intro_to_if_lexed, split_em_dash_label_prefix_tokens, str_contains,
+    str_contains_char, str_ends_with_char, str_split_once, str_split_once_char, str_starts_with,
+    str_starts_with_char, str_strip_suffix,
 };
 use super::util::{
-    parse_level_header, parse_level_up_line_lexed, parse_power_toughness,
+    map_span_to_original, parse_level_header, parse_level_up_line_lexed, parse_power_toughness,
     parse_saga_chapter_prefix, parser_trace, parser_trace_enabled,
-    preserve_keyword_prefix_for_parse,
+    preserve_keyword_prefix_for_parse, span_from_tokens,
 };
 use std::sync::LazyLock;
 
@@ -189,19 +188,18 @@ fn lexed_tokens(text: &str, line_index: usize) -> Result<Vec<OwnedLexToken>, Car
     lex_line(text, line_index)
 }
 
-fn is_bullet_line(line: &str) -> bool {
-    let trimmed = line.trim_start();
-    if str_starts_with_char(trimmed, '•') || str_starts_with_char(trimmed, '*') {
+fn is_bullet_line(line: &PreprocessedLine) -> bool {
+    let Some(first) = line.tokens.first() else {
+        return false;
+    };
+    if first.kind == TokenKind::Bullet {
         return true;
     }
-    if let Some(rest) = str_strip_prefix(trimmed, "-") {
-        let next = rest.chars().next();
-        if next.is_some_and(|ch| ch.is_ascii_digit()) {
-            return false;
-        }
-        return true;
-    }
-    false
+    first.kind == TokenKind::Dash
+        && !line
+            .tokens
+            .get(1)
+            .is_some_and(|token| token.kind == TokenKind::Number)
 }
 
 fn parse_trigger_intro_tokens(tokens: &[OwnedLexToken]) -> Option<TriggerIntroCst> {
@@ -316,7 +314,7 @@ impl TriggeredSplitCandidate {
             effect_text: self.effect_text,
             effect_parse_tokens: self.effect_parse_tokens,
             intervening_if: self.intervening_if,
-            presentation_label: None,
+            presentation_label: trigger_presentation_label_from_line_tokens(&line.tokens),
             max_triggers_per_turn: self.max_triggers_per_turn,
             chosen_option_label: None,
         }
@@ -549,7 +547,7 @@ fn strip_non_keyword_label_prefix_lexed(mut tokens: &[OwnedLexToken]) -> &[Owned
     if looks_like_numeric_result_prefix_lexed(tokens) {
         return tokens;
     }
-    while let Some((label, body_tokens)) = split_label_prefix_lexed(tokens) {
+    while let Some((label, _, body_tokens)) = split_label_prefix_lexed(tokens) {
         if preserve_keyword_prefix_for_parse(label.as_str()) {
             break;
         }
@@ -662,24 +660,24 @@ fn should_parse_next_cast_trigger_line_as_spell_effect(
         && contains_token_word_sequence(tokens, &["this", "turn"])
 }
 
-fn looks_like_activation_cost_prefix(raw: &str) -> bool {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
+fn looks_like_activation_cost_prefix(tokens: &[OwnedLexToken]) -> bool {
+    let Some(first) = tokens.first() else {
         return false;
+    };
+    if matches!(
+        first.kind,
+        TokenKind::ManaGroup | TokenKind::Plus | TokenKind::Dash
+    ) {
+        return true;
     }
-    if str_starts_with_char(trimmed, '{')
-        || str_starts_with_char(trimmed, '+')
-        || str_starts_with_char(trimmed, '-')
-        || str_starts_with_char(trimmed, '−')
+    let first_text = first.parser_text();
+    if str_starts_with_char(first_text, '+')
+        || str_starts_with_char(first_text, '-')
+        || str_starts_with_char(first_text, '−')
     {
         return true;
     }
-    let first = trimmed
-        .split_whitespace()
-        .next()
-        .unwrap_or("")
-        .trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '\'')
-        .to_ascii_lowercase();
+    let first = first.as_word().unwrap_or(first_text).to_ascii_lowercase();
     matches!(
         first.as_str(),
         "tap"
@@ -748,6 +746,7 @@ pub(crate) fn split_lexed_once_on_colon_outside_quotes(
     Some((&tokens[..left_len], right_tokens))
 }
 
+#[cfg(test)]
 fn split_label_prefix(text: &str) -> Option<(&str, &str)> {
     let trimmed = text.trim();
     let (label, body) = str_split_once_char(trimmed, '—')?;
@@ -757,16 +756,28 @@ fn split_label_prefix(text: &str) -> Option<(&str, &str)> {
         .then_some((label, body))
 }
 
-fn split_label_prefix_lexed(tokens: &[OwnedLexToken]) -> Option<(String, &[OwnedLexToken])> {
+fn split_label_prefix_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<(String, &[OwnedLexToken], &[OwnedLexToken])> {
     if looks_like_numeric_result_prefix_lexed(tokens) {
         return None;
     }
-    split_em_dash_label_prefix(tokens)
+    let (label_tokens, body_tokens) = split_em_dash_label_prefix_tokens(tokens)?;
+    let label = render_token_slice(label_tokens).trim().to_string();
+    (!label.is_empty()).then_some((label, label_tokens, body_tokens))
+}
+
+fn trigger_presentation_label_from_line_tokens(tokens: &[OwnedLexToken]) -> Option<String> {
+    let (label, label_tokens, body_tokens) = split_label_prefix_lexed(tokens)?;
+    if !looks_like_ability_word_label(label_tokens, false) {
+        return None;
+    }
+    line_starts_with_trigger_intro_tokens(body_tokens).then_some(label)
 }
 
 fn is_nonkeyword_choice_labeled_line(line: &PreprocessedLine) -> bool {
     split_label_prefix_lexed(&line.tokens)
-        .is_some_and(|(label, _)| !preserve_keyword_prefix_for_parse(label.as_str()))
+        .is_some_and(|(label, _, _)| !preserve_keyword_prefix_for_parse(label.as_str()))
 }
 
 fn labeled_choice_block_has_peer(items: &[PreprocessedItem], idx: usize) -> bool {
@@ -814,7 +825,7 @@ fn normalize_trailing_keyword_activation_sentence_lexed(
     for split_idx in 1..sentences.len() {
         let prefix = clone_sentence_chunk_tokens(tokens, &sentences[..split_idx])?;
         let suffix = clone_sentence_chunk_tokens(tokens, &sentences[split_idx..])?;
-        let Some((label, body_tokens)) = split_label_prefix_lexed(&suffix) else {
+        let Some((label, _, body_tokens)) = split_label_prefix_lexed(&suffix) else {
             continue;
         };
         if !preserve_keyword_prefix_for_parse(label.as_str())
@@ -963,9 +974,10 @@ fn normalize_named_source_sentence_for_builder(
     let name = builder.card_builder.name_ref();
     if !name.is_empty() {
         let name_lower = name.to_ascii_lowercase();
-        let name_prefix = format!("{name_lower} ");
-        if let Some(remainder) = str_strip_prefix(lower.as_str(), name_prefix.as_str()) {
-            if source_alias_prefix_looks_like_effect_verb(name_lower.as_str(), remainder) {
+        if let Some(remainder) =
+            strip_named_source_prefix_lexed(lower.as_str(), name_lower.as_str())
+        {
+            if source_alias_prefix_looks_like_effect_verb(name_lower.as_str(), remainder.as_str()) {
                 return None;
             }
             return Some(format!("{subject} {remainder}"));
@@ -984,7 +996,7 @@ fn normalize_named_source_sentence_for_builder(
         }
     }
 
-    let (_, rest) = str_split_once(lower.as_str(), " enters ")?;
+    let rest = named_source_enters_tail_lexed(lower.as_str())?;
     Some(format!("{subject} enters {rest}"))
 }
 
@@ -994,15 +1006,15 @@ fn normalize_named_source_trigger_for_builder(
 ) -> Option<String> {
     let trimmed = text.trim();
     let lower = trimmed.to_ascii_lowercase();
-    if let Some((trigger_head, effect_body)) = str_split_once(lower.as_str(), ",") {
+    if let Some((trigger_head, effect_body)) = split_first_comma_lexed(lower.as_str()) {
         let rewritten_head =
-            normalize_named_source_trigger_head_for_builder(builder, trigger_head)?;
+            normalize_named_source_trigger_head_for_builder(builder, trigger_head.as_str())?;
         let names = source_name_aliases_for_builder(builder);
-        let mut rewritten_body = effect_body.to_string();
+        let mut rewritten_body = effect_body;
         if !names.is_empty() && !mentions_named_reference(rewritten_body.as_str()) {
             let subject = named_source_subject_for_builder(builder);
             for name_lower in &names {
-                if rewritten_body.contains(&format!("control of {name_lower}")) {
+                if text_contains_control_of_alias(rewritten_body.as_str(), name_lower.as_str()) {
                     rewritten_body = replace_named_source_aliases_for_trigger_normalization(
                         &rewritten_body,
                         name_lower,
@@ -1011,7 +1023,7 @@ fn normalize_named_source_trigger_for_builder(
                 }
             }
         }
-        return Some(format!("{rewritten_head},{rewritten_body}"));
+        return Some(format!("{rewritten_head}, {rewritten_body}"));
     }
 
     normalize_named_source_trigger_head_for_builder(builder, lower.as_str())
@@ -1083,7 +1095,7 @@ fn normalize_named_source_trigger_head_for_builder(
     let name = builder.card_builder.name_ref();
     if !name.is_empty() {
         let name_lower = name.to_ascii_lowercase();
-        if let Some(remainder) = str_strip_prefix(trimmed, &(name_lower + " ")) {
+        if let Some(remainder) = strip_named_source_prefix_lexed(trimmed, name_lower.as_str()) {
             return Some(format!("{subject} {remainder}"));
         }
     }
@@ -1106,41 +1118,97 @@ fn normalize_named_source_trigger_head_for_builder(
 }
 
 fn source_alias_prefix_looks_like_effect_verb(alias: &str, remainder: &str) -> bool {
-    if alias.split_whitespace().count() != 1 || !is_effect_verb_word(alias) {
-        return false;
-    }
-    let Some(next_word) = remainder
-        .split(|ch: char| !ch.is_ascii_alphanumeric() && ch != '\'')
-        .find(|word| !word.is_empty())
-    else {
+    let Some(alias_words) = lexed_word_strings(alias) else {
         return false;
     };
-    !SOURCE_ALIAS_NON_VERB_FOLLOWUPS.contains(&next_word)
+    if alias_words.len() != 1 || !is_effect_verb_word(alias_words[0].as_str()) {
+        return false;
+    }
+    lex_line(remainder.trim_start(), 0)
+        .ok()
+        .and_then(|tokens| TokenWordView::new(&tokens).first().map(str::to_string))
+        .is_some_and(|next_word| !SOURCE_ALIAS_NON_VERB_FOLLOWUPS.contains(&next_word.as_str()))
 }
 
 fn is_effect_verb_word(word: &str) -> bool {
     SOURCE_ALIAS_EFFECT_VERBS.contains(&word)
 }
 
+fn lexed_word_strings(text: &str) -> Option<Vec<String>> {
+    lex_line(text.trim(), 0)
+        .ok()
+        .map(|tokens| TokenWordView::new(&tokens).owned_words())
+}
+
+fn strip_named_source_prefix_lexed(text: &str, name: &str) -> Option<String> {
+    let text_tokens = lex_line(text.trim(), 0).ok()?;
+    let name_words = lexed_word_strings(name)?;
+    if name_words.is_empty() {
+        return None;
+    }
+    let name_word_refs = name_words.iter().map(String::as_str).collect::<Vec<_>>();
+    let text_words = TokenWordView::new(&text_tokens);
+    if !text_words.starts_with(&name_word_refs) {
+        return None;
+    }
+    let tail_token_idx = text_words.token_index_after_words(name_word_refs.len())?;
+    let tail = render_token_slice(&text_tokens[tail_token_idx..])
+        .trim_start()
+        .to_string();
+    (!tail.is_empty()).then_some(tail)
+}
+
+fn named_source_enters_tail_lexed(text: &str) -> Option<String> {
+    let tokens = lex_line(text.trim(), 0).ok()?;
+    let words = TokenWordView::new(&tokens);
+    let enters_idx = words.find_word("enters")?;
+    let tail_token_idx = words.token_index_after_words(enters_idx + 1)?;
+    if tokens
+        .get(tail_token_idx)
+        .is_some_and(|token| token.kind == TokenKind::Comma)
+    {
+        return None;
+    }
+    let tail = render_token_slice(&tokens[tail_token_idx..])
+        .trim_start()
+        .to_string();
+    (!tail.is_empty()).then_some(tail)
+}
+
+fn split_first_comma_lexed(text: &str) -> Option<(String, String)> {
+    let tokens = lex_line(text.trim(), 0).ok()?;
+    let comma_idx = tokens
+        .iter()
+        .position(|token| token.kind == TokenKind::Comma)?;
+    let head = render_token_slice(&tokens[..comma_idx]).trim().to_string();
+    let body = render_token_slice(&tokens[comma_idx + 1..])
+        .trim_start()
+        .to_string();
+    (!head.is_empty() && !body.is_empty()).then_some((head, body))
+}
+
+fn text_contains_control_of_alias(text: &str, alias: &str) -> bool {
+    let Some(alias_words) = lexed_word_strings(alias) else {
+        return false;
+    };
+    if alias_words.is_empty() {
+        return false;
+    }
+    let Ok(tokens) = lex_line(text, 0) else {
+        return false;
+    };
+    let mut phrase = Vec::with_capacity(alias_words.len() + 2);
+    phrase.extend(["control", "of"]);
+    phrase.extend(alias_words.iter().map(String::as_str));
+    TokenWordView::new(&tokens)
+        .find_phrase_start(phrase.as_slice())
+        .is_some()
+}
+
 fn mentions_named_reference(text: &str) -> bool {
     lex_line(text, 0)
         .ok()
         .is_some_and(|tokens| token_word_refs(&tokens).contains(&NAMED_REFERENCE_WORD))
-}
-
-fn alias_tail_starts_with_token_name_suffix(tail: &str) -> bool {
-    if !tail
-        .chars()
-        .next()
-        .is_some_and(|ch| ch.is_ascii_whitespace())
-    {
-        return false;
-    }
-    lex_line(tail.trim_start(), 0).ok().is_some_and(|tokens| {
-        token_word_refs(&tokens)
-            .first()
-            .is_some_and(|word| *word == TOKEN_NAME_SUFFIX_WORD)
-    })
 }
 
 fn replace_named_source_aliases(text: &str, alias: &str, replacement: &str) -> String {
@@ -1161,98 +1229,130 @@ fn replace_named_source_aliases_with_options(
     replacement: &str,
     preserve_surface_hints: bool,
 ) -> String {
-    if alias.is_empty() {
-        return text.to_string();
+    let Some(alias_words) = lexed_word_strings(alias) else {
+        return text.to_ascii_lowercase();
+    };
+    if alias_words.is_empty() {
+        return text.to_ascii_lowercase();
     }
 
-    let mut rewritten = String::with_capacity(text.len());
-    let mut cursor = 0usize;
     let lower = text.to_ascii_lowercase();
-    let bytes = lower.as_bytes();
-    while let Some(relative_start) = lower[cursor..].find(alias) {
-        let start = cursor + relative_start;
-        let end = start + alias.len();
-        let before_is_boundary = start == 0 || !bytes[start - 1].is_ascii_alphanumeric();
-        let after_is_boundary = end >= bytes.len() || !bytes[end].is_ascii_alphanumeric();
-        let is_token_name_suffix = alias_tail_starts_with_token_name_suffix(&lower[end..]);
+    let Ok(tokens) = lex_line(lower.as_str(), 0) else {
+        return lower;
+    };
+    let pieces = source_alias_word_pieces(&tokens);
+    if pieces.is_empty() {
+        return lower;
+    }
+
+    let mut rewritten = String::with_capacity(lower.len());
+    let mut cursor = 0usize;
+    let mut word_idx = 0usize;
+    while word_idx + alias_words.len() <= pieces.len() {
+        if !source_alias_word_span_matches(&pieces, word_idx, &alias_words) {
+            word_idx += 1;
+            continue;
+        }
+
+        let end_word = word_idx + alias_words.len();
+        let start = pieces[word_idx].span.start;
+        let end = pieces[end_word - 1].span.end;
         let preserve_surface = preserve_surface_hints
-            && source_alias_occurrence_should_preserve_surface(lower.as_bytes(), start, end);
-        if before_is_boundary && after_is_boundary && !is_token_name_suffix && !preserve_surface {
+            && source_alias_occurrence_should_preserve_surface_lexed(&pieces, word_idx, end_word);
+        if !preserve_surface {
             rewritten.push_str(&lower[cursor..start]);
             rewritten.push_str(replacement);
             cursor = end;
-        } else {
-            rewritten.push_str(&lower[cursor..end]);
-            cursor = end;
+            word_idx = end_word;
+            continue;
         }
+
+        word_idx += 1;
     }
     rewritten.push_str(&lower[cursor..]);
     rewritten
 }
 
-fn source_alias_occurrence_should_preserve_surface(bytes: &[u8], start: usize, end: usize) -> bool {
-    fn previous_word(bytes: &[u8], mut idx: usize) -> Option<&[u8]> {
-        while idx > 0 && !bytes[idx - 1].is_ascii_alphanumeric() {
-            idx -= 1;
-        }
-        let end = idx;
-        while idx > 0 && bytes[idx - 1].is_ascii_alphanumeric() {
-            idx -= 1;
-        }
-        (idx < end).then_some(&bytes[idx..end])
-    }
+#[derive(Debug, Clone, Copy)]
+struct SourceAliasWordPiece<'a> {
+    text: &'a str,
+    span: TextSpan,
+}
 
-    fn next_word(bytes: &[u8], mut idx: usize) -> Option<&[u8]> {
-        while idx < bytes.len() && !bytes[idx].is_ascii_alphanumeric() {
-            idx += 1;
-        }
-        let start = idx;
-        while idx < bytes.len() && bytes[idx].is_ascii_alphanumeric() {
-            idx += 1;
-        }
-        (start < idx).then_some(&bytes[start..idx])
-    }
+fn source_alias_word_pieces(tokens: &[OwnedLexToken]) -> Vec<SourceAliasWordPiece<'_>> {
+    tokens
+        .iter()
+        .flat_map(OwnedLexToken::parser_word_pieces)
+        .map(|piece: &TokenWordPiece| SourceAliasWordPiece {
+            text: piece.text.as_str(),
+            span: piece.span,
+        })
+        .collect()
+}
 
-    let apostrophe_s = matches!(bytes.get(end).copied(), Some(b'\''))
-        && bytes
-            .get(end + 1)
-            .is_some_and(|byte| matches!(*byte, b's' | b'S'));
+fn source_alias_word_span_matches(
+    pieces: &[SourceAliasWordPiece<'_>],
+    start_word: usize,
+    alias_words: &[String],
+) -> bool {
+    pieces
+        .get(start_word..start_word + alias_words.len())
+        .is_some_and(|window| {
+            window
+                .iter()
+                .map(|piece| piece.text)
+                .zip(alias_words.iter().map(String::as_str))
+                .all(|(actual, expected)| actual == expected)
+        })
+}
 
-    if previous_word(bytes, start).is_some_and(|word| word == b"as") {
+fn source_alias_occurrence_should_preserve_surface_lexed(
+    pieces: &[SourceAliasWordPiece<'_>],
+    start_word: usize,
+    end_word: usize,
+) -> bool {
+    let previous_word = start_word
+        .checked_sub(1)
+        .and_then(|idx| pieces.get(idx))
+        .map(|piece| piece.text);
+    let next_word = pieces.get(end_word).map(|piece| piece.text);
+
+    if previous_word == Some("as") {
         return false;
     }
 
-    apostrophe_s
-        || previous_word(bytes, start).is_some_and(|word| {
+    next_word == Some(TOKEN_NAME_SUFFIX_WORD)
+        || next_word == Some("s")
+        || previous_word.is_some_and(|word| {
             matches!(
                 word,
-                b"attach"
-                    | b"destroy"
-                    | b"transform"
-                    | b"convert"
-                    | b"regenerate"
-                    | b"return"
-                    | b"tap"
-                    | b"untap"
-                    | b"of"
-                    | b"to"
-                    | b"on"
+                "attach"
+                    | "destroy"
+                    | "transform"
+                    | "convert"
+                    | "regenerate"
+                    | "return"
+                    | "tap"
+                    | "untap"
+                    | "of"
+                    | "to"
+                    | "on"
             )
         })
-        || next_word(bytes, end).is_some_and(|word| {
+        || next_word.is_some_and(|word| {
             matches!(
                 word,
-                b"attack"
-                    | b"attacks"
-                    | b"become"
-                    | b"becomes"
-                    | b"becoming"
-                    | b"deal"
-                    | b"deals"
-                    | b"enter"
-                    | b"enters"
-                    | b"power"
-                    | b"toughness"
+                "attack"
+                    | "attacks"
+                    | "become"
+                    | "becomes"
+                    | "becoming"
+                    | "deal"
+                    | "deals"
+                    | "enter"
+                    | "enters"
+                    | "power"
+                    | "toughness"
             )
         })
 }
@@ -1359,6 +1459,7 @@ fn strip_trailing_roman_numeral(name: &str) -> Option<&str> {
     (!prefix.is_empty()).then_some(prefix)
 }
 
+#[cfg(test)]
 fn strip_non_keyword_label_prefix(text: &str) -> &str {
     let mut current = text.trim();
     if looks_like_numeric_result_prefix_text(current) {
@@ -1373,18 +1474,10 @@ fn strip_non_keyword_label_prefix(text: &str) -> &str {
     current
 }
 
+#[cfg(test)]
 fn looks_like_numeric_result_prefix_text(text: &str) -> bool {
-    let trimmed = text.trim_start();
-    let Some((head, rest)) = trimmed.split_once('—').or_else(|| trimmed.split_once('-')) else {
-        return false;
-    };
-    if !head.chars().all(|ch| ch.is_ascii_digit()) {
-        return false;
-    }
-    let Some((range_end, _)) = rest.split_once('|') else {
-        return false;
-    };
-    range_end.trim().chars().all(|ch| ch.is_ascii_digit())
+    lex_line(text.trim_start(), 0)
+        .is_ok_and(|tokens| looks_like_numeric_result_prefix_lexed(&tokens))
 }
 
 #[cfg(test)]
@@ -1400,9 +1493,9 @@ mod tests {
     };
     use super::{
         PreprocessedItem, TriggeredSplitProbe, classify_unsupported_line_reason,
-        diagnose_known_unsupported_rewrite_line, is_doesnt_untap_during_your_untap_step_line_lexed,
-        is_if_you_do_exile_followup_tokens, is_land_reveal_enters_static_line_lexed,
-        is_land_reveal_enters_tapped_followup_line_lexed,
+        diagnose_known_unsupported_rewrite_line, is_bullet_line,
+        is_doesnt_untap_during_your_untap_step_line_lexed, is_if_you_do_exile_followup_tokens,
+        is_land_reveal_enters_static_line_lexed, is_land_reveal_enters_tapped_followup_line_lexed,
         is_opening_hand_begin_game_static_line_lexed, is_ward_or_echo_static_prefix_line_lexed,
         lex_line, looks_like_statement_line, looks_like_statement_line_lexed,
         looks_like_static_line, looks_like_static_line_lexed,
@@ -1415,7 +1508,7 @@ mod tests {
         split_activation_text_parts_lexed, split_label_prefix, split_label_prefix_lexed,
         split_reveal_first_draw_line_rewrite_lexed, split_trigger_sentence_chunks_rewrite_lexed,
         strip_non_keyword_label_prefix, strip_trailing_trigger_cap_suffix_tokens,
-        tokens_after_non_keyword_label_prefix,
+        tokens_after_non_keyword_label_prefix, trigger_presentation_label_from_line_tokens,
     };
 
     fn single_preprocessed_line(text: &str) -> super::PreprocessedLine {
@@ -1434,6 +1527,35 @@ mod tests {
             PreprocessedItem::Line(line) => line,
             other => panic!("expected preprocessed line, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn bullet_line_detection_uses_tokens_and_rejects_negative_numbers() {
+        assert!(is_bullet_line(&single_preprocessed_line("- choose one")));
+        assert!(is_bullet_line(&single_preprocessed_line("  • choose one")));
+        assert!(is_bullet_line(&single_preprocessed_line("* choose one")));
+        assert!(!is_bullet_line(&single_preprocessed_line(
+            "-1/-1 until end of turn"
+        )));
+    }
+
+    #[test]
+    fn activation_cost_prefix_detection_uses_lexed_tokens() {
+        for text in [
+            "{T}, Tap an untapped Ally you control",
+            "+1",
+            "-2",
+            "Tap this creature",
+        ] {
+            let tokens = lex_line(text, 0).expect("expected activation cost probe to lex");
+            assert!(
+                super::looks_like_activation_cost_prefix(&tokens),
+                "expected {text:?} to look like an activation cost prefix"
+            );
+        }
+        let tokens =
+            lex_line("target opponent loses 2 life", 0).expect("expected non-cost probe to lex");
+        assert!(!super::looks_like_activation_cost_prefix(&tokens));
     }
 
     #[test]
@@ -1460,10 +1582,11 @@ mod tests {
         )
         .expect("rewrite lexer should classify labeled line");
 
-        let (label, body_tokens) =
+        let (label, label_tokens, body_tokens) =
             split_label_prefix_lexed(&tokens).expect("expected token label prefix split");
 
         assert_eq!(label, "Secret Council");
+        assert_eq!(render_token_slice(label_tokens), "Secret Council");
         assert_eq!(
             render_token_slice(body_tokens),
             "Each player votes for death or torture."
@@ -2144,6 +2267,20 @@ mod tests {
     }
 
     #[test]
+    fn triggered_presentation_label_is_derived_from_lexed_line_tokens() {
+        let tokens = lex_line(
+            "Mold Earth — Whenever one or more lands enter under an opponent's control without being played, draw a card.",
+            0,
+        )
+        .expect("trigger label fixture should lex");
+
+        assert_eq!(
+            trigger_presentation_label_from_line_tokens(&tokens),
+            Some("Mold Earth".to_string())
+        );
+    }
+
+    #[test]
     fn statement_parse_handles_when_one_or_more_this_way_target_card_type_list() {
         let line = single_preprocessed_line(
             "When one or more cards are milled this way, exile target enchantment, instant, or sorcery card with equal or lesser mana value than that spell from an opponent's graveyard.",
@@ -2322,6 +2459,31 @@ mod tests {
     }
 
     #[test]
+    fn championed_with_this_trigger_rewrite_parses_through_document_cst()
+    -> Result<(), CardTextError> {
+        let preprocessed = preprocess_document(
+            CardDefinitionBuilder::new(CardId::new(), "Champion Trigger Rewrite Test")
+                .card_types(vec![CardType::Creature]),
+            "When a creature is championed with this creature, draw a card.",
+        )?;
+        let cst = super::parse_document_cst(&preprocessed, false)?;
+
+        match cst.lines.as_slice() {
+            [super::RewriteLineCst::Triggered(triggered)] => {
+                assert_eq!(
+                    triggered.full_text,
+                    "When this creature enters, draw a card"
+                );
+                assert_eq!(triggered.trigger_text, "this creature enters");
+                assert_eq!(triggered.effect_text, "draw a card");
+            }
+            other => panic!("expected rewritten championed-with-this trigger, got {other:?}"),
+        }
+
+        Ok(())
+    }
+
+    #[test]
     fn modal_mode_cst_stores_parsed_effects_ast() -> Result<(), CardTextError> {
         let preprocessed = preprocess_document(
             CardDefinitionBuilder::new(CardId::new(), "Modal Parse Tokens Test")
@@ -2480,15 +2642,18 @@ fn is_named_ability_label(label: &str) -> bool {
     )
 }
 
-fn looks_like_ability_word_label(label: &str, preserve_as_choice_label: bool) -> bool {
+fn looks_like_ability_word_label(
+    label_tokens: &[OwnedLexToken],
+    preserve_as_choice_label: bool,
+) -> bool {
     if preserve_as_choice_label {
         return false;
     }
-    let trimmed = label.trim();
-    !trimmed.is_empty()
-        && !trimmed.contains('.')
-        && !trimmed.contains(':')
-        && trimmed.split_whitespace().count() <= 4
+    !label_tokens.is_empty()
+        && !label_tokens
+            .iter()
+            .any(|token| matches!(token.kind, TokenKind::Period | TokenKind::Colon))
+        && token_word_refs(label_tokens).len() <= 4
 }
 
 fn rewrite_line_normalized(
@@ -2513,6 +2678,24 @@ fn rewrite_line_tokens(line: &PreprocessedLine, tokens: &[OwnedLexToken]) -> Pre
     rewritten
 }
 
+fn render_original_text_for_token_slice(
+    line: &PreprocessedLine,
+    tokens: &[OwnedLexToken],
+) -> Option<String> {
+    let span = span_from_tokens(tokens)?;
+    let original_span = map_span_to_original(
+        span,
+        line.info.normalized.normalized.as_str(),
+        line.info.normalized.original.as_str(),
+        &line.info.normalized.char_map,
+    );
+    line.info
+        .normalized
+        .original
+        .get(original_span.start..original_span.end)
+        .map(str::to_string)
+}
+
 fn try_parse_triggered_line_with_named_source_rewrite(
     builder: &CardDefinitionBuilder,
     line: &PreprocessedLine,
@@ -2528,9 +2711,18 @@ fn try_parse_triggered_line_with_named_source_rewrite(
     }
 }
 
-fn is_fully_parenthetical_line(text: &str) -> bool {
-    let trimmed = text.trim();
-    str_starts_with_char(trimmed, '(') && str_ends_with_char(trimmed, ')')
+fn line_starts_with_lparen_token(line: &PreprocessedLine) -> bool {
+    line.tokens
+        .first()
+        .is_some_and(|token| token.kind == TokenKind::LParen)
+}
+
+fn is_fully_parenthetical_line(line: &PreprocessedLine) -> bool {
+    line_starts_with_lparen_token(line)
+        && line
+            .tokens
+            .last()
+            .is_some_and(|token| token.kind == TokenKind::RParen)
 }
 
 fn split_trigger_sentence_chunks_rewrite_lexed(
@@ -2638,7 +2830,7 @@ fn split_reveal_first_draw_line_rewrite_lexed(
 fn classify_unsupported_line_reason(line: &PreprocessedLine) -> &'static str {
     let classification_tokens = tokens_after_non_keyword_label_prefix(line).unwrap_or(&line.tokens);
 
-    if is_bullet_line(line.info.raw_line.as_str()) {
+    if is_bullet_line(line) {
         return "bullet-line-without-modal-header";
     }
     if line_starts_with_trigger_intro_tokens(&line.tokens) {
@@ -2671,7 +2863,7 @@ fn try_parse_labeled_line_dispatch(
     line: &PreprocessedLine,
     allow_unsupported: bool,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let Some((label, body_tokens)) = split_label_prefix_lexed(&line.tokens) else {
+    let Some((label, label_tokens, body_tokens)) = split_label_prefix_lexed(&line.tokens) else {
         return Ok(None);
     };
 
@@ -2682,20 +2874,19 @@ fn try_parse_labeled_line_dispatch(
     }
 
     let body_line = rewrite_line_tokens(line, body_tokens);
-    let labeled_activation = if (!str_starts_with_char(line.info.raw_line.trim_start(), '(')
-        || is_fully_parenthetical_line(line.info.raw_line.as_str()))
+    let labeled_activation = if (!line_starts_with_lparen_token(line)
+        || is_fully_parenthetical_line(line))
         && let Some((cost_tokens, effect_parse_tokens)) =
             split_activation_text_tokens_lexed(&body_line.tokens)
     {
-        let cost_text = render_token_slice(&cost_tokens);
         let effect_text = render_token_slice(&effect_parse_tokens).trim().to_string();
-        Some((cost_tokens, effect_parse_tokens, cost_text, effect_text))
+        Some((cost_tokens, effect_parse_tokens, effect_text))
     } else {
         None
     };
     let prefer_activation = labeled_activation
         .as_ref()
-        .is_some_and(|(_, _, cost_text, _)| looks_like_activation_cost_prefix(cost_text.as_str()));
+        .is_some_and(|(cost_tokens, _, _)| looks_like_activation_cost_prefix(cost_tokens));
 
     if line_starts_with_trigger_intro_tokens(&body_line.tokens) {
         if let Some(mut triggered) = try_parse_triggered_line_with_named_source_rewrite(
@@ -2706,7 +2897,7 @@ fn try_parse_labeled_line_dispatch(
             if preserve_as_choice_label {
                 triggered.chosen_option_label = Some(label.to_ascii_lowercase());
             }
-            if looks_like_ability_word_label(label.as_str(), preserve_as_choice_label) {
+            if looks_like_ability_word_label(label_tokens, preserve_as_choice_label) {
                 triggered.presentation_label = Some(label.trim().to_string());
             }
             let (triggered, next_idx) =
@@ -2720,7 +2911,7 @@ fn try_parse_labeled_line_dispatch(
             if preserve_as_choice_label {
                 triggered.chosen_option_label = Some(label.to_ascii_lowercase());
             }
-            if looks_like_ability_word_label(label.as_str(), preserve_as_choice_label) {
+            if looks_like_ability_word_label(label_tokens, preserve_as_choice_label) {
                 triggered.presentation_label = Some(label.trim().to_string());
             }
             let (triggered, next_idx) =
@@ -2738,7 +2929,7 @@ fn try_parse_labeled_line_dispatch(
             if preserve_as_choice_label {
                 triggered.chosen_option_label = Some(label.to_ascii_lowercase());
             }
-            if looks_like_ability_word_label(label.as_str(), preserve_as_choice_label) {
+            if looks_like_ability_word_label(label_tokens, preserve_as_choice_label) {
                 triggered.presentation_label = Some(label.trim().to_string());
             }
             let (triggered, next_idx) =
@@ -2770,8 +2961,7 @@ fn try_parse_labeled_line_dispatch(
     }
 
     if prefer_activation
-        && let Some((cost_tokens, effect_parse_tokens, cost_text, effect_text)) =
-            labeled_activation.clone()
+        && let Some((cost_tokens, effect_parse_tokens, effect_text)) = labeled_activation.clone()
     {
         match parse_activation_cost_tokens_rewrite(&cost_tokens) {
             Ok(cost) => {
@@ -2782,13 +2972,14 @@ fn try_parse_labeled_line_dispatch(
                         cost_parse_tokens: cost_tokens,
                         effect_text,
                         effect_parse_tokens,
+                        presentation_label: Some(label.trim().to_string()),
                         chosen_option_label: preserve_as_choice_label
                             .then(|| label.to_ascii_lowercase()),
                     }),
                     idx + 1,
                 )));
             }
-            Err(err) if looks_like_activation_cost_prefix(cost_text.as_str()) => {
+            Err(err) if looks_like_activation_cost_prefix(&cost_tokens) => {
                 return Err(err);
             }
             Err(_) => {}
@@ -2859,7 +3050,7 @@ fn try_parse_labeled_line_dispatch(
         }
     }
 
-    if let Some((cost_tokens, effect_parse_tokens, cost_text, effect_text)) = labeled_activation {
+    if let Some((cost_tokens, effect_parse_tokens, effect_text)) = labeled_activation {
         match parse_activation_cost_tokens_rewrite(&cost_tokens) {
             Ok(cost) => {
                 return Ok(Some(LineDispatchResult::single(
@@ -2869,13 +3060,14 @@ fn try_parse_labeled_line_dispatch(
                         cost_parse_tokens: cost_tokens,
                         effect_text,
                         effect_parse_tokens,
+                        presentation_label: Some(label.trim().to_string()),
                         chosen_option_label: preserve_as_choice_label
                             .then(|| label.to_ascii_lowercase()),
                     }),
                     idx + 1,
                 )));
             }
-            Err(err) if looks_like_activation_cost_prefix(cost_text.as_str()) => {
+            Err(err) if looks_like_activation_cost_prefix(&cost_tokens) => {
                 return Err(err);
             }
             Err(_) => {}
@@ -3155,7 +3347,9 @@ pub(crate) fn parse_document_cst(
                     parse_saga_chapter_prefix(&line.info.normalized.normalized)
                 {
                     let cst = RewriteLineCst::SagaChapter(parse_saga_chapter_line_cst(
-                        line, chapters, text,
+                        line,
+                        chapters,
+                        text.as_str(),
                     )?);
                     trace_cst_line(&cst);
                     lines.push(cst);
@@ -3275,7 +3469,8 @@ pub(crate) fn parse_document_cst(
                     }
 
                     let suffix_line = rewrite_line_tokens(line, &suffix_tokens);
-                    let Some((_label, body_tokens)) = split_label_prefix_lexed(&suffix_line.tokens)
+                    let Some((label, _, body_tokens)) =
+                        split_label_prefix_lexed(&suffix_line.tokens)
                     else {
                         return Err(CardTextError::ParseError(format!(
                             "parser could not recover keyword activation suffix: '{}'",
@@ -3298,6 +3493,7 @@ pub(crate) fn parse_document_cst(
                         cost_parse_tokens: cost_tokens,
                         effect_text,
                         effect_parse_tokens,
+                        presentation_label: Some(label.trim().to_string()),
                         chosen_option_label: None,
                     });
                     trace_cst_line(&cst);

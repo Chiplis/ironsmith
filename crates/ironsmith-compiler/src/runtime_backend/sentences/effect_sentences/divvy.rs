@@ -1127,19 +1127,17 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         } else {
             return Ok(None);
         };
-        let (rest_zone, rest_enters_tapped) = if sentence_has_phrase(
-            &sentence_words,
-            &["the", "rest", "into", "your", "hand"],
-        ) {
-            (Zone::Hand, false)
-        } else if sentence_has_phrase(
-            &sentence_words,
-            &["the", "rest", "onto", "the", "battlefield", "tapped"],
-        ) {
-            (Zone::Battlefield, true)
-        } else {
-            return Ok(None);
-        };
+        let (rest_zone, rest_enters_tapped) =
+            if sentence_has_phrase(&sentence_words, &["the", "rest", "into", "your", "hand"]) {
+                (Zone::Hand, false)
+            } else if sentence_has_phrase(
+                &sentence_words,
+                &["the", "rest", "onto", "the", "battlefield", "tapped"],
+            ) {
+                (Zone::Battlefield, true)
+            } else {
+                return Ok(None);
+            };
 
         let mut effects = parse_effect_sentence_lexed(sentences[0].lowered())?;
         effects.push(EffectAst::subject_verb_tag_matching_objects(

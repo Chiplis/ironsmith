@@ -210,10 +210,6 @@ pub(crate) fn str_find_char(text: &str, needle: char) -> Option<usize> {
     crate::string_primitives::find_char(text, needle)
 }
 
-pub(crate) fn str_rfind(text: &str, needle: &str) -> Option<usize> {
-    crate::string_primitives::rfind(text, needle)
-}
-
 #[allow(dead_code)]
 pub(crate) fn str_rfind_char(text: &str, needle: char) -> Option<usize> {
     crate::string_primitives::rfind_char(text, needle)

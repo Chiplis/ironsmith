@@ -1983,6 +1983,28 @@
   --aura-scale-2-max: 1.02;
 }
 
+.game-card.hand-card.hand-card-no-visible-mana-cost {
+  background: transparent;
+}
+
+.game-card.hand-card.hand-card-no-visible-mana-cost .game-card-surface {
+  left: 50%;
+  right: auto;
+  width: auto;
+  height: 100%;
+  aspect-ratio: 63 / 88;
+  transform: translateX(-50%);
+  box-shadow:
+    0 2px 6px rgba(0,0,0,0.45),
+    0 6px 16px rgba(0,0,0,0.3),
+    inset 0 0 8px 2px rgba(0,0,0,0.3),
+    inset 0 0 0 1px rgba(255,255,255,0.05);
+}
+
+.game-card.hand-card.hand-card-no-visible-mana-cost .game-card-surface > img {
+  object-fit: contain;
+}
+
 .game-card.hand-card .game-card-surface::before {
   inset: -12% 6% 3% 6%;
 }
@@ -6200,6 +6222,10 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   filter: brightness(0.84) saturate(0.9);
 }
 
+.hand-inspector-inline-shell.ironsmith-inspector-shell--expanded {
+  filter: brightness(1) saturate(1);
+}
+
 .hand-inspector-inline-shell::before {
   content: "";
   position: absolute;
@@ -6257,6 +6283,7 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
    * opacity 0), briefly clipping the just-revealed image. The parent
    * .hover-art-drop-in already handles the mount slide. */
   transform-origin: top center;
+  z-index: 2;
   will-change: transform, opacity, clip-path;
 }
 
@@ -6342,7 +6369,7 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
 .hover-art-diffusion-overlay {
   position: absolute;
   inset: 0;
-  z-index: 5;
+  z-index: 3;
   pointer-events: none;
   background:
     radial-gradient(82% 64% at 50% 38%, rgba(255, 232, 172, 0.08), rgba(0, 0, 0, 0) 58%),
@@ -8810,7 +8837,7 @@ textarea,
 .hover-art-stage-vignette {
   position: absolute;
   inset: 1px;
-  z-index: 2;
+  z-index: 1;
   pointer-events: none;
   background: linear-gradient(
     180deg,

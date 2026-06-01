@@ -19,7 +19,9 @@ pub(crate) fn try_merge_modal_into_remove_mode(
     }
 
     let Some(remove_mode_idx) = find_index(choose_mode.modes.as_slice(), |mode| {
-        text_starts_with_remove(mode.description.as_str())
+        lex_line(mode.description.as_str(), 0)
+            .ok()
+            .is_some_and(|tokens| tokens_start_with_remove(&tokens))
     }) else {
         effects.push(last_effect);
         return false;

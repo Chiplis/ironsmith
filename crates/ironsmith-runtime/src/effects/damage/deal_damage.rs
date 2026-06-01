@@ -181,7 +181,9 @@ fn excess_damage_to_object(
         let lethal = if keywords.has_deathtouch {
             1
         } else {
-            let Some(toughness) = game.calculated_toughness(target).or_else(|| object.toughness())
+            let Some(toughness) = game
+                .calculated_toughness(target)
+                .or_else(|| object.toughness())
             else {
                 return 0;
             };

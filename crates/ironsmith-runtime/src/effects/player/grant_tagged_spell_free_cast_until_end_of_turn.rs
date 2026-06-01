@@ -76,14 +76,16 @@ impl EffectExecutor for GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
                 vec![],
             );
             if self.duration == crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled {
-                game.effect_store.grant_registry.grant_alternative_cast_to_stable_card(
-                    object_id,
-                    object.stable_id,
-                    zone,
-                    player_id,
-                    method,
-                    source,
-                );
+                game.effect_store
+                    .grant_registry
+                    .grant_alternative_cast_to_stable_card(
+                        object_id,
+                        object.stable_id,
+                        zone,
+                        player_id,
+                        method,
+                        source,
+                    );
             } else {
                 game.effect_store
                     .grant_registry

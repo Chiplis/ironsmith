@@ -1,10 +1,14 @@
-const ORIGINAL_BASIC_LAND_SETS = new Set([
+const BASIC_LAND_NAMES = new Set([
   "Plains",
   "Island",
   "Swamp",
   "Mountain",
   "Forest",
 ]);
+const BASIC_LAND_KEYS = new Set(
+  [...BASIC_LAND_NAMES].map((name) => name.toLocaleLowerCase("en-US"))
+);
+const PREFERRED_BASIC_LAND_SET = "fdn";
 
 const CUSTOM_CARD_ART_URLS_STORAGE_KEY = "ironsmith-custom-card-art-urls";
 const HIDDEN_CARD_NAMES = new Set(["hidden card"]);
@@ -115,6 +119,14 @@ function cardJsonCacheKey(cardName) {
   return customArtKey(cardName);
 }
 
+function isBasicLandName(cardName) {
+  return BASIC_LAND_KEYS.has(String(cardName || "").trim().toLocaleLowerCase("en-US"));
+}
+
+function prefersLiveScryfallCard(cardName) {
+  return isBasicLandName(cardName);
+}
+
 function baseAssetUrl() {
   const configured = typeof import.meta !== "undefined"
     ? import.meta.env?.BASE_URL
@@ -138,9 +150,9 @@ function namedCardParams(cardName) {
   const query = String(cardName || "").trim();
   const params = new URLSearchParams();
 
-  if (ORIGINAL_BASIC_LAND_SETS.has(query)) {
+  if (isBasicLandName(query)) {
     params.set("exact", query);
-    params.set("set", "lea");
+    params.set("set", PREFERRED_BASIC_LAND_SET);
   } else {
     params.set("fuzzy", query);
   }
@@ -150,7 +162,7 @@ function namedCardParams(cardName) {
 
 function namedCardJsonUrls(cardName) {
   const query = String(cardName || "").trim();
-  if (ORIGINAL_BASIC_LAND_SETS.has(query)) {
+  if (isBasicLandName(query)) {
     return [`https://api.scryfall.com/cards/named?${namedCardParams(query).toString()}`];
   }
   return [
@@ -346,6 +358,15 @@ export async function resolveScryfallImageUrl(cardName, version = "normal") {
   const key = cardImageCacheKey(query, version);
   const cached = resolvedCardImageUrlCache.get(key);
   if (cached) return cached;
+
+  if (prefersLiveScryfallCard(query)) {
+    const card = await fetchScryfallCardJson(query).catch(() => null);
+    const resolved = imageUrlFromScryfallCard(card, version);
+    if (resolved) {
+      resolvedCardImageUrlCache.set(key, resolved);
+      return resolved;
+    }
+  }
 
   const localPayload = await fetchLocalCardPayload(query).catch(() => null);
   const localScryfall = localScryfallPayloadForName(localPayload, query);

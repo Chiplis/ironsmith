@@ -50,6 +50,7 @@ pub(crate) struct RewriteActivatedLine {
     pub(crate) effect_parse_tokens: Vec<OwnedLexToken>,
     pub(crate) timing_hint: ActivationTiming,
     pub(crate) is_loyalty_ability: bool,
+    pub(crate) presentation_label: Option<String>,
     pub(crate) chosen_option_label: Option<String>,
 }
 

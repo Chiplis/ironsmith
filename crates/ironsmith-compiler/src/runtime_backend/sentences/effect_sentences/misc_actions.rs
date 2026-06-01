@@ -68,7 +68,9 @@ fn mana_group_token_matches_symbol(token: &OwnedLexToken, shape: &ClauseShape<'s
     if token.kind != TokenKind::ManaGroup {
         return false;
     }
-    let symbol = token.slice.trim_start_matches('{').trim_end_matches('}');
+    let Some(symbol) = token.mana_group_inner() else {
+        return false;
+    };
     shape.matches_word(symbol)
 }
 

@@ -158,6 +158,20 @@ fn normalize_unprocessed_compiled_line(line: String) -> String {
             "instead counter target noncreature spell",
         );
     }
+    if lower.starts_with("each creature you control gets ")
+        && lower.contains(" until end of turn. then if it is not your turn, untap that creature.")
+    {
+        return line
+            .replacen(
+                "Each creature you control gets ",
+                "Creatures you control get ",
+                1,
+            )
+            .replace(
+                " until end of turn. Then if it is not your turn, untap that creature.",
+                " until end of turn. If it's not your turn, untap those creatures.",
+            );
+    }
     line
 }
 
@@ -992,6 +1006,16 @@ fn merge_specific_adjacent_surface_lines(lines: Vec<String>) -> Vec<String> {
             if let Some(merged_restriction) = merge_cast_and_activate_restriction_lines(left, right)
             {
                 merged.push(merged_restriction);
+                idx += 2;
+                continue;
+            }
+            if let Some(pump) = left.strip_prefix("Each creature you control gets ")
+                && let Some(pump) = pump.strip_suffix(" until end of turn")
+                && right_lower == "if it is not your turn, untap that creature"
+            {
+                merged.push(format!(
+                    "Creatures you control get {pump} until end of turn. If it's not your turn, untap those creatures."
+                ));
                 idx += 2;
                 continue;
             }

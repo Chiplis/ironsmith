@@ -1331,7 +1331,9 @@ fn maybe_assign_effect_result_id(
         );
     let later_needs_library_search_result = effect_is_library_search(&effects[idx])
         && idx + 1 < effects.len()
-        && effects[idx + 1..].iter().any(effect_is_searched_library_gate);
+        && effects[idx + 1..]
+            .iter()
+            .any(effect_is_searched_library_gate);
 
     if !(next_is_if_result_with_opponent_doesnt
         || next_is_if_result_with_player_doesnt

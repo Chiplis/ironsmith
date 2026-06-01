@@ -1854,7 +1854,7 @@ pub(crate) fn append_token_reminder_to_last_create_effect(
         .iter()
         .filter_map(|token| match token.kind {
             TokenKind::ManaGroup => {
-                let inner = token.slice.trim_start_matches('{').trim_end_matches('}');
+                let inner = token.mana_group_inner()?;
                 (!inner.is_empty()).then(|| inner.to_ascii_lowercase())
             }
             _ => token.as_word().map(|word| word.to_ascii_lowercase()),

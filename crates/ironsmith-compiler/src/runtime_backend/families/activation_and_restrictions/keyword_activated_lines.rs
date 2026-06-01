@@ -362,7 +362,7 @@ pub(crate) fn parse_cycling_keyword_cost_groups(
             let Some(word) = tokens[idx].as_word().map(|word| word.to_ascii_lowercase()) else {
                 break;
             };
-            if str_strip_suffix(word.as_str(), "cycling").is_some() {
+            if word_is_cycling_keyword_marker(word.as_str()) {
                 keyword_end = Some(idx);
                 idx += 1;
                 break;
@@ -530,7 +530,7 @@ pub(crate) fn parse_cycling_search_filter(
         return Ok(Some(filter));
     }
 
-    if let Some(root) = str_strip_suffix(keyword, "cycling") {
+    if let Some(root) = cycling_keyword_root(keyword).filter(|root| !root.is_empty()) {
         if let Some(card_type) = parse_card_type(root) {
             push_unique(&mut filter.card_types, card_type);
         } else if let Some(subtype) = parse_subtype_flexible(root) {

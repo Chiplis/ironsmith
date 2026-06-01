@@ -26,11 +26,6 @@ fn is_stack_object_targeting_filter(filter: &ObjectFilter) -> bool {
         || filter.target_count.is_some()
 }
 
-fn trigger_intro_surface_from_text(text: &str) -> Option<TriggerIntroSurfaceAst> {
-    let tokens = lex_line(text, 0).ok()?;
-    trigger_intro_surface_from_tokens(&tokens)
-}
-
 fn trigger_intro_surface_word(token: &OwnedLexToken) -> Option<TriggerIntroSurfaceAst> {
     if token.is_word("when") {
         Some(TriggerIntroSurfaceAst::When)
@@ -69,8 +64,8 @@ fn trigger_intro_surface_from_tokens(tokens: &[OwnedLexToken]) -> Option<Trigger
     })
 }
 
-fn apply_trigger_intro_surface(trigger: TriggerSpec, full_text: &str) -> TriggerSpec {
-    let Some(intro) = trigger_intro_surface_from_text(full_text) else {
+fn apply_trigger_intro_surface(trigger: TriggerSpec, full_tokens: &[OwnedLexToken]) -> TriggerSpec {
+    let Some(intro) = trigger_intro_surface_from_tokens(full_tokens) else {
         return trigger;
     };
     match trigger {
@@ -493,11 +488,12 @@ fn normalize_rewrite_modal_ast(modal: ParsedModalAst) -> Result<NormalizedModalA
 pub(super) fn apply_chosen_option_to_triggered_chunk(
     chunk: LineAst,
     full_text: &str,
+    full_tokens: &[OwnedLexToken],
     max_triggers_per_turn: Option<u32>,
     chosen_option_label: Option<&str>,
     presentation_label: Option<&str>,
 ) -> Result<LineAst, CardTextError> {
-    let during_your_turn_condition = text_mentions_becomes_tapped_during_your_turn(full_text)
+    let during_your_turn_condition = tokens_mention_becomes_tapped_during_your_turn(full_tokens)
         .then_some(crate::ConditionExpr::YourTurn);
     let max_condition =
         crate::runtime_backend::trigger_frequency_condition(Some(full_text), max_triggers_per_turn);
@@ -517,7 +513,7 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
             effects,
             max_triggers_per_turn: chunk_max_triggers_per_turn,
         } => {
-            let trigger = apply_trigger_intro_surface(trigger, full_text);
+            let trigger = apply_trigger_intro_surface(trigger, full_tokens);
             let merged_max_condition = chunk_max_triggers_per_turn
                 .or(max_triggers_per_turn)
                 .and_then(|count| {
@@ -555,7 +551,7 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
         }
         LineAst::Ability(mut parsed) => {
             if let AbilityKind::Triggered(triggered) = parsed.kind_mut()
-                && let Some(intro) = trigger_intro_surface_from_text(full_text)
+                && let Some(intro) = trigger_intro_surface_from_tokens(full_tokens)
             {
                 triggered.trigger = triggered.trigger.clone().with_intro_surface(match intro {
                     TriggerIntroSurfaceAst::When => crate::triggers::TriggerIntroSurface::When,
@@ -566,7 +562,7 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
                 });
             }
             if let AbilityKind::Triggered(triggered) = parsed.kind_mut() {
-                rewrite_do_this_trigger_frequency_surface(full_text, triggered);
+                rewrite_do_this_trigger_frequency_surface(full_tokens, triggered);
             }
             if let AbilityKind::Triggered(triggered) = parsed.kind_mut()
                 && let Some(condition) = combined_condition
@@ -603,10 +599,10 @@ pub(super) fn apply_chosen_option_to_triggered_chunk(
 }
 
 fn rewrite_do_this_trigger_frequency_surface(
-    full_text: &str,
+    full_tokens: &[OwnedLexToken],
     triggered: &mut crate::ability::TriggeredAbility,
 ) {
-    let Some(surface_count) = do_this_frequency_surface_from_text(full_text) else {
+    let Some(surface_count) = do_this_frequency_surface_from_tokens(full_tokens) else {
         return;
     };
     let Some(condition) = triggered.intervening_if.take() else {
@@ -770,6 +766,7 @@ fn rewrite_item_to_parsed_item(
                 line.effect_parse_tokens.clone(),
                 line.timing_hint.clone(),
                 line.is_loyalty_ability,
+                line.presentation_label.clone(),
                 line.chosen_option_label.clone(),
             )?;
             Ok(Some(ParsedCardItem::Line(ParsedLineAst {

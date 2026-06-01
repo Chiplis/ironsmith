@@ -1,6 +1,7 @@
 use super::*;
 use crate::runtime_backend::SubjectAst;
 use crate::runtime_backend::ast::SubjectVerbActionAst;
+use crate::runtime_backend::lexer::render_token_slice;
 
 pub(crate) type ActivationRestrictionCompatWords<'a> = grammar::TokenWordView<'a>;
 
@@ -161,10 +162,7 @@ pub(crate) fn find_cycling_keyword_word_index(
 ) -> Option<usize> {
     let mut idx = 0usize;
     while idx < words.len() {
-        if words
-            .get(idx)
-            .is_some_and(|word| str_strip_suffix(word, "cycling").is_some())
-        {
+        if words.get(idx).is_some_and(word_is_cycling_keyword_marker) {
             return Some(idx);
         }
         idx += 1;
@@ -185,7 +183,7 @@ pub(crate) fn parse_hand_keyword_activated_body_lexed(
     }
 
     let ability_tokens = trim_commas(body_tokens);
-    let Some(mut parsed) = parse_activated_line_with_raw(&ability_tokens, None)? else {
+    let Some(mut parsed) = parse_activated_line_with_raw(&ability_tokens)? else {
         return Ok(None);
     };
     *parsed.text_mut() = Some(display_label.to_string());
@@ -196,7 +194,7 @@ pub(crate) fn parse_hand_keyword_activated_body_lexed(
 pub(crate) fn parse_activated_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
-    parse_activated_line_with_raw(tokens, None)
+    parse_activated_line_with_raw(tokens)
 }
 
 fn fixed_mana_symbols_from_mana_groups(tokens: &[OwnedLexToken]) -> Option<Vec<ManaSymbol>> {
@@ -204,7 +202,7 @@ fn fixed_mana_symbols_from_mana_groups(tokens: &[OwnedLexToken]) -> Option<Vec<M
     for token in tokens {
         match token.kind {
             TokenKind::ManaGroup => {
-                let inner = token.slice.trim_start_matches('{').trim_end_matches('}');
+                let inner = token.mana_group_inner()?;
                 mana.push(parse_mana_symbol(inner).ok()?);
             }
             TokenKind::Period | TokenKind::Comma => {}
@@ -224,7 +222,6 @@ fn subject_allows_direct_mana_output(subject: &Option<SubjectAst>) -> bool {
 
 pub(crate) fn parse_activated_line_with_raw(
     tokens: &[OwnedLexToken],
-    raw_line: Option<&str>,
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     let Some(colon_idx) = find_index(tokens, |token| token.is_colon()) else {
         return Ok(None);
@@ -236,8 +233,13 @@ pub(crate) fn parse_activated_line_with_raw(
     if cost_tokens.is_empty() || effect_tokens.is_empty() {
         return Ok(None);
     }
-    let loyalty_shorthand_cost = parse_loyalty_shorthand_activation_cost(cost_tokens, raw_line);
     let ability_label = parse_prefixed_activated_ability_label(tokens, cost_start);
+    let ability_display_text = prefixed_activated_ability_display_text(
+        ability_label.as_deref(),
+        cost_tokens,
+        effect_tokens,
+    );
+    let loyalty_shorthand_cost = parse_loyalty_shorthand_activation_cost(cost_tokens);
     let mut effect_sentences = grammar::split_lexed_slices_on_period(effect_tokens);
     let functional_zones = infer_activated_functional_zones_lexed(cost_tokens, &effect_sentences);
     let mut timing = ActivationTiming::AnyTime;
@@ -246,13 +248,7 @@ pub(crate) fn parse_activated_line_with_raw(
     let mut additional_activation_restrictions =
         scanned_modifiers.additional_activation_restrictions;
     if ability_label.as_deref() == Some("Exhaust")
-        && !additional_activation_restrictions
-            .iter()
-            .any(|restriction| {
-                restriction
-                    .to_ascii_lowercase()
-                    .contains("activate each exhaust ability only once")
-            })
+        && !scanned_modifiers.has_exhaust_once_restriction
     {
         additional_activation_restrictions
             .push("Activate each exhaust ability only once.".to_string());
@@ -373,7 +369,7 @@ pub(crate) fn parse_activated_line_with_raw(
                 effects_ast.extend(extra_effects_ast);
                 return Ok(Some(ParsedAbility {
                     ability: ability.into(),
-                    text: ability_label.clone(),
+                    text: ability_display_text.clone(),
                     effects_ast: Some(effects_ast),
                     reference_imports: reference_imports.clone(),
                     trigger_spec: None,
@@ -402,7 +398,7 @@ pub(crate) fn parse_activated_line_with_raw(
                     };
                     return Ok(Some(ParsedAbility {
                         ability: ability.into(),
-                        text: ability_label.clone(),
+                        text: ability_display_text.clone(),
                         effects_ast: None,
                         reference_imports: ReferenceImports::default(),
                         trigger_spec: None,
@@ -433,7 +429,7 @@ pub(crate) fn parse_activated_line_with_raw(
                 effects_ast.extend(extra_effects_ast);
                 return Ok(Some(ParsedAbility {
                     ability: ability.into(),
-                    text: ability_label.clone(),
+                    text: ability_display_text.clone(),
                     effects_ast: Some(effects_ast),
                     reference_imports: reference_imports,
                     trigger_spec: None,
@@ -478,7 +474,7 @@ pub(crate) fn parse_activated_line_with_raw(
                 ability
             }
             .into(),
-            text: ability_label.clone(),
+            text: ability_display_text.clone(),
             effects_ast: None,
             reference_imports: ReferenceImports::default(),
             trigger_spec: None,
@@ -529,11 +525,25 @@ pub(crate) fn parse_activated_line_with_raw(
             ability
         }
         .into(),
-        text: ability_label,
+        text: ability_display_text,
         effects_ast: Some(effects_ast),
         reference_imports,
         trigger_spec: None,
     }))
+}
+
+fn prefixed_activated_ability_display_text(
+    ability_label: Option<&str>,
+    cost_tokens: &[OwnedLexToken],
+    effect_tokens: &[OwnedLexToken],
+) -> Option<String> {
+    ability_label.map(|label| {
+        format!(
+            "{label} — {}: {}",
+            render_token_slice(cost_tokens).trim(),
+            render_token_slice(effect_tokens).trim()
+        )
+    })
 }
 
 pub(crate) fn activation_cost_mentions_x(tokens: &[OwnedLexToken]) -> bool {
@@ -619,26 +629,35 @@ pub(crate) fn mana_effect_contains_unbound_x(effect: &EffectAst) -> bool {
 
 pub(crate) fn parse_loyalty_shorthand_activation_cost(
     cost_tokens: &[OwnedLexToken],
-    raw_line: Option<&str>,
 ) -> Option<TotalCost> {
-    let [token] = cost_tokens else {
-        return None;
+    let shorthand = match cost_tokens {
+        [token] => parse_loyalty_shorthand_word(token.as_word()?),
+        [sign, value] if sign.kind == TokenKind::Plus => {
+            let amount = parse_ascii_u32(value.as_word()?)?;
+            Some(LoyaltyShorthandCost::Add(amount))
+        }
+        [sign, value] if sign.kind == TokenKind::Dash => {
+            let value = value.as_word()?;
+            if X_COST_WORD_PATTERN.matches_word(value) {
+                Some(LoyaltyShorthandCost::RemoveX)
+            } else {
+                parse_ascii_u32(value).map(LoyaltyShorthandCost::Remove)
+            }
+        }
+        _ => None,
     };
-    let word = token.as_word()?;
-    if let Some(rest) = str_strip_prefix(word, "+")
-        && let Ok(amount) = rest.parse::<u32>()
-    {
-        return Some(if amount == 0 {
-            TotalCost::free()
-        } else {
-            TotalCost::from_cost(crate::costs::Cost::add_counters(
-                CounterType::Loyalty,
-                amount,
-            ))
-        });
-    }
-    if let Some(rest) = str_strip_prefix(word, "-") {
-        if X_COST_WORD_PATTERN.matches_word(rest) {
+    match shorthand {
+        Some(LoyaltyShorthandCost::Add(amount)) => {
+            return Some(if amount == 0 {
+                TotalCost::free()
+            } else {
+                TotalCost::from_cost(crate::costs::Cost::add_counters(
+                    CounterType::Loyalty,
+                    amount,
+                ))
+            });
+        }
+        Some(LoyaltyShorthandCost::RemoveX) => {
             return Some(TotalCost::from_cost(
                 crate::costs::Cost::remove_any_counters_from_source(
                     Some(CounterType::Loyalty),
@@ -646,26 +665,47 @@ pub(crate) fn parse_loyalty_shorthand_activation_cost(
                 ),
             ));
         }
-        if let Ok(amount) = rest.parse::<u32>() {
+        Some(LoyaltyShorthandCost::Remove(amount)) => {
             return Some(TotalCost::from_cost(crate::costs::Cost::remove_counters(
                 CounterType::Loyalty,
                 amount,
             )));
         }
-    }
-    if ZERO_LOYALTY_WORD_PATTERN.matches_word(word)
-        && raw_line.is_some_and(|line| {
-            let mut parts = line.trim().splitn(2, ':');
-            let Some(prefix) = parts.next() else {
-                return false;
-            };
-            parts.next().is_some()
-                && ZERO_LOYALTY_WORD_PATTERN.matches_word(prefix.trim().replace('−', "-").as_str())
-        })
-    {
-        return Some(TotalCost::free());
+        None => {}
     }
     None
+}
+
+enum LoyaltyShorthandCost {
+    Add(u32),
+    Remove(u32),
+    RemoveX,
+}
+
+fn parse_loyalty_shorthand_word(word: &str) -> Option<LoyaltyShorthandCost> {
+    let mut chars = word.chars();
+    let sign = chars.next()?;
+    let rest = chars.as_str();
+    match sign {
+        '0' if rest.is_empty() => Some(LoyaltyShorthandCost::Add(0)),
+        '+' => parse_ascii_u32(rest).map(LoyaltyShorthandCost::Add),
+        '-' | '−' if X_COST_WORD_PATTERN.matches_word(rest) => {
+            Some(LoyaltyShorthandCost::RemoveX)
+        }
+        '-' | '−' => parse_ascii_u32(rest).map(LoyaltyShorthandCost::Remove),
+        _ => None,
+    }
+}
+
+fn parse_ascii_u32(text: &str) -> Option<u32> {
+    let mut value = 0u32;
+    let mut consumed = false;
+    for ch in text.chars() {
+        let digit = ch.to_digit(10)?;
+        consumed = true;
+        value = value.checked_mul(10)?.checked_add(digit)?;
+    }
+    consumed.then_some(value)
 }
 
 pub(crate) fn loyalty_additional_restrictions(is_loyalty_shorthand: bool) -> Vec<String> {

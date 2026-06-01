@@ -35,7 +35,10 @@ fn station_threshold_prefix(activated: &crate::ability::ActivatedAbility) -> Opt
         return None;
     };
     if !matches!(left, Value::CountersOnSource(crate::CounterType::Charge))
-        || !matches!(operator, crate::effect::ValueComparisonOperator::GreaterThanOrEqual)
+        || !matches!(
+            operator,
+            crate::effect::ValueComparisonOperator::GreaterThanOrEqual
+        )
     {
         return None;
     }
@@ -165,8 +168,8 @@ fn describe_choose_phase_then_skip_chosen_this_turn(effects: &[&Effect]) -> Opti
         return None;
     }
 
-    let main_conditional = conditional.if_false[0]
-        .downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let main_conditional =
+        conditional.if_false[0].downcast_ref::<crate::effects::ConditionalEffect>()?;
     let crate::effect::Condition::SourceChosenOption(main_option) = &main_conditional.condition
     else {
         return None;
@@ -877,10 +880,14 @@ fn describe_return_all_to_battlefield_effect(
     return_all: &crate::effects::ReturnAllToBattlefieldEffect,
 ) -> String {
     let source_linked_exile = return_all.filter.zone == Some(Zone::Exile)
-        && return_all.filter.tagged_constraints.iter().any(|constraint| {
-            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
-                && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
-        });
+        && return_all
+            .filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+            });
     let mut filter_text = if source_linked_exile
         && return_all.filter.card_types.len() == 1
         && return_all.filter.card_types[0] == CardType::Creature
@@ -905,7 +912,11 @@ fn describe_return_all_to_battlefield_effect(
         }
         crate::effects::BattlefieldController::You => " under your control",
     };
-    let face_down_suffix = if return_all.face_down { " face down" } else { "" };
+    let face_down_suffix = if return_all.face_down {
+        " face down"
+    } else {
+        ""
+    };
     format!(
         "Return all {filter_text} to the battlefield{}{}{}",
         if return_all.tapped { " tapped" } else { "" },
@@ -1484,8 +1495,7 @@ fn describe_each_player_may_discard_hand_draw(
     };
     let discard = discard_effect.downcast_ref::<crate::effects::DiscardHandEffect>()?;
     let draw = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
-    if discard.player != PlayerFilter::IteratedPlayer
-        || draw.player != PlayerFilter::IteratedPlayer
+    if discard.player != PlayerFilter::IteratedPlayer || draw.player != PlayerFilter::IteratedPlayer
     {
         return None;
     }
@@ -3225,8 +3235,8 @@ fn describe_reveal_top_to_hand_then_lose_mana_value_effects(effects: &[Effect]) 
     if !moves_tag_to_hand {
         return None;
     }
-    let lose_life = unwrap_basic_tag_wrappers(lose_effect)
-        .downcast_ref::<crate::effects::LoseLifeEffect>()?;
+    let lose_life =
+        unwrap_basic_tag_wrappers(lose_effect).downcast_ref::<crate::effects::LoseLifeEffect>()?;
     if lose_life.player != ChooseSpec::Player(PlayerFilter::You) {
         return None;
     }
@@ -3234,8 +3244,7 @@ fn describe_reveal_top_to_hand_then_lose_mana_value_effects(effects: &[Effect]) 
         &lose_life.amount,
         Value::ManaValueOf(spec)
             if matches!(spec.base(), ChooseSpec::Tagged(found) if found == tag)
-    )
-    {
+    ) {
         return None;
     }
     Some(
@@ -3264,7 +3273,8 @@ fn describe_untap_attacking_then_additional_combat(effects: &[Effect]) -> Option
     if !is_all_attacking_creatures(&untap.target) {
         return None;
     }
-    let additional_phases = phases_effect.downcast_ref::<crate::effects::AdditionalPhasesEffect>()?;
+    let additional_phases =
+        phases_effect.downcast_ref::<crate::effects::AdditionalPhasesEffect>()?;
     if additional_phases.phases != [crate::effects::AdditionalPhase::Combat] {
         return None;
     }
@@ -3857,7 +3867,13 @@ fn describe_choose_top_exile_then_conditional_cast_structural(
 }
 
 fn describe_choose_name_target_mills_conditional_draw(effects: &[Effect]) -> Option<String> {
-    let [choose_effect, target_effect, mill_effect, conditional_effect] = effects else {
+    let [
+        choose_effect,
+        target_effect,
+        mill_effect,
+        conditional_effect,
+    ] = effects
+    else {
         return None;
     };
     let choose = choose_effect.downcast_ref::<crate::effects::ChooseCardNameEffect>()?;
@@ -3924,7 +3940,8 @@ fn describe_exile_then_free_cast_while_exiled_structural(effects: &[Effect]) -> 
         .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     let grant_play = grant_play_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
     let grant_free_cast = grant_free_cast_effect
-        .downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>()?;
+        .downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>(
+    )?;
     if move_to_zone.zone != Zone::Exile
         || grant_play.tag != *tag
         || grant_free_cast.tag != *tag
@@ -4642,7 +4659,8 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         else {
             return None;
         };
-        let Some(crate::continuous::Modification::AddAbility(ability)) = &ability_apply.modification
+        let Some(crate::continuous::Modification::AddAbility(ability)) =
+            &ability_apply.modification
         else {
             return None;
         };
@@ -14605,8 +14623,8 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         }
         if idx + 2 < filtered.len()
             && let Some(mill) = filtered[idx].downcast_ref::<crate::effects::MillEffect>()
-            && let Some(target_only) = filtered[idx + 1]
-                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+            && let Some(target_only) =
+                filtered[idx + 1].downcast_ref::<crate::effects::TargetOnlyEffect>()
             && let Some(exile) = filtered[idx + 2].downcast_ref::<crate::effects::ExileEffect>()
             && mill.player == PlayerFilter::target_player()
             && target_only.target == ChooseSpec::target_player()
@@ -20940,7 +20958,9 @@ pub(super) fn describe_choose_then_for_each_copy(
             describe_value(&create_copy.count)
         ),
     };
-    Some(format!("Choose {selected}. For each of them, {copy_action}"))
+    Some(format!(
+        "Choose {selected}. For each of them, {copy_action}"
+    ))
 }
 
 pub(super) fn describe_choose_then_cant_pile_restriction(
@@ -29851,8 +29871,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             if matches!(
                 source.base(),
                 ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::SOURCE_EXILED_TAG
-            )
-            {
+            ) {
                 let stat = if matches!(&deal_damage.amount, Value::ToughnessOf(_)) {
                     "toughness"
                 } else {
@@ -33340,8 +33359,8 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             describe_player_filter(&skip_main.player)
         );
     }
-    if let Some(skip_combat) = effect
-        .downcast_ref::<crate::effects::SkipCombatPhasesThisTurnEffect>()
+    if let Some(skip_combat) =
+        effect.downcast_ref::<crate::effects::SkipCombatPhasesThisTurnEffect>()
     {
         return format!(
             "{} skips each remaining combat phase this turn",

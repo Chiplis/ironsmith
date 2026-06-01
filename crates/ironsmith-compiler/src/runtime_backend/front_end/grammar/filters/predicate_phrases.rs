@@ -449,18 +449,10 @@ const SOURCE_DEALT_COMBAT_DAMAGE_TO_PLAYER_THIS_TURN_PATTERN: ClauseShape<'stati
 const PLAYER_WAS_DEALT_COMBAT_DAMAGE_BY_SUBTYPE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
         & [
-            &[
-                "a", "player", "was", "dealt", "combat", "damage", "by",
-            ],
-            &[
-                "player", "was", "dealt", "combat", "damage", "by",
-            ],
-            &[
-                "an", "opponent", "was", "dealt", "combat", "damage", "by",
-            ],
-            &[
-                "opponent", "was", "dealt", "combat", "damage", "by",
-            ],
+            &["a", "player", "was", "dealt", "combat", "damage", "by",],
+            &["player", "was", "dealt", "combat", "damage", "by",],
+            &["an", "opponent", "was", "dealt", "combat", "damage", "by",],
+            &["opponent", "was", "dealt", "combat", "damage", "by",],
         ]
 );
 const CAST_THIS_SPELL_DURING_YOUR_MAIN_PHASE_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -866,6 +858,7 @@ const LESS_THAN_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["
 const THAN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["than"]);
 const THAN_YOU_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["than", "you"], &["than", "you", "do"]]);
+const THIS_TURN_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this", "turn"]);
 
 fn source_zone_from_words(words: &[&str]) -> Option<Zone> {
     if SOURCE_IN_HAND_PATTERN.matches_words(words) {
@@ -3889,8 +3882,11 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::SourceDealtCombatDamageToPlayerThisTurn);
     }
 
-    if THIS_TURN_TAIL_PATTERN.matches_words(filtered.get(filtered.len().saturating_sub(2)..).unwrap_or_default())
-        && PLAYER_WAS_DEALT_COMBAT_DAMAGE_BY_SUBTYPE_PREFIX_PATTERN.matches_words(&filtered)
+    if THIS_TURN_TAIL_PATTERN.matches_words(
+        filtered
+            .get(filtered.len().saturating_sub(2)..)
+            .unwrap_or_default(),
+    ) && PLAYER_WAS_DEALT_COMBAT_DAMAGE_BY_SUBTYPE_PREFIX_PATTERN.matches_words(&filtered)
     {
         let subtype_idx = filtered.len().saturating_sub(3);
         let subtype = parse_subtype_word(filtered[subtype_idx]).ok_or_else(|| {
@@ -3899,17 +3895,15 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                 filtered.join(" ")
             ))
         })?;
-        let player = if filtered.first() == Some(&"opponent")
-            || filtered.get(1) == Some(&"opponent")
-        {
-            PlayerAst::Opponent
-        } else {
-            PlayerAst::Any
-        };
-        return Ok(PredicateAst::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn {
-            player,
-            subtype,
-        });
+        let player =
+            if filtered.first() == Some(&"opponent") || filtered.get(1) == Some(&"opponent") {
+                PlayerAst::Opponent
+            } else {
+                PlayerAst::Any
+            };
+        return Ok(
+            PredicateAst::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype },
+        );
     }
 
     if CAST_THIS_SPELL_DURING_YOUR_MAIN_PHASE_PATTERN.matches_words(&filtered) {

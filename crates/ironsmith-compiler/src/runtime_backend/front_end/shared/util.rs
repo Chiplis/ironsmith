@@ -31,8 +31,8 @@ use super::keyword_static::keyword_action_to_static_ability;
 use super::keyword_static::parse_this_spell_cost_condition;
 use super::lexer::{
     OwnedLexToken, TokenKind, TokenWordView, contains_token_word_sequence, find_token_kind,
-    find_token_word, lex_line, render_token_slice, token_slice_at_is, token_slice_at_is_any,
-    token_slice_first_is, token_slice_first_is_any, token_slice_first_kind,
+    find_token_word, lex_line, parser_token_word_refs, render_token_slice, token_slice_at_is,
+    token_slice_at_is_any, token_slice_first_is, token_slice_first_is_any, token_slice_first_kind,
     token_slice_starts_with, token_word_refs, word_slice_at_is, word_slice_at_is_any,
     word_slice_contains_any_phrase, word_slice_contains_phrase, word_slice_contains_word,
     word_slice_ends_with, word_slice_ends_with_any, word_slice_eq, word_slice_eq_any,
@@ -43,7 +43,7 @@ use super::object_filters::parse_object_filter;
 use super::token_primitives::{
     self as shared_tokens, find_index, find_window_by, iter_eq, slice_contains, slice_ends_with,
     slice_starts_with, str_contains, str_contains_char, str_find, str_split_once,
-    str_split_once_char, str_starts_with, str_strip_prefix, str_strip_suffix,
+    str_split_once_char, str_starts_with, str_starts_with_char, str_strip_prefix, str_strip_suffix,
     str_strip_suffix_char,
 };
 use std::cell::RefCell;
@@ -281,24 +281,6 @@ pub(crate) fn source_reference_surface_for_span(
 ) -> Option<SourceReferenceSurface> {
     let span = span?;
     SOURCE_REFERENCE_CONTEXT.with(|context| context.borrow().surfaces_by_span.get(&span).cloned())
-}
-
-pub(crate) fn revealed_cards_total_mana_value_x_value(normalized: &str) -> Option<Value> {
-    let tokens = lex_line(normalized, 0).ok()?;
-    (contains_token_word_sequence(
-        &tokens,
-        &[
-            "where", "x", "is", "the", "total", "mana", "value", "of", "all", "cards", "revealed",
-            "this", "way",
-        ],
-    ) || contains_token_word_sequence(
-        &tokens,
-        &[
-            "where", "x", "is", "the", "total", "mana", "value", "of", "cards", "revealed", "this",
-            "way",
-        ],
-    ))
-    .then(|| Value::TotalManaValue(ObjectFilter::tagged(TagKey::from("__public_revealed"))))
 }
 
 pub(crate) fn record_source_reference_surface(
@@ -1598,8 +1580,13 @@ pub(crate) fn classify_instead_followup_text(
     let Ok(tokens) = lex_line(text, 0) else {
         return crate::cards::builders::InsteadSemantics::NonReplacement;
     };
-    let words = token_word_refs(&tokens);
+    classify_instead_followup_tokens(&tokens)
+}
 
+pub(crate) fn classify_instead_followup_tokens(
+    tokens: &[OwnedLexToken],
+) -> crate::cards::builders::InsteadSemantics {
+    let words = token_word_refs(tokens);
     let first_instead = word_slice_find_word(&words, INSTEAD_WORD);
     if first_instead.is_none() {
         return crate::cards::builders::InsteadSemantics::NonReplacement;
@@ -2261,8 +2248,12 @@ pub(crate) fn parse_alternative_cast_words(words: &[&str]) -> Option<(Alternativ
 }
 
 pub(crate) fn parse_unsigned_pt_word(word: &str) -> Option<(i32, i32)> {
-    let (power, toughness) = str_split_once(word, "/")?;
-    if power.starts_with(['+', '-']) || toughness.starts_with(['+', '-']) {
+    let (power, toughness) = str_split_once_char(word, '/')?;
+    if str_starts_with_char(power, '+')
+        || str_starts_with_char(toughness, '+')
+        || str_starts_with_char(power, '-')
+        || str_starts_with_char(toughness, '-')
+    {
         return None;
     }
     let power = power.parse::<i32>().ok()?;
@@ -2480,10 +2471,20 @@ fn word_has_char_suffix(word: &str, suffix: &[char]) -> bool {
         .all(|expected| chars.next().is_some_and(|ch| ch == *expected))
 }
 
-fn word_is_cycling_keyword_marker(word: &str) -> bool {
-    CYCLING_WORD_PATTERN.matches_word(word)
-        || (word.chars().count() > CYCLING_SUFFIX_CHARS.len()
-            && word_has_char_suffix(word, CYCLING_SUFFIX_CHARS))
+pub(crate) fn word_is_cycling_keyword_marker(word: &str) -> bool {
+    cycling_keyword_root(word).is_some()
+}
+
+pub(crate) fn cycling_keyword_root(word: &str) -> Option<&str> {
+    if CYCLING_WORD_PATTERN.matches_word(word) {
+        return Some("");
+    }
+    if word.chars().count() > CYCLING_SUFFIX_CHARS.len()
+        && word_has_char_suffix(word, CYCLING_SUFFIX_CHARS)
+    {
+        return word.get(..word.len().saturating_sub(CYCLING_SUFFIX_CHARS.len()));
+    }
+    None
 }
 
 pub(crate) fn parse_filter_counter_constraint_words(
@@ -3745,6 +3746,29 @@ mod tests {
     }
 
     #[test]
+    fn parse_power_toughness_accepts_star_plus_forms() {
+        assert_eq!(
+            parse_power_toughness("*+1/2"),
+            Some(PowerToughness::new(PtValue::StarPlus(1), PtValue::Fixed(2)))
+        );
+        assert_eq!(
+            parse_power_toughness("1+*/0.5"),
+            Some(PowerToughness::new(PtValue::StarPlus(1), PtValue::Fixed(0)))
+        );
+        assert_eq!(
+            parse_power_toughness("*/*"),
+            Some(PowerToughness::new(PtValue::Star, PtValue::Star))
+        );
+    }
+
+    #[test]
+    fn parse_unsigned_pt_word_rejects_signed_components() {
+        assert_eq!(parse_unsigned_pt_word("2/3"), Some((2, 3)));
+        assert_eq!(parse_unsigned_pt_word("+2/3"), None);
+        assert_eq!(parse_unsigned_pt_word("2/-3"), None);
+    }
+
+    #[test]
     fn parse_target_phrase_recognizes_bare_the_other_reference() {
         let tokens = lex_line("the other", 0).unwrap();
         let target = parse_target_phrase(&tokens).expect("the other should parse as other target");
@@ -4872,19 +4896,21 @@ fn parse_life_advantage_player_target_filter(words: &[&str]) -> Option<PlayerFil
     })
 }
 
-pub(crate) fn parse_saga_chapter_prefix(line: &str) -> Option<(Vec<u32>, &str)> {
-    let (prefix, rest) = str_split_once(line, "—").or_else(|| str_split_once(line, " - "))?;
+pub(crate) fn parse_saga_chapter_prefix(line: &str) -> Option<(Vec<u32>, String)> {
+    let tokens = lex_line(line.trim(), 0).ok()?;
+    let dash_idx = tokens
+        .iter()
+        .position(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash))?;
+    let prefix_tokens = tokens.get(..dash_idx)?;
+    let rest_tokens = tokens.get(dash_idx + 1..)?;
 
     let mut chapters = Vec::new();
-    for part in prefix.split(',') {
-        let roman = part.trim();
-        if roman.is_empty() {
-            continue;
-        }
+    for roman in TokenWordView::new(prefix_tokens).word_refs() {
         chapters.push(roman_to_int(roman)?);
     }
 
-    (!chapters.is_empty()).then_some((chapters, rest.trim()))
+    let rest = render_token_slice(rest_tokens).trim().to_string();
+    (!chapters.is_empty() && !rest.is_empty()).then_some((chapters, rest))
 }
 
 fn roman_to_int(roman: &str) -> Option<u32> {
@@ -4900,50 +4926,127 @@ fn roman_to_int(roman: &str) -> Option<u32> {
 }
 
 pub(crate) fn parse_level_header(line: &str) -> Option<(u32, Option<u32>)> {
-    let lower = line.trim().to_ascii_lowercase();
-    let rest = str_strip_prefix(lower.as_str(), "level ")?;
-    let token = rest.split_whitespace().next()?;
-    if let Some(without_plus) = str_strip_suffix(token, "+") {
-        let min = without_plus.parse::<u32>().ok()?;
-        return Some((min, None));
+    let tokens = lex_line(line.trim(), 0).ok()?;
+    let words = TokenWordView::new(&tokens);
+    if !words.starts_with(&["level"]) {
+        return None;
     }
-    if let Some((start, end)) = str_split_once(token, "-") {
-        let min = start.parse::<u32>().ok()?;
-        let max = end.parse::<u32>().ok()?;
-        return Some((min, Some(max)));
+
+    let range_start = words.token_index_after_words(1)?;
+    let range_tokens = tokens.get(range_start..)?;
+    if let Some(parsed) = parse_level_header_range_tokens(range_tokens) {
+        return Some(parsed);
     }
-    let value = token.parse::<u32>().ok()?;
-    Some((value, Some(value)))
+
+    let range_word = words.get(1)?;
+    parse_level_header_range_word(range_word)
+}
+
+fn parse_level_header_range_tokens(tokens: &[OwnedLexToken]) -> Option<(u32, Option<u32>)> {
+    let first = tokens.first()?;
+    let min = parse_u32_token(first)?;
+    match tokens.get(1).map(|token| token.kind) {
+        Some(TokenKind::Plus) => Some((min, None)),
+        Some(TokenKind::Dash) => {
+            let max = parse_u32_token(tokens.get(2)?)?;
+            Some((min, Some(max)))
+        }
+        _ => Some((min, Some(min))),
+    }
+}
+
+fn parse_level_header_range_word(word: &str) -> Option<(u32, Option<u32>)> {
+    let mut chars = word.chars();
+    let min = take_ascii_u32(&mut chars)?;
+    match chars.next() {
+        None => Some((min, Some(min))),
+        Some('+') if chars.next().is_none() => Some((min, None)),
+        Some('-') => {
+            let max = take_ascii_u32(&mut chars)?;
+            chars.next().is_none().then_some((min, Some(max)))
+        }
+        _ => None,
+    }
+}
+
+fn parse_u32_token(token: &OwnedLexToken) -> Option<u32> {
+    parse_level_header_range_word(token.parser_text())
+        .and_then(|(min, max)| if max == Some(min) { Some(min) } else { None })
+}
+
+fn take_ascii_u32(chars: &mut std::str::Chars<'_>) -> Option<u32> {
+    let mut value = 0u32;
+    let mut consumed = false;
+    while let Some(ch) = chars.as_str().chars().next() {
+        let Some(digit) = ch.to_digit(10) else {
+            break;
+        };
+        consumed = true;
+        value = value.checked_mul(10)?.checked_add(digit)?;
+        chars.next();
+    }
+    consumed.then_some(value)
 }
 
 pub(crate) fn parse_power_toughness(raw: &str) -> Option<PowerToughness> {
     let trimmed = raw.trim();
-    let parts: Vec<&str> = trimmed.split('/').collect();
-    if parts.len() != 2 {
-        return None;
-    }
+    let (power_text, toughness_text) = trimmed.split_once('/')?;
 
-    let power = parse_pt_value(parts[0].trim())?;
-    let toughness = parse_pt_value(parts[1].trim())?;
+    let power = parse_pt_value(power_text)?;
+    let toughness = parse_pt_value(toughness_text)?;
     Some(PowerToughness::new(power, toughness))
 }
 
 fn parse_pt_value(raw: &str) -> Option<PtValue> {
-    if raw == ".5" || raw == "0.5" {
+    let raw = raw.trim();
+    if char_sequence_eq(raw, &['.', '5']) || char_sequence_eq(raw, &['0', '.', '5']) {
         return Some(PtValue::Fixed(0));
     }
-    if raw == "*" {
+    if char_sequence_eq(raw, &['*']) {
         return Some(PtValue::Star);
     }
-    if let Some(stripped) = str_strip_prefix(raw, "*+") {
+    if let Some(stripped) = strip_char_prefix_sequence(raw, &['*', '+']) {
         let value = stripped.trim().parse::<i32>().ok()?;
         return Some(PtValue::StarPlus(value));
     }
-    if let Some(stripped) = str_strip_suffix(raw, "+*") {
+    if let Some(stripped) = strip_char_suffix_sequence(raw, &['+', '*']) {
         let value = stripped.trim().parse::<i32>().ok()?;
         return Some(PtValue::StarPlus(value));
     }
     raw.parse::<i32>().ok().map(PtValue::Fixed)
+}
+
+fn char_sequence_eq(text: &str, expected: &[char]) -> bool {
+    let mut chars = text.chars();
+    expected
+        .iter()
+        .all(|expected| chars.next().is_some_and(|ch| ch == *expected))
+        && chars.next().is_none()
+}
+
+fn strip_char_prefix_sequence<'a>(text: &'a str, expected: &[char]) -> Option<&'a str> {
+    let mut rest = text;
+    for expected in expected {
+        let mut chars = rest.chars();
+        if chars.next()? != *expected {
+            return None;
+        }
+        rest = chars.as_str();
+    }
+    Some(rest)
+}
+
+fn strip_char_suffix_sequence<'a>(text: &'a str, expected: &[char]) -> Option<&'a str> {
+    let mut end = text.len();
+    for expected in expected.iter().rev() {
+        let head = text.get(..end)?;
+        let ch = head.chars().next_back()?;
+        if ch != *expected {
+            return None;
+        }
+        end = end.saturating_sub(ch.len_utf8());
+    }
+    text.get(..end)
 }
 
 pub(crate) fn parse_level_up_line(
@@ -4991,11 +5094,10 @@ pub(crate) fn parse_level_up_line_lexed(
 }
 
 pub(crate) fn preserve_keyword_prefix_for_parse(prefix: &str) -> bool {
-    let words: Vec<&str> = prefix
-        .split_whitespace()
-        .map(|word| word.trim_matches(|ch: char| !ch.is_ascii_alphanumeric()))
-        .filter(|word| !word.is_empty())
-        .collect();
+    let Some(tokens) = lex_line(prefix.trim(), 0).ok() else {
+        return false;
+    };
+    let words = parser_token_word_refs(&tokens);
     let Some(first) = words.first().copied() else {
         return false;
     };
@@ -5102,7 +5204,7 @@ pub(crate) fn mana_pips_from_token(token: &OwnedLexToken) -> Option<Vec<ManaSymb
             .ok()
             .map(|symbol| vec![symbol]),
         TokenKind::ManaGroup => {
-            let inner = token.slice.trim_start_matches('{').trim_end_matches('}');
+            let inner = token.mana_group_inner()?;
             if inner.is_empty() {
                 return None;
             }

@@ -25,7 +25,10 @@ impl EffectExecutor for SkipMainPhasesThisTurnEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         if player_id == game.turn.active_player
-            && matches!(game.turn.phase, Phase::Beginning | Phase::FirstMain | Phase::Combat)
+            && matches!(
+                game.turn.phase,
+                Phase::Beginning | Phase::FirstMain | Phase::Combat
+            )
         {
             game.turn_store
                 .skip_current_turn_main_phases

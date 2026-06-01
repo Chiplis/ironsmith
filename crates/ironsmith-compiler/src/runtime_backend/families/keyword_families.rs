@@ -4,7 +4,7 @@ use super::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape}
 use super::grammar::primitives::{self as grammar, TokenWordView};
 use super::keyword_registry as registry;
 use super::lexer::OwnedLexToken;
-use super::token_primitives::str_strip_suffix;
+use super::util::word_is_cycling_keyword_marker;
 
 pub(super) type KeywordRuleFn = fn(
     &super::preprocess::PreprocessedLine,
@@ -393,7 +393,7 @@ pub(super) fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<Ke
     if word_view.at_is(0, "basic") {
         return None;
     }
-    if str_strip_suffix(first, "cycling").is_some() {
+    if word_is_cycling_keyword_marker(first) {
         return Some(KeywordDispatchHint::Cycling);
     }
     if ENCORE_FALLBACK_PATTERN.matches_words(&word_refs) {

@@ -471,9 +471,16 @@ const CLAUSE_PREVENT_ALL_DAMAGE_THIS_TURN_TO_PREFIX: &[&str] = &[
 const CLAUSE_PREVENT_ALL_DAMAGE_THIS_TURN_BY_PREFIX: &[&str] = &[
     "prevent", "all", "damage", "that", "would", "be", "dealt", "this", "turn", "by",
 ];
+const CLAUSE_PREVENT_ALL_DAMAGE_TO_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix CLAUSE_PREVENT_ALL_DAMAGE_TO_PREFIX; suffix &["this", "turn"]);
+const CLAUSE_PREVENT_ALL_DAMAGE_THIS_TURN_TO_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix CLAUSE_PREVENT_ALL_DAMAGE_THIS_TURN_TO_PREFIX);
+const CLAUSE_PREVENT_ALL_DAMAGE_THIS_TURN_BY_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix CLAUSE_PREVENT_ALL_DAMAGE_THIS_TURN_BY_PREFIX);
 const CLAUSE_ALL_DAMAGE_WOULD_BE_DEALT_TO_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["all", "damage", "that", "would", "be", "dealt", "to"]);
 const CLAUSE_SOURCES_SUFFIX: &[&str] = &["sources"];
+const CLAUSE_SOURCES_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(suffix & ["sources"]);
 const CLAUSE_THE_NEXT_TIME_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["the", "next", "time"]);
 const CLAUSE_THE_NEXT_PREFIX_PATTERN: ClauseShape<'static> =
@@ -1580,15 +1587,13 @@ pub(crate) fn parse_prevent_all_damage_clause(
     let clause = LexedClause::new(tokens);
     let clause_words = clause.word_refs();
     let clause_text = clause.text();
-    if !clause.starts_with(CLAUSE_PREVENT_ALL_DAMAGE_TO_PREFIX)
-        && !clause.starts_with(CLAUSE_PREVENT_ALL_DAMAGE_THIS_TURN_TO_PREFIX)
-        && !clause.starts_with(CLAUSE_PREVENT_ALL_DAMAGE_THIS_TURN_BY_PREFIX)
-    {
+    let Some(shape) = classify_prevent_all_damage_clause(&clause_words) else {
         return Ok(None);
-    }
-    if clause.starts_with(CLAUSE_PREVENT_ALL_DAMAGE_THIS_TURN_BY_PREFIX) {
+    };
+
+    if let PreventAllDamageClauseShape::DurationFirstSource { prefix_len } = shape {
         let source_clause = clause
-            .after_words(CLAUSE_PREVENT_ALL_DAMAGE_THIS_TURN_BY_PREFIX.len())
+            .after_words(prefix_len)
             .unwrap_or_else(|| clause.from(tokens.len()))
             .trimmed();
         if source_clause.is_empty() {
@@ -1597,7 +1602,7 @@ pub(crate) fn parse_prevent_all_damage_clause(
                 clause_text
             )));
         }
-        let source_filter_clause = if source_clause.ends_with(CLAUSE_SOURCES_SUFFIX) {
+        let source_filter_clause = if CLAUSE_SOURCES_SUFFIX_PATTERN.matches(source_clause) {
             source_clause
                 .strip_suffix_clause(CLAUSE_SOURCES_SUFFIX)
                 .unwrap_or(source_clause)
@@ -1625,30 +1630,27 @@ pub(crate) fn parse_prevent_all_damage_clause(
             ),
         ));
     }
-    let target_clause = if clause.starts_with(CLAUSE_PREVENT_ALL_DAMAGE_THIS_TURN_TO_PREFIX) {
-        clause
-            .after_words(CLAUSE_PREVENT_ALL_DAMAGE_THIS_TURN_TO_PREFIX.len())
+
+    let target_clause = match shape {
+        PreventAllDamageClauseShape::DurationFirstTarget { prefix_len } => clause
+            .after_words(prefix_len)
             .unwrap_or_else(|| clause.from(tokens.len()))
-            .trimmed()
-    } else {
-        if clause_words.len() <= CLAUSE_PREVENT_ALL_DAMAGE_TO_PREFIX.len() + 1 {
+            .trimmed(),
+        PreventAllDamageClauseShape::TargetFirst { prefix_len } => {
+            if clause_words.len() <= prefix_len + 1 {
+                return Err(CardTextError::ParseError(format!(
+                    "missing prevent-all damage target (clause: '{}')",
+                    clause_text
+                )));
+            }
+            clause.between_words_trimmed(prefix_len, clause_words.len() - 2)
+        }
+        PreventAllDamageClauseShape::DurationFirstSource { .. } => {
             return Err(CardTextError::ParseError(format!(
                 "missing prevent-all damage target (clause: '{}')",
                 clause_text
             )));
         }
-        if !CLAUSE_THIS_TURN_PATTERN
-            .matches_words(&clause_words[clause_words.len().saturating_sub(2)..])
-        {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported prevent-all damage duration (clause: '{}')",
-                clause_text
-            )));
-        }
-        clause.between_words_trimmed(
-            CLAUSE_PREVENT_ALL_DAMAGE_TO_PREFIX.len(),
-            clause_words.len() - 2,
-        )
     };
     if target_clause.is_empty() {
         return Err(CardTextError::ParseError(format!(
@@ -1663,6 +1665,32 @@ pub(crate) fn parse_prevent_all_damage_clause(
         target,
         Until::EndOfTurn,
     )))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PreventAllDamageClauseShape {
+    DurationFirstSource { prefix_len: usize },
+    DurationFirstTarget { prefix_len: usize },
+    TargetFirst { prefix_len: usize },
+}
+
+fn classify_prevent_all_damage_clause(words: &[&str]) -> Option<PreventAllDamageClauseShape> {
+    if let Some(prefix_len) =
+        CLAUSE_PREVENT_ALL_DAMAGE_THIS_TURN_BY_PATTERN.matched_prefix_len(words)
+    {
+        return Some(PreventAllDamageClauseShape::DurationFirstSource { prefix_len });
+    }
+    if let Some(prefix_len) =
+        CLAUSE_PREVENT_ALL_DAMAGE_THIS_TURN_TO_PATTERN.matched_prefix_len(words)
+    {
+        return Some(PreventAllDamageClauseShape::DurationFirstTarget { prefix_len });
+    }
+    if let Some(prefix_len) = CLAUSE_PREVENT_ALL_DAMAGE_TO_PATTERN.matched_prefix_len(words)
+        && CLAUSE_PREVENT_ALL_DAMAGE_TO_PATTERN.matches_words(words)
+    {
+        return Some(PreventAllDamageClauseShape::TargetFirst { prefix_len });
+    }
+    None
 }
 
 pub(crate) fn parse_can_attack_as_though_no_defender_clause(

@@ -616,7 +616,8 @@ fn parse_destroy_target_dealt_damage_to_player_this_turn(
     let target_cutoff = token_index_for_word_index(tokens, that_idx).unwrap_or(tokens.len());
     let player_start =
         token_index_for_word_index(tokens, player_start_word_idx).unwrap_or(tokens.len());
-    let player_end = token_index_for_word_index(tokens, player_end_word_idx).unwrap_or(tokens.len());
+    let player_end =
+        token_index_for_word_index(tokens, player_end_word_idx).unwrap_or(tokens.len());
     let target_tokens = trim_commas(&tokens[..target_cutoff]);
     let player_tokens = trim_commas(&tokens[player_start..player_end]);
     if target_tokens.is_empty() || player_tokens.is_empty() {

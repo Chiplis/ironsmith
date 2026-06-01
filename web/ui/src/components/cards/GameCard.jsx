@@ -682,6 +682,12 @@ function handCardFooterStat(card) {
   return null;
 }
 
+function hasVisibleManaCost(card) {
+  const manaCost = card?.mana_cost;
+  if (manaCost == null) return false;
+  return String(manaCost).trim().length > 0;
+}
+
 function battlefieldPrimaryInfo(card) {
   if (card?.power_toughness) {
     return {
@@ -930,6 +936,8 @@ export default function GameCard({
   const battlefieldSideLeftClipId = `${battlefieldSvgIdBase}-side-left-clip`;
   const battlefieldSideRightClipId = `${battlefieldSvgIdBase}-side-right-clip`;
   const handFooterStat = variant === "hand" ? handCardFooterStat(card) : null;
+  const handHasVisibleManaCost = variant === "hand" && hasVisibleManaCost(card);
+  const showHandFooter = variant === "hand" && handHasVisibleManaCost;
   const debugSimilarityLabel = semanticScore != null ? formatSemanticScore(semanticScore) : null;
   const showDebugSimilarityBadge = (
     inspectorDebug
@@ -1224,6 +1232,7 @@ export default function GameCard({
         variant === "battlefield" && "field-card",
         useTokenBattlefield && "battlefield-token-card",
         variant === "hand" && "hand-card",
+        variant === "hand" && !handHasVisibleManaCost && "hand-card-no-visible-mana-cost",
         compact && "w-[96px] min-w-[96px] min-h-[134px] p-1 text-[14px]",
         !compact && variant === "hand" && "flex-1 basis-0 min-w-0 max-w-[124px] min-h-[100px]",
         !compact && variant !== "hand" && "w-[124px] min-w-[124px] min-h-[172px]",
@@ -1545,9 +1554,9 @@ export default function GameCard({
         )}
 
         {/* Mana cost + P/T bar (hand cards) */}
-        {variant === "hand" && (card.mana_cost || handFooterStat) && (
+        {showHandFooter && (
           <div className="hand-card-bottom-bar absolute bottom-0 left-0 right-0 z-2 flex items-center justify-between px-1 py-0.5 bg-[rgba(6,10,16,0.92)]">
-            {card.mana_cost ? (
+            {handHasVisibleManaCost ? (
               <span className="inline-flex items-center gap-px">
                 <ManaCostIcons cost={card.mana_cost} size={14} />
               </span>

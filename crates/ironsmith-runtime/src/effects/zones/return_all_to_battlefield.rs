@@ -38,7 +38,9 @@ impl EffectExecutor for ReturnAllToBattlefieldEffect {
                     BattlefieldEntryOptions::specific(ctx.controller, self.tapped)
                 }
             };
-            if self.face_down && let Some(card) = game.object_mut(object_id) {
+            if self.face_down
+                && let Some(card) = game.object_mut(object_id)
+            {
                 card.apply_face_down_cast_overlay();
             }
             let outcome = move_to_battlefield_with_options(game, ctx, object_id, options);
@@ -49,7 +51,9 @@ impl EffectExecutor for ReturnAllToBattlefieldEffect {
                     affected_memory.push(memory);
                 }
                 BattlefieldEntryOutcome::Prevented => {
-                    if self.face_down && let Some(card) = game.object_mut(object_id) {
+                    if self.face_down
+                        && let Some(card) = game.object_mut(object_id)
+                    {
                         card.end_face_down_cast_overlay();
                     }
                 }

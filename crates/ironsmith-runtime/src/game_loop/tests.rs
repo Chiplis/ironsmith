@@ -303,11 +303,20 @@ fn the_eternity_elevator_station_adds_charge_counters_equal_to_tapped_creature_p
         .iter()
         .find_map(|ability| match &ability.kind {
             AbilityKind::Activated(activated)
-                if activated.effects.flattened_default_effects().iter().any(|effect| {
-                    effect
-                        .downcast_ref::<crate::effects::PutCountersEffect>()
-                        .is_some_and(|put| put.counter_type == crate::object::CounterType::Charge)
-                }) => Some(activated),
+                if activated
+                    .effects
+                    .flattened_default_effects()
+                    .iter()
+                    .any(|effect| {
+                        effect
+                            .downcast_ref::<crate::effects::PutCountersEffect>()
+                            .is_some_and(|put| {
+                                put.counter_type == crate::object::CounterType::Charge
+                            })
+                    }) =>
+            {
+                Some(activated)
+            }
             _ => None,
         })
         .expect("The Eternity Elevator should have a station ability");
@@ -456,11 +465,7 @@ fn block_lost_monarch_attacker(
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
-fn record_combat_damage_to_player(
-    game: &mut GameState,
-    source: ObjectId,
-    player: PlayerId,
-) {
+fn record_combat_damage_to_player(game: &mut GameState, source: ObjectId, player: PlayerId) {
     let event = TriggerEvent::new_with_provenance(
         crate::events::DamageEvent::with_cause(
             source,
@@ -556,7 +561,10 @@ fn lost_monarch_of_ifnir_grants_afflict_only_to_other_zombies_you_control() {
         bob,
         AttackTarget::Player(bob),
     );
-    assert!(queue.entries.is_empty(), "non-Zombies should not gain afflict");
+    assert!(
+        queue.entries.is_empty(),
+        "non-Zombies should not gain afflict"
+    );
     assert_eq!(game.player(bob).expect("bob exists").life, 14);
 
     let queue = block_lost_monarch_attacker(
@@ -581,8 +589,7 @@ fn lost_monarch_of_ifnir_second_main_trigger_requires_zombie_combat_damage() {
 
     let monarch = lost_monarch_of_ifnir_definition();
     game.create_object_from_definition(&monarch, alice, Zone::Battlefield);
-    let non_zombie =
-        create_typed_creature(&mut game, "Combat Human", alice, vec![Subtype::Human]);
+    let non_zombie = create_typed_creature(&mut game, "Combat Human", alice, vec![Subtype::Human]);
     for idx in 0..3 {
         let card = CardBuilder::new(CardId::new(), &format!("Library Card {idx}"))
             .card_types(vec![CardType::Instant])
@@ -644,7 +651,10 @@ fn lost_monarch_of_ifnir_second_main_trigger_mills_and_may_return_creature() {
         .power_toughness(PowerToughness::fixed(1, 1))
         .build();
     let creature_id = game.create_object_from_card(&creature_card, alice, Zone::Graveyard);
-    let creature_stable_id = game.object(creature_id).expect("creature card exists").stable_id;
+    let creature_stable_id = game
+        .object(creature_id)
+        .expect("creature card exists")
+        .stable_id;
     record_combat_damage_to_player(&mut game, zombie, bob);
 
     put_lost_monarch_second_main_trigger_on_stack(&mut game);
@@ -661,7 +671,10 @@ fn lost_monarch_of_ifnir_second_main_trigger_mills_and_may_return_creature() {
         .find_object_by_stable_id(creature_stable_id)
         .expect("returned creature card should still exist");
     assert!(
-        game.player(alice).expect("alice exists").hand.contains(&returned_id),
+        game.player(alice)
+            .expect("alice exists")
+            .hand
+            .contains(&returned_id),
         "accepting the may choice should return a creature card to hand"
     );
 }
@@ -1263,9 +1276,7 @@ fn put_torch_the_witness_on_stack(
 ) {
     let def = torch_the_witness_definition();
     let spell_id = game.create_object_from_definition(&def, controller, Zone::Stack);
-    game.object_mut(spell_id)
-        .expect("Torch on stack")
-        .x_value = Some(x_value);
+    game.object_mut(spell_id).expect("Torch on stack").x_value = Some(x_value);
     game.push_to_stack(
         StackEntry::new(spell_id, controller)
             .with_x(x_value)
@@ -1280,7 +1291,10 @@ fn torch_the_witness_targets_only_battlefield_creatures() {
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     let spell = torch_the_witness_definition();
-    let effects = spell.spell_effect.as_ref().expect("Torch should have effects");
+    let effects = spell
+        .spell_effect
+        .as_ref()
+        .expect("Torch should have effects");
 
     let creature = create_creature(&mut game, "Witness Target", bob, 2, 2);
     let artifact = game.create_object_from_card(
@@ -1292,7 +1306,11 @@ fn torch_the_witness_targets_only_battlefield_creatures() {
     );
 
     let requirements = extract_target_requirements(&game, effects, alice, None);
-    assert_eq!(requirements.len(), 1, "Torch should have one target requirement");
+    assert_eq!(
+        requirements.len(),
+        1,
+        "Torch should have one target requirement"
+    );
     let legal_targets = &requirements[0].legal_targets;
     assert!(
         legal_targets.contains(&Target::Object(creature)),
@@ -1576,7 +1594,8 @@ fn scuttling_sentinel_enter_trigger_buffs_only_another_creature_you_control_unti
                 .map(|requirement| requirement.legal_targets.clone())
                 .unwrap_or_default();
             assert!(
-                self.seen_legal_targets.contains(&Target::Object(self.chosen)),
+                self.seen_legal_targets
+                    .contains(&Target::Object(self.chosen)),
                 "the chosen creature should be a legal Scuttling Sentinel trigger target"
             );
             vec![Target::Object(self.chosen)]
@@ -5110,7 +5129,9 @@ fn minds_dilation_first_opponent_spell_exiles_that_players_top_nonland_and_casts
         .find_object_by_stable_id(charlie_top_stable)
         .expect("Charlie's library card should still exist");
     assert_eq!(
-        game.object(charlie_id).expect("Charlie's card should exist").zone,
+        game.object(charlie_id)
+            .expect("Charlie's card should exist")
+            .zone,
         Zone::Library,
         "Mind's Dilation should exile the triggering player's top card, not another opponent's"
     );
@@ -6370,7 +6391,9 @@ fn ruin_raider_end_step_event(player: PlayerId) -> TriggerEvent {
 #[cfg(ironsmith_runtime_parser_tests)]
 fn ruin_raider_top_card(raw_id: u32, name: &str, mana_value: u8) -> crate::card::Card {
     CardBuilder::new(CardId::from_raw(raw_id), name)
-        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(mana_value)]]))
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
+            mana_value,
+        )]]))
         .card_types(vec![CardType::Artifact])
         .build()
 }
@@ -6431,9 +6454,11 @@ fn ruin_raider_reveals_top_card_puts_it_into_hand_and_loses_life_after_raid() {
     resolve_stack_entry_with(&mut game, &mut dm).expect("Ruin Raider trigger should resolve");
 
     assert!(
-        dm.view_calls.iter().any(|(_, subject, zone, public, cards)| {
-            *subject == alice && *zone == Zone::Library && *public && cards.contains(&top_id)
-        }),
+        dm.view_calls
+            .iter()
+            .any(|(_, subject, zone, public, cards)| {
+                *subject == alice && *zone == Zone::Library && *public && cards.contains(&top_id)
+            }),
         "Ruin Raider should publicly reveal the top card of Alice's library"
     );
     let revealed_id = game
@@ -11933,7 +11958,11 @@ fn elemental_teachings_buries_two_opponent_chosen_lands_and_recruits_the_rest_ta
                 "the opponent should make the divvy choice"
             );
             assert_eq!(ctx.min, 2, "the opponent should choose exactly two cards");
-            assert_eq!(ctx.max, Some(2), "the opponent should choose exactly two cards");
+            assert_eq!(
+                ctx.max,
+                Some(2),
+                "the opponent should choose exactly two cards"
+            );
 
             ["Plains", "Island"]
                 .into_iter()
@@ -12006,11 +12035,17 @@ fn elemental_teachings_buries_two_opponent_chosen_lands_and_recruits_the_rest_ta
     };
 
     assert!(
-        zone_has_name(&game.player(alice).expect("alice exists").graveyard, "Plains"),
+        zone_has_name(
+            &game.player(alice).expect("alice exists").graveyard,
+            "Plains"
+        ),
         "the first opponent-chosen land should go to the graveyard"
     );
     assert!(
-        zone_has_name(&game.player(alice).expect("alice exists").graveyard, "Island"),
+        zone_has_name(
+            &game.player(alice).expect("alice exists").graveyard,
+            "Island"
+        ),
         "the second opponent-chosen land should go to the graveyard"
     );
     let swamp = battlefield_id("Swamp");
@@ -12024,7 +12059,10 @@ fn elemental_teachings_buries_two_opponent_chosen_lands_and_recruits_the_rest_ta
         "the second unchosen land should enter tapped"
     );
     assert!(
-        zone_has_name(&game.player(alice).expect("alice exists").library, "Elvish Mystic"),
+        zone_has_name(
+            &game.player(alice).expect("alice exists").library,
+            "Elvish Mystic"
+        ),
         "nonland cards should remain in the library"
     );
 }
@@ -17450,7 +17488,10 @@ impl DecisionMaker for RecordingLifeBids {
             .responses
             .pop_front()
             .expect("expected another life-bid prompt");
-        assert_eq!(ctx.player, expected_player, "life-bid prompt order mismatch");
+        assert_eq!(
+            ctx.player, expected_player,
+            "life-bid prompt order mismatch"
+        );
         self.prompted_players.push(ctx.player);
         if let Some(bid) = response {
             self.pending_bid = Some((ctx.player, bid));
@@ -17469,7 +17510,10 @@ impl DecisionMaker for RecordingLifeBids {
             .pending_bid
             .take()
             .expect("number prompt should follow a top-bid choice");
-        assert_eq!(ctx.player, expected_player, "life-bid number prompt mismatch");
+        assert_eq!(
+            ctx.player, expected_player,
+            "life-bid number prompt mismatch"
+        );
         bid
     }
 }
@@ -22332,7 +22376,8 @@ fn test_zilortha_strength_incarnate_power_sets_lethal_damage_for_your_creatures(
         crate::static_abilities::StaticAbilityId::LethalDamageToCreaturesYouControlUsesPower,
     ));
 
-    let high_power_creature = create_creature(&mut game, "Alice's High-Power Creature", alice, 5, 2);
+    let high_power_creature =
+        create_creature(&mut game, "Alice's High-Power Creature", alice, 5, 2);
     game.mark_damage(high_power_creature, 4);
     crate::rules::state_based::apply_state_based_actions(&mut game);
 
@@ -22348,10 +22393,9 @@ fn test_zilortha_strength_incarnate_power_sets_lethal_damage_for_your_creatures(
         "marked damage should remain between SBA checks until cleanup"
     );
     assert!(
-        crate::rules::state_based::check_state_based_actions(&game)
-            .contains(&crate::rules::state_based::StateBasedAction::ObjectDies(
-                high_power_creature,
-            )),
+        crate::rules::state_based::check_state_based_actions(&game).contains(
+            &crate::rules::state_based::StateBasedAction::ObjectDies(high_power_creature,)
+        ),
         "Zilortha should make 5 damage lethal to Alice's 5-power creature"
     );
     crate::rules::state_based::apply_state_based_actions(&mut game);
@@ -22438,7 +22482,13 @@ fn test_zilortha_strength_incarnate_lethal_damage_interacts_with_deathtouch_and_
         "deathtouch damage should still destroy Alice's creature even when Zilortha makes its power 0 the lethal threshold"
     );
 
-    let zero_power_victim = create_creature(&mut game, "Alice's Damaged Zero-Power Creature", alice, 0, 5);
+    let zero_power_victim = create_creature(
+        &mut game,
+        "Alice's Damaged Zero-Power Creature",
+        alice,
+        0,
+        5,
+    );
     game.mark_damage(zero_power_victim, 1);
     crate::rules::state_based::apply_state_based_actions(&mut game);
 
@@ -22471,9 +22521,9 @@ fn test_zilortha_strength_incarnate_lethal_damage_interacts_with_deathtouch_and_
         "Zilortha should make the trampler assign all 5 damage to Alice's 5-power blocker"
     );
     assert!(
-        events.iter().any(|event| event.target
-            == DamageEventTarget::Object(blocker_id)
-            && event.amount == 5),
+        events.iter().any(
+            |event| event.target == DamageEventTarget::Object(blocker_id) && event.amount == 5
+        ),
         "combat damage should assign lethal damage by blocker power under Zilortha, got {events:?}"
     );
 
@@ -22482,14 +22532,17 @@ fn test_zilortha_strength_incarnate_lethal_damage_interacts_with_deathtouch_and_
         .power_toughness(PowerToughness::fixed(5, 5))
         .parse_text("Trample")
         .expect("second trample attacker should parse");
-    let second_attacker_id = game.create_object_from_definition(&second_trampler, bob, Zone::Battlefield);
+    let second_attacker_id =
+        game.create_object_from_definition(&second_trampler, bob, Zone::Battlefield);
     let zero_power_blocker = create_creature(&mut game, "Alice's Zero-Power Blocker", alice, 0, 5);
 
     let mut second_combat = CombatState::default();
-    second_combat.attackers.push(crate::combat_state::AttackerInfo {
-        creature: second_attacker_id,
-        target: AttackTarget::Player(alice),
-    });
+    second_combat
+        .attackers
+        .push(crate::combat_state::AttackerInfo {
+            creature: second_attacker_id,
+            target: AttackTarget::Player(alice),
+        });
     second_combat
         .blockers
         .insert(second_attacker_id, vec![zero_power_blocker]);
@@ -23476,15 +23529,15 @@ fn corpse_lunge_cast_exiles_graveyard_creature_and_deals_its_power() {
     let mut reached_priority = false;
     for _ in 0..8 {
         progress = match progress {
-            GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(_)) => {
-                apply_priority_response(
-                    &mut game,
-                    &mut trigger_queue,
-                    &mut state,
-                    &PriorityResponse::Targets(vec![Target::Object(target_creature_id)]),
-                )
-                .expect("Corpse Lunge should accept creature target")
-            }
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Targets(_),
+            ) => apply_priority_response(
+                &mut game,
+                &mut trigger_queue,
+                &mut state,
+                &PriorityResponse::Targets(vec![Target::Object(target_creature_id)]),
+            )
+            .expect("Corpse Lunge should accept creature target"),
             GameProgress::NeedsDecisionCtx(
                 crate::decisions::context::DecisionContext::SelectOptions(ctx),
             ) => {
@@ -23519,14 +23572,19 @@ fn corpse_lunge_cast_exiles_graveyard_creature_and_deals_its_power() {
                 )
                 .expect("Corpse Lunge should accept exiling chosen graveyard creature")
             }
-            GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Priority(_)) => {
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Priority(_),
+            ) => {
                 reached_priority = true;
                 break;
             }
             other => panic!("unexpected cast flow state for Corpse Lunge: {other:?}"),
         };
     }
-    assert!(reached_priority, "Corpse Lunge should finish casting after costs");
+    assert!(
+        reached_priority,
+        "Corpse Lunge should finish casting after costs"
+    );
     assert_eq!(game.stack.len(), 1, "Corpse Lunge should be on the stack");
     let stack_entry = game.stack.last().expect("Corpse Lunge should be stacked");
     let exiled_snapshots = stack_entry
@@ -24087,13 +24145,18 @@ fn hexplate_wallbreaker_for_mirrodin_creates_and_equips_rebel() {
             })
         })
         .collect::<Vec<_>>();
-    assert_eq!(rebels.len(), 1, "For Mirrodin should create one Rebel token");
+    assert_eq!(
+        rebels.len(),
+        1,
+        "For Mirrodin should create one Rebel token"
+    );
     let rebel_id = rebels[0];
 
     assert_eq!(game.calculated_power(rebel_id), Some(4));
     assert_eq!(game.calculated_toughness(rebel_id), Some(4));
     assert_eq!(
-        game.object(hexplate_id).and_then(|object| object.attached_to),
+        game.object(hexplate_id)
+            .and_then(|object| object.attached_to),
         Some(crate::object::AttachmentTarget::Object(rebel_id))
     );
     assert!(
@@ -24157,7 +24220,11 @@ fn hexplate_wallbreaker_first_combat_attack_untaps_attackers_and_adds_combat() {
     }
     put_triggers_on_stack(&mut game, &mut trigger_queue)
         .expect("Hexplate Wallbreaker trigger should go on the stack");
-    assert_eq!(game.stack.len(), 1, "first combat should queue Hexplate trigger");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "first combat should queue Hexplate trigger"
+    );
 
     resolve_stack_entry(&mut game).expect("Hexplate Wallbreaker trigger should resolve");
 
@@ -44433,11 +44500,8 @@ fn set_up_splinters_technique_sneak_game(
         .mana_pool
         .add(ManaSymbol::Black, 2);
 
-    let spell_id = game.create_object_from_definition(
-        &splinters_technique_definition(),
-        alice,
-        Zone::Hand,
-    );
+    let spell_id =
+        game.create_object_from_definition(&splinters_technique_definition(), alice, Zone::Hand);
     let attacker_id = if include_unblocked_attacker {
         let attacker = CardBuilder::new(CardId::from_raw(80_489), "Sneak Attacker")
             .card_types(vec![CardType::Creature])

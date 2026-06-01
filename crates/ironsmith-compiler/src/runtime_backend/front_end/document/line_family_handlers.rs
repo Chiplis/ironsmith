@@ -1,7 +1,4 @@
-use super::super::token_primitives::{
-    str_contains, str_ends_with_any_char, str_find, str_find_char, str_rfind, str_split_once,
-    str_split_once_char, str_starts_with, str_starts_with_char, str_strip_prefix, str_strip_suffix,
-};
+use super::super::token_primitives::str_ends_with_any_char;
 use super::line_dispatch::{LineDispatchContext, LineDispatchResult};
 use super::*;
 use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
@@ -110,7 +107,7 @@ const SPLIT_TOP_LOOK_AND_TOP_LAND_PLAY_LINE: &[&str] = &[
 ];
 const ASSIGN_DAMAGE_AS_UNBLOCKED_ENCHANTED_LINE: &[&str] = &[
     "enchanted",
-    "creature's",
+    "creatures",
     "controller",
     "may",
     "have",
@@ -122,7 +119,7 @@ const ASSIGN_DAMAGE_AS_UNBLOCKED_ENCHANTED_LINE: &[&str] = &[
     "as",
     "though",
     "it",
-    "weren't",
+    "werent",
     "blocked",
 ];
 const ADDITIONAL_COMBAT_AFTER_THIS_PHASE_PHRASE: &[&str] = &[
@@ -222,12 +219,6 @@ fn line_starts_with_trigger_intro(line: &PreprocessedLine) -> bool {
     token_slice_starts_with_any(&line.tokens, &[&["when"], &["whenever"], &["at"]])
 }
 
-fn text_starts_with_words(text: &str, words: &[&str]) -> bool {
-    lex_line(text, 0)
-        .ok()
-        .is_some_and(|tokens| token_slice_starts_with(&tokens, words))
-}
-
 pub(super) fn run_trailing_keyword_activation_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
@@ -296,19 +287,18 @@ pub(super) fn run_triggered_line_family(
 pub(super) fn run_championed_with_this_trigger_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let raw = ctx.line.info.raw_line.trim();
     if !line_starts_with_words(ctx.line, &["when"])
         || !line_contains_words(ctx.line, CHAMPIONED_WITH_THIS_PHRASE)
     {
         return Ok(None);
     }
-    let Some((_, effect_text)) = str_split_once_char(raw, ',') else {
+    let Some((_, effect_tokens)) = split_once_on_comma_tokens(&ctx.line.tokens) else {
         return Ok(None);
     };
-    let triggered_text = format!(
-        "When this creature enters, {}",
-        effect_text.trim_start().trim_end_matches('.')
-    );
+    let effect_text = render_token_slice(tokens_without_terminal_period(effect_tokens))
+        .trim()
+        .to_string();
+    let triggered_text = format!("When this creature enters, {}", effect_text);
     let triggered_line = rewrite_line_normalized(ctx.line, triggered_text.as_str())?;
     let triggered = parse_triggered_line_cst(&triggered_line)?;
     Ok(Some(LineDispatchResult::single(
@@ -317,22 +307,24 @@ pub(super) fn run_championed_with_this_trigger_line_family(
     )))
 }
 
+fn split_once_on_comma_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+    let comma_idx = tokens
+        .iter()
+        .position(|token| token.kind == TokenKind::Comma)?;
+    Some((&tokens[..comma_idx], tokens.get(comma_idx + 1..)?))
+}
+
 pub(super) fn run_max_speed_labeled_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let raw = ctx.line.info.raw_line.trim_start();
     if !line_starts_with_words(ctx.line, MAX_SPEED_PREFIX) {
         return Ok(None);
     };
 
-    let body_text = str_find_char(raw, '\u{2014}')
-        .and_then(|idx| raw.get(idx + '\u{2014}'.len_utf8()..))
-        .or_else(|| str_split_once_char(raw, '-').map(|(_, body)| body))
-        .map(str::trim)
-        .filter(|body| !body.is_empty())
-        .unwrap_or(ctx.line.info.normalized.normalized.as_str())
-        .trim()
-        .to_string();
+    let body_text = max_speed_body_text_from_tokens(ctx.line)
+        .unwrap_or_else(|| ctx.line.info.normalized.normalized.trim().to_string());
     if body_text.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "max-speed label missing ability body: '{}'",
@@ -342,7 +334,7 @@ pub(super) fn run_max_speed_labeled_line_family(
 
     let body_line = rewrite_line_normalized(ctx.line, body_text.as_str())?;
     if line_starts_with_trigger_intro(&body_line) {
-        let triggered_text = max_speed_intervening_if_text(body_text.as_str());
+        let triggered_text = max_speed_intervening_if_text(&body_line.tokens);
         let triggered_line = rewrite_line_normalized(ctx.line, triggered_text.as_str())?;
         let triggered = parse_triggered_line_cst(&triggered_line)?;
         return Ok(Some(LineDispatchResult::single(
@@ -353,13 +345,12 @@ pub(super) fn run_max_speed_labeled_line_family(
 
     let activation_text = format!(
         "{}. Activate only if you have max speed.",
-        body_text.trim_end_matches('.')
+        render_tokens_without_terminal_period(&body_line.tokens)
     );
     let activation_line = rewrite_line_normalized(ctx.line, activation_text.as_str())?;
     if let Some((cost_tokens, effect_parse_tokens)) =
         split_activation_text_tokens_lexed(&activation_line.tokens)
     {
-        let cost_text = render_token_slice(&cost_tokens);
         let effect_text = render_token_slice(&effect_parse_tokens).trim().to_string();
         match parse_activation_cost_tokens_rewrite(&cost_tokens) {
             Ok(cost) => {
@@ -370,19 +361,20 @@ pub(super) fn run_max_speed_labeled_line_family(
                         cost_parse_tokens: cost_tokens,
                         effect_text,
                         effect_parse_tokens,
+                        presentation_label: None,
                         chosen_option_label: None,
                     }),
                     ctx.idx + 1,
                 )));
             }
-            Err(err) if looks_like_activation_cost_prefix(cost_text.as_str()) => {
+            Err(err) if looks_like_activation_cost_prefix(&cost_tokens) => {
                 return Err(err);
             }
             Err(_) => {}
         }
     }
 
-    let Some(static_cst) = parse_static_line_cst(ctx.line)? else {
+    let Some(static_cst) = parse_static_line_cst(&body_line)? else {
         return Err(CardTextError::ParseError(format!(
             "parser could not lower max-speed labeled line: '{}'",
             ctx.line.info.raw_line
@@ -397,11 +389,56 @@ pub(super) fn run_max_speed_labeled_line_family(
     )))
 }
 
-fn max_speed_intervening_if_text(body_text: &str) -> String {
-    let trimmed = body_text.trim().trim_end_matches('.');
-    let Some((trigger, effects)) = str_split_once_char(trimmed, ',') else {
-        return trimmed.to_string();
+fn max_speed_body_text_from_tokens(line: &PreprocessedLine) -> Option<String> {
+    let dash_idx = line.tokens.iter().position(|token| {
+        matches!(
+            token.kind,
+            TokenKind::Dash | TokenKind::EmDash | TokenKind::Colon
+        )
+    })?;
+    let body_tokens = line.tokens.get(dash_idx + 1..)?;
+    let body_text = render_token_slice(body_tokens).trim().to_string();
+    (!body_text.is_empty()).then_some(body_text)
+}
+
+fn tokens_without_terminal_period(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    if tokens
+        .last()
+        .is_some_and(|token| token.kind == TokenKind::Period)
+    {
+        &tokens[..tokens.len().saturating_sub(1)]
+    } else {
+        tokens
+    }
+}
+
+fn tokens_before_reminder_or_terminal_period(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    let tokens = tokens_without_terminal_period(tokens);
+    let end = tokens
+        .iter()
+        .position(|token| token.kind == TokenKind::LParen)
+        .unwrap_or(tokens.len());
+    tokens_without_terminal_period(&tokens[..end])
+}
+
+fn render_tokens_without_terminal_period(tokens: &[OwnedLexToken]) -> String {
+    render_token_slice(tokens_without_terminal_period(tokens))
+        .trim()
+        .to_string()
+}
+
+fn max_speed_intervening_if_text(body_tokens: &[OwnedLexToken]) -> String {
+    let tokens = tokens_without_terminal_period(body_tokens);
+    let Some(comma_idx) = tokens
+        .iter()
+        .position(|token| token.kind == TokenKind::Comma)
+    else {
+        return render_token_slice(tokens).trim().to_string();
     };
+    let trigger = render_token_slice(&tokens[..comma_idx]).trim().to_string();
+    let effects = render_token_slice(&tokens[comma_idx + 1..])
+        .trim_start()
+        .to_string();
     format!("{trigger}, if you have max speed,{effects}")
 }
 
@@ -698,6 +735,7 @@ pub(super) fn run_station_line_family(
         cost_parse_tokens: cost_tokens,
         effect_text,
         effect_parse_tokens,
+        presentation_label: None,
         chosen_option_label: None,
     })];
 
@@ -709,10 +747,9 @@ pub(super) fn run_station_line_family(
             PreprocessedItem::Line(line) => Some(line),
             PreprocessedItem::Metadata(_) => None,
         })
-        .any(|line| parse_station_threshold_line(line.info.raw_line.as_str()).is_some());
+        .any(|line| parse_station_threshold_line(line).is_some());
     if !has_explicit_station_threshold_rows
-        && let Some(threshold) =
-            parse_station_keyword_creature_threshold_text(ctx.line.info.raw_line.as_str())
+        && let Some(threshold) = parse_station_keyword_creature_threshold(&ctx.line.tokens)
         && let Some(pt) = ctx.preprocessed.builder.card_builder.power_toughness_ref()
     {
         let label = station_threshold_condition_label(threshold);
@@ -745,9 +782,7 @@ pub(super) fn run_station_line_family(
 pub(super) fn run_station_threshold_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let Some((threshold, mut body_text)) =
-        parse_station_threshold_line(ctx.line.info.raw_line.as_str())
-    else {
+    let Some((threshold, mut body_text)) = parse_station_threshold_line(ctx.line) else {
         return Ok(None);
     };
     if let Some(rewritten) =
@@ -806,6 +841,7 @@ pub(super) fn run_station_threshold_line_family(
             cost_parse_tokens: cost_tokens,
             effect_text,
             effect_parse_tokens,
+            presentation_label: None,
             chosen_option_label: Some(label),
         }));
         return Ok(Some(LineDispatchResult {
@@ -830,15 +866,26 @@ pub(super) fn run_station_threshold_line_family(
     }))
 }
 
-fn parse_station_threshold_line(raw_line: &str) -> Option<(i32, String)> {
-    let (prefix, body) = str_split_once_char(raw_line, '|')?;
-    let threshold = prefix
+fn parse_station_threshold_line(line: &PreprocessedLine) -> Option<(i32, String)> {
+    let tokens = &line.tokens;
+    let pipe_idx = tokens
+        .iter()
+        .position(|token| token.kind == TokenKind::Pipe)?;
+    let [threshold_token, plus_token] = tokens.get(..pipe_idx)? else {
+        return None;
+    };
+    if !matches!(threshold_token.kind, TokenKind::Number | TokenKind::Word)
+        || plus_token.kind != TokenKind::Plus
+    {
+        return None;
+    }
+
+    let threshold = threshold_token.parser_text.parse::<i32>().ok()?;
+    let body_tokens = trim_lexed_commas(tokens.get(pipe_idx + 1..)?);
+    let body = render_original_text_for_token_slice(line, body_tokens)
+        .unwrap_or_else(|| render_token_slice(body_tokens))
         .trim()
-        .strip_suffix('+')?
-        .trim()
-        .parse::<i32>()
-        .ok()?;
-    let body = body.trim();
+        .to_string();
     (!body.is_empty()).then(|| (threshold, body.to_string()))
 }
 
@@ -865,11 +912,6 @@ fn parse_station_keyword_creature_threshold(tokens: &[OwnedLexToken]) -> Option<
     None
 }
 
-fn parse_station_keyword_creature_threshold_text(raw_line: &str) -> Option<i32> {
-    let tokens = lex_line(raw_line, 0).ok()?;
-    parse_station_keyword_creature_threshold(&tokens)
-}
-
 fn station_threshold_condition_label(threshold: i32) -> String {
     format!("{STATION_THRESHOLD_CONDITION_PREFIX}{threshold}")
 }
@@ -891,15 +933,14 @@ fn station_threshold_is_creature_pt_threshold(
         let PreprocessedItem::Line(line) = item else {
             return false;
         };
-        parse_station_keyword_creature_threshold_text(line.info.raw_line.as_str())
-            == Some(threshold)
+        parse_station_keyword_creature_threshold(&line.tokens) == Some(threshold)
     })
 }
 
 pub(super) fn run_partner_with_keyword_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let Some(partner_name) = partner_with_name_from_line(ctx.line.info.raw_line.as_str()) else {
+    let Some(partner_name) = partner_with_name_from_line(ctx.line) else {
         return Ok(None);
     };
 
@@ -922,25 +963,13 @@ pub(super) fn run_partner_variant_keyword_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     let raw = ctx.line.info.raw_line.trim();
-    if !line_starts_with_words(ctx.line, PARTNER_PREFIX) {
-        return Ok(None);
-    }
-
-    let Some(rest) = raw.get("Partner".len()..) else {
-        return Ok(None);
-    };
-    let rest = rest.trim_start();
-    if !(str_starts_with_char(rest, '\u{2014}')
-        || rest.starts_with('-')
-        || str_starts_with_char(rest, '\u{2013}'))
-    {
+    if !tokens_start_with_partner_variant_separator(&ctx.line.tokens) {
         return Ok(None);
     }
 
     let partner_line = rewrite_line_normalized(ctx.line, "Partner")?;
     if let Some(mut keyword_line) = parse_keyword_line_cst(&partner_line)? {
-        let visible_label = str_split_once_char(raw, '(')
-            .map(|(head, _)| head)
+        let visible_label = source_before_reminder_or_period(raw, &ctx.line.tokens)
             .unwrap_or(raw)
             .trim()
             .to_string();
@@ -960,6 +989,19 @@ pub(super) fn run_partner_variant_keyword_line_family(
         }),
         ctx.idx + 1,
     )))
+}
+
+fn tokens_start_with_partner_variant_separator(tokens: &[OwnedLexToken]) -> bool {
+    let words = TokenWordView::new(tokens);
+    if !words.starts_with(PARTNER_PREFIX) {
+        return false;
+    }
+    let Some(separator_idx) = words.token_index_after_words(PARTNER_PREFIX.len()) else {
+        return false;
+    };
+    tokens
+        .get(separator_idx)
+        .is_some_and(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash))
 }
 
 pub(super) fn run_escape_enters_with_counter_line_family(
@@ -1106,14 +1148,27 @@ pub(super) fn run_ward_or_echo_static_prefix_line_family(
 pub(super) fn run_activation_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    if (!str_starts_with_char(ctx.line.info.raw_line.trim_start(), '(')
-        || is_fully_parenthetical_line(ctx.line.info.raw_line.as_str()))
-        && let Some((cost_tokens, effect_parse_tokens)) = split_label_prefix_lexed(&ctx.line.tokens)
-            .filter(|(label, _)| is_named_ability_label(label.as_str()))
-            .and_then(|(_, body_tokens)| split_activation_text_tokens_lexed(body_tokens))
-            .or_else(|| split_activation_text_tokens_lexed(&ctx.line.tokens))
+    if (!line_starts_with_lparen_token(ctx.line) || is_fully_parenthetical_line(ctx.line))
+        && let Some((mut presentation_label, cost_tokens, effect_parse_tokens)) =
+            split_label_prefix_lexed(&ctx.line.tokens)
+                .filter(|(label, _, _)| is_named_ability_label(label.as_str()))
+                .and_then(|(label, _, body_tokens)| {
+                    split_activation_text_tokens_lexed(body_tokens).map(
+                        |(cost_tokens, effect_tokens)| (Some(label), cost_tokens, effect_tokens),
+                    )
+                })
+                .or_else(|| {
+                    split_activation_text_tokens_lexed(&ctx.line.tokens)
+                        .map(|(cost_tokens, effect_tokens)| (None, cost_tokens, effect_tokens))
+                })
     {
-        let cost_text = render_token_slice(&cost_tokens);
+        if presentation_label.is_none() {
+            presentation_label = original_activation_presentation_label(
+                ctx.line,
+                &cost_tokens,
+                &effect_parse_tokens,
+            );
+        }
         let effect_text = render_token_slice(&effect_parse_tokens).trim().to_string();
         match parse_activation_cost_tokens_rewrite(&cost_tokens) {
             Ok(cost) => {
@@ -1124,12 +1179,13 @@ pub(super) fn run_activation_line_family(
                         cost_parse_tokens: cost_tokens,
                         effect_text,
                         effect_parse_tokens,
+                        presentation_label,
                         chosen_option_label: None,
                     }),
                     ctx.idx + 1,
                 )));
             }
-            Err(err) if looks_like_activation_cost_prefix(cost_text.as_str()) => {
+            Err(err) if looks_like_activation_cost_prefix(&cost_tokens) => {
                 return Err(err);
             }
             Err(_) => {}
@@ -1139,21 +1195,153 @@ pub(super) fn run_activation_line_family(
     Ok(None)
 }
 
-fn partner_with_name_from_line(raw_line: &str) -> Option<String> {
-    let trimmed = raw_line.trim();
-    let rest_start = "partner with ".len();
-    if !text_starts_with_words(trimmed, PARTNER_WITH_PREFIX) {
+fn original_activation_presentation_label(
+    line: &PreprocessedLine,
+    cost_tokens: &[OwnedLexToken],
+    effect_tokens: &[OwnedLexToken],
+) -> Option<String> {
+    let original_tokens =
+        lex_line(line.info.normalized.original.as_str(), line.info.line_index).ok()?;
+    let (label, _, body_tokens) = split_label_prefix_lexed(&original_tokens)?;
+    if !is_named_ability_label(label.as_str()) {
+        return None;
+    }
+    let (original_cost_tokens, original_effect_tokens) =
+        split_activation_text_tokens_lexed(body_tokens)?;
+    let original_effect_tokens = tokens_before_reminder_or_terminal_period(&original_effect_tokens);
+    let effect_tokens = tokens_before_reminder_or_terminal_period(effect_tokens);
+    let original_cost_text = render_token_slice(&original_cost_tokens);
+    let cost_text = render_token_slice(cost_tokens);
+    let original_effect_text = render_token_slice(original_effect_tokens);
+    let effect_text = render_token_slice(effect_tokens);
+    let costs_match = original_cost_text
+        .trim()
+        .eq_ignore_ascii_case(cost_text.trim());
+    let effects_match = original_effect_text
+        .trim()
+        .eq_ignore_ascii_case(effect_text.trim());
+    (costs_match && effects_match).then(|| label.trim().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime_backend::lexer::lex_line;
+
+    #[test]
+    fn partner_variant_separator_detection_uses_tokens() {
+        for line in [
+            "Partner—Character select",
+            "Partner - Character select",
+            "Partner–Character select",
+        ] {
+            let tokens = lex_line(line, 0).expect("partner variant line should lex");
+            assert!(
+                tokens_start_with_partner_variant_separator(&tokens),
+                "{line} should be recognized as a partner variant"
+            );
+        }
+
+        let tokens = lex_line("Partner with Proud Mentor", 0).unwrap();
+        assert!(!tokens_start_with_partner_variant_separator(&tokens));
+    }
+
+    #[test]
+    fn partner_with_name_and_variant_label_trim_on_lexed_reminder_tokens() {
+        fn line(text: &str) -> PreprocessedLine {
+            preprocess_document(
+                CardDefinitionBuilder::new(crate::CardId::new(), "Partner Test"),
+                text,
+            )
+            .expect("partner line should preprocess")
+            .items
+            .into_iter()
+            .find_map(|item| match item {
+                PreprocessedItem::Line(line) => Some(line),
+                PreprocessedItem::Metadata(_) => None,
+            })
+            .expect("partner line should yield a preprocessed line")
+        }
+
+        let partner_with_line =
+            line("Partner with Toothy, Imaginary Friend (When this creature enters...)");
+        assert_eq!(
+            partner_with_name_from_line(&partner_with_line).as_deref(),
+            Some("Toothy, Imaginary Friend")
+        );
+
+        let partner_variant_line = "Partner - Friends forever (You can have two commanders.)";
+        let partner_variant_tokens = lex_line(partner_variant_line, 0).expect("line should lex");
+        assert_eq!(
+            source_before_reminder_or_period(partner_variant_line, &partner_variant_tokens),
+            Some("Partner - Friends forever")
+        );
+    }
+
+    #[test]
+    fn station_threshold_line_uses_pipe_and_plus_tokens() {
+        fn line(text: &str) -> PreprocessedLine {
+            preprocess_document(
+                CardDefinitionBuilder::new(crate::CardId::new(), "Station Threshold Test")
+                    .card_types(vec![crate::types::CardType::Artifact]),
+                text,
+            )
+            .expect("station threshold line should preprocess")
+            .items
+            .into_iter()
+            .find_map(|item| match item {
+                PreprocessedItem::Line(line) => Some(line),
+                PreprocessedItem::Metadata(_) => None,
+            })
+            .expect("expected station threshold preprocessed line")
+        }
+
+        let station_line = line("6+ | This artifact is a creature in addition to its other types.");
+        assert_eq!(
+            parse_station_threshold_line(&station_line),
+            Some((
+                6,
+                "This artifact is a creature in addition to its other types.".to_string()
+            ))
+        );
+
+        let missing_plus = line("6 | This artifact is a creature.");
+        assert_eq!(parse_station_threshold_line(&missing_plus), None);
+    }
+}
+
+fn partner_with_name_from_line(line: &PreprocessedLine) -> Option<String> {
+    let tokens = &line.tokens;
+    if !token_slice_starts_with(tokens, PARTNER_WITH_PREFIX) {
         return None;
     }
 
-    let rest = trimmed.get(rest_start..)?.trim();
-    let name = str_split_once_char(rest, '(')
-        .map(|(name, _)| name)
-        .unwrap_or(rest)
+    let words = TokenWordView::new(tokens);
+    let name_start_idx = words.token_index_for_word_index(PARTNER_WITH_PREFIX.len())?;
+    let name_end_idx = tokens[name_start_idx..]
+        .iter()
+        .position(|token| matches!(token.kind, TokenKind::LParen | TokenKind::Period))
+        .map(|idx| name_start_idx + idx)
+        .unwrap_or(tokens.len());
+    let name_tokens = tokens.get(name_start_idx..name_end_idx)?;
+    let name = render_original_text_for_token_slice(line, name_tokens)
+        .unwrap_or_else(|| render_token_slice(name_tokens))
         .trim()
-        .trim_end_matches('.')
-        .trim();
+        .replace('"', "");
     (!name.is_empty()).then(|| name.to_string())
+}
+
+fn source_before_reminder_or_period<'a>(
+    raw_line: &'a str,
+    tokens: &[OwnedLexToken],
+) -> Option<&'a str> {
+    let end = tokens
+        .iter()
+        .find(|token| matches!(token.kind, TokenKind::LParen | TokenKind::Period))
+        .map(|token| token.span.start)
+        .unwrap_or(raw_line.len());
+    let display = raw_line.get(..end)?.trim();
+    (!display.is_empty()).then_some(display)
 }
 
 pub(super) fn run_combined_static_line_family(
@@ -1181,36 +1369,25 @@ pub(super) fn run_combined_static_line_family(
 pub(super) fn run_non_turn_conditional_untap_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let raw = ctx.line.info.raw_line.trim();
-    let lower = raw.to_ascii_lowercase();
-    if !line_ends_with_words(ctx.line, NON_TURN_UNTAP_SUFFIX) {
-        return Ok(None);
-    }
-
-    const SUFFIX: &str = "if it's not your turn, untap those creatures.";
-    let marker = format!(". {SUFFIX}");
-    let Some(split_idx) = str_rfind(lower.as_str(), marker.as_str()) else {
+    let Some(first_sentence_tokens) = non_turn_conditional_untap_first_sentence_tokens(ctx.line)
+    else {
         return Ok(None);
     };
-    let Some(prefix) = raw.get(..split_idx) else {
-        return Ok(None);
-    };
-
-    let first_sentence = prefix.trim();
-    if first_sentence.is_empty() {
+    if !token_slice_starts_with(first_sentence_tokens, CREATURES_YOU_CONTROL_GET_PREFIX) {
         return Ok(None);
     }
+    let first_sentence = render_original_text_for_token_slice(ctx.line, first_sentence_tokens)
+        .unwrap_or_else(|| render_tokens_without_terminal_period(first_sentence_tokens))
+        .trim()
+        .to_string();
 
-    if !text_starts_with_words(first_sentence, CREATURES_YOU_CONTROL_GET_PREFIX) {
-        return Ok(None);
-    }
-
-    let first_line = rewrite_line_normalized(ctx.line, first_sentence.trim_end_matches('.'))?;
+    let first_line = rewrite_line_normalized(ctx.line, first_sentence.as_str())?;
     let Some(first_statement) = parse_statement_line_cst(&first_line)? else {
         return Ok(None);
     };
 
-    let second_line = rewrite_line_normalized(ctx.line, "If it's not your turn, untap them")?;
+    let second_line =
+        rewrite_line_normalized(ctx.line, "If it's not your turn, untap those creatures")?;
     let Some(second_statement) = parse_statement_line_cst(&second_line)? else {
         return Ok(None);
     };
@@ -1222,6 +1399,23 @@ pub(super) fn run_non_turn_conditional_untap_line_family(
         ],
         next_idx: ctx.idx + 1,
     }))
+}
+
+fn non_turn_conditional_untap_first_sentence_tokens(
+    line: &PreprocessedLine,
+) -> Option<&[OwnedLexToken]> {
+    let words = TokenWordView::new(&line.tokens);
+    if !words.ends_with(NON_TURN_UNTAP_SUFFIX) {
+        return None;
+    }
+    let suffix_word_idx = words.len().checked_sub(NON_TURN_UNTAP_SUFFIX.len())?;
+    let suffix_token_idx = words.token_index_for_word_index(suffix_word_idx)?;
+    let prefix_tokens = line.tokens.get(..suffix_token_idx)?;
+    prefix_tokens
+        .last()
+        .is_some_and(|token| token.kind == TokenKind::Period)
+        .then_some(tokens_without_terminal_period(prefix_tokens))
+        .filter(|tokens| !tokens.is_empty())
 }
 
 pub(super) fn run_statement_probe_line_family(
@@ -1368,7 +1562,7 @@ fn try_parse_trailing_keyword_activation_dispatch(
     };
 
     let suffix_line = rewrite_line_tokens(line, &suffix_tokens);
-    let Some((_label, body_tokens)) = split_label_prefix_lexed(&suffix_line.tokens) else {
+    let Some((label, _, body_tokens)) = split_label_prefix_lexed(&suffix_line.tokens) else {
         return Err(CardTextError::ParseError(format!(
             "parser could not recover keyword activation suffix: '{}'",
             line.info.raw_line
@@ -1389,6 +1583,7 @@ fn try_parse_trailing_keyword_activation_dispatch(
         cost_parse_tokens: cost_tokens,
         effect_text,
         effect_parse_tokens,
+        presentation_label: Some(label.trim().to_string()),
         chosen_option_label: None,
     });
 

@@ -14,8 +14,7 @@ use super::ir::{
 use super::leaf::{ActivationCostCst, ActivationCostSegmentCst, lower_activation_cost_cst};
 
 fn activation_cost_cst_is_loyalty(cost: &ActivationCostCst) -> bool {
-    let normalized_raw = cost.raw.trim().replace('−', "-");
-    if normalized_raw == "0" || normalized_raw.starts_with('+') || normalized_raw.starts_with('-') {
+    if cost.is_loyalty_shorthand {
         return true;
     }
 
@@ -102,6 +101,7 @@ fn lower_activated_line(
         effect_parse_tokens: activated.effect_parse_tokens,
         timing_hint: ActivationTiming::AnyTime,
         is_loyalty_ability: activation_cost_cst_is_loyalty(&activated.cost),
+        presentation_label: activated.presentation_label,
         chosen_option_label: activated.chosen_option_label,
     }))
 }

@@ -71,7 +71,10 @@ fn strip_indefinite_article(text: &str) -> &str {
 
 fn pluralize_cost_noun_phrase(phrase: &str) -> String {
     if let Some((head, tail)) = phrase.split_once(" ") {
-        if matches!(tail, "you control" | "an opponent controls" | "that player controls") {
+        if matches!(
+            tail,
+            "you control" | "an opponent controls" | "that player controls"
+        ) {
             return format!("{} {tail}", pluralize_cost_noun_phrase(head));
         }
     }

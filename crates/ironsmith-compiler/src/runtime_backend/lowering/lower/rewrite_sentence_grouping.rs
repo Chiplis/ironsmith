@@ -206,15 +206,36 @@ pub(crate) fn wrap_chosen_option_static_chunk(
                 )
                 .collect(),
         ),
+        LineAst::Abilities(actions) => LineAst::StaticAbilities(
+            actions
+                .into_iter()
+                .map(
+                    |action| crate::cards::builders::StaticAbilityAst::ConditionalKeywordAction {
+                        action,
+                        condition: condition.clone(),
+                    },
+                )
+                .collect(),
+        ),
+        LineAst::Ability(mut parsed) => {
+            if let AbilityKind::Static(static_ability) = parsed.kind_mut() {
+                *static_ability = static_ability
+                    .clone()
+                    .with_condition(condition.clone())
+                    .unwrap_or_else(|| {
+                        crate::static_abilities::StaticAbility::new(
+                            crate::static_abilities::GrantAbility::source(static_ability.clone())
+                                .with_condition(condition.clone()),
+                        )
+                    });
+            }
+            LineAst::Ability(parsed)
+        }
         other => other,
     })
 }
 
-pub(crate) fn effective_chosen_option_label<'a>(
-    raw_line: &str,
-    chosen_option_label: Option<&'a str>,
-) -> Option<&'a str> {
-    let _ = raw_line;
+pub(crate) fn effective_chosen_option_label(chosen_option_label: Option<&str>) -> Option<&str> {
     chosen_option_label
 }
 

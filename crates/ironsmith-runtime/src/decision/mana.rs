@@ -5119,7 +5119,11 @@ mod tests {
     #[test]
     fn cavern_hoard_dragon_cost_reduction_uses_greatest_opponent_artifact_count() {
         let mut game = GameState::new(
-            vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+            ],
             20,
         );
         let alice = PlayerId::from_index(0);
@@ -5158,7 +5162,10 @@ mod tests {
             &game,
             alice,
             dragon,
-            dragon.mana_cost.as_ref().expect("dragon should have a mana cost"),
+            dragon
+                .mana_cost
+                .as_ref()
+                .expect("dragon should have a mana cost"),
             0,
             &[],
             &CastingMethod::Normal,

@@ -81,9 +81,9 @@ pub(super) fn parse_statement_line_cst(
     if matches!(
         line_family,
         Some(
-                structure::StatementLineFamily::PactNextUpkeep
-                    | structure::StatementLineFamily::ExilePlayCostsMore
-                    | structure::StatementLineFamily::BidLife
+            structure::StatementLineFamily::PactNextUpkeep
+                | structure::StatementLineFamily::ExilePlayCostsMore
+                | structure::StatementLineFamily::BidLife
         )
     ) {
         return Ok(Some(StatementLineCst {

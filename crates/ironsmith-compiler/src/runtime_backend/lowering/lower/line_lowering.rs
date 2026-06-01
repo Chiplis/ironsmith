@@ -7,7 +7,11 @@ use crate::runtime_backend::activation_and_restrictions::last_created_token_info
 use crate::runtime_backend::effect_ast_traversal::{
     for_each_nested_effects, for_each_nested_effects_mut,
 };
-use crate::runtime_backend::lexer::{word_slice_contains_any_word, word_slice_contains_phrase};
+use crate::runtime_backend::lexer::{
+    OwnedLexToken, TokenKind, contains_token_word_sequence, find_token_word_sequence_span,
+    lex_line, parser_token_word_refs, word_slice_contains_any_word, word_slice_contains_phrase,
+    word_slice_starts_with,
+};
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::zone::Zone;
 
@@ -243,16 +247,9 @@ fn token_template_before_prior_token_placeholder(
 }
 
 fn compile_trailing_instead_if_condition(
-    normalized_line: &str,
-    line_index: usize,
+    tokens: &[OwnedLexToken],
     prepared: &super::super::effect_pipeline::PreparedEffectsForLowering,
 ) -> Result<Option<crate::effect::Condition>, CardTextError> {
-    let tokens = lex_line(normalized_line, line_index).map_err(|err| {
-        CardTextError::ParseError(format!(
-            "failed to lex instead-if follow-up '{}': {err:?}",
-            normalized_line
-        ))
-    })?;
     let Some(instead_idx) = tokens.iter().enumerate().find_map(|(idx, token)| {
         (token.is_word("instead") && tokens.get(idx + 1).is_some_and(|next| next.is_word("if")))
             .then_some(idx)
@@ -292,13 +289,10 @@ fn with_chosen_creature_type_filter(effect: crate::effect::Effect) -> crate::eff
 }
 
 fn creature_type_choice_program(
-    normalized_line: &str,
+    tokens: &[OwnedLexToken],
     compiled: &crate::resolution::ResolutionProgram,
 ) -> Option<crate::resolution::ResolutionProgram> {
-    let words = normalized_line
-        .split_whitespace()
-        .map(|word| word.trim_matches(|ch: char| !ch.is_alphanumeric() && ch != '+'))
-        .collect::<Vec<_>>();
+    let words = parser_token_word_refs(tokens);
     let has_choice_phrase =
         word_slice_contains_phrase(&words, &["creature", "type", "of", "your", "choice"]);
     let has_get = word_slice_contains_any_word(&words, &["get", "gets"]);
@@ -415,9 +409,9 @@ fn optional_search_to_battlefield_rewrite(
 
 fn attach_morbid_search_to_battlefield_self_replacement(
     builder: &mut CardDefinitionBuilder,
-    normalized_line: &str,
+    normalized_tokens: &[OwnedLexToken],
 ) -> bool {
-    if !text_mentions_morbid_search_to_battlefield_replacement(normalized_line) {
+    if !tokens_mention_morbid_search_to_battlefield_replacement(normalized_tokens) {
         return false;
     }
     let Some(existing) = builder.spell_effect.as_mut() else {
@@ -445,9 +439,9 @@ fn attach_morbid_search_to_battlefield_self_replacement(
 
 fn back_for_seconds_style_replacement_program(
     compiled: &[crate::effect::Effect],
-    normalized_line: &str,
+    normalized_tokens: &[OwnedLexToken],
 ) -> Option<crate::resolution::ResolutionProgram> {
-    if !text_mentions_bargained_return_to_battlefield_replacement(normalized_line) {
+    if !tokens_mention_bargained_return_to_battlefield_replacement(normalized_tokens) {
         return None;
     }
     let (default_effects, return_effect, condition) = match compiled {
@@ -493,9 +487,9 @@ fn back_for_seconds_style_replacement_program(
 fn attach_back_for_seconds_style_replacement(
     builder: &mut CardDefinitionBuilder,
     compiled: &[crate::effect::Effect],
-    normalized_line: &str,
+    normalized_tokens: &[OwnedLexToken],
 ) -> bool {
-    if !text_mentions_bargained_return_to_battlefield_replacement(normalized_line) {
+    if !tokens_mention_bargained_return_to_battlefield_replacement(normalized_tokens) {
         return false;
     }
     let [followup] = compiled else {
@@ -527,9 +521,9 @@ fn attach_back_for_seconds_style_replacement(
 
 fn kicked_count_override_self_replacement_program(
     compiled: &[crate::effect::Effect],
-    normalized_line: &str,
+    normalized_tokens: &[OwnedLexToken],
 ) -> Option<crate::resolution::ResolutionProgram> {
-    if !text_mentions_kicked_count_override_replacement(normalized_line) {
+    if !tokens_mention_kicked_count_override_replacement(normalized_tokens) {
         return None;
     }
     let [look_effect, conditional_effect] = compiled else {
@@ -565,9 +559,9 @@ fn kicked_count_override_self_replacement_program(
 
 fn kicked_multi_zone_search_to_battlefield_program(
     compiled: &[crate::effect::Effect],
-    normalized_line: &str,
+    normalized_tokens: &[OwnedLexToken],
 ) -> Option<crate::resolution::ResolutionProgram> {
-    if !text_mentions_kicked_multi_zone_search_to_battlefield_replacement(normalized_line) {
+    if !tokens_mention_kicked_multi_zone_search_to_battlefield_replacement(normalized_tokens) {
         return None;
     }
     let [choose, reveal, move_to_hand, shuffle, conditional] = compiled else {
@@ -608,9 +602,9 @@ fn kicked_multi_zone_search_to_battlefield_program(
 
 fn clash_win_optional_top_replacement_program(
     compiled: &[crate::effect::Effect],
-    normalized_line: &str,
+    normalized_tokens: &[OwnedLexToken],
 ) -> Option<crate::resolution::ResolutionProgram> {
-    if !text_mentions_clash_win_top_replacement(normalized_line) {
+    if !tokens_mention_clash_win_top_replacement(normalized_tokens) {
         return None;
     }
     let [clash_effect, return_with_id_effect, followup] = compiled else {
@@ -653,6 +647,41 @@ fn clash_win_optional_top_replacement_program(
             vec![return_effect],
         )),
     ]))
+}
+
+fn tokens_mention_morbid_search_to_battlefield_replacement(tokens: &[OwnedLexToken]) -> bool {
+    contains_token_word_sequence(
+        tokens,
+        PUT_THAT_CARD_ONTO_BATTLEFIELD_INSTEAD_OF_HAND_PHRASE,
+    ) && contains_token_word_sequence(tokens, CREATURE_DIED_THIS_TURN_PHRASE)
+}
+
+fn tokens_mention_bargained_return_to_battlefield_replacement(tokens: &[OwnedLexToken]) -> bool {
+    contains_token_word_sequence(tokens, IF_THIS_SPELL_WAS_BARGAINED_PHRASE)
+        && contains_token_word_sequence(tokens, ONE_OF_THOSE_CARDS_MV_FOUR_OR_LESS_PHRASE)
+        && contains_token_word_sequence(tokens, ONTO_BATTLEFIELD_INSTEAD_OF_HAND_PHRASE)
+}
+
+fn tokens_mention_kicked_count_override_replacement(tokens: &[OwnedLexToken]) -> bool {
+    contains_token_word_sequence(tokens, PUT_TWO_OF_THOSE_CARDS_INTO_YOUR_HAND_INSTEAD_PHRASE)
+        && contains_token_word_sequence(tokens, PUT_ONE_OF_THOSE_CARDS_INTO_YOUR_HAND_PHRASE)
+}
+
+fn tokens_mention_kicked_multi_zone_search_to_battlefield_replacement(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    contains_token_word_sequence(tokens, SEARCH_LIBRARY_OR_GRAVEYARD_FOR_DOCTORS_PHRASE)
+        && contains_token_word_sequence(tokens, IF_THIS_SPELL_WAS_KICKED_PHRASE)
+        && contains_token_word_sequence(
+            tokens,
+            PUT_THOSE_CARDS_ONTO_BATTLEFIELD_INSTEAD_OF_HAND_PHRASE,
+        )
+}
+
+fn tokens_mention_clash_win_top_replacement(tokens: &[OwnedLexToken]) -> bool {
+    contains_token_word_sequence(tokens, CLASH_WITH_AN_OPPONENT_PHRASE)
+        && contains_token_word_sequence(tokens, IF_YOU_WIN_PHRASE)
+        && contains_token_word_sequence(tokens, ON_TOP_OF_OWNERS_LIBRARY_INSTEAD_PHRASE)
 }
 
 pub(super) fn rewrite_apply_line_ast(
@@ -809,8 +838,10 @@ fn compile_static_ability_with_zones(
     ability: crate::static_abilities::StaticAbility,
     info: &LineInfo,
 ) -> Ability {
-    let ability = rewrite_self_spell_cost_modifier(ability, info.raw_line.as_str());
+    let ability = rewrite_self_spell_cost_modifier(ability, info);
     let mut compiled = Ability::static_ability(ability);
+    let normalized_tokens =
+        lex_line(info.normalized.normalized.as_str(), info.line_index).unwrap_or_default();
     if let AbilityKind::Static(static_ability) = &compiled.kind
         && super::uses_spell_only_functional_zones(static_ability)
     {
@@ -837,10 +868,7 @@ fn compile_static_ability_with_zones(
         ]);
     }
     if let AbilityKind::Static(static_ability) = &compiled.kind
-        && super::uses_referenced_ability_functional_zones(
-            static_ability,
-            info.normalized.normalized.as_str(),
-        )
+        && super::uses_referenced_ability_functional_zones(static_ability, &normalized_tokens)
     {
         compiled = compiled.in_zones(vec![
             Zone::Battlefield,
@@ -852,9 +880,7 @@ fn compile_static_ability_with_zones(
             Zone::Command,
         ]);
     }
-    if let Some(zones) =
-        super::infer_static_ability_functional_zones(info.normalized.normalized.as_str())
-    {
+    if let Some(zones) = super::infer_static_ability_functional_zones(&normalized_tokens) {
         compiled = compiled.in_zones(zones);
     }
     compiled
@@ -862,16 +888,19 @@ fn compile_static_ability_with_zones(
 
 fn rewrite_self_spell_cost_modifier(
     ability: crate::static_abilities::StaticAbility,
-    raw_line: &str,
+    info: &LineInfo,
 ) -> crate::static_abilities::StaticAbility {
-    if !text_starts_with_this_spell_cost(raw_line) {
+    let Ok(tokens) = lex_line(info.normalized.normalized.as_str(), info.line_index) else {
+        return ability;
+    };
+    if !tokens_start_with_this_spell_cost(&tokens) {
         return ability;
     }
 
     match &ability.payload {
         ironsmith_core::StaticAbilityPayload::CostReduction(reduction) => {
             let mut amount = reduction.amount.clone();
-            if let Some(cap) = extract_cost_reduction_cap_from_text(raw_line) {
+            if let Some(cap) = extract_cost_reduction_cap_from_tokens(&tokens) {
                 amount = crate::effect::Value::Min(
                     Box::new(amount),
                     Box::new(crate::effect::Value::Fixed(cap)),
@@ -896,12 +925,20 @@ fn rewrite_self_spell_cost_modifier(
     }
 }
 
-fn extract_cost_reduction_cap_from_text(raw_line: &str) -> Option<i32> {
-    let lower = raw_line.to_ascii_lowercase();
-    let cap_start = lower.find("by more than {")?;
-    let digits_start = cap_start + "by more than {".len();
-    let digits_end = lower[digits_start..].find('}')? + digits_start;
-    lower[digits_start..digits_end].parse::<i32>().ok()
+fn tokens_start_with_this_spell_cost(tokens: &[OwnedLexToken]) -> bool {
+    let words = parser_token_word_refs(tokens);
+    THIS_SPELL_COST_PREFIXES
+        .iter()
+        .any(|prefix| word_slice_starts_with(&words, prefix))
+}
+
+fn extract_cost_reduction_cap_from_tokens(tokens: &[OwnedLexToken]) -> Option<i32> {
+    let (_, tail_start) = find_token_word_sequence_span(tokens, &["by", "more", "than"])?;
+    tokens[tail_start..].iter().find_map(|token| {
+        (token.kind == TokenKind::ManaGroup)
+            .then(|| token.mana_group_inner()?.parse::<i32>().ok())
+            .flatten()
+    })
 }
 
 fn lower_static_ability_chunk(
@@ -1090,43 +1127,46 @@ fn lower_statement_chunk(
     let compiled = lowered.effects;
     state.latest_spell_exports = lowered.exports;
 
-    let normalized_line = info.normalized.normalized.as_str().to_ascii_lowercase();
-    let instead_semantics = super::classify_instead_followup_text(&normalized_line);
+    let normalized_tokens =
+        lex_line(info.normalized.normalized.as_str(), info.line_index).unwrap_or_default();
+    let instead_semantics = super::classify_instead_followup_tokens(&normalized_tokens);
     let trailing_instead_if_condition = if matches!(
         instead_semantics,
         crate::cards::builders::InsteadSemantics::SelfReplacement
     ) {
-        compile_trailing_instead_if_condition(&normalized_line, info.line_index, &prepared)?
+        compile_trailing_instead_if_condition(&normalized_tokens, &prepared)?
     } else {
         None
     };
-    if let Some(program) = back_for_seconds_style_replacement_program(&compiled, &normalized_line) {
+    if let Some(program) = back_for_seconds_style_replacement_program(&compiled, &normalized_tokens)
+    {
         builder.spell_effect = Some(program);
         return Ok(builder);
     }
-    if attach_back_for_seconds_style_replacement(&mut builder, &compiled, &normalized_line) {
+    if attach_back_for_seconds_style_replacement(&mut builder, &compiled, &normalized_tokens) {
         return Ok(builder);
     }
     if let Some(program) =
-        kicked_count_override_self_replacement_program(&compiled, &normalized_line)
+        kicked_count_override_self_replacement_program(&compiled, &normalized_tokens)
     {
         builder.spell_effect = Some(program);
         return Ok(builder);
     }
     if let Some(program) =
-        kicked_multi_zone_search_to_battlefield_program(&compiled, &normalized_line)
+        kicked_multi_zone_search_to_battlefield_program(&compiled, &normalized_tokens)
     {
         builder.spell_effect = Some(program);
         return Ok(builder);
     }
-    if let Some(program) = clash_win_optional_top_replacement_program(&compiled, &normalized_line) {
+    if let Some(program) = clash_win_optional_top_replacement_program(&compiled, &normalized_tokens)
+    {
         builder.spell_effect = Some(program);
         return Ok(builder);
     }
-    if attach_morbid_search_to_battlefield_self_replacement(&mut builder, &normalized_line) {
+    if attach_morbid_search_to_battlefield_self_replacement(&mut builder, &normalized_tokens) {
         return Ok(builder);
     }
-    if let Some(program) = creature_type_choice_program(&normalized_line, &compiled) {
+    if let Some(program) = creature_type_choice_program(&normalized_tokens, &compiled) {
         builder.spell_effect = Some(program);
         return Ok(builder);
     }
@@ -1310,7 +1350,7 @@ fn lower_statement_chunk(
         crate::cards::builders::InsteadSemantics::SelfReplacement
     ) && compiled.len() == 1
         && builder.spell_effect.is_none()
-        && (text_starts_with_if(normalized_line.as_str())
+        && (tokens_start_with_if(&normalized_tokens)
             || conditional_self_replacement_followup(&compiled[0])
                 .is_some_and(|replacement| replacement.if_false.is_empty()))
     {
@@ -1378,6 +1418,10 @@ fn lower_statement_chunk(
         builder.spell_effect = Some(compiled);
     }
     Ok(builder)
+}
+
+fn tokens_start_with_if(tokens: &[OwnedLexToken]) -> bool {
+    token_slice_starts_with(tokens, &["if"])
 }
 
 fn lower_additional_cost_chunk(
@@ -1724,16 +1768,17 @@ fn lower_triggered_chunk(
         &trigger,
         TriggerSpec::Either(_, right) if matches!(**right, TriggerSpec::HauntedCreatureDies)
     ) || matches!(&trigger, TriggerSpec::HauntedCreatureDies);
-    let functional_zones = super::infer_triggered_ability_functional_zones(
-        &trigger,
-        info.normalized.normalized.as_str(),
-    );
+    let normalized_tokens =
+        lex_line(info.normalized.normalized.as_str(), info.line_index).unwrap_or_default();
+    let functional_zones =
+        super::infer_triggered_ability_functional_zones(&trigger, &normalized_tokens);
     let mut intervening_if = crate::runtime_backend::trigger_frequency_condition(
         Some(info.raw_line.as_str()),
         max_triggers_per_turn,
     );
-    let trigger_surface_source = format!("{} {}", info.raw_line, info.normalized.original);
-    if text_mentions_becomes_tapped_during_your_turn(&trigger_surface_source) {
+    let trigger_surface_tokens =
+        lex_line(info.normalized.original.as_str(), info.line_index).unwrap_or_default();
+    if tokens_mention_becomes_tapped_during_your_turn(&trigger_surface_tokens) {
         let condition = crate::ConditionExpr::YourTurn;
         intervening_if = Some(match intervening_if {
             Some(existing) => crate::ConditionExpr::And(Box::new(condition), Box::new(existing)),
@@ -1764,7 +1809,7 @@ fn lower_triggered_chunk(
         }
         Err(err) => return Err(err),
     };
-    if let Some(surface_count) = do_this_frequency_surface_from_text(&trigger_surface_source)
+    if let Some(surface_count) = do_this_frequency_surface_from_tokens(&trigger_surface_tokens)
         && let AbilityKind::Triggered(triggered) = parsed.kind_mut()
         && triggered.intervening_if == Some(crate::ConditionExpr::MaxTimesEachTurn(surface_count))
     {
