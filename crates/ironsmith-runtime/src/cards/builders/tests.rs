@@ -28433,6 +28433,62 @@ fn parse_spells_cost_modifier_supports_extended_where_x_clauses() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn cavern_hoard_dragon_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(119_956), "Cavern-Hoard Dragon")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(7)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Dragon])
+        .power_toughness(PowerToughness::fixed(6, 6))
+        .parse_text(
+            "This spell costs {X} less to cast, where X is the greatest number of artifacts an opponent controls.\nFlying, trample, haste\nWhenever this creature deals combat damage to a player, you create a Treasure token for each artifact that player controls.",
+        )
+        .expect("Cavern-Hoard Dragon should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cavern_hoard_dragon_strict_parser_regression() {
+    let def = cavern_hoard_dragon_definition();
+
+    let reduction = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => static_ability.this_spell_cost_reduction(),
+            _ => None,
+        })
+        .expect("expected Cavern-Hoard Dragon to have a this-spell cost reduction");
+
+    let crate::effect::Value::GreatestCount(filter) = &reduction.reduction else {
+        panic!(
+            "expected greatest-count cost reduction for Cavern-Hoard Dragon, got {:?}",
+            reduction.reduction
+        );
+    };
+    assert!(filter.card_types.contains(&CardType::Artifact));
+    assert_eq!(filter.controller, Some(PlayerFilter::Opponent));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cavern_hoard_dragon_compiled_text_keeps_greatest_artifact_clause() {
+    let def = cavern_hoard_dragon_definition();
+
+    assert_eq!(
+        crate::compiled_text::compiled_text_lines(&def),
+        vec![
+            "This spell costs {X} less to cast, where X is the greatest number of artifacts an opponent controls.".to_string(),
+            "Flying, trample, haste".to_string(),
+            "Whenever this creature deals combat damage to a player, create a Treasure token for each artifact that player controls.".to_string(),
+        ]
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn shadow_of_mortality_strict_parser_regression() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(90_321), "Shadow of Mortality")

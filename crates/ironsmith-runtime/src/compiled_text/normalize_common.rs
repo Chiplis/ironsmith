@@ -6623,7 +6623,7 @@ pub(super) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
         Some(PlayerFilter::Active) => Some("they control"),
         Some(PlayerFilter::Defending) => Some("defending player controls"),
         Some(PlayerFilter::Attacking) => Some("attacking player controls"),
-        Some(PlayerFilter::DamagedPlayer) => Some("damaged player controls"),
+        Some(PlayerFilter::DamagedPlayer) => Some("that player controls"),
         Some(PlayerFilter::Teammate) => Some("a teammate controls"),
         Some(PlayerFilter::Specific(_)) => Some("that player controls"),
         Some(PlayerFilter::Target(_)) | Some(PlayerFilter::IteratedPlayer) => Some("they control"),
@@ -6650,7 +6650,7 @@ pub(super) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
             Some(PlayerFilter::Active) => Some("they own"),
             Some(PlayerFilter::Defending) => Some("defending player owns"),
             Some(PlayerFilter::Attacking) => Some("attacking player owns"),
-            Some(PlayerFilter::DamagedPlayer) => Some("damaged player owns"),
+            Some(PlayerFilter::DamagedPlayer) => Some("that player owns"),
             Some(PlayerFilter::Teammate) => Some("a teammate owns"),
             Some(PlayerFilter::Specific(_)) => Some("that player owns"),
             Some(PlayerFilter::Target(_)) | Some(PlayerFilter::IteratedPlayer) => Some("they own"),
@@ -8090,6 +8090,12 @@ pub(crate) fn describe_value(value: &Value) -> String {
             } else {
                 format!("{multiplier} times the number of {subject}")
             }
+        }
+        Value::GreatestCount(filter) => {
+            format!(
+                "the greatest number of {}",
+                describe_count_filter_value_subject(filter)
+            )
         }
         Value::TotalPower(filter) => {
             format!(

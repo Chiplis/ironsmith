@@ -1474,6 +1474,11 @@ pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Val
         return Some(value);
     }
 
+    // where X is the greatest number of <objects> <player> controls
+    if let Some(value) = parse_where_x_is_greatest_number_of_filter_value(tokens) {
+        return Some(value);
+    }
+
     // where X is the number of <objects>
     if let Some(value) = parse_where_x_is_number_of_filter_value(tokens) {
         return Some(value);
@@ -2083,6 +2088,32 @@ pub(crate) fn parse_where_x_is_number_of_different_powers_filter_value(
     let filter_tokens = &tokens[object_start_token_idx..];
     let filter = parse_object_filter(filter_tokens, false).ok()?;
     Some(Value::DistinctPowers(filter))
+}
+
+pub(crate) fn parse_where_x_is_greatest_number_of_filter_value(
+    tokens: &[OwnedLexToken],
+) -> Option<Value> {
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    if !ETB_WHERE_X_IS_PREFIX_PATTERN.matches_words(&clause_words) {
+        return None;
+    }
+
+    let greatest_idx = ETB_GREATEST_WORD_PATTERN.find_word(&clause_words)?;
+    if !clause_words
+        .get(greatest_idx + 1)
+        .is_some_and(|word| ETB_NUMBER_WORD_PATTERN.matches_word(word))
+        || !clause_words
+            .get(greatest_idx + 2)
+            .is_some_and(|word| ETB_OF_WORD_PATTERN.matches_word(word))
+    {
+        return None;
+    }
+
+    let object_start_token_idx = token_index_for_word_index(tokens, greatest_idx + 3)?;
+    let filter_tokens = &tokens[object_start_token_idx..];
+    let filter = parse_object_filter_lexed(filter_tokens, false).ok()?;
+    filter.controller.as_ref()?;
+    Some(Value::GreatestCount(filter))
 }
 
 pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {

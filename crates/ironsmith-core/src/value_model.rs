@@ -58,6 +58,7 @@ pub enum Value {
     HalfRoundedDown(Box<Value>),
     Count(ObjectFilter),
     CountScaled(ObjectFilter, i32),
+    GreatestCount(ObjectFilter),
     TotalPower(ObjectFilter),
     TotalToughness(ObjectFilter),
     TotalManaValue(ObjectFilter),
