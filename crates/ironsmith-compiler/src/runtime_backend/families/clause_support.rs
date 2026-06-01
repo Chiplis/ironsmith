@@ -470,6 +470,9 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
         if let Some(action) = parse_count_keyword("bloodthirst", KeywordAction::Bloodthirst) {
             return Some(action);
         }
+        if let Some(action) = parse_count_keyword("tribute", KeywordAction::Tribute) {
+            return Some(action);
+        }
         if let Some(action) = parse_count_keyword("rampage", KeywordAction::Rampage) {
             return Some(action);
         }

@@ -139,6 +139,13 @@ pub enum ReplacementAction {
         added_abilities: Vec<Ability>,
     },
 
+    /// As this enters, an opponent may put counters on it and mark a keyword paid.
+    Tribute {
+        counter_type: CounterType,
+        count: u32,
+        paid_label: String,
+    },
+
     /// Enter tapped
     EnterTapped,
 

@@ -1146,6 +1146,9 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
     {
         return Some(action);
     }
+    if let Some(action) = parse_numeric_keyword_action(&words, "tribute", KeywordAction::Tribute) {
+        return Some(action);
+    }
     if let Some(action) = parse_numeric_keyword_action(&words, "afflict", KeywordAction::Afflict) {
         return Some(action);
     }

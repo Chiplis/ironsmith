@@ -4458,6 +4458,14 @@ impl GameState {
             }
         }
 
+        if !result.paid_labels.is_empty() {
+            if let Some(obj) = self.object_mut(new_id) {
+                for label in &result.paid_labels {
+                    obj.optional_costs_paid.mark_label_paid(label);
+                }
+            }
+        }
+
         for linked_old_id in &result.linked_exile_with_entering {
             if self.object(*linked_old_id).is_none() {
                 continue;

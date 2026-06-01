@@ -29,7 +29,30 @@ use crate::replacement::{
 };
 use crate::types::CardType;
 use crate::zone::Zone;
-use application::{apply_trait_enter_tapped, apply_trait_replacement, find_matching_cards_in_hand};
+use application::{
+    apply_trait_enter_tapped, apply_trait_enter_with_counters, apply_trait_replacement,
+    find_matching_cards_in_hand,
+};
+
+fn apply_tribute_response(
+    event: Event,
+    response: &InteractiveReplacementResponse,
+    counter_type: CounterType,
+    count: u32,
+    paid_label: &str,
+    paid_labels: &mut Vec<String>,
+) -> Event {
+    if !matches!(response, InteractiveReplacementResponse::Accept) {
+        return event;
+    }
+    if !paid_labels
+        .iter()
+        .any(|existing| existing.eq_ignore_ascii_case(paid_label))
+    {
+        paid_labels.push(paid_label.to_string());
+    }
+    apply_trait_enter_with_counters(&event, counter_type, count, &[], &[]).unwrap_or(event)
+}
 
 fn replacement_effect_choice_description(game: &GameState, effect: &ReplacementEffect) -> String {
     match &effect.replacement {
@@ -2088,6 +2111,8 @@ pub struct EtbEventResult {
     pub set_base_power_toughness: Option<(i32, i32)>,
     /// If set, the controller to use as the object enters.
     pub controller_override: Option<crate::ids::PlayerId>,
+    /// Keyword payment labels set by as-enters replacements.
+    pub paid_labels: Vec<String>,
     /// An interactive replacement that requires player input.
     ///
     /// If present, the caller must:
@@ -2823,6 +2848,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
         etb_event_provenance,
     );
     let mut state = TraitEventProcessingState::default();
+    let mut paid_labels = Vec::new();
 
     loop {
         let copy_choice_consumed = copy_choice_effects
@@ -2896,6 +2922,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                         added_abilities: etb.added_abilities.clone(),
                         set_base_power_toughness: etb.set_base_power_toughness,
                         controller_override: etb.controller_override,
+                        paid_labels,
                         interactive_replacement: None,
                     };
                 }
@@ -3050,6 +3077,22 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                             _ => InteractiveReplacementResponse::Decline,
                         };
                         state.mark_applied(effect_id);
+                        if let ReplacementAction::Tribute {
+                            counter_type,
+                            count,
+                            paid_label,
+                        } = &chosen_effect.replacement
+                        {
+                            current_event = apply_tribute_response(
+                                current_event,
+                                &response,
+                                *counter_type,
+                                *count,
+                                paid_label,
+                                &mut paid_labels,
+                            );
+                            continue;
+                        }
                         let interactive_result = continue_interactive_replacement(
                             game,
                             &response,
@@ -3108,6 +3151,23 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                     _ => InteractiveReplacementResponse::Decline,
                 };
                 state.mark_applied(effect_id);
+                if let Some(ReplacementAction::Tribute {
+                    counter_type,
+                    count,
+                    paid_label,
+                }) = find_effect_for_choice(game, &current_additional_effects, effect_id)
+                    .map(|effect| effect.replacement)
+                {
+                    current_event = apply_tribute_response(
+                        *event,
+                        &response,
+                        counter_type,
+                        count,
+                        &paid_label,
+                        &mut paid_labels,
+                    );
+                    continue;
+                }
                 let interactive_result = continue_interactive_replacement(
                     game,
                     &response,

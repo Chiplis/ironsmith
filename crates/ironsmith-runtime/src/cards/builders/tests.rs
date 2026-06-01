@@ -10596,6 +10596,166 @@ fn test_rix_maadi_reveler_etb_uses_spectacle_branch_when_paid() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn thunder_brute_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Thunder Brute");
+    let def = parse_oracle_card_definition("Thunder Brute");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("Tribute")
+            && debug.contains("Tribute(3)")
+            && debug.contains("ThisSpellPaidLabel")
+            && !debug.contains("KeywordMarker")
+            && !debug.contains("KeywordFallbackText")
+            && !debug.contains("RuleFallbackText")
+            && !debug.contains("UnsupportedParserLine"),
+        "expected Thunder Brute to lower tribute and its paid condition without unsupported placeholders, got {debug}"
+    );
+
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Tribute 3")
+            && rendered.contains("When this creature enters, if tribute wasn't paid")
+            && rendered.contains("it gains haste until end of turn"),
+        "expected Thunder Brute compiled text to preserve tribute and the unpaid branch, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn thunder_brute_etb_grants_haste_when_tribute_not_paid() {
+    use crate::effects::{ExecutionContext, execute_effect};
+    use crate::tests::test_helpers::setup_two_player_game;
+
+    struct DeclineTribute;
+    impl crate::decision::DecisionMaker for DeclineTribute {}
+
+    let def = parse_oracle_card_definition("Thunder Brute");
+    let mut game = setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let stack_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut dm = DeclineTribute;
+    let result = game
+        .move_object_with_etb_processing_with_dm(stack_id, Zone::Battlefield, &mut dm)
+        .expect("Thunder Brute should enter the battlefield");
+    let thunder_brute_id = result.new_id;
+
+    assert_eq!(
+        game.counter_count(thunder_brute_id, crate::object::CounterType::PlusOnePlusOne),
+        0,
+        "Thunder Brute should not get tribute counters when the opponent declines"
+    );
+    assert!(
+        !game
+            .object(thunder_brute_id)
+            .expect("Thunder Brute exists")
+            .optional_costs_paid
+            .was_paid_label("Tribute"),
+        "tribute should not be marked paid when the opponent declines"
+    );
+
+    let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(thunder_brute_id).expect("Thunder Brute exists"),
+        &game,
+    );
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::zones::ZoneChangeEvent::with_cause(
+            thunder_brute_id,
+            Zone::Stack,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            Some(snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let triggered = crate::triggers::check_triggers(&game, &event);
+    assert_eq!(
+        triggered.len(),
+        1,
+        "Thunder Brute should trigger when tribute was not paid"
+    );
+
+    let entry = &triggered[0];
+    let mut ctx = ExecutionContext::new_default(thunder_brute_id, alice)
+        .with_triggering_event(entry.triggering_event.clone());
+    for effect in &entry.ability.effects {
+        execute_effect(&mut game, effect, &mut ctx).expect("Thunder Brute ETB should resolve");
+    }
+
+    assert!(
+        game.current_has_static_ability_id(thunder_brute_id, StaticAbilityId::Haste),
+        "Thunder Brute should gain haste until end of turn when tribute was not paid"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn thunder_brute_etb_does_not_trigger_when_tribute_paid() {
+    use crate::tests::test_helpers::setup_two_player_game;
+
+    struct AcceptTribute;
+    impl crate::decision::DecisionMaker for AcceptTribute {
+        fn decide_boolean(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            true
+        }
+    }
+
+    let def = parse_oracle_card_definition("Thunder Brute");
+    let mut game = setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let graveyard_id = game.create_object_from_definition(&def, alice, Zone::Graveyard);
+    let mut dm = AcceptTribute;
+    let result = game
+        .move_object_with_etb_processing_with_dm(graveyard_id, Zone::Battlefield, &mut dm)
+        .expect("Thunder Brute should enter the battlefield");
+    let thunder_brute_id = result.new_id;
+
+    assert_eq!(
+        game.counter_count(thunder_brute_id, crate::object::CounterType::PlusOnePlusOne),
+        3,
+        "Thunder Brute should enter with three tribute counters when the opponent accepts"
+    );
+    assert!(
+        game.object(thunder_brute_id)
+            .expect("Thunder Brute exists")
+            .optional_costs_paid
+            .was_paid_label("Tribute"),
+        "tribute should be marked paid when the opponent accepts"
+    );
+
+    let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(thunder_brute_id).expect("Thunder Brute exists"),
+        &game,
+    );
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::zones::ZoneChangeEvent::with_cause(
+            thunder_brute_id,
+            Zone::Graveyard,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            Some(snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let triggered = crate::triggers::check_triggers(&game, &event);
+    assert!(
+        triggered.is_empty(),
+        "Thunder Brute should not trigger when tribute was paid"
+    );
+    assert!(
+        !game.current_has_static_ability_id(thunder_brute_id, StaticAbilityId::Haste),
+        "Thunder Brute should not gain haste when tribute was paid"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_disturb_keyword_line_compiles_to_alternative_cast() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Disturb Probe")
         .card_types(vec![CardType::Creature])

@@ -1053,6 +1053,49 @@ impl ReplacementMatcher for ThisWouldEnterWithBloodthirstMatcher {
     }
 }
 
+/// Tribute N.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Tribute {
+    pub amount: u32,
+}
+
+impl Tribute {
+    pub const fn new(amount: u32) -> Self {
+        Self { amount }
+    }
+}
+
+impl StaticAbilityKind for Tribute {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::Tribute
+    }
+
+    fn display(&self) -> String {
+        format!("Tribute {}", self.amount)
+    }
+
+    fn is_keyword(&self) -> bool {
+        true
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            ThisWouldEnterBattlefieldMatcher,
+            ReplacementAction::Tribute {
+                counter_type: CounterType::PlusOnePlusOne,
+                count: self.amount,
+                paid_label: "Tribute".to_string(),
+            },
+        ))
+    }
+}
+
 /// Enters the battlefield with counters.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EntersWithCounters {
