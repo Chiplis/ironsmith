@@ -2293,9 +2293,17 @@ impl Effect {
     }
 
     /// Create an effect that reveals cards from your hand.
-    pub fn reveal_from_hand(count: u32, card_type: Option<crate::types::CardType>) -> Self {
+    pub fn reveal_from_hand(
+        count: impl Into<Value>,
+        card_type: Option<crate::types::CardType>,
+        color_filter: Option<crate::color::ColorSet>,
+    ) -> Self {
         use crate::effects::RevealFromHandEffect;
-        Self::new(RevealFromHandEffect::new(count, card_type))
+        Self::new(RevealFromHandEffect::with_color_filter(
+            count,
+            card_type,
+            color_filter,
+        ))
     }
 
     /// Create a "move counters from one permanent to another" effect.

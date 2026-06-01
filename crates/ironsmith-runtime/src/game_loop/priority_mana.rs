@@ -2613,13 +2613,17 @@ pub(super) fn apply_sacrifice_target_response(
                     drain_pending_trigger_events(game, trigger_queue);
                 }
                 ActivationCardCostChoice::RevealFromHand {
-                    cost, card_type, ..
+                    cost,
+                    card_type,
+                    color_filter,
+                    ..
                 } => {
                     let legal_cards = get_legal_reveal_from_hand_cards(
                         game,
                         pending.activator,
                         pending.source,
                         card_type,
+                        color_filter,
                     );
                     if !legal_cards.contains(&target_id) {
                         return Err(GameLoopError::InvalidState(
@@ -2934,13 +2938,17 @@ pub(super) fn apply_card_cost_choice_response(
                     drain_pending_trigger_events(game, trigger_queue);
                 }
                 ActivationCardCostChoice::RevealFromHand {
-                    cost, card_type, ..
+                    cost,
+                    card_type,
+                    color_filter,
+                    ..
                 } => {
                     let legal_cards = get_legal_reveal_from_hand_cards(
                         game,
                         pending.caster,
                         pending.spell_id,
                         card_type,
+                        color_filter,
                     );
                     if !legal_cards.contains(&chosen_id) {
                         return Err(GameLoopError::InvalidState(

@@ -1,4 +1,6 @@
 use crate::cards::builders::{CardDefinitionBuilder, CardTextError, ChoiceCount};
+use crate::color::ColorSet;
+use crate::effect::Value;
 use crate::ids::CardId;
 use crate::mana::ManaSymbol;
 use crate::object::CounterType;
@@ -12523,6 +12525,17 @@ fn rewrite_activation_cost_parses_energy_and_counter_variants() {
     assert!(matches!(
         reveal_typed_source.segments.as_slice(),
         [super::ActivationCostSegmentCst::RevealSourceFromHand]
+    ));
+
+    let reveal_x_green = parse_activation_cost_rewrite("Reveal X green cards from your hand")
+        .expect("parser should parse reveal-X-color-from-hand costs");
+    assert!(matches!(
+        reveal_x_green.segments.as_slice(),
+        [super::ActivationCostSegmentCst::RevealFromHand {
+            count: Value::X,
+            color_filter: Some(colors),
+            card_type: None,
+        }] if *colors == ColorSet::GREEN
     ));
 }
 

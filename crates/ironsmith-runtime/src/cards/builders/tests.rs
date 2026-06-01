@@ -42593,6 +42593,35 @@ fn assert_oracle_card_fails_strict(name: &str) {
 }
 
 #[test]
+fn martyr_of_spores_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Martyr of Spores");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let ability_debug_compact = format!("{:?}", def.abilities);
+
+    assert!(
+        def.abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, AbilityKind::Activated(_))),
+        "Martyr of Spores should strictly parse its activated ability"
+    );
+    assert!(
+        rendered.contains("Reveal X green cards from your hand"),
+        "Martyr of Spores compiled text should preserve the X green reveal cost, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Target creature gets +X/+X until end of turn"),
+        "Martyr of Spores compiled text should preserve the target pump effect, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("RevealFromHandEffect")
+            && ability_debug.contains("count: X")
+            && ability_debug_compact.contains(&format!("{:?}", crate::color::ColorSet::GREEN)),
+        "Martyr of Spores should lower reveal-X-green-cards structurally, got {ability_debug}"
+    );
+}
+
+#[test]
 fn death_in_heaven_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Death in Heaven");
     let def = parse_oracle_card_definition("Death in Heaven");

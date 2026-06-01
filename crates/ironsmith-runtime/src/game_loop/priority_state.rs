@@ -291,6 +291,7 @@ pub enum ActivationCardCostChoice {
     RevealFromHand {
         cost: crate::costs::Cost,
         card_type: Option<CardType>,
+        color_filter: Option<crate::color::ColorSet>,
         description: String,
     },
     /// Choose a permanent to return to hand.
@@ -493,9 +494,11 @@ fn single_choice_cost(cost: &crate::costs::Cost) -> crate::costs::Cost {
         CostProcessingMode::ExileObjects { filter, zone, .. } => {
             single_exile_object_cost(&filter, zone)
         }
-        CostProcessingMode::RevealFromHand { card_type, .. } => {
-            crate::costs::Cost::reveal_from_hand(1, card_type)
-        }
+        CostProcessingMode::RevealFromHand {
+            card_type,
+            color_filter,
+            ..
+        } => crate::costs::Cost::reveal_from_hand_with_color_filter(1, card_type, color_filter),
         _ => cost.clone(),
     }
 }
@@ -600,12 +603,21 @@ pub(crate) fn append_activation_cost_steps_from_cost(
                 ));
             }
         }
-        CostProcessingMode::RevealFromHand { count, card_type } => {
-            for _ in 0..count {
+        CostProcessingMode::RevealFromHand {
+            count,
+            card_type,
+            color_filter,
+        } => {
+            let crate::effect::Value::Fixed(count) = count else {
+                out.push(ActivationCostStep::Cost(cost.clone()));
+                return;
+            };
+            for _ in 0..count.max(0) as u32 {
                 out.push(ActivationCostStep::CardChoice(
                     ActivationCardCostChoice::RevealFromHand {
                         cost: single_choice_cost(cost),
                         card_type,
+                        color_filter,
                         description: description.clone(),
                     },
                 ));
