@@ -1097,6 +1097,12 @@ where
             crate::effects::ForEachCounterKindPutOrRemoveEffect::new(payload.target.clone()),
         ));
     }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::DoubleCountersEffect>(&effect) {
+        return Ok(Effect::new(crate::effects::DoubleCountersEffect::new(
+            payload.counter_type,
+            payload.target.clone(),
+        )));
+    }
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::ReflexiveTriggerEffect<M::Effect>>(&effect)
     {

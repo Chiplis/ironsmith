@@ -4,6 +4,7 @@
 //! such as putting counters, removing counters, moving counters, and proliferate.
 
 mod for_each_counter_kind_put_or_remove;
+mod double_counters;
 mod move_all_counters;
 mod move_counters;
 mod move_one_counter;
@@ -15,6 +16,7 @@ mod remove_counters;
 mod remove_up_to_any_counters;
 mod remove_up_to_counters;
 
+pub use double_counters::DoubleCountersEffect;
 pub use for_each_counter_kind_put_or_remove::ForEachCounterKindPutOrRemoveEffect;
 pub use move_all_counters::MoveAllCountersEffect;
 pub use move_counters::MoveCountersEffect;

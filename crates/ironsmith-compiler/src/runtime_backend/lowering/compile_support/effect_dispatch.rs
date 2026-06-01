@@ -5059,13 +5059,17 @@ fn compile_subject_verb_effect(
             filter,
         } => {
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-            let iterated = ChooseSpec::Iterated;
-            let count = Value::CountersOn(Box::new(iterated.clone()), Some(*counter_type));
-            let effect = Effect::for_each(
-                resolved_filter,
-                vec![Effect::put_counters(*counter_type, count, iterated)],
-            );
+            let effect = Effect::double_counters(*counter_type, ChooseSpec::All(resolved_filter));
             Ok((vec![effect], Vec::new()))
+        }
+        SubjectVerbActionAst::DoubleCountersOnTarget {
+            counter_type,
+            target,
+        } => {
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let effect = Effect::double_counters(*counter_type, spec);
+            Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::RemoveCountersAll {
             amount,

@@ -654,6 +654,16 @@ impl Effect {
         Self::new(PutCountersEffect::new(counter_type, amount.into(), target))
     }
 
+    pub fn double_counters(
+        counter_type: Option<crate::object::CounterType>,
+        target: crate::target::ChooseSpec,
+    ) -> Self {
+        Self::new(crate::effects::DoubleCountersEffect::new(
+            counter_type,
+            target,
+        ))
+    }
+
     pub fn put_counters_on_source(counter_type: crate::object::CounterType, amount: i32) -> Self {
         Self::put_counters(counter_type, amount, crate::target::ChooseSpec::Source)
     }

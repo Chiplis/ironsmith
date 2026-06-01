@@ -2170,6 +2170,12 @@ impl Effect {
         Self::new(PutCountersEffect::new(counter_type, count, target))
     }
 
+    /// Create a "double counters on target" effect.
+    pub fn double_counters(counter_type: Option<CounterType>, target: ChooseSpec) -> Self {
+        use crate::effects::DoubleCountersEffect;
+        Self::new(DoubleCountersEffect::new(counter_type, target))
+    }
+
     /// Create a "put counters on source" effect.
     pub fn put_counters_on_source(counter_type: CounterType, count: impl Into<Value>) -> Self {
         use crate::effects::PutCountersEffect;

@@ -121,7 +121,7 @@ pub use composition::{
 pub use continuous::{ApplyContinuousEffect, ExchangeTextBoxesEffect, RuntimeModification};
 pub use control::{ExchangeControlEffect, GainControlEffect, SharedTypeConstraint};
 pub use counters::{
-    ForEachCounterKindPutOrRemoveEffect, MoveAllCountersEffect, MoveCountersEffect,
+    DoubleCountersEffect, ForEachCounterKindPutOrRemoveEffect, MoveAllCountersEffect, MoveCountersEffect,
     MoveOneCounterEffect, ProliferateEffect, PutCountersEffect, RemoveAnyCountersAmongEffect,
     RemoveAnyCountersFromSourceEffect, RemoveCountersEffect, RemoveUpToAnyCountersEffect,
     RemoveUpToCountersEffect,

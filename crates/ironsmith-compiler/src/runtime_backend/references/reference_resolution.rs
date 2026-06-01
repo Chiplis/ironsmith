@@ -2028,6 +2028,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::ReturnAllToHand { .. }
             | SubjectVerbActionAst::ReturnAllToHandOfChosenColor { .. }
             | SubjectVerbActionAst::DoubleCountersOnEach { .. }
+            | SubjectVerbActionAst::DoubleCountersOnTarget { .. }
             | SubjectVerbActionAst::MoveAllCounters { .. }
             | SubjectVerbActionAst::MoveOneCounter { .. }
             | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { .. }
@@ -2713,6 +2714,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             }
             SubjectVerbActionAst::DoubleCountersOnEach { filter, .. } => {
                 bind_unresolved_it_in_filter(filter, seed_tag)
+            }
+            SubjectVerbActionAst::DoubleCountersOnTarget { target, .. } => {
+                bind_unresolved_it_in_target(target, seed_tag)
             }
             SubjectVerbActionAst::ChooseCardName { filter, tag } => {
                 filter
