@@ -2693,6 +2693,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
                 }
             }
             SubjectVerbActionAst::Learn
+            | SubjectVerbActionAst::ShuffleSourceExiledPile
             | SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. } => {}
         },
         _ => {

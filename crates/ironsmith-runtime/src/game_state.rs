@@ -8996,6 +8996,34 @@ impl GameState {
             .unwrap_or(&[])
     }
 
+    pub fn top_exiled_with_source_link(&self, source_id: ObjectId) -> Option<ObjectId> {
+        self.get_exiled_with_source_links(source_id)
+            .iter()
+            .copied()
+            .find(|object_id| {
+                self.object(*object_id)
+                    .is_some_and(|object| object.zone == Zone::Exile)
+            })
+    }
+
+    pub fn shuffle_exiled_with_source_links(&mut self, source_id: ObjectId) -> usize {
+        let Some(mut linked) = self.exiled_with_source.remove(&source_id) else {
+            return 0;
+        };
+        linked.retain(|object_id| {
+            self.object(*object_id)
+                .is_some_and(|object| object.zone == Zone::Exile)
+        });
+        let count = linked.len();
+        if count > 1 {
+            self.shuffle_slice(&mut linked);
+        }
+        if !linked.is_empty() {
+            self.exiled_with_source.insert(source_id, linked);
+        }
+        count
+    }
+
     pub fn transfer_exiled_with_source_links(
         &mut self,
         old_source_id: ObjectId,

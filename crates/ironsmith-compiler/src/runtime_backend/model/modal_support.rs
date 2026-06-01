@@ -510,7 +510,7 @@ fn replace_modal_header_x_in_effect_ast(
                     replace_modal_header_x_in_value(toughness, replacement, clause)?;
                 }
             }
-            SubjectVerbActionAst::Learn => {}
+            SubjectVerbActionAst::Learn | SubjectVerbActionAst::ShuffleSourceExiledPile => {}
         },
         _ => {
             try_for_each_nested_effects_mut(effect, true, |nested| {

@@ -2910,6 +2910,10 @@ impl StaticAbility {
         Self::new(DrawReplacementExileTopFaceDown)
     }
 
+    pub fn draw_replacement_may_put_source_exiled_into_hand() -> Self {
+        Self::new(DrawReplacementMayPutSourceExiledIntoHand)
+    }
+
     pub fn draw_replacement_double() -> Self {
         Self::new(DrawReplacementDouble)
     }

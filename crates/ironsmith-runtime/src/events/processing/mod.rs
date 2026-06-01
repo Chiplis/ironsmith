@@ -1957,7 +1957,8 @@ fn process_with_dm_and_additional_effects_and_applied(
 
                 state.mark_applied_effect(&chosen_effect);
 
-                let apply_result = apply_trait_replacement(game, *boxed_event, &chosen_effect);
+                let apply_result =
+                    apply_trait_replacement(game, (*boxed_event).clone(), &chosen_effect);
                 consume_one_shot_if_applied(game, effect_id, &apply_result);
                 match apply_result {
                     TraitApplyResult::Modified(modified_event) => {
@@ -1983,6 +1984,26 @@ fn process_with_dm_and_additional_effects_and_applied(
                         filter,
                         destinations,
                     } => {
+                        if let ReplacementAction::OptionalInstead { effects, .. } =
+                            &chosen_effect.replacement
+                        {
+                            let apply_replacement = match decision_ctx {
+                                crate::decisions::context::DecisionContext::Boolean(ctx) => {
+                                    dm.decide_boolean(game, &ctx)
+                                }
+                                _ => false,
+                            };
+                            if apply_replacement {
+                                return TraitEventResult::Replaced {
+                                    effects: effects.clone(),
+                                    effect_id,
+                                    source: chosen_effect.source,
+                                    controller: chosen_effect.controller,
+                                };
+                            }
+                            current_event = *boxed_event;
+                            continue;
+                        }
                         return TraitEventResult::NeedsInteraction {
                             decision_ctx,
                             redirect_zone,
@@ -2000,6 +2021,59 @@ fn process_with_dm_and_additional_effects_and_applied(
                         };
                     }
                 }
+            }
+            TraitEventResult::NeedsInteraction {
+                decision_ctx,
+                redirect_zone,
+                effect_id,
+                object_id,
+                event,
+                filter,
+                life_cost,
+                destinations,
+                ..
+            } => {
+                let Some(effect) = find_effect_for_choice(game, additional_effects, effect_id)
+                else {
+                    return TraitEventResult::NeedsInteraction {
+                        decision_ctx,
+                        redirect_zone,
+                        effect_id,
+                        object_id,
+                        event,
+                        filter,
+                        life_cost,
+                        destinations,
+                    };
+                };
+                let ReplacementAction::OptionalInstead { effects, .. } = &effect.replacement else {
+                    return TraitEventResult::NeedsInteraction {
+                        decision_ctx,
+                        redirect_zone,
+                        effect_id,
+                        object_id,
+                        event,
+                        filter,
+                        life_cost,
+                        destinations,
+                    };
+                };
+
+                let apply_replacement = match decision_ctx {
+                    crate::decisions::context::DecisionContext::Boolean(ctx) => {
+                        dm.decide_boolean(game, &ctx)
+                    }
+                    _ => false,
+                };
+                if apply_replacement {
+                    return TraitEventResult::Replaced {
+                        effects: effects.clone(),
+                        effect_id,
+                        source: effect.source,
+                        controller: effect.controller,
+                    };
+                }
+                current_event = *event;
             }
             other => return other,
         }

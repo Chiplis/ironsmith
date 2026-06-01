@@ -814,6 +814,16 @@ where
     {
         return Ok(converted);
     }
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::ShuffleSourceExiledPileEffect>(&effect)
+    {
+        return Ok(converted);
+    }
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::MoveTopSourceExiledToZoneEffect>(&effect)
+    {
+        return Ok(converted);
+    }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::MayMoveToZoneEffect>(&effect)
     {
         return Ok(converted);

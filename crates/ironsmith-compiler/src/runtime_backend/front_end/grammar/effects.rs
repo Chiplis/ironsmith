@@ -1533,10 +1533,17 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             ),
         ];
         if shuffle {
+            let shuffle_that_pile = parser_token_word_refs(&search_tokens)
+                .windows(3)
+                .any(|words| words == ["shuffle", "that", "pile"]);
             sequence.push(EffectAst::subject_verb(
                 SubjectVerbRoleAst::LibraryOwner,
                 player,
-                SubjectVerbActionAst::ShuffleLibrary,
+                if shuffle_that_pile {
+                    SubjectVerbActionAst::ShuffleSourceExiledPile
+                } else {
+                    SubjectVerbActionAst::ShuffleLibrary
+                },
             ));
         }
         sequence

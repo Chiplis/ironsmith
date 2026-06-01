@@ -4217,6 +4217,39 @@ impl StaticAbilityKind for DrawReplacementExileTopFaceDown {
     }
 }
 
+/// "If you would draw a card, you may instead put the top card of the pile you exiled into your hand."
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct DrawReplacementMayPutSourceExiledIntoHand;
+
+impl StaticAbilityKind for DrawReplacementMayPutSourceExiledIntoHand {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::DrawReplacementMayPutSourceExiledIntoHand
+    }
+
+    fn display(&self) -> String {
+        "If you would draw a card, you may instead put the top card of the pile you exiled into your hand."
+            .to_string()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            WouldDrawCardMatcher::you(),
+            ReplacementAction::OptionalInstead {
+                player: PlayerFilter::You,
+                effects: vec![Effect::move_top_source_exiled_to_zone(Zone::Hand)],
+                prompt: "put the top card of the pile you exiled into your hand instead of drawing"
+                    .to_string(),
+            },
+        ))
+    }
+}
+
 /// "If you would draw a card, draw two cards instead."
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct DrawReplacementDouble;

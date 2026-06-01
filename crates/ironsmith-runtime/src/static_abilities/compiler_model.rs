@@ -221,6 +221,9 @@ impl StaticAbility {
             Some(StaticAbilityId::DrawReplacementExileTopFaceDown) => {
                 Self::draw_replacement_exile_top_face_down()
             }
+            Some(StaticAbilityId::DrawReplacementMayPutSourceExiledIntoHand) => {
+                Self::draw_replacement_may_put_source_exiled_into_hand()
+            }
             Some(StaticAbilityId::DrawReplacementExileTopAndPlay) => {
                 Self::draw_replacement_exile_top_and_play(
                     Self::parse_draw_replacement_exile_top_and_play_count(&label).unwrap_or(2),

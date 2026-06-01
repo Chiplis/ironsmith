@@ -18,6 +18,7 @@ mod look_at_hand;
 mod look_at_objects;
 mod look_at_top;
 mod mill;
+mod move_top_source_exiled_to_zone;
 mod put_tagged_remainder_on_library_bottom;
 mod rearrange_looked_cards_in_library;
 mod reveal_from_hand;
@@ -30,6 +31,7 @@ pub(crate) mod search_overrides;
 mod shuffle_graveyard_into_library;
 mod shuffle_hand_and_graveyard_into_library;
 mod shuffle_library;
+mod shuffle_source_exiled_pile;
 mod surveil;
 
 pub use clash::{ClashEffect, ClashOpponentMode};
@@ -47,6 +49,7 @@ pub use look_at_hand::LookAtHandEffect;
 pub use look_at_objects::LookAtObjectsEffect;
 pub use look_at_top::LookAtTopCardsEffect;
 pub use mill::MillEffect;
+pub use move_top_source_exiled_to_zone::MoveTopSourceExiledToZoneEffect;
 pub use put_tagged_remainder_on_library_bottom::PutTaggedRemainderOnLibraryBottomEffect;
 pub use rearrange_looked_cards_in_library::RearrangeLookedCardsInLibraryEffect;
 pub use reveal_from_hand::{RevealFromHandEffect, RevealSourceFromHandEffect};
@@ -58,6 +61,7 @@ pub use search_library_slots::{SearchLibrarySlot, SearchLibrarySlotsEffect};
 pub use shuffle_graveyard_into_library::ShuffleGraveyardIntoLibraryEffect;
 pub use shuffle_hand_and_graveyard_into_library::ShuffleHandAndGraveyardIntoLibraryEffect;
 pub use shuffle_library::ShuffleLibraryEffect;
+pub use shuffle_source_exiled_pile::ShuffleSourceExiledPileEffect;
 pub use surveil::SurveilEffect;
 
 pub(crate) use draw_cards::{

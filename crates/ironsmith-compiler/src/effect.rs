@@ -722,6 +722,10 @@ impl Effect {
         Self::new(crate::effects::MoveToZoneEffect::new(target, zone, to_top))
     }
 
+    pub fn move_top_source_exiled_to_zone(zone: crate::zone::Zone) -> Self {
+        Self::new(crate::effects::MoveTopSourceExiledToZoneEffect::new(zone))
+    }
+
     pub fn move_to_library_top_or_bottom_choice(target: crate::target::ChooseSpec) -> Self {
         Self::new(crate::effects::MoveToLibraryTopOrBottomChoiceEffect::new(
             target,
@@ -801,6 +805,10 @@ impl Effect {
 
     pub fn shuffle_library_player(player: crate::target::PlayerFilter) -> Self {
         Self::new(crate::effects::ShuffleLibraryEffect::new(player))
+    }
+
+    pub fn shuffle_source_exiled_pile() -> Self {
+        Self::new(crate::effects::ShuffleSourceExiledPileEffect::new())
     }
 
     pub fn sacrifice_source() -> Self {

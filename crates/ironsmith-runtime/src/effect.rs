@@ -1915,6 +1915,11 @@ impl Effect {
         Self::new(MoveToZoneEffect::new(target, zone, to_top))
     }
 
+    pub fn move_top_source_exiled_to_zone(zone: Zone) -> Self {
+        use crate::effects::MoveTopSourceExiledToZoneEffect;
+        Self::new(MoveTopSourceExiledToZoneEffect::new(zone))
+    }
+
     pub fn move_to_library_top_or_bottom_choice(target: ChooseSpec) -> Self {
         use crate::effects::MoveToLibraryTopOrBottomChoiceEffect;
         Self::new(MoveToLibraryTopOrBottomChoiceEffect::new(target))
@@ -2814,6 +2819,11 @@ impl Effect {
     pub fn shuffle_library_player(player: PlayerFilter) -> Self {
         use crate::effects::ShuffleLibraryEffect;
         Self::new(ShuffleLibraryEffect::new(player))
+    }
+
+    pub fn shuffle_source_exiled_pile() -> Self {
+        use crate::effects::ShuffleSourceExiledPileEffect;
+        Self::new(ShuffleSourceExiledPileEffect::new())
     }
 
     /// Create a "shuffle graveyard into library" effect for a specific player.

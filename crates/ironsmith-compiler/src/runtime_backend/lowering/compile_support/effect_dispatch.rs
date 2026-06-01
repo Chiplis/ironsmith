@@ -1455,6 +1455,9 @@ fn compile_subject_verb_effect(
                 })
             }
         }
+        SubjectVerbActionAst::ShuffleSourceExiledPile => {
+            Ok((vec![Effect::shuffle_source_exiled_pile()], Vec::new()))
+        }
         SubjectVerbActionAst::ShuffleObjectsIntoLibrary { target } => {
             let (spec, mut choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;

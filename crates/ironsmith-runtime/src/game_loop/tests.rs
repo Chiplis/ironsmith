@@ -15270,6 +15270,236 @@ fn create_creature(
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn parallel_thoughts_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(43_604), "Parallel Thoughts")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "When this enchantment enters, search your library for seven cards, exile them in a face-down pile, and shuffle that pile. Then shuffle your library.\n\
+             If you would draw a card, you may instead put the top card of the pile you exiled into your hand.",
+        )
+        .expect("Parallel Thoughts should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct ParallelThoughtsDecisionMaker {
+    replace_draw: bool,
+    search_names: Vec<String>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for ParallelThoughtsDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        self.replace_draw
+    }
+
+    fn decide_objects(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        let mut selected = Vec::new();
+        for name in &self.search_names {
+            if let Some(candidate) = ctx
+                .candidates
+                .iter()
+                .find(|candidate| candidate.legal && candidate.name == *name)
+            {
+                selected.push(candidate.id);
+            }
+        }
+        if selected.is_empty() {
+            return ctx
+                .candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .take(ctx.min)
+                .collect();
+        }
+        selected
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_named_card_in_zone(
+    game: &mut GameState,
+    owner: PlayerId,
+    name: &str,
+    zone: Zone,
+) -> ObjectId {
+    let card = CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    game.create_object_from_card(&card, owner, zone)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn player_hand_contains(game: &GameState, player: PlayerId, name: &str) -> bool {
+    game.player(player)
+        .expect("player exists")
+        .hand
+        .iter()
+        .any(|id| game.object(*id).is_some_and(|object| object.name == name))
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn player_library_contains(game: &GameState, player: PlayerId, name: &str) -> bool {
+    game.player(player)
+        .expect("player exists")
+        .library
+        .iter()
+        .any(|id| game.object(*id).is_some_and(|object| object.name == name))
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn parallel_thoughts_enter_effects(
+    game: &GameState,
+    source_id: ObjectId,
+) -> crate::resolution::ResolutionProgram {
+    game.object(source_id)
+        .expect("Parallel Thoughts should be on the battlefield")
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered.effects.clone()),
+            _ => None,
+        })
+        .expect("Parallel Thoughts should have an enters trigger")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parallel_thoughts_enter_trigger_exiles_face_down_source_linked_pile() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let parallel_thoughts = parallel_thoughts_definition();
+    let source_id =
+        game.create_object_from_definition(&parallel_thoughts, alice, Zone::Battlefield);
+    let search_names: Vec<String> = (1..=7).map(|idx| format!("Pile Card {idx}")).collect();
+    for name in &search_names {
+        create_named_card_in_zone(&mut game, alice, name, Zone::Library);
+    }
+    create_named_card_in_zone(&mut game, alice, "Remaining Card", Zone::Library);
+
+    game.stack.push(
+        crate::game_state::StackEntry::ability(
+            source_id,
+            alice,
+            parallel_thoughts_enter_effects(&game, source_id),
+        )
+        .with_triggering_event(TriggerEvent::new_with_provenance(
+            EnterBattlefieldEvent::new(source_id, Zone::Hand),
+            crate::provenance::ProvNodeId::default(),
+        )),
+    );
+    let mut dm = ParallelThoughtsDecisionMaker {
+        replace_draw: false,
+        search_names: search_names.clone(),
+    };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Parallel Thoughts enters trigger should resolve");
+
+    let linked = game.get_exiled_with_source_links(source_id).to_vec();
+    assert_eq!(linked.len(), 7, "seven searched cards should be linked to the source");
+    for name in &search_names {
+        let object_id = linked
+            .iter()
+            .copied()
+            .find(|id| game.object(*id).is_some_and(|object| object.name == *name))
+            .unwrap_or_else(|| panic!("expected {name} in the exiled pile"));
+        assert!(
+            game.object(object_id)
+                .is_some_and(|object| object.zone == Zone::Exile),
+            "{name} should be in exile"
+        );
+        assert!(
+            game.is_face_down(object_id),
+            "{name} should be exiled face down"
+        );
+    }
+    assert!(
+        player_library_contains(&game, alice, "Remaining Card"),
+        "unselected card should remain in the shuffled library"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parallel_thoughts_replaces_draw_with_source_exiled_card_when_accepted() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let parallel_thoughts = parallel_thoughts_definition();
+    let source_id =
+        game.create_object_from_definition(&parallel_thoughts, alice, Zone::Battlefield);
+    create_named_card_in_zone(&mut game, alice, "Unlinked Exile", Zone::Exile);
+    let top_exiled_id = create_named_card_in_zone(&mut game, alice, "Pile Card A", Zone::Exile);
+    let next_exiled_id = create_named_card_in_zone(&mut game, alice, "Pile Card B", Zone::Exile);
+    game.add_exiled_with_source_link(source_id, top_exiled_id);
+    game.add_exiled_with_source_link(source_id, next_exiled_id);
+    create_named_card_in_zone(&mut game, alice, "Normal Draw", Zone::Library);
+
+    let mut dm = ParallelThoughtsDecisionMaker {
+        replace_draw: true,
+        search_names: Vec::new(),
+    };
+    let mut ctx = ExecutionContext::new_default(source_id, alice).with_decision_maker(&mut dm);
+    execute_effect(&mut game, &Effect::draw(1), &mut ctx).expect("draw replacement should resolve");
+
+    assert!(
+        player_hand_contains(&game, alice, "Pile Card A"),
+        "accepted Parallel Thoughts replacement should put the top linked exiled card into hand"
+    );
+    assert!(
+        game.object(next_exiled_id)
+            .is_some_and(|object| object.zone == Zone::Exile),
+        "accepted replacement should leave the next pile card in exile"
+    );
+    assert!(
+        !player_hand_contains(&game, alice, "Normal Draw"),
+        "accepted Parallel Thoughts replacement should replace the draw event"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parallel_thoughts_declining_replacement_draws_normally() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let parallel_thoughts = parallel_thoughts_definition();
+    let source_id =
+        game.create_object_from_definition(&parallel_thoughts, alice, Zone::Battlefield);
+    let exiled_id = create_named_card_in_zone(&mut game, alice, "Pile Card", Zone::Exile);
+    game.add_exiled_with_source_link(source_id, exiled_id);
+    create_named_card_in_zone(&mut game, alice, "Normal Draw", Zone::Library);
+
+    let mut dm = ParallelThoughtsDecisionMaker {
+        replace_draw: false,
+        search_names: Vec::new(),
+    };
+    let mut ctx = ExecutionContext::new_default(source_id, alice).with_decision_maker(&mut dm);
+    execute_effect(&mut game, &Effect::draw(1), &mut ctx).expect("declined draw should resolve");
+
+    assert!(
+        player_hand_contains(&game, alice, "Normal Draw"),
+        "declining Parallel Thoughts replacement should draw normally"
+    );
+    assert!(
+        game.object(exiled_id)
+            .is_some_and(|object| object.zone == Zone::Exile),
+        "declining Parallel Thoughts replacement should leave the linked exiled card in exile"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 struct ChooseSecondDieResult;
 
 #[cfg(ironsmith_runtime_parser_tests)]

@@ -21,6 +21,30 @@ pub(super) fn apply_trait_replacement(
 
         ReplacementAction::Instead(effects) => TraitApplyResult::Replaced(effects.clone()),
 
+        ReplacementAction::OptionalInstead { player, prompt, .. } => {
+            let decider = match player {
+                crate::target::PlayerFilter::You => effect.controller,
+                crate::target::PlayerFilter::Specific(player) => *player,
+                _ => event.inner().affected_player(game),
+            };
+            let mut bool_ctx = crate::decisions::context::BooleanContext::new(
+                decider,
+                Some(effect.source),
+                prompt.clone(),
+            );
+            if let Some(name) = game.object(effect.source).map(|object| object.name.clone()) {
+                bool_ctx = bool_ctx.with_source_name(name);
+            }
+            TraitApplyResult::NeedsInteraction {
+                decision_ctx: crate::decisions::context::DecisionContext::Boolean(bool_ctx),
+                redirect_zone: Zone::Hand,
+                effect_id: effect.id,
+                object_id: effect.source,
+                filter: None,
+                destinations: None,
+            }
+        }
+
         ReplacementAction::Modify(modification) => {
             let modified = apply_trait_modification(game, &event, modification, effect);
             match modified {

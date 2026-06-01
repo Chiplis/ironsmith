@@ -27547,6 +27547,61 @@ fn parse_binding_contract_label_into_draw_replacement_static_ability() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parallel_thoughts_parses_and_renders_pile_draw_replacement() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(43_604), "Parallel Thoughts")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "When this enchantment enters, search your library for seven cards, exile them in a face-down pile, and shuffle that pile. Then shuffle your library.\n\
+             If you would draw a card, you may instead put the top card of the pile you exiled into your hand.",
+        )
+        .expect("Parallel Thoughts should parse strictly");
+
+    let static_ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        static_ids.contains(&StaticAbilityId::DrawReplacementMayPutSourceExiledIntoHand),
+        "expected Parallel Thoughts draw replacement static ability, got {static_ids:?}"
+    );
+
+    let abilities_debug = format!("{:?}", def.abilities).to_ascii_lowercase();
+    assert!(
+        abilities_debug.contains("shufflesourceexiledpileeffect"),
+        "expected real pile shuffle effect, got {abilities_debug}"
+    );
+
+    let rendered = compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.contains(
+            "search your library for seven cards, exile them in a face-down pile, and shuffle that pile. Then shuffle your library"
+        ),
+        "expected rendered pile-search clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "If you would draw a card, you may instead put the top card of the pile you exiled into your hand."
+        ),
+        "expected rendered optional draw replacement, got {rendered}"
+    );
+    assert!(
+        !rendered.to_ascii_lowercase().contains("tagged object")
+            && !rendered.to_ascii_lowercase().contains("tagged '"),
+        "Parallel Thoughts rendering must not expose tagged-object internals: {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_gain_life_for_each_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Life Harvest Variant")
         .card_types(vec![CardType::Instant])

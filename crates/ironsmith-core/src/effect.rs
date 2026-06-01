@@ -5514,6 +5514,32 @@ impl ShuffleLibraryEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ShuffleSourceExiledPileEffect;
+
+impl ShuffleSourceExiledPileEffect {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for ShuffleSourceExiledPileEffect {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MoveTopSourceExiledToZoneEffect {
+    pub zone: crate::zone::Zone,
+}
+
+impl MoveTopSourceExiledToZoneEffect {
+    pub fn new(zone: crate::zone::Zone) -> Self {
+        Self { zone }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct MayMoveToZoneEffect {
     pub target: ChooseSpec,
     pub zone: crate::zone::Zone,

@@ -974,6 +974,7 @@ pub(crate) enum SubjectVerbActionAst {
     },
     AddManaImprintedColors,
     ShuffleLibrary,
+    ShuffleSourceExiledPile,
     ShuffleObjectsIntoLibrary {
         target: TargetAst,
     },
@@ -2109,6 +2110,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             }
             Self::AddManaImprintedColors => f.write_str("AddManaImprintedColors"),
             Self::ShuffleLibrary => f.write_str("ShuffleLibrary"),
+            Self::ShuffleSourceExiledPile => f.write_str("ShuffleSourceExiledPile"),
             Self::ShuffleObjectsIntoLibrary { target } => f
                 .debug_tuple("ShuffleObjectsIntoLibrary")
                 .field(target)

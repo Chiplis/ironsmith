@@ -228,6 +228,36 @@ fn describe_council_dilemma_named_vote_sequence(effects: &[Effect]) -> Option<St
     Some(text)
 }
 
+fn describe_search_exile_face_down_pile_sequence(effects: &[Effect]) -> Option<String> {
+    let [choose_effect, exile_effect, shuffle_pile_effect, shuffle_library_effect] = effects else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let exile = exile_effect.downcast_ref::<crate::effects::ExileEffect>()?;
+    shuffle_pile_effect.downcast_ref::<crate::effects::ShuffleSourceExiledPileEffect>()?;
+    let shuffle_library = shuffle_library_effect
+        .downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+
+    if !choose.is_search
+        || choose.chooser != PlayerFilter::You
+        || choose.zone != Some(Zone::Library)
+        || choose.filter.zone != Some(Zone::Library)
+        || choose.count.min == 0
+        || choose.count.max != Some(choose.count.min)
+        || !matches!(&exile.spec, ChooseSpec::Tagged(tag) if tag == &choose.tag)
+        || !exile.face_down
+        || shuffle_library.player != PlayerFilter::You
+    {
+        return None;
+    }
+
+    let count_text = number_word(choose.count.min as i32)
+        .unwrap_or_else(|| choose.count.min.to_string());
+    Some(format!(
+        "search your library for {count_text} cards, exile them in a face-down pile, and shuffle that pile. Then shuffle your library"
+    ))
+}
+
 fn describe_planeswalk_chaos_vote_sequence(effects: &[&Effect]) -> Option<String> {
     let [vote_effect, planeswalk_effect, chaos_effect] = effects else {
         return None;
@@ -2914,6 +2944,10 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
     }
 
     if let Some(compact) = describe_council_dilemma_named_vote_sequence(effects) {
+        return Some(compact);
+    }
+
+    if let Some(compact) = describe_search_exile_face_down_pile_sequence(effects) {
         return Some(compact);
     }
 
@@ -30384,6 +30418,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             "Shuffle {} library",
             describe_possessive_player_filter(&shuffle_library.player)
         );
+    }
+    if effect
+        .downcast_ref::<crate::effects::ShuffleSourceExiledPileEffect>()
+        .is_some()
+    {
+        return "Shuffle that pile".to_string();
     }
     if let Some(shuffle_hand_and_gy) =
         effect.downcast_ref::<crate::effects::ShuffleHandAndGraveyardIntoLibraryEffect>()

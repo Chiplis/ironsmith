@@ -91,6 +91,13 @@ pub enum ReplacementAction {
     /// Do something different instead
     Instead(Vec<Effect>),
 
+    /// Optionally do something different instead; declining leaves the event unchanged.
+    OptionalInstead {
+        player: PlayerFilter,
+        effects: Vec<Effect>,
+        prompt: String,
+    },
+
     /// Redirect to a different target.
     /// Use `which` to specify which target to redirect for multi-target events.
     Redirect {

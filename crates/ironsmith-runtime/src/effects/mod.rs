@@ -89,11 +89,12 @@ pub use cards::{
     ConsultTopOfLibraryStopRule, DiscardEffect, DiscardHandEffect, DrawCardsEffect,
     DrawForEachTaggedMatchingEffect, EachPlayerScryEffect, ExileTopOfLibraryEffect,
     ExileUntilMatchEffect, FatesealEffect, LearnEffect, LookAtHandEffect, LookAtObjectsEffect,
-    LookAtTopCardsEffect, MillEffect, PutTaggedRemainderOnLibraryBottomEffect,
-    RearrangeLookedCardsInLibraryEffect, RevealFromHandEffect, RevealSourceFromHandEffect,
-    RevealTaggedEffect, RevealTopEffect, ScryEffect, SearchLibraryEffect, SearchLibrarySlot,
-    SearchLibrarySlotsEffect, ShuffleGraveyardIntoLibraryEffect,
-    ShuffleHandAndGraveyardIntoLibraryEffect, ShuffleLibraryEffect, SurveilEffect,
+    LookAtTopCardsEffect, MillEffect, MoveTopSourceExiledToZoneEffect,
+    PutTaggedRemainderOnLibraryBottomEffect, RearrangeLookedCardsInLibraryEffect,
+    RevealFromHandEffect, RevealSourceFromHandEffect, RevealTaggedEffect, RevealTopEffect,
+    ScryEffect, SearchLibraryEffect, SearchLibrarySlot, SearchLibrarySlotsEffect,
+    ShuffleGraveyardIntoLibraryEffect, ShuffleHandAndGraveyardIntoLibraryEffect,
+    ShuffleLibraryEffect, ShuffleSourceExiledPileEffect, SurveilEffect,
 };
 pub use combat::{
     CombatDamagePreventionTarget, EnterAttackingEffect, ExchangeValueKind, ExchangeValueOperand,

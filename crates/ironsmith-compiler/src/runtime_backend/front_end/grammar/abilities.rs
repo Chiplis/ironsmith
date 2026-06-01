@@ -1675,6 +1675,26 @@ pub(crate) fn is_draw_replace_exile_top_face_down_line_lexed(tokens: &[OwnedLexT
         && contains_token_word(tokens, "instead")
 }
 
+pub(crate) fn is_draw_replacement_source_exiled_to_hand_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    if primitives::parse_prefix(
+        tokens,
+        primitives::phrase(&["if", "you", "would", "draw", "a", "card"]),
+    )
+    .is_none()
+    {
+        return false;
+    }
+
+    contains_token_word(tokens, "may")
+        && contains_token_word(tokens, "instead")
+        && contains_token_word_sequence(tokens, &["top", "card"])
+        && contains_token_word(tokens, "pile")
+        && contains_token_word(tokens, "exiled")
+        && contains_token_word_sequence(tokens, &["into", "your", "hand"])
+}
+
 pub(crate) fn is_draw_replacement_double_line_lexed(tokens: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(tokens).word_refs();
     DRAW_REPLACEMENT_DOUBLE_PATTERN.matches_words(&words)

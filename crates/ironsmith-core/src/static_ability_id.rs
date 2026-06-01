@@ -224,6 +224,7 @@ pub enum StaticAbilityId {
     EffectDiscardToLibraryReplacement,
     OpponentEffectDiscardThisToBattlefieldReplacement,
     DrawReplacementExileTopFaceDown,
+    DrawReplacementMayPutSourceExiledIntoHand,
     DrawReplacementExileTopAndPlay,
     DrawReplacementDouble,
     DrawReplacementSkipEmptyLibrary,
@@ -483,6 +484,7 @@ impl StaticAbilityId {
             | EffectDiscardToLibraryReplacement
             | OpponentEffectDiscardThisToBattlefieldReplacement
             | DrawReplacementExileTopFaceDown
+            | DrawReplacementMayPutSourceExiledIntoHand
             | DrawReplacementExileTopAndPlay
             | DrawReplacementDouble
             | DrawReplacementSkipEmptyLibrary

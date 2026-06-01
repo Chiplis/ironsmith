@@ -3515,6 +3515,15 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
+
+    pub fn draw_replacement_may_put_source_exiled_into_hand() -> Self {
+        Self {
+            id: Some(StaticAbilityId::DrawReplacementMayPutSourceExiledIntoHand),
+            label: "draw replacement may put source exiled into hand".into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
+
     pub fn draw_replacement_double() -> Self {
         Self {
             id: Some(StaticAbilityId::DrawReplacementDouble),

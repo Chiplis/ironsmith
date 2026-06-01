@@ -2132,6 +2132,7 @@ fn resolve_effect_result_values_in_fields(
                 resolve_effect_result_value(count, state)?;
             }
             SubjectVerbActionAst::Learn
+            | SubjectVerbActionAst::ShuffleSourceExiledPile
             | SubjectVerbActionAst::BecomeSaddledUntilEndOfTurn { .. }
             | SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. } => {}
             SubjectVerbActionAst::AdditionalPhases { .. } => {}
