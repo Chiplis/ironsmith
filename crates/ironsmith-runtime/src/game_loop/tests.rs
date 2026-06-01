@@ -1933,6 +1933,241 @@ fn keeper_of_the_flame_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn nezumi_graverobber_pair_definitions() -> (
+    crate::cards::CardDefinition,
+    crate::cards::CardDefinition,
+) {
+    let front_id = CardId::from_raw(222_366);
+    let back_id = CardId::from_raw(222_367);
+
+    let front = CardDefinitionBuilder::new(front_id, "Nezumi Graverobber")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Rat, Subtype::Rogue])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .other_face(back_id)
+        .other_face_name("Nighteyes the Desecrator")
+        .linked_face_layout(LinkedFaceLayout::TransformLike)
+        .parse_text(
+            "{1}{B}: Exile target card from an opponent's graveyard. If no cards are in that graveyard, flip this creature.",
+        )
+        .expect("Nezumi Graverobber should parse for runtime tests");
+    let back = CardDefinitionBuilder::new(back_id, "Nighteyes the Desecrator")
+        .card_types(vec![CardType::Creature])
+        .supertypes(vec![Supertype::Legendary])
+        .subtypes(vec![Subtype::Rat, Subtype::Wizard])
+        .power_toughness(PowerToughness::fixed(4, 2))
+        .other_face(front_id)
+        .other_face_name("Nezumi Graverobber")
+        .linked_face_layout(LinkedFaceLayout::TransformLike)
+        .parse_text(
+            "{4}{B}: Put target creature card from a graveyard onto the battlefield under your control.",
+        )
+        .expect("Nighteyes the Desecrator should parse for runtime tests");
+
+    (front, back)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn register_nezumi_graverobber_pair(game: &mut GameState) -> crate::cards::CardDefinition {
+    let (front, back) = nezumi_graverobber_pair_definitions();
+    game.register_linked_face_definition(&front);
+    game.register_linked_face_definition(&back);
+    front
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_graveyard_instant(game: &mut GameState, name: &str, owner: PlayerId) -> ObjectId {
+    let card = CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Instant])
+        .build();
+    game.create_object_from_card(&card, owner, Zone::Graveyard)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_graveyard_creature(game: &mut GameState, name: &str, owner: PlayerId) -> ObjectId {
+    let card = CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    game.create_object_from_card(&card, owner, Zone::Graveyard)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn object_id_in_zone_named(game: &GameState, zone: Zone, name: &str) -> Option<ObjectId> {
+    game.objects_in_zone(zone).into_iter().find(|id| {
+        game.object(*id).is_some_and(|object| object.name == name)
+    })
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn activate_nezumi_ability_targeting(
+    game: &mut GameState,
+    controller: PlayerId,
+    source: ObjectId,
+    target: ObjectId,
+) {
+    let ability_index = game
+        .object(source)
+        .expect("Nezumi permanent should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Nezumi permanent should have an activated ability");
+    let activate_action = crate::decision::compute_legal_actions(game, controller)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility {
+                    source: action_source,
+                    ability_index: idx,
+                }
+                    if *action_source == source && *idx == ability_index
+            )
+        })
+        .expect("Nezumi activation should be legal");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    let progress = apply_priority_response_with_dm(
+        game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Nezumi activation should start");
+    match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::Targets(_),
+        ) => {}
+        other => panic!("expected target selection for Nezumi activation, got {other:?}"),
+    }
+
+    apply_priority_response_with_dm(
+        game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Object(target)]),
+        &mut dm,
+    )
+    .expect("choosing Nezumi activation target should complete activation");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn nezumi_graverobber_flips_when_target_owners_graveyard_is_empty_then_reanimates() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let front = register_nezumi_graverobber_pair(&mut game);
+    let nezumi_id = game.create_object_from_definition(&front, alice, Zone::Battlefield);
+    let target_name = "Bob's Last Card";
+    let target_card = create_graveyard_instant(&mut game, target_name, bob);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Black, 2);
+
+    activate_nezumi_ability_targeting(&mut game, alice, nezumi_id, target_card);
+    resolve_stack_entry(&mut game).expect("Nezumi Graverobber ability should resolve");
+
+    assert!(
+        object_id_in_zone_named(&game, Zone::Exile, target_name).is_some(),
+        "target card should be exiled from Bob's graveyard"
+    );
+    assert!(
+        game.player(bob).expect("Bob should exist").graveyard.is_empty(),
+        "Bob's graveyard should be empty after exiling its only card"
+    );
+    assert!(
+        game.is_flipped(nezumi_id),
+        "Nezumi Graverobber should flip when that graveyard is empty"
+    );
+    assert_eq!(
+        game.object(nezumi_id).expect("Nezumi should exist").name,
+        "Nighteyes the Desecrator"
+    );
+
+    let creature_name = "Bob's Reanimation Target";
+    let creature_card = create_graveyard_creature(&mut game, creature_name, bob);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Black, 5);
+
+    activate_nezumi_ability_targeting(&mut game, alice, nezumi_id, creature_card);
+    resolve_stack_entry(&mut game).expect("Nighteyes the Desecrator ability should resolve");
+
+    let reanimated_id = object_id_in_zone_named(&game, Zone::Battlefield, creature_name)
+        .expect("reanimated creature should be on the battlefield");
+    let reanimated = game
+        .object(reanimated_id)
+        .expect("reanimated creature should still exist");
+    assert_eq!(reanimated.zone, Zone::Battlefield);
+    assert_eq!(
+        game.controller_of(reanimated),
+        alice,
+        "Nighteyes should put the target creature card onto the battlefield under your control"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn nezumi_graverobber_does_not_flip_when_that_graveyard_still_has_cards() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let front = register_nezumi_graverobber_pair(&mut game);
+    let nezumi_id = game.create_object_from_definition(&front, alice, Zone::Battlefield);
+    let target_name = "Bob's First Card";
+    let remaining_name = "Bob's Remaining Card";
+    let target_card = create_graveyard_instant(&mut game, target_name, bob);
+    create_graveyard_instant(&mut game, remaining_name, bob);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Black, 2);
+
+    activate_nezumi_ability_targeting(&mut game, alice, nezumi_id, target_card);
+    resolve_stack_entry(&mut game).expect("Nezumi Graverobber ability should resolve");
+
+    assert!(
+        object_id_in_zone_named(&game, Zone::Exile, target_name).is_some(),
+        "target card should still be exiled"
+    );
+    assert!(
+        object_id_in_zone_named(&game, Zone::Graveyard, remaining_name).is_some(),
+        "a different card should remain in that graveyard"
+    );
+    assert!(
+        !game.is_flipped(nezumi_id),
+        "Nezumi Graverobber should not flip while that graveyard still has cards"
+    );
+    assert_eq!(
+        game.object(nezumi_id).expect("Nezumi should exist").name,
+        "Nezumi Graverobber"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn goblin_kites_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(72_955), "Goblin Kites")
         .mana_cost(ManaCost::from_pips(vec![

@@ -114,6 +114,8 @@ const CONTROL_POSSESSIVE_WORD_PATTERN: ClauseShape<'static> =
 const IN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["in"]);
 const INSTEAD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["instead"]);
 const GRAVEYARD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["graveyard"]);
+const IN_THAT_GRAVEYARD_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["in", "that", "graveyard"]);
 const MORE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["more"]);
 const OTHER_OR_ANOTHER_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["another"], &["other"]]);
@@ -2241,6 +2243,19 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if let Some(predicate) = parse_graveyard_threshold_predicate(&filtered)? {
         return Ok(predicate);
+    }
+
+    if filtered.len() == 6
+        && NO_WORD_PATTERN.matches_word(filtered[0])
+        && CARD_OR_CARDS_WORD_PATTERN.matches_word(filtered[1])
+        && IS_OR_ARE_WORD_PATTERN.matches_word(filtered[2])
+        && IN_THAT_GRAVEYARD_TAIL_PATTERN.matches_words(&filtered[3..])
+    {
+        return Ok(PredicateAst::ValueComparison {
+            left: Value::CardsInGraveyard(PlayerFilter::OwnerOf(ObjectRef::Target)),
+            operator: crate::effect::ValueComparisonOperator::Equal,
+            right: Value::Fixed(0),
+        });
     }
 
     if let Some(predicate) = parse_card_in_your_graveyard_predicate(&filtered) {

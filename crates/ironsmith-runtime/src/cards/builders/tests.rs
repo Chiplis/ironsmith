@@ -42009,6 +42009,30 @@ fn assert_oracle_card_fails_strict(name: &str) {
 }
 
 #[test]
+fn nezumi_graverobber_strict_parser_and_compiled_text_regression() {
+    const NAME: &str = "Nezumi Graverobber // Nighteyes the Desecrator";
+
+    assert_oracle_card_parses_strict(NAME);
+    let def = parse_oracle_card_definition(NAME);
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "{1}{B}: Exile target card from an opponent's graveyard. If no cards are in that graveyard, flip this creature"
+        ),
+        "expected Nezumi Graverobber to render the empty-that-graveyard flip clause, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("CardsInGraveyard")
+            && debug.contains("OwnerOf")
+            && debug.contains("Target")
+            && debug.contains("FlipEffect"),
+        "expected Nezumi Graverobber to lower the target owner's empty graveyard check and flip structurally, got {debug}"
+    );
+}
+
+#[test]
 fn death_in_heaven_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Death in Heaven");
     let def = parse_oracle_card_definition("Death in Heaven");

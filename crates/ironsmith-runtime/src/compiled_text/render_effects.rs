@@ -4134,6 +4134,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     if let Some(compact) = describe_structural_multisentence_effect_list(effects) {
         return compact;
     }
+    if let Some(compact) = describe_exile_target_then_flip_if_that_graveyard_empty(effects) {
+        return compact;
+    }
 
     let raw_effects = effects.iter().collect::<Vec<_>>();
     if let Some(compact) = describe_choose_color_then_chosen_color_mana(&raw_effects) {
@@ -14741,6 +14744,65 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
     cleanup_decompiled_text(&text)
+}
+
+fn describe_exile_target_then_flip_if_that_graveyard_empty(effects: &[Effect]) -> Option<String> {
+    fn unwrap_effect(effect: &Effect) -> &Effect {
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            return unwrap_effect(&tagged.effect);
+        }
+        if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+            return unwrap_effect(&tag_all.effect);
+        }
+        if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            return unwrap_effect(with_id.effect.as_ref());
+        }
+        effect
+    }
+
+    let [move_effect, conditional_effect] = effects else {
+        return None;
+    };
+    let move_to_zone = unwrap_effect(move_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_zone.zone != Zone::Exile
+        || !matches!(move_to_zone.target.unhinted(), ChooseSpec::Target(_))
+    {
+        return None;
+    }
+
+    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if !conditional.if_false.is_empty() {
+        return None;
+    }
+    let [flip_effect] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    let flip = flip_effect.downcast_ref::<crate::effects::FlipEffect>()?;
+    if !matches!(flip.target.unhinted(), ChooseSpec::Source) {
+        return None;
+    }
+    if !matches!(
+        &conditional.condition,
+        crate::effect::Condition::ValueComparison {
+            left: Value::CardsInGraveyard(PlayerFilter::OwnerOf(crate::target::ObjectRef::Target)),
+            operator: crate::effect::ValueComparisonOperator::Equal,
+            right: Value::Fixed(0),
+        }
+    ) {
+        return None;
+    }
+
+    let exile_text = describe_effect(move_effect)
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    if exile_text.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "{exile_text}. If no cards are in that graveyard, flip this creature"
+    ))
 }
 
 fn normalize_haunting_echoes_text(text: &str) -> Option<String> {

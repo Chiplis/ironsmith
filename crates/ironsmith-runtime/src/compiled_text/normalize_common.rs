@@ -12206,6 +12206,14 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 );
             }
             if let (
+                Value::CardsInGraveyard(PlayerFilter::OwnerOf(crate::target::ObjectRef::Target)),
+                crate::effect::ValueComparisonOperator::Equal,
+                Value::Fixed(0),
+            ) = (left, operator, right)
+            {
+                return "no cards are in that graveyard".to_string();
+            }
+            if let (
                 Value::MaxCardsDrawnThisTurn(player),
                 crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                 Value::Fixed(count),
