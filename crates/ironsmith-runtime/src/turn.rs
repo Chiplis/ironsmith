@@ -204,6 +204,9 @@ pub fn advance_phase(game: &mut GameState) -> Result<(), TurnError> {
             next = Phase::NextMain;
         }
         game.turn.phase = next;
+        if matches!(next, Phase::Combat) {
+            game.mark_combat_phase_started();
+        }
         game.turn.step = first_step_of_phase(next);
         game.turn.priority_player = Some(game.turn.active_player);
         Ok(())

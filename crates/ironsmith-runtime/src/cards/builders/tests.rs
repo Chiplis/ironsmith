@@ -25606,6 +25606,43 @@ fn render_kembas_banner_equipped_bonus_uses_for_each_wording() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn hexplate_wallbreaker_parses_and_renders_first_combat_phase_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(605_584), "Hexplate Wallbreaker")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .parse_text(
+            "For Mirrodin! (When this Equipment enters, create a 2/2 red Rebel creature token, then attach this to it.)\n\
+             Equipped creature gets +2/+2.\n\
+             Whenever equipped creature attacks, if it's the first combat phase of the turn, untap each attacking creature. After this phase, there is an additional combat phase.\n\
+             Equip {3}{R}",
+        )
+        .expect("Hexplate Wallbreaker should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let lower = rendered.to_ascii_lowercase();
+    assert!(
+        !lower.contains("unsupported predicate") && !lower.contains("unsupported effect"),
+        "Hexplate Wallbreaker should not fall back to unsupported output, got {rendered}"
+    );
+    assert!(
+        lower.contains("for mirrodin!")
+            && lower.contains("equipped creature gets +2/+2")
+            && lower.contains("whenever equipped creature attacks")
+            && lower.contains("if it's the first combat phase of the turn")
+            && lower.contains("untap each attacking creature")
+            && lower.contains("there is an additional combat phase")
+            && lower.contains("equip {3}{r}"),
+        "expected Hexplate Wallbreaker compiled text to preserve its equipment trigger, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn render_static_bonus_preserves_creature_type_among_scope() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Kindred Scout Variant")
         .card_types(vec![CardType::Creature])

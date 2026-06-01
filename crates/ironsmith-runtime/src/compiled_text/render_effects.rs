@@ -2992,6 +2992,10 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         return describe_structural_multisentence_effect_list(rest);
     }
 
+    if let Some(compact) = describe_untap_attacking_then_additional_combat(effects) {
+        return Some(compact);
+    }
+
     if let Some(compact) = describe_council_dilemma_named_vote_sequence(effects) {
         return Some(compact);
     }
@@ -3021,6 +3025,36 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         .or_else(|| describe_exile_then_free_cast_while_exiled_structural(effects))
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
         .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
+}
+
+fn is_all_attacking_creatures(spec: &ChooseSpec) -> bool {
+    let ChooseSpec::All(filter) = spec.base() else {
+        return false;
+    };
+    if !filter.attacking {
+        return false;
+    }
+    let mut base = filter.clone();
+    base.attacking = false;
+    base == ObjectFilter::creature()
+}
+
+fn describe_untap_attacking_then_additional_combat(effects: &[Effect]) -> Option<String> {
+    let [untap_effect, phases_effect] = effects else {
+        return None;
+    };
+    let untap = untap_effect.downcast_ref::<crate::effects::UntapEffect>()?;
+    if !is_all_attacking_creatures(&untap.target) {
+        return None;
+    }
+    let additional_phases = phases_effect.downcast_ref::<crate::effects::AdditionalPhasesEffect>()?;
+    if additional_phases.phases != [crate::effects::AdditionalPhase::Combat] {
+        return None;
+    }
+    Some(
+        "Untap each attacking creature. After this phase, there is an additional combat phase"
+            .to_string(),
+    )
 }
 
 fn describe_counter_unless_then_kick_count_draw(effects: &[Effect]) -> Option<String> {
@@ -17163,6 +17197,23 @@ mod tests {
         assert_eq!(
             describe_effect_list(&[Effect::new(choose), Effect::new(for_each)]),
             "Choose four permanents you don't control and put an aim counter on each of them"
+        );
+    }
+
+    #[test]
+    fn describe_effect_list_compacts_untap_attackers_then_additional_combat() {
+        let mut attacking_creature = ObjectFilter::creature();
+        attacking_creature.attacking = true;
+        let effects = vec![
+            Effect::new(crate::effects::UntapEffect::with_spec(ChooseSpec::All(
+                attacking_creature,
+            ))),
+            Effect::new(crate::effects::AdditionalPhasesEffect::combat()),
+        ];
+
+        assert_eq!(
+            describe_effect_list(&effects),
+            "Untap each attacking creature. After this phase, there is an additional combat phase"
         );
     }
 

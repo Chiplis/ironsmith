@@ -827,6 +827,10 @@ fn evaluate_condition_shared_core(
             Some(game.turn_store.spells_cast_last_turn_total == 0)
         }
         Condition::ItIsNight => Some(game.is_night),
+        Condition::FirstCombatPhaseOfTurn => Some(
+            game.turn.phase == crate::game_state::Phase::Combat
+                && game.turn_store.combat_phases_started_this_turn <= 1,
+        ),
         Condition::SpellsWereCastLastTurnOrMore(count) => {
             Some(game.turn_store.spells_cast_last_turn_total >= *count)
         }
@@ -999,6 +1003,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::ThisSpellWasCastFromNonHand => {}
         Condition::NoSpellsWereCastLastTurn => {}
         Condition::ItIsNight => {}
+        Condition::FirstCombatPhaseOfTurn => {}
         Condition::SpellsWereCastLastTurnOrMore(..) => {}
         Condition::YouHaveFullParty => {}
         Condition::TargetIsTapped => {}
@@ -1189,6 +1194,10 @@ pub fn evaluate_condition_external(
     match condition {
         Condition::XValueAtLeast(_) => false, // X not available in static context
         Condition::ItIsNight => game.is_night,
+        Condition::FirstCombatPhaseOfTurn => {
+            game.turn.phase == crate::game_state::Phase::Combat
+                && game.turn_store.combat_phases_started_this_turn <= 1
+        }
         Condition::ThisSpellEscaped => source_escaped(game, ctx.source),
         Condition::ThisSpellWasKicked => game
             .object(ctx.source)
@@ -2096,6 +2105,10 @@ fn evaluate_condition_simple(
 
     match condition {
         Condition::ItIsNight => game.is_night,
+        Condition::FirstCombatPhaseOfTurn => {
+            game.turn.phase == crate::game_state::Phase::Combat
+                && game.turn_store.combat_phases_started_this_turn <= 1
+        }
         Condition::ThisSpellWasKicked => game
             .object(source)
             .is_some_and(|obj| obj.optional_costs_paid.was_kicked()),
@@ -2857,6 +2870,10 @@ fn evaluate_condition(
 
     match condition {
         Condition::ItIsNight => Ok(game.is_night),
+        Condition::FirstCombatPhaseOfTurn => Ok(
+            game.turn.phase == crate::game_state::Phase::Combat
+                && game.turn_store.combat_phases_started_this_turn <= 1,
+        ),
         Condition::YouControl(filter) => {
             let filter_ctx = ctx.filter_context(game);
 

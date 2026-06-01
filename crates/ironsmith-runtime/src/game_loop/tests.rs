@@ -22049,6 +22049,158 @@ fn test_combat_damage_with_triggers() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn hexplate_wallbreaker_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(605_584), "Hexplate Wallbreaker")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .parse_text(
+            "For Mirrodin! (When this Equipment enters, create a 2/2 red Rebel creature token, then attach this to it.)\n\
+             Equipped creature gets +2/+2.\n\
+             Whenever equipped creature attacks, if it's the first combat phase of the turn, untap each attacking creature. After this phase, there is an additional combat phase.\n\
+             Equip {3}{R}",
+        )
+        .expect("Hexplate Wallbreaker should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn hexplate_wallbreaker_buffs_equipped_creature() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bearer_id = create_creature(&mut game, "Wallbreaker Bearer", alice, 2, 2);
+    let hexplate_id = game.create_object_from_definition(
+        &hexplate_wallbreaker_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    assert!(game.attach_object_to_target(
+        hexplate_id,
+        crate::object::AttachmentTarget::Object(bearer_id),
+    ));
+
+    assert_eq!(game.calculated_power(bearer_id), Some(4));
+    assert_eq!(game.calculated_toughness(bearer_id), Some(4));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn hexplate_wallbreaker_first_combat_attack_untaps_attackers_and_adds_combat() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+    game.turn_store.combat_phases_started_this_turn = 1;
+
+    let bearer_id = create_creature(&mut game, "Wallbreaker Bearer", alice, 2, 2);
+    let ally_id = create_creature(&mut game, "Attacking Ally", alice, 2, 2);
+    let bystander_id = create_creature(&mut game, "Bystander", alice, 2, 2);
+    let hexplate_id = game.create_object_from_definition(
+        &hexplate_wallbreaker_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    assert!(game.attach_object_to_target(
+        hexplate_id,
+        crate::object::AttachmentTarget::Object(bearer_id),
+    ));
+    game.tap(bearer_id);
+    game.tap(ally_id);
+    game.tap(bystander_id);
+    game.combat = Some(crate::combat_state::CombatState {
+        attackers: vec![
+            crate::combat_state::AttackerInfo {
+                creature: bearer_id,
+                target: AttackTarget::Player(bob),
+            },
+            crate::combat_state::AttackerInfo {
+                creature: ally_id,
+                target: AttackTarget::Player(bob),
+            },
+        ],
+        ..Default::default()
+    });
+
+    let event = TriggerEvent::new_with_provenance(
+        crate::events::combat::CreatureAttackedEvent::with_total_attackers(
+            bearer_id,
+            crate::events::combat::AttackEventTarget::Player(bob),
+            2,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in check_triggers(&game, &event) {
+        trigger_queue.add(trigger);
+    }
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Hexplate Wallbreaker trigger should go on the stack");
+    assert_eq!(game.stack.len(), 1, "first combat should queue Hexplate trigger");
+
+    resolve_stack_entry(&mut game).expect("Hexplate Wallbreaker trigger should resolve");
+
+    assert!(!game.is_tapped(bearer_id));
+    assert!(!game.is_tapped(ally_id));
+    assert!(game.is_tapped(bystander_id));
+    assert_eq!(game.turn_store.additional_phases, vec![Phase::Combat]);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn hexplate_wallbreaker_later_combat_attack_does_not_trigger() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+    game.turn_store.combat_phases_started_this_turn = 2;
+
+    let bearer_id = create_creature(&mut game, "Wallbreaker Bearer", alice, 2, 2);
+    let hexplate_id = game.create_object_from_definition(
+        &hexplate_wallbreaker_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    assert!(game.attach_object_to_target(
+        hexplate_id,
+        crate::object::AttachmentTarget::Object(bearer_id),
+    ));
+    game.combat = Some(crate::combat_state::CombatState {
+        attackers: vec![crate::combat_state::AttackerInfo {
+            creature: bearer_id,
+            target: AttackTarget::Player(bob),
+        }],
+        ..Default::default()
+    });
+
+    let event = TriggerEvent::new_with_provenance(
+        crate::events::combat::CreatureAttackedEvent::with_total_attackers(
+            bearer_id,
+            crate::events::combat::AttackEventTarget::Player(bob),
+            1,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in check_triggers(&game, &event) {
+        trigger_queue.add(trigger);
+    }
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("later combat attack event should be processed cleanly");
+
+    assert!(game.stack.is_empty());
+    assert!(game.turn_store.additional_phases.is_empty());
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_quintessential_katana_granted_combat_damage_trigger_stacks_and_resolves() {
     let mut game = setup_game();

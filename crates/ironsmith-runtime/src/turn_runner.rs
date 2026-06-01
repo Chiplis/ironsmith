@@ -393,7 +393,7 @@ impl TurnRunner {
 
             TurnState::FirstMainPriority => {
                 game.empty_mana_pools();
-                self.state = TurnState::BeginCombat;
+                self.state = next_runner_state_after_phase(game, TurnState::BeginCombat);
                 Ok(TurnAction::Continue)
             }
 
@@ -414,6 +414,7 @@ impl TurnRunner {
                     return Ok(TurnAction::Continue);
                 }
                 game.turn.phase = Phase::Combat;
+                game.mark_combat_phase_started();
                 game.turn.step = Some(Step::BeginCombat);
                 game.turn.priority_player = Some(game.turn.active_player);
                 generate_and_queue_step_triggers(game, tq);
@@ -625,7 +626,7 @@ impl TurnRunner {
                 game.empty_mana_pools();
                 crate::combat_state::end_combat(&mut self.combat);
                 game.combat = Some(self.combat.clone());
-                self.state = TurnState::NextMain;
+                self.state = next_runner_state_after_phase(game, TurnState::NextMain);
                 Ok(TurnAction::Continue)
             }
 
@@ -652,7 +653,7 @@ impl TurnRunner {
 
             TurnState::NextMainPriority => {
                 game.empty_mana_pools();
-                self.state = TurnState::EndStep;
+                self.state = next_runner_state_after_phase(game, TurnState::EndStep);
                 Ok(TurnAction::Continue)
             }
 
@@ -1147,6 +1148,25 @@ fn check_first_strike(game: &GameState, combat: &CombatState) -> bool {
     })
 }
 
+fn next_runner_state_after_phase(game: &mut GameState, normal_next: TurnState) -> TurnState {
+    let next_phase = if !game.turn_store.additional_phases.is_empty() {
+        Some(game.turn_store.additional_phases.remove(0))
+    } else if game.turn_store.additional_phase_continuation.is_some() {
+        game.turn_store.additional_phase_continuation.take()
+    } else {
+        None
+    };
+
+    match next_phase {
+        Some(Phase::Beginning) => TurnState::BeginTurn,
+        Some(Phase::FirstMain) => TurnState::FirstMain,
+        Some(Phase::Combat) => TurnState::BeginCombat,
+        Some(Phase::NextMain) => TurnState::NextMain,
+        Some(Phase::Ending) => TurnState::EndStep,
+        None => normal_next,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1376,6 +1396,39 @@ mod tests {
                 .attackers
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn test_turn_runner_consumes_additional_combat_before_normal_next_main() {
+        let mut game = setup_game();
+        let mut tq = TriggerQueue::new();
+        let mut runner = TurnRunner::new();
+
+        game.turn.phase = Phase::Combat;
+        game.turn.step = Some(Step::EndCombat);
+        game.turn_store.combat_phases_started_this_turn = 1;
+        game.turn_store.additional_phases.push(Phase::Combat);
+        game.turn_store.additional_phase_continuation = Some(Phase::NextMain);
+        runner.state = TurnState::EndCombatPriority;
+
+        let action = runner.advance(&mut game, &mut tq).unwrap();
+
+        assert!(matches!(action, TurnAction::Continue));
+        assert!(matches!(runner.state(), TurnState::BeginCombat));
+        assert!(game.turn_store.additional_phases.is_empty());
+        assert_eq!(game.turn_store.additional_phase_continuation, Some(Phase::NextMain));
+
+        let action = runner.advance(&mut game, &mut tq).unwrap();
+        assert!(matches!(action, TurnAction::RunPriority));
+        assert_eq!(game.turn.phase, Phase::Combat);
+        assert_eq!(game.turn_store.combat_phases_started_this_turn, 2);
+
+        runner.state = TurnState::EndCombatPriority;
+        let action = runner.advance(&mut game, &mut tq).unwrap();
+
+        assert!(matches!(action, TurnAction::Continue));
+        assert!(matches!(runner.state(), TurnState::NextMain));
+        assert_eq!(game.turn_store.additional_phase_continuation, None);
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
