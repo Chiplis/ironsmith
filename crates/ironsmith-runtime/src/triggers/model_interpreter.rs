@@ -252,8 +252,14 @@ pub(crate) fn interpret_trigger_model(
             activator,
             filter,
             non_mana_only,
+            loyalty_only,
         } => {
-            crate::triggers::Trigger::ability_activated_qualified(activator, filter, non_mana_only)
+            crate::triggers::Trigger::ability_activated_qualified(
+                activator,
+                filter,
+                non_mana_only,
+                loyalty_only,
+            )
         }
         TriggerKind::IsDealtDamage {
             target,

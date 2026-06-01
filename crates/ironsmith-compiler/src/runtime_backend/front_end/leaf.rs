@@ -89,6 +89,7 @@ pub(crate) enum ActivationCostSegmentCst {
     DiscardFiltered {
         count: u32,
         card_types: Vec<CardType>,
+        filter: Option<ObjectFilter>,
         random: bool,
         name: Option<String>,
         other: bool,
@@ -700,8 +701,20 @@ fn parse_discard_segment_tokens(
         return Ok(ActivationCostSegmentCst::DiscardFiltered {
             count,
             card_types: Vec::new(),
+            filter: None,
             random: false,
             name: Some(name),
+            other,
+        });
+    }
+
+    if let Some(filter) = parse_complex_discard_filter(tokens, &words, idx)? {
+        return Ok(ActivationCostSegmentCst::DiscardFiltered {
+            count,
+            card_types: Vec::new(),
+            filter: Some(filter),
+            random: false,
+            name: None,
             other,
         });
     }
@@ -753,10 +766,57 @@ fn parse_discard_segment_tokens(
     Ok(ActivationCostSegmentCst::DiscardFiltered {
         count,
         card_types,
+        filter: None,
         random,
         name: None,
         other,
     })
+}
+
+fn parse_complex_discard_filter(
+    tokens: &[OwnedLexToken],
+    words: &LeafCompatWords<'_>,
+    tail_start_idx: usize,
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let lowered = words.to_word_refs();
+    let tail = lowered.get(1..).unwrap_or_default();
+    let Some(selector_words) = tail.get(tail_start_idx..) else {
+        return Ok(None);
+    };
+    if !selector_words.iter().any(|word| *word == "or") {
+        return Ok(None);
+    }
+    let selector_start = tail_start_idx + 1;
+    let selector_end = lowered.len();
+    let Some(or_word_idx) = selector_words.iter().position(|word| *word == "or") else {
+        return Ok(None);
+    };
+    let left_start = selector_start;
+    let left_end = selector_start + or_word_idx;
+    let right_start = left_end + 1;
+    let Some(left_tokens) = token_slice_for_word_range(tokens, words, left_start, left_end) else {
+        return Ok(None);
+    };
+    let Some(right_tokens) = token_slice_for_word_range(tokens, words, right_start, selector_end)
+    else {
+        return Ok(None);
+    };
+    let left_filter = parse_object_filter_lexed(left_tokens, false).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "rewrite discard parser does not yet support selector '{}'",
+            render_lower_lexed_tokens(tokens)
+        ))
+    })?;
+    let right_filter = parse_object_filter_lexed(right_tokens, false).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "rewrite discard parser does not yet support selector '{}'",
+            render_lower_lexed_tokens(tokens)
+        ))
+    })?;
+    let mut filter = ObjectFilter::default();
+    filter.zone = Some(crate::zone::Zone::Hand);
+    filter.any_of = vec![left_filter, right_filter];
+    Ok(Some(filter))
 }
 
 fn parse_sacrifice_segment_tokens(
@@ -1882,13 +1942,16 @@ pub(crate) fn lower_activation_cost_cst(
             ActivationCostSegmentCst::DiscardFiltered {
                 count,
                 card_types,
+                filter,
                 random,
                 name,
                 other,
             } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
-                if *random || name.is_some() || *other {
-                    let card_filter = if card_types.is_empty() && name.is_none() && !*other {
+                if *random || name.is_some() || *other || filter.is_some() {
+                    let card_filter = if let Some(filter) = filter {
+                        Some(filter.clone())
+                    } else if card_types.is_empty() && name.is_none() && !*other {
                         None
                     } else {
                         let mut filter = ObjectFilter {

@@ -36976,6 +36976,176 @@ fn parse_vantress_visions_copy_triggered_ability_clause() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+const CHANDRAS_REGULATOR_TEXT: &str = "Whenever you activate a loyalty ability of a Chandra planeswalker, you may pay {1}. If you do, copy that ability. You may choose new targets for the copy.\n{1}, {T}, Discard a Mountain card or a red card: Draw a card.";
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn chandras_regulator_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(1), "Chandra's Regulator")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Red],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Artifact])
+        .parse_text(CHANDRAS_REGULATOR_TEXT)
+        .expect("Chandra's Regulator should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_chandras_regulator_strict_and_render_oracle_text() {
+    let def = chandras_regulator_definition();
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert_eq!(rendered, CHANDRAS_REGULATOR_TEXT);
+    assert!(
+        !crate::cards::generated_definition_has_unimplemented_content(&def),
+        "Chandra's Regulator should not contain unsupported runtime markers: {def:#?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_chandras_regulator_models_loyalty_copy_and_filtered_discard_cost() {
+    let def = chandras_regulator_definition();
+    let debug = format!("{def:#?}");
+
+    assert!(
+        debug.contains("AbilityActivatedTrigger")
+            && debug.contains("loyalty_only: true")
+            && debug.contains("Chandra")
+            && debug.contains("Planeswalker"),
+        "expected Chandra's Regulator to trigger on Chandra loyalty abilities, got {debug}"
+    );
+    assert!(
+        debug.contains("MayEffect")
+            && debug.contains("PayManaEffect")
+            && debug.contains("IfEffect")
+            && debug.contains("CopySpellEffect")
+            && debug.contains("triggering_source")
+            && (debug.contains("ChooseNewTargets") || debug.contains("RetargetStackObjectEffect")),
+        "expected optional-pay copy and retarget effects, got {debug}"
+    );
+    assert!(
+        debug.contains("DiscardEffect")
+            && debug.contains("Mountain")
+            && debug.contains("ColorSet(")
+            && debug.contains("any_of"),
+        "expected discard cost to allow a Mountain card or a red card, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn chandras_regulator_runtime_triggers_only_for_chandra_loyalty_abilities() {
+    let regulator = chandras_regulator_definition();
+    let chandra = CardDefinitionBuilder::new(CardId::from_raw(2), "Chandra Test Walker")
+        .card_types(vec![CardType::Planeswalker])
+        .subtypes(vec![Subtype::Chandra])
+        .build();
+    let other_planeswalker = CardDefinitionBuilder::new(CardId::from_raw(3), "Other Test Walker")
+        .card_types(vec![CardType::Planeswalker])
+        .build();
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let regulator_id = game.create_object_from_definition(&regulator, alice, Zone::Battlefield);
+    let chandra_id = game.create_object_from_definition(&chandra, alice, Zone::Battlefield);
+    let other_id = game.create_object_from_definition(&other_planeswalker, alice, Zone::Battlefield);
+
+    let chandra_loyalty_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::spells::AbilityActivatedEvent::new(chandra_id, alice, false)
+            .with_loyalty_ability(true),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let triggers = crate::triggers::check_triggers(&game, &chandra_loyalty_event);
+    assert_eq!(
+        triggers
+            .iter()
+            .filter(|entry| entry.source == regulator_id)
+            .count(),
+        1,
+        "Chandra's Regulator should trigger for a Chandra loyalty ability"
+    );
+
+    let chandra_non_loyalty_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::spells::AbilityActivatedEvent::new(chandra_id, alice, false),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert!(
+        crate::triggers::check_triggers(&game, &chandra_non_loyalty_event)
+            .iter()
+            .all(|entry| entry.source != regulator_id),
+        "Chandra's Regulator must not trigger for non-loyalty Chandra abilities"
+    );
+
+    let other_loyalty_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::spells::AbilityActivatedEvent::new(other_id, alice, false)
+            .with_loyalty_ability(true),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert!(
+        crate::triggers::check_triggers(&game, &other_loyalty_event)
+            .iter()
+            .all(|entry| entry.source != regulator_id),
+        "Chandra's Regulator must not trigger for non-Chandra planeswalkers"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn chandras_regulator_runtime_copies_triggering_loyalty_ability() {
+    let regulator = chandras_regulator_definition();
+    let chandra = CardDefinitionBuilder::new(CardId::from_raw(2), "Chandra Test Walker")
+        .card_types(vec![CardType::Planeswalker])
+        .subtypes(vec![Subtype::Chandra])
+        .build();
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let regulator_source = game.create_object_from_definition(&regulator, alice, Zone::Battlefield);
+    let chandra_id = game.create_object_from_definition(&chandra, alice, Zone::Battlefield);
+    game.stack.push(crate::game_state::StackEntry::ability(
+        chandra_id,
+        alice,
+        vec![crate::effect::Effect::draw(1)],
+    ));
+
+    let triggering_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::spells::AbilityActivatedEvent::new(chandra_id, alice, false)
+            .with_loyalty_ability(true),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(regulator_source, alice, &mut dm);
+    ctx.triggering_event = Some(triggering_event);
+
+    crate::effects::TagTriggeringSourceEffect::new(crate::tag::TagKey::from("triggering_source"))
+        .execute(&mut game, &mut ctx)
+        .expect("ability activation should expose its source for tagging");
+    let copy_outcome = crate::effects::CopySpellEffect::single(ChooseSpec::Tagged(
+        crate::tag::TagKey::from("triggering_source"),
+    ))
+    .execute(&mut game, &mut ctx)
+    .expect("Chandra's Regulator should copy the triggered loyalty ability");
+
+    let copied_id = copy_outcome
+        .objects()
+        .and_then(|objects| objects.first().copied())
+        .expect("copy effect should report the copied ability object");
+    let copied_entry = game
+        .stack
+        .iter()
+        .find(|entry| entry.object_id == copied_id)
+        .expect("copied ability should be on the stack");
+    assert!(copied_entry.is_ability, "copy should remain an ability");
+    assert!(
+        copied_entry.ability_effects.is_some(),
+        "copy should preserve the original ability effects"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_panoptic_projektor_full_text_compiles() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Panoptic Projektor")

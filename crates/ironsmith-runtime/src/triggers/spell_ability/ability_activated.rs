@@ -13,6 +13,7 @@ pub struct AbilityActivatedTrigger {
     pub activator: PlayerFilter,
     pub filter: ObjectFilter,
     pub non_mana_only: bool,
+    pub loyalty_only: bool,
 }
 
 impl AbilityActivatedTrigger {
@@ -21,8 +22,45 @@ impl AbilityActivatedTrigger {
             activator,
             filter,
             non_mana_only,
+            loyalty_only: false,
         }
     }
+
+    pub fn loyalty_only(mut self, loyalty_only: bool) -> Self {
+        self.loyalty_only = loyalty_only;
+        self
+    }
+}
+
+fn activate_verb(subject: &str) -> &'static str {
+    if subject.eq_ignore_ascii_case("you") || subject.eq_ignore_ascii_case("they") {
+        "activate"
+    } else {
+        "activates"
+    }
+}
+
+fn source_filter_phrase(filter: &ObjectFilter) -> String {
+    let description = filter.description();
+    let lower = description.to_ascii_lowercase();
+    if lower.starts_with("a ")
+        || lower.starts_with("an ")
+        || lower.starts_with("the ")
+        || lower.starts_with("target ")
+        || lower.starts_with("each ")
+    {
+        return description;
+    }
+    let article = if lower
+        .chars()
+        .next()
+        .is_some_and(|ch| matches!(ch, 'a' | 'e' | 'i' | 'o' | 'u'))
+    {
+        "an"
+    } else {
+        "a"
+    };
+    format!("{article} {description}")
 }
 
 impl TriggerMatcher for AbilityActivatedTrigger {
@@ -34,6 +72,9 @@ impl TriggerMatcher for AbilityActivatedTrigger {
             return false;
         };
         if self.non_mana_only && e.is_mana_ability {
+            return false;
+        }
+        if self.loyalty_only && !e.is_loyalty_ability {
             return false;
         }
         if !self.activator.matches_player(e.activator, &ctx.filter_ctx) {
@@ -52,17 +93,20 @@ impl TriggerMatcher for AbilityActivatedTrigger {
 
     fn display(&self) -> String {
         let subject = self.activator.description();
-        let ability = if self.non_mana_only {
+        let verb = activate_verb(&subject);
+        let ability = if self.loyalty_only {
+            "a loyalty ability"
+        } else if self.non_mana_only {
             "a non-mana ability"
         } else {
             "an ability"
         };
         if self.filter == ObjectFilter::default() {
-            format!("Whenever {subject} activates {ability}")
+            format!("Whenever {subject} {verb} {ability}")
         } else {
             format!(
-                "Whenever {subject} activates {ability} of {}",
-                self.filter.description()
+                "Whenever {subject} {verb} {ability} of {}",
+                source_filter_phrase(&self.filter)
             )
         }
     }

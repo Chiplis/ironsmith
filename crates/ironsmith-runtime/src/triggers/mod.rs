@@ -750,12 +750,12 @@ impl Trigger {
         activator: PlayerFilter,
         filter: ObjectFilter,
         non_mana_only: bool,
+        loyalty_only: bool,
     ) -> Self {
-        Self::new(AbilityActivatedTrigger::new(
-            activator,
-            filter,
-            non_mana_only,
-        ))
+        Self::new(
+            AbilityActivatedTrigger::new(activator, filter, non_mana_only)
+                .loyalty_only(loyalty_only),
+        )
     }
 
     /// Create a "whenever [player] plays [land filter]" trigger.

@@ -208,6 +208,7 @@ pub(crate) enum TriggerSpec {
         activator: PlayerFilter,
         filter: ObjectFilter,
         non_mana_only: bool,
+        loyalty_only: bool,
     },
     ThisIsDealtDamage,
     ThisIsDealtCombatDamage,

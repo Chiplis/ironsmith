@@ -212,11 +212,25 @@ pub(super) fn queue_ability_activated_event(
                 .insert(activator);
         }
     }
+    let is_loyalty_ability = !is_mana_ability
+        && game
+            .stack
+            .iter()
+            .rev()
+            .find(|entry| entry.is_ability && entry.object_id == source)
+            .and_then(|entry| entry.ability_index)
+            .and_then(|ability_index| game.current_ability(source, ability_index))
+            .is_some_and(|ability| match &ability.kind {
+                crate::ability::AbilityKind::Activated(activated) => activated.is_loyalty_ability(),
+                _ => false,
+            });
     let event_provenance = game
         .provenance_graph_mut()
         .alloc_root_event(crate::events::EventKind::AbilityActivated);
     let event = TriggerEvent::new_with_provenance(
-        AbilityActivatedEvent::new(source, activator, is_mana_ability).with_snapshot(snapshot),
+        AbilityActivatedEvent::new(source, activator, is_mana_ability)
+            .with_loyalty_ability(is_loyalty_ability)
+            .with_snapshot(snapshot),
         event_provenance,
     );
     queue_triggers_from_event(game, trigger_queue, event, true);
