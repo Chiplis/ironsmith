@@ -3191,6 +3191,7 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         .or_else(|| describe_reveal_top_choice_to_hand_rest_graveyard_structural(effects))
         .or_else(|| describe_gain_control_untap_haste_structural(effects))
         .or_else(|| describe_exile_then_free_cast_while_exiled_structural(effects))
+        .or_else(|| describe_choose_top_exile_then_conditional_cast_structural(effects))
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
         .or_else(|| describe_choose_name_target_mills_conditional_draw(effects))
         .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
@@ -3761,6 +3762,97 @@ fn describe_choose_top_exile_then_play_structural(effects: &[Effect]) -> Option<
     let verb = if grant.allow_land { "play" } else { "cast" };
     Some(format!(
         "Exile the top card of your library. You may {verb} that card this turn"
+    ))
+}
+
+fn describe_choose_top_exile_then_conditional_cast_structural(
+    effects: &[Effect],
+) -> Option<String> {
+    fn is_nonland_card_filter(filter: &ObjectFilter) -> bool {
+        if filter.excluded_card_types.as_slice() != [CardType::Land] {
+            return false;
+        }
+        let mut base = filter.clone();
+        base.excluded_card_types.clear();
+        base.zone = None;
+        base == ObjectFilter::default()
+    }
+
+    fn choose_subject(chooser: &PlayerFilter) -> (String, String) {
+        if matches!(chooser, PlayerFilter::You) {
+            return ("you".to_string(), "your".to_string());
+        }
+        if matches!(
+            chooser,
+            PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(tag))
+                if tag.as_str() == "triggering"
+        ) {
+            return ("that player".to_string(), "their".to_string());
+        }
+        (
+            describe_player_filter(chooser),
+            describe_possessive_player_filter(chooser),
+        )
+    }
+
+    let [choose_effect, exile_effect, conditional_effect] = effects else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let exile = exile_effect.downcast_ref::<crate::effects::ExileEffect>()?;
+    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if choose.is_search
+        || choose_primary_zone(choose) != Some(Zone::Library)
+        || choose.filter.owner.as_ref() != Some(&choose.chooser)
+        || !choose.top_only
+        || choose_exact_count(choose) != Some(1)
+        || !matches!(exile.spec.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+        || exile.face_down
+        || !conditional.if_false.is_empty()
+    {
+        return None;
+    }
+
+    let Condition::TaggedObjectMatches(condition_tag, filter) = &conditional.condition else {
+        return None;
+    };
+    if condition_tag != &choose.tag && condition_tag.as_str() != crate::tag::SOURCE_EXILED_TAG {
+        return None;
+    }
+    if !is_nonland_card_filter(filter) {
+        return None;
+    }
+
+    let [may_effect] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+    let [cast_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    if cast.tag != choose.tag && cast.tag.as_str() != crate::tag::SOURCE_EXILED_TAG {
+        return None;
+    }
+    if cast.player != PlayerFilter::You
+        || cast.allow_land
+        || cast.as_copy
+        || !cast.without_paying_mana_cost
+    {
+        return None;
+    }
+
+    let (subject, possessive) = choose_subject(&choose.chooser);
+    let exile_sentence = if subject == "you" {
+        "Exile the top card of your library".to_string()
+    } else {
+        format!(
+            "{subject} {} the top card of {possessive} library",
+            player_verb(&subject, "exile", "exiles")
+        )
+    };
+    Some(format!(
+        "{exile_sentence}. If it's a nonland card, you may cast it without paying its mana cost"
     ))
 }
 

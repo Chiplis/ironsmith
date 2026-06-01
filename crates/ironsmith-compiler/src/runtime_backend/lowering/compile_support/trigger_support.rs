@@ -540,7 +540,9 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
             if *caster == PlayerFilter::Any {
                 Some(PlayerFilter::IteratedPlayer)
             } else {
-                Some(caster.clone())
+                Some(PlayerFilter::ControllerOf(ObjectRef::tagged(TagKey::from(
+                    "triggering",
+                ))))
             }
         }
         TriggerSpec::SpellCopied { copier, .. } => {
