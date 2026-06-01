@@ -175,7 +175,16 @@ fn jetmirs_fixer_strict_parser_and_compiled_text_regression() {
     );
 }
 
-fn resolve_jetmirs_fixer_activation(use_treasure_mana: bool) -> crate::game_state::GameState {
+#[derive(Clone, Copy)]
+enum JetmirsFixerManaScenario {
+    DirectNonTreasure,
+    DirectTreasure,
+    PreFloatedTreasure,
+}
+
+fn resolve_jetmirs_fixer_activation(
+    scenario: JetmirsFixerManaScenario,
+) -> crate::game_state::GameState {
     use crate::decision::{GameProgress, LegalAction, SelectFirstDecisionMaker};
     use crate::game_loop::{PriorityLoopState, PriorityResponse, apply_priority_response_with_dm};
     use crate::game_state::Phase;
@@ -203,26 +212,53 @@ fn resolve_jetmirs_fixer_activation(use_treasure_mana: bool) -> crate::game_stat
 
     let def = jetmirs_fixer_definition_for_test();
     let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
-    if use_treasure_mana {
-        game.create_object_from_definition(
-            &crate::cards::tokens::treasure_token_definition(),
-            alice,
-            Zone::Battlefield,
-        );
-        game.create_object_from_definition(
-            &crate::cards::definitions::basic_forest(),
-            alice,
-            Zone::Battlefield,
-        );
-    } else {
-        game.player_mut(alice)
-            .expect("Alice should exist")
-            .mana_pool
-            .add(ManaSymbol::Red, 1);
-        game.player_mut(alice)
-            .expect("Alice should exist")
-            .mana_pool
-            .add(ManaSymbol::Green, 1);
+    match scenario {
+        JetmirsFixerManaScenario::DirectNonTreasure => {
+            game.create_object_from_definition(
+                &crate::cards::definitions::basic_mountain(),
+                alice,
+                Zone::Battlefield,
+            );
+            game.create_object_from_definition(
+                &crate::cards::definitions::basic_forest(),
+                alice,
+                Zone::Battlefield,
+            );
+        }
+        JetmirsFixerManaScenario::DirectTreasure => {
+            game.create_object_from_definition(
+                &crate::cards::tokens::treasure_token_definition(),
+                alice,
+                Zone::Battlefield,
+            );
+            game.create_object_from_definition(
+                &crate::cards::definitions::basic_forest(),
+                alice,
+                Zone::Battlefield,
+            );
+        }
+        JetmirsFixerManaScenario::PreFloatedTreasure => {
+            let treasure = game.create_object_from_definition(
+                &crate::cards::tokens::treasure_token_definition(),
+                alice,
+                Zone::Battlefield,
+            );
+            game.create_object_from_definition(
+                &crate::cards::definitions::basic_forest(),
+                alice,
+                Zone::Battlefield,
+            );
+            let mut prefloat_decision_maker = SelectFirstDecisionMaker;
+            crate::special_actions::perform_activate_mana_ability_restricted_colors_with_events(
+                &mut game,
+                alice,
+                treasure,
+                0,
+                Some(vec![crate::color::Color::Red]),
+                &mut prefloat_decision_maker,
+            )
+            .expect("Treasure should pre-float red mana");
+        }
     }
 
     let ability_index = def
@@ -287,7 +323,7 @@ fn resolve_jetmirs_fixer_activation(use_treasure_mana: bool) -> crate::game_stat
 
 #[test]
 fn jetmirs_fixer_activation_without_treasure_mana_gives_temporary_plus_one_plus_one() {
-    let game = resolve_jetmirs_fixer_activation(false);
+    let game = resolve_jetmirs_fixer_activation(JetmirsFixerManaScenario::DirectNonTreasure);
     let fixer = game
         .battlefield
         .iter()
@@ -308,8 +344,8 @@ fn jetmirs_fixer_activation_without_treasure_mana_gives_temporary_plus_one_plus_
 }
 
 #[test]
-fn jetmirs_fixer_activation_with_treasure_mana_puts_counter_instead() {
-    let game = resolve_jetmirs_fixer_activation(true);
+fn jetmirs_fixer_activation_with_direct_treasure_mana_puts_counter_instead() {
+    let game = resolve_jetmirs_fixer_activation(JetmirsFixerManaScenario::DirectTreasure);
     let fixer = game
         .battlefield
         .iter()
@@ -323,7 +359,33 @@ fn jetmirs_fixer_activation_with_treasure_mana_puts_counter_instead() {
     assert_eq!(
         game.counter_count(fixer, crate::object::CounterType::PlusOnePlusOne),
         1,
-        "Treasure-mana activation should put a +1/+1 counter on Jetmir's Fixer"
+        "direct Treasure-mana activation should put a +1/+1 counter on Jetmir's Fixer"
+    );
+    assert_eq!(
+        game.calculated_power(fixer),
+        Some(3),
+        "instead branch should not also apply the temporary +1/+1 effect"
+    );
+    assert_eq!(game.calculated_toughness(fixer), Some(3));
+}
+
+#[test]
+fn jetmirs_fixer_activation_with_pre_floated_treasure_mana_puts_counter_instead() {
+    let game = resolve_jetmirs_fixer_activation(JetmirsFixerManaScenario::PreFloatedTreasure);
+    let fixer = game
+        .battlefield
+        .iter()
+        .copied()
+        .find(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Jetmir's Fixer")
+        })
+        .expect("Jetmir's Fixer remains on battlefield");
+
+    assert_eq!(
+        game.counter_count(fixer, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "pre-floated Treasure mana should put a +1/+1 counter on Jetmir's Fixer"
     );
     assert_eq!(
         game.calculated_power(fixer),

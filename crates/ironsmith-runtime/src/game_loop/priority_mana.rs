@@ -928,9 +928,12 @@ pub(super) fn spend_pool_symbol(
     }
 
     if unrestricted_available && player_obj.mana_pool.remove(symbol, 1) {
+        let source = player_obj
+            .remove_unrestricted_mana_source(symbol)
+            .unwrap_or(ObjectId::from_raw(0));
         return Some(SpentManaInfo {
             symbol,
-            source: ObjectId::from_raw(0),
+            source,
             source_chosen_creature_type: None,
             restrictions: Vec::new(),
         });
@@ -1223,6 +1226,23 @@ pub(super) fn mana_payment_action_uses_treasure_source(
         .is_some_and(|object| object.subtypes.contains(&crate::types::Subtype::Treasure))
 }
 
+fn spent_mana_uses_treasure_source(game: &GameState, spent: &SpentManaInfo) -> bool {
+    game.object(spent.source)
+        .is_some_and(|object| object.subtypes.contains(&crate::types::Subtype::Treasure))
+}
+
+fn mark_spent_mana_labels(
+    game: &GameState,
+    spent: &SpentManaInfo,
+    optional_costs_paid: Option<&mut OptionalCostsPaid>,
+) {
+    if spent_mana_uses_treasure_source(game, spent)
+        && let Some(paid) = optional_costs_paid
+    {
+        paid.mark_label_paid("ManaFromTreasure");
+    }
+}
+
 /// Execute a pip payment action.
 /// Execute a pip payment action.
 /// Returns true if the pip was actually paid (mana consumed or life paid),
@@ -1238,6 +1258,7 @@ pub(super) fn execute_pip_payment_action(
     decision_maker: &mut impl DecisionMaker,
     payment_trace: &mut Vec<CostStep>,
     mut mana_spent_to_cast: Option<&mut ManaPool>,
+    mut optional_costs_paid: Option<&mut OptionalCostsPaid>,
 ) -> Result<bool, GameLoopError> {
     match action {
         ManaPipPaymentAction::UseFromPool(symbol) => {
@@ -1250,6 +1271,7 @@ pub(super) fn execute_pip_payment_action(
             if let Some(spent) = mana_spent_to_cast.as_deref_mut() {
                 track_spent_mana_symbol(spent, spent_info.symbol);
             }
+            mark_spent_mana_labels(game, &spent_info, optional_costs_paid.as_deref_mut());
             apply_spent_mana_bonuses(game, source, &spent_info);
             record_pip_payment_action(payment_trace, action);
             Ok(true) // Pip was paid
@@ -1300,6 +1322,7 @@ pub(super) fn execute_pip_payment_action(
                 if let Some(spent) = mana_spent_to_cast.as_deref_mut() {
                     track_spent_mana_symbol(spent, spent_info.symbol);
                 }
+                mark_spent_mana_labels(game, &spent_info, optional_costs_paid.as_deref_mut());
                 apply_spent_mana_bonuses(game, source, &spent_info);
                 record_pip_payment_action(
                     payment_trace,
@@ -2050,7 +2073,7 @@ pub(super) fn execute_pending_mana_ability(
         if let Some(player_obj) = game.player_mut(pending.activator) {
             for symbol in &pending.mana_to_add {
                 if pending.mana_usage_restrictions.is_empty() {
-                    player_obj.mana_pool.add(*symbol, 1);
+                    player_obj.add_unrestricted_mana_from_source(*symbol, pending.source);
                 } else {
                     player_obj.add_restricted_mana(crate::ability::RestrictedManaUnit {
                         symbol: *symbol,
@@ -2247,8 +2270,6 @@ pub(super) fn apply_pip_payment_response_activation(
     }
 
     let action = &options[choice].action;
-    let uses_treasure_source = mana_payment_action_uses_treasure_source(game, action);
-
     // Execute the payment action
     let pip_paid = execute_pip_payment_action(
         game,
@@ -2261,10 +2282,8 @@ pub(super) fn apply_pip_payment_response_activation(
         &mut *decision_maker,
         &mut pending.payment_trace,
         None,
+        Some(&mut pending.optional_costs_paid),
     )?;
-    if pip_paid && uses_treasure_source {
-        pending.optional_costs_paid.mark_label_paid("ManaFromTreasure");
-    }
     queue_mana_ability_event_for_action(
         game,
         trigger_queue,
@@ -2368,6 +2387,7 @@ pub(super) fn apply_pip_payment_response_cast(
         &mut *decision_maker,
         &mut pending.payment_trace,
         Some(&mut pending.mana_spent_to_cast),
+        None,
     )?;
     perf.execute_payment_ms = execute_started_at.elapsed_ms();
     let queue_event_started_at = crate::perf::PerfTimer::start();
@@ -5298,6 +5318,7 @@ mod priority_mana_tests {
             &mut dm,
             &mut payment_trace,
             Some(&mut mana_spent),
+            None,
         )
         .expect("mana ability activation during pip payment should succeed");
 

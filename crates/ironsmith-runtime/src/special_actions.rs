@@ -1605,7 +1605,7 @@ pub(crate) fn perform_activate_mana_ability_restricted_colors_with_events(
         if let Some(player_data) = game.player_mut(player) {
             for symbol in mana.iter().copied() {
                 if mana_usage_restrictions.is_empty() {
-                    player_data.mana_pool.add(symbol, 1);
+                    player_data.add_unrestricted_mana_from_source(symbol, permanent_id);
                 } else {
                     player_data.add_restricted_mana(crate::ability::RestrictedManaUnit {
                         symbol,

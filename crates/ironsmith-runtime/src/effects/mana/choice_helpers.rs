@@ -147,7 +147,11 @@ fn credit_mana_symbols_with_context<I>(
     if let Some(player) = game.player_mut(player_id) {
         for symbol in symbols {
             if restrictions.is_empty() {
-                player.mana_pool.add(symbol, 1);
+                if let Some(source) = source {
+                    player.add_unrestricted_mana_from_source(symbol, source);
+                } else {
+                    player.mana_pool.add(symbol, 1);
+                }
             } else {
                 player.add_restricted_mana(crate::ability::RestrictedManaUnit {
                     symbol,

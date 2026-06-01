@@ -7409,8 +7409,7 @@ impl GameState {
     /// Called at the end of each step and phase per MTG rules.
     pub fn empty_mana_pools(&mut self) {
         for player in &mut self.players {
-            player.mana_pool.empty();
-            player.restricted_mana.clear();
+            player.empty_mana_pool();
         }
     }
 

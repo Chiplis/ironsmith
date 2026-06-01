@@ -1821,6 +1821,7 @@ pub(super) fn continue_spell_cast_mana_payment(
             &mut *decision_maker,
             &mut pending.payment_trace,
             Some(&mut pending.mana_spent_to_cast),
+            None,
         )?;
         queue_mana_ability_event_for_action(
             game,
@@ -3338,7 +3339,6 @@ pub(super) fn continue_activation(
             // Auto-select deterministic pip choices when possible.
             if let Some(auto_choice) = preferred_auto_pip_choice(state, &options) {
                 let action = options[auto_choice].action.clone();
-                let uses_treasure_source = mana_payment_action_uses_treasure_source(game, &action);
                 let pip_paid = execute_pip_payment_action(
                     game,
                     trigger_queue,
@@ -3350,10 +3350,8 @@ pub(super) fn continue_activation(
                     &mut *decision_maker,
                     &mut pending.payment_trace,
                     None,
+                    Some(&mut pending.optional_costs_paid),
                 )?;
-                if pip_paid && uses_treasure_source {
-                    pending.optional_costs_paid.mark_label_paid("ManaFromTreasure");
-                }
                 queue_mana_ability_event_for_action(
                     game,
                     trigger_queue,

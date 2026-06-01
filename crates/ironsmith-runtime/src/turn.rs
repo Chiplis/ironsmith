@@ -611,7 +611,7 @@ pub fn execute_cleanup_step(game: &mut GameState) {
 
     // Empty mana pool
     if let Some(player) = game.player_mut(active_player) {
-        player.mana_pool.empty();
+        player.empty_mana_pool();
     }
 
     // Remove all damage marked on creatures and clear regeneration shields

@@ -28,8 +28,7 @@ impl EffectExecutor for EmptyManaPoolEffect {
         let Some(player) = game.player_mut(player_id) else {
             return Err(ExecutionError::InvalidTarget);
         };
-        player.mana_pool.empty();
-        player.restricted_mana.clear();
+        player.empty_mana_pool();
         Ok(EffectOutcome::default())
     }
 }

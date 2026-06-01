@@ -1014,7 +1014,7 @@ pub fn apply_priority_response_with_dm(
                         if let Some(player_obj) = game.player_mut(player) {
                             for symbol in &mana_to_add {
                                 if mana_usage_restrictions.is_empty() {
-                                    player_obj.mana_pool.add(*symbol, 1);
+                                    player_obj.add_unrestricted_mana_from_source(*symbol, *source);
                                 } else {
                                     player_obj.add_restricted_mana(
                                         crate::ability::RestrictedManaUnit {

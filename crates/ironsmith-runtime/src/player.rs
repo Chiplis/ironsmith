@@ -14,6 +14,12 @@ pub struct ManaPool {
     pub colorless: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManaPoolSource {
+    pub symbol: ManaSymbol,
+    pub source: ObjectId,
+}
+
 impl ManaPool {
     pub fn new() -> Self {
         Self::default()
@@ -593,6 +599,7 @@ pub struct Player {
     pub starting_life: i32,
     pub life: i32,
     pub mana_pool: ManaPool,
+    pub mana_pool_sources: Vec<ManaPoolSource>,
     pub restricted_mana: Vec<crate::ability::RestrictedManaUnit>,
     pub poison_counters: u32,
     pub energy_counters: u32,
@@ -640,6 +647,7 @@ impl Player {
             starting_life,
             life: starting_life,
             mana_pool: ManaPool::new(),
+            mana_pool_sources: Vec::new(),
             restricted_mana: Vec::new(),
             poison_counters: 0,
             energy_counters: 0,
@@ -695,6 +703,34 @@ impl Player {
     pub fn add_restricted_mana(&mut self, unit: crate::ability::RestrictedManaUnit) {
         self.mana_pool.add(unit.symbol, 1);
         self.restricted_mana.push(unit);
+    }
+
+    pub fn add_unrestricted_mana_from_source(&mut self, symbol: ManaSymbol, source: ObjectId) {
+        self.mana_pool.add(symbol, 1);
+        self.mana_pool_sources
+            .push(ManaPoolSource { symbol, source });
+    }
+
+    pub fn remove_unrestricted_mana_source(&mut self, symbol: ManaSymbol) -> Option<ObjectId> {
+        let tracked = self
+            .mana_pool_sources
+            .iter()
+            .filter(|unit| unit.symbol == symbol)
+            .count() as u32;
+        if self.mana_pool.amount(symbol) > tracked {
+            return None;
+        }
+        let index = self
+            .mana_pool_sources
+            .iter()
+            .position(|unit| unit.symbol == symbol)?;
+        Some(self.mana_pool_sources.remove(index).source)
+    }
+
+    pub fn empty_mana_pool(&mut self) {
+        self.mana_pool.empty();
+        self.mana_pool_sources.clear();
+        self.restricted_mana.clear();
     }
 
     /// Returns the combat damage this player has taken from a commander.
