@@ -91,7 +91,8 @@ use super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggere
 use super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::rule_engine::{LexRuleHeadHint, LexRuleHintIndex, build_lex_rule_hint_index};
 use super::static_ability_helpers::{
-    lower_granted_abilities_ast_to_object_abilities, static_ability_for_keyword_action,
+    afflict_triggered_ability, lower_granted_abilities_ast_to_object_abilities,
+    static_ability_for_keyword_action,
 };
 use super::token_primitives::{
     find_index, find_window_by, is_core_keyword_marker_text, is_ticket_sticker_marker_text,

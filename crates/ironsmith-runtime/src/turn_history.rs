@@ -309,6 +309,34 @@ impl TurnHistory {
         self.total_damage_to_player(player) > 0
     }
 
+    pub fn player_was_dealt_combat_damage_by_creature_subtype_this_turn(
+        &self,
+        players: &[PlayerId],
+        subtype: Subtype,
+    ) -> bool {
+        self.projected_records().any(|record| {
+            let Some(event) = record.event.downcast::<DamageEvent>() else {
+                return false;
+            };
+            if !event.is_combat || event.amount == 0 {
+                return false;
+            }
+            match event.target {
+                crate::events::DamageTarget::Player(player) if players.contains(&player) => {}
+                _ => return false,
+            }
+
+            record
+                .source_snapshot
+                .as_ref()
+                .or(record.object_snapshot.as_ref())
+                .is_some_and(|snapshot| {
+                    snapshot.card_types.contains(&CardType::Creature)
+                        && snapshot.subtypes.contains(&subtype)
+                })
+        })
+    }
+
     pub fn player_lost_life_this_turn(&self, player: PlayerId) -> bool {
         self.projected_records()
             .filter_map(|record| record.event.downcast::<LifeLossEvent>())

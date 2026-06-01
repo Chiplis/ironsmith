@@ -1,7 +1,7 @@
 use crate::{
     ActivationTiming, AnthemCountExpression, Comparison, CounterType, EffectId, EventValueSpec,
-    ManaSymbol, ObjectFilter, PlayerFilter, PlayerId, StableId, TagKey, ValueComparisonOperator,
-    Zone,
+    ManaSymbol, ObjectFilter, PlayerFilter, PlayerId, StableId, Subtype, TagKey,
+    ValueComparisonOperator, Zone,
 };
 use crate::{ChooseSpec, Color, ColorSet};
 
@@ -759,6 +759,10 @@ pub enum Condition {
     SourceHasCountersAtLeast(u32),
     SourcePowerAtLeast(u32),
     SourceDealtCombatDamageToPlayerThisTurn,
+    PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn {
+        player: PlayerFilter,
+        subtype: Subtype,
+    },
     ManaSpentToCastThisSpellAtLeast {
         amount: u32,
         symbol: Option<ManaSymbol>,

@@ -12301,6 +12301,16 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::SourceDealtCombatDamageToPlayerThisTurn => {
             "it dealt combat damage to a player this turn".to_string()
         }
+        Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype } => {
+            let player_text = match player {
+                PlayerFilter::Any => "a player".to_string(),
+                PlayerFilter::Opponent => "an opponent".to_string(),
+                _ => describe_player_filter(player),
+            };
+            format!(
+                "{player_text} was dealt combat damage by a {subtype} this turn"
+            )
+        }
         Condition::SourceCameUnderYourControlThisTurn => {
             "this creature came under your control this turn".to_string()
         }

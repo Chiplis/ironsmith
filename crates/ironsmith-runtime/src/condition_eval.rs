@@ -873,6 +873,28 @@ fn evaluate_condition_shared_core(
         Condition::SourceDealtCombatDamageToPlayerThisTurn => {
             Some(game.source_dealt_combat_damage_to_player_this_turn(ctx.source))
         }
+        Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype } => {
+            let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
+            let players: Vec<PlayerId> = match player {
+                PlayerFilter::You => vec![ctx.controller],
+                PlayerFilter::Opponent => filter_ctx.opponents.clone(),
+                PlayerFilter::Specific(id) => vec![*id],
+                PlayerFilter::Any => game.players.iter().map(|p| p.id).collect(),
+                PlayerFilter::NotYou => game
+                    .players
+                    .iter()
+                    .filter_map(|p| (p.id != ctx.controller).then_some(p.id))
+                    .collect(),
+                _ => Vec::new(),
+            };
+            Some(
+                game.turn_store
+                    .turn_history
+                    .player_was_dealt_combat_damage_by_creature_subtype_this_turn(
+                        &players, *subtype,
+                    ),
+            )
+        }
         Condition::SourceMatches(filter) => {
             let filter_ctx = game.filter_context_for(ctx.controller, Some(ctx.source));
             Some(
@@ -989,6 +1011,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::SourceHasCountersAtLeast(..) => {}
         Condition::SourcePowerAtLeast(..) => {}
         Condition::SourceDealtCombatDamageToPlayerThisTurn => {}
+        Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { .. } => {}
         Condition::SourceAttackedOrBlockedThisTurn => {}
         Condition::SourceIsInZone(..) => {}
         Condition::ManaSpentToCastThisSpellAtLeast { .. } => {}
@@ -1200,6 +1223,24 @@ pub fn evaluate_condition_external(
                 .map(|pid| game.turn_store.turn_history.spells_cast_by_player(*pid))
                 .sum();
             cast_count >= *count
+        }
+        Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype } => {
+            let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
+            let players: Vec<PlayerId> = match player {
+                PlayerFilter::You => vec![ctx.controller],
+                PlayerFilter::Opponent => filter_ctx.opponents.clone(),
+                PlayerFilter::Specific(id) => vec![*id],
+                PlayerFilter::Any => game.players.iter().map(|p| p.id).collect(),
+                PlayerFilter::NotYou => game
+                    .players
+                    .iter()
+                    .filter_map(|p| (p.id != ctx.controller).then_some(p.id))
+                    .collect(),
+                _ => Vec::new(),
+            };
+            game.turn_store
+                .turn_history
+                .player_was_dealt_combat_damage_by_creature_subtype_this_turn(&players, *subtype)
         }
         Condition::PlayerTappedLandForManaThisTurn { player } => {
             let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
@@ -2074,6 +2115,23 @@ fn evaluate_condition_simple(
             .filter_map(|&id| game.object(id))
             .filter(|obj| opponents.contains(&game.controller_of(obj)))
             .any(|obj| filter.matches(obj, &filter_ctx, game)),
+        Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype } => {
+            let players: Vec<PlayerId> = match player {
+                PlayerFilter::You => vec![controller],
+                PlayerFilter::Opponent => opponents.clone(),
+                PlayerFilter::Specific(id) => vec![*id],
+                PlayerFilter::Any => game.players.iter().map(|p| p.id).collect(),
+                PlayerFilter::NotYou => game
+                    .players
+                    .iter()
+                    .filter_map(|p| (p.id != controller).then_some(p.id))
+                    .collect(),
+                _ => Vec::new(),
+            };
+            game.turn_store
+                .turn_history
+                .player_was_dealt_combat_damage_by_creature_subtype_this_turn(&players, *subtype)
+        }
         Condition::PlayerControls { player, filter } => {
             let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
                 return false;
@@ -2831,6 +2889,27 @@ fn evaluate_condition(
                 .any(|obj| filter.matches(obj, &filter_ctx, game));
 
             Ok(has_matching)
+        }
+        Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype } => {
+            let filter_ctx = ctx.filter_context(game);
+            let players: Vec<PlayerId> = match player {
+                PlayerFilter::You => vec![ctx.controller],
+                PlayerFilter::Opponent => filter_ctx.opponents.clone(),
+                PlayerFilter::Specific(id) => vec![*id],
+                PlayerFilter::Any => game.players.iter().map(|p| p.id).collect(),
+                PlayerFilter::NotYou => game
+                    .players
+                    .iter()
+                    .filter_map(|p| (p.id != ctx.controller).then_some(p.id))
+                    .collect(),
+                _ => Vec::new(),
+            };
+            Ok(game
+                .turn_store
+                .turn_history
+                .player_was_dealt_combat_damage_by_creature_subtype_this_turn(
+                    &players, *subtype,
+                ))
         }
         Condition::PlayerControls { player, filter } => {
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;

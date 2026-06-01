@@ -258,6 +258,22 @@ pub(crate) fn decayed_triggered_ability() -> Ability {
     )
 }
 
+pub(crate) fn afflict_triggered_ability(amount: u32) -> Ability {
+    Ability {
+        kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+            trigger: Trigger::this_becomes_blocked(),
+            effects: ResolutionProgram::from_effects(vec![Effect::lose_life_player(
+                amount as i32,
+                PlayerFilter::Defending,
+            )]),
+            choices: vec![],
+            intervening_if: None,
+            presentation_label: Some(format!("keyword:afflict {amount}")),
+        }),
+        functional_zones: vec![crate::zone::Zone::Battlefield],
+    }
+}
+
 pub(crate) fn decayed_object_abilities() -> Vec<Ability> {
     vec![
         Ability::static_ability(StaticAbility::keyword_marker("decayed")),
@@ -414,6 +430,9 @@ pub(crate) fn lower_granted_abilities_ast_to_object_abilities(
     let mut lowered = Vec::new();
     for ability in abilities {
         match ability {
+            GrantedAbilityAst::KeywordAction(KeywordAction::Afflict(amount)) => {
+                lowered.push(afflict_triggered_ability(*amount));
+            }
             GrantedAbilityAst::KeywordAction(KeywordAction::Decayed) => {
                 lowered.extend(decayed_object_abilities());
             }

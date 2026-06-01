@@ -4058,9 +4058,6 @@ pub(crate) fn parse_trigger_clause_lexed(
         _ if BEGINNING_DRAW_STEP_TRIGGER_PATTERN.matches_words(&words) => Ok(
             TriggerSpec::BeginningOfDrawStep(parse_possessive_clause_player_filter(&words)),
         ),
-        _ if BEGINNING_COMBAT_TRIGGER_PATTERN.matches_words(&words) => Ok(
-            TriggerSpec::BeginningOfCombat(parse_possessive_clause_player_filter(&words)),
-        ),
         _ if BEGINNING_FIRST_MAIN_PHASE_TRIGGER_PATTERN.matches_words(&words) => Ok(
             TriggerSpec::BeginningOfPrecombatMain(parse_possessive_clause_player_filter(&words)),
         ),
@@ -4072,6 +4069,9 @@ pub(crate) fn parse_trigger_clause_lexed(
         ),
         _ if BEGINNING_POSTCOMBAT_MAIN_TRIGGER_PATTERN.matches_words(&words) => Ok(
             TriggerSpec::BeginningOfPostcombatMain(parse_possessive_clause_player_filter(&words)),
+        ),
+        _ if BEGINNING_COMBAT_TRIGGER_PATTERN.matches_words(&words) => Ok(
+            TriggerSpec::BeginningOfCombat(parse_possessive_clause_player_filter(&words)),
         ),
         _ => Err(CardTextError::ParseError(format!(
             "unsupported trigger clause (clause: '{}')",

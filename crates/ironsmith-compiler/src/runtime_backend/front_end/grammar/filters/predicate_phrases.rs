@@ -752,6 +752,23 @@ const SOURCE_DEALT_COMBAT_DAMAGE_TO_PLAYER_THIS_TURN_PATTERN: ClauseShape<'stati
             ],
         ]
 );
+const PLAYER_WAS_DEALT_COMBAT_DAMAGE_BY_SUBTYPE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &[
+                "a", "player", "was", "dealt", "combat", "damage", "by",
+            ],
+            &[
+                "player", "was", "dealt", "combat", "damage", "by",
+            ],
+            &[
+                "an", "opponent", "was", "dealt", "combat", "damage", "by",
+            ],
+            &[
+                "opponent", "was", "dealt", "combat", "damage", "by",
+            ],
+        ]
+);
 const CAST_THIS_SPELL_DURING_YOUR_MAIN_PHASE_PATTERN: ClauseShape<'static> = clause_shape!(
     exact
         & [
@@ -4327,6 +4344,29 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if SOURCE_DEALT_COMBAT_DAMAGE_TO_PLAYER_THIS_TURN_PATTERN.matches_words(&filtered) {
         return Ok(PredicateAst::SourceDealtCombatDamageToPlayerThisTurn);
+    }
+
+    if THIS_TURN_TAIL_PATTERN.matches_words(filtered.get(filtered.len().saturating_sub(2)..).unwrap_or_default())
+        && PLAYER_WAS_DEALT_COMBAT_DAMAGE_BY_SUBTYPE_PREFIX_PATTERN.matches_words(&filtered)
+    {
+        let subtype_idx = filtered.len().saturating_sub(3);
+        let subtype = parse_subtype_word(filtered[subtype_idx]).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported combat-damage source subtype predicate: {}",
+                filtered.join(" ")
+            ))
+        })?;
+        let player = if filtered.first() == Some(&"opponent")
+            || filtered.get(1) == Some(&"opponent")
+        {
+            PlayerAst::Opponent
+        } else {
+            PlayerAst::Any
+        };
+        return Ok(PredicateAst::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn {
+            player,
+            subtype,
+        });
     }
 
     if CAST_THIS_SPELL_DURING_YOUR_MAIN_PHASE_PATTERN.matches_words(&filtered) {

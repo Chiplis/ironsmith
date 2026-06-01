@@ -13,7 +13,9 @@ use crate::continuous::{
 };
 use crate::effect::{Comparison, Value};
 use crate::filter::ObjectFilterExt as _;
-use crate::filter::{PlayerFilterExt, TaggedConstraintSubject, TaggedOpbjectRelation};
+use crate::filter::{
+    PlayerFilterExt, TaggedConstraintSubject, TaggedOpbjectRelation, describe_player_filter,
+};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
@@ -111,6 +113,26 @@ fn lowercase_first_ascii(text: &str) -> String {
 
 fn object_ability_is_static_keyword(ability: &Ability) -> bool {
     matches!(&ability.kind, AbilityKind::Static(static_ability) if static_ability.is_keyword())
+}
+
+fn object_ability_keyword_label(ability: &Ability) -> Option<&str> {
+    match &ability.kind {
+        AbilityKind::Triggered(triggered) => triggered
+            .presentation_label
+            .as_deref()
+            .and_then(|label| label.strip_prefix("keyword:")),
+        _ => None,
+    }
+}
+
+fn explicit_granted_keyword_label(display: &str) -> Option<String> {
+    let label = display.trim().trim_end_matches('.');
+    let lower = label.to_ascii_lowercase();
+    let amount = lower.strip_prefix("afflict ")?;
+    amount
+        .chars()
+        .all(|ch| ch.is_ascii_digit())
+        .then_some(lower)
 }
 
 fn subject_text(filter: &ObjectFilter) -> String {
@@ -965,6 +987,19 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
         }
         crate::ConditionExpr::OpponentLostLifeThisTurn => {
             "as long as an opponent lost life this turn".to_string()
+        }
+        crate::ConditionExpr::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn {
+            player,
+            subtype,
+        } => {
+            let player_text = match player {
+                PlayerFilter::Any => "a player".to_string(),
+                PlayerFilter::Opponent => "an opponent".to_string(),
+                _ => describe_player_filter(player),
+            };
+            format!(
+                "as long as {player_text} was dealt combat damage by a {subtype} this turn"
+            )
         }
         crate::ConditionExpr::SourceCameUnderYourControlThisTurn => {
             "as long as this creature came under your control this turn".to_string()
@@ -4230,11 +4265,17 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
         }
 
         let filter_desc = self.filter.description();
+        let keyword_label = object_ability_keyword_label(&self.ability)
+            .map(str::to_string)
+            .or_else(|| explicit_granted_keyword_label(&ability_text));
         if object_ability_is_static_keyword(&self.ability) {
             ability_text = lowercase_first_ascii(&ability_text);
+        } else if let Some(label) = keyword_label.as_deref() {
+            ability_text = lowercase_first_ascii(label.trim());
         }
-        let rendered_ability = match self.ability.kind {
-            AbilityKind::Activated(_) | AbilityKind::Triggered(_) => {
+        let rendered_ability = match (&self.ability.kind, keyword_label.as_deref()) {
+            (_, Some(_)) => ability_text,
+            (AbilityKind::Activated(_) | AbilityKind::Triggered(_), _) => {
                 if !ability_text.ends_with('.') {
                     ability_text.push('.');
                 }

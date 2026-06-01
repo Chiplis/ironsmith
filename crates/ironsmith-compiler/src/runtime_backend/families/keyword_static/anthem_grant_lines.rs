@@ -1662,11 +1662,18 @@ pub(crate) fn parse_granted_keyword_static_line(
         return Ok(Some(compiled));
     }
 
-    let mapped = actions
-        .into_iter()
-        .filter(|action| action.lowers_to_static_ability())
-        .collect::<Vec<_>>();
-    if mapped.is_empty() && !grants_must_attack {
+    let mut mapped = Vec::new();
+    let mut object_ability_grants = Vec::new();
+    for action in actions {
+        if action.lowers_to_static_ability() {
+            mapped.push(action);
+        } else if let Some(granted) = granted_object_ability_for_keyword_action(&action) {
+            object_ability_grants.push(granted);
+        } else {
+            return Ok(None);
+        }
+    }
+    if mapped.is_empty() && object_ability_grants.is_empty() && !grants_must_attack {
         return Ok(None);
     }
 
@@ -1708,6 +1715,19 @@ pub(crate) fn parse_granted_keyword_static_line(
             },
         };
         compiled.push(ast);
+    }
+    let grant_clause = ParsedAnthemClause {
+        subject,
+        power: AnthemValue::Fixed(0),
+        toughness: AnthemValue::Fixed(0),
+        condition,
+    };
+    for (ability, display) in object_ability_grants {
+        compiled.push(grant_object_ability_for_anthem_subject(
+            &grant_clause,
+            ability,
+            display,
+        ));
     }
     Ok(Some(compiled))
 }
@@ -5144,6 +5164,18 @@ fn grant_keyword_action_for_anthem_subject(
             action,
             condition: clause.condition.clone(),
         },
+    }
+}
+
+fn granted_object_ability_for_keyword_action(
+    action: &KeywordAction,
+) -> Option<(ParsedAbility, String)> {
+    match action {
+        KeywordAction::Afflict(amount) => Some((
+            parsed_ability_from_ability(afflict_triggered_ability(*amount)),
+            action.display_text(),
+        )),
+        _ => None,
     }
 }
 

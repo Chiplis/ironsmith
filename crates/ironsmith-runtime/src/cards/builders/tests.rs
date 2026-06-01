@@ -3351,6 +3351,45 @@ fn test_parse_afflict_equivalent_rules_text_does_not_render_keyword() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn lost_monarch_of_ifnir_parses_afflict_grant_and_second_main_condition() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(692_108), "Lost Monarch of Ifnir")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Zombie, Subtype::Noble])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Afflict 3 (Whenever this creature becomes blocked, defending player loses 3 life.)\n\
+             Other Zombies you control have afflict 3.\n\
+             At the beginning of your second main phase, if a player was dealt combat damage by a Zombie this turn, mill three cards, then you may return a creature card from your graveyard to your hand.",
+        )
+        .expect("Lost Monarch of Ifnir should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Other Zombies you control have afflict 3"),
+        "expected granted afflict keyword text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("At the beginning of your second main phase")
+            && rendered.contains("if a player was dealt combat damage by a Zombie this turn"),
+        "expected second-main Zombie combat-damage condition, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("GrantObjectAbilityForFilter")
+            && debug.contains("PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn")
+            && debug.contains("phase_type: Postcombat")
+            && !debug.contains("BeginningOfCombat"),
+        "expected structural afflict grant and postcombat-main condition, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_bloodthirst_keyword_line_compiles_without_unsupported_marker() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Bloodthirst Parse Test")
         .card_types(vec![CardType::Creature])
