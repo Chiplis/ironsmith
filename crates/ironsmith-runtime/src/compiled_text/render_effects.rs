@@ -16379,6 +16379,16 @@ fn describe_triggered_inline_ability(
     line = normalize_redundant_short_name_etb_surface(line, triggered, self_subject);
     line = normalize_modal_named_source_etb_surface(line, triggered, self_subject);
     line = normalize_spellcast_trigger_mana_value_surface(triggered, line);
+    if triggered.presentation_label.is_none()
+        && line.starts_with("Whenever you cast a spell that targets this creature")
+    {
+        line = format!("Heroic — {line}");
+    }
+    if triggered.presentation_label.is_none()
+        && line.starts_with("Whenever another creature you control enters")
+    {
+        line = format!("Alliance — {line}");
+    }
     apply_triggered_presentation_label(triggered, line)
 }
 
@@ -38957,6 +38967,16 @@ pub(super) fn describe_ability(
                 triggered,
                 describe_trigger_surface_with_frequency(triggered, trigger_frequency),
             );
+            if triggered.presentation_label.is_none()
+                && trigger_surface.starts_with("Whenever you cast a spell that targets this creature")
+            {
+                trigger_surface = format!("Heroic — {trigger_surface}");
+            }
+            if triggered.presentation_label.is_none()
+                && trigger_surface.starts_with("Whenever another creature you control enters")
+            {
+                trigger_surface = format!("Alliance — {trigger_surface}");
+            }
             if matches!(intervening_condition, Some(Condition::YourTurn))
                 && trigger_surface
                     .to_ascii_lowercase()
