@@ -88,6 +88,42 @@ fn minds_dilation_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn necrotic_ooze_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(645_500), "Necrotic Ooze")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "As long as this creature is on the battlefield, it has all activated abilities of all creature cards in all graveyards.",
+        )
+        .expect("Necrotic Ooze should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn graveyard_sage_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(645_501), "Graveyard Sage")
+        .card_types(vec![CardType::Creature])
+        .parse_text("{T}: Draw a card.")
+        .expect("graveyard creature activated ability should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn graveyard_scroll_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(645_502), "Graveyard Scroll")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("{T}: Draw a card.")
+        .expect("graveyard noncreature activated ability should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn activated_ability_count(game: &GameState, object_id: ObjectId) -> usize {
+    game.calculated_characteristics(object_id)
+        .expect("object should have calculated characteristics")
+        .abilities
+        .iter()
+        .filter(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .count()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn the_eternity_elevator_threshold_mana_requires_twenty_charge_counters() {
     let mut game = setup_game();
@@ -184,6 +220,65 @@ fn the_eternity_elevator_threshold_mana_counts_current_charge_counters() {
         game.player(alice).expect("alice exists").mana_pool.green,
         23,
         "The Eternity Elevator should add X mana of one color where X is its charge counters"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn necrotic_ooze_copies_only_graveyard_creature_activated_abilities_on_battlefield() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let ooze = necrotic_ooze_definition();
+    let sage = graveyard_sage_definition();
+    let scroll = graveyard_scroll_definition();
+
+    let ooze_id = game.create_object_from_definition(&ooze, alice, Zone::Battlefield);
+    game.create_object_from_definition(&sage, alice, Zone::Graveyard);
+    game.create_object_from_definition(&sage, bob, Zone::Graveyard);
+    game.create_object_from_definition(&sage, alice, Zone::Hand);
+    game.create_object_from_definition(&scroll, alice, Zone::Graveyard);
+    game.remove_summoning_sickness(ooze_id);
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        activated_ability_count(&game, ooze_id),
+        2,
+        "Necrotic Ooze should copy creature-card activated abilities from all graveyards and ignore noncreature or non-graveyard cards"
+    );
+
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            crate::decision::LegalAction::ActivateAbility { source, .. } if *source == ooze_id
+        )),
+        "Necrotic Ooze's copied activated ability should be available while it is on the battlefield"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn necrotic_ooze_does_not_copy_activated_abilities_outside_battlefield() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let ooze = necrotic_ooze_definition();
+    let sage = graveyard_sage_definition();
+
+    let ooze_id = game.create_object_from_definition(&ooze, alice, Zone::Graveyard);
+    game.create_object_from_definition(&sage, alice, Zone::Graveyard);
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        activated_ability_count(&game, ooze_id),
+        0,
+        "Necrotic Ooze should not copy graveyard activated abilities unless it is on the battlefield"
     );
 }
 

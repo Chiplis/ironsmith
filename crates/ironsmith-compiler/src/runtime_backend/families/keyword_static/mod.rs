@@ -10693,12 +10693,15 @@ pub(crate) fn parse_copy_activated_abilities_line(
     let Some(has_idx) = has_idx else {
         return Ok(None);
     };
+    let Some(has_token_idx) = token_index_for_word_index(tokens, has_idx) else {
+        return Ok(None);
+    };
 
-    let (condition, subject_start) = match parse_anthem_prefix_condition(tokens, has_idx) {
+    let (condition, subject_start) = match parse_anthem_prefix_condition(tokens, has_token_idx) {
         Ok(parsed) => parsed,
         Err(_) => return Ok(None),
     };
-    let subject_tokens = trim_commas(&tokens[subject_start..has_idx]);
+    let subject_tokens = trim_commas(&tokens[subject_start..has_token_idx]);
     if subject_tokens.is_empty() {
         return Ok(None);
     }
@@ -10707,7 +10710,10 @@ pub(crate) fn parse_copy_activated_abilities_line(
         Err(_) => return Ok(None),
     };
 
-    let filter_tokens = trim_edge_punctuation(&tokens[(has_idx + 5)..]);
+    let Some(filter_start_idx) = token_index_for_word_index(tokens, has_idx + 5) else {
+        return Ok(None);
+    };
+    let filter_tokens = trim_edge_punctuation(&tokens[filter_start_idx..]);
     let mut filter_tokens =
         strip_leading_token_words_any(&filter_tokens, &["all", "each"]).to_vec();
     let after_of_words = crate::runtime_backend::lexer::parser_token_word_refs(&filter_tokens);

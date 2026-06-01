@@ -33898,6 +33898,32 @@ Creatures you control with +1/+1 counters on them have all activated abilities o
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn necrotic_ooze_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Necrotic Ooze");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(
+        ability_debug.contains("CopyActivatedAbilities")
+            && ability_debug.contains("SourceIsInZone(Battlefield)")
+            && ability_debug.contains("Graveyard")
+            && ability_debug.contains("Creature"),
+        "Necrotic Ooze should structurally model a battlefield-gated graveyard-creature activated-ability copy effect, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains("as long as")
+            && rendered.contains("this creature is on the battlefield")
+            && rendered.contains("all activated abilities")
+            && rendered.contains("creature cards")
+            && rendered.contains("graveyards"),
+        "expected Necrotic Ooze compiled text to preserve the source-on-battlefield activated-ability copy clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_existing_mana_spend_as_any_color_static_patterns() {
     let lattice = CardDefinitionBuilder::new(CardId::from_raw(1), "Mycosynth Lattice Variant")
         .parse_text("Players may spend mana as though it were mana of any color.")
