@@ -1257,6 +1257,119 @@ fn describe_hideaway_effects(effects: &[&Effect]) -> Option<String> {
     ))
 }
 
+fn describe_look_exile_one_rest_bottom_cast_else_hand(effects: &[&Effect]) -> Option<String> {
+    let [look_effect, choose_effect, exile_effect, rest_effect, may_effect, fallback_effect] =
+        effects
+    else {
+        return None;
+    };
+    let look = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let exile = exile_effect.downcast_ref::<crate::effects::ExileEffect>()?;
+    let rest =
+        rest_effect.downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+    let with_id = may_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let may = with_id.effect.downcast_ref::<crate::effects::MayEffect>()?;
+    let if_effect = fallback_effect.downcast_ref::<crate::effects::IfEffect>()?;
+
+    if look.player != PlayerFilter::You
+        || look.reveal
+        || !choose.count.is_single()
+        || choose.chooser != PlayerFilter::You
+        || choose_primary_zone(choose) != Some(Zone::Library)
+        || !choose.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag == look.tag
+        })
+        || !matches!(exile.spec.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+        || !exile.face_down
+        || rest.tag != look.tag
+        || rest.keep_tagged.as_ref() != Some(&choose.tag)
+        || rest.player != PlayerFilter::You
+        || rest.order != LibraryBottomOrder::Random
+        || may.decider.is_some()
+        || if_effect.condition != with_id.id
+        || if_effect.predicate != EffectPredicate::DidNotHappen
+        || !if_effect.else_.is_empty()
+    {
+        return None;
+    }
+
+    let [conditional_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let Condition::TaggedObjectMatches(condition_tag, filter) = &conditional.condition else {
+        return None;
+    };
+    let [cast_effect] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    if !conditional.if_false.is_empty() {
+        return None;
+    }
+    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    if condition_tag != &choose.tag
+        || cast.tag != choose.tag
+        || cast.player != PlayerFilter::You
+        || cast.allow_land
+        || cast.as_copy
+        || !cast.without_paying_mana_cost
+        || cast.cost_reduction.is_some()
+    {
+        return None;
+    }
+
+    let [hand_effect] = if_effect.then.as_slice() else {
+        return None;
+    };
+    let hand_move = unwrap_basic_tag_wrappers(hand_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if hand_move.zone != Zone::Hand
+        || !matches!(hand_move.target.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+    {
+        return None;
+    }
+
+    let (count_text, noun, _) = describe_look_count_and_noun(&look.count);
+    let condition_text = describe_exiled_card_cast_condition(filter)?;
+    Some(format!(
+        "Look at the top {count_text} {noun} of your library. Exile one of them face down and put the rest on the bottom of your library in a random order. You may cast the exiled card without paying its mana cost if {condition_text}. If you don't, put that card into your hand"
+    ))
+}
+
+fn describe_exiled_card_cast_condition(filter: &ObjectFilter) -> Option<String> {
+    let mut display_filter = filter.clone();
+    display_filter.zone = None;
+    display_filter.has_mana_cost = false;
+    if display_filter.card_types.len() == 1 {
+        let card_type = display_filter.card_types[0].to_string().to_ascii_lowercase();
+        let spell_text = with_indefinite_article(&format!("{card_type} spell"));
+        let mana_value = display_filter.mana_value.clone();
+        let mut remaining_filter = display_filter.clone();
+        remaining_filter.card_types.clear();
+        remaining_filter.mana_value = None;
+        if remaining_filter == ObjectFilter::default() {
+            match mana_value.as_ref() {
+                Some(crate::filter::Comparison::LessThanOrEqual(value)) => {
+                    return Some(format!(
+                        "it's {spell_text} with mana value {value} or less"
+                    ));
+                }
+                Some(crate::filter::Comparison::LessThanOrEqualExpr(value)) => {
+                    return Some(format!(
+                        "it's {spell_text} with mana value {} or less",
+                        describe_value(value)
+                    ));
+                }
+                _ => {}
+            }
+        }
+    }
+    let desc = strip_indefinite_article(&display_filter.description()).to_ascii_lowercase();
+    Some(format!("it's {}", with_indefinite_article(&desc)))
+}
+
 fn describe_exile_targets_opponent_piles_return_chosen(effects: &[&Effect]) -> Option<String> {
     let [
         exile_effect,
@@ -6473,6 +6586,11 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     }
     if filtered.len() == 4
         && let Some(compact) = describe_hideaway_effects(&filtered)
+    {
+        return compact;
+    }
+    if filtered.len() == 6
+        && let Some(compact) = describe_look_exile_one_rest_bottom_cast_else_hand(&filtered)
     {
         return compact;
     }
