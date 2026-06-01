@@ -172,7 +172,55 @@ struct KarnLivingLegacyDecisionMaker {
     mana_to_pay: u32,
 }
 
+struct KarnLivingLegacyPowerstoneDecisionMaker {
+    mana_to_pay: u32,
+    activated_mana: bool,
+}
+
 impl crate::decision::DecisionMaker for KarnLivingLegacyDecisionMaker {
+    fn decide_number(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::NumberContext,
+    ) -> u32 {
+        self.mana_to_pay.clamp(ctx.min, ctx.max)
+    }
+}
+
+impl crate::decision::DecisionMaker for KarnLivingLegacyPowerstoneDecisionMaker {
+    fn decide_options(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        if ctx.description.starts_with("Pay mana for") {
+            if !self.activated_mana
+                && let Some(activation) = ctx
+                    .options
+                    .iter()
+                    .find(|opt| opt.legal && opt.description != "Choose mana amount to pay")
+            {
+                self.activated_mana = true;
+                return vec![activation.index];
+            }
+
+            if let Some(pay) = ctx
+                .options
+                .iter()
+                .find(|opt| opt.legal && opt.description == "Choose mana amount to pay")
+            {
+                return vec![pay.index];
+            }
+        }
+
+        ctx.options
+            .iter()
+            .filter(|opt| opt.legal)
+            .map(|opt| opt.index)
+            .take(ctx.min)
+            .collect()
+    }
+
     fn decide_number(
         &mut self,
         _game: &crate::game_state::GameState,
@@ -208,6 +256,18 @@ fn create_named_library_card(
         .power_toughness(PowerToughness::fixed(1, 1))
         .build();
     game.create_object_from_card(&card, owner, Zone::Library)
+}
+
+fn create_untapped_powerstone_source(
+    game: &mut crate::game_state::GameState,
+    owner: PlayerId,
+) -> ObjectId {
+    let powerstone = CardDefinitionBuilder::new(CardId::new(), "Powerstone")
+        .token()
+        .card_types(vec![CardType::Artifact])
+        .taps_for(ManaSymbol::Colorless)
+        .build();
+    game.create_object_from_definition(&powerstone, owner, Zone::Battlefield)
 }
 
 #[test]
@@ -281,6 +341,71 @@ fn karn_living_legacy_minus_one_pays_mana_and_moves_one_looked_card_to_hand() {
         library.last().map(String::as_str),
         Some("Karn Runtime Bottom Card"),
         "Karn, Living Legacy should leave cards beyond the paid amount above the bottomed card, got {library:?}"
+    );
+}
+
+#[test]
+fn karn_living_legacy_minus_one_can_activate_powerstone_to_pay() {
+    let def = parse_oracle_card_definition("Karn, Living Legacy");
+    let activated = karn_living_legacy_minus_one_ability(&def);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let karn = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    create_named_library_card(&mut game, alice, "Karn Powerstone Bottom Card");
+    create_named_library_card(&mut game, alice, "Karn Powerstone Top Card");
+    let powerstone = create_untapped_powerstone_source(&mut game, alice);
+
+    let mut dm = KarnLivingLegacyPowerstoneDecisionMaker {
+        mana_to_pay: 1,
+        activated_mana: false,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(karn, alice, &mut dm);
+    for effect in activated.effects.flattened_default_effects() {
+        effect
+            .0
+            .execute(&mut game, &mut ctx)
+            .expect("Karn, Living Legacy -1 should resolve after activating Powerstone mana");
+    }
+
+    let hand = game
+        .player(alice)
+        .expect("Alice should exist")
+        .hand
+        .iter()
+        .filter_map(|id| game.object(*id).map(|object| object.name.clone()))
+        .collect::<Vec<_>>();
+    let library = game
+        .player(alice)
+        .expect("Alice should exist")
+        .library
+        .iter()
+        .filter_map(|id| game.object(*id).map(|object| object.name.clone()))
+        .collect::<Vec<_>>();
+    assert!(
+        dm.activated_mana,
+        "Karn, Living Legacy should offer and activate the Powerstone during any-mana payment"
+    );
+    assert!(
+        game.is_tapped(powerstone),
+        "the Powerstone should be tapped for mana during payment"
+    );
+    assert_eq!(
+        game.player(alice)
+            .expect("Alice should exist")
+            .mana_pool
+            .total(),
+        0,
+        "Karn, Living Legacy should spend the mana produced by the Powerstone"
+    );
+    assert_eq!(
+        hand,
+        vec!["Karn Powerstone Top Card".to_string()],
+        "Karn, Living Legacy should move the one looked-at card into hand"
+    );
+    assert_eq!(
+        library.len(),
+        1,
+        "Karn, Living Legacy should leave unlooked cards in the library"
     );
 }
 
