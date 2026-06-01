@@ -155,6 +155,9 @@ fn validate_effect_for_iterated_player(
             context,
         );
     }
+    if let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatProcessEffect>() {
+        return validate_effects_for_iterated_player(&repeat.effects, iterated_player_bound, context);
+    }
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
         return validate_effect_for_iterated_player(&tagged.effect, iterated_player_bound, context);
     }

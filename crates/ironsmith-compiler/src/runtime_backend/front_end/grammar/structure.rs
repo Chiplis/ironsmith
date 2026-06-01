@@ -534,6 +534,14 @@ pub(crate) fn classify_statement_line_family_lexed(
         return Some(StatementLineFamily::Vote);
     }
 
+    if primitives::parse_prefix(tokens, primitives::phrase(&["starting", "with", "you"]))
+        .is_some()
+        && primitives::contains_phrase(tokens, &["each", "player"])
+        && primitives::contains_word(tokens, "pay")
+    {
+        return Some(StatementLineFamily::Generic);
+    }
+
     if primitives::contains_phrase(tokens, &["bid", "life"])
         && primitives::contains_phrase(tokens, &["high", "bid"])
         && primitives::contains_phrase(tokens, &["high", "bidder"])

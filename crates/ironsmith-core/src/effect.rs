@@ -3247,6 +3247,18 @@ impl PayAnyEnergyEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct PayAnyLifeEffect {
+    pub player: ChooseSpec,
+    pub min_amount: u32,
+}
+
+impl PayAnyLifeEffect {
+    pub fn new(player: ChooseSpec, min_amount: u32) -> Self {
+        Self { player, min_amount }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum ConsultTopOfLibraryStopRule {
     FirstMatch,
     MatchCount(Value),
@@ -6135,6 +6147,7 @@ pub struct UnlessActionEffect<E> {
 pub struct ForPlayersEffect<E> {
     pub filter: PlayerFilter,
     pub effects: Vec<E>,
+    pub starting_with_controller: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]

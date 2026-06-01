@@ -662,6 +662,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::LoseGame
         | SubjectVerbActionAst::WinGame
         | SubjectVerbActionAst::PayAnyEnergy { .. }
+        | SubjectVerbActionAst::PayAnyLife { .. }
         | SubjectVerbActionAst::PayMana { .. }
         | SubjectVerbActionAst::DiscardHand
         | SubjectVerbActionAst::Detain { .. }

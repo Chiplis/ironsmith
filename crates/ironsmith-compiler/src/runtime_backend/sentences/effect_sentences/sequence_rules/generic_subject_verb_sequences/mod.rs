@@ -131,6 +131,23 @@ const ITERATIVE_LIBRARY_REPEAT_UNTIL_KEEP_OR_DUPLICATE: ClauseShape<'static> = c
             "first",
         ]
 );
+const STARTING_EACH_PLAYER_MAY_PAY_ANY_LIFE: ClauseShape<'static> = clause_shape!(
+    exact
+        & [
+            "starting", "with", "you", "each", "player", "may", "pay", "any", "amount",
+            "of", "life",
+        ]
+);
+const REPEAT_UNTIL_NO_ONE_PAYS_LIFE: ClauseShape<'static> = clause_shape!(
+    exact & ["repeat", "this", "process", "until", "no", "one", "pays", "life"]
+);
+const EACH_PLAYER_CREATES_RATS_FOR_LIFE_PAID: ClauseShape<'static> = clause_shape!(
+    exact
+        & [
+            "each", "player", "creates", "1/1", "black", "rat", "creature", "token", "for",
+            "each", "1", "life", "they", "paid", "this", "way",
+        ]
+);
 
 const EACH_PLAYER_SHUFFLE_REVEAL_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix &["each", "player", "shuffles", "all"];
@@ -294,6 +311,59 @@ pub(crate) fn parse_iterative_library_procedure_sequence(
         continue_effect_index: 1,
         continue_predicate: IfResultPredicate::WasDeclined,
     }]))
+}
+
+pub(crate) fn parse_each_player_repeat_pay_life_tokens_sequence(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_clause = LexedClause::new(sentences[sentence_idx].lowered()).trimmed();
+    if !STARTING_EACH_PLAYER_MAY_PAY_ANY_LIFE.matches_non_article_tokens(first_clause.tokens()) {
+        return Ok(None);
+    }
+
+    let second_clause = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
+    if !REPEAT_UNTIL_NO_ONE_PAYS_LIFE.matches_non_article_tokens(second_clause.tokens()) {
+        return Ok(None);
+    }
+
+    let third_clause = LexedClause::new(sentences[sentence_idx + 2].lowered()).trimmed();
+    if !EACH_PLAYER_CREATES_RATS_FOR_LIFE_PAID.matches_non_article_tokens(third_clause.tokens()) {
+        return Ok(None);
+    }
+
+    Ok(Some(vec![
+        EffectAst::RepeatProcess {
+            effects: vec![EffectAst::ForEachPlayer {
+                effects: vec![EffectAst::subject_verb_pay_any_life(PlayerAst::That, 0)],
+            }],
+            continue_effect_index: 0,
+            continue_predicate: IfResultPredicate::Did,
+        },
+        EffectAst::ForEachPlayer {
+            effects: vec![EffectAst::subject_verb(
+                SubjectVerbRoleAst::Actor,
+                PlayerAst::That,
+                SubjectVerbActionAst::CreateTokenWithMods {
+                    name: "1/1 black Rat creature".to_string(),
+                    count: Value::PendingEffectMetric {
+                        source: ironsmith_core::EffectMetricSource::Outcome,
+                        metric: ironsmith_core::EffectMetric::Count,
+                    },
+                    dynamic_power_toughness: None,
+                    player: PlayerAst::That,
+                    attached_to: None,
+                    tapped: false,
+                    attacking: false,
+                    exile_at_end_of_combat: false,
+                    sacrifice_at_end_of_combat: false,
+                    sacrifice_at_next_end_step: false,
+                    exile_at_next_end_step: false,
+                    granted_abilities: Vec::new(),
+                },
+            )],
+        },
+    ]))
 }
 
 pub(crate) fn parse_each_player_shuffle_reveal_then_put_revealed_types_bottom(

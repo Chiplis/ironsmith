@@ -333,7 +333,7 @@ impl EffectOutcome {
         )
     }
 
-    fn merge_execution_facts(facts: Vec<ExecutionFact>) -> Vec<ExecutionFact> {
+    pub(crate) fn merge_execution_facts(facts: Vec<ExecutionFact>) -> Vec<ExecutionFact> {
         let mut other = Vec::new();
         let mut chosen_objects = Vec::new();
         let mut affected_objects = Vec::new();
@@ -3228,6 +3228,17 @@ impl Effect {
     pub fn for_players(filter: PlayerFilter, effects: Vec<Effect>) -> Self {
         use crate::effects::ForPlayersEffect;
         Self::new(ForPlayersEffect::new(filter, effects))
+    }
+
+    /// Create an effect that executes for each matching player, starting with the controller.
+    pub fn for_players_starting_with_controller(
+        filter: PlayerFilter,
+        effects: Vec<Effect>,
+    ) -> Self {
+        use crate::effects::ForPlayersEffect;
+        Self::new(ForPlayersEffect::new_starting_with_controller(
+            filter, effects,
+        ))
     }
 
     /// Create an effect that executes for each tagged object.
