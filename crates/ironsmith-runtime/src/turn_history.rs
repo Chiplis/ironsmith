@@ -702,6 +702,19 @@ impl TurnHistory {
         })
     }
 
+    pub fn object_was_dealt_noncombat_damage_this_turn(&self, object: ObjectId) -> bool {
+        self.projected_records().any(|record| {
+            record
+                .event
+                .downcast::<DamageEvent>()
+                .is_some_and(|event| {
+                    !event.is_combat
+                        && matches!(event.target, crate::events::DamageTarget::Object(target) if target == object)
+                        && event.amount > 0
+                })
+        })
+    }
+
     pub fn creature_blocked_this_turn(&self, creature: ObjectId) -> bool {
         self.projected_records().any(|record| {
             record

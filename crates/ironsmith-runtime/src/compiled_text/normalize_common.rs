@@ -11611,7 +11611,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::TargetMatches(filter) => {
             let desc = filter.description();
             let stripped = strip_leading_article(&desc).to_ascii_lowercase();
-            if stripped == "land" {
+            if stripped == "permanent that was dealt noncombat damage this turn" {
+                "it was dealt noncombat damage this turn".to_string()
+            } else if stripped == "land" {
                 "it's a land card".to_string()
             } else if stripped == "creature" {
                 "it's a creature".to_string()
@@ -11706,6 +11708,11 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 // Keep implicit tags oracle-like: use pronouns rather than exposing tag keys.
                 if tag.as_str() == "triggering" && is_aura_only_filter(filter) {
                     return "that enchantment is an Aura".to_string();
+                }
+                if strip_leading_article(&desc)
+                    .eq_ignore_ascii_case("permanent that was dealt noncombat damage this turn")
+                {
+                    return "it was dealt noncombat damage this turn".to_string();
                 }
                 let subject = if matches!(tag.as_str(), "triggering" | "damaged") {
                     "that object"

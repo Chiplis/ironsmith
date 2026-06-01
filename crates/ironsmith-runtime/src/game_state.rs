@@ -8186,6 +8186,13 @@ impl GameState {
             .creature_was_damaged_this_turn(creature)
     }
 
+    /// Returns true if `object` was dealt noncombat damage this turn.
+    pub fn object_was_dealt_noncombat_damage_this_turn(&self, object: ObjectId) -> bool {
+        self.turn_store
+            .turn_history
+            .object_was_dealt_noncombat_damage_this_turn(object)
+    }
+
     pub fn source_dealt_combat_damage_to_player_this_turn(&self, source: ObjectId) -> bool {
         let stable_id = self.object(source).map(|obj| obj.stable_id);
         self.turn_store

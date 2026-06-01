@@ -2414,6 +2414,7 @@ pub(crate) fn object_filter_specificity_score(filter: &ObjectFilter) -> usize {
     score += usize::from(filter.entered_battlefield_this_turn) * 2;
     score += usize::from(filter.entered_battlefield_controller.is_some()) * 2;
     score += usize::from(filter.was_dealt_damage_this_turn) * 2;
+    score += usize::from(filter.was_dealt_noncombat_damage_this_turn) * 2;
     score += usize::from(filter.dealt_damage_to_player_this_turn.is_some()) * 2;
     score += usize::from(!filter.excluded_card_types.is_empty()) * 2;
     score += usize::from(!filter.excluded_supertypes.is_empty()) * 2;

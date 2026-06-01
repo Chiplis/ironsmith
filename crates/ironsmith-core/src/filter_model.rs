@@ -418,6 +418,7 @@ pub struct ObjectFilter {
     pub entered_graveyard_from_battlefield_this_turn: bool,
     pub surveilled_this_turn: bool,
     pub was_dealt_damage_this_turn: bool,
+    pub was_dealt_noncombat_damage_this_turn: bool,
     pub dealt_damage_to_player_this_turn: Option<PlayerFilter>,
     pub drawn_this_turn: bool,
     pub power: Option<Comparison>,
@@ -2015,6 +2016,9 @@ impl ObjectFilter {
 
         if self.was_dealt_damage_this_turn {
             parts.push("that was dealt damage this turn".to_string());
+        }
+        if self.was_dealt_noncombat_damage_this_turn {
+            parts.push("that was dealt noncombat damage this turn".to_string());
         }
         if let Some(player) = &self.dealt_damage_to_player_this_turn {
             parts.push(format!(

@@ -1724,6 +1724,12 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
 
+        if self.was_dealt_noncombat_damage_this_turn
+            && !game.object_was_dealt_noncombat_damage_this_turn(object.id)
+        {
+            return false;
+        }
+
         if let Some(player_filter) = &self.dealt_damage_to_player_this_turn {
             let dealt_damage_to_matching_player = game.players.iter().any(|player| {
                 player.is_in_game()
@@ -3887,6 +3893,9 @@ impl ObjectFilterExt for ObjectFilter {
 
         if self.was_dealt_damage_this_turn {
             parts.push("that was dealt damage this turn".to_string());
+        }
+        if self.was_dealt_noncombat_damage_this_turn {
+            parts.push("that was dealt noncombat damage this turn".to_string());
         }
         if let Some(player) = &self.dealt_damage_to_player_this_turn {
             parts.push(format!(

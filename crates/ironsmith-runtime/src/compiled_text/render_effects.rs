@@ -14890,6 +14890,21 @@ pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
         return Some(compact);
     }
 
+    if effects.len() == 2
+        && let Some(deal) = deal_damage_effect_view(&effects[0])
+        && let Some(gain) = effects[1].downcast_ref::<crate::effects::GainLifeEffect>()
+        && deal.amount == gain.amount
+        && matches!(deal.amount, Value::Fixed(_))
+        && gain.player == ChooseSpec::Player(PlayerFilter::You)
+    {
+        let damage_clause = describe_effect(&effects[0]);
+        return Some(format!(
+            "{} and you gain {} life",
+            damage_clause.trim().trim_end_matches('.'),
+            describe_value(&gain.amount)
+        ));
+    }
+
     let compact = describe_effect_list(effects);
     let compact_trimmed = compact.trim();
     if compact_trimmed

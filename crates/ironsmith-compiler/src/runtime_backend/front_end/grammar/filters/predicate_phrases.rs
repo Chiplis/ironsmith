@@ -766,6 +766,23 @@ const SOURCE_DEALT_COMBAT_DAMAGE_TO_PLAYER_THIS_TURN_PATTERN: ClauseShape<'stati
             ],
         ]
 );
+const IT_WAS_DEALT_NONCOMBAT_DAMAGE_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &[
+                "it", "was", "dealt", "noncombat", "damage", "this", "turn",
+            ],
+            &[
+                "target", "was", "dealt", "noncombat", "damage", "this", "turn",
+            ],
+            &[
+                "that", "creature", "was", "dealt", "noncombat", "damage", "this", "turn",
+            ],
+            &[
+                "that", "permanent", "was", "dealt", "noncombat", "damage", "this", "turn",
+            ],
+        ]
+);
 const PLAYER_WAS_DEALT_COMBAT_DAMAGE_BY_SUBTYPE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
         & [
@@ -4391,6 +4408,13 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if SOURCE_DEALT_COMBAT_DAMAGE_TO_PLAYER_THIS_TURN_PATTERN.matches_words(&filtered) {
         return Ok(PredicateAst::SourceDealtCombatDamageToPlayerThisTurn);
+    }
+
+    if IT_WAS_DEALT_NONCOMBAT_DAMAGE_THIS_TURN_PATTERN.matches_words(&filtered) {
+        return Ok(PredicateAst::ItMatches(ObjectFilter {
+            was_dealt_noncombat_damage_this_turn: true,
+            ..Default::default()
+        }));
     }
 
     if THIS_TURN_TAIL_PATTERN.matches_words(filtered.get(filtered.len().saturating_sub(2)..).unwrap_or_default())
