@@ -28295,10 +28295,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 && let Some(create) =
                     conditional.if_true[0].downcast_ref::<crate::effects::CreateTokenEffect>()
                 && create.controller == PlayerFilter::You
-                && create.count == Value::Fixed(1)
             {
-                let token_text = describe_effect(&conditional.if_true[0]);
-                return format!("{token_text} for each {each_player} who {relative}");
+                let token_text = lowercase_first(&describe_effect(&conditional.if_true[0]));
+                return format!("For each {each_player} who {relative}, you {token_text}");
             }
             if conditional.if_true.len() == 1
                 && let Some(damage) =

@@ -177,7 +177,8 @@ fn lower_rewrite_statement_to_chunks_impl(
 ) -> Result<Vec<LineAst>, CardTextError> {
     if !parse_groups.is_empty() {
         if parse_groups.len() > 1
-            && sentences_have_token_creation_followup_after_first(parse_groups)
+            && (sentences_have_token_creation_followup_after_first(parse_groups)
+                || sentences_have_this_way_for_each_followup_after_first(parse_groups))
         {
             let group_tokens = join_sentences_with_period(parse_groups);
             let effects = parse_effect_sentences_lexed(&group_tokens)?;
@@ -222,6 +223,7 @@ fn lower_rewrite_statement_to_chunks_impl(
         if !keep_linked_statement_grouped
             && sentence_tokens.len() > 1
             && !sentences_have_token_creation_followup_after_first(&sentence_tokens)
+            && !sentences_have_this_way_for_each_followup_after_first(&sentence_tokens)
             && !sentences_have_temporary_static_followup_after_first(&sentence_tokens)
             && sentence_tokens.iter().any(|sentence| {
                 parse_self_enters_with_x_counters_static_chunk(sentence).is_some()
@@ -311,6 +313,18 @@ fn sentences_have_token_creation_followup_after_first<S: AsRef<[OwnedLexToken]>>
                 ["its", "power", "is", "equal", ..] | ["their", "power", "is", "equal", ..]
             ) && words.contains(&"toughness")
         })
+}
+
+fn sentences_have_this_way_for_each_followup_after_first<S: AsRef<[OwnedLexToken]>>(
+    sentences: &[S],
+) -> bool {
+    sentences.iter().skip(1).any(|sentence| {
+        let words = token_word_refs(sentence.as_ref());
+        matches!(
+            words.as_slice(),
+            ["for", "each", "opponent", "who", ..] | ["for", "each", "player", "who", ..]
+        ) && word_slice_contains_phrase(&words, &["this", "way"])
+    })
 }
 
 fn sentences_have_temporary_static_followup_after_first<S: AsRef<[OwnedLexToken]>>(

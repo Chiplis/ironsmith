@@ -542,7 +542,11 @@ fn advance_reference_frame_for_effect(
                             Some(PlayerFilter::AliasedOwnerOf(ObjectRef::tagged(tag)));
                     }
                 }
-                SubjectVerbActionAst::ReturnAllToHandOfChosenColor { filter } => {
+                SubjectVerbActionAst::ReturnAllToHand { filter }
+                | SubjectVerbActionAst::ReturnAllToHandOfChosenColor { filter } => {
+                    if frame.auto_tag_object_targets {
+                        frame.last_object_tag = Some(next_reference_tag(id_gen, "returned"));
+                    }
                     track_player_from_object_filter(filter, frame);
                 }
                 SubjectVerbActionAst::MoveToLibraryNthFromTop { target, .. } => {
@@ -1352,6 +1356,7 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::RevealCardsFromHand { .. }
                 | SubjectVerbActionAst::LookAtTopCards { .. }
                 | SubjectVerbActionAst::Draw { .. }
+                | SubjectVerbActionAst::ReturnAllToHand { .. }
         ),
         EffectAst::ForEachOpponent { effects }
         | EffectAst::ForEachPlayersFiltered { effects, .. }
