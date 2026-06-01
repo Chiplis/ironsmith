@@ -63,11 +63,12 @@ use crate::cards::builders::{
     CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, KeywordAction, PlayerAst,
     ReturnControllerAst, SubjectAst, SubjectVerbActionAst, SubjectVerbRoleAst, TargetAst,
 };
-use crate::effect::{ChoiceCount, Until, Value, ValueSurfaceHint};
+use crate::effect::{ChoiceCount, Until, Value};
 use crate::object::CounterType;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
+use ironsmith_core::ValueSurfaceHint;
 
 mod become_clause;
 mod helpers;
