@@ -1738,6 +1738,29 @@ mod tests {
     }
 
     #[test]
+    fn parse_document_cst_recognizes_sneak_keyword_line() -> Result<(), CardTextError> {
+        let preprocessed = preprocess_document(
+            CardDefinitionBuilder::new(CardId::new(), "Sneak Parse Test")
+                .card_types(vec![CardType::Sorcery]),
+            "Sneak {1}{B} (You may cast this spell for {1}{B} if you also return an unblocked attacker you control to hand during the declare blockers step.)\nSearch your library for a card, put that card into your hand, then shuffle.",
+        )?;
+        let cst = super::parse_document_cst(&preprocessed, false)?;
+
+        match cst.lines.as_slice() {
+            [
+                super::RewriteLineCst::Keyword(keyword),
+                super::RewriteLineCst::Statement(_),
+            ] => {
+                assert_eq!(keyword.kind, KeywordLineKindCst::AlternativeCast);
+                assert_eq!(render_token_slice(&keyword.parse_tokens), "sneak {1}{b}");
+            }
+            other => panic!("expected sneak keyword plus statement line, got {other:?}"),
+        }
+
+        Ok(())
+    }
+
+    #[test]
     fn static_line_cst_recognizes_compound_unblockable_from_tokens() -> Result<(), CardTextError> {
         let line = single_preprocessed_line("Enchanted creature gets +2/+2 and can't be blocked.");
 

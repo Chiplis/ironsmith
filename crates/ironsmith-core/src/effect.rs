@@ -3845,6 +3845,15 @@ impl NinjutsuCostEffect {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct SneakCostEffect;
+
+impl SneakCostEffect {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ConspireCostEffect;
 
 impl ConspireCostEffect {

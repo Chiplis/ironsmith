@@ -307,6 +307,9 @@ where
     if let Some(converted) = clone_direct_effect::<M, crate::effects::NinjutsuCostEffect>(&effect) {
         return Ok(converted);
     }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::SneakCostEffect>(&effect) {
+        return Ok(converted);
+    }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::ConspireCostEffect>(&effect) {
         return Ok(converted);
     }

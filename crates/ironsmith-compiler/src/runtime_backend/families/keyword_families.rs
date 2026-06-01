@@ -370,6 +370,7 @@ pub(super) fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<Ke
                 grammar::kw("gift").value(KeywordDispatchHint::Gift),
                 grammar::kw("warp").value(KeywordDispatchHint::Warp),
                 grammar::kw("prowl").value(KeywordDispatchHint::AlternativeOrExertFamily),
+                grammar::kw("sneak").value(KeywordDispatchHint::AlternativeOrExertFamily),
                 grammar::kw("escalate").value(KeywordDispatchHint::Escalate),
                 grammar::kw("evoke").value(KeywordDispatchHint::Evoke),
                 grammar::kw("epic").value(KeywordDispatchHint::Epic),

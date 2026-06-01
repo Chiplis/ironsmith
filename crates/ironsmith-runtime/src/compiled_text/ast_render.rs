@@ -2210,6 +2210,18 @@ pub(super) fn describe_alternative_cast_line(
                 })
                 .unwrap_or_else(|| "Freerunning".to_string())
         }
+        method if method.is_composed_cost() && method.name().eq_ignore_ascii_case("Sneak") => {
+            method
+                .mana_cost()
+                .map(|cost| {
+                    format!(
+                        "Sneak {} (You may cast this spell for {} if you also return an unblocked attacker you control to hand during the declare blockers step.)",
+                        cost.to_oracle(),
+                        cost.to_oracle()
+                    )
+                })
+                .unwrap_or_else(|| "Sneak".to_string())
+        }
         method if method.is_composed_cost() && method.name().eq_ignore_ascii_case("Prowl") => {
             method
                 .mana_cost()
