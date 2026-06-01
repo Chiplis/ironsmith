@@ -15,7 +15,7 @@ use super::super::permission_helpers::{
 use super::super::token_primitives::find_index;
 use super::super::util::{
     parse_alternative_cast_words, parse_subject, parse_target_phrase, span_from_tokens,
-    trim_commas, words,
+    token_index_for_word_index, trim_commas, words,
 };
 use super::dispatch_entry::parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard;
 use super::zone_handlers::parse_exile_top_library_clause;
@@ -2007,6 +2007,63 @@ fn parse_bid_life_for_control_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<Eff
     }])
 }
 
+fn parse_regenerate_then_gain_control_if_regenerates_bundle(
+    first: &[OwnedLexToken],
+    second: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let first_words = crate::runtime_backend::token_word_refs(first);
+    if first_words.first().copied() != Some("regenerate") || first_words.len() < 2 {
+        return None;
+    }
+    let target_start = token_index_for_word_index(first, 1)?;
+    let regenerate_target = parse_target_phrase(&first[target_start..]).ok()?;
+
+    let second_words = crate::runtime_backend::token_word_refs(second);
+    let mut idx = if second_words.first().copied() == Some("you") {
+        1
+    } else {
+        0
+    };
+    if second_words.get(idx).copied() != Some("gain")
+        || second_words.get(idx + 1).copied() != Some("control")
+    {
+        return None;
+    }
+    idx += 2;
+    if second_words.get(idx).copied() == Some("of") {
+        idx += 1;
+    }
+
+    let if_idx = second_words
+        .windows(5)
+        .position(|window| window == ["if", "it", "regenerates", "this", "way"])
+        .or_else(|| {
+            second_words.windows(6).position(|window| {
+                window == ["if", "that", "creature", "regenerates", "this", "way"]
+            })
+        })?;
+    if if_idx <= idx {
+        return None;
+    }
+
+    let target_token_start = token_index_for_word_index(second, idx)?;
+    let target_token_end = token_index_for_word_index(second, if_idx)?;
+    let control_target = parse_target_phrase(&trim_commas(
+        &second[target_token_start..target_token_end],
+    ))
+    .ok()?;
+    let follow_up = EffectAst::subject_verb_gain_control(
+        PlayerAst::Implicit,
+        control_target,
+        crate::effect::Until::Forever,
+    );
+
+    Some(vec![EffectAst::subject_verb_regenerate_with_follow_up_effects(
+        regenerate_target,
+        vec![follow_up],
+    )])
+}
+
 pub(crate) fn parse_exact_card_effect_bundle_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
@@ -2046,6 +2103,12 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
         return Some(effects);
     }
     let sentences = split_lexed_sentences(tokens);
+    if sentences.len() == 2
+        && let Some(effects) =
+            parse_regenerate_then_gain_control_if_regenerates_bundle(sentences[0], sentences[1])
+    {
+        return Some(effects);
+    }
     if sentences.len() == 2
         && let Ok(Some(effects)) = parse_consult_then_put_matches_battlefield_rest_bottom_bundle(
             sentences[0],

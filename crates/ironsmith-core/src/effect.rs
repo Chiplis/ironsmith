@@ -3909,14 +3909,19 @@ impl NinjutsuEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct RegenerateEffect {
+pub struct RegenerateEffect<E = ()> {
     pub target: ChooseSpec,
     pub duration: Until,
+    pub follow_up_effects: Vec<E>,
 }
 
-impl RegenerateEffect {
+impl<E> RegenerateEffect<E> {
     pub fn new(target: ChooseSpec, duration: Until) -> Self {
-        Self { target, duration }
+        Self {
+            target,
+            duration,
+            follow_up_effects: Vec::new(),
+        }
     }
 
     pub fn source(duration: Until) -> Self {
@@ -3925,6 +3930,11 @@ impl RegenerateEffect {
 
     pub fn target_creature(duration: Until) -> Self {
         Self::new(ChooseSpec::creature(), duration)
+    }
+
+    pub fn with_follow_up_effects(mut self, effects: Vec<E>) -> Self {
+        self.follow_up_effects = effects;
+        self
     }
 }
 

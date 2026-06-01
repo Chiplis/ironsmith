@@ -598,7 +598,10 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::Flip { target } => {
                     maybe_tag_target(target, frame, id_gen, "targeted")?;
                 }
-                SubjectVerbActionAst::Regenerate { target } => {
+                SubjectVerbActionAst::Regenerate {
+                    target,
+                    follow_up_effects: _,
+                } => {
                     maybe_tag_target(target, frame, id_gen, "returned")?;
                 }
                 SubjectVerbActionAst::RegenerateAll { filter } => {
@@ -2602,7 +2605,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::Suspect { target }
             | SubjectVerbActionAst::RemoveFromCombat { target }
             | SubjectVerbActionAst::Flip { target }
-            | SubjectVerbActionAst::Regenerate { target } => {
+            | SubjectVerbActionAst::Regenerate { target, .. } => {
                 bind_unresolved_it_in_target(target, seed_tag)
             }
             SubjectVerbActionAst::ClearSuspected {

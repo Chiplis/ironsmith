@@ -32705,13 +32705,50 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if let Some(rest) = target.strip_prefix("all ") {
             target = format!("each {rest}");
         }
-        if regenerate.duration == Until::EndOfTurn {
-            return format!("Regenerate {target}");
-        }
-        return format!(
+        let base = if regenerate.duration == Until::EndOfTurn {
+            format!("Regenerate {target}")
+        } else {
+            format!(
             "Regenerate {target} {}",
             describe_until(&regenerate.duration)
-        );
+            )
+        };
+        fn follow_up_inner(effect: &Effect) -> &Effect {
+            effect
+                .downcast_ref::<crate::effects::TaggedEffect>()
+                .map(|tagged| tagged.effect.as_ref())
+                .unwrap_or(effect)
+        }
+        if let [follow_up] = regenerate.follow_up_effects.as_slice()
+            && let Some(gain_control) = follow_up_inner(follow_up)
+                .downcast_ref::<crate::effects::GainControlEffect>()
+            && gain_control.duration == Until::Forever
+            && (matches!(&gain_control.target, ChooseSpec::Tagged(tag) if tag.as_str() == "__it__")
+                || describe_choose_spec(&gain_control.target).eq_ignore_ascii_case("it"))
+        {
+            return format!("{base}. You gain control of that creature if it regenerates this way");
+        }
+        if let [follow_up] = regenerate.follow_up_effects.as_slice()
+            && let Some(apply) = follow_up_inner(follow_up)
+                .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+            && apply.until == Until::Forever
+            && apply.modification.is_none()
+            && apply.additional_modifications.is_empty()
+            && matches!(
+                apply.runtime_modifications.as_slice(),
+                [crate::effects::continuous::RuntimeModification::ChangeControllerToEffectController]
+            )
+            && matches!(&apply.target_spec, Some(ChooseSpec::Tagged(tag)) if tag.as_str() == "__it__")
+        {
+            return format!("{base}. You gain control of that creature if it regenerates this way");
+        }
+        if !regenerate.follow_up_effects.is_empty() {
+            return format!(
+                "{base}. {} if it regenerates this way",
+                describe_effect_list(&regenerate.follow_up_effects)
+            );
+        }
+        return base;
     }
     if let Some(cant) = effect.downcast_ref::<crate::effects::CantEffect>() {
         if cant.duration == Until::EndOfTurn

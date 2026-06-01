@@ -482,6 +482,7 @@ fn tied_replacements_are_duplicate_regeneration_shields(
                 && effect.source == first.source
                 && effect.controller == first.controller
                 && effect.priority_override == first.priority_override
+                && effect.replacement == first.replacement
                 && effect
                     .matcher
                     .as_ref()

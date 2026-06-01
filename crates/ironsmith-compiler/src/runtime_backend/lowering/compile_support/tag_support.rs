@@ -103,7 +103,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::Suspect { target }
             | SubjectVerbActionAst::RemoveFromCombat { target }
             | SubjectVerbActionAst::Flip { target }
-            | SubjectVerbActionAst::Regenerate { target }
+            | SubjectVerbActionAst::Regenerate { target, .. }
             | SubjectVerbActionAst::TapOrUntap { target }
             | SubjectVerbActionAst::PhaseOut { target }
             | SubjectVerbActionAst::PhaseIn { target }
@@ -990,6 +990,9 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
             | SubjectVerbActionAst::SwitchPowerToughness { target, .. } => {
                 target_references_tag(target, IT_TAG)
             }
+            SubjectVerbActionAst::Regenerate {
+                follow_up_effects, ..
+            } => effects_reference_it_tag(follow_up_effects),
             SubjectVerbActionAst::DestroyAll { filter, .. }
             | SubjectVerbActionAst::DestroyAllOfChosenColor { filter, .. }
             | SubjectVerbActionAst::ExileAll { filter, .. }

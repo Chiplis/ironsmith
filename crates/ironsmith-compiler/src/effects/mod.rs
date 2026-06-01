@@ -56,7 +56,7 @@ pub use ironsmith_core::{
     RedirectAllDamageThisTurnToTargetEffect, RedirectNextDamageToTargetEffect,
     RedirectNextTimeDamageDestination, RedirectNextTimeDamageSource,
     RedirectNextTimeDamageToSourceEffect, ReflexiveTriggerEffect as CoreReflexiveTriggerEffect,
-    RegenerateEffect, RegisterDamagedBySourceZoneReplacementEffect,
+    RegenerateEffect as CoreRegenerateEffect, RegisterDamagedBySourceZoneReplacementEffect,
     RegisterEnterUnderControlReplacementEffect, RegisterFutureZoneReplacementEffect,
     RegisterZoneReplacementEffect, RemoveAnyCountersAmongEffect, RemoveAnyCountersFromSourceEffect,
     RemoveCountersEffect, RemoveFromCombatEffect, RemoveUpToAnyCountersEffect,
@@ -97,6 +97,7 @@ pub type LocalRewriteEffect = CoreLocalRewriteEffect<Effect>;
 pub type ManaRestrictedEffect = CoreManaRestrictedEffect<Effect>;
 pub type PreventDamageEffect = CorePreventDamageEffect<Effect>;
 pub type PreventAllDamageToTargetEffect = CorePreventAllDamageToTargetEffect<Effect>;
+pub type RegenerateEffect = CoreRegenerateEffect<Effect>;
 pub type ScheduleEffectsWhenTaggedLeavesEffect = CoreScheduleEffectsWhenTaggedLeavesEffect<Effect>;
 pub type SequenceEffect = CoreSequenceEffect<Effect>;
 pub type WithIdEffect = CoreWithIdEffect<Effect>;
