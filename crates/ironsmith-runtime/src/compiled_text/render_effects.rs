@@ -28014,6 +28014,31 @@ pub(super) fn describe_effect(effect: &Effect) -> String {
     with_effect_render_depth(|| describe_effect_impl(effect))
 }
 
+fn describe_player_controlled_mass_tap_or_untap(
+    target: &ChooseSpec,
+    verb: &'static str,
+    singular_verb: &'static str,
+) -> Option<String> {
+    let ChooseSpec::All(filter) = target.base() else {
+        return None;
+    };
+    let controller = filter.controller.as_ref()?;
+    let control_suffix = match controller {
+        PlayerFilter::Target(_) => "they control",
+        _ => return None,
+    };
+
+    let mut object_filter = filter.clone();
+    object_filter.controller = None;
+    let subject = describe_player_filter(controller);
+    let objects = describe_choose_spec(&ChooseSpec::All(object_filter));
+    Some(format!(
+        "{} {} {objects} {control_suffix}",
+        capitalize_first(&subject),
+        player_verb(&subject, verb, singular_verb),
+    ))
+}
+
 fn describe_unless_any_player_pays_search_prefix(
     unless_pays: &crate::effects::UnlessPaysEffect,
     payment_text: &str,
@@ -30981,9 +31006,19 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(tap) = effect.downcast_ref::<crate::effects::TapEffect>() {
+        if let Some(text) =
+            describe_player_controlled_mass_tap_or_untap(&tap.target, "tap", "taps")
+        {
+            return text;
+        }
         return format!("Tap {}", describe_choose_spec(&tap.target));
     }
     if let Some(untap) = effect.downcast_ref::<crate::effects::UntapEffect>() {
+        if let Some(text) =
+            describe_player_controlled_mass_tap_or_untap(&untap.target, "untap", "untaps")
+        {
+            return text;
+        }
         return format!("Untap {}", describe_choose_spec(&untap.target));
     }
     if let Some(phase_out) = effect.downcast_ref::<crate::effects::PhaseOutEffect>() {

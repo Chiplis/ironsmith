@@ -9,7 +9,8 @@ use crate::effects::{
     AddManaEffect, ChooseModeEffect, ChooseObjectsEffect, ConsultTopOfLibraryEffect,
     CreateTokenEffect, DestroyEffect, DoubleCountersEffect, DrawCardsEffect, EffectExecutor,
     GainLifeEffect, IfEffect, MoveToZoneEffect, ReturnFromGraveyardToHandEffect,
-    TagTriggeringObjectEffect, TaggedEffect, TargetOnlyEffect, UntapEffect, WithIdEffect,
+    TagMatchingObjectsEffect, TagTriggeringObjectEffect, TaggedEffect, TargetOnlyEffect,
+    UntapEffect, WithIdEffect,
 };
 use crate::filter::ObjectFilterExt;
 use crate::object::AuraAttachmentFilter;
@@ -14542,6 +14543,60 @@ fn test_untap_another_target_permanent_rendering() {
     assert!(
         rendered.contains("another target permanent"),
         "expected 'another target permanent' in compiled output, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_early_harvest_target_player_basic_lands_parse_and_render() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(72_980), "Early Harvest")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text("Target player untaps all basic lands they control.")
+        .expect("Early Harvest should parse strictly");
+
+    let spell_effect = def.spell_effect.as_ref().expect("expected spell effect");
+    let effects = &spell_effect.segments[0].default_effects;
+    assert_eq!(effects.len(), 3, "expected target, tag, and untap effects");
+    let target = effects[0]
+        .downcast_ref::<TargetOnlyEffect>()
+        .expect("Early Harvest should target a player before resolving");
+    assert!(
+        matches!(&target.target, ChooseSpec::Target(inner) if matches!(inner.as_ref(), ChooseSpec::Player(PlayerFilter::Any))),
+        "Early Harvest should require a target player, got {:?}",
+        target.target
+    );
+    let tagged = effects[1]
+        .downcast_ref::<TagMatchingObjectsEffect>()
+        .expect("Early Harvest should tag matching lands before untapping them");
+    assert_eq!(
+        tagged.filter.controller,
+        Some(PlayerFilter::target_player()),
+        "Early Harvest should bind 'they control' to the target player"
+    );
+    assert!(tagged.filter.card_types.contains(&CardType::Land));
+    assert!(tagged.filter.supertypes.contains(&Supertype::Basic));
+    let untap = effects[2]
+        .downcast_ref::<UntapEffect>()
+        .expect("Early Harvest should untap the same matching lands");
+    assert!(
+        matches!(untap.target.base(), ChooseSpec::All(filter) if filter.controller == Some(PlayerFilter::target_player())
+            && filter.card_types.contains(&CardType::Land)
+            && filter.supertypes.contains(&Supertype::Basic)),
+        "Early Harvest should untap all basic lands controlled by the target player, got {:?}",
+        untap.target
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" | ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("target player untaps all basic lands they control"),
+        "expected Early Harvest compiled output to preserve target-player mass untap wording, got {rendered}"
     );
 }
 

@@ -1968,6 +1968,92 @@ fn create_test_land(game: &mut GameState, name: &str, controller: PlayerId) -> O
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn early_harvest_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_981), "Early Harvest")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text("Target player untaps all basic lands they control.")
+        .expect("Early Harvest should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_early_harvest_land(
+    game: &mut GameState,
+    name: &str,
+    controller: PlayerId,
+    basic: bool,
+) -> ObjectId {
+    let mut builder = CardBuilder::new(CardId::new(), name).card_types(vec![CardType::Land]);
+    if basic {
+        builder = builder.supertypes(vec![Supertype::Basic]);
+    }
+    let card = builder.subtypes(vec![Subtype::Forest]).build();
+    game.create_object_from_card(&card, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn early_harvest_untaps_only_target_players_basic_lands() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let bob_basic = create_early_harvest_land(&mut game, "Bob's Basic Forest", bob, true);
+    let bob_nonbasic = create_early_harvest_land(&mut game, "Bob's Nonbasic Forest", bob, false);
+    let alice_basic = create_early_harvest_land(&mut game, "Alice's Basic Forest", alice, true);
+    for land in [bob_basic, bob_nonbasic, alice_basic] {
+        game.tap(land);
+    }
+
+    let early_harvest = early_harvest_definition();
+    let spell_id = game.create_object_from_definition(&early_harvest, alice, Zone::Stack);
+    let target_assignment = {
+        let effects = game
+            .object(spell_id)
+            .and_then(|object| object.spell_effect.as_deref())
+            .expect("Early Harvest should have spell effects");
+        let requirements = extract_target_requirements(&game, effects, alice, Some(spell_id));
+        let target = Target::Player(bob);
+        assert_eq!(
+            requirements.len(),
+            1,
+            "Early Harvest should have one target-player requirement"
+        );
+        assert!(
+            requirements[0].legal_targets.contains(&target),
+            "Early Harvest should be able to target the chosen player"
+        );
+        crate::game_state::TargetAssignment {
+            spec: requirements[0].spec.clone(),
+            range: 0..1,
+        }
+    };
+    game.push_to_stack(
+        StackEntry::new(spell_id, alice)
+            .with_targets(vec![Target::Player(bob)])
+            .with_target_assignments(vec![target_assignment]),
+    );
+
+    resolve_stack_entry(&mut game).expect("Early Harvest should resolve");
+
+    assert!(
+        !game.is_tapped(bob_basic),
+        "Early Harvest should untap the target player's basic lands"
+    );
+    assert!(
+        game.is_tapped(bob_nonbasic),
+        "Early Harvest should not untap nonbasic lands controlled by the target player"
+    );
+    assert!(
+        game.is_tapped(alice_basic),
+        "Early Harvest should not untap basic lands controlled by another player"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn vastwood_animist_activation_animates_only_your_land_using_ally_count_until_end_of_turn() {
     let mut game = setup_game();

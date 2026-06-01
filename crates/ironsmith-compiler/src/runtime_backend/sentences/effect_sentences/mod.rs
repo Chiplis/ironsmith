@@ -108,3 +108,88 @@ pub(crate) use sentence_helpers::{
 #[cfg(test)]
 pub(crate) use sequence_rules::try_parse_subject_verb_sequence_rule;
 pub(crate) use subject_verb_primitives::*;
+
+fn subject_pronoun_player_filter(subject: Option<SubjectAst>) -> Option<PlayerFilter> {
+    match subject? {
+        SubjectAst::Player(PlayerAst::You) => Some(PlayerFilter::You),
+        SubjectAst::Player(PlayerAst::Any) => Some(PlayerFilter::Any),
+        SubjectAst::Player(PlayerAst::Target) => Some(PlayerFilter::target_player()),
+        SubjectAst::Player(PlayerAst::TargetOpponent) => Some(PlayerFilter::target_opponent()),
+        SubjectAst::Player(PlayerAst::Opponent) => Some(PlayerFilter::Opponent),
+        SubjectAst::Player(PlayerAst::Defending) => Some(PlayerFilter::Defending),
+        SubjectAst::Player(PlayerAst::Attacking) => Some(PlayerFilter::Attacking),
+        SubjectAst::Player(PlayerAst::MostCardsInHand) => Some(PlayerFilter::MostCardsInHand),
+        SubjectAst::Player(PlayerAst::MostLifeTied) => Some(PlayerFilter::MostLifeTied),
+        SubjectAst::Player(PlayerAst::LowestLifeTied) => Some(PlayerFilter::LowestLifeTied),
+        _ => None,
+    }
+}
+
+pub(super) fn bind_iterated_player_pronouns_to_subject(
+    filter: &mut ObjectFilter,
+    subject: Option<SubjectAst>,
+) {
+    let Some(replacement) = subject_pronoun_player_filter(subject) else {
+        return;
+    };
+    bind_iterated_player_pronouns_in_filter(filter, &replacement);
+}
+
+fn bind_iterated_player_pronouns_in_filter(filter: &mut ObjectFilter, replacement: &PlayerFilter) {
+    if let Some(controller) = &mut filter.controller {
+        bind_iterated_player_pronouns_in_player_filter(controller, replacement);
+    }
+    if let Some(owner) = &mut filter.owner {
+        bind_iterated_player_pronouns_in_player_filter(owner, replacement);
+    }
+    if let Some(cast_by) = &mut filter.cast_by {
+        bind_iterated_player_pronouns_in_player_filter(cast_by, replacement);
+    }
+    if let Some(targets_player) = &mut filter.targets_player {
+        bind_iterated_player_pronouns_in_player_filter(targets_player, replacement);
+    }
+    if let Some(targets_only_player) = &mut filter.targets_only_player {
+        bind_iterated_player_pronouns_in_player_filter(targets_only_player, replacement);
+    }
+    if let Some(attacking_player) = &mut filter.attacking_player_or_planeswalker_controlled_by {
+        bind_iterated_player_pronouns_in_player_filter(attacking_player, replacement);
+    }
+    if let Some(attached_to_player) = &mut filter.attached_to_player {
+        bind_iterated_player_pronouns_in_player_filter(attached_to_player, replacement);
+    }
+    if let Some(entered_controller) = &mut filter.entered_battlefield_controller {
+        bind_iterated_player_pronouns_in_player_filter(entered_controller, replacement);
+    }
+    if let Some(damaged_player) = &mut filter.dealt_damage_to_player_this_turn {
+        bind_iterated_player_pronouns_in_player_filter(damaged_player, replacement);
+    }
+    if let Some(targets_object) = &mut filter.targets_object {
+        bind_iterated_player_pronouns_in_filter(targets_object, replacement);
+    }
+    if let Some(targets_only_object) = &mut filter.targets_only_object {
+        bind_iterated_player_pronouns_in_filter(targets_only_object, replacement);
+    }
+    for branch in &mut filter.any_of {
+        bind_iterated_player_pronouns_in_filter(branch, replacement);
+    }
+}
+
+fn bind_iterated_player_pronouns_in_player_filter(
+    filter: &mut PlayerFilter,
+    replacement: &PlayerFilter,
+) {
+    match filter {
+        PlayerFilter::IteratedPlayer => *filter = replacement.clone(),
+        PlayerFilter::Target(inner)
+        | PlayerFilter::CardsInHandAtLeastMoreThanYou { base: inner, .. }
+        | PlayerFilter::HasMoreLifeThanYou { base: inner }
+        | PlayerFilter::MaxSpeed { base: inner, .. } => {
+            bind_iterated_player_pronouns_in_player_filter(inner, replacement);
+        }
+        PlayerFilter::Excluding { base, excluded } => {
+            bind_iterated_player_pronouns_in_player_filter(base, replacement);
+            bind_iterated_player_pronouns_in_player_filter(excluded, replacement);
+        }
+        _ => {}
+    }
+}

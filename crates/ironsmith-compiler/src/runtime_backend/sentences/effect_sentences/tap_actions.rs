@@ -47,14 +47,17 @@ pub(crate) fn collapse_leading_signed_pt_modifier_tokens(
     Some(collapsed)
 }
 
-pub(crate) fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+pub(crate) fn parse_tap(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+) -> Result<EffectAst, CardTextError> {
     let clause = LexedClause::new(tokens);
     if clause.is_empty() {
         return Err(CardTextError::ParseError(
             "tap clause missing target".to_string(),
         ));
     }
-    if let Some(effect) = parse_tap_or_untap_all(tokens)? {
+    if let Some(effect) = parse_tap_or_untap_all(tokens, subject)? {
         return Ok(effect);
     }
     if clause
@@ -64,7 +67,8 @@ pub(crate) fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextE
         let filter_clause = clause
             .after_words(1)
             .unwrap_or_else(|| clause.from(clause.len()));
-        let filter = parse_object_filter(filter_clause.tokens(), false)?;
+        let mut filter = parse_object_filter(filter_clause.tokens(), false)?;
+        super::super::bind_iterated_player_pronouns_to_subject(&mut filter, subject);
         return Ok(EffectAst::subject_verb_tap_all(filter));
     }
     if let Some(then_idx) = tokens
@@ -90,7 +94,10 @@ pub(crate) fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextE
     Ok(EffectAst::subject_verb_tap(target))
 }
 
-fn parse_tap_or_untap_all(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
+fn parse_tap_or_untap_all(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+) -> Result<Option<EffectAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
     if !clause
         .first_word()
@@ -137,6 +144,8 @@ fn parse_tap_or_untap_all(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,
 
     let mut tap_filter = parse_object_filter(&cleaned_left, false)?;
     let mut untap_filter = parse_object_filter(&cleaned_right, false)?;
+    super::super::bind_iterated_player_pronouns_to_subject(&mut tap_filter, subject);
+    super::super::bind_iterated_player_pronouns_to_subject(&mut untap_filter, subject);
     if left_mentions_chosen_type {
         tap_filter.chosen_creature_type = true;
     }

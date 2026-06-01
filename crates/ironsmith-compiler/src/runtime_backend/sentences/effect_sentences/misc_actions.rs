@@ -800,7 +800,10 @@ pub(crate) fn parse_get(
     )))
 }
 
-pub(crate) fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+pub(crate) fn parse_untap(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+) -> Result<EffectAst, CardTextError> {
     if tokens.is_empty() {
         return Err(CardTextError::ParseError(
             "untap clause missing target".to_string(),
@@ -811,7 +814,8 @@ pub(crate) fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
         .first()
         .is_some_and(|word| ALL_OR_EACH_WORD_PATTERN.matches_words(&[*word]))
     {
-        let filter = parse_object_filter(&tokens[1..], false)?;
+        let mut filter = parse_object_filter(&tokens[1..], false)?;
+        super::super::bind_iterated_player_pronouns_to_subject(&mut filter, subject);
         return Ok(EffectAst::subject_verb_untap_all(filter));
     }
     if THEM_PATTERN.matches_words(&words) {
