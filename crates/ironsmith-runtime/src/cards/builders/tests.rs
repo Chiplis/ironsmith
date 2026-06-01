@@ -42008,6 +42008,215 @@ fn assert_oracle_card_fails_strict(name: &str) {
     );
 }
 
+fn garna_bloodfist_triggered_ability(
+    def: &CardDefinition,
+) -> &crate::ability::TriggeredAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Garna, Bloodfist of Keld should have a triggered ability")
+}
+
+fn parse_garna_bloodfist_card_definition() -> CardDefinition {
+    let info = oracle_card_info_by_name()
+        .get("Garna, Bloodfist of Keld")
+        .expect("Garna, Bloodfist of Keld should exist in cards.json");
+    CardDefinitionBuilder::new(CardId::new(), "Garna, Bloodfist of Keld")
+        .card_types(card_types_from_type_line(
+            info.type_line.as_deref().unwrap_or_default(),
+        ))
+        .supertypes(vec![Supertype::Legendary])
+        .parse_text(info.oracle_text.clone())
+        .expect("Garna, Bloodfist of Keld should parse strictly")
+}
+
+fn add_garna_draw_card(game: &mut crate::game_state::GameState, player: PlayerId) {
+    let card = crate::card::CardBuilder::new(CardId::new(), "Garna Draw Card")
+        .card_types(vec![CardType::Creature])
+        .build();
+    game.create_object_from_card(&card, player, Zone::Library);
+}
+
+fn resolve_garna_bloodfist_trigger_for_dying_creature(
+    was_attacking: bool,
+) -> crate::game_state::GameState {
+    let def = parse_oracle_card_definition("Garna, Bloodfist of Keld");
+    let triggered = garna_bloodfist_triggered_ability(&def).clone();
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let garna_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let creature_def = CardDefinitionBuilder::new(CardId::new(), "Keld Witness")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let creature_id = game.create_object_from_definition(&creature_def, alice, Zone::Battlefield);
+    add_garna_draw_card(&mut game, alice);
+
+    if was_attacking {
+        game.combat = Some(crate::combat_state::CombatState {
+            attackers: vec![crate::combat_state::AttackerInfo {
+                creature: creature_id,
+                target: crate::combat_state::AttackTarget::Player(bob),
+            }],
+            ..Default::default()
+        });
+    }
+
+    let snapshot = crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+        game.object(creature_id)
+            .expect("dying creature should exist before moving"),
+        &game,
+    );
+    let graveyard_id = game
+        .move_object_by_effect(creature_id, Zone::Graveyard)
+        .expect("dying creature should move to graveyard");
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::zones::ZoneChangeEvent::with_results(
+            creature_id,
+            vec![graveyard_id],
+            Zone::Battlefield,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::effect(),
+            Some(snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(garna_id, alice, &mut dm)
+        .with_triggering_event(event);
+    for effect in &triggered.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Garna trigger effect should resolve");
+    }
+    game
+}
+
+#[test]
+fn garna_bloodfist_of_keld_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Garna, Bloodfist of Keld");
+    let def = parse_garna_bloodfist_card_definition();
+    let rendered = compiled_text_lines(&def).join(" ");
+
+    assert!(
+        rendered.contains(
+            "Whenever another creature you control dies, draw a card if it was attacking. Otherwise, Garna deals 1 damage to each opponent"
+        ),
+        "expected Garna's attacking conditional and otherwise damage clause to render oracle-like, got {rendered}"
+    );
+    assert!(
+        !rendered.to_ascii_lowercase().contains("that object matches"),
+        "Garna rendered text should not expose tagged-object predicate internals, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("object-predicate-debug"),
+        "Garna rendered text should not expose the parser debug marker, got {rendered}"
+    );
+}
+
+#[test]
+fn garna_bloodfist_of_keld_triggers_only_for_another_creature_you_control_dying() {
+    let def = parse_oracle_card_definition("Garna, Bloodfist of Keld");
+    let triggered = garna_bloodfist_triggered_ability(&def);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let garna_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let creature_def = CardDefinitionBuilder::new(CardId::new(), "Dying Creature")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let alice_creature =
+        game.create_object_from_definition(&creature_def, alice, Zone::Battlefield);
+    let bob_creature = game.create_object_from_definition(&creature_def, bob, Zone::Battlefield);
+
+    let ctx = crate::triggers::TriggerContext::for_source(garna_id, alice, &game);
+    let allied_snapshot =
+        crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+            game.object(alice_creature)
+                .expect("allied creature exists"),
+            &game,
+        );
+    let opposing_snapshot =
+        crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+            game.object(bob_creature)
+                .expect("opposing creature exists"),
+            &game,
+        );
+    let garna_snapshot =
+        crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+            game.object(garna_id).expect("Garna exists"),
+            &game,
+        );
+
+    let allied_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::zones::ZoneChangeEvent::with_cause(
+            alice_creature,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::effect(),
+            Some(allied_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let opposing_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::zones::ZoneChangeEvent::with_cause(
+            bob_creature,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::effect(),
+            Some(opposing_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let self_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::zones::ZoneChangeEvent::with_cause(
+            garna_id,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::effect(),
+            Some(garna_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    assert!(triggered.trigger.matches(&allied_event, &ctx));
+    assert!(!triggered.trigger.matches(&opposing_event, &ctx));
+    assert!(!triggered.trigger.matches(&self_event, &ctx));
+}
+
+#[test]
+fn garna_bloodfist_of_keld_draws_when_the_dying_creature_was_attacking() {
+    let game = resolve_garna_bloodfist_trigger_for_dying_creature(true);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+
+    assert_eq!(game.player(alice).expect("Alice exists").hand.len(), 1);
+    assert_eq!(game.life_total(bob), 20);
+    assert_eq!(game.life_total(charlie), 20);
+}
+
+#[test]
+fn garna_bloodfist_of_keld_damages_opponents_when_the_dying_creature_was_not_attacking() {
+    let game = resolve_garna_bloodfist_trigger_for_dying_creature(false);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+
+    assert_eq!(game.player(alice).expect("Alice exists").hand.len(), 0);
+    assert_eq!(game.life_total(alice), 20);
+    assert_eq!(game.life_total(bob), 19);
+    assert_eq!(game.life_total(charlie), 19);
+}
+
 #[test]
 fn death_in_heaven_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Death in Heaven");

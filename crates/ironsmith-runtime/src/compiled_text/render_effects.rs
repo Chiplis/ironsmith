@@ -31953,9 +31953,13 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 true_branch
             );
         }
+        let condition_text = describe_condition(&conditional.condition);
+        if condition_text == "it was attacking" {
+            return format!("{true_branch} if {condition_text}. Otherwise, {false_branch}");
+        }
         return format!(
             "If {}, {}. Otherwise, {}",
-            describe_condition(&conditional.condition),
+            condition_text,
             true_branch,
             false_branch
         );

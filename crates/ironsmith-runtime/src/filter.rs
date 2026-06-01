@@ -2783,6 +2783,12 @@ impl ObjectFilterExt for ObjectFilter {
         if self.untapped && snapshot.tapped {
             return false;
         }
+        if self.attacking && !snapshot.attacking {
+            return false;
+        }
+        if self.nonattacking && snapshot.attacking {
+            return false;
+        }
         if self.enlist_eligible && !object_is_enlist_eligible(game, snapshot.object_id) {
             return false;
         }

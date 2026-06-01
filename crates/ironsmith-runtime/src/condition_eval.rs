@@ -3464,6 +3464,7 @@ fn evaluate_condition(
             let filter_ctx = ctx.filter_context(game);
             if let Some(tagged) = ctx.get_tagged_all(tag.as_str()) {
                 return Ok(tagged.iter().any(|snapshot| {
+                    let snapshot_matches = filter.matches_snapshot(snapshot, &filter_ctx, game);
                     let current_id = game
                         .object(snapshot.object_id)
                         .map(|object| object.id)
@@ -3471,9 +3472,9 @@ fn evaluate_condition(
                     if let Some(current_id) = current_id
                         && let Some(object) = game.object(current_id)
                     {
-                        return filter.matches(object, &filter_ctx, game);
+                        return filter.matches(object, &filter_ctx, game) || snapshot_matches;
                     }
-                    filter.matches_snapshot(snapshot, &filter_ctx, game)
+                    snapshot_matches
                 }));
             }
 
