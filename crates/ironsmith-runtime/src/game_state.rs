@@ -272,6 +272,8 @@ pub struct TurnStore {
     pub exhaust_abilities_activated: HashSet<(ObjectId, usize)>,
     /// Explicit combat damage assignments keyed by attacker then damage recipient.
     pub combat_damage_assignments: HashMap<ObjectId, HashMap<ObjectId, u32>>,
+    /// Sources that assign no combat damage until end of turn.
+    pub assign_no_combat_damage_sources: HashSet<ObjectId>,
 }
 
 /// Runtime effect managers, queued trigger state, and temporary effect registries.
@@ -3054,6 +3056,10 @@ impl GameState {
                     .retain(|grant| grant.expires_end_of_turn > current_turn);
             }
         }
+    }
+
+    pub fn cleanup_assign_no_combat_damage_end_of_turn(&mut self) {
+        self.turn_store.assign_no_combat_damage_sources.clear();
     }
 
     /// Can the player draw any cards?
@@ -7174,6 +7180,7 @@ impl GameState {
         self.saddled_until_end_of_turn.clear();
         self.ninjutsu_attack_targets.clear();
         self.combat_damage_player_batch_hits.clear();
+        self.turn_store.assign_no_combat_damage_sources.clear();
         self.speed_increase_triggered_this_turn.clear();
 
         // Activate any pending player-control effects for the new active player.
@@ -7476,6 +7483,18 @@ impl GameState {
             .combat_damage_assignments
             .remove(&attacker)
             .unwrap_or_default()
+    }
+
+    pub fn set_assigns_no_combat_damage(&mut self, source: ObjectId) {
+        self.turn_store
+            .assign_no_combat_damage_sources
+            .insert(source);
+    }
+
+    pub fn assigns_no_combat_damage(&self, source: ObjectId) -> bool {
+        self.turn_store
+            .assign_no_combat_damage_sources
+            .contains(&source)
     }
 
     /// Check whether an object performed a specific keyword action this turn.

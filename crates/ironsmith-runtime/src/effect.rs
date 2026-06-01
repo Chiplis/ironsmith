@@ -2383,6 +2383,12 @@ impl Effect {
         Self::new(PreventAllCombatDamageFromEffect::new(source, until))
     }
 
+    /// Create an effect that makes a source assign no combat damage.
+    pub fn assign_no_combat_damage(source: ChooseSpec, until: Until) -> Self {
+        use crate::effects::AssignNoCombatDamageEffect;
+        Self::new(AssignNoCombatDamageEffect::new(source, until))
+    }
+
     /// Create a "prevent all combat damage to players" effect.
     pub fn prevent_all_combat_damage_to_players(until: Until) -> Self {
         use crate::effects::{CombatDamagePreventionTarget, PreventAllCombatDamageEffect};

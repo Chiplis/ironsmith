@@ -1168,6 +1168,12 @@ impl Effect {
         ))
     }
 
+    pub fn assign_no_combat_damage(source: crate::target::ChooseSpec, until: Until) -> Self {
+        Self::new(crate::effects::AssignNoCombatDamageEffect::new(
+            source, until,
+        ))
+    }
+
     pub fn prevent_all_combat_damage_to_players(until: Until) -> Self {
         Self::new(crate::effects::PreventAllCombatDamageEffect::new(
             crate::effects::CombatDamagePreventionTarget::Players,

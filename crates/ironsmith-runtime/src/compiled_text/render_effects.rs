@@ -699,6 +699,60 @@ fn describe_assigns_no_combat_damage(source: &ChooseSpec, until: &Until) -> Opti
     }
 }
 
+fn describe_assigns_no_combat_damage_then_defending_player_loses(
+    effects: &[Effect],
+) -> Option<String> {
+    let (triggering_tag, effects) = if let [tag_effect, rest @ ..] = effects {
+        if let Some(tag_triggering) = tag_effect
+            .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+        {
+            (Some(tag_triggering.tag.as_str()), rest)
+        } else {
+            (None, effects)
+        }
+    } else {
+        (None, effects)
+    };
+    let [prevent_effect, lose_effect] = effects else {
+        return None;
+    };
+    let assigns_text_for_source = |source: &ChooseSpec, until: &Until| {
+        if !matches!(until, Until::EndOfTurn) {
+            return None;
+        }
+        match source {
+            ChooseSpec::Tagged(tag) => {
+                let tag = tag.as_str();
+                if is_implicit_reference_tag(tag)
+                    || triggering_tag.is_some_and(|triggering_tag| tag == triggering_tag)
+                {
+                    Some("It assigns no combat damage this turn".to_string())
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    };
+    let assigns_text = if let Some(assigns_no_damage) = prevent_effect
+        .downcast_ref::<crate::effects::AssignNoCombatDamageEffect>()
+    {
+        assigns_text_for_source(&assigns_no_damage.source, &assigns_no_damage.until)?
+    } else {
+        return None;
+    };
+
+    let lose = lose_effect.downcast_ref::<crate::effects::LoseLifeEffect>()?;
+    if lose.player != ChooseSpec::Player(PlayerFilter::Defending) {
+        return None;
+    }
+
+    Some(format!(
+        "{assigns_text} and defending player loses {} life",
+        describe_value(&lose.amount)
+    ))
+}
+
 fn put_counters_effect_for_source(effect: &Effect) -> Option<&crate::effects::PutCountersEffect> {
     if let Some(put_counters) = effect.downcast_ref::<crate::effects::PutCountersEffect>() {
         return Some(put_counters);
@@ -3955,6 +4009,9 @@ fn describe_revealed_cards_opponent_may_put_or_draw(effects: &[&Effect]) -> Opti
 }
 
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
+    if let Some(compact) = describe_assigns_no_combat_damage_then_defending_player_loses(effects) {
+        return compact;
+    }
     if let Some(compact) = describe_structural_multisentence_effect_list(effects) {
         return compact;
     }
@@ -17819,7 +17876,7 @@ mod tests {
             Effect::if_then(
                 crate::effect::EffectId(0),
                 EffectPredicate::Happened,
-                vec![Effect::prevent_all_combat_damage_from(
+                vec![Effect::assign_no_combat_damage(
                     ChooseSpec::Tagged(triggering),
                     Until::EndOfTurn,
                 )],
@@ -33604,14 +33661,18 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             describe_choose_spec(&redirect_all.target)
         );
     }
-    if let Some(prevent_from) =
-        effect.downcast_ref::<crate::effects::PreventAllCombatDamageFromEffect>()
+    if let Some(assigns_no_damage) =
+        effect.downcast_ref::<crate::effects::AssignNoCombatDamageEffect>()
     {
         if let Some(rendered) =
-            describe_assigns_no_combat_damage(&prevent_from.source, &prevent_from.until)
+            describe_assigns_no_combat_damage(&assigns_no_damage.source, &assigns_no_damage.until)
         {
             return rendered;
         }
+    }
+    if let Some(prevent_from) =
+        effect.downcast_ref::<crate::effects::PreventAllCombatDamageFromEffect>()
+    {
         let timing = match prevent_from.until {
             Until::EndOfTurn => "this turn".to_string(),
             _ => describe_until(&prevent_from.until),
@@ -33640,14 +33701,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 format!("Prevent all combat damage that would be dealt to you {timing}")
             }
             crate::effects::CombatDamagePreventionTarget::From(source) => format!(
-                "{}",
-                describe_assigns_no_combat_damage(source, &prevent_combat.until).unwrap_or_else(
-                    || format!(
-                        "Prevent all combat damage that would be dealt by {} {}",
-                        describe_choose_spec(source),
-                        timing
-                    )
-                )
+                "Prevent all combat damage that would be dealt by {} {}",
+                describe_choose_spec(source),
+                timing
             ),
         };
     }

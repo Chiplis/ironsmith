@@ -2097,6 +2097,7 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
             | SubjectVerbActionAst::SwitchPowerToughness { target, .. }
             | SubjectVerbActionAst::GrantProtectionChoice { target, .. }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSource { source: target, .. }
+            | SubjectVerbActionAst::AssignNoCombatDamageFromSource { source: target, .. }
             | SubjectVerbActionAst::ExileWhenSourceLeaves { target }
             | SubjectVerbActionAst::SacrificeSourceWhenLeaves { target }
             | SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget { target, .. }
@@ -2584,6 +2585,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::GrantProtectionChoice { .. }
             | SubjectVerbActionAst::PreventAllCombatDamage { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSource { .. }
+            | SubjectVerbActionAst::AssignNoCombatDamageFromSource { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSourceFilter { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageToPlayers { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }

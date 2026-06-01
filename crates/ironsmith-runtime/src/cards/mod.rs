@@ -1203,35 +1203,29 @@ mod tests {
     fn parse_assigns_no_combat_damage_clause_as_combat_prevention() {
         use crate::ability::AbilityKind;
         use crate::effects::{
-            IfEffect, MayEffect, PreventAllCombatDamageEffect, PreventAllCombatDamageFromEffect,
-            SequenceEffect, TaggedEffect, WithIdEffect,
+            AssignNoCombatDamageEffect, IfEffect, MayEffect, SequenceEffect, TaggedEffect,
+            WithIdEffect,
         };
 
-        fn contains_prevent(effect: &crate::effect::Effect) -> bool {
-            if effect
-                .downcast_ref::<PreventAllCombatDamageEffect>()
-                .is_some()
-                || effect
-                    .downcast_ref::<PreventAllCombatDamageFromEffect>()
-                    .is_some()
-            {
+        fn contains_assigns_no_damage(effect: &crate::effect::Effect) -> bool {
+            if effect.downcast_ref::<AssignNoCombatDamageEffect>().is_some() {
                 return true;
             }
             if let Some(may) = effect.downcast_ref::<MayEffect>() {
-                return may.effects.iter().any(contains_prevent);
+                return may.effects.iter().any(contains_assigns_no_damage);
             }
             if let Some(if_effect) = effect.downcast_ref::<IfEffect>() {
-                return if_effect.then.iter().any(contains_prevent)
-                    || if_effect.else_.iter().any(contains_prevent);
+                return if_effect.then.iter().any(contains_assigns_no_damage)
+                    || if_effect.else_.iter().any(contains_assigns_no_damage);
             }
             if let Some(seq) = effect.downcast_ref::<SequenceEffect>() {
-                return seq.effects.iter().any(contains_prevent);
+                return seq.effects.iter().any(contains_assigns_no_damage);
             }
             if let Some(tagged) = effect.downcast_ref::<TaggedEffect>() {
-                return contains_prevent(&tagged.effect);
+                return contains_assigns_no_damage(&tagged.effect);
             }
             if let Some(with_id) = effect.downcast_ref::<WithIdEffect>() {
-                return contains_prevent(&with_id.effect);
+                return contains_assigns_no_damage(&with_id.effect);
             }
             false
         }
@@ -1251,8 +1245,8 @@ mod tests {
             .expect("expected a triggered ability");
 
         assert!(
-            triggered.effects.iter().any(contains_prevent),
-            "expected combat damage prevention in triggered effects, got {:#?}",
+            triggered.effects.iter().any(contains_assigns_no_damage),
+            "expected assigns-no-combat-damage effect in triggered effects, got {:#?}",
             triggered.effects
         );
     }

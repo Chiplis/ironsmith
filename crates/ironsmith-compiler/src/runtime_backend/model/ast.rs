@@ -995,6 +995,10 @@ pub(crate) enum SubjectVerbActionAst {
         duration: Until,
         source: TargetAst,
     },
+    AssignNoCombatDamageFromSource {
+        duration: Until,
+        source: TargetAst,
+    },
     PreventAllCombatDamageFromSourceFilter {
         duration: Until,
         source_filter: ObjectFilter,
@@ -2146,6 +2150,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .finish(),
             Self::PreventAllCombatDamageFromSource { duration, source } => f
                 .debug_struct("PreventAllCombatDamageFromSource")
+                .field("duration", duration)
+                .field("source", source)
+                .finish(),
+            Self::AssignNoCombatDamageFromSource { duration, source } => f
+                .debug_struct("AssignNoCombatDamageFromSource")
                 .field("duration", duration)
                 .field("source", source)
                 .finish(),
@@ -3557,6 +3566,17 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::PreventAllCombatDamageFromSource { duration, source },
+        )
+    }
+
+    pub(crate) fn subject_verb_assign_no_combat_damage_from_source(
+        source: TargetAst,
+        duration: Until,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::AssignNoCombatDamageFromSource { duration, source },
         )
     }
 

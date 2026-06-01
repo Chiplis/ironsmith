@@ -1534,6 +1534,11 @@ fn compile_subject_verb_effect(
                 Effect::prevent_all_combat_damage_from(spec, duration.clone())
             })
         }
+        SubjectVerbActionAst::AssignNoCombatDamageFromSource { duration, source } => {
+            compile_effect_for_target(source, ctx, |spec| {
+                Effect::assign_no_combat_damage(spec, duration.clone())
+            })
+        }
         SubjectVerbActionAst::PreventAllCombatDamageFromSourceFilter {
             duration,
             source_filter,

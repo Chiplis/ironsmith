@@ -1123,7 +1123,17 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         } else if THIS_COMBAT_PREFIX_PATTERN.matches_words(&tail_words[idx..]) {
             idx += 2;
         }
-        if idx != tail_words.len() {
+        let trailing_tokens = if idx < tail_words.len()
+            && token_index_for_word_index(&tail_tokens, idx)
+                .and_then(|token_idx| tail_tokens.get(token_idx))
+                .is_some_and(|token| token.as_word() == Some("and"))
+        {
+            let and_token_idx = token_index_for_word_index(&tail_tokens, idx).unwrap_or(idx);
+            trim_commas(&tail_tokens[and_token_idx + 1..])
+        } else {
+            Vec::new()
+        };
+        if idx != tail_words.len() && trailing_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "unsupported assigns-no-combat-damage clause tail (clause: '{}') [rule=assigns-no-combat-damage-tail]",
                 clause_words.join(" ")
@@ -1142,9 +1152,17 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             parse_target_phrase(&subject_tokens)?
         };
 
-        return Ok(
-            EffectAst::subject_verb_prevent_all_combat_damage_from_source(source, Until::EndOfTurn),
-        );
+        let prevent_effect =
+            EffectAst::subject_verb_assign_no_combat_damage_from_source(source, Until::EndOfTurn);
+        if !trailing_tokens.is_empty() {
+            let mut effects = vec![prevent_effect];
+            effects.extend(parse_effect_chain_with_subject_verb_primitives(
+                &trailing_tokens,
+            )?);
+            return Ok(EffectAst::Sequence { effects });
+        }
+
+        return Ok(prevent_effect);
     }
 
     if token_slice_first_is(tokens, "target")

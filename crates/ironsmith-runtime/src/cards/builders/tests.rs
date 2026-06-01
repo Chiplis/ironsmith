@@ -31548,20 +31548,19 @@ fn parse_defending_player_suffix_subject_keeps_player_binding() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn parse_rejects_assigns_no_combat_damage_clause() {
-    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Keeper Reject Variant")
+fn parse_keeper_of_tresserhorn_assigns_no_combat_damage_then_life_loss() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Keeper of Tresserhorn")
         .parse_text(
             "Whenever this creature attacks and isn't blocked, it assigns no combat damage this turn and defending player loses 2 life.",
         )
-        .expect_err("assigns-no-combat-damage clause should not partially parse");
+        .expect("Keeper of Tresserhorn should parse strictly");
 
-    let message = format!("{err:?}").to_ascii_lowercase();
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
-        message.contains("assigns-no-combat-damage")
-            || message.contains("unsupported triggered line")
-            || message.contains("unsupported parser line")
-            || message.contains("unsupported known partial parse pattern"),
-        "expected assigns-no-combat-damage rejection, got {message}"
+        rendered.contains(
+            "Whenever this creature attacks and isn't blocked, it assigns no combat damage this turn and defending player loses 2 life"
+        ),
+        "expected Keeper combat-prevention plus defending-player life-loss wording, got {rendered}"
     );
 }
 

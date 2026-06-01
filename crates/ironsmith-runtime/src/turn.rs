@@ -645,6 +645,7 @@ pub fn execute_cleanup_step(game: &mut GameState) {
     game.cleanup_temporary_spell_cost_reductions_end_of_turn();
     game.cleanup_temporary_spell_ability_grants_end_of_turn();
     game.cleanup_temporary_object_static_ability_grants_end_of_turn();
+    game.cleanup_assign_no_combat_damage_end_of_turn();
 
     // End "until end of turn" effects would happen here
     // (Handled by continuous effect manager)

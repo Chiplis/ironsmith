@@ -303,6 +303,22 @@ fn lost_monarch_of_ifnir_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn keeper_of_tresserhorn_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(3_079), "Keeper of Tresserhorn")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Avatar])
+        .power_toughness(PowerToughness::fixed(6, 6))
+        .parse_text(
+            "Whenever this creature attacks and isn't blocked, it assigns no combat damage this turn and defending player loses 2 life.",
+        )
+        .expect("Keeper of Tresserhorn should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn create_typed_creature(
     game: &mut GameState,
     name: &str,
@@ -343,6 +359,105 @@ fn block_lost_monarch_attacker(
     )
     .expect("Lost Monarch combat block should be legal");
     trigger_queue
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn keeper_attack_combat(
+    attacker: ObjectId,
+    defending_player: PlayerId,
+) -> crate::combat_state::CombatState {
+    let mut combat = crate::combat_state::CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: attacker,
+        target: AttackTarget::Player(defending_player),
+    });
+    combat
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn keeper_of_tresserhorn_unblocked_trigger_loses_life_and_prevents_combat_damage() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let keeper = keeper_of_tresserhorn_definition();
+    let keeper_id = game.create_object_from_definition(&keeper, alice, Zone::Battlefield);
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(bob);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareBlockers);
+    let mut combat = keeper_attack_combat(keeper_id, bob);
+    let mut trigger_queue = TriggerQueue::new();
+    apply_blocker_declarations(&mut game, &mut combat, &mut trigger_queue, &[], bob)
+        .expect("Keeper should be unblocked when no blockers are declared");
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Keeper of Tresserhorn should trigger when it attacks and isn't blocked"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Keeper trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Keeper trigger should resolve");
+    assert_eq!(
+        game.player(bob).expect("Bob exists").life,
+        18,
+        "the defending player should lose 2 life from Keeper's trigger"
+    );
+
+    game.effect_store
+        .cant_effects
+        .set_damage_cant_be_prevented(true);
+    game.turn.step = Some(crate::game_state::Step::CombatDamage);
+    let events = execute_combat_damage_step(&mut game, &combat, false);
+    assert_eq!(events.len(), 0, "Keeper should not assign combat damage");
+    assert_eq!(
+        game.player(bob).expect("Bob exists").life,
+        18,
+        "Keeper should assign no combat damage even while damage can't be prevented"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn keeper_of_tresserhorn_blocked_attack_does_not_trigger() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let keeper = keeper_of_tresserhorn_definition();
+    let keeper_id = game.create_object_from_definition(&keeper, alice, Zone::Battlefield);
+    let blocker = create_creature(&mut game, "Keeper Blocker", bob, 2, 2);
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(bob);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareBlockers);
+    let mut combat = keeper_attack_combat(keeper_id, bob);
+    let mut trigger_queue = TriggerQueue::new();
+    apply_blocker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[BlockerDeclaration {
+            blocker,
+            blocking: keeper_id,
+        }],
+        bob,
+    )
+    .expect("Bob should be able to block Keeper");
+
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Keeper of Tresserhorn should not trigger when it becomes blocked"
+    );
+    game.turn.step = Some(crate::game_state::Step::CombatDamage);
+    execute_combat_damage_step(&mut game, &combat, false);
+    assert_eq!(
+        game.player(bob).expect("Bob exists").life,
+        20,
+        "blocked Keeper should not make the defending player lose life or take combat damage"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

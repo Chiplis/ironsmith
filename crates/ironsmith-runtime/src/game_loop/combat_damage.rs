@@ -63,6 +63,9 @@ pub fn execute_combat_damage_step(
         if combat_stat <= 0 {
             continue;
         }
+        if game.assigns_no_combat_damage(attacker_id) {
+            continue;
+        }
 
         let controller = game.controller_of(attacker);
 
@@ -122,6 +125,9 @@ pub fn execute_combat_damage_step(
             continue;
         };
         if combat_stat <= 0 {
+            continue;
+        }
+        if game.assigns_no_combat_damage(blocker_id) {
             continue;
         }
 

@@ -96,7 +96,7 @@ pub use cards::{
     ShuffleHandAndGraveyardIntoLibraryEffect, ShuffleLibraryEffect, SurveilEffect,
 };
 pub use combat::{
-    CombatDamagePreventionTarget, EnterAttackingEffect, ExchangeValueKind, ExchangeValueOperand,
+    AssignNoCombatDamageEffect, CombatDamagePreventionTarget, EnterAttackingEffect, ExchangeValueKind, ExchangeValueOperand,
     ExchangeValuesEffect, FightEffect, GoadEffect, GrantAbilitiesAllEffect,
     GrantAbilitiesTargetEffect, MeleeEffect, ModifyPowerToughnessAllEffect,
     ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect, PreventAllCombatDamageEffect,

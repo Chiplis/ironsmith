@@ -122,6 +122,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::RegisterZoneReplacement { target, .. }
             | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { target }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSource { source: target, .. }
+            | SubjectVerbActionAst::AssignNoCombatDamageFromSource { source: target, .. }
             | SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget { target, .. }
             | SubjectVerbActionAst::RedirectNextTimeDamageToSource { target, .. }
             | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
@@ -710,6 +711,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::GrantProtectionChoice { .. }
         | SubjectVerbActionAst::PreventAllCombatDamage { .. }
         | SubjectVerbActionAst::PreventAllCombatDamageFromSource { .. }
+        | SubjectVerbActionAst::AssignNoCombatDamageFromSource { .. }
         | SubjectVerbActionAst::PreventAllCombatDamageFromSourceFilter { .. }
         | SubjectVerbActionAst::PreventAllCombatDamageToPlayers { .. }
         | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }

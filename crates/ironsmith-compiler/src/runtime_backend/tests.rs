@@ -10266,10 +10266,7 @@ fn rewrite_lexed_effect_sentence_supports_leading_this_turn_targeted_unblocked_t
     assert!(debug.contains("DelayedTriggerThisTurn"), "{debug}");
     assert!(debug.contains("AttacksAndIsntBlocked"), "{debug}");
     assert!(debug.contains("IfResult"), "{debug}");
-    assert!(
-        debug.contains("PreventAllCombatDamageFromSource"),
-        "{debug}"
-    );
+    assert!(debug.contains("AssignNoCombatDamageFromSource"), "{debug}");
     assert!(debug.contains("source: Tagged"), "{debug}");
 }
 

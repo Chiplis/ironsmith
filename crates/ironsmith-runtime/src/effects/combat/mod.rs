@@ -9,6 +9,7 @@
 //! - `PreventAllDamageEffect` - Prevent all damage
 //! - `GrantAbilitiesAllEffect` - Grant abilities to all creatures matching a filter
 
+mod assign_no_combat_damage;
 mod enter_attacking;
 mod exchange_values;
 mod fight;
@@ -28,6 +29,7 @@ mod prevention_helpers;
 mod remove_from_combat;
 mod set_base_power_toughness;
 
+pub use assign_no_combat_damage::AssignNoCombatDamageEffect;
 pub use enter_attacking::EnterAttackingEffect;
 pub use exchange_values::{ExchangeValueKind, ExchangeValueOperand, ExchangeValuesEffect};
 pub use fight::FightEffect;

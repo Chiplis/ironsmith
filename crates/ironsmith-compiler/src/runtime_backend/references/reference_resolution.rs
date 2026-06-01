@@ -391,7 +391,8 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::GrantProtectionChoice { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "protected")?;
                 }
-                SubjectVerbActionAst::PreventAllCombatDamageFromSource { source, .. } => {
+                SubjectVerbActionAst::PreventAllCombatDamageFromSource { source, .. }
+                | SubjectVerbActionAst::AssignNoCombatDamageFromSource { source, .. } => {
                     maybe_tag_target(source, frame, id_gen, "targeted")?;
                 }
                 SubjectVerbActionAst::RetargetStackObject { .. } => {
@@ -2043,6 +2044,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::GrantProtectionChoice { .. }
             | SubjectVerbActionAst::PreventAllCombatDamage { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSource { .. }
+            | SubjectVerbActionAst::AssignNoCombatDamageFromSource { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSourceFilter { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageToPlayers { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }
@@ -2665,6 +2667,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::MayMoveToZone { target, .. }
             | SubjectVerbActionAst::GrantProtectionChoice { target, .. }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSource { source: target, .. }
+            | SubjectVerbActionAst::AssignNoCombatDamageFromSource { source: target, .. }
             | SubjectVerbActionAst::ExileWhenSourceLeaves { target }
             | SubjectVerbActionAst::SacrificeSourceWhenLeaves { target }
             | SubjectVerbActionAst::RegisterZoneReplacement { target, .. } => {

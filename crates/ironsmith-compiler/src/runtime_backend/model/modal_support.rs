@@ -419,6 +419,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::GrantProtectionChoice { .. }
             | SubjectVerbActionAst::PreventAllCombatDamage { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSource { .. }
+            | SubjectVerbActionAst::AssignNoCombatDamageFromSource { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSourceFilter { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageToPlayers { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }

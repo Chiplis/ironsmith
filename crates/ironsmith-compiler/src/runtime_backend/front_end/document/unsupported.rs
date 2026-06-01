@@ -66,21 +66,6 @@ const UNSUPPORTED_CONTAINS_RULES: &[UnsupportedWordRule] = &[
         message: "unsupported prevent-all-combat-damage clause tail",
     },
     UnsupportedWordRule {
-        phrase: &[
-            "assigns",
-            "no",
-            "combat",
-            "damage",
-            "this",
-            "turn",
-            "and",
-            "defending",
-            "player",
-            "loses",
-        ],
-        message: "unsupported assigns-no-combat-damage clause",
-    },
-    UnsupportedWordRule {
         phrase: &["of", "defending", "players", "choice"],
         message: "unsupported defending-players-choice clause",
     },

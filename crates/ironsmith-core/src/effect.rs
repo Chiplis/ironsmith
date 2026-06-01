@@ -4999,6 +4999,18 @@ impl PreventAllCombatDamageEffect {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct AssignNoCombatDamageEffect {
+    pub source: ChooseSpec,
+    pub until: Until,
+}
+
+impl AssignNoCombatDamageEffect {
+    pub fn new(source: ChooseSpec, until: Until) -> Self {
+        Self { source, until }
+    }
+}
+
 /// What a prevention shield protects.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PreventionTarget {
