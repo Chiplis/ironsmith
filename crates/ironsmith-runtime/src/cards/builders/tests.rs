@@ -41042,6 +41042,11 @@ fn death_in_heaven_mills_exiles_then_returns_only_source_exiled_creatures_face_d
     let noncreature_card = crate::card::CardBuilder::new(CardId::new(), "Milled Spell")
         .card_types(vec![CardType::Instant])
         .build();
+    let graveyard_creature_card =
+        crate::card::CardBuilder::new(CardId::new(), "Buried Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(4, 4))
+            .build();
     let unrelated_creature = crate::card::CardBuilder::new(CardId::new(), "Unrelated Exile")
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(3, 3))
@@ -41056,6 +41061,12 @@ fn death_in_heaven_mills_exiles_then_returns_only_source_exiled_creatures_face_d
     let spell_stable_id = game
         .object(spell_id)
         .expect("milled spell should exist")
+        .stable_id;
+    let graveyard_creature_id =
+        game.create_object_from_card(&graveyard_creature_card, bob, Zone::Graveyard);
+    let graveyard_creature_stable_id = game
+        .object(graveyard_creature_id)
+        .expect("graveyard creature should exist")
         .stable_id;
     let unrelated_id = game.create_object_from_card(&unrelated_creature, bob, Zone::Exile);
     let unrelated_stable_id = game
@@ -41101,6 +41112,27 @@ fn death_in_heaven_mills_exiles_then_returns_only_source_exiled_creatures_face_d
         game.calculated_subtypes(returned_creature)
             .contains(&Subtype::Cyberman),
         "returned face-down creature should be a Cyberman"
+    );
+    let returned_graveyard_creature = game
+        .find_object_by_stable_id(graveyard_creature_stable_id)
+        .expect("graveyard creature should still be tracked");
+    assert_eq!(
+        game.object(returned_graveyard_creature)
+            .expect("graveyard creature should be on the battlefield")
+            .zone,
+        Zone::Battlefield,
+        "Death in Heaven chapter III should also return creature cards already in the targeted graveyard"
+    );
+    assert_eq!(
+        game.controller_of(
+            game.object(returned_graveyard_creature)
+                .expect("graveyard creature should be on the battlefield"),
+        ),
+        alice
+    );
+    assert!(
+        game.is_face_down(returned_graveyard_creature),
+        "returned graveyard creature should enter face down"
     );
 
     let exiled_spell = game
