@@ -34565,6 +34565,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         return "Return an unblocked attacker you control to its owner's hand".to_string();
     }
     if effect
+        .downcast_ref::<crate::effects::SneakCostEffect>()
+        .is_some()
+    {
+        return "Return an unblocked attacker you control to its owner's hand".to_string();
+    }
+    if effect
         .downcast_ref::<crate::effects::NinjutsuEffect>()
         .is_some()
     {

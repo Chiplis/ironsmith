@@ -1098,6 +1098,7 @@ fn casting_method_grants_special_timing(
     casting_method: &CastingMethod,
 ) -> bool {
     casting_method_grants_flash_timing(ctx.game, ctx.player, spell, casting_method)
+        || casting_method_grants_sneak_timing(ctx.game, spell, casting_method)
         || (ctx.allow_library_search_cast_timing
             && casting_method_grants_library_search_timing(
                 ctx.game,
@@ -1105,6 +1106,23 @@ fn casting_method_grants_special_timing(
                 spell_id,
                 casting_method,
             ))
+}
+
+fn casting_method_grants_sneak_timing(
+    game: &GameState,
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+) -> bool {
+    let method = match casting_method {
+        CastingMethod::Alternative(idx) => spell.alternative_casts.get(*idx),
+        _ => None,
+    };
+    let Some(method) = method else {
+        return false;
+    };
+    method.name().eq_ignore_ascii_case("Sneak")
+        && matches!(game.turn.phase, Phase::Combat)
+        && game.turn.step == Some(Step::DeclareBlockers)
 }
 
 pub(crate) fn face_down_cast_mana_cost() -> crate::mana::ManaCost {

@@ -19429,6 +19429,47 @@ fn parse_ninjutsu_keyword_line_builds_hand_activated_ability() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn splinters_technique_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Splinter's Technique");
+
+    let sneak = def
+        .alternative_casts
+        .iter()
+        .find(|method| method.name().eq_ignore_ascii_case("Sneak"))
+        .expect("Splinter's Technique should compile with a sneak alternative cost");
+    assert_eq!(
+        sneak.mana_cost().map(|cost| cost.to_oracle()),
+        Some("{1}{B}".to_string()),
+        "Sneak should preserve its printed mana cost"
+    );
+    assert!(
+        sneak.non_mana_costs().iter().any(|cost| {
+            cost.effect_ref().is_some_and(|effect| {
+                effect
+                    .downcast_ref::<crate::effects::SneakCostEffect>()
+                    .is_some()
+            })
+        }),
+        "Sneak should require returning an unblocked attacker as a real cost"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered.contains("Sneak {1}{B}"),
+        "compiled text should preserve the sneak keyword cost, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("search your library for a card")
+            && (rendered_lower.contains("put that card into your hand")
+                || rendered_lower.contains("put it into your hand"))
+            && rendered_lower.contains("then shuffle"),
+        "Splinter's Technique should keep its tutor effect, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn source_cost_compiled_text_does_not_leak_placeholder_surfaces() {
     let memory_jar = CardDefinitionBuilder::new(CardId::new(), "Memory Jar Variant")
         .card_types(vec![CardType::Artifact])
