@@ -635,6 +635,246 @@ fn stoic_sphinx_hexproof_tracks_whether_controller_cast_a_spell_this_turn() {
     );
 }
 
+#[test]
+fn ashad_the_lone_cyberman_parses_and_renders_casualty_grant() {
+    let def = parse_oracle_card_definition("Ashad, the Lone Cyberman");
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(
+        rendered.contains("first nonlegendary artifact spell you cast each turn"),
+        "Ashad should render the first nonlegendary artifact spell grant, got {rendered}"
+    );
+    assert!(
+        rendered.contains("casualty 2"),
+        "Ashad should render the granted casualty value, got {rendered}"
+    );
+}
+
+fn setup_ashad_casualty_game() -> (crate::game_state::GameState, PlayerId, PlayerId) {
+    let ashad = parse_oracle_card_definition("Ashad, the Lone Cyberman");
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.create_object_from_definition(&ashad, alice, Zone::Battlefield);
+    (game, alice, bob)
+}
+
+fn record_ashad_spell_cast(
+    game: &mut crate::game_state::GameState,
+    caster: PlayerId,
+    raw_id: u32,
+    name: &str,
+    card_types: Vec<CardType>,
+    supertypes: Vec<Supertype>,
+) -> ObjectId {
+    let mut builder = CardBuilder::new(CardId::from_raw(raw_id), name).card_types(card_types);
+    if !supertypes.is_empty() {
+        builder = builder.supertypes(supertypes);
+    }
+    let spell = builder.build();
+    let spell_id = game.create_object_from_card(&spell, caster, Zone::Stack);
+    game.push_to_stack(crate::game_state::StackEntry::new(spell_id, caster));
+    let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(spell_id)
+            .expect("recorded Ashad test spell should exist on the stack"),
+        game,
+    );
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::spells::SpellCastEvent::new_with_snapshot(
+            spell_id,
+            caster,
+            Zone::Hand,
+            snapshot.clone(),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    game.turn_store
+        .turn_history
+        .record_event(&event, Some(snapshot), None);
+    spell_id
+}
+
+fn spell_has_ashad_casualty_two(game: &crate::game_state::GameState, spell: ObjectId) -> bool {
+    game.current_abilities(spell)
+        .unwrap_or_default()
+        .iter()
+        .any(|ability| {
+            let AbilityKind::Triggered(triggered) = &ability.kind else {
+                return false;
+            };
+            if triggered
+                .trigger
+                .downcast_ref::<crate::triggers::YouCastThisSpellTrigger>()
+                .is_none()
+            {
+                return false;
+            }
+            let [effect] = triggered.effects.flattened_default_effects() else {
+                return false;
+            };
+            let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() else {
+                return false;
+            };
+            let [sacrifice, copy, choose_targets] = may.effects.as_slice() else {
+                return false;
+            };
+            let Some(sacrifice) = sacrifice.downcast_ref::<crate::effects::SacrificeEffect>()
+            else {
+                return false;
+            };
+            if sacrifice.player != PlayerFilter::You
+                || sacrifice.count != crate::effect::Value::Fixed(1)
+                || sacrifice.filter.power
+                    != Some(crate::filter::Comparison::GreaterThanOrEqual(2))
+                || !sacrifice.filter.card_types.contains(&CardType::Creature)
+            {
+                return false;
+            }
+            let Some(copy) = copy.downcast_ref::<crate::effects::WithIdEffect>() else {
+                return false;
+            };
+            if copy
+                .effect
+                .downcast_ref::<crate::effects::CopySpellEffect>()
+                .is_none()
+            {
+                return false;
+            }
+            choose_targets
+                .downcast_ref::<crate::effects::ChooseNewTargetsEffect>()
+                .is_some_and(|choose| choose.from_effect == copy.id && choose.may)
+        })
+}
+
+#[test]
+fn ashad_grants_casualty_to_first_nonlegendary_artifact_spell_you_cast() {
+    let (mut game, alice, bob) = setup_ashad_casualty_game();
+
+    record_ashad_spell_cast(
+        &mut game,
+        bob,
+        93_200,
+        "Bob's First Spell",
+        vec![CardType::Instant],
+        vec![],
+    );
+    let first_alice_artifact = record_ashad_spell_cast(
+        &mut game,
+        alice,
+        93_201,
+        "Alice's First Artifact",
+        vec![CardType::Artifact],
+        vec![],
+    );
+    assert!(
+        spell_has_ashad_casualty_two(&game, first_alice_artifact),
+        "Ashad should grant casualty 2 to the first nonlegendary artifact spell Alice casts even if Bob cast a spell first; abilities: {:#?}",
+        game.current_abilities(first_alice_artifact)
+    );
+
+    let second_alice_artifact = record_ashad_spell_cast(
+        &mut game,
+        alice,
+        93_202,
+        "Alice's Second Artifact",
+        vec![CardType::Artifact],
+        vec![],
+    );
+    assert!(
+        !spell_has_ashad_casualty_two(&game, second_alice_artifact),
+        "Ashad should not grant casualty 2 to Alice's second spell that turn"
+    );
+}
+
+#[test]
+fn ashad_ignores_prior_spells_that_do_not_match_the_granted_subject() {
+    let (mut nonartifact_game, alice, _) = setup_ashad_casualty_game();
+    let prior_nonartifact = record_ashad_spell_cast(
+        &mut nonartifact_game,
+        alice,
+        93_203,
+        "Prior Nonartifact Spell",
+        vec![CardType::Instant],
+        vec![],
+    );
+    assert!(
+        !spell_has_ashad_casualty_two(&nonartifact_game, prior_nonartifact),
+        "Ashad should not grant casualty 2 to a nonartifact spell"
+    );
+    let first_matching_artifact = record_ashad_spell_cast(
+        &mut nonartifact_game,
+        alice,
+        93_204,
+        "First Matching Artifact",
+        vec![CardType::Artifact],
+        vec![],
+    );
+    assert!(
+        spell_has_ashad_casualty_two(&nonartifact_game, first_matching_artifact),
+        "Ashad should grant casualty 2 to the first nonlegendary artifact spell even after a prior nonartifact spell"
+    );
+
+    let (mut legendary_game, alice, _) = setup_ashad_casualty_game();
+    let prior_legendary_artifact = record_ashad_spell_cast(
+        &mut legendary_game,
+        alice,
+        93_205,
+        "Prior Legendary Artifact",
+        vec![CardType::Artifact],
+        vec![Supertype::Legendary],
+    );
+    assert!(
+        !spell_has_ashad_casualty_two(&legendary_game, prior_legendary_artifact),
+        "Ashad should not grant casualty 2 to a legendary artifact spell"
+    );
+    let first_nonlegendary_artifact = record_ashad_spell_cast(
+        &mut legendary_game,
+        alice,
+        93_206,
+        "First Nonlegendary Artifact",
+        vec![CardType::Artifact],
+        vec![],
+    );
+    assert!(
+        spell_has_ashad_casualty_two(&legendary_game, first_nonlegendary_artifact),
+        "Ashad should grant casualty 2 to the first nonlegendary artifact spell even after a prior legendary artifact spell"
+    );
+}
+
+#[test]
+fn ashad_does_not_grant_casualty_to_legendary_or_nonartifact_first_spells() {
+    let (mut legendary_game, alice, _) = setup_ashad_casualty_game();
+    let legendary_artifact = record_ashad_spell_cast(
+        &mut legendary_game,
+        alice,
+        93_207,
+        "Legendary Artifact Probe",
+        vec![CardType::Artifact],
+        vec![Supertype::Legendary],
+    );
+    assert!(
+        !spell_has_ashad_casualty_two(&legendary_game, legendary_artifact),
+        "Ashad should not grant casualty 2 to a legendary artifact spell"
+    );
+
+    let (mut nonartifact_game, alice, _) = setup_ashad_casualty_game();
+    let nonartifact_spell = record_ashad_spell_cast(
+        &mut nonartifact_game,
+        alice,
+        93_208,
+        "Nonartifact Spell Probe",
+        vec![CardType::Instant],
+        vec![],
+    );
+    assert!(
+        !spell_has_ashad_casualty_two(&nonartifact_game, nonartifact_spell),
+        "Ashad should not grant casualty 2 to a nonartifact spell"
+    );
+}
+
 fn alacrian_armory_trigger(def: &CardDefinition) -> &crate::ability::TriggeredAbility {
     def.abilities
         .iter()

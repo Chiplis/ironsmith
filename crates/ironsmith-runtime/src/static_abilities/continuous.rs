@@ -505,6 +505,9 @@ fn spell_grant_subject_text(filter: &ObjectFilter) -> Option<String> {
     for card_type in &filter.excluded_card_types {
         qualifiers.push(format!("non{}", card_type.name().to_ascii_lowercase()));
     }
+    for supertype in &filter.excluded_supertypes {
+        qualifiers.push(format!("non{}", supertype.name().to_ascii_lowercase()));
+    }
     if !filter.subtypes.is_empty() {
         qualifiers.push(join_with_and(
             &filter
@@ -524,7 +527,13 @@ fn spell_grant_subject_text(filter: &ObjectFilter) -> Option<String> {
         ));
     }
 
-    let mut subject = if qualifiers.is_empty() {
+    let mut subject = if filter.first_spell_cast_each_turn {
+        if qualifiers.is_empty() {
+            "the first spell".to_string()
+        } else {
+            format!("the first {} spell", qualifiers.join(" "))
+        }
+    } else if qualifiers.is_empty() {
         "spells".to_string()
     } else {
         format!("{} spells", qualifiers.join(" "))
@@ -565,6 +574,10 @@ fn spell_grant_subject_text(filter: &ObjectFilter) -> Option<String> {
     if let Some(zone_suffix) = zone_suffix {
         subject.push(' ');
         subject.push_str(&zone_suffix);
+    }
+
+    if filter.first_spell_cast_each_turn {
+        subject.push_str(" each turn");
     }
 
     if let Some(power) = &filter.power {

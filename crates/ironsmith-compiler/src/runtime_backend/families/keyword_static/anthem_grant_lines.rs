@@ -911,6 +911,54 @@ fn first_spell_each_turn_subject(filter_words: &[&str]) -> Option<AnthemSubjectA
         })
 }
 
+fn first_spell_each_turn_subject_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<AnthemSubjectAst>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if words.len() < 6 {
+        return Ok(None);
+    }
+
+    let first_word_idx = if words.first().copied() == Some("the") {
+        1
+    } else {
+        0
+    };
+    if words.get(first_word_idx).copied() != Some("first") {
+        return Ok(None);
+    }
+
+    let Some(tail_start_word_idx) = words.len().checked_sub(4) else {
+        return Ok(None);
+    };
+    if words.get(tail_start_word_idx..) != Some(&["you", "cast", "each", "turn"][..])
+        || tail_start_word_idx <= first_word_idx + 1
+    {
+        return Ok(None);
+    }
+
+    let Some(filter_start) = token_index_for_word_index(tokens, first_word_idx + 1) else {
+        return Ok(None);
+    };
+    let Some(filter_end) = token_index_for_word_index(tokens, tail_start_word_idx) else {
+        return Ok(None);
+    };
+    let filter_tokens = trim_commas(&tokens[filter_start..filter_end]);
+    if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let mut filter = parse_object_filter_lexed(&filter_tokens, false)?;
+    if filter.stack_kind != Some(crate::filter::StackObjectKind::Spell)
+        && filter.zone != Some(Zone::Stack)
+    {
+        return Ok(None);
+    }
+    filter.cast_by = Some(PlayerFilter::You);
+    filter.first_spell_cast_each_turn = true;
+    Ok(Some(AnthemSubjectAst::Filter(filter)))
+}
+
 fn triggered_grant_effects_and_condition(
     trigger: &TriggerSpec,
     effects: &[EffectAst],
@@ -2567,6 +2615,9 @@ pub(crate) fn parse_anthem_subject(
     tokens: &[OwnedLexToken],
 ) -> Result<AnthemSubjectAst, CardTextError> {
     let subject_words = crate::runtime_backend::token_word_refs(tokens);
+    if let Some(subject) = first_spell_each_turn_subject_tokens(tokens)? {
+        return Ok(subject);
+    }
     if FIRST_SPELL_EACH_TURN_SUBJECT_PATTERN.matches_words(&subject_words) {
         return Ok(AnthemSubjectAst::Filter(
             ObjectFilter::spell()
@@ -5632,6 +5683,15 @@ fn parse_granted_object_ability_segment(
         return Ok(None);
     }
 
+    if let Some(actions) = parse_ability_line(&ability_tokens)
+        && actions.len() == 1
+        && let Some(granted) = nonstatic_keyword_action_as_granted_object_ability(
+            actions.into_iter().next().expect("single action exists"),
+        )
+    {
+        return Ok(Some(granted));
+    }
+
     if attached_subject && contains_token_kind(&ability_tokens, TokenKind::Colon) {
         let Some(parsed) = parse_attached_granted_activated_line(raw_segment)? else {
             return Err(CardTextError::ParseError(format!(
@@ -5676,6 +5736,54 @@ fn parse_granted_object_ability_segment(
     }
 
     Ok(None)
+}
+
+fn nonstatic_keyword_action_as_granted_object_ability(
+    action: KeywordAction,
+) -> Option<(ParsedAbility, String)> {
+    match action {
+        KeywordAction::Casualty(power) => {
+            let mut creature_filter = ObjectFilter::creature().you_control();
+            creature_filter.power = Some(crate::filter::Comparison::GreaterThanOrEqual(
+                power as i32,
+            ));
+            let ability = Ability {
+                kind: AbilityKind::Triggered(TriggeredAbility {
+                    trigger: Trigger::you_cast_this_spell(),
+                    effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                        Effect::may(vec![
+                            Effect::sacrifice(creature_filter, 1),
+                            Effect::with_id(
+                                0,
+                                Effect::new(crate::effects::CopySpellEffect::single(
+                                    ChooseSpec::Source,
+                                )),
+                            ),
+                            Effect::may_choose_new_targets_player(
+                                crate::effect::EffectId(0),
+                                PlayerFilter::You,
+                            ),
+                        ]),
+                    ]),
+                    choices: Vec::new(),
+                    intervening_if: None,
+                    presentation_label: Some(format!("keyword:casualty {power}")),
+                }),
+                functional_zones: vec![Zone::Stack],
+            };
+            Some((
+                ParsedAbility {
+                    ability: ability.into(),
+                    text: Some(format!("Casualty {power}")),
+                    effects_ast: None,
+                    reference_imports: ReferenceImports::default(),
+                    trigger_spec: None,
+                },
+                format!("Casualty {power}"),
+            ))
+        }
+        _ => None,
+    }
 }
 
 pub(crate) fn parse_heterogeneous_granted_tail(
