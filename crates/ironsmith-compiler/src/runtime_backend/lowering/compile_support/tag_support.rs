@@ -642,6 +642,8 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::SkipTurn
         | SubjectVerbActionAst::SkipCombatPhases
         | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
+        | SubjectVerbActionAst::SkipMainPhasesThisTurn
+        | SubjectVerbActionAst::SkipCombatPhasesThisTurn
         | SubjectVerbActionAst::SkipDrawStep
         | SubjectVerbActionAst::PlayFromGraveyardUntilEot
         | SubjectVerbActionAst::ControlPlayer { .. }

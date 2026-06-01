@@ -1922,6 +1922,8 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::SkipTurn
             | SubjectVerbActionAst::SkipCombatPhases
             | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
+            | SubjectVerbActionAst::SkipMainPhasesThisTurn
+            | SubjectVerbActionAst::SkipCombatPhasesThisTurn
             | SubjectVerbActionAst::SkipDrawStep
             | SubjectVerbActionAst::PlayFromGraveyardUntilEot
             | SubjectVerbActionAst::ControlPlayer { .. }
@@ -2404,6 +2406,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::SkipTurn
             | SubjectVerbActionAst::SkipCombatPhases
             | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
+            | SubjectVerbActionAst::SkipMainPhasesThisTurn
+            | SubjectVerbActionAst::SkipCombatPhasesThisTurn
             | SubjectVerbActionAst::SkipDrawStep
             | SubjectVerbActionAst::PlayFromGraveyardUntilEot
             | SubjectVerbActionAst::RingTemptsYou

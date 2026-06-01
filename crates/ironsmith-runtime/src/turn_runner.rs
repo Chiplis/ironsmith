@@ -373,6 +373,14 @@ impl TurnRunner {
             // First Main Phase
             // ================================================================
             TurnState::FirstMain => {
+                if game
+                    .turn_store
+                    .skip_current_turn_main_phases
+                    .contains(&game.turn.active_player)
+                {
+                    self.state = TurnState::BeginCombat;
+                    return Ok(TurnAction::Continue);
+                }
                 game.turn.phase = Phase::FirstMain;
                 game.turn.step = None;
                 game.turn.priority_player = Some(game.turn.active_player);
@@ -393,6 +401,18 @@ impl TurnRunner {
             // Combat Phase
             // ================================================================
             TurnState::BeginCombat => {
+                if game
+                    .turn_store
+                    .skip_current_turn_combat_phases
+                    .contains(&game.turn.active_player)
+                    || game
+                        .turn_store
+                        .skip_next_combat_phases
+                        .remove(&game.turn.active_player)
+                {
+                    self.state = TurnState::NextMain;
+                    return Ok(TurnAction::Continue);
+                }
                 game.turn.phase = Phase::Combat;
                 game.turn.step = Some(Step::BeginCombat);
                 game.turn.priority_player = Some(game.turn.active_player);
@@ -613,6 +633,14 @@ impl TurnRunner {
             // Second Main Phase
             // ================================================================
             TurnState::NextMain => {
+                if game
+                    .turn_store
+                    .skip_current_turn_main_phases
+                    .contains(&game.turn.active_player)
+                {
+                    self.state = TurnState::EndStep;
+                    return Ok(TurnAction::Continue);
+                }
                 game.turn.phase = Phase::NextMain;
                 game.turn.step = None;
                 game.turn.priority_player = Some(game.turn.active_player);

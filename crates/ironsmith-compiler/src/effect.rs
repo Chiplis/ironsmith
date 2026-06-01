@@ -1767,6 +1767,16 @@ impl Effect {
         ))
     }
 
+    pub fn skip_main_phases_this_turn_player(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::SkipMainPhasesThisTurnEffect::new(player))
+    }
+
+    pub fn skip_combat_phases_this_turn_player(player: crate::target::PlayerFilter) -> Self {
+        Self::new(crate::effects::SkipCombatPhasesThisTurnEffect::new(
+            player,
+        ))
+    }
+
     pub fn skip_draw_step_player(player: crate::target::PlayerFilter) -> Self {
         Self::new(crate::effects::SkipDrawStepEffect::new(player))
     }

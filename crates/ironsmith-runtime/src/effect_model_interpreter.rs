@@ -1367,6 +1367,19 @@ where
             crate::effects::SkipNextCombatPhaseThisTurnEffect::new(payload.player.clone()),
         ));
     }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::SkipMainPhasesThisTurnEffect>(&effect)
+    {
+        return Ok(Effect::new(
+            crate::effects::SkipMainPhasesThisTurnEffect::new(payload.player.clone()),
+        ));
+    }
+    if let Some(payload) =
+        M::downcast_ref::<ironsmith_core::SkipCombatPhasesThisTurnEffect>(&effect)
+    {
+        return Ok(Effect::new(
+            crate::effects::SkipCombatPhasesThisTurnEffect::new(payload.player.clone()),
+        ));
+    }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::SkipCombatPhasesEffect>(&effect) {
         return Ok(Effect::new(crate::effects::SkipCombatPhasesEffect::new(
             payload.player.clone(),

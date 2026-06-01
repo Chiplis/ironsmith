@@ -161,6 +161,48 @@ const SACRIFICE_ONE_OF_THOSE_CHOSEN_TARGETS_PATTERN: ClauseShape<'static> = clau
             ],
         ]
 );
+const CHOOSE_DRAW_MAIN_OR_COMBAT_PHASE_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &[
+                "that", "player", "chooses", "draw", "step", "main", "phase", "or",
+                "combat", "phase",
+            ],
+            &[
+                "that", "player", "choose", "draw", "step", "main", "phase", "or",
+                "combat", "phase",
+            ],
+            &[
+                "the", "player", "chooses", "draw", "step", "main", "phase", "or", "combat",
+                "phase",
+            ],
+            &[
+                "the", "player", "choose", "draw", "step", "main", "phase", "or", "combat",
+                "phase",
+            ],
+        ]
+);
+const SKIPS_CHOSEN_STEP_OR_PHASE_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &[
+                "that", "player", "skips", "each", "instance", "of", "the", "chosen", "step",
+                "or", "phase", "this", "turn",
+            ],
+            &[
+                "that", "player", "skip", "each", "instance", "of", "the", "chosen", "step",
+                "or", "phase", "this", "turn",
+            ],
+            &[
+                "the", "player", "skips", "each", "instance", "of", "the", "chosen", "step",
+                "or", "phase", "this", "turn",
+            ],
+            &[
+                "the", "player", "skip", "each", "instance", "of", "the", "chosen", "step",
+                "or", "phase", "this", "turn",
+            ],
+        ]
+);
 const YOU_MAY_CAST_TARGET_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["you", "may", "cast", "target"]);
 const FROM_YOUR_GRAVEYARD_MARKER_PATTERN: ClauseShape<'static> =
@@ -575,6 +617,46 @@ pub(crate) fn parse_look_at_top_then_put_one_hand_other_graveyard(
                     ReturnControllerAst::Preserve,
                     false,
                     None,
+                )],
+            }],
+        },
+    ]))
+}
+
+pub(crate) fn parse_choose_draw_main_or_combat_phase_then_skip_chosen_this_turn(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_words = crate::runtime_backend::token_word_refs(sentences[sentence_idx].lowered());
+    if !CHOOSE_DRAW_MAIN_OR_COMBAT_PHASE_PATTERN.matches_words(&first_words) {
+        return Ok(None);
+    }
+
+    let second_words =
+        crate::runtime_backend::token_word_refs(sentences[sentence_idx + 1].lowered());
+    if !SKIPS_CHOSEN_STEP_OR_PHASE_THIS_TURN_PATTERN.matches_words(&second_words) {
+        return Ok(None);
+    }
+
+    Ok(Some(vec![
+        EffectAst::subject_verb_choose_named_option(
+            PlayerAst::That,
+            vec![
+                "draw step".to_string(),
+                "main phase".to_string(),
+                "combat phase".to_string(),
+            ],
+        ),
+        EffectAst::Conditional {
+            predicate: PredicateAst::SourceChosenOption("draw step".to_string()),
+            if_true: vec![EffectAst::subject_verb_skip_draw_step(PlayerAst::That)],
+            if_false: vec![EffectAst::Conditional {
+                predicate: PredicateAst::SourceChosenOption("main phase".to_string()),
+                if_true: vec![EffectAst::subject_verb_skip_main_phases_this_turn(
+                    PlayerAst::That,
+                )],
+                if_false: vec![EffectAst::subject_verb_skip_combat_phases_this_turn(
+                    PlayerAst::That,
                 )],
             }],
         },
