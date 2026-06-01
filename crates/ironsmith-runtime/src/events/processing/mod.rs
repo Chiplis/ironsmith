@@ -1709,6 +1709,8 @@ fn process_zone_change_inner(
                     } => counters.as_slice(),
                     _ => &[],
                 };
+                let mut replacement_ctx =
+                    crate::effects::ExecutionContext::new(effect.source, effect.controller, dm);
                 if let Some(new_id) = game.move_object(object, Zone::Exile, cause.clone()) {
                     for (counter_type, count) in exile_with_counters {
                         if let Some(event) = game.add_counters_with_source(
@@ -1722,13 +1724,18 @@ fn process_zone_change_inner(
                         }
                     }
                     game.add_exiled_with_source_link(effect.source, new_id);
+                    if let Some(object) = game.object(new_id) {
+                        replacement_ctx.tag_object(
+                            crate::tag::SOURCE_EXILED_TAG,
+                            crate::snapshot::ObjectSnapshot::from_object(object, game),
+                        );
+                    }
                     game.record_zone_change_results(object, vec![new_id]);
                 }
                 if !effects.is_empty() {
-                    let mut ctx =
-                        crate::effects::ExecutionContext::new(effect.source, effect.controller, dm);
                     for effect in effects {
-                        if let Ok(outcome) = crate::effects::execute_effect(game, &effect, &mut ctx)
+                        if let Ok(outcome) =
+                            crate::effects::execute_effect(game, &effect, &mut replacement_ctx)
                         {
                             for trigger_event in outcome.events {
                                 game.queue_trigger_event(trigger_event.provenance(), trigger_event);

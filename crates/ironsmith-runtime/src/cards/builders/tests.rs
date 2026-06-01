@@ -1,5 +1,6 @@
 use super::*;
 use crate::ability::AbilityKind;
+use crate::card::Card;
 use crate::cards::CardDefinitionRuntimeExt;
 use crate::color::Color;
 use crate::compiled_text::{
@@ -8,13 +9,18 @@ use crate::compiled_text::{
 use crate::effects::{
     AddManaEffect, ChooseModeEffect, ChooseObjectsEffect, ConsultTopOfLibraryEffect,
     CreateTokenEffect, DestroyEffect, DoubleCountersEffect, DrawCardsEffect, EffectExecutor,
-    GainLifeEffect, IfEffect, MoveToZoneEffect, ReturnFromGraveyardToHandEffect,
-    TagTriggeringObjectEffect, TaggedEffect, TargetOnlyEffect, UntapEffect, WithIdEffect,
+    ExecutionContext, GainLifeEffect, IfEffect, MoveToZoneEffect,
+    ReturnFromGraveyardToHandEffect, TagTriggeringObjectEffect, TaggedEffect, TargetOnlyEffect,
+    UntapEffect, WithIdEffect, execute_effect,
 };
+use crate::events::spells::SpellCastEvent;
+use crate::game_state::StackEntry;
 use crate::filter::ObjectFilterExt;
 use crate::object::AuraAttachmentFilter;
 use crate::static_abilities::StaticAbilityId;
 use crate::target::{ChooseSpec, ObjectRef, PlayerFilter, SourceReferenceSurface};
+use crate::triggers::matcher_trait::TriggerContext;
+use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
 use crate::{ObjectId, PlayerId};
 use std::collections::HashMap;
@@ -10147,6 +10153,174 @@ fn test_parse_plot_keyword_line_compiles_to_alternative_cast() {
     assert!(
         !debug.contains("unsupported"),
         "plot parse should avoid unsupported placeholders, got {debug}"
+    );
+}
+
+fn lilah_undefeated_slickshot_definition() -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(1), "Lilah, Undefeated Slickshot")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Red],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Rogue])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "Prowess (Whenever you cast a noncreature spell, this creature gets +1/+1 until end of turn.)\n\
+             Whenever you cast a multicolored instant or sorcery spell from your hand, exile that spell instead of putting it into your graveyard as it resolves. If you do, it becomes plotted. (You may cast it as a sorcery on a later turn without paying its mana cost.)",
+        )
+        .expect("Lilah, Undefeated Slickshot should parse")
+}
+
+#[test]
+fn lilah_undefeated_slickshot_strict_parser_and_compiled_text_regression() {
+    let def = lilah_undefeated_slickshot_definition();
+    let rendered = canonical_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("Prowess")
+            && rendered.contains(
+                "Whenever you cast a multicolored instant or sorcery spell from your hand, exile that spell instead of putting it into your graveyard as it resolves. If you do, it becomes plotted."
+            ),
+        "expected Lilah compiled text to preserve cast-from-hand replacement and plot follow-up, got {rendered}"
+    );
+}
+
+fn lilah_spell_card(name: &str, mana: Vec<Vec<ManaSymbol>>, card_type: CardType) -> Card {
+    CardBuilder::new(CardId::new(), name)
+        .mana_cost(ManaCost::from_pips(mana))
+        .card_types(vec![card_type])
+        .build()
+}
+
+fn lilah_plot_replacement_trigger(def: &CardDefinition) -> &crate::ability::TriggeredAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered)
+                if triggered.trigger.display().contains("from your hand") => Some(triggered),
+            _ => None,
+        })
+        .expect("Lilah should have a cast-from-hand trigger")
+}
+
+#[test]
+fn lilah_undefeated_slickshot_exiles_and_plots_matching_spell_from_hand() {
+    let def = lilah_undefeated_slickshot_definition();
+    let triggered = lilah_plot_replacement_trigger(&def);
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let source_id = game.create_object_from_card(&def.card, alice, Zone::Battlefield);
+    let spell = lilah_spell_card(
+        "Lilah Gold Test Spell",
+        vec![vec![ManaSymbol::Blue], vec![ManaSymbol::Red]],
+        CardType::Instant,
+    );
+    let spell_id = game.create_object_from_card(&spell, alice, Zone::Stack);
+    game.stack.push(StackEntry::new(spell_id, alice));
+    let stable_id = game.object(spell_id).expect("spell should exist").stable_id;
+    let event = TriggerEvent::new_with_provenance(
+        SpellCastEvent::new(spell_id, alice, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    assert!(
+        triggered
+            .trigger
+            .matches(&event, &TriggerContext::for_source(source_id, alice, &game)),
+        "Lilah should trigger on a multicolored instant cast from hand"
+    );
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let mut ctx = ExecutionContext::new(source_id, alice, &mut dm).with_triggering_event(event);
+    for effect in &triggered.effects {
+        execute_effect(&mut game, effect, &mut ctx).expect("Lilah trigger effect should resolve");
+    }
+    assert_eq!(
+        game.effect_store.replacement_effects.effects().len(),
+        1,
+        "Lilah trigger should register one replacement effect"
+    );
+    let move_outcome = execute_effect(
+        &mut game,
+        &Effect::move_to_zone(ChooseSpec::SpecificObject(spell_id), Zone::Graveyard, false),
+        &mut ctx,
+    )
+    .expect("resolving spell should move through Lilah replacement");
+    assert_eq!(
+        move_outcome.status,
+        crate::effect::OutcomeStatus::Replaced,
+        "Lilah should replace the spell's move to graveyard"
+    );
+
+    let exiled_id = game
+        .find_object_by_stable_id(stable_id)
+        .expect("spell should remain findable after replacement");
+    assert_eq!(
+        game.object(exiled_id).expect("exiled spell should exist").zone,
+        Zone::Exile
+    );
+    assert!(
+        game.is_plotted_by(exiled_id, alice),
+        "Lilah should mark the exiled spell as plotted"
+    );
+}
+
+#[test]
+fn lilah_undefeated_slickshot_does_not_trigger_on_nonmatching_casts() {
+    let def = lilah_undefeated_slickshot_definition();
+    let triggered = lilah_plot_replacement_trigger(&def);
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let source_id = game.create_object_from_card(&def.card, alice, Zone::Battlefield);
+    let monocolored_spell = lilah_spell_card(
+        "Lilah Blue Test Spell",
+        vec![vec![ManaSymbol::Blue]],
+        CardType::Instant,
+    );
+    let monocolored_spell_id = game.create_object_from_card(&monocolored_spell, alice, Zone::Stack);
+    let graveyard_spell = lilah_spell_card(
+        "Lilah Graveyard Gold Test Spell",
+        vec![vec![ManaSymbol::Blue], vec![ManaSymbol::Red]],
+        CardType::Sorcery,
+    );
+    let graveyard_spell_id = game.create_object_from_card(&graveyard_spell, alice, Zone::Stack);
+    let creature_spell = lilah_spell_card(
+        "Lilah Gold Creature Test Spell",
+        vec![vec![ManaSymbol::Blue], vec![ManaSymbol::Red]],
+        CardType::Creature,
+    );
+    let creature_spell_id = game.create_object_from_card(&creature_spell, alice, Zone::Stack);
+
+    let monocolored_event = TriggerEvent::new_with_provenance(
+        SpellCastEvent::new(monocolored_spell_id, alice, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let graveyard_event = TriggerEvent::new_with_provenance(
+        SpellCastEvent::new(graveyard_spell_id, alice, Zone::Graveyard),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let creature_event = TriggerEvent::new_with_provenance(
+        SpellCastEvent::new(creature_spell_id, alice, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let trigger_ctx = TriggerContext::for_source(source_id, alice, &game);
+
+    assert!(
+        !triggered.trigger.matches(&monocolored_event, &trigger_ctx),
+        "Lilah should not trigger on monocolored spells"
+    );
+    assert!(
+        !triggered.trigger.matches(&graveyard_event, &trigger_ctx),
+        "Lilah should not trigger on spells not cast from hand"
+    );
+    assert!(
+        !triggered.trigger.matches(&creature_event, &trigger_ctx),
+        "Lilah should not trigger on multicolored creature spells"
     );
 }
 

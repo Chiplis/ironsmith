@@ -169,16 +169,17 @@ pub use player::{
     GrantNextSpellAbilityEffect, GrantNextSpellCostReductionEffect, GrantPlayTaggedDuration,
     GrantPlayTaggedEffect, GrantTaggedSpellFreeCastUntilEndOfTurnEffect,
     GrantTaggedSpellLifeCostByManaValueEffect, IncreaseSpeedEffect, LoseTheGameEffect,
-    MayCastMatchingSpellWithoutPayingManaCostEffect, PayAnyEnergyEffect, PayEnergyEffect,
-    PoisonCountersEffect, ReduceSpeedEffect, RingTemptsYouEffect, RollDiceChooseResultEffect,
-    RollDieEffect, SkipCombatPhasesEffect, SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect,
-    SkipMainPhasesThisTurnEffect, SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect,
-    TakeInitiativeEffect, TicketCountersEffect, VentureIntoDungeonEffect, WinTheGameEffect,
+    MarkPlottedEffect, MayCastMatchingSpellWithoutPayingManaCostEffect, PayAnyEnergyEffect,
+    PayEnergyEffect, PoisonCountersEffect, ReduceSpeedEffect, RingTemptsYouEffect,
+    RollDiceChooseResultEffect, RollDieEffect, SkipCombatPhasesEffect,
+    SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect, SkipMainPhasesThisTurnEffect,
+    SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, TakeInitiativeEffect, TicketCountersEffect,
+    VentureIntoDungeonEffect, WinTheGameEffect,
 };
 pub use replacement::{
     ApplyReplacementEffect, RegisterDamagedBySourceZoneReplacementEffect,
     RegisterEnterUnderControlReplacementEffect, RegisterFutureZoneReplacementEffect,
-    RegisterZoneReplacementEffect, ReplacementApplyMode,
+    RegisterZoneReplacementEffect, RegisterZoneReplacementThenEffect, ReplacementApplyMode,
 };
 pub use restrictions::CantEffect;
 pub(crate) use stack::EpicSpellCopyEffect;

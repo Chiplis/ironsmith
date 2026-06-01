@@ -1657,6 +1657,12 @@ impl Effect {
         Self::new(EmitKeywordActionEffect::new(action, amount))
     }
 
+    /// Mark the target card as plotted by this effect's controller.
+    pub fn mark_plotted(target: ChooseSpec) -> Self {
+        use crate::effects::MarkPlottedEffect;
+        Self::new(MarkPlottedEffect::new(target))
+    }
+
     /// Emit a Gift-given event (for "when a player gives a gift" triggers).
     pub fn emit_gift_given(recipient: PlayerFilter) -> Self {
         use crate::effects::EmitGiftGivenEffect;

@@ -111,6 +111,7 @@ const WOULD_BE_PUT_INTO_PHRASE: &[&str] = &["would", "be", "put", "into"];
 const THIS_TURN_PHRASE: &[&str] = &["this", "turn"];
 const YOUR_GRAVEYARD_PHRASE: &[&str] = &["your", "graveyard"];
 const EXILE_THAT_CARD_INSTEAD_PHRASE: &[&str] = &["exile", "that", "card", "instead"];
+const EXILE_THAT_SPELL_INSTEAD_PHRASE: &[&str] = &["exile", "that", "spell", "instead"];
 const THE_NEXT_TIME_PHRASE: &[&str] = &["the", "next", "time"];
 const SOURCE_OF_YOUR_CHOICE_PHRASE: &[&str] = &["source", "of", "your", "choice"];
 const WOULD_DEAL_DAMAGE_TO_YOU_THIS_TURN_PHRASE: &[&str] =
@@ -818,6 +819,19 @@ fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) -> Opt
         return Some(EffectAst::subject_verb_register_zone_replacement(
             target(),
             None,
+            Some(Zone::Graveyard),
+            Zone::Exile,
+            ZoneReplacementDurationAst::OneShot,
+        ));
+    }
+
+    if sentence_contains(tokens, EXILE_THAT_SPELL_INSTEAD_PHRASE)
+        && sentence_contains(tokens, INSTEAD_OF_PHRASE)
+        && sentence_contains(tokens, GRAVEYARD_PHRASE)
+    {
+        return Some(EffectAst::subject_verb_register_zone_replacement(
+            TargetAst::Tagged(TagKey::from("triggering"), None),
+            Some(Zone::Stack),
             Some(Zone::Graveyard),
             Zone::Exile,
             ZoneReplacementDurationAst::OneShot,
@@ -2614,6 +2628,8 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::SacrificeSourceWhenLeaves { .. }
             | SubjectVerbActionAst::MayMoveToZone { .. }
             | SubjectVerbActionAst::RegisterZoneReplacement { .. }
+            | SubjectVerbActionAst::RegisterZoneReplacementThen { .. }
+            | SubjectVerbActionAst::MarkPlotted { .. }
             | SubjectVerbActionAst::RegisterFutureZoneReplacement { .. }
             | SubjectVerbActionAst::RegisterDamagedBySourceZoneReplacement { .. }
             | SubjectVerbActionAst::Enchant { .. }

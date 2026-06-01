@@ -449,6 +449,8 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::SacrificeSourceWhenLeaves { .. }
             | SubjectVerbActionAst::MayMoveToZone { .. }
             | SubjectVerbActionAst::RegisterZoneReplacement { .. }
+            | SubjectVerbActionAst::RegisterZoneReplacementThen { .. }
+            | SubjectVerbActionAst::MarkPlotted { .. }
             | SubjectVerbActionAst::RegisterFutureZoneReplacement { .. }
             | SubjectVerbActionAst::RegisterDamagedBySourceZoneReplacement { .. }
             | SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. }

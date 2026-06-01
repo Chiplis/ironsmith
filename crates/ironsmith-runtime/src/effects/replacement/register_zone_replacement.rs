@@ -19,6 +19,41 @@ pub struct RegisterZoneReplacementEffect {
     pub choice_description: Option<String>,
 }
 
+pub type RegisterZoneReplacementThenEffect =
+    ironsmith_core::RegisterZoneReplacementThenEffect<crate::effect::Effect>;
+
+fn resolve_zone_replacement_then_replacements(
+    effect: &RegisterZoneReplacementThenEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<Vec<ReplacementEffect>, ExecutionError> {
+    if effect.replacement_zone != Zone::Exile {
+        return Err(ExecutionError::Impossible(
+            "zone replacement follow-up effects require exile source-link support".to_string(),
+        ));
+    }
+    let object_ids = resolve_objects_for_effect(game, ctx, &effect.target)?;
+    if object_ids.is_empty() {
+        return Err(ExecutionError::InvalidTarget);
+    }
+
+    Ok(object_ids
+        .into_iter()
+        .map(|object_id| {
+            ReplacementEffect::with_matcher(
+                ctx.source,
+                ctx.controller,
+                crate::events::zones::matchers::WouldChangeZoneMatcher::new(
+                    ObjectFilter::specific(object_id),
+                    effect.from_zone,
+                    effect.to_zone,
+                ),
+                ReplacementAction::ExileWithSourceLinkThen(effect.effects.clone()),
+            )
+        })
+        .collect())
+}
+
 impl RegisterZoneReplacementEffect {
     pub fn new(
         target: ChooseSpec,
@@ -108,6 +143,55 @@ impl EffectExecutor for RegisterZoneReplacementEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let replacements = match self.resolve_replacements(game, ctx) {
+            Ok(replacements) => replacements,
+            Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::target_invalid()),
+            Err(err) => return Err(err),
+        };
+
+        for replacement in replacements {
+            match self.mode {
+                ReplacementApplyMode::OneShot => {
+                    game.effect_store
+                        .replacement_effects
+                        .add_one_shot_effect(replacement);
+                }
+                ReplacementApplyMode::UntilEndOfTurn => {
+                    game.effect_store
+                        .replacement_effects
+                        .add_until_end_of_turn_effect(replacement);
+                }
+                ReplacementApplyMode::Resolution => {
+                    game.effect_store
+                        .replacement_effects
+                        .add_resolution_effect(replacement);
+                }
+            }
+        }
+
+        let object_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
+        Ok(EffectOutcome::with_objects(object_ids))
+    }
+
+    fn get_target_spec(&self) -> Option<&ChooseSpec> {
+        Some(&self.target)
+    }
+
+    fn target_description(&self) -> &'static str {
+        "target for replacement"
+    }
+
+    fn primary_execution_category(&self) -> EffectExecutionCategory {
+        EffectExecutionCategory::ReplacementRegistration
+    }
+}
+
+impl EffectExecutor for RegisterZoneReplacementThenEffect {
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let replacements = match resolve_zone_replacement_then_replacements(self, game, ctx) {
             Ok(replacements) => replacements,
             Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::target_invalid()),
             Err(err) => return Err(err),

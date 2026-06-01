@@ -770,6 +770,10 @@ impl Effect {
         Self::new(crate::effects::EmitKeywordActionEffect::new(kind, count))
     }
 
+    pub fn mark_plotted(target: crate::target::ChooseSpec) -> Self {
+        Self::new(crate::effects::MarkPlottedEffect::new(target))
+    }
+
     pub fn emit_keyword_action_with_affected_object_memory_tag(
         kind: crate::events::KeywordActionKind,
         count: u32,

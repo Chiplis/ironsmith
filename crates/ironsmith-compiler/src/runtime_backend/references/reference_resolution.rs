@@ -692,7 +692,9 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::MayMoveToZone { target, .. } => {
                     track_target_player(target, frame);
                 }
-                SubjectVerbActionAst::RegisterZoneReplacement { target, .. } => {
+                SubjectVerbActionAst::RegisterZoneReplacement { target, .. }
+                | SubjectVerbActionAst::RegisterZoneReplacementThen { target, .. }
+                | SubjectVerbActionAst::MarkPlotted { target } => {
                     maybe_tag_target(target, frame, id_gen, "replaced")?;
                 }
                 SubjectVerbActionAst::DestroyAllAttachedTo { filter, .. } => {
@@ -2073,6 +2075,8 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::SacrificeSourceWhenLeaves { .. }
             | SubjectVerbActionAst::MayMoveToZone { .. }
             | SubjectVerbActionAst::RegisterZoneReplacement { .. }
+            | SubjectVerbActionAst::RegisterZoneReplacementThen { .. }
+            | SubjectVerbActionAst::MarkPlotted { .. }
             | SubjectVerbActionAst::RegisterFutureZoneReplacement { .. }
             | SubjectVerbActionAst::RegisterDamagedBySourceZoneReplacement { .. }
             | SubjectVerbActionAst::Enchant { .. }
@@ -2667,7 +2671,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::PreventAllCombatDamageFromSource { source: target, .. }
             | SubjectVerbActionAst::ExileWhenSourceLeaves { target }
             | SubjectVerbActionAst::SacrificeSourceWhenLeaves { target }
-            | SubjectVerbActionAst::RegisterZoneReplacement { target, .. } => {
+            | SubjectVerbActionAst::RegisterZoneReplacement { target, .. }
+            | SubjectVerbActionAst::RegisterZoneReplacementThen { target, .. }
+            | SubjectVerbActionAst::MarkPlotted { target } => {
                 bind_unresolved_it_in_target(target, seed_tag)
             }
             SubjectVerbActionAst::RegisterFutureZoneReplacement { filter, .. } => {

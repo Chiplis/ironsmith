@@ -3643,6 +3643,47 @@ pub struct RegisterZoneReplacementEffect {
     pub choice_description: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct RegisterZoneReplacementThenEffect<E> {
+    pub target: ChooseSpec,
+    pub from_zone: Option<crate::zone::Zone>,
+    pub to_zone: Option<crate::zone::Zone>,
+    pub replacement_zone: crate::zone::Zone,
+    pub mode: ReplacementApplyMode,
+    pub effects: Vec<E>,
+}
+
+impl<E> RegisterZoneReplacementThenEffect<E> {
+    pub fn new(
+        target: ChooseSpec,
+        from_zone: Option<crate::zone::Zone>,
+        to_zone: Option<crate::zone::Zone>,
+        replacement_zone: crate::zone::Zone,
+        mode: ReplacementApplyMode,
+        effects: Vec<E>,
+    ) -> Self {
+        Self {
+            target,
+            from_zone,
+            to_zone,
+            replacement_zone,
+            mode,
+            effects,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MarkPlottedEffect {
+    pub target: ChooseSpec,
+}
+
+impl MarkPlottedEffect {
+    pub fn new(target: ChooseSpec) -> Self {
+        Self { target }
+    }
+}
+
 impl RegisterZoneReplacementEffect {
     pub fn new(
         target: ChooseSpec,

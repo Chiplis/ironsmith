@@ -1173,6 +1173,23 @@ where
         }
         return Ok(Effect::new(converted));
     }
+    if let Some(payload) = M::downcast_ref::<
+        ironsmith_core::RegisterZoneReplacementThenEffect<M::Effect>,
+    >(&effect) {
+        return Ok(Effect::new(
+            crate::effects::RegisterZoneReplacementThenEffect::new(
+                payload.target.clone(),
+                payload.from_zone,
+                payload.to_zone,
+                payload.replacement_zone,
+                payload.mode,
+                convert_effects(payload.effects.iter().cloned(), hooks)?,
+            ),
+        ));
+    }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::MarkPlottedEffect>(&effect) {
+        return Ok(converted);
+    }
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::RegisterFutureZoneReplacementEffect>(&effect)
     {

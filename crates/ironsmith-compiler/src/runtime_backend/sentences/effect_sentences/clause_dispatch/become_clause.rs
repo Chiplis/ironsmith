@@ -260,6 +260,10 @@ pub(crate) fn parse_become_clause(
         return Ok(EffectAst::subject_verb_make_colorless(target, duration));
     }
 
+    if become_words == ["plotted"] {
+        return Ok(EffectAst::subject_verb_mark_plotted(target));
+    }
+
     let aura_with_enchant_creature_words =
         if AURA_ENCHANTMENT_WITH_ENCHANT_CREATURE_PREFIX_PATTERN.matches_words(become_words) {
             Some(&become_words[5..])

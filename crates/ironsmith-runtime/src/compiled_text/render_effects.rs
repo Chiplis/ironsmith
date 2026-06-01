@@ -27888,6 +27888,21 @@ pub(super) fn describe_effect(effect: &Effect) -> String {
     with_effect_render_depth(|| describe_effect_impl(effect))
 }
 
+fn replacement_target_possessive_owner(target: &ChooseSpec) -> Option<String> {
+    match target {
+        ChooseSpec::SurfaceHinted { spec, .. }
+        | ChooseSpec::Target(spec)
+        | ChooseSpec::WithCount(spec, _)
+        | ChooseSpec::WithCountValue(spec, _, _) => replacement_target_possessive_owner(spec),
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => filter
+            .owner
+            .as_ref()
+            .map(describe_possessive_player_filter),
+        ChooseSpec::Tagged(tag) if tag.as_str() == "triggering" => Some("your".to_string()),
+        _ => None,
+    }
+}
+
 fn describe_unless_any_player_pays_search_prefix(
     unless_pays: &crate::effects::UnlessPaysEffect,
     payment_text: &str,
@@ -34033,6 +34048,58 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return base;
         }
         return format!("{base}. {}", followups.join(". "));
+    }
+    if let Some(register) = effect
+        .downcast_ref::<crate::effects::RegisterZoneReplacementThenEffect>()
+    {
+        let followup = if register.effects.len() == 1
+            && register.effects[0]
+                .downcast_ref::<crate::effects::MarkPlottedEffect>()
+                .is_some()
+        {
+            "If you do, it becomes plotted".to_string()
+        } else {
+            let described = register
+                .effects
+                .iter()
+                .map(describe_effect)
+                .collect::<Vec<_>>()
+                .join(". ");
+            format!("If you do, {described}")
+        };
+        let target = if register.from_zone == Some(Zone::Stack) {
+            "that spell".to_string()
+        } else {
+            describe_choose_spec(&register.target)
+        };
+        if register.from_zone == Some(Zone::Stack)
+            && register.to_zone == Some(Zone::Graveyard)
+            && register.replacement_zone == Zone::Exile
+        {
+            let graveyard_owner = replacement_target_possessive_owner(&register.target)
+                .unwrap_or_else(|| "its owner's".to_string());
+            return format!(
+                "exile {target} instead of putting it into {graveyard_owner} graveyard as it resolves. {followup}"
+            );
+        }
+        let from = register
+            .from_zone
+            .map(|zone| format!(" from {zone:?}"))
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        let to = register
+            .to_zone
+            .map(|zone| format!(" into {zone:?}"))
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        let replacement = format!("{:?}", register.replacement_zone).to_ascii_lowercase();
+        return format!(
+            "If {target} would go{from}{to}, it goes to {replacement} instead. {followup}"
+        );
+    }
+    if let Some(mark_plotted) = effect.downcast_ref::<crate::effects::MarkPlottedEffect>() {
+        let target = describe_choose_spec(&mark_plotted.target);
+        return format!("{target} becomes plotted");
     }
     if let Some(register) = effect.downcast_ref::<crate::effects::RegisterZoneReplacementEffect>() {
         let target = describe_choose_spec(&register.target);

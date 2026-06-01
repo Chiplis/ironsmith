@@ -1118,6 +1118,45 @@ fn compile_subject_verb_effect(
             let effect = Effect::new(replacement);
             Ok((vec![effect], choices))
         }
+        SubjectVerbActionAst::RegisterZoneReplacementThen {
+            target,
+            from_zone,
+            to_zone,
+            replacement_zone,
+            duration,
+            effects,
+        } => {
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let mut compiled_effects = Vec::new();
+            let mut all_choices = choices;
+            for effect in effects {
+                let (mut child_effects, mut child_choices) = compile_effect(effect, ctx)?;
+                compiled_effects.append(&mut child_effects);
+                all_choices.append(&mut child_choices);
+            }
+            let mode = match duration {
+                crate::cards::builders::ZoneReplacementDurationAst::OneShot => {
+                    crate::effects::ReplacementApplyMode::Resolution
+                }
+            };
+            let effect = Effect::new(
+                crate::effects::RegisterZoneReplacementThenEffect::new(
+                    spec,
+                    *from_zone,
+                    *to_zone,
+                    *replacement_zone,
+                    mode,
+                    compiled_effects,
+                ),
+            );
+            Ok((vec![effect], all_choices))
+        }
+        SubjectVerbActionAst::MarkPlotted { target } => {
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            Ok((vec![Effect::mark_plotted(spec)], choices))
+        }
         SubjectVerbActionAst::RegisterFutureZoneReplacement {
             filter,
             from_zone,

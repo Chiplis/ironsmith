@@ -362,6 +362,18 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
     if filter.zone == Some(Zone::Exile) {
         return "a spell from exile".to_string();
     }
+    if filter.zone == Some(Zone::Hand) {
+        let source = match filter.owner.as_ref().unwrap_or(&PlayerFilter::Any) {
+            PlayerFilter::You => "your hand".to_string(),
+            PlayerFilter::Opponent => "an opponent's hand".to_string(),
+            _ => "a hand".to_string(),
+        };
+        let mut spell_filter = filter.clone();
+        spell_filter.zone = Some(Zone::Stack);
+        spell_filter.owner = None;
+        let base = describe_spell_filter(&spell_filter);
+        return format!("{base} from {source}");
+    }
     if filter.card_types.is_empty()
         && filter
             .excluded_card_types

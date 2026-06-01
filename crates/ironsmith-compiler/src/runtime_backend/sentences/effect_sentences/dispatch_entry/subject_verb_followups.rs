@@ -331,6 +331,59 @@ fn pre_rule_future_zone_replacement_followup(
     })))
 }
 
+fn pre_rule_mark_plotted_replacement_followup(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    if !LexedClause::new(sentence_tokens).matches_words(&[
+        "if", "you", "do", "it", "becomes", "plotted",
+    ]) {
+        return Ok(None);
+    }
+
+    let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::RegisterZoneReplacement {
+                target,
+                from_zone,
+                to_zone,
+                replacement_zone,
+                duration,
+                optional: false,
+                choice_description: None,
+            },
+        ..
+    })) = state.effects.last_mut()
+    else {
+        return Ok(None);
+    };
+
+    let target = target.clone();
+    let from_zone = *from_zone;
+    let to_zone = *to_zone;
+    let replacement_zone = *replacement_zone;
+    let duration = *duration;
+    *state.effects.last_mut().expect("previous effect exists") =
+        EffectAst::subject_verb_register_zone_replacement_then(
+            target,
+            from_zone,
+            to_zone,
+            replacement_zone,
+            duration,
+            vec![EffectAst::subject_verb_mark_plotted(TargetAst::Tagged(
+                TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+                None,
+            ))],
+        );
+
+    Ok(Some(PreParseFollowupResult::Handled {
+        consumed_sentences: 1,
+        route: Some("subject-verb verb=Plot subject=implicit recognizer=replacement-followup"),
+    }))
+}
+
 fn pre_rule_skip_tapped_source_turn_replacement(
     _state: &mut SentenceDispatchState<'_>,
     _sentences: &[SentenceInput],
@@ -1188,6 +1241,12 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
         priority: 56,
         heads: &["if"],
         run: pre_rule_future_zone_replacement_followup,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "mark-plotted-replacement-followup",
+        priority: 56,
+        heads: &["if"],
+        run: pre_rule_mark_plotted_replacement_followup,
     },
     SubjectVerbFollowupRuleDef {
         id: "skip-tapped-source-turn-replacement",

@@ -120,6 +120,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::SacrificeSourceWhenLeaves { target }
             | SubjectVerbActionAst::MayMoveToZone { target, .. }
             | SubjectVerbActionAst::RegisterZoneReplacement { target, .. }
+            | SubjectVerbActionAst::RegisterZoneReplacementThen { target, .. }
             | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { target }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSource { source: target, .. }
             | SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget { target, .. }
@@ -789,6 +790,8 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::SacrificeSourceWhenLeaves { .. }
         | SubjectVerbActionAst::MayMoveToZone { .. }
         | SubjectVerbActionAst::RegisterZoneReplacement { .. }
+        | SubjectVerbActionAst::RegisterZoneReplacementThen { .. }
+        | SubjectVerbActionAst::MarkPlotted { .. }
         | SubjectVerbActionAst::RegisterFutureZoneReplacement { .. }
         | SubjectVerbActionAst::RegisterDamagedBySourceZoneReplacement { .. }
         | SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. }

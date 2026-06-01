@@ -10,6 +10,7 @@ pub use register_damaged_by_source_zone_replacement::RegisterDamagedBySourceZone
 pub use register_enter_under_control::RegisterEnterUnderControlReplacementEffect;
 pub use register_future_zone_replacement::RegisterFutureZoneReplacementEffect;
 pub use register_zone_replacement::RegisterZoneReplacementEffect;
+pub use register_zone_replacement::RegisterZoneReplacementThenEffect;
 
 mod register_enter_under_control;
 pub(crate) use register_zone_replacement::zone_replacement_action;

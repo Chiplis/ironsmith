@@ -710,11 +710,39 @@ fn strip_resolution_timing_tail_with_map(text: &str, map: &[usize]) -> (String, 
         return (text.to_string(), map.to_vec());
     };
 
+    let timing_len = " as it resolves".len();
+    let mut remainder_start = idx + timing_len;
+    if text[remainder_start..].starts_with('.') {
+        remainder_start += 1;
+    }
+    while remainder_start < text.len() {
+        let ch = text[remainder_start..]
+            .chars()
+            .next()
+            .expect("character must exist");
+        if ch.is_whitespace() {
+            remainder_start += ch.len_utf8();
+        } else {
+            break;
+        }
+    }
+
     let mut out = text[..idx].trim_end().to_string();
     let mut out_map = map[..out.chars().count().min(map.len())].to_vec();
     if str_ends_with_char(text.trim_end(), '.') && !str_ends_with_char(out.as_str(), '.') {
         out.push('.');
         out_map.push(*map.get(idx).unwrap_or_else(|| map.last().unwrap_or(&0)));
+    }
+    if remainder_start < text.len() {
+        if !out.ends_with(' ') {
+            out.push(' ');
+            out_map.push(*map.get(remainder_start).unwrap_or_else(|| map.last().unwrap_or(&0)));
+        }
+        out.push_str(&text[remainder_start..]);
+        let remainder_char_start = text[..remainder_start].chars().count();
+        if remainder_char_start < map.len() {
+            out_map.extend_from_slice(&map[remainder_char_start..]);
+        }
     }
     (out, out_map)
 }

@@ -903,6 +903,17 @@ pub(crate) enum SubjectVerbActionAst {
         optional: bool,
         choice_description: Option<String>,
     },
+    RegisterZoneReplacementThen {
+        target: TargetAst,
+        from_zone: Option<Zone>,
+        to_zone: Option<Zone>,
+        replacement_zone: Zone,
+        duration: ZoneReplacementDurationAst,
+        effects: Vec<EffectAst>,
+    },
+    MarkPlotted {
+        target: TargetAst,
+    },
     RegisterFutureZoneReplacement {
         filter: ObjectFilter,
         from_zone: Option<Zone>,
@@ -2017,6 +2028,23 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("optional", optional)
                 .field("choice_description", choice_description)
                 .finish(),
+            Self::RegisterZoneReplacementThen {
+                target,
+                from_zone,
+                to_zone,
+                replacement_zone,
+                duration,
+                effects,
+            } => f
+                .debug_struct("RegisterZoneReplacementThen")
+                .field("target", target)
+                .field("from_zone", from_zone)
+                .field("to_zone", to_zone)
+                .field("replacement_zone", replacement_zone)
+                .field("duration", duration)
+                .field("effects", effects)
+                .finish(),
+            Self::MarkPlotted { target } => f.debug_tuple("MarkPlotted").field(target).finish(),
             Self::RegisterFutureZoneReplacement {
                 filter,
                 from_zone,
@@ -4978,6 +5006,36 @@ impl EffectAst {
                 optional: false,
                 choice_description: None,
             },
+        )
+    }
+
+    pub(crate) fn subject_verb_register_zone_replacement_then(
+        target: TargetAst,
+        from_zone: Option<Zone>,
+        to_zone: Option<Zone>,
+        replacement_zone: Zone,
+        duration: ZoneReplacementDurationAst,
+        effects: Vec<EffectAst>,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::RegisterZoneReplacementThen {
+                target,
+                from_zone,
+                to_zone,
+                replacement_zone,
+                duration,
+                effects,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_mark_plotted(target: TargetAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::MarkPlotted { target },
         )
     }
 
