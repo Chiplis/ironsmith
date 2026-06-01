@@ -1,6 +1,9 @@
 //! Add mana effect implementation.
 
-use super::choice_helpers::{credit_mana_symbols_from_context, mana_added_value_outcome};
+use super::choice_helpers::{
+    apply_land_two_or_more_mana_replacement, credit_mana_symbols_from_context,
+    mana_added_value_outcome,
+};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
@@ -34,9 +37,10 @@ impl EffectExecutor for AddManaEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
 
-        credit_mana_symbols_from_context(game, player_id, self.mana.iter().copied(), ctx);
+        let mana = apply_land_two_or_more_mana_replacement(game, ctx, self.mana.clone());
+        credit_mana_symbols_from_context(game, player_id, mana.iter().copied(), ctx);
 
-        Ok(mana_added_value_outcome(ctx, player_id, self.mana.clone()))
+        Ok(mana_added_value_outcome(ctx, player_id, mana))
     }
 
     fn producible_mana_symbols(

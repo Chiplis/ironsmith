@@ -1,7 +1,8 @@
 //! Add mana of any color effect implementation.
 
 use super::choice_helpers::{
-    choose_mana_colors, credit_mana_symbols_from_context, mana_added_count_outcome,
+    apply_land_two_or_more_mana_replacement, choose_mana_colors, credit_mana_symbols_from_context,
+    mana_added_count_outcome,
 };
 use crate::color::Color;
 use crate::effect::EffectOutcome;
@@ -66,13 +67,14 @@ impl EffectExecutor for AddManaOfAnyColorEffect {
             .into_iter()
             .map(ManaSymbol::from_color)
             .collect::<Vec<_>>();
+        let symbols = apply_land_two_or_more_mana_replacement(game, ctx, symbols);
         credit_mana_symbols_from_context(game, player_id, symbols.iter().copied(), ctx);
 
         Ok(mana_added_count_outcome(
             ctx,
             player_id,
-            symbols,
-            amount as i32,
+            symbols.clone(),
+            symbols.len() as i32,
         ))
     }
 

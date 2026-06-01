@@ -2791,6 +2791,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_buyback_cost_reduction_line),
         single_static_ability_ast_passthrough_rule!(parse_can_be_attached_only_to_line),
         single_static_ability_ast_rule!(parse_spell_cost_increase_per_target_beyond_first_line),
+        single_static_ability_ast_rule!(parse_land_mana_two_or_more_replacement_line),
         single_static_ability_ast_rule!(parse_equip_cost_modifier_line),
         single_static_ability_ast_rule!(parse_flashback_cost_modifier_line),
         multi_static_ability_ast_rule!(parse_spell_and_player_activated_ability_cost_modifier_line),
@@ -7053,6 +7054,34 @@ pub(crate) fn parse_spells_cost_modifier_line(
     Ok(Some(StaticAbility::new(ability)))
 }
 
+fn parse_land_mana_two_or_more_replacement_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let exact = word_slice_eq(
+        &words,
+        &[
+            "if", "a", "land", "is", "tapped", "for", "two", "or", "more", "mana", "it",
+            "produces", "c", "instead", "of", "any", "other", "type", "and", "amount",
+        ],
+    );
+    let loose = words.first().is_some_and(|word| *word == "if")
+        && words.iter().any(|word| *word == "land")
+        && words.iter().any(|word| *word == "tapped")
+        && words.iter().any(|word| *word == "produces")
+        && words.iter().any(|word| *word == "instead")
+        && words
+            .windows(5)
+            .any(|window| window == ["two", "or", "more", "mana", "it"]);
+    if !exact && !loose {
+        return Ok(None);
+    }
+
+    Ok(Some(
+        StaticAbility::lands_produce_one_colorless_instead_if_produce_two_or_more(),
+    ))
+}
+
 pub(crate) fn parse_spell_and_player_activated_ability_cost_modifier_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
@@ -7570,6 +7599,14 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
     }
     // "for each spell you've cast this turn" (and limited variants like "instant and sorcery spell")
     if let Some(player) = dynamic_spell_cast_this_turn_player(&filter_words) {
+        if filter_words.windows(8).any(|window| {
+            matches!(window[0], "other")
+                && matches!(window[1], "spell" | "spells")
+                && window[2..] == ["that", "player", "has", "cast", "this", "turn"]
+        }) {
+            return Ok(Some(Value::SpellsCastThisTurn(PlayerFilter::EffectController)));
+        }
+
         if CARD_TYPE_MARKER_PATTERN.matches_words(&filter_words) {
             let mut filter = ObjectFilter::spell();
             filter.cast_by = Some(player);

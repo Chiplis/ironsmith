@@ -3224,10 +3224,11 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
                         chosen_target_count,
                     )
                 {
-                    let amount = resolve_cost_modifier_value_for_source(
+                    let amount = resolve_battlefield_cost_modifier_value(
                         game,
                         perm_id,
                         controller,
+                        caster,
                         &reduction.reduction,
                     );
                     if amount > 0 {
@@ -3245,10 +3246,11 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
                         chosen_target_count,
                     )
                 {
-                    let amount = resolve_cost_modifier_value_for_source(
+                    let amount = resolve_battlefield_cost_modifier_value(
                         game,
                         perm_id,
                         controller,
+                        caster,
                         &increase.increase,
                     );
                     if amount > 0 {
@@ -3321,10 +3323,11 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
                         chosen_target_count,
                     )
                 {
-                    let amount = resolve_cost_modifier_value_for_source(
+                    let amount = resolve_battlefield_cost_modifier_value(
                         game,
                         perm_id,
                         controller,
+                        caster,
                         &reduction.reduction,
                     );
                     if amount > 0 {
@@ -3342,10 +3345,11 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
                         chosen_target_count,
                     )
                 {
-                    let amount = resolve_cost_modifier_value_for_source(
+                    let amount = resolve_battlefield_cost_modifier_value(
                         game,
                         perm_id,
                         controller,
+                        caster,
                         &increase.increase,
                     );
                     if amount > 0 {
@@ -3523,6 +3527,43 @@ pub(crate) fn resolve_cost_modifier_value_for_source(
     let mut dm = SelectFirstDecisionMaker;
     let ctx = ExecutionContext::new(source, controller, &mut dm);
     resolve_value(game, value, &ctx).unwrap_or(0)
+}
+
+fn resolve_battlefield_cost_modifier_value(
+    game: &GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    caster: PlayerId,
+    value: &crate::effect::Value,
+) -> i32 {
+    match value {
+        crate::effect::Value::SpellsCastThisTurn(crate::target::PlayerFilter::EffectController) => {
+            game.turn_store.turn_history.spells_cast_by_player(caster) as i32
+        }
+        crate::effect::Value::SpellsCastThisTurnMatching {
+            player: crate::target::PlayerFilter::EffectController,
+            filter,
+            exclude_source,
+        } => {
+            let mut dm = SelectFirstDecisionMaker;
+            let ctx = ExecutionContext::new(source, controller, &mut dm);
+            let filter_ctx = ctx.filter_context(game);
+            let mut count: i32 = 0;
+            for snapshot in game.turn_store.turn_history.spell_cast_snapshot_history() {
+                if *exclude_source && snapshot.object_id == source {
+                    continue;
+                }
+                if snapshot.controller != caster {
+                    continue;
+                }
+                if filter.matches_snapshot(&snapshot, &filter_ctx, game) {
+                    count = count.saturating_add(1);
+                }
+            }
+            count
+        }
+        _ => resolve_cost_modifier_value_for_source(game, source, controller, value),
+    }
 }
 
 /// Calculate the number of cards that need to be exiled for Delve.
@@ -3883,7 +3924,12 @@ fn mana_ability_output_options(
     if let Some(output) = mana_ability.mana_output.as_ref()
         && !output.is_empty()
     {
-        return vec![output.clone()];
+        return vec![apply_land_two_or_more_mana_replacement_to_symbols(
+            game,
+            source,
+            output.clone(),
+            mana_ability.has_tap_cost(),
+        )];
     }
 
     let resolve_amount = |value: &crate::effect::Value| -> usize {
@@ -3953,6 +3999,14 @@ fn mana_ability_output_options(
 
     let outputs = outputs
         .into_iter()
+        .map(|output| {
+            apply_land_two_or_more_mana_replacement_to_symbols(
+                game,
+                source,
+                output,
+                mana_ability.has_tap_cost(),
+            )
+        })
         .filter(|output| !output.is_empty())
         .collect::<Vec<_>>();
     if outputs.is_empty() {
@@ -4604,7 +4658,12 @@ pub(crate) fn inferred_potential_mana_symbols_for_ability(
     if let Some(mana_output) = mana_ability.mana_output.as_ref()
         && !mana_output.is_empty()
     {
-        return mana_output.clone();
+        return apply_land_two_or_more_mana_replacement_to_symbols(
+            game,
+            source,
+            mana_output.clone(),
+            mana_ability.has_tap_cost(),
+        );
     }
 
     let resolve_amount = |value: &crate::effect::Value| -> usize {
@@ -4681,10 +4740,45 @@ pub(crate) fn inferred_potential_mana_symbols_for_ability(
         }
     }
 
-    if inferred.is_empty() {
+    let inferred = if inferred.is_empty() {
         mana_ability.inferred_mana_symbols(game, source, controller)
     } else {
         inferred
+    };
+    apply_land_two_or_more_mana_replacement_to_symbols(
+        game,
+        source,
+        inferred,
+        mana_ability.has_tap_cost(),
+    )
+}
+
+fn apply_land_two_or_more_mana_replacement_to_symbols(
+    game: &GameState,
+    source: ObjectId,
+    mana: Vec<ManaSymbol>,
+    tapped_for_mana: bool,
+) -> Vec<ManaSymbol> {
+    if mana.len() < 2 {
+        return mana;
+    }
+    if !tapped_for_mana {
+        return mana;
+    }
+    let view = DerivedGameView::new(game);
+    if !view.object_has_card_type(source, crate::types::CardType::Land) {
+        return mana;
+    }
+    let replacement_active = game.battlefield.iter().any(|&perm_id| {
+        view.object_has_static_ability_id(
+            perm_id,
+            crate::static_abilities::StaticAbilityId::LandsProduceOneColorlessInsteadIfProduceTwoOrMore,
+        )
+    });
+    if replacement_active {
+        vec![ManaSymbol::Colorless]
+    } else {
+        mana
     }
 }
 
@@ -5085,8 +5179,13 @@ mod tests {
     use crate::alternative_cast::CastingMethod;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::cards::builders::CardDefinitionBuilder;
+    use crate::derived_view::DerivedGameView;
+    use crate::events::spells::SpellCastEvent;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
+    use crate::provenance::ProvNodeId;
+    use crate::snapshot::ObjectSnapshot;
+    use crate::triggers::TriggerEvent;
     use crate::types::{CardType, Subtype};
     use crate::zone::Zone;
 
@@ -5113,6 +5212,155 @@ mod tests {
             .card_types(vec![CardType::Artifact])
             .build();
         game.create_object_from_card(&card, owner, Zone::Battlefield);
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    fn damping_sphere_definition() -> crate::cards::CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), "Damping Sphere")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+            .card_types(vec![CardType::Artifact])
+            .parse_text(
+                "If a land is tapped for two or more mana, it produces {C} instead of any other type and amount.\nEach spell a player casts costs {1} more to cast for each other spell that player has cast this turn.",
+            )
+            .expect("Damping Sphere should parse for runtime regression tests")
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    fn two_mana_land_definition() -> crate::cards::CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), "Damping Sphere Test Temple")
+            .card_types(vec![CardType::Land])
+            .parse_text("{T}: Add {C}{C}.")
+            .expect("test land mana ability should parse")
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    fn test_spell_card(name: &str, cost: u8) -> crate::card::Card {
+        CardBuilder::new(CardId::new(), name)
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(cost)]]))
+            .card_types(vec![CardType::Sorcery])
+            .build()
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    fn record_damping_sphere_spell_cast(game: &mut GameState, caster: PlayerId, name: &str) {
+        let card = test_spell_card(name, 1);
+        let spell_id = game.create_object_from_card(&card, caster, Zone::Stack);
+        let snapshot = ObjectSnapshot::from_object(
+            game.object(spell_id)
+                .expect("recorded spell should exist on the stack"),
+            game,
+        );
+        let event = TriggerEvent::new_with_provenance(
+            SpellCastEvent::new_with_snapshot(spell_id, caster, Zone::Hand, snapshot.clone()),
+            ProvNodeId::default(),
+        );
+        game.turn_store
+            .turn_history
+            .record_event(&event, Some(snapshot), None);
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn damping_sphere_replaces_land_mana_only_when_land_would_produce_two_or_more() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let temple_def = two_mana_land_definition();
+        let temple_id = game.create_object_from_definition(&temple_def, alice, Zone::Battlefield);
+
+        let potential_without_sphere = compute_potential_mana(&game, alice);
+        assert_eq!(potential_without_sphere.colorless, 2);
+
+        let sphere_def = damping_sphere_definition();
+        game.create_object_from_definition(&sphere_def, alice, Zone::Battlefield);
+
+        let potential_with_sphere = compute_potential_mana(&game, alice);
+        assert_eq!(
+            potential_with_sphere.colorless, 1,
+            "Damping Sphere should replace the land's two-mana output with one colorless mana"
+        );
+        assert!(
+            game.object(temple_id)
+                .expect("temple should remain on battlefield")
+                .card_types
+                .contains(&CardType::Land)
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn damping_sphere_cost_tax_counts_only_that_players_prior_spells() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let sphere_def = damping_sphere_definition();
+        game.create_object_from_definition(&sphere_def, alice, Zone::Battlefield);
+        let alice_spell =
+            game.create_object_from_card(&test_spell_card("Alice Follow-up", 2), alice, Zone::Hand);
+        let bob_spell =
+            game.create_object_from_card(&test_spell_card("Bob Follow-up", 2), bob, Zone::Hand);
+        let alice_base = game
+            .object(alice_spell)
+            .expect("Alice spell should exist")
+            .mana_cost
+            .as_ref()
+            .expect("Alice spell should have a mana cost")
+            .clone();
+
+        let view = DerivedGameView::new(&game);
+        let adjusted_first = apply_battlefield_spell_cost_modifiers(
+            &game,
+            alice,
+            game.object(alice_spell).expect("Alice spell should exist"),
+            &alice_base,
+            0,
+            &CastingMethod::Normal,
+            &view,
+        );
+        assert_eq!(adjusted_first.to_oracle(), "{2}");
+
+        record_damping_sphere_spell_cast(&mut game, bob, "Bob Prior");
+        let view = DerivedGameView::new(&game);
+        let adjusted_after_bob = apply_battlefield_spell_cost_modifiers(
+            &game,
+            alice,
+            game.object(alice_spell).expect("Alice spell should exist"),
+            &alice_base,
+            0,
+            &CastingMethod::Normal,
+            &view,
+        );
+        assert_eq!(adjusted_after_bob.to_oracle(), "{2}");
+
+        record_damping_sphere_spell_cast(&mut game, alice, "Alice Prior");
+        let view = DerivedGameView::new(&game);
+        let adjusted_after_alice = apply_battlefield_spell_cost_modifiers(
+            &game,
+            alice,
+            game.object(alice_spell).expect("Alice spell should exist"),
+            &alice_base,
+            0,
+            &CastingMethod::Normal,
+            &view,
+        );
+        assert_eq!(adjusted_after_alice.to_oracle(), "{2}{1}");
+
+        let bob_base = game
+            .object(bob_spell)
+            .expect("Bob spell should exist")
+            .mana_cost
+            .as_ref()
+            .expect("Bob spell should have a mana cost")
+            .clone();
+        let adjusted_bob = apply_battlefield_spell_cost_modifiers(
+            &game,
+            bob,
+            game.object(bob_spell).expect("Bob spell should exist"),
+            &bob_base,
+            0,
+            &CastingMethod::Normal,
+            &view,
+        );
+        assert_eq!(adjusted_bob.to_oracle(), "{2}{1}");
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]

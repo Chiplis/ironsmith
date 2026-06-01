@@ -9,7 +9,49 @@ use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::ids::PlayerId;
 use crate::mana::ManaSymbol;
+use crate::static_abilities::StaticAbilityId;
 use crate::types::Subtype;
+
+pub(crate) fn apply_land_two_or_more_mana_replacement(
+    game: &GameState,
+    ctx: &ExecutionContext,
+    mana: Vec<ManaSymbol>,
+) -> Vec<ManaSymbol> {
+    if mana.len() < 2 {
+        return mana;
+    }
+    let view = crate::derived_view::DerivedGameView::new(game);
+    let source = ctx.source;
+    if !view.object_has_card_type(source, crate::types::CardType::Land) {
+        return mana;
+    }
+    let tapped_for_mana = ctx.ability_index.is_some_and(|idx| {
+        let Some(object) = game.object(source) else {
+            return false;
+        };
+        let Some(ability) = object.abilities.get(idx) else {
+            return false;
+        };
+        let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {
+            return false;
+        };
+        activated.has_tap_cost()
+    });
+    if !tapped_for_mana {
+        return mana;
+    }
+    let replacement_active = game.battlefield.iter().any(|&perm_id| {
+        view.object_has_static_ability_id(
+            perm_id,
+            StaticAbilityId::LandsProduceOneColorlessInsteadIfProduceTwoOrMore,
+        )
+    });
+    if replacement_active {
+        vec![ManaSymbol::Colorless]
+    } else {
+        mana
+    }
+}
 
 pub(crate) fn mana_added_value_outcome(
     ctx: &ExecutionContext,
@@ -124,6 +166,7 @@ pub(crate) fn credit_mana_symbols_from_context<I>(
 ) where
     I: IntoIterator<Item = ManaSymbol>,
 {
+    let symbols = apply_land_two_or_more_mana_replacement(game, ctx, symbols.into_iter().collect());
     credit_mana_symbols_with_context(
         game,
         player_id,

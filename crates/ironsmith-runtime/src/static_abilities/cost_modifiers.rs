@@ -443,6 +443,22 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
                 )),
             )
         }
+        Value::SpellsCastThisTurn(PlayerFilter::EffectController) => (
+            "{1}".to_string(),
+            Some("for each other spell that player has cast this turn".to_string()),
+        ),
+        Value::SpellsCastThisTurn(player) => {
+            let subject = match player {
+                PlayerFilter::You => "you have".to_string(),
+                PlayerFilter::Opponent => "an opponent has".to_string(),
+                PlayerFilter::Any => "players have".to_string(),
+                _ => format!("{} has", describe_player_filter_for_spell_target(player)),
+            };
+            (
+                "{1}".to_string(),
+                Some(format!("for each spell {subject} cast this turn")),
+            )
+        }
         Value::Speed(player) => {
             let phrase = match player {
                 PlayerFilter::You => "your speed".to_string(),
@@ -1897,11 +1913,19 @@ impl StaticAbilityKind for CostIncrease {
             }
             return describe_cost_modifier_with_condition(line, &self.condition);
         }
-        let mut line = format!(
-            "{} cost {} more to cast",
-            describe_spell_filter(&self.filter),
-            amount_text
-        );
+        let mut line = if matches!(
+            self.increase,
+            Value::SpellsCastThisTurn(PlayerFilter::EffectController)
+        ) && self.filter == ObjectFilter::default()
+        {
+            format!("Each spell a player casts costs {amount_text} more to cast")
+        } else {
+            format!(
+                "{} cost {} more to cast",
+                describe_spell_filter(&self.filter),
+                amount_text
+            )
+        };
         if let Some(tail) = tail {
             append_cost_modifier_tail(&mut line, &tail);
         }

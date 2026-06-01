@@ -3298,6 +3298,12 @@ impl<
             payload: StaticAbilityPayload::CostIncreaseManaCostPerTargetBeyondFirst(cost),
         }
     }
+    pub fn lands_produce_one_colorless_instead_if_produce_two_or_more() -> Self {
+        Self::identified(
+            StaticAbilityId::LandsProduceOneColorlessInsteadIfProduceTwoOrMore,
+            "If a land is tapped for two or more mana, it produces {C} instead of any other type and amount.",
+        )
+    }
     pub fn players_skip_upkeep() -> Self {
         Self {
             id: Some(StaticAbilityId::PlayersSkipUpkeep),

@@ -130,6 +130,7 @@ pub enum StaticAbilityId {
     CostIncrease,
     CostReductionManaCost,
     CostIncreaseManaCost,
+    LandsProduceOneColorlessInsteadIfProduceTwoOrMore,
     CostIncreasePerAdditionalTarget,
     CostIncreaseManaCostPerAdditionalTarget,
     AffinityForArtifacts,
@@ -390,6 +391,7 @@ impl StaticAbilityId {
             | CostIncrease
             | CostReductionManaCost
             | CostIncreaseManaCost
+            | LandsProduceOneColorlessInsteadIfProduceTwoOrMore
             | CostIncreasePerAdditionalTarget
             | CostIncreaseManaCostPerAdditionalTarget
             | AffinityForArtifacts

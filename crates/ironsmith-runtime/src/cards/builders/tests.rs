@@ -657,6 +657,26 @@ fn stoic_sphinx_hexproof_tracks_whether_controller_cast_a_spell_this_turn() {
     );
 }
 
+#[test]
+fn damping_sphere_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Damping Sphere");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = canonical_compiled_lines(&def).join("\n");
+
+    assert!(
+        ability_debug.contains("LandsProduceOneColorlessInsteadIfProduceTwoOrMore"),
+        "Damping Sphere should model its land mana replacement as a static ability, got {ability_debug}"
+    );
+    assert!(
+        ability_debug.contains("SpellsCastThisTurn(EffectController)"),
+        "Damping Sphere should count spells cast this turn by the spell's caster, got {ability_debug}"
+    );
+    assert_eq!(
+        rendered,
+        "If a land is tapped for two or more mana, it produces {C} instead of any other type and amount.\nEach spell a player casts costs {1} more to cast for each other spell that player has cast this turn."
+    );
+}
+
 fn alacrian_armory_trigger(def: &CardDefinition) -> &crate::ability::TriggeredAbility {
     def.abilities
         .iter()

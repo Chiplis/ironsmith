@@ -5,6 +5,24 @@ use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseSha
 const REVEAL_THIS_CARD_FROM_HAND_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["reveal", "this", "card", "from", "your", "hand"]);
 
+const LAND_TWO_OR_MORE_MANA_REPLACEMENT_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact & [
+        "if", "a", "land", "is", "tapped", "for", "two", "or", "more", "mana", "it",
+        "produces", "c", "instead", "of", "any", "other", "type", "and", "amount"
+    ]
+);
+
+fn looks_like_land_two_or_more_mana_replacement_line(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    LAND_TWO_OR_MORE_MANA_REPLACEMENT_PATTERN.matches_words(&words)
+        || (words.first().is_some_and(|word| *word == "if")
+            && words.iter().any(|word| *word == "land")
+            && words.iter().any(|word| *word == "tapped")
+            && words.iter().any(|word| *word == "produces")
+            && words.iter().any(|word| *word == "instead")
+            && words.windows(5).any(|window| window == ["two", "or", "more", "mana", "it"]))
+}
+
 fn join_statement_parse_sentence_group(sentences: &[Vec<OwnedLexToken>]) -> Vec<OwnedLexToken> {
     let mut joined = Vec::new();
     for sentence in sentences {
@@ -27,6 +45,9 @@ pub(super) fn parse_statement_line_cst(
 ) -> Result<Option<StatementLineCst>, CardTextError> {
     let normalized = line.info.normalized.normalized.as_str();
     if looks_like_day_night_starts_day_as_enters_static_line(&line.tokens) {
+        return Ok(None);
+    }
+    if looks_like_land_two_or_more_mana_replacement_line(&line.tokens) {
         return Ok(None);
     }
     let line_family = structure::classify_statement_line_family_lexed(&line.tokens);
@@ -56,7 +77,8 @@ pub(super) fn parse_statement_line_cst(
             ],
         ) && contains_token_word_sequence(&line.tokens, &["more", "to", "cast"]))
         || (token_slice_starts_with_any(&line.tokens, &[&["if"]])
-            && contains_token_word_sequence(&line.tokens, &["instead"]))
+            && contains_token_word_sequence(&line.tokens, &["instead"])
+            && !looks_like_land_two_or_more_mana_replacement_line(&line.tokens))
         || (token_slice_starts_with_any(&line.tokens, &[&["each"], &["all"]])
             && contains_token_word_sequence(&line.tokens, &["until", "end", "of", "turn"]))
         || looks_like_statement_line_lexed(line);
