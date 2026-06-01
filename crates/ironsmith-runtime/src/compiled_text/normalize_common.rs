@@ -229,6 +229,7 @@ pub(super) fn lowercase_may_clause(text: &str) -> String {
             | "Play"
             | "Put"
             | "Regenerate"
+            | "Remove"
             | "Reveal"
             | "Return"
             | "Sacrifice"
@@ -281,6 +282,7 @@ fn should_lowercase_trigger_effect_tail(tail: &str) -> bool {
             | "Play"
             | "Put"
             | "Regenerate"
+            | "Remove"
             | "Reveal"
             | "Return"
             | "Sacrifice"
@@ -593,6 +595,14 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
                 parts.push(subtype_text);
             }
         }
+    }
+
+    if card.subtypes.is_empty()
+        && card.is_creature()
+        && !card.name.trim().is_empty()
+        && card.name.to_ascii_lowercase() != "token"
+    {
+        parts.push(card.name.clone());
     }
 
     if !card.card_types.is_empty() && !is_named_noncreature_subtype_token {
@@ -8781,6 +8791,8 @@ pub(super) fn describe_put_counter_phrase(count: &Value, counter_type: CounterTy
             let amount = number_word(n as i32).unwrap_or_else(|| n.to_string());
             format!("{amount} {counter_name} counters")
         }
+        Value::EffectValue(_) => format!("that many {counter_name} counters"),
+        Value::EffectValueOffset(_, 0) => format!("that many {counter_name} counters"),
         _ => format!("{} {counter_name} counters", describe_value(count)),
     }
 }

@@ -395,6 +395,7 @@ pub struct ObjectFilter {
     pub modified: bool,
     pub token: bool,
     pub nontoken: bool,
+    pub created_by_source: bool,
     pub face_down: Option<bool>,
     pub other: bool,
     pub tapped: bool,
@@ -1304,6 +1305,9 @@ impl ObjectFilter {
 
         if self.nontoken {
             parts.push("nontoken".to_string());
+        }
+        if self.created_by_source {
+            post_noun_qualifiers.push("created with this creature".to_string());
         }
         if let Some(face_down) = self.face_down {
             parts.push(if face_down {

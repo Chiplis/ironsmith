@@ -12,6 +12,8 @@ const FROM_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["from"]);
 const COMBAT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["combat"]);
 const COUNTER_OR_COUNTERS_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["counter"], &["counters"]]);
+const ANY_NUMBER_OF_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["any", "number", "of"]);
 const WITH_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["with"]);
 const AT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["at"]);
 const COMBAT_HISTORY_DESTROY_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -116,6 +118,34 @@ pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             target,
             counter_type,
             false,
+        ));
+    }
+
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if ANY_NUMBER_OF_WORD_PATTERN.matches_words(&words)
+        && let Some(counter_idx) = find_index(tokens, |token: &OwnedLexToken| {
+            COUNTER_OR_COUNTERS_WORD_PATTERN.matches_token(token)
+        })
+        && counter_idx > 3
+    {
+        let counter_descriptor = trim_commas(&tokens[3..counter_idx]);
+        let counter_type = parse_counter_type_from_descriptor_tokens(&counter_descriptor);
+        let mut target_tokens = trim_commas(&tokens[counter_idx + 1..]);
+        if token_slice_first_is(&target_tokens, "from") {
+            target_tokens = trim_commas(&target_tokens[1..]);
+        }
+
+        let target = parse_target_phrase(&target_tokens)?;
+        let amount = match (&target, counter_type) {
+            (TargetAst::Source(_), Some(counter_type)) => Value::CountersOnSource(counter_type),
+            (TargetAst::Source(_), None) => Value::CountersOn(Box::new(ChooseSpec::Source), None),
+            _ => Value::CountersOn(Box::new(ChooseSpec::Source), counter_type),
+        };
+        return Ok(EffectAst::subject_verb_remove_up_to_any_counters(
+            amount,
+            target,
+            counter_type,
+            true,
         ));
     }
 

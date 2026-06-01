@@ -19769,6 +19769,14 @@ pub(super) fn pluralize_noun_phrase(phrase: &str) -> String {
             return format!("{}{}", plural_parts.join(" or "), trailing);
         }
     }
+    if let Some((head, tail)) = base.split_once(" created with ") {
+        return format!(
+            "{} created with {}{}",
+            pluralize_noun_phrase(head),
+            tail.trim(),
+            trailing
+        );
+    }
     if let Some((head, tail)) = base.split_once(" with ") {
         return format!(
             "{} with {}{}",
@@ -29316,6 +29324,17 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         {
             return format!("Exile each opponent's graveyard{face_down_suffix}");
         }
+        if let ChooseSpec::WithCount(inner, count) = &exile.spec
+            && count.min == 0
+            && count.max.is_none()
+            && !count.dynamic_x
+            && !count.up_to_x
+            && let ChooseSpec::Object(filter) = inner.as_ref()
+            && filter.created_by_source
+        {
+            let selection = pluralize_noun_phrase(&filter.description());
+            return format!("Exile any number of {selection}{face_down_suffix}");
+        }
         let target = describe_choose_spec(&exile.spec);
         if let Some(rest) = target.strip_prefix("all cards in ") {
             return format!("Exile all cards from {rest}{face_down_suffix}");
@@ -29988,6 +30007,18 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(remove_up_to_counters) =
         effect.downcast_ref::<crate::effects::RemoveUpToCountersEffect>()
     {
+        if matches!(remove_up_to_counters.target.base(), ChooseSpec::Source)
+            && matches!(
+                remove_up_to_counters.max_count.unhinted(),
+                Value::CountersOnSource(counter_type) if *counter_type == remove_up_to_counters.counter_type
+            )
+        {
+            return format!(
+                "Remove any number of {} counters from {}",
+                describe_counter_type(remove_up_to_counters.counter_type),
+                describe_choose_spec(&remove_up_to_counters.target)
+            );
+        }
         return format!(
             "Remove up to {} {} counter(s) from {}",
             describe_value(&remove_up_to_counters.max_count),

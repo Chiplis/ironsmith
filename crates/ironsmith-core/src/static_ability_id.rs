@@ -22,6 +22,7 @@ pub enum StaticAbilityId {
     Protection,
     Reach,
     Shroud,
+    CantBeEnchanted,
     Trample,
     Vigilance,
     Ward,
@@ -281,6 +282,7 @@ impl StaticAbilityId {
             | Protection
             | Reach
             | Shroud
+            | CantBeEnchanted
             | Trample
             | Vigilance
             | Ward

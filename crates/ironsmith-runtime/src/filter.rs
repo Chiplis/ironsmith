@@ -1652,6 +1652,18 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
 
+        if self.created_by_source {
+            let Some(source_stable_id) = ctx
+                .source
+                .and_then(|source_id| game.object(source_id).map(|source| source.stable_id))
+            else {
+                return false;
+            };
+            if object.created_by_source != Some(source_stable_id) {
+                return false;
+            }
+        }
+
         if let Some(targetability) = &self.could_be_targeted_by
             && !object_could_be_targeted_by(object.id, targetability, ctx, game)
         {
@@ -3172,6 +3184,9 @@ impl ObjectFilterExt for ObjectFilter {
         // Handle token/nontoken
         if self.nontoken {
             parts.push("nontoken".to_string());
+        }
+        if self.created_by_source {
+            post_noun_qualifiers.push("created with this creature".to_string());
         }
         if let Some(face_down) = self.face_down {
             parts.push(if face_down {

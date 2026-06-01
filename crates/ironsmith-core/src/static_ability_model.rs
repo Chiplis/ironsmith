@@ -1763,6 +1763,10 @@ impl<
         Self::identified(StaticAbilityId::KeywordMarker, text)
     }
 
+    pub fn cant_be_enchanted() -> Self {
+        Self::identified(StaticAbilityId::CantBeEnchanted, "This token can't be enchanted.")
+    }
+
     pub fn keyword_fallback_text(text: impl Into<String>) -> Self {
         Self::identified(StaticAbilityId::KeywordFallbackText, text)
     }
@@ -1800,6 +1804,9 @@ impl<
             "hexproof" => Self::hexproof(),
             "indestructible" => Self::indestructible(),
             "shroud" => Self::shroud(),
+            "this token can't be enchanted" | "this token cant be enchanted" => {
+                Self::cant_be_enchanted()
+            }
             "wither" => Self::wither(),
             "infect" => Self::infect(),
             "skulk" => Self::skulk(),

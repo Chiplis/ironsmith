@@ -513,6 +513,24 @@ pub(super) fn parse_object_filter_inner(
     try_apply_distinct_powers_clause(&mut filter, &mut all_words);
     try_apply_distinct_creature_types_clause(&mut filter, &mut all_words);
 
+    let mut created_with_idx = 0usize;
+    while created_with_idx + 2 < all_words.len() {
+        if all_words[created_with_idx] == "created"
+            && all_words[created_with_idx + 1] == "with"
+            && is_source_reference_words(&all_words[created_with_idx + 2..])
+        {
+            filter.created_by_source = true;
+            if let Some(token_idx) = token_find_index(&segment_tokens, |token| {
+                token.as_word().is_some_and(|word| word == "created")
+            }) {
+                segment_tokens.truncate(token_idx);
+            }
+            all_words.drain(created_with_idx..);
+            break;
+        }
+        created_with_idx += 1;
+    }
+
     try_apply_could_be_targeted_by_that_spell_clause(&mut filter, &mut all_words);
 
     // "that were put there from the battlefield this turn" means the card entered
@@ -1616,6 +1634,7 @@ pub(super) fn parse_object_filter_inner(
         || filter.other
         || filter.token
         || filter.nontoken
+        || filter.created_by_source
         || filter.face_down.is_some()
         || filter.tapped
         || filter.untapped
@@ -1678,6 +1697,7 @@ pub(super) fn parse_object_filter_inner(
         || filter.zone.is_some()
         || filter.token
         || filter.nontoken
+        || filter.created_by_source
         || filter.face_down.is_some()
         || filter.tapped
         || filter.untapped

@@ -5119,6 +5119,19 @@ impl StaticAbilityKind for KeywordMarker {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CantBeEnchanted;
+
+impl StaticAbilityKind for CantBeEnchanted {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CantBeEnchanted
+    }
+
+    fn display(&self) -> String {
+        "This token can't be enchanted.".to_string()
+    }
+}
+
 /// Allows a player to continuously see the top card of their library.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LookAtTopCardOfLibrary;

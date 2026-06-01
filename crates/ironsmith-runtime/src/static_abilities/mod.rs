@@ -3130,6 +3130,10 @@ impl StaticAbility {
         Self::new(KeywordMarker::new(marker))
     }
 
+    pub fn cant_be_enchanted() -> Self {
+        Self::new(CantBeEnchanted)
+    }
+
     pub fn look_at_top_card_of_library() -> Self {
         Self::new(LookAtTopCardOfLibrary)
     }

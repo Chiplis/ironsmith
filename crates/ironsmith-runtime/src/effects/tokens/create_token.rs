@@ -89,6 +89,7 @@ impl EffectExecutor for CreateTokenEffect {
             self.exile_at_next_end_step,
         );
         let entry_options = TokenEntryOptions::new(self.enters_tapped, self.enters_attacking);
+        let source_stable_id = game.object(ctx.source).map(|source| source.stable_id);
 
         let mut created_ids = Vec::with_capacity(count);
         let mut events = Vec::with_capacity(count);
@@ -97,6 +98,7 @@ impl EffectExecutor for CreateTokenEffect {
         for _ in 0..count {
             let id = game.new_object_id();
             let mut token_obj = Object::from_token_definition(id, &self.token, controller_id);
+            token_obj.created_by_source = source_stable_id;
             token_obj.zone = Zone::Command;
             let token_is_creature = token_obj.is_creature();
 

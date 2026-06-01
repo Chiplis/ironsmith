@@ -167,6 +167,13 @@ const CANT_BE_BLOCKED_EXCEPT_BY_HASTE_PATTERN: ClauseShape<'static> = clause_sha
             ],
         ]
 );
+const THIS_TOKEN_CANT_BE_ENCHANTED_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["this", "token", "cant", "be", "enchanted"],
+            &["this", "token", "can't", "be", "enchanted"],
+        ]
+);
 const TOKEN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["token"]);
 const ALSO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["also"]);
 const AND_OR_THEN_WORD_PATTERN: ClauseShape<'static> =
@@ -558,6 +565,12 @@ fn parse_granted_ability_component_for_gain(
         )]));
     }
 
+    if THIS_TOKEN_CANT_BE_ENCHANTED_PATTERN.matches_words(&ability_words) {
+        return Ok(Some(vec![GrantedAbilityAst::StaticAbility(
+            StaticAbility::cant_be_enchanted(),
+        )]));
+    }
+
     if grammar::words_match_any_prefix(&ability_tokens, &[&["hexproof", "from"]]).is_some() {
         if let Some(filter) = color_only_hexproof_filter(&ability_tokens[2..]) {
             return Ok(Some(vec![GrantedAbilityAst::from(
@@ -611,12 +624,17 @@ pub(crate) fn parse_granted_abilities_for_gain_clause(
     clause_words: &[&str],
     allow_choice: bool,
 ) -> Result<(Vec<GrantedAbilityAst>, bool), CardTextError> {
-    if let Some(abilities) = parse_granted_ability_component_for_gain(ability_tokens, clause_words)?
+    let component_error = match parse_granted_ability_component_for_gain(ability_tokens, clause_words)
     {
-        return Ok((abilities, false));
-    }
+        Ok(Some(abilities)) => return Ok((abilities, false)),
+        Ok(None) => None,
+        Err(err) => Some(err),
+    };
 
-    if allow_choice && let Some(actions) = parse_choice_of_abilities(ability_tokens) {
+    if component_error.is_none()
+        && allow_choice
+        && let Some(actions) = parse_choice_of_abilities(ability_tokens)
+    {
         reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
         return Ok((
             actions.into_iter().map(GrantedAbilityAst::from).collect(),
@@ -626,12 +644,18 @@ pub(crate) fn parse_granted_abilities_for_gain_clause(
 
     let segments = split_lexed_slices_on_and(ability_tokens);
     if segments.len() <= 1 {
+        if let Some(err) = component_error {
+            return Err(err);
+        }
         return Ok((Vec::new(), false));
     }
 
     let mut abilities = Vec::new();
     for segment in segments {
         let Some(parsed) = parse_granted_ability_component_for_gain(segment, clause_words)? else {
+            if let Some(err) = component_error {
+                return Err(err);
+            }
             return Ok((Vec::new(), false));
         };
         abilities.extend(parsed);

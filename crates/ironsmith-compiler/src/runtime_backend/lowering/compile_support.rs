@@ -3504,9 +3504,48 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             }
         }
 
+        let leading_unknown_name_before_type = first_creature_idx.and_then(|idx| {
+            words[..idx].iter().rev().find_map(|word| {
+                let simple_name_word = word
+                    .chars()
+                    .all(|ch| ch.is_ascii_alphabetic() || ch == '\'' || ch == '-');
+                if simple_name_word
+                    && parse_token_pt(word).is_none()
+                    && parse_card_type(word).is_none()
+                    && parse_subtype_word(word).is_none()
+                    && !matches!(
+                        *word,
+                        "legendary"
+                            | "snow"
+                            | "basic"
+                            | "artifact"
+                            | "enchantment"
+                            | "creature"
+                            | "token"
+                            | "tokens"
+                            | "white"
+                            | "blue"
+                            | "black"
+                            | "red"
+                            | "green"
+                            | "colorless"
+                            | "with"
+                            | "and"
+                            | "or"
+                            | "a"
+                            | "an"
+                    )
+                {
+                    Some(title_case_words(&[*word]))
+                } else {
+                    None
+                }
+            })
+        });
         let explicit_name = extract_named_card_name(&words, lower.as_str())
             .or_else(|| extract_leading_token_name_phrase(&words))
-            .or_else(|| extract_leading_explicit_token_name(&words));
+            .or_else(|| extract_leading_explicit_token_name(&words))
+            .or(leading_unknown_name_before_type);
         let token_name = explicit_name.unwrap_or_else(|| {
             subtypes
                 .first()
@@ -3606,6 +3645,11 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
         }
         if has_word("indestructible") {
             builder = builder.indestructible();
+        }
+        if has_phrase(&["this", "token", "cant", "be", "enchanted"]) {
+            builder = builder.with_ability(Ability::static_ability(
+                StaticAbility::cant_be_enchanted(),
+            ));
         }
         if has_words(&["all", "triggered", "abilities"]) && has_word("exiled") && has_word("cards")
         {

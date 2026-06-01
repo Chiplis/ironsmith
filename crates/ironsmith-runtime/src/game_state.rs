@@ -4695,7 +4695,12 @@ impl GameState {
                         if *id == new_id || candidate.zone != Zone::Battlefield {
                             continue;
                         }
-                        if filter.matches(candidate, &filter_ctx, self) {
+                        if filter.matches(candidate, &filter_ctx, self)
+                            && !self.current_has_static_ability_id(
+                                *id,
+                                crate::static_abilities::StaticAbilityId::CantBeEnchanted,
+                            )
+                        {
                             candidates.push(crate::decisions::context::SelectableObject::new(
                                 *id,
                                 candidate.name.clone(),
@@ -5124,6 +5129,18 @@ impl GameState {
             .object(attachment_id)
             .is_some_and(|object| object.zone == Zone::Battlefield)
             || !self.attachment_target_exists_on_battlefield(target)
+        {
+            return false;
+        }
+
+        if let AttachmentTarget::Object(target_id) = target
+            && self
+                .object(attachment_id)
+                .is_some_and(|object| object.subtypes.contains(&Subtype::Aura))
+            && self.current_has_static_ability_id(
+                target_id,
+                crate::static_abilities::StaticAbilityId::CantBeEnchanted,
+            )
         {
             return false;
         }

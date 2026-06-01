@@ -756,6 +756,7 @@ mod tests {
             counters: HashMap::new(),
             attached_to: None,
             attachments: vec![],
+            created_by_source: None,
             spell_effect: None,
             aura_attach_filter: None,
             alternative_casts: vec![],

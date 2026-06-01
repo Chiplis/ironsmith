@@ -1466,6 +1466,245 @@ fn pious_kitsune_activated_ability_removes_devotion_counter_and_gains_life() {
     );
 }
 
+fn tetravus_upkeep_triggers(def: &CardDefinition) -> Vec<&crate::ability::TriggeredAbility> {
+    def.abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .collect()
+}
+
+struct TetravusAcceptMaxDecisionMaker;
+
+impl crate::decision::DecisionMaker for TetravusAcceptMaxDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        true
+    }
+
+    fn decide_number(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::NumberContext,
+    ) -> u32 {
+        ctx.max
+    }
+
+    fn decide_objects(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        let max = ctx.max.unwrap_or(ctx.candidates.len());
+        ctx.candidates
+            .iter()
+            .filter(|candidate| candidate.legal)
+            .map(|candidate| candidate.id)
+            .take(max)
+            .collect()
+    }
+}
+
+#[test]
+fn tetravus_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Tetravus");
+    let rendered = compiled_text_lines(&def).join("\n");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        ability_debug.contains("RemoveUpToCountersEffect")
+            && ability_debug.contains("CountersOnSource")
+            && ability_debug.contains("CreateTokenEffect")
+            && ability_debug.contains("Tetravite")
+            && ability_debug.contains("This token can't be enchanted")
+            && ability_debug.contains("created_by_source: true")
+            && ability_debug.contains("EffectValue"),
+        "Tetravus should structurally model variable counter removal, Tetravite token creation, token abilities, and count reuse, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains("remove any number of +1/+1 counters from this creature")
+            && rendered.contains("Tetravite artifact creature tokens")
+            && rendered.contains("This token can't be enchanted")
+            && rendered.contains("exile any number of tokens created with this creature")
+            && rendered.contains("put that many +1/+1 counters on this creature"),
+        "Tetravus compiled text should preserve the counter-removal/token mechanics, got {rendered}"
+    );
+}
+
+#[test]
+fn tetravus_upkeep_can_remove_counters_to_create_tetravites() {
+    let def = parse_oracle_card_definition("Tetravus");
+    let triggers = tetravus_upkeep_triggers(&def);
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.object_mut(source)
+        .expect("Tetravus should exist")
+        .counters
+        .insert(CounterType::PlusOnePlusOne, 3);
+
+    let first_trigger = triggers
+        .iter()
+        .find(|triggered| format!("{:#?}", triggered.effects).contains("CreateTokenEffect"))
+        .expect("Tetravus should have a counter-removal token trigger");
+    let mut dm = TetravusAcceptMaxDecisionMaker;
+    let mut ctx =
+        crate::effects::ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+    for effect in first_trigger.effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Tetravus first upkeep trigger should resolve");
+    }
+
+    assert_eq!(
+        game.counter_count(source, CounterType::PlusOnePlusOne),
+        0,
+        "removing any number should allow all three +1/+1 counters to be removed"
+    );
+    let tetravites = game
+        .objects_in_deterministic_order()
+        .into_iter()
+        .filter(|object| object.zone == Zone::Battlefield && object.name == "Tetravite")
+        .collect::<Vec<_>>();
+    assert_eq!(tetravites.len(), 3, "three Tetravite tokens should be created");
+    assert!(
+        tetravites
+            .iter()
+            .all(|token| token.has_static_ability_id(StaticAbilityId::Flying)),
+        "each Tetravite token should have flying"
+    );
+    assert!(
+        tetravites
+            .iter()
+            .all(|token| token.has_static_ability_id(StaticAbilityId::CantBeEnchanted)),
+        "each Tetravite token should have a real can't-be-enchanted restriction"
+    );
+    let tetravite_id = tetravites[0].id;
+    drop(tetravites);
+
+    let aura = CardDefinitionBuilder::new(CardId::new(), "Test Aura")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .enchants(ObjectFilter::creature())
+        .build();
+    let aura_id = game.create_object_from_definition(&aura, alice, Zone::Battlefield);
+    assert!(
+        !game.attach_object_to_target(
+            aura_id,
+            crate::object::AttachmentTarget::Object(tetravite_id)
+        ),
+        "Tetravite's can't-be-enchanted ability should make Aura attachment illegal"
+    );
+}
+
+#[test]
+fn tetravus_second_upkeep_can_exile_tokens_to_restore_counters() {
+    let def = parse_oracle_card_definition("Tetravus");
+    let triggers = tetravus_upkeep_triggers(&def);
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.object_mut(source)
+        .expect("Tetravus should exist")
+        .counters
+        .insert(CounterType::PlusOnePlusOne, 2);
+
+    let first_trigger = triggers
+        .iter()
+        .find(|triggered| format!("{:#?}", triggered.effects).contains("CreateTokenEffect"))
+        .expect("Tetravus should have a token creation trigger");
+    let second_trigger = triggers
+        .iter()
+        .find(|triggered| format!("{:#?}", triggered.effects).contains("ExileEffect"))
+        .expect("Tetravus should have a token exile trigger");
+
+    let mut dm = TetravusAcceptMaxDecisionMaker;
+    let mut ctx =
+        crate::effects::ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+    for effect in first_trigger.effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Tetravus first upkeep trigger should resolve");
+    }
+
+    let unrelated_token = CardDefinitionBuilder::new(CardId::new(), "Soldier")
+        .token()
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Soldier])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    game.create_object_from_definition(&unrelated_token, alice, Zone::Battlefield);
+
+    for effect in second_trigger.effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Tetravus second upkeep trigger should resolve");
+    }
+
+    assert_eq!(
+        game.counter_count(source, CounterType::PlusOnePlusOne),
+        2,
+        "exiling two Tetravite tokens should put two +1/+1 counters back on Tetravus"
+    );
+    assert_eq!(
+        game.objects_in_deterministic_order()
+            .into_iter()
+            .filter(|object| object.zone == Zone::Battlefield && object.name == "Tetravite")
+            .count(),
+        0,
+        "the selected Tetravite tokens should be exiled"
+    );
+    assert_eq!(
+        game.objects_in_deterministic_order()
+            .into_iter()
+            .filter(|object| object.zone == Zone::Battlefield && object.name == "Soldier")
+            .count(),
+        1,
+        "Tetravus should not exile unrelated creature tokens"
+    );
+}
+
+#[test]
+fn tetravus_optional_upkeep_decline_leaves_counters_and_tokens_unchanged() {
+    let def = parse_oracle_card_definition("Tetravus");
+    let triggers = tetravus_upkeep_triggers(&def);
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.object_mut(source)
+        .expect("Tetravus should exist")
+        .counters
+        .insert(CounterType::PlusOnePlusOne, 3);
+    let first_trigger = triggers
+        .iter()
+        .find(|triggered| format!("{:#?}", triggered.effects).contains("CreateTokenEffect"))
+        .expect("Tetravus should have a token creation trigger");
+
+    let mut dm = crate::decision::AutoPassDecisionMaker::default();
+    let mut ctx =
+        crate::effects::ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+    for effect in first_trigger.effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("declined Tetravus trigger should resolve cleanly");
+    }
+
+    assert_eq!(
+        game.counter_count(source, CounterType::PlusOnePlusOne),
+        3,
+        "declining the optional removal should leave counters unchanged"
+    );
+    assert_eq!(
+        game.objects_in_deterministic_order()
+            .into_iter()
+            .filter(|object| object.zone == Zone::Battlefield && object.name == "Tetravite")
+            .count(),
+        0,
+        "declining the optional removal should not create tokens"
+    );
+}
+
 #[test]
 fn tromp_the_domains_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Tromp the Domains");

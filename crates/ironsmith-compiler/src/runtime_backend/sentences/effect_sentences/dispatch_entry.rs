@@ -53,8 +53,9 @@ use super::sentence_helpers::*;
 use super::sequence_rules::{subject_verb_sequence_route, try_parse_subject_verb_sequence_rule};
 use super::zone_handlers::parse_exile_top_library_clause;
 use super::{
-    find_verb, parse_effect_sentence_lexed, parse_search_library_disjunction_filter,
-    parse_token_copy_modifier_sentence, trim_edge_punctuation,
+    find_verb, parse_effect_sentence_lexed, parse_granted_abilities_for_gain_clause,
+    parse_search_library_disjunction_filter, parse_token_copy_modifier_sentence,
+    trim_edge_punctuation,
 };
 #[allow(unused_imports)]
 use crate::cards::builders::{
@@ -3254,11 +3255,14 @@ pub(crate) fn parse_token_granted_ability_followup_sentence_lexed(
         } else {
             3
         }
-    } else if word_view_has_prefix(&words, &["they", "have"])
+    } else if word_view_has_prefix(&words, &["they", "each", "have"])
+        || word_view_has_prefix(&words, &["they", "have"])
         || word_view_has_prefix(&words, &["those", "tokens", "have"])
         || word_view_has_prefix(&words, &["the", "tokens", "have"])
     {
-        if word_view_has_prefix(&words, &["they", "have"]) {
+        if word_view_has_prefix(&words, &["they", "each", "have"]) {
+            3
+        } else if word_view_has_prefix(&words, &["they", "have"]) {
             2
         } else {
             3
@@ -3272,6 +3276,11 @@ pub(crate) fn parse_token_granted_ability_followup_sentence_lexed(
     };
     let ability_tokens = trim_edge_punctuation(&tokens[ability_start..]);
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    let (abilities, choice) =
+        parse_granted_abilities_for_gain_clause(&ability_tokens, &clause_words, false)?;
+    if !choice && !abilities.is_empty() {
+        return Ok(Some(abilities));
+    }
     let Some(ability) =
         parse_granted_activated_or_triggered_ability_for_gain(&ability_tokens, &clause_words)?
     else {
