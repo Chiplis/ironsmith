@@ -132,6 +132,9 @@ where
             count,
             color_filter,
         },
+        ironsmith_core::Cost::ExileFromGraveyard { count, card_types } => {
+            ironsmith_core::Cost::ExileFromGraveyard { count, card_types }
+        }
         ironsmith_core::Cost::ReturnSelfToHand => ironsmith_core::Cost::ReturnSelfToHand,
         ironsmith_core::Cost::Effect(effect) => {
             ironsmith_core::Cost::Effect(interpret_effect_model::<M, H>(effect, hooks)?)

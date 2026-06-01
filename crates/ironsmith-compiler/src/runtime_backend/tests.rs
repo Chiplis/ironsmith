@@ -5447,6 +5447,26 @@ fn jump_start_keyword_line_is_classified_as_alternative_cast() {
 }
 
 #[test]
+fn demilich_graveyard_cast_additional_exile_cost_permission_parses() {
+    let tokens = lex_line(
+        "You may cast this card from your graveyard by exiling four instant and/or sorcery cards from your graveyard in addition to paying its other costs.",
+        0,
+    )
+    .expect("rewrite lexer should classify Demilich graveyard-cast line");
+
+    let words = super::token_word_refs(&tokens).join(" ");
+    let parsed = super::permission_helpers::parse_permission_clause_spec_lexed(&tokens)
+        .expect("Demilich graveyard-cast permission should not error")
+        .unwrap_or_else(|| panic!("Demilich graveyard-cast permission should parse: {words}"));
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("GraveyardCastFromCardManaCost"), "{debug}");
+    assert!(debug.contains("ExileFromGraveyard"), "{debug}");
+    assert!(debug.contains("Instant"), "{debug}");
+    assert!(debug.contains("Sorcery"), "{debug}");
+}
+
+#[test]
 fn equal_to_number_of_cards_you_ve_discarded_this_turn_parses() {
     let tokens = lex_line("equal to the number of cards you've discarded this turn", 0)
         .expect("rewrite lexer should classify value clause");

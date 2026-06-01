@@ -157,6 +157,40 @@ fn describe_types_among_scope(filter: &ObjectFilter) -> String {
     description
 }
 
+fn describe_spell_cast_count_tail(
+    player: &PlayerFilter,
+    filter: &ObjectFilter,
+    exclude_source: bool,
+) -> String {
+    let spell_text = match filter.card_types.as_slice() {
+        [] => "spell".to_string(),
+        [one] => format!("{} spell", one.to_string().to_ascii_lowercase()),
+        [left, right] => format!(
+            "{} and {} spell",
+            left.to_string().to_ascii_lowercase(),
+            right.to_string().to_ascii_lowercase()
+        ),
+        _ => {
+            let names = filter
+                .card_types
+                .iter()
+                .map(|card_type| card_type.to_string().to_ascii_lowercase())
+                .collect::<Vec<_>>();
+            format!("{} spell", names.join(", "))
+        }
+    };
+    let other = if exclude_source { "other " } else { "" };
+    let cast_text = match player {
+        PlayerFilter::You => "you've cast this turn".to_string(),
+        PlayerFilter::Opponent => "your opponents have cast this turn".to_string(),
+        _ => format!(
+            "{} has cast this turn",
+            describe_player_filter_for_spell_target(player)
+        ),
+    };
+    format!("for each {other}{spell_text} {cast_text}")
+}
+
 fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
     match amount {
         Value::Min(value, cap) => {
@@ -376,6 +410,18 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
                 )),
             )
         }
+        Value::SpellsCastThisTurnMatching {
+            player,
+            filter,
+            exclude_source,
+        } => (
+            "{1}".to_string(),
+            Some(describe_spell_cast_count_tail(
+                player,
+                filter,
+                *exclude_source,
+            )),
+        ),
         Value::Speed(player) => {
             let phrase = match player {
                 PlayerFilter::You => "your speed".to_string(),
@@ -1756,6 +1802,7 @@ impl StaticAbilityKind for ThisSpellCostReduction {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ThisSpellCostReductionManaCost {
     pub reduction: ManaCost,
+    pub repetitions: Option<Value>,
     pub condition: ThisSpellCostCondition,
 }
 
@@ -1763,8 +1810,14 @@ impl ThisSpellCostReductionManaCost {
     pub fn new(reduction: ManaCost, condition: ThisSpellCostCondition) -> Self {
         Self {
             reduction,
+            repetitions: None,
             condition,
         }
+    }
+
+    pub fn with_repetitions(mut self, repetitions: Option<Value>) -> Self {
+        self.repetitions = repetitions;
+        self
     }
 }
 
@@ -1775,11 +1828,25 @@ impl StaticAbilityKind for ThisSpellCostReductionManaCost {
 
     fn display(&self) -> String {
         let amount_text = describe_cost_modifier_mana_cost(&self.reduction);
+        let tail = self.repetitions.as_ref().and_then(|repetitions| {
+            let (_, tail) = describe_cost_modifier_amount(repetitions);
+            tail
+        });
         let Some(condition_text) = describe_this_spell_cost_condition(&self.condition) else {
-            return format!("This spell costs {amount_text} less to cast");
+            let mut line = format!("This spell costs {amount_text} less to cast");
+            if let Some(tail) = tail {
+                line.push(' ');
+                line.push_str(&tail);
+            }
+            return line;
         };
 
-        format!("This spell costs {amount_text} less to cast if {condition_text}")
+        let mut line = format!("This spell costs {amount_text} less to cast");
+        if let Some(tail) = tail {
+            line.push(' ');
+            line.push_str(&tail);
+        }
+        format!("{line} if {condition_text}")
     }
 
     fn modifies_costs(&self) -> bool {

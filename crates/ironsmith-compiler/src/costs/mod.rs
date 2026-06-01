@@ -240,6 +240,16 @@ pub(crate) fn cost_to_payment_effect(cost: &Cost) -> Option<crate::effect::Effec
                     .with_count(crate::effect::ChoiceCount::exactly(*count as usize)),
             ))
         }
+        Cost::ExileFromGraveyard { count, card_types } => {
+            let mut filter = crate::target::ObjectFilter::default()
+                .in_zone(crate::zone::Zone::Graveyard)
+                .owned_by(crate::target::PlayerFilter::You);
+            filter.card_types = card_types.clone();
+            Some(crate::effect::Effect::exile(
+                crate::target::ChooseSpec::Object(filter)
+                    .with_count(crate::effect::ChoiceCount::exactly(*count as usize)),
+            ))
+        }
         Cost::ReturnSelfToHand => Some(crate::effect::Effect::return_to_hand(
             crate::target::ChooseSpec::Source,
         )),

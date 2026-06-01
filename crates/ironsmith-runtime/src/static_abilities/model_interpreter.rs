@@ -725,10 +725,13 @@ impl StaticAbilityModelInterpreter {
     ) -> Option<super::ThisSpellCostReductionManaCost> {
         match &model.payload {
             ironsmith_core::StaticAbilityPayload::ThisSpellCostReductionManaCost(reduction) => {
-                Some(super::ThisSpellCostReductionManaCost::new(
-                    reduction.cost.clone(),
-                    reduction.condition.clone(),
-                ))
+                Some(
+                    super::ThisSpellCostReductionManaCost::new(
+                        reduction.cost.clone(),
+                        reduction.condition.clone(),
+                    )
+                    .with_repetitions(reduction.repetitions.clone()),
+                )
             }
             ironsmith_core::StaticAbilityPayload::ThisSpellCastRestriction { .. } => None,
             ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } => {

@@ -4282,12 +4282,22 @@ impl<Cond> ThisSpellCostReduction<Cond> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ThisSpellCostReductionManaCost<Cond> {
     pub cost: ManaCost,
+    pub repetitions: Option<Value>,
     pub condition: Cond,
 }
 
 impl<Cond> ThisSpellCostReductionManaCost<Cond> {
     pub fn new(cost: ManaCost, condition: Cond) -> Self {
-        Self { cost, condition }
+        Self {
+            cost,
+            repetitions: None,
+            condition,
+        }
+    }
+
+    pub fn with_repetitions(mut self, repetitions: Value) -> Self {
+        self.repetitions = Some(repetitions);
+        self
     }
 }
 
