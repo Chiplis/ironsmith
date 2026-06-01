@@ -2294,6 +2294,7 @@ fn subject_verb_player_action_player_mut(effect: &mut EffectAst) -> Option<&mut 
                 | SubjectVerbActionAst::DoubleManaPool
                 | SubjectVerbActionAst::EmptyManaPool
                 | SubjectVerbActionAst::SetLifeTotal { .. }
+                | SubjectVerbActionAst::EndTurn
                 | SubjectVerbActionAst::SkipTurn
                 | SubjectVerbActionAst::SkipCombatPhases
                 | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
@@ -2368,6 +2369,7 @@ fn subject_verb_player_action_player(effect: &EffectAst) -> Option<PlayerAst> {
                 | SubjectVerbActionAst::DoubleManaPool
                 | SubjectVerbActionAst::EmptyManaPool
                 | SubjectVerbActionAst::SetLifeTotal { .. }
+                | SubjectVerbActionAst::EndTurn
                 | SubjectVerbActionAst::SkipTurn
                 | SubjectVerbActionAst::SkipCombatPhases
                 | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
@@ -2694,6 +2696,16 @@ fn parse_leading_player_may_words(words: &[&str]) -> Option<PlayerAst> {
                         .value(PlayerAst::ItsOwner),
                 )),
                 alt((
+                    (
+                        word_eq("the"),
+                        player_word(),
+                        word_eq("whose"),
+                        word_eq("turn"),
+                        word_eq("it"),
+                        word_eq("is"),
+                        word_eq("may"),
+                    )
+                        .value(PlayerAst::Active),
                     (word_eq("the"), player_word(), word_eq("may")).value(PlayerAst::That),
                     (word_eq("defending"), word_eq("player"), word_eq("may"))
                         .value(PlayerAst::Defending),

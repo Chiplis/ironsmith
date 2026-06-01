@@ -1770,6 +1770,7 @@ fn player_filter_for_turn_value(player: PlayerAst) -> Option<PlayerFilter> {
         PlayerAst::Chosen => Some(PlayerFilter::ChosenPlayer),
         PlayerAst::Defending => Some(PlayerFilter::Defending),
         PlayerAst::Attacking => Some(PlayerFilter::Attacking),
+        PlayerAst::Active => Some(PlayerFilter::Active),
         PlayerAst::MostCardsInHand => Some(PlayerFilter::MostCardsInHand),
         PlayerAst::MostLifeTied => Some(PlayerFilter::MostLifeTied),
         PlayerAst::LowestLifeTied => Some(PlayerFilter::LowestLifeTied),

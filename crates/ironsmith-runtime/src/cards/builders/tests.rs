@@ -7,9 +7,9 @@ use crate::compiled_text::{
 };
 use crate::effects::{
     AddManaEffect, ChooseModeEffect, ChooseObjectsEffect, ConsultTopOfLibraryEffect,
-    CreateTokenEffect, DestroyEffect, DrawCardsEffect, EffectExecutor, GainLifeEffect,
-    MoveToZoneEffect, ReturnFromGraveyardToHandEffect, TagTriggeringObjectEffect, TaggedEffect,
-    TargetOnlyEffect, UntapEffect,
+    CreateTokenEffect, DestroyEffect, DrawCardsEffect, EffectExecutor, EndTurnEffect,
+    GainLifeEffect, MayEffect, MoveToZoneEffect, ReturnFromGraveyardToHandEffect,
+    TagTriggeringObjectEffect, TaggedEffect, TargetOnlyEffect, UntapEffect,
 };
 use crate::filter::ObjectFilterExt;
 use crate::object::AuraAttachmentFilter;
@@ -44470,6 +44470,131 @@ fn sundial_of_the_infinite_end_turn_effect_runtime_branches_by_active_player() {
         .expect("Sundial effect should no-op for non-active player");
     assert_eq!(game.turn.phase, crate::game_state::Phase::Combat);
     assert_eq!(game.turn.step, Some(crate::game_state::Step::BeginCombat));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn obeka_brute_chronologist_strict_regression() {
+    assert_oracle_card_parses_strict("Obeka, Brute Chronologist");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn obeka_brute_chronologist_compiled_text_keeps_active_player_may_end_turn_clause() {
+    let def = parse_oracle_card_definition("Obeka, Brute Chronologist");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Obeka should have an activated ability");
+    let cost_debug = format!("{:?}", activated.mana_cost);
+    assert!(
+        cost_debug.contains("Tap"),
+        "Obeka activation should preserve its tap cost, got {cost_debug}"
+    );
+
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("the player whose turn it is may end the turn"),
+        "expected Obeka rendered text to preserve the active-player optional end-turn clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn obeka_brute_chronologist_active_player_decides_and_can_end_their_turn() {
+    struct BooleanDecision {
+        expected_player: PlayerId,
+        answer: bool,
+        calls: usize,
+    }
+
+    impl crate::decision::DecisionMaker for BooleanDecision {
+        fn decide_boolean(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            assert_eq!(ctx.player, self.expected_player);
+            self.calls += 1;
+            self.answer
+        }
+    }
+
+    let def = parse_oracle_card_definition("Obeka, Brute Chronologist");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) if !activated.effects.segments.is_empty() => {
+                Some(activated)
+            }
+            _ => None,
+        })
+        .expect("Obeka should have an activated ability");
+    let may_effect = activated.effects.flattened_default_effects()[0]
+        .downcast_ref::<MayEffect>()
+        .expect("Obeka activation should lower to a player-specific may effect")
+        .clone();
+    assert_eq!(may_effect.decider, Some(PlayerFilter::Active));
+    let end_turn = may_effect.effects[0]
+        .downcast_ref::<EndTurnEffect>()
+        .expect("Obeka may branch should end the active player's turn");
+    assert_eq!(end_turn.player, PlayerFilter::Active);
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = game
+        .players
+        .iter()
+        .find(|p| p.name == "Alice")
+        .expect("Alice should exist")
+        .id;
+    let bob = game
+        .players
+        .iter()
+        .find(|p| p.name == "Bob")
+        .expect("Bob should exist")
+        .id;
+    let obeka_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    game.turn.active_player = bob;
+    game.turn.phase = crate::game_state::Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+    let mut accept = BooleanDecision {
+        expected_player: bob,
+        answer: true,
+        calls: 0,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new_default(obeka_id, alice)
+        .with_decision_maker(&mut accept);
+    may_effect
+        .execute(&mut game, &mut ctx)
+        .expect("Obeka effect should resolve when the active player accepts");
+    assert_eq!(accept.calls, 1);
+    assert_eq!(game.turn.phase, crate::game_state::Phase::Ending);
+    assert_eq!(game.turn.step, Some(crate::game_state::Step::Cleanup));
+
+    game.turn.active_player = bob;
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+    let mut decline = BooleanDecision {
+        expected_player: bob,
+        answer: false,
+        calls: 0,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new_default(obeka_id, alice)
+        .with_decision_maker(&mut decline);
+    may_effect
+        .execute(&mut game, &mut ctx)
+        .expect("Obeka effect should resolve when the active player declines");
+    assert_eq!(decline.calls, 1);
+    assert_eq!(game.turn.phase, crate::game_state::Phase::FirstMain);
+    assert_eq!(game.turn.step, None);
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

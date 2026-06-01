@@ -31382,6 +31382,13 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return format!("{who} may choose new targets for the copy");
         }
         if let Some(decider) = may.decider.as_ref() {
+            if matches!(decider, PlayerFilter::Active)
+                && may.effects.len() == 1
+                && let Some(end_turn) = may.effects[0].downcast_ref::<crate::effects::EndTurnEffect>()
+                && matches!(end_turn.player, PlayerFilter::Active)
+            {
+                return "the player whose turn it is may end the turn".to_string();
+            }
             let who = describe_player_filter(decider);
             let mut inner = describe_effect_list(&may.effects);
             let may_prefix = format!("{who} may ");
@@ -32509,7 +32516,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(end_turn) = effect.downcast_ref::<crate::effects::EndTurnEffect>() {
         if matches!(
             end_turn.player,
-            PlayerFilter::You | PlayerFilter::EffectController
+            PlayerFilter::You | PlayerFilter::EffectController | PlayerFilter::Active
         ) {
             return "end the turn".to_string();
         }

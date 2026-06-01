@@ -947,6 +947,7 @@ pub(crate) enum PlayerAst {
     Chosen,
     Defending,
     Attacking,
+    Active,
     MostCardsInHand,
     MostLifeTied,
     LowestLifeTied,

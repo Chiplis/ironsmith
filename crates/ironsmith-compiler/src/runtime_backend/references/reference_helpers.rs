@@ -47,6 +47,7 @@ pub(crate) fn resolve_non_target_player_filter(
         PlayerAst::Chosen => Ok(PlayerFilter::ChosenPlayer),
         PlayerAst::Defending => Ok(PlayerFilter::Defending),
         PlayerAst::Attacking => Ok(PlayerFilter::Attacking),
+        PlayerAst::Active => Ok(PlayerFilter::Active),
         PlayerAst::MostCardsInHand => Ok(PlayerFilter::MostCardsInHand),
         PlayerAst::MostLifeTied => Ok(PlayerFilter::MostLifeTied),
         PlayerAst::LowestLifeTied => Ok(PlayerFilter::LowestLifeTied),
