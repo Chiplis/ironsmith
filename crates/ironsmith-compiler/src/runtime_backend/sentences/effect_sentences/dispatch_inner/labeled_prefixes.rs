@@ -323,6 +323,10 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         ]);
     }
     if LABELED_CAST_HAND_FREE_PATTERN.matches_words(sentence_words.as_slice()) {
+        if let Some(effect) = parse_cast_or_play_tagged_clause(tokens)? {
+            return Ok(vec![effect]);
+        }
+
         let chosen = TagKey::from("__chosen_hand_spell_to_cast");
         let filter = ObjectFilter::nonland()
             .in_zone(Zone::Hand)

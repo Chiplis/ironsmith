@@ -10,7 +10,7 @@ pub use ironsmith_core::MayCastMatchingSpellWithoutPayingManaCostEffect;
 
 use super::runtime_helpers::{
     EffectDrivenCastOption, EffectDrivenCastPayment, cast_effect_driven_spell_with_payment,
-    effect_driven_cast_options_for_card_with_payment, with_spell_cast_event,
+    effect_driven_cast_options_for_card_with_payment_and_event_value, with_spell_cast_event,
 };
 
 fn runtime_payment(
@@ -59,7 +59,7 @@ impl EffectExecutor for MayCastMatchingSpellWithoutPayingManaCostEffect {
         let mut options = Vec::<EffectDrivenCastOption>::new();
         let payment = runtime_payment(&self.payment);
         for object_id in object_ids {
-            options.extend(effect_driven_cast_options_for_card_with_payment(
+            options.extend(effect_driven_cast_options_for_card_with_payment_and_event_value(
                 game,
                 player_id,
                 ctx.source,
@@ -67,6 +67,7 @@ impl EffectExecutor for MayCastMatchingSpellWithoutPayingManaCostEffect {
                 self.zone,
                 &self.filter,
                 payment,
+                ctx.event_value_amount,
             ));
         }
         if options.is_empty() {

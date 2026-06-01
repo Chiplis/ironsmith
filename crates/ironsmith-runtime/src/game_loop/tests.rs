@@ -3256,6 +3256,197 @@ fn glamdring_equipped_creature_gets_first_strike_and_graveyard_scaled_power() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn buster_sword_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_130), "Buster Sword")
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(3)]))
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .parse_text(
+            "Equipped creature gets +3/+2.\n\
+             Whenever equipped creature deals combat damage to a player, draw a card, then you may cast a spell from your hand with mana value less than or equal to that damage without paying its mana cost.\n\
+             Equip {2}",
+        )
+        .expect("Buster Sword should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn attach_equipment(game: &mut GameState, equipment_id: ObjectId, creature_id: ObjectId) {
+    if let Some(equipment) = game.object_mut(equipment_id) {
+        equipment.attached_to = Some(crate::object::AttachmentTarget::Object(creature_id));
+    }
+    if let Some(creature) = game.object_mut(creature_id) {
+        creature.attachments.push(equipment_id);
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn queue_buster_sword_combat_damage_trigger(
+    game: &mut GameState,
+    source: ObjectId,
+    damaged_player: PlayerId,
+    amount: u32,
+) -> TriggerQueue {
+    let event = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            source,
+            crate::events::DamageTarget::Player(damaged_player),
+            amount,
+            true,
+            crate::events::cause::EventCause::combat_damage(source),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(game, &event) {
+        trigger_queue.add(trigger);
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Buster Sword should trigger from equipped creature combat damage"
+    );
+    trigger_queue
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn buster_sword_equipped_creature_gets_plus_three_plus_two() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let buster_sword = buster_sword_definition();
+    let sword_id = game.create_object_from_definition(&buster_sword, alice, Zone::Battlefield);
+    let bearer_id = create_creature(&mut game, "Bearer", alice, 2, 2);
+
+    attach_equipment(&mut game, sword_id, bearer_id);
+    assert_eq!(game.calculated_power(bearer_id), Some(5));
+    assert_eq!(game.calculated_toughness(bearer_id), Some(4));
+
+    if let Some(equipment) = game.object_mut(sword_id) {
+        equipment.attached_to = None;
+    }
+    if let Some(creature) = game.object_mut(bearer_id) {
+        creature.attachments.clear();
+    }
+    assert_eq!(game.calculated_power(bearer_id), Some(2));
+    assert_eq!(game.calculated_toughness(bearer_id), Some(2));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn buster_sword_trigger_draws_then_free_casts_spell_with_mana_value_at_most_damage() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let buster_sword = buster_sword_definition();
+    let sword_id = game.create_object_from_definition(&buster_sword, alice, Zone::Battlefield);
+    let bearer_id = create_creature(&mut game, "Bearer", alice, 2, 2);
+    attach_equipment(&mut game, sword_id, bearer_id);
+
+    let drawn_card = CardBuilder::new(CardId::from_raw(72_131), "Drawn Card")
+        .card_types(vec![CardType::Land])
+        .build();
+    game.create_object_from_card(&drawn_card, alice, Zone::Library);
+    let matching_spell = CardBuilder::new(CardId::from_raw(72_132), "Three-Mana Instant")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(3)]))
+        .build();
+    game.create_object_from_card(&matching_spell, alice, Zone::Hand);
+    let expensive_spell = CardBuilder::new(CardId::from_raw(72_133), "Four-Mana Instant")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(4)]))
+        .build();
+    let expensive_id = game.create_object_from_card(&expensive_spell, alice, Zone::Hand);
+
+    let mut trigger_queue = queue_buster_sword_combat_damage_trigger(&mut game, bearer_id, bob, 3);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Buster Sword combat-damage trigger should go on the stack");
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Buster Sword combat-damage trigger should resolve");
+
+    assert_eq!(
+        game.player(alice)
+            .expect("alice should exist")
+            .hand
+            .iter()
+            .filter_map(|id| game.object(*id))
+            .filter(|object| object.name == "Drawn Card")
+            .count(),
+        1,
+        "Buster Sword should draw a card before the free-cast choice"
+    );
+    assert!(
+        game.stack.iter().any(|entry| {
+            game.object(entry.object_id)
+                .is_some_and(|object| object.name == "Three-Mana Instant")
+        }),
+        "the spell with mana value equal to the damage should be cast without paying its mana cost"
+    );
+    assert_eq!(
+        game.object(expensive_id)
+            .expect("expensive spell should remain")
+            .zone,
+        Zone::Hand,
+        "a spell with mana value greater than the combat damage should not be cast"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn buster_sword_trigger_does_not_free_cast_spell_above_damage_amount() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let buster_sword = buster_sword_definition();
+    let sword_id = game.create_object_from_definition(&buster_sword, alice, Zone::Battlefield);
+    let bearer_id = create_creature(&mut game, "Bearer", alice, 2, 2);
+    attach_equipment(&mut game, sword_id, bearer_id);
+
+    let drawn_card = CardBuilder::new(CardId::from_raw(72_134), "Drawn Card")
+        .card_types(vec![CardType::Land])
+        .build();
+    game.create_object_from_card(&drawn_card, alice, Zone::Library);
+    let too_expensive_spell = CardBuilder::new(CardId::from_raw(72_135), "Two-Mana Instant")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]))
+        .build();
+    let too_expensive_id = game.create_object_from_card(&too_expensive_spell, alice, Zone::Hand);
+
+    let mut trigger_queue = queue_buster_sword_combat_damage_trigger(&mut game, bearer_id, bob, 1);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Buster Sword combat-damage trigger should go on the stack");
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Buster Sword combat-damage trigger should resolve without a matching spell");
+
+    assert_eq!(
+        game.player(alice)
+            .expect("alice should exist")
+            .hand
+            .iter()
+            .filter_map(|id| game.object(*id))
+            .filter(|object| object.name == "Drawn Card")
+            .count(),
+        1,
+        "Buster Sword should still draw when no spell can be cast"
+    );
+    assert_eq!(
+        game.object(too_expensive_id)
+            .expect("too-expensive spell should remain")
+            .zone,
+        Zone::Hand,
+        "a spell above the damage amount should remain in hand"
+    );
+    assert!(
+        game.stack.iter().all(|entry| entry.object_id != too_expensive_id),
+        "no above-limit spell should be cast onto the stack"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn spider_man_no_more_attached_creature_becomes_citizen_defender_only() {
     let mut game = setup_game();

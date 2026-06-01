@@ -83,6 +83,15 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
         self.first_matching_hit_to_player_in_batch(damaged_player, ctx)
     }
 
+    fn event_value_amount(&self, event: &TriggerEvent, ctx: &TriggerContext) -> Option<i32> {
+        if !self.matches(event, ctx) {
+            return None;
+        }
+        event
+            .downcast::<DamageEvent>()
+            .map(|damage| damage.amount as i32)
+    }
+
     fn display(&self) -> String {
         if self.one_or_more {
             let mut subject = self.filter.description();

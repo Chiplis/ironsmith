@@ -4806,6 +4806,83 @@ fn rewrite_lexed_parse_glamdring_trigger_clause_with_damage_value_gate() {
 }
 
 #[test]
+fn rewrite_lexed_parse_generic_hand_free_cast_clause_with_damage_value_gate() {
+    let tokens = lex_line(
+        "You may cast a spell from your hand with mana value less than or equal to that damage without paying its mana cost",
+        0,
+    )
+    .expect("rewrite lexer should classify generic damage-gated hand free-cast clause");
+
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("generic damage-gated hand free-cast clause should parse as a supported effect");
+
+    let (player, filter, zone) = match effects.as_slice() {
+        [
+            crate::cards::builders::EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                player,
+                filter,
+                zone,
+                ..
+            },
+        ] => (player, filter, zone),
+        _ => panic!("expected one-shot generic hand free-cast effect, got {effects:#?}"),
+    };
+
+    assert!(matches!(
+        player,
+        crate::cards::builders::PlayerAst::Implicit | crate::cards::builders::PlayerAst::You
+    ));
+    assert_eq!(*zone, crate::zone::Zone::Hand);
+    assert_eq!(filter.excluded_card_types, vec![crate::types::CardType::Land]);
+    assert_eq!(filter.owner, Some(crate::target::PlayerFilter::You));
+    assert_eq!(
+        filter.mana_value,
+        Some(crate::filter::Comparison::LessThanOrEqualExpr(Box::new(
+            crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount)
+        )))
+    );
+}
+
+#[test]
+fn rewrite_lexed_parse_draw_then_generic_hand_free_cast_chain_preserves_both_effects() {
+    let tokens = lex_line(
+        "Draw a card, then you may cast a spell from your hand with mana value less than or equal to that damage without paying its mana cost",
+        0,
+    )
+    .expect("rewrite lexer should classify Buster Sword trigger effect chain");
+
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("Buster Sword trigger effect chain should parse as supported effects");
+
+    assert!(
+        matches!(
+            effects.first(),
+            Some(crate::cards::builders::EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    action: crate::cards::builders::SubjectVerbActionAst::Draw { .. },
+                    ..
+                }
+            ))
+        ),
+        "expected draw-card effect first, got {effects:#?}"
+    );
+    assert!(
+        effects.iter().any(|effect| matches!(
+            effect,
+            crate::cards::builders::EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                filter,
+                zone: crate::zone::Zone::Hand,
+                ..
+            } if filter.excluded_card_types == vec![crate::types::CardType::Land]
+                && filter.mana_value == Some(crate::filter::Comparison::LessThanOrEqualExpr(Box::new(
+                    crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount)
+                )))
+        )),
+        "expected damage-gated hand free-cast effect after draw, got {effects:#?}"
+    );
+}
+
+#[test]
 fn rewrite_lexed_parse_brain_in_a_jar_free_cast_clause_with_counter_value_gate() {
     let tokens = lex_line(
         "Cast an instant or sorcery spell with mana value equal to the number of charge counters on this artifact from your hand without paying its mana cost",

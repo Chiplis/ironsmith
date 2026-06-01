@@ -761,6 +761,21 @@ fn parse_effect_sentence_lexed_inner(
         return Ok(vec![effect]);
     }
 
+    if token_slice_first_is(tokens, "draw")
+        && let Some(then_word_idx) = sentence_words.iter().position(|word| *word == "then")
+        && let Some(then_token_idx) = token_index_for_word_index(tokens, then_word_idx)
+    {
+        let left = trim_commas(&tokens[..then_token_idx]);
+        let right = trim_commas(&tokens[then_token_idx + 1..]);
+        if !left.is_empty() && !right.is_empty() {
+            let mut effects = super::parse_effect_chain_inner_lexed(&left)?;
+            effects.extend(parse_effect_sentence_lexed_inner(&right)?);
+            apply_where_x_to_damage_amounts(tokens, &mut effects)?;
+            normalize_search_followup_shuffles(&mut effects);
+            return Ok(effects);
+        }
+    }
+
     if let Some((route, mut effects)) = parse_top_level_subject_verb_recognition(tokens)? {
         crate::parse_trace::event(format!("effect-route: {route}"));
         normalize_search_followup_shuffles(&mut effects);

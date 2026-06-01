@@ -49498,6 +49498,46 @@ fn parse_oracle_glamdring_keeps_damage_scaled_free_cast_clause() {
 }
 
 #[test]
+fn parse_oracle_buster_sword_keeps_draw_and_damage_scaled_free_cast_clause() {
+    let def = parse_oracle_card_definition("Buster Sword");
+    assert_eq!(def.name(), "Buster Sword");
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(
+        !rendered.contains("unsupported effect"),
+        "expected Buster Sword to compile without unsupported effects, got {rendered}"
+    );
+    assert!(
+        rendered.contains("whenever equipped creature deals combat damage to a player"),
+        "expected Buster Sword to keep the equipped-creature combat trigger, got {rendered}"
+    );
+    assert!(
+        rendered.contains("draw a card"),
+        "expected Buster Sword to keep the trigger's draw-card clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("cast a spell")
+            && rendered.contains("from your hand")
+            && rendered.contains("without paying its mana cost"),
+        "expected Buster Sword to keep its hand free-cast clause, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("spell matching"),
+        "expected Buster Sword to render a generic spell, got {rendered}"
+    );
+    assert!(
+        rendered.contains("mana value less than or equal to that damage"),
+        "expected Buster Sword to keep the dynamic damage-based mana value limit, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("tagged object") && !rendered.contains("tagged '"),
+        "expected Buster Sword rendering to hide internal tag scaffolding, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_oracle_transmogrify_shuffle_rest_into_library() {
     let def = parse_oracle_card_definition("Transmogrify");
     let rendered = unprocessed_compiled_lines(&def)

@@ -529,7 +529,7 @@ pub(crate) fn parse_effect_chain_lexed(
         return Ok(vec![unless_action]);
     }
 
-    if clause_may_contain_cast_or_play_permission_lexed(tokens)
+    if clause_starts_with_cast_or_play_permission_lexed(tokens)
         && let Some(effect) = parse_cast_or_play_tagged_clause(tokens)?
     {
         return Ok(vec![effect]);
@@ -538,16 +538,23 @@ pub(crate) fn parse_effect_chain_lexed(
     parse_effect_chain_with_subject_verb_primitives_lexed(tokens)
 }
 
-fn clause_may_contain_cast_or_play_permission_lexed(tokens: &[OwnedLexToken]) -> bool {
-    tokens
-        .iter()
-        .filter_map(OwnedLexToken::as_word)
-        .any(|word| {
-            matches!(
-                word,
-                "may" | "cast" | "casts" | "casting" | "play" | "plays" | "playing" | "played"
-            )
-        })
+fn clause_starts_with_cast_or_play_permission_lexed(tokens: &[OwnedLexToken]) -> bool {
+    let words = token_word_refs(tokens);
+    let mut words = words.as_slice();
+    while matches!(words.first(), Some(&"then" | &"and")) {
+        words = &words[1..];
+    }
+    matches!(
+        words,
+        ["you", "may", "cast", ..]
+            | ["you", "may", "play", ..]
+            | ["any", "player", "may", "cast", ..]
+            | ["any", "player", "may", "play", ..]
+            | ["its", "owner", "may", "cast", ..]
+            | ["its", "owner", "may", "play", ..]
+            | ["cast", ..]
+            | ["play", ..]
+    )
 }
 
 fn leading_may_is_permission_clause_lexed(tokens: &[OwnedLexToken]) -> Result<bool, CardTextError> {

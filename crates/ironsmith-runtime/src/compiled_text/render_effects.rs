@@ -15443,7 +15443,18 @@ fn describe_triggered_resolution_text(
         return None;
     }
 
-    let effects = super::ast_render::describe_resolution_program(&triggered.effects);
+    let mut effects = super::ast_render::describe_resolution_program(&triggered.effects);
+    if triggered
+        .trigger
+        .downcast_ref::<crate::triggers::ThisDealsCombatDamageToPlayerTrigger>()
+        .is_some()
+        || triggered
+            .trigger
+            .downcast_ref::<crate::triggers::DealsCombatDamageToPlayerTrigger>()
+            .is_some()
+    {
+        effects = effects.replace("that amount", "that damage");
+    }
     let effects = rewrite_damaged_player_reference_for_damage_trigger(triggered, effects);
     Some(rewrite_damage_phrases_for_permanent_abilities(
         &effects,
@@ -34190,7 +34201,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             };
             format!("{article} {joined} spell")
         } else {
-            describe_cast_limit_spell_filter(&may_cast_matching.filter)
+            let mut generic_nonland = may_cast_matching.filter.clone();
+            generic_nonland.owner = None;
+            generic_nonland.mana_value = None;
+            generic_nonland.mana_value_eq_counters_on_source = None;
+            if generic_nonland == ObjectFilter::nonland() {
+                "spell".to_string()
+            } else {
+                describe_cast_limit_spell_filter(&may_cast_matching.filter)
+            }
         };
         if spell_text == "spell" {
             spell_text = "a spell".to_string();

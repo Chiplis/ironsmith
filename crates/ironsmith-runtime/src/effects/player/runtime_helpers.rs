@@ -99,10 +99,12 @@ fn cast_filter_matches(
     source: ObjectId,
     view: &crate::object::Object,
     filter: &crate::target::ObjectFilter,
+    event_value_amount: Option<i32>,
 ) -> bool {
     let filter_ctx = game
         .filter_context_for(caster, Some(source))
-        .with_caster(Some(caster));
+        .with_caster(Some(caster))
+        .with_event_value_amount(event_value_amount);
     filter.matches(view, &filter_ctx, game)
 }
 
@@ -134,6 +136,21 @@ pub(super) fn effect_driven_cast_options_for_card_with_payment(
     filter: &crate::target::ObjectFilter,
     payment: EffectDrivenCastPayment,
 ) -> Vec<EffectDrivenCastOption> {
+    effect_driven_cast_options_for_card_with_payment_and_event_value(
+        game, caster, source, object_id, from_zone, filter, payment, None,
+    )
+}
+
+pub(super) fn effect_driven_cast_options_for_card_with_payment_and_event_value(
+    game: &GameState,
+    caster: PlayerId,
+    source: ObjectId,
+    object_id: ObjectId,
+    from_zone: Zone,
+    filter: &crate::target::ObjectFilter,
+    payment: EffectDrivenCastPayment,
+    event_value_amount: Option<i32>,
+) -> Vec<EffectDrivenCastOption> {
     let Some(object) = game.object(object_id) else {
         return Vec::new();
     };
@@ -143,7 +160,7 @@ pub(super) fn effect_driven_cast_options_for_card_with_payment(
 
     let mut options = Vec::new();
     if let EffectDrivenCastPayment::AlternativeCost(kind) = payment {
-        if !cast_filter_matches(game, caster, source, object, filter) {
+        if !cast_filter_matches(game, caster, source, object, filter, event_value_amount) {
             return Vec::new();
         }
         for (idx, method) in object.alternative_casts.iter().enumerate() {
@@ -159,7 +176,7 @@ pub(super) fn effect_driven_cast_options_for_card_with_payment(
         return options;
     }
 
-    if cast_filter_matches(game, caster, source, object, filter) {
+    if cast_filter_matches(game, caster, source, object, filter, event_value_amount) {
         let casting_method = if from_zone == Zone::Hand {
             CastingMethod::Normal
         } else {
@@ -178,7 +195,7 @@ pub(super) fn effect_driven_cast_options_for_card_with_payment(
     }
 
     if let Some(other_half) = crate::decision::spell_view_for_split_other_half_cast(game, object)
-        && cast_filter_matches(game, caster, source, &other_half, filter)
+        && cast_filter_matches(game, caster, source, &other_half, filter, event_value_amount)
     {
         options.push(EffectDrivenCastOption {
             object_id,

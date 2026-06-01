@@ -519,6 +519,9 @@ pub struct FilterContext {
     /// X value carried by the current resolving spell or ability, if any.
     pub x_value: Option<u32>,
 
+    /// Amount from the triggering event for event-value comparisons, if any.
+    pub event_value_amount: Option<i32>,
+
     /// The player chosen for the source permanent or spell, if any.
     pub chosen_player: Option<PlayerId>,
 
@@ -591,6 +594,12 @@ impl FilterContext {
     /// Set the current X value for dynamic comparisons in filters.
     pub fn with_x_value(mut self, x_value: Option<u32>) -> Self {
         self.x_value = x_value;
+        self
+    }
+
+    /// Set the triggering event amount for dynamic comparisons in filters.
+    pub fn with_event_value_amount(mut self, amount: Option<i32>) -> Self {
+        self.event_value_amount = amount;
         self
     }
 
@@ -735,6 +744,18 @@ fn resolve_filter_comparison_rhs_value(
 ) -> Option<i32> {
     use crate::effect::Value;
     use crate::target::ChooseSpec;
+
+    match rhs {
+        Value::EventValue(crate::effect::EventValueSpec::Amount)
+        | Value::EventValue(crate::effect::EventValueSpec::LifeAmount) => {
+            return ctx.event_value_amount;
+        }
+        Value::EventValueOffset(crate::effect::EventValueSpec::Amount, offset)
+        | Value::EventValueOffset(crate::effect::EventValueSpec::LifeAmount, offset) => {
+            return ctx.event_value_amount.map(|amount| amount + *offset);
+        }
+        _ => {}
+    }
 
     fn total_counters(counters: &std::collections::HashMap<CounterType, u32>) -> i32 {
         counters.values().copied().sum::<u32>() as i32

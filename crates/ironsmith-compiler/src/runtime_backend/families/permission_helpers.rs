@@ -1484,7 +1484,7 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
             words.pop();
         }
         if words.is_empty() {
-            return None;
+            return Some(ObjectFilter::nonland());
         }
 
         let mut card_types = Vec::new();

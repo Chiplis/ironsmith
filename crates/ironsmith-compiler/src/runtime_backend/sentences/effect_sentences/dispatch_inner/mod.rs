@@ -27,6 +27,7 @@ use super::super::lexer::{
     word_slice_starts_with, word_slice_starts_with_any, word_slice_starts_with_at,
 };
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
+use super::super::permission_helpers::parse_cast_or_play_tagged_clause;
 use super::super::rule_engine::{LexClauseView, LexUnsupportedDiagnoser, LexUnsupportedRuleDef};
 use super::super::token_primitives::{
     find_index, find_window_by, iter_contains, rfind_index, slice_contains, slice_ends_with,
