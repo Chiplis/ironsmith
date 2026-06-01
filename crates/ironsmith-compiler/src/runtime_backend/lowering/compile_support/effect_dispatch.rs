@@ -4609,7 +4609,18 @@ fn compile_subject_verb_effect(
             filter,
             no_regeneration,
         } => {
-            let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            if resolved_filter.other
+                && resolved_filter.tagged_constraints.is_empty()
+                && let Some(tag) = ctx.last_object_tag.as_deref()
+            {
+                resolved_filter
+                    .tagged_constraints
+                    .push(TaggedObjectConstraint {
+                        tag: TagKey::from(tag),
+                        relation: TaggedOpbjectRelation::IsNotTaggedObject,
+                    });
+            }
             let (mut prelude, choices) = target_context_prelude_for_filter(&resolved_filter);
             let mut effect = if *no_regeneration {
                 Effect::new(crate::effects::DestroyNoRegenerationEffect::all(

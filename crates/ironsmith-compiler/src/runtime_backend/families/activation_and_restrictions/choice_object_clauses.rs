@@ -104,6 +104,7 @@ const CAST_SORCERY_THIS_TURN_FILTER_PATTERN: ClauseShape<'static> = clause_shape
 const CHOSEN_OBJECT_CANT_BLOCK_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["block", "this", "turn"], &["block"]]);
 const AT_RANDOM_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["at", "random"]);
+const AT_RANDOM_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(suffix & ["at", "random"]);
 const TAGGED_CHOICE_MOVED_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["it"], &["that", "card"], &["that", "permanent"]]);
 const BATTLEFIELD_UNDER_YOUR_CONTROL_PATTERN: ClauseShape<'static> =
@@ -248,7 +249,7 @@ pub(crate) fn parse_target_player_choose_objects_clause(
         )));
     }
 
-    let (count, stripped_choose_object_tokens) =
+    let (mut count, stripped_choose_object_tokens) =
         parse_choice_count_token_prefix(&choose_object_tokens);
     choose_object_tokens = stripped_choose_object_tokens;
     if choose_object_tokens.is_empty() {
@@ -265,6 +266,11 @@ pub(crate) fn parse_target_player_choose_objects_clause(
     }
     if find_verb(&choose_object_tokens).is_some() {
         return Ok(None);
+    }
+
+    if AT_RANDOM_SUFFIX_PATTERN.matches_words(&choose_object_words) {
+        choose_object_tokens.truncate(choose_object_tokens.len().saturating_sub(2));
+        count = count.at_random();
     }
 
     let mut choose_filter = parse_object_filter(&choose_object_tokens, false).map_err(|_| {
@@ -390,6 +396,10 @@ pub(crate) fn parse_you_choose_objects_clause(
         .is_some_and(|word| LEADING_ARTICLE_PATTERN.matches_words(&[*word]))
     {
         choose_words = choose_words[1..].to_vec();
+    }
+    if AT_RANDOM_SUFFIX_PATTERN.matches_words(&choose_words) {
+        count = count.at_random();
+        choose_words.truncate(choose_words.len().saturating_sub(2));
     }
 
     if choose_words.is_empty() {

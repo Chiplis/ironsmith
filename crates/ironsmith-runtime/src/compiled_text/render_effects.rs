@@ -3189,6 +3189,7 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
     describe_roll_choose_destroy_create_structural(effects)
         .or_else(|| describe_draw_discard_then_create_structural(effects))
         .or_else(|| describe_reveal_top_choice_to_hand_rest_graveyard_structural(effects))
+        .or_else(|| describe_choose_gain_control_untap_haste_destroy_others(effects))
         .or_else(|| describe_gain_control_untap_haste_structural(effects))
         .or_else(|| describe_exile_then_free_cast_while_exiled_structural(effects))
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
@@ -3685,6 +3686,68 @@ fn is_haste_until_eot_for_tag(
             Some(crate::continuous::Modification::AddAbility(ability))
                 if ability.id() == crate::static_abilities::StaticAbilityId::Haste
         )
+}
+
+fn simple_creature_choice_text(choose: &crate::effects::ChooseObjectsEffect) -> Option<String> {
+    let mut expected_filter = crate::filter::ObjectFilter::creature();
+    expected_filter.zone = choose.filter.zone;
+    if choose.is_search
+        || choose.count_value.is_some()
+        || !choose.count.is_single()
+        || choose_primary_zone(choose) != Some(Zone::Battlefield)
+        || choose.filter != expected_filter
+    {
+        return None;
+    }
+    Some(if choose.count.is_random() {
+        "a creature at random".to_string()
+    } else {
+        "a creature".to_string()
+    })
+}
+
+fn is_destroy_all_other_creatures(
+    destroy: &crate::effects::DestroyEffect,
+    excluded_tag: &crate::TagKey,
+) -> bool {
+    let ChooseSpec::All(filter) = &destroy.spec else {
+        return false;
+    };
+    let mut expected_filter = crate::filter::ObjectFilter::creature();
+    expected_filter.zone = filter.zone;
+    expected_filter.other = true;
+    expected_filter
+        .tagged_constraints
+        .push(crate::filter::TaggedObjectConstraint {
+            tag: excluded_tag.clone(),
+            relation: crate::filter::TaggedOpbjectRelation::IsNotTaggedObject,
+        });
+    filter == &expected_filter
+}
+
+fn describe_choose_gain_control_untap_haste_destroy_others(effects: &[Effect]) -> Option<String> {
+    let [choose_effect, control_effect, untap_effect, haste_effect, destroy_effect] = effects else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let (_, control) = tagged_apply_continuous_view(control_effect)?;
+    let (_, untap) = tagged_untap_effect_view(untap_effect)?;
+    let (_, haste) = tagged_apply_continuous_view(haste_effect)?;
+    let destroy = unwrap_basic_tag_wrappers(destroy_effect)
+        .downcast_ref::<crate::effects::DestroyEffect>()?;
+    if !is_gain_control_until_eot(control)
+        || !matches!(&control.target_spec, Some(ChooseSpec::Tagged(tag)) if tag == &choose.tag)
+        || !matches!(&untap.target, ChooseSpec::Tagged(tag) if tag == &choose.tag)
+        || !is_haste_until_eot_for_tag(haste, &choose.tag)
+        || !is_destroy_all_other_creatures(destroy, &choose.tag)
+    {
+        return None;
+    }
+
+    Some(format!(
+        "Choose {}. You gain control of that creature until end of turn. Untap it. It gains haste until end of turn. Then destroy all other creatures",
+        simple_creature_choice_text(choose)?
+    ))
 }
 
 fn describe_gain_control_untap_haste_structural(effects: &[Effect]) -> Option<String> {
@@ -22134,14 +22197,15 @@ fn describe_runtime_choice_where_clause(
 }
 
 pub(super) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEffect) -> String {
+    let random_suffix = if choose.count.is_random() { " at random" } else { "" };
     if choose.top_only {
         if let Some(exact) = choose_exact_count(choose) {
             if exact > 1 {
                 let count_text = number_word(exact as i32).unwrap_or_else(|| exact.to_string());
-                return format!("the top {count_text} cards");
+                return format!("the top {count_text} cards{random_suffix}");
             }
         }
-        return "the top card".to_string();
+        return format!("the top card{random_suffix}");
     }
 
     let filter_text = choose.filter.description();
@@ -22210,18 +22274,25 @@ pub(super) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
     };
 
     if choose.count.is_single() {
-        return format!("{}{}", with_indefinite_article(&card_desc), where_x_suffix);
+        return format!(
+            "{}{}{}",
+            with_indefinite_article(&card_desc),
+            where_x_suffix,
+            random_suffix
+        );
     }
     if let Some(runtime_count) = describe_runtime_choice_count(choose) {
         let mut selection = describe_plural_selection(runtime_count, &card_desc);
         selection.push_str(&describe_runtime_choice_where_clause(choose).unwrap_or_default());
         selection.push_str(&where_x_suffix);
+        selection.push_str(random_suffix);
         return selection;
     }
     if let Some(exact) = choose_exact_count(choose) {
         let count_text = number_word(exact as i32).unwrap_or_else(|| exact.to_string());
         let mut selection = describe_plural_selection(count_text, &card_desc);
         selection.push_str(&where_x_suffix);
+        selection.push_str(random_suffix);
         return selection;
     }
     let mut selection = describe_plural_selection(describe_choice_count(&choose.count), &card_desc);

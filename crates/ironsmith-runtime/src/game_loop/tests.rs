@@ -16974,6 +16974,134 @@ fn act_of_aggression_gains_control_untaps_and_grants_haste_until_end_of_turn() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn the_nipton_lottery_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(95_100), "The Nipton Lottery")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Choose a creature at random. You gain control of that creature until end of turn. \
+             Untap it. It gains haste until end of turn. Then destroy all other creatures.",
+        )
+        .expect("The Nipton Lottery should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_the_nipton_lottery_on_stack(game: &mut GameState, controller: PlayerId) {
+    let lottery = the_nipton_lottery_definition();
+    let spell_id = game.create_object_from_definition(&lottery, controller, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, controller));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn the_nipton_lottery_random_creature_survives_with_control_untap_and_haste() {
+    use crate::static_abilities::StaticAbilityId;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.set_random_seed(7);
+
+    let alice_creature = create_creature(&mut game, "Alice Lottery Entrant", alice, 2, 2);
+    let bob_creature_a = create_creature(&mut game, "Bob Lottery Entrant A", bob, 2, 2);
+    let bob_creature_b = create_creature(&mut game, "Bob Lottery Entrant B", bob, 2, 2);
+    for id in [alice_creature, bob_creature_a, bob_creature_b] {
+        game.tap(id);
+    }
+    let original_controllers = [
+        (alice_creature, alice),
+        (bob_creature_a, bob),
+        (bob_creature_b, bob),
+    ];
+
+    put_the_nipton_lottery_on_stack(&mut game, alice);
+    let random_count_before = game.irreversible_random_count();
+    resolve_stack_entry(&mut game).expect("The Nipton Lottery should resolve");
+    game.refresh_continuous_state();
+
+    assert!(
+        game.irreversible_random_count() > random_count_before,
+        "The Nipton Lottery should use the random choice path"
+    );
+    let survivors = [alice_creature, bob_creature_a, bob_creature_b]
+        .into_iter()
+        .filter(|id| game.battlefield.contains(id))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        survivors.len(),
+        1,
+        "only the randomly chosen creature should survive; battlefield survivors were {survivors:?}"
+    );
+    let survivor = survivors[0];
+    assert_eq!(
+        game.current_controller(survivor),
+        Some(alice),
+        "Alice should control the randomly chosen surviving creature until end of turn"
+    );
+    assert!(
+        !game.is_tapped(survivor),
+        "The Nipton Lottery should untap the chosen creature"
+    );
+    assert!(
+        game.object_has_static_ability_id(survivor, StaticAbilityId::Haste),
+        "The Nipton Lottery should grant haste to the chosen creature"
+    );
+
+    crate::turn::execute_cleanup_step(&mut game);
+    game.refresh_continuous_state();
+    let original_controller = original_controllers
+        .iter()
+        .find_map(|(id, controller)| (*id == survivor).then_some(*controller))
+        .expect("survivor should be one of the starting creatures");
+    assert_eq!(
+        game.current_controller(survivor),
+        Some(original_controller),
+        "control change should expire at cleanup"
+    );
+    assert!(
+        !game.object_has_static_ability_id(survivor, StaticAbilityId::Haste),
+        "haste should expire at cleanup"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn the_nipton_lottery_single_creature_has_no_other_creatures_to_destroy() {
+    use crate::static_abilities::StaticAbilityId;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.set_random_seed(3);
+
+    let only_creature = create_creature(&mut game, "Only Lottery Entrant", bob, 2, 2);
+    game.tap(only_creature);
+
+    put_the_nipton_lottery_on_stack(&mut game, alice);
+    resolve_stack_entry(&mut game).expect("The Nipton Lottery should resolve with one creature");
+    game.refresh_continuous_state();
+
+    assert!(
+        game.battlefield.contains(&only_creature),
+        "the chosen creature should remain when there are no other creatures to destroy"
+    );
+    assert_eq!(
+        game.current_controller(only_creature),
+        Some(alice),
+        "Alice should gain control of the only creature until end of turn"
+    );
+    assert!(!game.is_tapped(only_creature));
+    assert!(game.object_has_static_ability_id(
+        only_creature,
+        StaticAbilityId::Haste
+    ));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn target_opponent_gains_control_keeps_player_target_visible_to_object_effect() {
     let mut game = setup_game();

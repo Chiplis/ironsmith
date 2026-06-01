@@ -143,6 +143,33 @@ fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn the_nipton_lottery_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("The Nipton Lottery");
+    let spell_effect = def
+        .spell_effect
+        .as_ref()
+        .expect("The Nipton Lottery should compile as a sorcery spell");
+    let debug = format!("{spell_effect:#?}");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert!(
+        debug.contains("ChooseObjectsEffect")
+            && debug.contains("random: true")
+            && debug.contains("ChangeControllerToEffectController")
+            && debug.contains("UntapEffect")
+            && debug.contains("Haste")
+            && debug.contains("DestroyEffect")
+            && debug.contains("IsNotTaggedObject"),
+        "The Nipton Lottery should preserve random choice, control, untap, haste, and chosen-creature exclusion for destroy effects, got {debug}"
+    );
+    assert_eq!(
+        rendered,
+        "Choose a creature at random. You gain control of that creature until end of turn. Untap it. It gains haste until end of turn. Then destroy all other creatures.",
+        "The Nipton Lottery compiled text should preserve the random-choice control sequence, got {rendered}"
+    );
+}
+
+#[test]
 fn commander_liara_portyr_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Commander Liara Portyr");
     let ability_debug = format!("{:#?}", def.abilities);
