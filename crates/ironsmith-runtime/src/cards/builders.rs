@@ -495,6 +495,7 @@ pub(crate) enum KeywordAction {
     Exalted,
     Cascade,
     Storm,
+    Ripple(u32),
     Toxic(u32),
     BattleCry,
     Dethrone,
@@ -764,6 +765,7 @@ impl KeywordAction {
             Self::Exalted => "Exalted".to_string(),
             Self::Cascade => "Cascade".to_string(),
             Self::Storm => "Storm".to_string(),
+            Self::Ripple(amount) => format!("Ripple {amount}"),
             Self::Toxic(amount) => format!("Toxic {amount}"),
             Self::BattleCry => "Battle cry".to_string(),
             Self::Dethrone => "Dethrone".to_string(),
@@ -1641,6 +1643,7 @@ impl CardDefinitionBuilder {
             KeywordAction::Exalted => self.exalted(),
             KeywordAction::Cascade => self.cascade(),
             KeywordAction::Storm => self.storm(),
+            KeywordAction::Ripple(amount) => self.ripple(amount),
             KeywordAction::Toxic(amount) => self.toxic(amount),
             KeywordAction::BattleCry => self.battle_cry(),
             KeywordAction::Dethrone => self.dethrone(),
@@ -3623,6 +3626,69 @@ impl CardDefinitionBuilder {
                 choices: vec![],
                 intervening_if: None,
                 presentation_label: None,
+            }),
+            functional_zones: vec![Zone::Stack],
+        })
+    }
+
+    /// Add ripple N.
+    ///
+    /// Ripple means "When you cast this spell, you may reveal the top N cards of your library.
+    /// You may cast spells with the same name as this spell from among those cards without paying
+    /// their mana costs. Put the rest on the bottom of your library."
+    pub fn ripple(self, amount: u32) -> Self {
+        use crate::target::TaggedOpbjectRelation;
+
+        let source_tag = TagKey::from("ripple_source");
+        let revealed_tag = TagKey::from("ripple_revealed");
+        let matching_tag = TagKey::from("ripple_matching");
+        let match_filter = ObjectFilter::default()
+            .match_tagged(revealed_tag.clone(), TaggedOpbjectRelation::IsTaggedObject)
+            .match_tagged(source_tag.clone(), TaggedOpbjectRelation::SameNameAsTagged);
+
+        self.with_ability(Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger: Trigger::you_cast_this_spell(),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    Effect::may_player(
+                        PlayerFilter::You,
+                        vec![
+                            Effect::tag_triggering_object(source_tag),
+                            Effect::reveal_top_cards(
+                                PlayerFilter::You,
+                                amount as i32,
+                                revealed_tag.clone(),
+                            ),
+                            Effect::new(
+                                crate::effects::TagMatchingObjectsEffect::new(
+                                    match_filter,
+                                    matching_tag.clone(),
+                                )
+                                .in_zone(Zone::Library),
+                            ),
+                            Effect::for_each_tagged(
+                                matching_tag,
+                                vec![Effect::may_single(Effect::cast_tagged(
+                                    "__it__",
+                                    PlayerFilter::You,
+                                    false,
+                                    false,
+                                    true,
+                                    None,
+                                ))],
+                            ),
+                            Effect::put_tagged_remainder_on_library_bottom(
+                                revealed_tag,
+                                None,
+                                crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses,
+                                PlayerFilter::You,
+                            ),
+                        ],
+                    ),
+                ]),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: Some(format!("keyword:ripple {amount}")),
             }),
             functional_zones: vec![Zone::Stack],
         })

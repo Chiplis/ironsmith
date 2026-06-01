@@ -291,6 +291,7 @@ impl CardDefinitionBuilder {
             KeywordAction::DoubleStrike => self.double_strike(),
             KeywordAction::Exalted => self.exalted(),
             KeywordAction::Storm => self.storm(),
+            KeywordAction::Ripple(amount) => self.ripple(amount),
             KeywordAction::BattleCry => self.battle_cry(),
             KeywordAction::Dethrone => self.dethrone(),
             KeywordAction::Evolve => self.evolve(),
@@ -795,6 +796,66 @@ impl CardDefinitionBuilder {
                 choices: vec![],
                 intervening_if: None,
                 presentation_label: None,
+            }),
+            functional_zones: vec![crate::zone::Zone::Stack],
+        })
+    }
+
+    pub fn ripple(self, amount: u32) -> Self {
+        use crate::target::TaggedOpbjectRelation;
+
+        let source_tag = crate::tag::TagKey::from("ripple_source");
+        let revealed_tag = crate::tag::TagKey::from("ripple_revealed");
+        let matching_tag = crate::tag::TagKey::from("ripple_matching");
+        let match_filter = crate::target::ObjectFilter::default()
+            .match_tagged(revealed_tag.clone(), TaggedOpbjectRelation::IsTaggedObject)
+            .match_tagged(source_tag.clone(), TaggedOpbjectRelation::SameNameAsTagged);
+
+        self.with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: crate::triggers::Trigger::you_cast_this_spell(),
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    crate::effect::Effect::may_player(
+                        crate::target::PlayerFilter::You,
+                        vec![
+                            crate::effect::Effect::tag_triggering_object(source_tag),
+                            crate::effect::Effect::reveal_top_cards(
+                                crate::target::PlayerFilter::You,
+                                crate::effect::Value::Fixed(amount as i32),
+                                revealed_tag.clone(),
+                            ),
+                            crate::effect::Effect::new(
+                                crate::effects::TagMatchingObjectsEffect::new(
+                                    match_filter,
+                                    matching_tag.clone(),
+                                )
+                                .in_zone(crate::zone::Zone::Library),
+                            ),
+                            crate::effect::Effect::for_each_tagged(
+                                matching_tag,
+                                vec![crate::effect::Effect::may(vec![
+                                    crate::effect::Effect::cast_tagged(
+                                        "__it__".into(),
+                                        crate::target::PlayerFilter::You,
+                                        false,
+                                        false,
+                                        true,
+                                        None,
+                                    ),
+                                ])],
+                            ),
+                            crate::effect::Effect::put_tagged_remainder_on_library_bottom(
+                                revealed_tag,
+                                None,
+                                crate::effects::LibraryBottomOrder::ChooserChooses,
+                                crate::target::PlayerFilter::You,
+                            ),
+                        ],
+                    ),
+                ]),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: Some(format!("keyword:ripple {amount}")),
             }),
             functional_zones: vec![crate::zone::Zone::Stack],
         })

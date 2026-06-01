@@ -5341,6 +5341,20 @@ pub(crate) fn parse_replicate_line_lexed(
     parse_replicate_line(tokens)
 }
 
+pub(crate) fn parse_ripple_line_lexed(tokens: &[OwnedLexToken]) -> Option<u32> {
+    if !token_slice_first_is(tokens, "ripple") {
+        return None;
+    }
+
+    let amount = tokens.get(1)?.as_word().and_then(parse_number_word_u32)?;
+    let tail = tokens.get(2..).unwrap_or_default();
+    if tail.is_empty() || matches!(tail.first().map(|token| token.kind), Some(TokenKind::LParen)) {
+        Some(amount)
+    } else {
+        None
+    }
+}
+
 pub(crate) fn parse_squad_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<OptionalCost>, CardTextError> {

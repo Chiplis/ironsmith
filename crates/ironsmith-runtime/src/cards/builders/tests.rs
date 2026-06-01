@@ -8969,6 +8969,202 @@ fn test_parse_replicate_keyword_line_compiles_to_repeatable_optional_cost() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_surging_flame_strictly_with_ripple_keyword() {
+    let def = parse_oracle_card_definition("Surging Flame");
+
+    let ripple = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered)
+                if triggered.presentation_label.as_deref() == Some("keyword:ripple 4") =>
+            {
+                Some(triggered)
+            }
+            _ => None,
+        })
+        .expect("Surging Flame should lower ripple as a distinct keyword trigger");
+    assert_eq!(ripple.trigger.display(), "When you cast this spell");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Ripple 4"),
+        "expected Surging Flame to render ripple keyword, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Surging Flame deals 2 damage to any target"),
+        "expected Surging Flame damage text to remain intact, got {rendered}"
+    );
+    assert!(
+        !format!("{def:#?}").to_ascii_lowercase().contains("unsupported"),
+        "Surging Flame should parse strictly without unsupported fallback"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn surging_flame_compiled_text_matches_ripple_and_damage() {
+    let def = parse_oracle_card_definition("Surging Flame");
+    let rendered = compiled_text_lines(&def);
+
+    assert_eq!(
+        rendered,
+        vec![
+            "Surging Flame deals 2 damage to any target.".to_string(),
+            "Ripple 4.".to_string(),
+        ],
+        "expected scored compiled text to preserve ripple and damage exactly"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn surging_flame_ripple_casts_revealed_same_name_spells_and_bottoms_rest() {
+    use crate::decision::DecisionMaker;
+    use crate::decisions::context::{BooleanContext, TargetsContext};
+    use crate::effects::{ExecutionContext, execute_effect};
+    use crate::game_state::{GameState, Target};
+
+    struct AcceptRippleDecisionMaker {
+        target_player: PlayerId,
+        boolean_calls: usize,
+    }
+
+    impl DecisionMaker for AcceptRippleDecisionMaker {
+        fn decide_boolean(&mut self, _game: &GameState, _ctx: &BooleanContext) -> bool {
+            self.boolean_calls += 1;
+            true
+        }
+
+        fn decide_targets(&mut self, _game: &GameState, ctx: &TargetsContext) -> Vec<Target> {
+            assert_eq!(ctx.requirements.len(), 1, "Surging Flame has one target");
+            assert!(
+                ctx.requirements[0]
+                    .legal_targets
+                    .contains(&Target::Player(self.target_player)),
+                "target player should be legal for rippled Surging Flame"
+            );
+            vec![Target::Player(self.target_player)]
+        }
+    }
+
+    let def = parse_oracle_card_definition("Surging Flame");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let other = CardDefinitionBuilder::new(CardId::from_raw(9001), "Other Instant")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let other_id = game.create_object_from_definition(&other, alice, Zone::Library);
+    game.create_object_from_definition(&def, alice, Zone::Library);
+    game.create_object_from_definition(&def, alice, Zone::Library);
+
+    let ripple = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered)
+                if triggered.trigger.display() == "When you cast this spell" =>
+            {
+                Some(triggered)
+            }
+            _ => None,
+        })
+        .expect("Surging Flame should have ripple cast trigger");
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::spells::SpellCastEvent::new(source, alice, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut dm = AcceptRippleDecisionMaker {
+        target_player: bob,
+        boolean_calls: 0,
+    };
+    let mut ctx = ExecutionContext::new(source, alice, &mut dm).with_triggering_event(event);
+
+    for effect in &ripple.effects {
+        execute_effect(&mut game, effect, &mut ctx).expect("ripple effect should resolve");
+    }
+
+    let rippled_stack_count = game
+        .stack
+        .iter()
+        .filter(|entry| {
+            game.object(entry.object_id)
+                .is_some_and(|object| object.name == "Surging Flame")
+        })
+        .count();
+    assert_eq!(
+        rippled_stack_count, 2,
+        "both revealed same-name Surging Flame cards should be cast"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").library.first(),
+        Some(&other_id),
+        "nonmatching revealed card should remain in the library on the bottom"
+    );
+    assert!(
+        dm.boolean_calls >= 3,
+        "expected one reveal decision and one cast decision per matching card"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn surging_flame_ripple_decline_reveals_no_cards_and_casts_none() {
+    use crate::decision::DecisionMaker;
+    use crate::decisions::context::BooleanContext;
+    use crate::effects::{ExecutionContext, execute_effect};
+    use crate::game_state::GameState;
+
+    struct DeclineRippleDecisionMaker;
+
+    impl DecisionMaker for DeclineRippleDecisionMaker {
+        fn decide_boolean(&mut self, _game: &GameState, _ctx: &BooleanContext) -> bool {
+            false
+        }
+    }
+
+    let def = parse_oracle_card_definition("Surging Flame");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    game.create_object_from_definition(&def, alice, Zone::Library);
+    let library_before = game.player(alice).expect("alice exists").library.clone();
+
+    let ripple = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered)
+                if triggered.trigger.display() == "When you cast this spell" =>
+            {
+                Some(triggered)
+            }
+            _ => None,
+        })
+        .expect("Surging Flame should have ripple cast trigger");
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::spells::SpellCastEvent::new(source, alice, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut dm = DeclineRippleDecisionMaker;
+    let mut ctx = ExecutionContext::new(source, alice, &mut dm).with_triggering_event(event);
+
+    for effect in &ripple.effects {
+        execute_effect(&mut game, effect, &mut ctx).expect("ripple decline should resolve");
+    }
+
+    assert!(game.stack.is_empty(), "declined ripple should cast no spells");
+    assert_eq!(
+        game.player(alice).expect("alice exists").library,
+        library_before,
+        "declined ripple should leave the library unrevealed and unchanged"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_squad_keyword_line_compiles_to_optional_cost_and_etb_copy_trigger() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Squad Test")
         .card_types(vec![CardType::Creature])

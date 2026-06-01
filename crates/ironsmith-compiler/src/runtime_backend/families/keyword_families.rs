@@ -44,6 +44,7 @@ pub(super) enum KeywordDispatchHint {
     Retrace,
     Multikicker,
     Replicate,
+    Ripple,
     Entwine,
     Escalate,
     Eternalize,
@@ -237,6 +238,12 @@ mod spell_keywords {
             lower: registry::lower_replicate,
         },
         KeywordLineRule {
+            cst_kind: super::super::cst::KeywordLineKindCst::Ripple,
+            hints: &[KeywordDispatchHint::Ripple],
+            matches: registry::matches_ripple,
+            lower: registry::lower_ripple,
+        },
+        KeywordLineRule {
             cst_kind: super::super::cst::KeywordLineKindCst::Entwine,
             hints: &[KeywordDispatchHint::Entwine],
             matches: registry::matches_entwine,
@@ -392,6 +399,9 @@ pub(super) fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<Ke
     }
     if word_view.at_is(0, "basic") {
         return None;
+    }
+    if word_view.at_is(0, "ripple") {
+        return Some(KeywordDispatchHint::Ripple);
     }
     if str_strip_suffix(first, "cycling").is_some() {
         return Some(KeywordDispatchHint::Cycling);

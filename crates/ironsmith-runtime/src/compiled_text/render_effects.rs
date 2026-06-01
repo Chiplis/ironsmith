@@ -35627,6 +35627,11 @@ pub(super) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
         return Some(storm);
     }
     if let AbilityKind::Triggered(triggered) = &ability.kind
+        && let Some(ripple) = describe_structural_ripple_keyword(triggered)
+    {
+        return Some(ripple);
+    }
+    if let AbilityKind::Triggered(triggered) = &ability.kind
         && let Some(demonstrate) = describe_structural_demonstrate_keyword(triggered)
     {
         return Some(demonstrate);
@@ -37437,6 +37442,93 @@ fn describe_structural_storm_keyword(
         return None;
     }
     Some("Storm".to_string())
+}
+
+fn describe_structural_ripple_keyword(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<String> {
+    if !triggered
+        .presentation_label
+        .as_deref()
+        .is_some_and(|label| label.starts_with("keyword:ripple"))
+        || triggered.intervening_if.is_some()
+        || !triggered.choices.is_empty()
+        || triggered
+            .trigger
+            .downcast_ref::<crate::triggers::YouCastThisSpellTrigger>()
+            .is_none()
+    {
+        return None;
+    }
+
+    let [outer_may] = triggered.effects.flattened_default_effects() else {
+        return None;
+    };
+    let outer_may = outer_may.downcast_ref::<crate::effects::MayEffect>()?;
+    if outer_may.decider.as_ref() != Some(&PlayerFilter::You) {
+        return None;
+    }
+    let [tag_source, reveal, tag_matching, for_each, rest] = outer_may.effects.as_slice() else {
+        return None;
+    };
+
+    let tag_source = tag_source.downcast_ref::<crate::effects::TagTriggeringObjectEffect>()?;
+    let reveal = reveal.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let tag_matching = tag_matching.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    let for_each = for_each.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let rest = rest.downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+
+    let Value::Fixed(amount) = reveal.count else {
+        return None;
+    };
+    if amount <= 0
+        || !reveal.reveal
+        || reveal.player != PlayerFilter::You
+        || tag_matching.tag != for_each.tag
+        || tag_matching.zone != Some(Zone::Library)
+        || !tag_matching.additional_zones.is_empty()
+        || rest.tag != reveal.tag
+        || rest.keep_tagged.is_some()
+        || rest.order != crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses
+        || rest.player != PlayerFilter::You
+    {
+        return None;
+    }
+
+    let matches_revealed = tag_matching.filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag == reveal.tag
+            && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+    });
+    let matches_source_name = tag_matching.filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag == tag_source.tag
+            && constraint.relation == crate::target::TaggedOpbjectRelation::SameNameAsTagged
+    });
+    if !matches_revealed || !matches_source_name {
+        return None;
+    }
+
+    let [inner_may] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let inner_may = inner_may.downcast_ref::<crate::effects::MayEffect>()?;
+    if inner_may.decider.is_some() {
+        return None;
+    }
+    let [cast] = inner_may.effects.as_slice() else {
+        return None;
+    };
+    let cast = cast.downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    if cast.tag.as_str() != "__it__"
+        || cast.player != PlayerFilter::You
+        || cast.allow_land
+        || cast.as_copy
+        || !cast.without_paying_mana_cost
+        || cast.cost_reduction.is_some()
+    {
+        return None;
+    }
+
+    Some(format!("Ripple {amount}"))
 }
 
 fn describe_structural_demonstrate_keyword(
