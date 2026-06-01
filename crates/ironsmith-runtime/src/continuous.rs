@@ -433,6 +433,12 @@ pub enum Modification {
     /// Modify both power and toughness (7c) - e.g., +2/+2
     ModifyPowerToughness { power: i32, toughness: i32 },
 
+    /// Modify P/T by the affected object's current color count in layer 7c.
+    ModifyPowerToughnessByColorCount {
+        power_multiplier: i32,
+        toughness_multiplier: i32,
+    },
+
     /// Switch power and toughness (7e)
     SwitchPowerToughness,
 }
@@ -548,6 +554,7 @@ impl Modification {
             | Modification::ModifyPower(_)
             | Modification::ModifyToughness(_)
             | Modification::ModifyPowerToughness { .. }
+            | Modification::ModifyPowerToughnessByColorCount { .. }
             | Modification::SwitchPowerToughness => Layer::PowerToughness,
         }
     }
@@ -561,7 +568,8 @@ impl Modification {
 
             Modification::ModifyPower(_)
             | Modification::ModifyToughness(_)
-            | Modification::ModifyPowerToughness { .. } => Some(PtSublayer::Modifying),
+            | Modification::ModifyPowerToughness { .. }
+            | Modification::ModifyPowerToughnessByColorCount { .. } => Some(PtSublayer::Modifying),
 
             Modification::SwitchPowerToughness => Some(PtSublayer::Switching),
 
@@ -2786,6 +2794,18 @@ fn apply_modification_to_chars(
                 *t += t_delta;
             }
         }
+        Modification::ModifyPowerToughnessByColorCount {
+            power_multiplier,
+            toughness_multiplier,
+        } => {
+            let color_count = chars.colors.count() as i32;
+            if let Some(ref mut p) = chars.power {
+                *p += power_multiplier * color_count;
+            }
+            if let Some(ref mut t) = chars.toughness {
+                *t += toughness_multiplier * color_count;
+            }
+        }
 
         // Layer 7e: Switching P/T
         Modification::SwitchPowerToughness => {
@@ -3485,6 +3505,7 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                 | Modification::ModifyPower(_)
                 | Modification::ModifyToughness(_)
                 | Modification::ModifyPowerToughness { .. }
+                | Modification::ModifyPowerToughnessByColorCount { .. }
                 | Modification::SwitchPowerToughness => {}
             }
 
@@ -3745,6 +3766,18 @@ fn apply_layer_7_effects(
                 }
                 if let Some(ref mut t) = toughness {
                     *t += dt;
+                }
+            }
+            Modification::ModifyPowerToughnessByColorCount {
+                power_multiplier,
+                toughness_multiplier,
+            } => {
+                let color_count = chars.colors.count() as i32;
+                if let Some(ref mut p) = power {
+                    *p += power_multiplier * color_count;
+                }
+                if let Some(ref mut t) = toughness {
+                    *t += toughness_multiplier * color_count;
                 }
             }
             Modification::SwitchPowerToughness => {

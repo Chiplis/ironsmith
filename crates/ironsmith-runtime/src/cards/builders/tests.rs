@@ -493,6 +493,17 @@ fn knight_of_new_alara_counts_each_affected_creatures_colors_runtime() {
         2,
         2,
     );
+    let color_granter = CardDefinitionBuilder::new(CardId::new(), "Alice Color Granter")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(Ability::static_ability(
+            crate::static_abilities::StaticAbility::add_colors(
+                ObjectFilter::creature()
+                    .you_control()
+                    .named("Alice Two-Color Creature"),
+                crate::color::ColorSet::RED,
+            ),
+        ))
+        .build();
 
     let mut game =
         crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
@@ -504,14 +515,15 @@ fn knight_of_new_alara_counts_each_affected_creatures_colors_runtime() {
     let one_color_id = game.create_object_from_definition(&one_color, alice, Zone::Battlefield);
     let bob_two_color_id =
         game.create_object_from_definition(&bob_two_color, bob, Zone::Battlefield);
+    game.create_object_from_definition(&color_granter, alice, Zone::Battlefield);
 
     assert_eq!(
         (
             game.calculated_power(two_color_id),
             game.calculated_toughness(two_color_id)
         ),
-        (Some(4), Some(4)),
-        "a two-color creature Alice controls should get +2/+2"
+        (Some(5), Some(5)),
+        "a two-color creature Alice controls that gains a third color should get +3/+3"
     );
     assert_eq!(
         (

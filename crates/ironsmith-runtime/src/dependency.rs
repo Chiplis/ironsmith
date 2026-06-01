@@ -1262,6 +1262,18 @@ pub(crate) fn apply_modification_to_chars_for_dependency(
                 *t += toughness;
             }
         }
+        Modification::ModifyPowerToughnessByColorCount {
+            power_multiplier,
+            toughness_multiplier,
+        } => {
+            let color_count = chars.colors.count() as i32;
+            if let Some(ref mut p) = chars.power {
+                *p += power_multiplier * color_count;
+            }
+            if let Some(ref mut t) = chars.toughness {
+                *t += toughness_multiplier * color_count;
+            }
+        }
         Modification::SwitchPowerToughness => {
             std::mem::swap(&mut chars.power, &mut chars.toughness);
         }
