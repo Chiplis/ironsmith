@@ -174,26 +174,8 @@ const PUT_OTHER_LOOKED_CARDS_ON_BOTTOM_PATTERN: ClauseShape<'static> = clause_sh
 const IF_CAST_NON_HAND_PUT_EACH_LOOKED_INTO_HAND_INSTEAD_PATTERN: ClauseShape<'static> = clause_shape!(
     exact
         & [
-            "if",
-            "this",
-            "spell",
-            "was",
-            "cast",
-            "from",
-            "anywhere",
-            "other",
-            "than",
-            "your",
-            "hand",
-            "put",
-            "each",
-            "of",
-            "those",
-            "cards",
-            "into",
-            "your",
-            "hand",
-            "instead",
+            "if", "this", "spell", "was", "cast", "from", "anywhere", "other", "than", "your",
+            "hand", "put", "each", "of", "those", "cards", "into", "your", "hand", "instead",
         ]
 );
 const WITHOUT_PAYING_ITS_MANA_COST_PREFIX_PATTERN: ClauseShape<'static> =
@@ -2082,8 +2064,8 @@ pub(crate) fn parse_look_at_top_put_one_hand_bottom_cast_non_hand_put_all_hand(
     }
 
     let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
-    let second_words = crate::runtime_backend::front_end::lexer::LexedClause::new(&second_tokens)
-        .word_refs();
+    let second_words =
+        crate::runtime_backend::front_end::lexer::LexedClause::new(&second_tokens).word_refs();
     if !PUT_ONE_LOOKED_CARD_INTO_HAND_PATTERN.matches_words(&second_words) {
         return Ok(None);
     }

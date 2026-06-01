@@ -82,6 +82,7 @@ pub(crate) struct ActivatedLineCst {
     pub(crate) cost_parse_tokens: Vec<OwnedLexToken>,
     pub(crate) effect_text: String,
     pub(crate) effect_parse_tokens: Vec<OwnedLexToken>,
+    pub(crate) presentation_label: Option<String>,
     pub(crate) chosen_option_label: Option<String>,
 }
 

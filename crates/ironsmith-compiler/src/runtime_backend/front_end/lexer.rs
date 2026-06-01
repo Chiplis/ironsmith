@@ -80,6 +80,7 @@ pub(crate) enum TokenKind {
     Tilde,
     #[token("-")]
     #[token("−")]
+    #[token("–")]
     Dash,
     #[token("—")]
     EmDash,
@@ -232,6 +233,15 @@ impl OwnedLexToken {
 
     pub(crate) fn parser_text(&self) -> &str {
         self.parser_text.as_str()
+    }
+
+    pub(crate) fn mana_group_inner(&self) -> Option<&str> {
+        if self.kind != TokenKind::ManaGroup {
+            return None;
+        }
+        self.slice
+            .strip_prefix('{')
+            .and_then(|inner| inner.strip_suffix('}'))
     }
 
     pub(crate) fn parser_word_pieces(&self) -> &[TokenWordPiece] {

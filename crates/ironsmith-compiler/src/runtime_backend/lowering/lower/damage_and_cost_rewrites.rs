@@ -49,7 +49,7 @@ pub(crate) fn parse_next_spell_cost_reduction_sentence_rewrite(
     let reduction_symbols = reduction_tokens
         .iter()
         .filter_map(|token| match token.kind {
-            TokenKind::ManaGroup => Some(token.slice.trim_start_matches('{').trim_end_matches('}')),
+            TokenKind::ManaGroup => token.mana_group_inner(),
             TokenKind::Word | TokenKind::Number => token.as_word(),
             TokenKind::Comma | TokenKind::Period => None,
             _ => Some(""),

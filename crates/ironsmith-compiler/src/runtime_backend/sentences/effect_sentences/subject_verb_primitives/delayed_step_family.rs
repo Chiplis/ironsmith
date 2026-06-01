@@ -871,7 +871,10 @@ pub(crate) fn parse_sentence_implicit_become_clause(
         (&["they're"], TargetAst::Tagged(TagKey::from(IT_TAG), None)),
         (&["they’re"], TargetAst::Tagged(TagKey::from(IT_TAG), None)),
         (&["theyre"], TargetAst::Tagged(TagKey::from(IT_TAG), None)),
-        (&["they", "are"], TargetAst::Tagged(TagKey::from(IT_TAG), None)),
+        (
+            &["they", "are"],
+            TargetAst::Tagged(TagKey::from(IT_TAG), None),
+        ),
         (&["they"], TargetAst::Tagged(TagKey::from(IT_TAG), None)),
         (&["its"], TargetAst::Tagged(TagKey::from(IT_TAG), None)),
         (&["it"], TargetAst::Tagged(TagKey::from(IT_TAG), None)),

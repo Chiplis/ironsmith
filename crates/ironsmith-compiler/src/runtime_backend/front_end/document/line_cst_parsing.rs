@@ -5,6 +5,13 @@ use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseSha
 
 const ADDITIONAL_LAND_PLAY_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["you", "may", "play"]);
+const ANY_NUMBER_NAMED_DECK_CONSTRUCTION_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix
+        & [
+            "a", "deck", "can", "have", "any", "number", "of", "cards", "named"
+        ]
+);
+const ANY_NUMBER_NAMED_DECK_CONSTRUCTION_PREFIX_LEN: usize = 9;
 
 pub(super) fn parse_triggered_line_cst(
     line: &PreprocessedLine,
@@ -248,7 +255,7 @@ pub(super) fn parse_static_line_cst(
     ) || is_first_equip_cost_alternative_line(lexed)
         || is_additional_land_play_static_line(lexed)
         || is_can_block_additional_creatures_static_line(lexed)
-        || is_any_number_named_deck_construction_line(normalized)
+        || is_any_number_named_deck_construction_line(lexed)
     {
         return Ok(Some(make_static(None)));
     }
@@ -307,10 +314,10 @@ pub(super) fn parse_static_line_cst(
     Ok(None)
 }
 
-fn is_any_number_named_deck_construction_line(text: &str) -> bool {
-    let trimmed = text.trim().trim_end_matches('.');
-    trimmed.starts_with("a deck can have any number of cards named ")
-        && trimmed.len() > "a deck can have any number of cards named ".len()
+fn is_any_number_named_deck_construction_line(tokens: &[OwnedLexToken]) -> bool {
+    let words = token_word_refs(tokens);
+    ANY_NUMBER_NAMED_DECK_CONSTRUCTION_PREFIX_PATTERN.matches_words(&words)
+        && words.len() > ANY_NUMBER_NAMED_DECK_CONSTRUCTION_PREFIX_LEN
 }
 
 /// Recognizes "you may pay {COST} rather than pay the equip cost of the first
@@ -430,20 +437,29 @@ pub(super) fn parse_level_item_cst(
 }
 
 pub(super) fn parse_modal_mode_cst(line: &PreprocessedLine) -> Result<ModalModeCst, CardTextError> {
-    let raw_mode = line
-        .info
-        .raw_line
-        .trim_start()
-        .trim_start_matches(|c: char| c == '•' || c == '*' || c == '-')
-        .trim();
-    let parse_tokens = strip_non_keyword_label_prefix_lexed(&line.tokens);
-    let mode_text = strip_non_keyword_label_prefix(raw_mode).trim().to_string();
+    let parse_tokens =
+        strip_non_keyword_label_prefix_lexed(strip_modal_bullet_prefix_tokens(&line.tokens));
+    let mode_text = render_original_text_for_token_slice(line, parse_tokens)
+        .unwrap_or_else(|| render_token_slice(parse_tokens))
+        .trim()
+        .to_string();
     let effects_ast = parse_effect_sentences_lexed(parse_tokens)?;
     Ok(ModalModeCst {
         info: line.info.clone(),
         text: mode_text,
         effects_ast,
     })
+}
+
+fn strip_modal_bullet_prefix_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    if tokens
+        .first()
+        .is_some_and(|token| matches!(token.kind, TokenKind::Bullet | TokenKind::Dash))
+    {
+        tokens.get(1..).unwrap_or_default()
+    } else {
+        tokens
+    }
 }
 
 pub(super) fn parse_saga_chapter_line_cst(

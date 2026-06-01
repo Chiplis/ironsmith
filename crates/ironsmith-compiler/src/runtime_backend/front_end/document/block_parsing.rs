@@ -82,7 +82,7 @@ pub(super) fn try_parse_modal_bullet_block(
     let mut bullet_modes = Vec::new();
     let mut probe_idx = idx + 1;
     while let Some(PreprocessedItem::Line(next_line)) = preprocessed.items.get(probe_idx) {
-        if !is_bullet_line(next_line.info.raw_line.as_str()) {
+        if !is_bullet_line(next_line) {
             break;
         }
         bullet_modes.push(parse_modal_mode_cst(next_line)?);

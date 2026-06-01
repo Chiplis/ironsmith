@@ -98,7 +98,7 @@ use super::static_ability_helpers::{
 use super::token_primitives::{
     find_index, find_window_by, is_core_keyword_marker_text, is_ticket_sticker_marker_text,
     lexed_head_words, rfind_index, slice_contains, slice_strip_prefix, slice_strip_suffix,
-    split_em_dash_label_prefix, str_strip_prefix, str_strip_suffix,
+    split_em_dash_label_prefix, str_split_once_char, str_strip_prefix, str_strip_suffix,
 };
 use super::util::{
     comparison_to_at_least_threshold, comparison_to_strict_at_least_threshold,
@@ -151,19 +151,6 @@ use ironsmith_core::{EffectMetric, EffectMetricSource};
 use std::sync::LazyLock;
 
 const AS_ENTERS_AURA_SUBJECTS: &[(&str, &str)] = &[("aura", "this Aura")];
-const TOUGHNESS_CREWS_VEHICLES_MARKER_TEXTS: &[&str] = &[
-    "this creature crews vehicles using its toughness rather than its power.",
-    "this creature saddles mounts and crews vehicles using its toughness rather than its power.",
-];
-const POWER_GREATER_MARKER_SUFFIX: &str = " greater.";
-const POWER_GREATER_MARKER_PREFIXES: &[&str] = &[
-    "this creature crews vehicles as though its power were ",
-    "this creature saddles mounts and crews vehicles as though its power were ",
-    "this token saddles mounts and crews vehicles as though its power were ",
-];
-const LOYALTY_COUNTER_CREW_COST_PREFIX: &str =
-    "you may remove a loyalty counter from a planeswalker you control rather than pay ";
-const LOYALTY_COUNTER_CREW_COST_SUFFIX: &str = "'s crew cost.";
 const SOURCE_CAN_BLOCK_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["this", "creature", "can", "block"]);
 const BLOCK_ADDITIONAL_DURATION_TAIL_PATTERN: ClauseShape<'static> =
@@ -477,8 +464,6 @@ const CONDITIONAL_DRAW_REPLACEMENT_A_CARD_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["if", "you", "would", "draw", "a", "card", "while"]);
 const CONDITIONAL_DRAW_REPLACEMENT_CARD_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["if", "you", "would", "draw", "card", "while"]);
-const YOU_HAVE_NO_CARDS_IN_HAND_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["you", "have", "no", "cards", "in", "hand"]);
 const YOU_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["you"]);
 const DRAW_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["draw"]);
 const INSTEAD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["instead"]);
@@ -850,7 +835,6 @@ const WARD_DISCARD_HAND_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["your", "hand"]);
 const WARD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["ward"]);
 const DISCARD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["discard"]);
-const X_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["x"]);
 const WHERE_X_IS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["where", "x", "is"]);
 const WHERE_X_IS_MARKER_PATTERN: ClauseShape<'static> =
@@ -2351,8 +2335,10 @@ fn keyword_static_clause_text(tokens: &[OwnedLexToken]) -> String {
 
 fn keyword_static_marker(tokens: &[OwnedLexToken]) -> StaticAbility {
     let mut text = keyword_static_clause_text(tokens);
-    if supported_keyword_marker_text(&text) {
-        if is_power_greater_marker_text(&text.to_ascii_lowercase()) && !text.ends_with('.') {
+    if supported_keyword_marker_tokens(tokens, &text) {
+        let words = parser_token_word_refs(tokens);
+        if POWER_GREATER_CREWS_VEHICLES_MARKER_PATTERN.matches_words(&words) && !text.ends_with('.')
+        {
             text.push('.');
         }
         return StaticAbility::keyword_marker(text);
@@ -2360,25 +2346,13 @@ fn keyword_static_marker(tokens: &[OwnedLexToken]) -> StaticAbility {
     StaticAbility::keyword_fallback_text(text)
 }
 
-fn supported_keyword_marker_text(text: &str) -> bool {
+fn supported_keyword_marker_tokens(tokens: &[OwnedLexToken], text: &str) -> bool {
     let text = text.trim_start().to_ascii_lowercase();
+    let words = parser_token_word_refs(tokens);
     is_core_keyword_marker_text(&text)
-        || TOUGHNESS_CREWS_VEHICLES_MARKER_TEXTS.contains(&text.as_str())
-        || is_power_greater_marker_text(&text)
-        || is_loyalty_counter_crew_cost_marker_text(&text)
-}
-
-fn is_power_greater_marker_text(text: &str) -> bool {
-    let text = text.trim_end_matches('.');
-    POWER_GREATER_MARKER_PREFIXES
-        .iter()
-        .any(|prefix| text.starts_with(prefix))
-        && text.ends_with(POWER_GREATER_MARKER_SUFFIX.trim_end_matches('.'))
-}
-
-fn is_loyalty_counter_crew_cost_marker_text(text: &str) -> bool {
-    text.starts_with(LOYALTY_COUNTER_CREW_COST_PREFIX)
-        && text.ends_with(LOYALTY_COUNTER_CREW_COST_SUFFIX)
+        || TOUGHNESS_CREWS_VEHICLES_MARKER_PATTERN.matches_words(&words)
+        || POWER_GREATER_CREWS_VEHICLES_MARKER_PATTERN.matches_words(&words)
+        || LOYALTY_COUNTER_INSTEAD_OF_CREW_COST_MARKER_PATTERN.matches_words(&words)
 }
 
 fn trim_outer_quotes(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
@@ -3045,9 +3019,7 @@ fn title_case_count_as_card_name(words: &[&str]) -> String {
         .join(" ")
 }
 
-fn parse_count_as_card_named_for_spell_effect_line(
-    words: &[&str],
-) -> Option<StaticAbility> {
+fn parse_count_as_card_named_for_spell_effect_line(words: &[&str]) -> Option<StaticAbility> {
     const GRAVEYARD_PREFIXES: &[&[&str]] = &[
         &["if", "this", "card", "is", "in", "a", "graveyard"],
         &["if", "this", "card", "is", "in", "your", "graveyard"],
@@ -3061,8 +3033,9 @@ fn parse_count_as_card_named_for_spell_effect_line(
 
     let effects_idx = word_slice_find_phrase_start(words, &["effects", "from", "spells", "named"])?;
     let spell_name_start = effects_idx + 4;
-    let count_idx = word_slice_find_word(words.get(spell_name_start..).unwrap_or_default(), "count")?
-        + spell_name_start;
+    let count_idx =
+        word_slice_find_word(words.get(spell_name_start..).unwrap_or_default(), "count")?
+            + spell_name_start;
     let spell_name_words = words.get(spell_name_start..count_idx)?;
     if spell_name_words.is_empty()
         || !words
@@ -3086,14 +3059,7 @@ fn parse_count_as_card_named_for_spell_effect_line(
 fn parse_static_ability_ast_line_early_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    let rendered_storage = crate::runtime_backend::token_word_refs(tokens)
-        .join(" ")
-        .to_ascii_lowercase()
-        .replace("can t", "cant")
-        .replace("you ve", "youve")
-        .replace("'", "");
-    let rendered_storage = rendered_storage.trim().trim_end_matches('.').to_string();
-    let rendered_words = rendered_storage.split_whitespace().collect::<Vec<_>>();
+    let rendered_words = parser_token_word_refs(tokens);
     let marker_text = render_token_slice(tokens);
     if is_ticket_sticker_marker_text(&marker_text) {
         return Ok(Some(vec![keyword_static_marker(tokens).into()]));
@@ -3296,15 +3262,9 @@ fn looks_like_player_counter_gain_effect_tokens(tokens: &[OwnedLexToken]) -> boo
     let has_counter_resource = tokens.iter().any(|token| {
         PLAYER_COUNTER_RESOURCE_WORD_PATTERN.matches_token(token)
             || (token.kind == TokenKind::ManaGroup
-                && matches!(
-                    token
-                        .slice
-                        .trim_start_matches('{')
-                        .trim_end_matches('}')
-                        .to_ascii_lowercase()
-                        .as_str(),
-                    "e" | "tk"
-                ))
+                && token.mana_group_inner().is_some_and(|inner| {
+                    inner.eq_ignore_ascii_case("e") || inner.eq_ignore_ascii_case("tk")
+                }))
     });
     if !has_counter_resource {
         return false;
@@ -9810,14 +9770,9 @@ pub(crate) fn parse_cast_spells_from_hand_without_paying_mana_costs_line(
 }
 
 pub(crate) fn parse_pt_modifier(raw: &str) -> Result<(i32, i32), CardTextError> {
-    let parts: Vec<&str> = raw.split('/').collect();
-    if parts.len() != 2 {
-        return Err(CardTextError::ParseError(
-            "missing power/toughness modifier".to_string(),
-        ));
-    }
-    let power_str = parts[0].trim_start_matches('+');
-    let toughness_str = parts[1].trim_start_matches('+');
+    let (power_raw, toughness_raw) = split_pt_modifier_components(raw)?;
+    let power_str = strip_leading_plus_char(power_raw);
+    let toughness_str = strip_leading_plus_char(toughness_raw);
     let power = power_str
         .parse::<i32>()
         .map_err(|_| CardTextError::ParseError("invalid power modifier".to_string()))?;
@@ -9835,15 +9790,9 @@ pub(crate) fn parse_signed_pt_component(raw: &str) -> Result<Value, CardTextErro
         ));
     }
 
-    let (sign, value_text) = if let Some(rest) = str_strip_prefix(trimmed, "+") {
-        (1, rest)
-    } else if let Some(rest) = str_strip_prefix(trimmed, "-") {
-        (-1, rest)
-    } else {
-        (1, trimmed)
-    };
+    let (sign, value_text) = split_signed_pt_component(trimmed);
 
-    if X_WORD_PATTERN.matches_word(value_text) {
+    if pt_component_is_x(value_text) {
         return Ok(match sign {
             1 => Value::X,
             -1 => Value::XTimes(-1),
@@ -9858,16 +9807,39 @@ pub(crate) fn parse_signed_pt_component(raw: &str) -> Result<Value, CardTextErro
 }
 
 pub(crate) fn parse_pt_modifier_values(raw: &str) -> Result<(Value, Value), CardTextError> {
-    let parts: Vec<&str> = raw.split('/').collect();
-    if parts.len() != 2 {
-        return Err(CardTextError::ParseError(
-            "missing power/toughness modifier".to_string(),
-        ));
-    }
-
-    let power = parse_signed_pt_component(parts[0])?;
-    let toughness = parse_signed_pt_component(parts[1])?;
+    let (power_raw, toughness_raw) = split_pt_modifier_components(raw)?;
+    let power = parse_signed_pt_component(power_raw)?;
+    let toughness = parse_signed_pt_component(toughness_raw)?;
     Ok((power, toughness))
+}
+
+fn split_pt_modifier_components(raw: &str) -> Result<(&str, &str), CardTextError> {
+    str_split_once_char(raw, '/')
+        .ok_or_else(|| CardTextError::ParseError("missing power/toughness modifier".to_string()))
+}
+
+fn strip_leading_plus_char(raw: &str) -> &str {
+    let trimmed = raw.trim();
+    let mut chars = trimmed.chars();
+    if chars.next().is_some_and(|ch| ch == '+') {
+        chars.as_str()
+    } else {
+        trimmed
+    }
+}
+
+fn split_signed_pt_component(trimmed: &str) -> (i32, &str) {
+    let mut chars = trimmed.chars();
+    match chars.next() {
+        Some('+') => (1, chars.as_str()),
+        Some('-' | '−') => (-1, chars.as_str()),
+        _ => (1, trimmed),
+    }
+}
+
+fn pt_component_is_x(text: &str) -> bool {
+    let mut chars = text.chars();
+    chars.next().is_some_and(|ch| matches!(ch, 'x' | 'X')) && chars.next().is_none()
 }
 
 pub(crate) fn parse_no_maximum_hand_size_line(
@@ -10143,7 +10115,22 @@ pub(crate) fn parse_conditional_draw_replacement_line(
         return Ok(None);
     };
     let instead_idx = draw_subject_len + instead_idx;
-    if !YOU_HAVE_NO_CARDS_IN_HAND_PATTERN.matches_words(&words[draw_subject_len..instead_idx]) {
+    let Some(condition_token_start) = token_index_for_word_index(tokens, draw_subject_len) else {
+        return Ok(None);
+    };
+    let Some(condition_token_end) = token_index_for_word_index(tokens, instead_idx) else {
+        return Ok(None);
+    };
+    let Some(no_cards_condition) =
+        crate::runtime_backend::grammar::conditions::parse_player_cards_in_hand_condition(
+            tokens
+                .get(condition_token_start..condition_token_end)
+                .unwrap_or_default(),
+        )
+    else {
+        return Ok(None);
+    };
+    if no_cards_condition.player != PlayerFilter::You || !no_cards_condition.is_no_cards_in_hand() {
         return Ok(None);
     }
 
@@ -10895,3 +10882,52 @@ include!("keyword_lines.rs");
 include!("anthem_grant_lines.rs");
 include!("etb_static_lines.rs");
 include!("attached_object_static_lines.rs");
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime_backend::lexer::lex_line;
+
+    #[test]
+    fn supported_keyword_marker_uses_token_shapes_for_crew_markers() {
+        for line in [
+            "This creature crews Vehicles using its toughness rather than its power.",
+            "This token saddles Mounts and crews Vehicles as though its power were 2 greater.",
+            "You may remove a loyalty counter from a planeswalker you control rather than pay this creature's crew cost.",
+        ] {
+            let tokens = lex_line(line, 0).expect("marker line should lex");
+            let text = render_token_slice(&tokens);
+            assert!(
+                supported_keyword_marker_tokens(&tokens, &text),
+                "{line} should be recognized through token shapes"
+            );
+        }
+    }
+
+    #[test]
+    fn pt_modifier_parsers_use_char_signs() {
+        assert_eq!(parse_pt_modifier("+2/-1").unwrap(), (2, -1));
+        assert_eq!(parse_pt_modifier("2/+3").unwrap(), (2, 3));
+        assert_eq!(
+            parse_pt_modifier_values("−X/+2").unwrap(),
+            (Value::XTimes(-1), Value::Fixed(2))
+        );
+    }
+
+    #[test]
+    fn early_static_ability_parser_uses_parser_token_words() {
+        for line in [
+            "X can't be greater than the number of players in the game.",
+            "This creature can't attack unless you've cast a creature spell this turn.",
+            "During your turn, as long as you haven't activated an exhaust ability this turn, you may activate exhaust abilities as though they haven't been activated.",
+        ] {
+            let tokens = lex_line(line, 0).expect("static line should lex");
+            assert!(
+                parse_static_ability_ast_line_early_lexed(&tokens)
+                    .expect("early static line should parse")
+                    .is_some(),
+                "{line} should match through parser token words"
+            );
+        }
+    }
+}

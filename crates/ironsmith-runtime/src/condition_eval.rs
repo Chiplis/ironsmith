@@ -2901,10 +2901,9 @@ fn evaluate_condition(
 
     match condition {
         Condition::ItIsNight => Ok(game.is_night),
-        Condition::FirstCombatPhaseOfTurn => Ok(
-            game.turn.phase == crate::game_state::Phase::Combat
-                && game.turn_store.combat_phases_started_this_turn == 1,
-        ),
+        Condition::FirstCombatPhaseOfTurn => Ok(game.turn.phase
+            == crate::game_state::Phase::Combat
+            && game.turn_store.combat_phases_started_this_turn == 1),
         Condition::YouControl(filter) => {
             let filter_ctx = ctx.filter_context(game);
 
@@ -2935,9 +2934,7 @@ fn evaluate_condition(
             Ok(game
                 .turn_store
                 .turn_history
-                .player_was_dealt_combat_damage_by_creature_subtype_this_turn(
-                    &players, *subtype,
-                ))
+                .player_was_dealt_combat_damage_by_creature_subtype_this_turn(&players, *subtype))
         }
         Condition::PlayerControls { player, filter } => {
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;

@@ -30,7 +30,9 @@ impl EffectExecutor for DoubleCountersEffect {
                         .iter()
                         .filter_map(|(counter_type, count)| {
                             (*count > 0
-                                && self.counter_type.is_none_or(|wanted| wanted == *counter_type))
+                                && self
+                                    .counter_type
+                                    .is_none_or(|wanted| wanted == *counter_type))
                             .then_some((*counter_type, *count))
                         })
                         .collect::<Vec<_>>()
@@ -141,7 +143,10 @@ mod tests {
             game.counter_count(selected_without_counters, CounterType::PlusOnePlusOne),
             0
         );
-        assert_eq!(game.counter_count(unselected, CounterType::PlusOnePlusOne), 4);
+        assert_eq!(
+            game.counter_count(unselected, CounterType::PlusOnePlusOne),
+            4
+        );
     }
 
     #[test]

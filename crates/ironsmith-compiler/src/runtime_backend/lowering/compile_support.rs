@@ -54,12 +54,14 @@ use crate::zone::Zone;
 use std::collections::HashMap;
 
 use super::token_primitives::{
-    find_index, find_window_by, slice_contains, str_contains, str_find, str_split_once,
-    str_split_once_char, str_starts_with, str_strip_suffix,
+    find_index, find_window_by, slice_contains, str_contains, str_split_once, str_split_once_char,
+    str_starts_with, str_strip_suffix,
 };
+use super::util::parse_unsigned_pt_word;
 use crate::runtime_backend::lexer::{
-    OwnedLexToken, TokenKind, contains_token_word_sequence, lex_line, token_slice_starts_with,
-    word_slice_contains_any_phrase, word_slice_contains_phrase,
+    OwnedLexToken, TokenKind, contains_token_word_sequence, find_token_word,
+    find_token_word_sequence_span, lex_line, parser_token_word_refs, render_token_slice,
+    token_slice_starts_with, word_slice_contains_any_phrase, word_slice_contains_phrase,
     word_slice_contains_phrase_or_empty, word_slice_contains_word,
     word_slice_find_phrase_start_or_zero,
 };
@@ -1894,16 +1896,8 @@ pub(crate) fn parse_deals_damage_amount(words: &[&str]) -> Option<i32> {
 pub(crate) fn token_inline_noncreature_spell_each_opponent_damage_amount(
     name: &str,
 ) -> Option<i32> {
-    let lower_name = name.to_ascii_lowercase();
-    let words: Vec<&str> = lower_name
-        .split_whitespace()
-        .map(|word| {
-            word.trim_matches(|ch: char| {
-                !ch.is_ascii_alphanumeric() && ch != '/' && ch != '+' && ch != '-'
-            })
-        })
-        .filter(|word| !word.is_empty())
-        .collect();
+    let tokens = lex_line(name, 0).ok()?;
+    let words = parser_token_word_refs(&tokens);
     let has_noncreature_cast_trigger = word_slice_contains_any_phrase(
         &words,
         &[
@@ -1972,6 +1966,99 @@ pub(crate) fn join_simple_and_list(parts: &[&str]) -> String {
     }
 }
 
+fn render_trimmed_token_text(tokens: &[OwnedLexToken]) -> String {
+    render_token_slice(tokens).trim().to_string()
+}
+
+fn render_trimmed_unquoted_token_text(tokens: &[OwnedLexToken]) -> String {
+    render_trimmed_token_text(strip_surrounding_quote_tokens(tokens))
+        .trim_matches(|ch| matches!(ch, '\'' | '"' | '“' | '”'))
+        .trim()
+        .to_string()
+}
+
+fn strip_surrounding_quote_tokens(mut tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    loop {
+        let mut changed = false;
+        if tokens
+            .first()
+            .is_some_and(|token| matches!(token.kind, TokenKind::Quote | TokenKind::Apostrophe))
+        {
+            tokens = &tokens[1..];
+            changed = true;
+        }
+        if tokens
+            .last()
+            .is_some_and(|token| matches!(token.kind, TokenKind::Quote | TokenKind::Apostrophe))
+        {
+            tokens = &tokens[..tokens.len().saturating_sub(1)];
+            changed = true;
+        }
+        if !changed {
+            break;
+        }
+    }
+    tokens
+}
+
+fn first_quoted_token_text(tokens: &[OwnedLexToken]) -> Option<String> {
+    let open_idx = tokens
+        .iter()
+        .position(|token| token.kind == TokenKind::Quote)?;
+    let close_idx = tokens
+        .iter()
+        .enumerate()
+        .skip(open_idx + 1)
+        .find_map(|(idx, token)| (token.kind == TokenKind::Quote).then_some(idx))?;
+    let quoted = render_trimmed_token_text(&tokens[open_idx + 1..close_idx]);
+    (!quoted.is_empty()).then_some(quoted)
+}
+
+fn equipment_granted_ability_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    let (_, has_end) = find_token_word_sequence_span(tokens, &["equipped", "creature", "has"])?;
+    let tail = tokens.get(has_end..)?;
+    let mut inside_quotes = false;
+    let equip_idx = tail.iter().enumerate().find_map(|(idx, token)| {
+        if matches!(token.kind, TokenKind::Quote | TokenKind::Apostrophe) {
+            inside_quotes = !inside_quotes;
+            return None;
+        }
+        (!inside_quotes && token.is_word("equip")).then_some(idx)
+    });
+    let end = match equip_idx {
+        Some(idx) if idx > 0 && tail[idx - 1].is_word("and") => idx - 1,
+        Some(idx) => idx,
+        None => tail.len(),
+    };
+    let ability_tokens = strip_surrounding_quote_tokens(&tail[..end]);
+    (!ability_tokens.is_empty()).then_some(ability_tokens)
+}
+
+fn inline_token_rules_start(tokens: &[OwnedLexToken]) -> Option<usize> {
+    let mut starts = Vec::new();
+    for phrase in [
+        &["tap"][..],
+        &["sacrifice"],
+        &["this"],
+        &["power"],
+        &["whenever"],
+        &["when"],
+        &["at"],
+    ] {
+        if let Some((start, _)) = find_token_word_sequence_span(tokens, phrase) {
+            starts.push(start);
+        }
+    }
+    if let Some(idx) = tokens.iter().enumerate().find_map(|(idx, token)| {
+        (token.kind == TokenKind::ManaGroup
+            && matches!(token.mana_group_inner(), Some("t" | "T" | "q" | "Q")))
+        .then_some(idx)
+    }) {
+        starts.push(idx);
+    }
+    starts.into_iter().min()
+}
+
 pub(crate) fn parse_equipment_rules_text(words: &[&str], source_text: &str) -> Option<String> {
     let has_equipped_subject = words
         .iter()
@@ -1982,32 +2069,15 @@ pub(crate) fn parse_equipment_rules_text(words: &[&str], source_text: &str) -> O
     }
 
     let mut lines = Vec::new();
-    let lower_source = source_text.to_ascii_lowercase();
-    if let Some(has_idx) = lower_source.find("equipped creature has ") {
-        let ability_start = has_idx + "equipped creature has ".len();
-        let ability_tail = &source_text[ability_start..];
-        let lower_ability_tail = &lower_source[ability_start..];
-        let ability_end = [
-            " and equip ",
-            "\" and equip ",
-            "\"and equip ",
-            "' and equip ",
-            "'and equip ",
-        ]
-        .iter()
-        .filter_map(|pattern| lower_ability_tail.find(pattern))
-        .min()
-        .or_else(|| lower_ability_tail.rfind(" equip "))
-        .unwrap_or(ability_tail.len());
-        let ability_clause = ability_tail[..ability_end].trim();
-        if ability_clause.contains(':') {
-            let normalized_clause = ability_clause.trim_matches(|ch| ch == '\'' || ch == '"');
-            let mut granted_text = normalized_clause.trim_end_matches('.').to_string();
-            if !granted_text.ends_with(['.', '!', '?']) {
-                granted_text.push('.');
-            }
-            lines.push(format!("Equipped creature has \"{granted_text}\""));
+    let source_tokens = lex_text_for_surface_check(source_text)?;
+    if let Some(ability_tokens) = equipment_granted_ability_tokens(&source_tokens)
+        && token_slice_contains_colon(ability_tokens)
+    {
+        let mut granted_text = render_trimmed_unquoted_token_text(ability_tokens);
+        if !granted_text.ends_with(['.', '!', '?']) {
+            granted_text.push('.');
         }
+        lines.push(format!("Equipped creature has \"{granted_text}\""));
     }
 
     if lines.is_empty() {
@@ -2057,10 +2127,17 @@ pub(crate) fn parse_equipment_rules_text(words: &[&str], source_text: &str) -> O
     }
 }
 
+fn first_generic_mana_amount_from_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
+    tokens.iter().find_map(|token| {
+        token
+            .mana_group_inner()
+            .and_then(|inner| inner.parse::<u32>().ok())
+    })
+}
+
 fn parse_braced_generic_mana_amount(text: &str) -> Option<u32> {
-    let start = text.find('{')?;
-    let end = text[start + 1..].find('}')? + start + 1;
-    text[start + 1..end].trim().parse::<u32>().ok()
+    let tokens = lex_text_for_surface_check(text)?;
+    first_generic_mana_amount_from_tokens(&tokens)
 }
 
 fn generic_mana_cost(amount: u32) -> Option<ManaCost> {
@@ -2142,9 +2219,12 @@ fn equipment_damage_amount_from_tokens(tokens: &[OwnedLexToken]) -> Option<i32> 
 }
 
 fn equipment_granted_damage_ability(ability_text: &str, token_name: &str) -> Option<Ability> {
-    let (cost_text, effect_text) = ability_text.split_once(':')?;
     let ability_tokens = lex_text_for_surface_check(ability_text)?;
-    let effect_tokens = lex_text_for_surface_check(effect_text)?;
+    let colon_idx = ability_tokens
+        .iter()
+        .position(|token| token.kind == TokenKind::Colon)?;
+    let cost_tokens = &ability_tokens[..colon_idx];
+    let effect_tokens = &ability_tokens[colon_idx + 1..];
     if !contains_token_word_sequence(&effect_tokens, &["this", "creature", "deals"])
         || !contains_token_word_sequence(&effect_tokens, &["any", "target"])
     {
@@ -2154,7 +2234,7 @@ fn equipment_granted_damage_ability(ability_text: &str, token_name: &str) -> Opt
     let damage_amount = equipment_damage_amount_from_tokens(&effect_tokens)?;
 
     let mut costs = Vec::new();
-    let generic_amount = parse_braced_generic_mana_amount(cost_text);
+    let generic_amount = first_generic_mana_amount_from_tokens(cost_tokens);
     if let Some(amount) = generic_amount
         && amount > 0
     {
@@ -2218,12 +2298,9 @@ fn build_equipment_token_from_rules_text(
         if token_slice_starts_with_equipped_creature_has(&tokens)
             && token_slice_contains_colon(&tokens)
         {
-            let ability_text = line
-                .split_once("has ")
-                .map(|(_, tail)| tail.trim())
-                .unwrap_or(line)
-                .trim_matches('"');
-            let ability = equipment_granted_damage_ability(ability_text, token_name)?;
+            let ability_text = first_quoted_token_text(&tokens)
+                .unwrap_or_else(|| render_trimmed_token_text(tokens.get(3..).unwrap_or(&tokens)));
+            let ability = equipment_granted_damage_ability(&ability_text, token_name)?;
             builder = builder.with_ability(Ability::static_ability(StaticAbility::new(
                 crate::static_abilities::AttachedAbilityGrant::new(ability, line.to_string()),
             )));
@@ -2279,52 +2356,21 @@ fn build_equipment_token_from_parsed_rules_text(
 }
 
 fn extract_double_quoted_token_rules_text(source_text: &str) -> Option<String> {
-    let start = source_text.find('"')?;
-    let rest = &source_text[start + 1..];
-    let end = rest.find('"')?;
-    let quoted = rest[..end].trim();
-    if quoted.is_empty() {
-        None
-    } else {
-        Some(quoted.to_string())
-    }
+    let tokens = lex_text_for_surface_check(source_text)?;
+    first_quoted_token_text(&tokens)
 }
 
 fn extract_inline_token_rules_text(source_text: &str) -> Option<String> {
-    let lower = source_text.to_ascii_lowercase();
-    let with_idx = lower.find(" with ")?;
-    let tail = source_text.get(with_idx + " with ".len()..)?.trim();
-    let tail_lower = tail.to_ascii_lowercase();
+    let tokens = lex_text_for_surface_check(source_text)?;
+    let with_idx = find_token_word(&tokens, "with")?;
+    let tail = tokens.get(with_idx + 1..)?;
 
-    if tail.contains(':') {
-        return Some(tail.trim_matches('"').trim().to_string());
+    if token_slice_contains_colon(tail) {
+        return Some(render_trimmed_unquoted_token_text(tail));
     }
 
-    let mut starts = Vec::new();
-    for needle in [
-        "{t}",
-        "{q}",
-        "t, ",
-        "q, ",
-        "tap ",
-        "sacrifice ",
-        "this ",
-        "power ",
-        "whenever ",
-        "when ",
-        "at ",
-    ] {
-        if let Some(idx) = tail_lower.find(needle) {
-            starts.push(idx);
-        }
-    }
-    let start = starts.into_iter().min()?;
-    let rules_text = tail.get(start..)?.trim();
-    if rules_text.is_empty() {
-        None
-    } else {
-        Some(rules_text.to_string())
-    }
+    let start = inline_token_rules_start(tail)?;
+    Some(render_trimmed_token_text(&tail[start..]))
 }
 
 fn normalize_token_self_reference_for_parser(rules_text: &str, self_reference: &str) -> String {
@@ -2681,42 +2727,68 @@ pub(crate) fn title_case_phrase_preserving_punctuation(phrase: &str) -> String {
         "a", "an", "the", "and", "or", "but", "nor", "for", "so", "yet", "of", "in", "on", "at",
         "to", "from", "with", "without", "by", "as", "into", "onto", "over", "under",
     ];
-    phrase
-        .split_whitespace()
-        .filter(|word| !word.is_empty())
-        .enumerate()
-        .map(|(idx, word)| {
-            let letters_only: String = word
-                .chars()
-                .filter(|ch| ch.is_ascii_alphabetic())
-                .map(|ch| ch.to_ascii_lowercase())
-                .collect();
-            let keep_lowercase = idx > 0
-                && lowercase_words
-                    .iter()
-                    .any(|candidate| *candidate == letters_only.as_str());
-            if keep_lowercase {
-                return word.to_string();
+    let title_word = |idx: usize, word: &str| {
+        let letters_only: String = word
+            .chars()
+            .filter(|ch| ch.is_ascii_alphabetic())
+            .map(|ch| ch.to_ascii_lowercase())
+            .collect();
+        let keep_lowercase = idx > 0
+            && lowercase_words
+                .iter()
+                .any(|candidate| *candidate == letters_only.as_str());
+        if keep_lowercase {
+            return word.to_string();
+        }
+        let mut out = String::with_capacity(word.len());
+        let mut uppercased = false;
+        for ch in word.chars() {
+            if !uppercased && ch.is_ascii_alphabetic() {
+                out.extend(ch.to_uppercase());
+                uppercased = true;
+            } else {
+                out.push(ch);
             }
-            let mut out = String::with_capacity(word.len());
-            let mut uppercased = false;
-            for ch in word.chars() {
-                if !uppercased && ch.is_ascii_alphabetic() {
-                    out.extend(ch.to_uppercase());
-                    uppercased = true;
-                } else {
-                    out.push(ch);
+        }
+        out
+    };
+
+    let mut out = String::with_capacity(phrase.len());
+    let mut word = String::new();
+    let mut word_idx = 0usize;
+    for ch in phrase.chars() {
+        if ch.is_whitespace() {
+            if !word.is_empty() {
+                if !out.is_empty() {
+                    out.push(' ');
                 }
+                out.push_str(title_word(word_idx, word.as_str()).as_str());
+                word.clear();
+                word_idx += 1;
             }
-            out
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
+            continue;
+        }
+        word.push(ch);
+    }
+    if !word.is_empty() {
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        out.push_str(title_word(word_idx, word.as_str()).as_str());
+    }
+    out
 }
 
-pub(crate) fn extract_named_card_name(words: &[&str], source_text: &str) -> Option<String> {
-    let named_idx = find_index(words, |word| *word == "named")?;
-    if named_idx > 0 && matches!(words[named_idx - 1], "card" | "cards") {
+pub(crate) fn extract_named_card_name(
+    tokens: &[OwnedLexToken],
+    source_text: &str,
+) -> Option<String> {
+    let pieces = tokens
+        .iter()
+        .flat_map(|token| token.parser_word_pieces())
+        .collect::<Vec<_>>();
+    let named_idx = find_index(pieces.as_slice(), |piece| piece.text == "named")?;
+    if named_idx > 0 && matches!(pieces[named_idx - 1].text.as_str(), "card" | "cards") {
         return None;
     }
     let stop_words = [
@@ -2773,30 +2845,35 @@ pub(crate) fn extract_named_card_name(words: &[&str], source_text: &str) -> Opti
         "c",
     ];
     let mut end = named_idx + 1;
-    while end < words.len() && !stop_words.iter().any(|candidate| *candidate == words[end]) {
+    while end < pieces.len()
+        && !stop_words
+            .iter()
+            .any(|candidate| *candidate == pieces[end].text.as_str())
+    {
         end += 1;
     }
     if end <= named_idx + 1 {
         return None;
     }
-    let name_word_count = end - (named_idx + 1);
 
-    if let Some(named_pos) = str_find(source_text, "named") {
-        let after_named = &source_text[named_pos + "named".len()..];
-        let raw_words: Vec<&str> = after_named
-            .split_whitespace()
-            .take(name_word_count)
-            .collect();
-        if raw_words.len() == name_word_count {
-            let raw_name = raw_words.join(" ");
-            let titled = title_case_phrase_preserving_punctuation(raw_name.as_str());
-            if !titled.is_empty() {
-                return Some(titled);
-            }
+    let name_start = pieces[named_idx + 1].span.start;
+    let name_end = pieces[end - 1].span.end;
+    if name_start < name_end
+        && source_text.is_char_boundary(name_start)
+        && source_text.is_char_boundary(name_end)
+        && let Some(raw_name) = source_text.get(name_start..name_end)
+    {
+        let titled = title_case_phrase_preserving_punctuation(raw_name);
+        if !titled.is_empty() {
+            return Some(titled);
         }
     }
 
-    Some(title_case_words(&words[named_idx + 1..end]))
+    let words = pieces[named_idx + 1..end]
+        .iter()
+        .map(|piece| piece.text.as_str())
+        .collect::<Vec<_>>();
+    Some(title_case_words(&words))
 }
 
 pub(crate) fn extract_leading_explicit_token_name(words: &[&str]) -> Option<String> {
@@ -3116,32 +3193,15 @@ pub(crate) fn token_dies_create_dragon_with_firebreathing_ability() -> Ability {
 }
 
 pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
-    let lower = name.trim().to_ascii_lowercase();
-    let words: Vec<&str> = lower
-        .split_whitespace()
-        .map(|word| {
-            word.trim_matches(|ch: char| {
-                !ch.is_ascii_alphanumeric() && ch != '/' && ch != '+' && ch != '-'
-            })
-        })
-        .map(|word| match word {
-            "can't" | "cannot" => "cant",
-            "aren't" => "arent",
-            "that's" => "thats",
-            "isn't" => "isnt",
-            "they're" => "theyre",
-            "it's" => "its",
-            "you're" => "youre",
-            _ => word,
-        })
-        .filter(|word| !word.is_empty())
-        .collect();
+    let trimmed = name.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    let tokens = lex_line(trimmed, 0).ok()?;
+    let words = parser_token_word_refs(&tokens);
     let has_word = |needle: &str| word_slice_contains_word(words.as_slice(), needle);
     let has_words = |needles: &[&str]| needles.iter().all(|needle| has_word(needle));
     let has_any_word = |needles: &[&str]| needles.iter().any(|needle| has_word(needle));
     let has_phrase =
         |phrase: &[&str]| word_slice_contains_phrase_or_empty(words.as_slice(), phrase);
-    let has_text = |needle: &str| str_contains(lower.as_str(), needle);
     let has_explicit_pt = words.iter().any(|word| parse_token_pt(word).is_some());
     let has_equipment_rules_subject =
         has_word("equipment") && has_phrase(&["equipped", "creature"]);
@@ -3252,7 +3312,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             }
             Some(title_case_words(&[*word]))
         });
-        let token_name = extract_named_card_name(&words, lower.as_str())
+        let token_name = extract_named_card_name(&tokens, trimmed)
             .or(explicit_name_from_words)
             .unwrap_or_else(|| "Vehicle".to_string());
         let mut builder = CardDefinitionBuilder::new(CardId::new(), &token_name)
@@ -3283,7 +3343,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                 subtypes.push(subtype);
             }
         }
-        let token_name = extract_named_card_name(&words, lower.as_str())
+        let token_name = extract_named_card_name(&tokens, trimmed)
             .or_else(|| {
                 find_index(words.as_slice(), |word| {
                     !matches!(
@@ -3366,7 +3426,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             .flying();
         return Some(builder.build());
     }
-    if has_word("wall") && has_text("0/4") && has_text("artifact") && has_text("creature") {
+    if has_word("wall") && has_word("0/4") && has_word("artifact") && has_word("creature") {
         let builder = CardDefinitionBuilder::new(CardId::new(), "Wall")
             .token()
             .card_types(vec![CardType::Artifact, CardType::Creature])
@@ -3375,7 +3435,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             .defender();
         return Some(builder.build());
     }
-    if has_word("squirrel") && has_text("1/1") && has_text("green") {
+    if has_word("squirrel") && has_word("1/1") && has_word("green") {
         let builder = CardDefinitionBuilder::new(CardId::new(), "Squirrel")
             .token()
             .card_types(vec![CardType::Creature])
@@ -3386,7 +3446,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
     }
     let is_dragon_egg_death_spawn_pattern = has_word("dragon")
         && has_word("egg")
-        && has_text("0/2")
+        && has_word("0/2")
         && has_words(&[
             "when", "token", "dies", "create", "2/2", "flying", "r", "+1/+0",
         ]);
@@ -3401,7 +3461,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             .with_ability(token_dies_create_dragon_with_firebreathing_ability());
         return Some(builder.build());
     }
-    if has_word("elephant") && has_text("3/3") && has_text("green") {
+    if has_word("elephant") && has_word("3/3") && has_word("green") {
         let builder = CardDefinitionBuilder::new(CardId::new(), "Elephant")
             .token()
             .card_types(vec![CardType::Creature])
@@ -3421,8 +3481,8 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
     ]);
     let has_construct_plus_words =
         has_words(&["gets", "+1/+1", "for", "each", "artifact", "you", "control"]);
-    let is_zero_zero_construct = has_word("construct") && has_text("0/0");
-    let named_non_construct = extract_named_card_name(&words, lower.as_str())
+    let is_zero_zero_construct = has_word("construct") && has_word("0/0");
+    let named_non_construct = extract_named_card_name(&tokens, trimmed)
         .is_some_and(|token_name| !token_name.eq_ignore_ascii_case("Construct"));
     if has_word("construct")
         && !named_non_construct
@@ -3449,19 +3509,19 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             .card_types(vec![CardType::Creature])
             .subtypes(vec![Subtype::Shapeshifter])
             .power_toughness(PowerToughness::fixed(3, 2));
-        if has_text("changeling") || lower == "shapeshifter" {
+        if has_word("changeling") || words.as_slice() == ["shapeshifter"] {
             builder = builder.with_ability(Ability::static_ability(StaticAbility::changeling()));
         }
         return Some(builder.build());
     }
-    if has_word("astartes") && has_word("warrior") && has_text("2/2") && has_text("white") {
+    if has_word("astartes") && has_word("warrior") && has_word("2/2") && has_word("white") {
         let mut builder = CardDefinitionBuilder::new(CardId::new(), "Astartes Warrior")
             .token()
             .card_types(vec![CardType::Creature])
             .subtypes(vec![Subtype::Astartes, Subtype::Warrior])
             .color_indicator(ColorSet::WHITE)
             .power_toughness(PowerToughness::fixed(2, 2));
-        if has_text("vigilance") {
+        if has_word("vigilance") {
             builder = builder.vigilance();
         }
         return Some(builder.build());
@@ -3506,7 +3566,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             }
         }
 
-        let explicit_name = extract_named_card_name(&words, lower.as_str())
+        let explicit_name = extract_named_card_name(&tokens, trimmed)
             .or_else(|| extract_leading_token_name_phrase(&words))
             .or_else(|| extract_leading_explicit_token_name(&words));
         let token_name = explicit_name.unwrap_or_else(|| {
@@ -3634,7 +3694,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             "graveyard",
             "battlefield",
         ]) && !has_word("beginning")
-            && let Some(card_name) = extract_named_card_name(&words, lower.as_str())
+            && let Some(card_name) = extract_named_card_name(&tokens, trimmed)
             && let Some(sacrifice_idx) = find_index(words.as_slice(), |word| *word == "sacrifice")
         {
             let mut mana_symbols = Vec::new();
@@ -3665,7 +3725,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                 "graveyard",
                 "battlefield",
             ])
-            && let Some(card_name) = extract_named_card_name(&words, lower.as_str())
+            && let Some(card_name) = extract_named_card_name(&tokens, trimmed)
         {
             builder =
                 builder.with_ability(token_upkeep_sacrifice_return_named_from_graveyard_ability(
@@ -3767,7 +3827,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             "named",
             "graveyard",
             "hand",
-        ]) && let Some(card_name) = extract_named_card_name(&words, lower.as_str())
+        ]) && let Some(card_name) = extract_named_card_name(&tokens, trimmed)
         {
             builder = builder.with_ability(
                 token_leaves_return_named_from_graveyard_to_hand_ability(&card_name),
@@ -3914,7 +3974,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                         .unwrap_or(words.len());
                         (end > start).then(|| title_case_words(&words[start..end]))
                     })
-                    .or_else(|| extract_named_card_name(&words, lower.as_str()));
+                    .or_else(|| extract_named_card_name(&tokens, trimmed));
             if let Some(card_name) = card_name {
                 let mut named_filter = ObjectFilter::default();
                 named_filter.zone = Some(Zone::Graveyard);
@@ -3957,13 +4017,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
 }
 
 pub(crate) fn parse_token_pt(word: &str) -> Option<(i32, i32)> {
-    let (left, right) = str_split_once_char(word, '/')?;
-    if left.starts_with(['+', '-']) || right.starts_with(['+', '-']) {
-        return None;
-    }
-    let power = left.parse::<i32>().ok()?;
-    let toughness = right.parse::<i32>().ok()?;
-    Some((power, toughness))
+    parse_unsigned_pt_word(word)
 }
 
 pub(crate) fn target_mentions_graveyard(target: &TargetAst) -> bool {
@@ -4913,5 +4967,12 @@ mod parse_compile_tests {
             debug.contains("player: DamagedPlayer"),
             "second draw should preserve damaged-player binding: {debug}"
         );
+    }
+
+    #[test]
+    fn parse_token_pt_reuses_unsigned_pt_word_parser() {
+        assert_eq!(parse_token_pt("2/3"), Some((2, 3)));
+        assert_eq!(parse_token_pt("+2/3"), None);
+        assert_eq!(parse_token_pt("2/-3"), None);
     }
 }

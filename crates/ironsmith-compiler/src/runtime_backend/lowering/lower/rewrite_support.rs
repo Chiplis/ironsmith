@@ -1,29 +1,26 @@
 use super::*;
 
-pub(super) fn infer_static_ability_functional_zones(normalized_line: &str) -> Option<Vec<Zone>> {
-    if text_contains_any_word_phrase(normalized_line, STATIC_LIBRARY_SEARCH_ZONE_PHRASES)
-        && text_contains_word_phrase(normalized_line, FROM_YOUR_LIBRARY_PHRASE)
+pub(super) fn infer_static_ability_functional_zones(tokens: &[OwnedLexToken]) -> Option<Vec<Zone>> {
+    if tokens_contain_any_word_phrase(tokens, STATIC_LIBRARY_SEARCH_ZONE_PHRASES)
+        && contains_token_word_sequence(tokens, FROM_YOUR_LIBRARY_PHRASE)
     {
         return Some(vec![Zone::Library]);
     }
-    if text_contains_any_word_phrase(normalized_line, CAST_OR_PLAY_SELF_FROM_GRAVEYARD_PHRASES) {
+    if tokens_contain_any_word_phrase(tokens, CAST_OR_PLAY_SELF_FROM_GRAVEYARD_PHRASES) {
         return Some(vec![Zone::Graveyard]);
     }
-    if text_contains_any_word_phrase(normalized_line, CAST_OR_PLAY_SELF_FROM_EXILE_PHRASES) {
+    if tokens_contain_any_word_phrase(tokens, CAST_OR_PLAY_SELF_FROM_EXILE_PHRASES) {
         return Some(vec![Zone::Exile]);
     }
-    if text_contains_word_phrase(normalized_line, CAUSES_YOU_TO_DISCARD_THIS_CARD_PHRASE)
-        && text_contains_word_phrase(
-            normalized_line,
-            INSTEAD_OF_PUTTING_IT_INTO_YOUR_GRAVEYARD_PHRASE,
-        )
+    if contains_token_word_sequence(tokens, CAUSES_YOU_TO_DISCARD_THIS_CARD_PHRASE)
+        && contains_token_word_sequence(tokens, INSTEAD_OF_PUTTING_IT_INTO_YOUR_GRAVEYARD_PHRASE)
     {
         return Some(vec![Zone::Hand]);
     }
 
     let mut zones = Vec::new();
     for (phrase, zone) in STATIC_ZONE_HINT_PHRASES {
-        if text_contains_word_phrase(normalized_line, phrase) {
+        if contains_token_word_sequence(tokens, phrase) {
             zones.push(zone.clone());
         }
     }
@@ -32,11 +29,11 @@ pub(super) fn infer_static_ability_functional_zones(normalized_line: &str) -> Op
 
 pub(super) fn infer_triggered_ability_functional_zones(
     trigger: &TriggerSpec,
-    normalized_line: &str,
+    tokens: &[OwnedLexToken],
 ) -> Vec<Zone> {
     let mut zones = match trigger {
         TriggerSpec::WithIntro { trigger, .. } => {
-            return infer_triggered_ability_functional_zones(trigger, normalized_line);
+            return infer_triggered_ability_functional_zones(trigger, tokens);
         }
         TriggerSpec::YouCastThisSpell => vec![Zone::Stack],
         TriggerSpec::KeywordActionFromSource {
@@ -47,19 +44,25 @@ pub(super) fn infer_triggered_ability_functional_zones(
     };
 
     for (phrase, zone) in TRIGGER_ZONE_HINT_PHRASES {
-        if text_contains_word_phrase(normalized_line, phrase) {
+        if contains_token_word_sequence(tokens, phrase) {
             zones = vec![zone.clone()];
             break;
         }
     }
-    if text_contains_any_word_phrase(normalized_line, RETURN_SELF_FROM_GRAVEYARD_PHRASES)
+    if tokens_contain_any_word_phrase(tokens, RETURN_SELF_FROM_GRAVEYARD_PHRASES)
         && !trigger_references_attached_object(trigger)
     {
         zones = vec![Zone::Graveyard];
-    } else if text_contains_word_phrase(normalized_line, DISCARD_THIS_CARD_PHRASE) {
+    } else if contains_token_word_sequence(tokens, DISCARD_THIS_CARD_PHRASE) {
         zones = vec![Zone::Hand];
     }
     zones
+}
+
+fn tokens_contain_any_word_phrase(tokens: &[OwnedLexToken], phrases: &[&[&str]]) -> bool {
+    phrases
+        .iter()
+        .any(|phrase| contains_token_word_sequence(tokens, phrase))
 }
 
 fn trigger_references_attached_object(trigger: &TriggerSpec) -> bool {

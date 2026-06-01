@@ -238,7 +238,14 @@ export default function HandZone({
   const extraCards = useMemo(() => {
     const cards = [];
     for (const [objId, data] of extraPlayable) {
-      cards.push({ id: objId, name: data.name, fromZone: data.fromZone, actions: data.actions });
+      cards.push({
+        id: objId,
+        name: data.name,
+        card: data.card,
+        fromZone: data.fromZone,
+        actions: data.actions,
+        glowKind: data.glowKind,
+      });
     }
     return cards;
   }, [extraPlayable]);

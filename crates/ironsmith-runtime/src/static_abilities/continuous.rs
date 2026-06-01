@@ -997,9 +997,7 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                 PlayerFilter::Opponent => "an opponent".to_string(),
                 _ => describe_player_filter(player),
             };
-            format!(
-                "as long as {player_text} was dealt combat damage by a {subtype} this turn"
-            )
+            format!("as long as {player_text} was dealt combat damage by a {subtype} this turn")
         }
         crate::ConditionExpr::SourceCameUnderYourControlThisTurn => {
             "as long as this creature came under your control this turn".to_string()

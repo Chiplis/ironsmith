@@ -1420,7 +1420,10 @@ mod tests {
         assert!(matches!(action, TurnAction::Continue));
         assert!(matches!(runner.state(), TurnState::BeginCombat));
         assert!(game.turn_store.additional_phases.is_empty());
-        assert_eq!(game.turn_store.additional_phase_continuation, Some(Phase::NextMain));
+        assert_eq!(
+            game.turn_store.additional_phase_continuation,
+            Some(Phase::NextMain)
+        );
 
         let action = runner.advance(&mut game, &mut tq).unwrap();
         assert!(matches!(action, TurnAction::RunPriority));

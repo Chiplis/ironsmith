@@ -1959,15 +1959,18 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
         }) if matches!(
             player,
             PlayerAst::Implicit | PlayerAst::You | PlayerAst::ItsOwner
-        ) => Ok(Some(
-            EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
-                tag,
-                player,
-                allow_land,
-                without_paying_mana_cost,
-                allow_any_color_for_cast,
-            ),
-        )),
+        ) =>
+        {
+            Ok(Some(
+                EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
+                    tag,
+                    player,
+                    allow_land,
+                    without_paying_mana_cost,
+                    allow_any_color_for_cast,
+                ),
+            ))
+        }
         Some(PermissionClauseSpec::Tagged {
             tag,
             player,

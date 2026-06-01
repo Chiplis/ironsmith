@@ -41,12 +41,15 @@ const ACTIVATE_ONLY_ONCE_EACH_TURN_AND_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["activate", "only", "once", "each", "turn", "and"]);
 const AND_ONLY_ONCE_EACH_TURN_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["and", "only", "once", "each", "turn"]);
+const EXHAUST_ONCE_RESTRICTION_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["activate", "each", "exhaust", "ability", "only", "once"]);
 
 pub(super) struct ActivatedSentenceScan<'a> {
     pub(super) kept_sentences: Vec<&'a [OwnedLexToken]>,
     pub(super) timing: ActivationTiming,
     pub(super) mana_activation_condition: Option<crate::ConditionExpr>,
     pub(super) additional_activation_restrictions: Vec<String>,
+    pub(super) has_exhaust_once_restriction: bool,
     pub(super) mana_usage_restrictions: Vec<crate::ability::ManaUsageRestriction>,
     pub(super) inline_effects_ast: Vec<EffectAst>,
 }
@@ -170,11 +173,13 @@ pub(super) fn collect_activated_sentence_modifiers<'a>(
     let mut timing = initial_timing;
     let mut mana_activation_condition = None;
     let mut additional_activation_restrictions = Vec::new();
+    let mut has_exhaust_once_restriction = false;
     let mut mana_usage_restrictions = Vec::new();
     let mut inline_effects_ast = Vec::new();
     let mut kept_sentences = Vec::new();
 
     for sentence in sentences {
+        has_exhaust_once_restriction |= tokens_are_exhaust_once_restriction(sentence);
         let Some(parsed) = parse_activated_sentence_modifier_lexed(sentence, &timing) else {
             kept_sentences.push(*sentence);
             continue;
@@ -216,9 +221,15 @@ pub(super) fn collect_activated_sentence_modifiers<'a>(
         timing,
         mana_activation_condition,
         additional_activation_restrictions,
+        has_exhaust_once_restriction,
         mana_usage_restrictions,
         inline_effects_ast,
     }
+}
+
+pub(super) fn tokens_are_exhaust_once_restriction(tokens: &[OwnedLexToken]) -> bool {
+    let words = TokenWordView::new(tokens).to_word_refs();
+    EXHAUST_ONCE_RESTRICTION_PATTERN.matches_words(&words)
 }
 
 pub(crate) fn parse_activate_only_timing_lexed(

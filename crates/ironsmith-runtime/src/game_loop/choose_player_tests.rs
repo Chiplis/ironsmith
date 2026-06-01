@@ -278,10 +278,7 @@ fn order_of_succession_left_choice_rotates_control_left() {
     let cara_creature = create_creature(&mut game, "Cara Drake", cara, 2, 2);
     let alice_creature = create_creature(&mut game, "Alice Angel", alice, 2, 2);
     let order = order_of_succession_definition();
-    let mut dm = ScriptedDecisionMaker::new(
-        &["left"],
-        &["bob bear", "cara drake", "alice angel"],
-    );
+    let mut dm = ScriptedDecisionMaker::new(&["left"], &["bob bear", "cara drake", "alice angel"]);
 
     resolve_spell_definition_with_dm(&mut game, &order, alice, &mut dm);
 
@@ -300,10 +297,7 @@ fn order_of_succession_right_choice_rotates_control_right() {
     let cara_creature = create_creature(&mut game, "Cara Drake", cara, 2, 2);
     let alice_creature = create_creature(&mut game, "Alice Angel", alice, 2, 2);
     let order = order_of_succession_definition();
-    let mut dm = ScriptedDecisionMaker::new(
-        &["right"],
-        &["cara drake", "bob bear", "alice angel"],
-    );
+    let mut dm = ScriptedDecisionMaker::new(&["right"], &["cara drake", "bob bear", "alice angel"]);
 
     resolve_spell_definition_with_dm(&mut game, &order, alice, &mut dm);
 

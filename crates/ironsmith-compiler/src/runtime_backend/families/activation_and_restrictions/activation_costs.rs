@@ -612,14 +612,6 @@ const PAY_PER_PLUS_ONE_COUNTER_ATTACK_COST_PATTERN: ClauseShape<'static> = claus
             ],
         ]
 );
-const DEFENDING_PLAYER_MONARCH_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["defending", "player", "is", "the", "monarch"],
-            &["defending", "player", "is", "monarch"],
-        ]
-);
-
 fn cant_attack_unless_tail<'a>(words: &'a [&str]) -> Option<&'a [&'a str]> {
     if THIS_CREATURE_CANT_ATTACK_UNLESS_PREFIX_PATTERN.matches_words(words) {
         Some(&words[5..])
@@ -654,25 +646,24 @@ fn parse_exact_count_from_words(words: &[&str]) -> Option<(u32, usize)> {
 }
 
 fn player_controls_at_least_condition_from_tail(tail: &[&str]) -> Option<crate::ConditionExpr> {
-    if !YOU_CONTROL_PREFIX_PATTERN.matches_words(tail) {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(tail);
+    let control_condition = crate::runtime_backend::grammar::conditions::parse_control_condition(
+        &tokens,
+        crate::runtime_backend::grammar::conditions::ControlConditionOptions {
+            allow_that_player: false,
+            allow_opponent_players: false,
+            bind_filter_controller_to_subject: true,
+            allow_different_powers_tail: false,
+            default_filter_zone: Some(Zone::Battlefield),
+        },
+    )?;
+    if control_condition.quantity_token_count == 0 {
         return None;
     }
-
-    let (count, used) = parse_greater_than_or_equal_count_prefix_from_words(tail.get(2..)?)?;
-    let filter_words = tail.get(2 + used..)?;
-    if filter_words.is_empty() {
-        return None;
-    }
-    let filter_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filter_words);
-    let Ok(mut filter) = parse_object_filter(&filter_tokens, false) else {
-        return None;
-    };
-    if filter.zone.is_none() {
-        filter.zone = Some(Zone::Battlefield);
-    }
+    let count = control_condition.at_least_count()?;
     Some(crate::ConditionExpr::PlayerControlsAtLeast {
-        player: PlayerFilter::You,
-        filter,
+        player: control_condition.player_filter?,
+        filter: control_condition.filter,
         count,
     })
 }
@@ -1478,7 +1469,13 @@ pub(crate) fn parse_cant_clause(
                 ),
             );
         }
-        if DEFENDING_PLAYER_MONARCH_PATTERN.matches_words(tail) {
+        let tail_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(tail);
+        if let Some(player_status) =
+            crate::runtime_backend::grammar::conditions::parse_player_status_condition(&tail_tokens)
+            && player_status.player == PlayerFilter::Defending
+            && player_status.status
+                == crate::runtime_backend::grammar::conditions::PlayerStatusAst::Monarch
+        {
             return static_with(
                 crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerCondition(
                     crate::static_abilities::DefendingPlayerAttackCondition::IsMonarch,

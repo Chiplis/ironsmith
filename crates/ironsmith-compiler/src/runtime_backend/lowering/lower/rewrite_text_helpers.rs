@@ -82,10 +82,10 @@ pub(crate) fn uses_spell_only_functional_zones(static_ability: &StaticAbility) -
 
 pub(crate) fn uses_referenced_ability_functional_zones(
     static_ability: &StaticAbility,
-    normalized_line: &str,
+    tokens: &[OwnedLexToken],
 ) -> bool {
     static_ability.id() == crate::static_abilities::StaticAbilityId::ActivatedAbilityCostReduction
-        && text_starts_with_this_ability_costs(normalized_line)
+        && token_slice_starts_with(tokens, THIS_ABILITY_COSTS_PREFIX)
 }
 
 pub(crate) fn uses_all_zone_functional_zones(static_ability: &StaticAbility) -> bool {
@@ -360,13 +360,9 @@ pub(crate) fn lower_split_rewrite_static_chunk(
 
     wrap_chosen_option_static_chunk(
         LineAst::StaticAbilities(abilities),
-        effective_chosen_option_label(&line.info.raw_line, line.chosen_option_label.as_deref()),
+        effective_chosen_option_label(line.chosen_option_label.as_deref()),
     )
     .map(Some)
-}
-
-pub(crate) fn should_skip_keyword_action_static_probe(normalized: &str) -> bool {
-    text_is_unqualified_cant_be_blocked(normalized.trim())
 }
 
 pub(crate) fn split_statement_label_prefix_for_lowering_lexed(

@@ -531,7 +531,8 @@ fn describe_looked_cards_non_hand_self_replacement(
     };
 
     let default_look = default_look.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
-    let replacement_look = replacement_look.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let replacement_look =
+        replacement_look.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
     if default_look != replacement_look
         || default_look.reveal
         || default_look.player != PlayerFilter::You
@@ -553,16 +554,16 @@ fn describe_looked_cards_non_hand_self_replacement(
         return None;
     }
 
-    let move_chosen = unwrap_tagged_effect(move_chosen)
-        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let move_chosen =
+        unwrap_tagged_effect(move_chosen).downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     if move_chosen.zone != Zone::Hand
         || !matches!(&move_chosen.target, ChooseSpec::Tagged(tag) if tag == &choose.tag)
     {
         return None;
     }
 
-    let remainder = remainder
-        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+    let remainder =
+        remainder.downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
     if remainder.tag != default_look.tag
         || remainder.keep_tagged.as_ref() != Some(&choose.tag)
         || remainder.player != PlayerFilter::You
@@ -570,8 +571,8 @@ fn describe_looked_cards_non_hand_self_replacement(
         return None;
     }
 
-    let move_all = unwrap_tagged_effect(move_all)
-        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let move_all =
+        unwrap_tagged_effect(move_all).downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     if move_all.zone != Zone::Hand
         || !matches!(&move_all.target, ChooseSpec::Tagged(tag) if tag == &default_look.tag)
     {
@@ -1012,7 +1013,10 @@ fn rewrite_inline_spell_self_exile(rendered: &str, card_name: &str) -> String {
         out.push_str(&rest[..idx]);
         let after = &rest[idx + needle.len()..];
         if out.ends_with("then ")
-            && matches!(after.chars().next(), None | Some('.') | Some(',') | Some(';'))
+            && matches!(
+                after.chars().next(),
+                None | Some('.') | Some(',') | Some(';')
+            )
         {
             out.push_str(&replacement);
         } else {

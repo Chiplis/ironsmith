@@ -541,16 +541,14 @@ pub(crate) fn mana_pips_token<'a>(
                 .ok()
                 .map(|s| vec![s])
         }
-        TokenKind::ManaGroup => {
-            let inner = token.slice.trim_start_matches('{').trim_end_matches('}');
-            if inner.is_empty() {
-                None
-            } else {
+        TokenKind::ManaGroup => token
+            .mana_group_inner()
+            .filter(|inner| !inner.is_empty())
+            .and_then(|inner| {
                 super::values::parse_mana_symbol_group(inner)
                     .ok()
                     .filter(|g| !g.is_empty())
-            }
-        }
+            }),
         _ => None,
     };
 

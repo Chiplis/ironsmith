@@ -69,7 +69,9 @@ fn adjacent_player(ordered_players: &[PlayerId], player: PlayerId) -> Option<Pla
     if len == 0 {
         return None;
     }
-    let idx = ordered_players.iter().position(|candidate| *candidate == player)?;
+    let idx = ordered_players
+        .iter()
+        .position(|candidate| *candidate == player)?;
     Some(ordered_players[(idx + 1) % len])
 }
 
@@ -185,11 +187,7 @@ mod tests {
     }
 
     impl DecisionMaker for NamedObjectDecisionMaker {
-        fn decide_options(
-            &mut self,
-            _game: &GameState,
-            ctx: &SelectOptionsContext,
-        ) -> Vec<usize> {
+        fn decide_options(&mut self, _game: &GameState, ctx: &SelectOptionsContext) -> Vec<usize> {
             ctx.options
                 .iter()
                 .filter(|option| option.legal)
@@ -249,7 +247,9 @@ mod tests {
 
         let effect =
             DirectionalAdjacentPlayerControlEffect::new(ObjectFilter::creature(), "left", "right");
-        effect.execute(&mut game, &mut ctx).expect("effect resolves");
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("effect resolves");
 
         assert_eq!(game.current_controller(bob_creature), Some(alice));
         assert_eq!(game.current_controller(cara_creature), Some(bob));
@@ -274,7 +274,9 @@ mod tests {
 
         let effect =
             DirectionalAdjacentPlayerControlEffect::new(ObjectFilter::creature(), "left", "right");
-        effect.execute(&mut game, &mut ctx).expect("effect resolves");
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("effect resolves");
 
         assert_eq!(game.current_controller(alice_creature), Some(bob));
         assert_eq!(game.current_controller(bob_creature), Some(cara));

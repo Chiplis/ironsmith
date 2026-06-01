@@ -68,6 +68,7 @@ const CARD_OR_CARDS_WORD_PATTERN: ClauseShape<'static> =
 pub(crate) struct ActivationCostCst {
     pub(crate) raw: String,
     pub(crate) segments: Vec<ActivationCostSegmentCst>,
+    pub(crate) is_loyalty_shorthand: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -482,27 +483,25 @@ fn token_slice_for_word_range<'a>(
     Some(&tokens[token_start..token_end])
 }
 
-fn parse_counter_type_descriptor(raw: &str) -> Result<CounterType, CardTextError> {
-    let descriptor_words = raw
-        .split_whitespace()
-        .map(|word| word.trim_matches(|ch: char| ch == ',' || ch == '.'))
-        .filter(|word| !word.is_empty())
-        .collect::<Vec<_>>();
-
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(descriptor_words);
-    parse_counter_type_from_tokens(&tokens).ok_or_else(|| {
+fn parse_counter_type_descriptor_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<CounterType, CardTextError> {
+    parse_counter_type_from_tokens(tokens).ok_or_else(|| {
+        let raw = render_lower_lexed_tokens(tokens);
         CardTextError::ParseError(format!(
             "rewrite counter parser could not determine counter type from '{raw}'"
         ))
     })
 }
 
-fn parse_optional_counter_type_descriptor(raw: &str) -> Result<Option<CounterType>, CardTextError> {
-    let words = raw.split_whitespace().collect::<Vec<_>>();
+fn parse_optional_counter_type_descriptor_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<CounterType>, CardTextError> {
+    let words = LeafCompatWords::new(tokens).to_word_refs();
     if words.is_empty() || GENERIC_COUNTER_DESCRIPTOR_PATTERN.matches_words(&words) {
         return Ok(None);
     }
-    parse_counter_type_descriptor(raw).map(Some)
+    parse_counter_type_descriptor_tokens(tokens).map(Some)
 }
 
 fn activation_cost_prefix_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
@@ -1111,8 +1110,7 @@ fn parse_put_counter_segment_tokens(
             "rewrite put-counter parser missing counter description in '{raw}'"
         )));
     };
-    let counter_descriptor = render_lower_lexed_tokens(counter_tokens);
-    let counter_type = parse_counter_type_descriptor(counter_descriptor.as_str())?;
+    let counter_type = parse_counter_type_descriptor_tokens(counter_tokens)?;
 
     if LEAF_COUNTER_SELF_TARGET_PATTERN.matches_words(target) {
         return Ok(ActivationCostSegmentCst::PutCounters {
@@ -1163,8 +1161,7 @@ fn parse_remove_counter_segment_tokens(
         } else {
             let counter_tokens =
                 token_slice_for_word_range(tokens, &words, 2, from_word_idx).unwrap_or(&[]);
-            let counter_descriptor = render_lower_lexed_tokens(counter_tokens);
-            parse_optional_counter_type_descriptor(counter_descriptor.as_str())?
+            parse_optional_counter_type_descriptor_tokens(counter_tokens)?
         };
         return if target_among {
             Ok(ActivationCostSegmentCst::RemoveCountersAmong {
@@ -1189,8 +1186,7 @@ fn parse_remove_counter_segment_tokens(
         } else {
             let counter_tokens =
                 token_slice_for_word_range(tokens, &words, 2, from_word_idx).unwrap_or(&[]);
-            let counter_descriptor = render_lower_lexed_tokens(counter_tokens);
-            parse_optional_counter_type_descriptor(counter_descriptor.as_str())?
+            parse_optional_counter_type_descriptor_tokens(counter_tokens)?
         };
         return if target_among {
             Ok(ActivationCostSegmentCst::RemoveCountersAmong {
@@ -1215,8 +1211,7 @@ fn parse_remove_counter_segment_tokens(
         } else {
             let counter_tokens =
                 token_slice_for_word_range(tokens, &words, 4, from_word_idx).unwrap_or(&[]);
-            let counter_descriptor = render_lower_lexed_tokens(counter_tokens);
-            parse_optional_counter_type_descriptor(counter_descriptor.as_str())?
+            parse_optional_counter_type_descriptor_tokens(counter_tokens)?
         };
         return if target_among {
             Ok(ActivationCostSegmentCst::RemoveCountersAmong {
@@ -1241,8 +1236,7 @@ fn parse_remove_counter_segment_tokens(
         } else {
             let counter_tokens =
                 token_slice_for_word_range(tokens, &words, 4, from_word_idx).unwrap_or(&[]);
-            let counter_descriptor = render_lower_lexed_tokens(counter_tokens);
-            parse_optional_counter_type_descriptor(counter_descriptor.as_str())?
+            parse_optional_counter_type_descriptor_tokens(counter_tokens)?
         };
         return if target_among {
             Ok(ActivationCostSegmentCst::RemoveCountersAmong {
@@ -1274,8 +1268,7 @@ fn parse_remove_counter_segment_tokens(
     } else {
         let counter_tokens =
             token_slice_for_word_range(tokens, &words, idx + 1, from_word_idx).unwrap_or(&[]);
-        let counter_descriptor = render_lower_lexed_tokens(counter_tokens);
-        parse_optional_counter_type_descriptor(counter_descriptor.as_str())?
+        parse_optional_counter_type_descriptor_tokens(counter_tokens)?
     };
 
     if target_among {
@@ -1749,6 +1742,7 @@ fn parse_activation_cost_cst_tokens(
         return Ok(ActivationCostCst {
             raw: trimmed_raw.to_string(),
             segments,
+            is_loyalty_shorthand: true,
         });
     }
 
@@ -1759,6 +1753,7 @@ fn parse_activation_cost_cst_tokens(
                 ActivationCostSegmentCst::Mana(ManaCost::from_pips(vec![vec![left, right]])),
                 ActivationCostSegmentCst::Tap,
             ],
+            is_loyalty_shorthand: false,
         });
     }
 
@@ -1794,6 +1789,7 @@ fn parse_activation_cost_cst_tokens(
     Ok(ActivationCostCst {
         raw: trimmed_raw.to_string(),
         segments,
+        is_loyalty_shorthand: false,
     })
 }
 

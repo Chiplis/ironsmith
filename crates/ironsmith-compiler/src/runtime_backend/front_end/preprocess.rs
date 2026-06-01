@@ -113,6 +113,23 @@ fn byte_slice_starts_with(slice: &[u8], prefix: &[u8]) -> bool {
     true
 }
 
+fn collapse_whitespace_runs(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut pending_space = false;
+    for ch in text.chars() {
+        if ch.is_whitespace() {
+            pending_space = !out.is_empty();
+            continue;
+        }
+        if pending_space {
+            out.push(' ');
+            pending_space = false;
+        }
+        out.push(ch);
+    }
+    out
+}
+
 fn strip_parenthetical_segments(line: &str) -> String {
     fn keeps_enchantment_not_creature_parenthetical(line: &str) -> bool {
         let Ok(tokens) = lex_line(line, 0) else {
@@ -166,7 +183,7 @@ fn strip_parenthetical_segments(line: &str) -> String {
         }
     }
 
-    out.split_whitespace().collect::<Vec<_>>().join(" ")
+    collapse_whitespace_runs(out.as_str())
 }
 
 fn line_starts_with_words(line: &str, expected: &[&str]) -> bool {
@@ -278,8 +295,15 @@ fn replace_names_with_map(
         start_ok && end_ok
     }
 
+    fn parser_word_count(name: &str) -> usize {
+        lex_line(name, 0)
+            .ok()
+            .map(|tokens| parser_token_word_refs(&tokens).len())
+            .unwrap_or(0)
+    }
+
     fn is_single_word_keyword_verb(name: &str) -> bool {
-        name.split_whitespace().count() == 1
+        parser_word_count(name) == 1
             && matches!(
                 name,
                 "add"
@@ -318,7 +342,7 @@ fn replace_names_with_map(
         if MULTI_WORD_KEYWORD_ABILITY_NAMES.contains(&name) {
             return true;
         }
-        if name.split_whitespace().count() != 1 {
+        if parser_word_count(name) != 1 {
             return false;
         }
         parse_single_word_keyword_action(name).is_some()
@@ -1361,15 +1385,26 @@ pub(crate) fn preprocess_document(
             return comma_short.to_string();
         }
 
-        let mut words = trimmed.split_whitespace();
-        let Some(first_word) = words.next() else {
+        let Ok(tokens) = lex_line(trimmed, 0) else {
             return trimmed.to_string();
         };
-        if words.next().is_none() {
+        let words = parser_token_word_refs(&tokens);
+        let Some(first_word) = words.first().copied() else {
+            return trimmed.to_string();
+        };
+        if words.len() == 1 {
             return trimmed.to_string();
         }
 
-        let alias = first_word.trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '-');
+        let alias = tokens
+            .iter()
+            .find(|token| !token.parser_word_pieces().is_empty())
+            .map(|token| {
+                token
+                    .slice
+                    .trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '-')
+            })
+            .unwrap_or(first_word);
         if alias.len() <= 2 {
             return trimmed.to_string();
         }

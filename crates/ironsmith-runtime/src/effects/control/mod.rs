@@ -2,8 +2,8 @@
 //!
 //! This module contains effects that change control of permanents.
 
-mod exchange_control;
 mod directional_adjacent_player_control;
+mod exchange_control;
 mod gain_control;
 
 pub use directional_adjacent_player_control::DirectionalAdjacentPlayerControlEffect;

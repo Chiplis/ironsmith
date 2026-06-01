@@ -427,9 +427,10 @@ fn is_damage_based_creature_death_sba(
     if !view.object_has_card_type(creature_id, CardType::Creature) {
         return false;
     }
-    let toughness = view
-        .calculated_toughness(creature_id)
-        .or_else(|| game.object(creature_id).and_then(|object| object.toughness()));
+    let toughness = view.calculated_toughness(creature_id).or_else(|| {
+        game.object(creature_id)
+            .and_then(|object| object.toughness())
+    });
     if !toughness.is_some_and(|toughness| toughness > 0) {
         return false;
     }

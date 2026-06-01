@@ -452,19 +452,27 @@ pub(crate) fn normalize_cant_words(tokens: &[OwnedLexToken]) -> Vec<String> {
 }
 
 pub(crate) fn keyword_title(keyword: &str) -> String {
-    let mut words = keyword.split_whitespace();
-    let Some(first) = words.next() else {
-        return String::new();
-    };
     let mut out = String::new();
-    let mut first_chars = first.chars();
-    if let Some(ch) = first_chars.next() {
-        out.push(ch.to_ascii_uppercase());
-        out.push_str(first_chars.as_str());
+    let mut saw_word = false;
+    let mut at_word_start = true;
+    for ch in keyword.trim().chars() {
+        if ch.is_whitespace() {
+            if saw_word && !out.ends_with(' ') {
+                out.push(' ');
+            }
+            at_word_start = true;
+            continue;
+        }
+        if !saw_word {
+            out.extend(ch.to_uppercase());
+            saw_word = true;
+        } else {
+            out.push(ch);
+        }
+        at_word_start = false;
     }
-    for word in words {
-        out.push(' ');
-        out.push_str(word);
+    if at_word_start {
+        out.pop();
     }
     out
 }

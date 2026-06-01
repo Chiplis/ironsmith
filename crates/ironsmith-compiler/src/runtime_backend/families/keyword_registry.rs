@@ -164,38 +164,14 @@ pub(super) fn lower_additional_cost(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
-    let text_tail_tokens = additional_cost_tail_tokens_from_text(line.info.raw_line.as_str())?
-        .or(additional_cost_tail_tokens_from_text(line.text.as_str())?);
-    let effect_tokens = if let Some(tokens) = text_tail_tokens.as_deref() {
-        tokens
-    } else {
-        additional_cost_tail_tokens(tokens).ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "rewrite keyword lowering could not find additional cost tail '{}'",
-                line.info.raw_line
-            ))
-        })?
-    };
+    let effect_tokens = additional_cost_tail_tokens(tokens).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "rewrite keyword lowering could not find additional cost tail '{}'",
+            line.info.raw_line
+        ))
+    })?;
     let effects = parse_effect_sentences_lexed(effect_tokens)?;
     Ok(LineAst::AdditionalCost { effects })
-}
-
-fn additional_cost_tail_tokens_from_text(
-    text: &str,
-) -> Result<Option<Vec<OwnedLexToken>>, CardTextError> {
-    let Some((_, tail)) = text.split_once(',') else {
-        return Ok(None);
-    };
-    let tail = tail.trim();
-    if tail.is_empty() {
-        return Ok(None);
-    }
-    lex_line(tail, 0).map(Some).map_err(|err| {
-        CardTextError::ParseError(format!(
-            "rewrite keyword lowering could not lex additional cost tail '{}': {err}",
-            tail
-        ))
-    })
 }
 
 pub(super) fn lower_additional_cost_choice(
@@ -310,9 +286,9 @@ pub(super) fn lower_alternative_cast(
             crate::alternative_cast::AlternativeCastingMethod::alternative_cost(
                 "Sneak",
                 Some(cost),
-                vec![crate::costs::Cost::effect(
-                    crate::effect::Effect::new(crate::effects::SneakCostEffect::new()),
-                )],
+                vec![crate::costs::Cost::effect(crate::effect::Effect::new(
+                    crate::effects::SneakCostEffect::new(),
+                ))],
             )
             .into(),
         ));
@@ -961,10 +937,10 @@ pub(super) fn matches_cast_this_spell_only(
 }
 
 pub(super) fn matches_gift(
-    line: &PreprocessedLine,
-    _tokens: &[OwnedLexToken],
+    _line: &PreprocessedLine,
+    tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
-    Ok(is_standard_gift_keyword_line(line.info.raw_line.as_str()))
+    Ok(is_standard_gift_keyword_tokens_lexed(tokens))
 }
 
 pub(super) fn matches_warp(
@@ -1005,13 +981,6 @@ fn is_exert_attack_keyword_line(tokens: &[OwnedLexToken]) -> bool {
             ]
     );
     EXERT_ATTACK_PREFIX_PATTERN.matches_words(&words)
-}
-
-fn is_standard_gift_keyword_line(raw_line: &str) -> bool {
-    let Ok(tokens) = lex_line(raw_line, 0) else {
-        return false;
-    };
-    is_standard_gift_keyword_tokens_lexed(&tokens)
 }
 
 fn additional_cost_tail_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {

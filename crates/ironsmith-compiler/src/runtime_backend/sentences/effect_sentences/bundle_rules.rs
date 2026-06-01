@@ -209,7 +209,10 @@ const KICKED_PUT_THOSE_ONTO_BATTLEFIELD_INSTEAD_PATTERN: ClauseShape<'static> = 
         ]
 );
 const LIFE_BID_FOR_CONTROL_FIRST_SENTENCE_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix & ["each", "player", "may", "bid", "life", "for", "control", "of"]
+    prefix
+        & [
+            "each", "player", "may", "bid", "life", "for", "control", "of"
+        ]
 );
 const LIFE_BID_START_ZERO_PATTERN: ClauseShape<'static> = clause_shape!(
     exact
@@ -224,13 +227,16 @@ const LIFE_BID_TOP_HIGH_BID_PATTERN: ClauseShape<'static> = clause_shape!(
         ]
 );
 const LIFE_BID_STANDS_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact & ["the", "bidding", "ends", "if", "the", "high", "bid", "stands"]
+    exact
+        & [
+            "the", "bidding", "ends", "if", "the", "high", "bid", "stands"
+        ]
 );
 const LIFE_BID_CONTROL_REWARD_PATTERN: ClauseShape<'static> = clause_shape!(
     exact
         & [
-            "the", "high", "bidder", "loses", "life", "equal", "to", "the", "high", "bid",
-            "and", "gains", "control", "of", "the", "creature"
+            "the", "high", "bidder", "loses", "life", "equal", "to", "the", "high", "bid", "and",
+            "gains", "control", "of", "the", "creature"
         ]
 );
 const EXILE_TARGET_NONLAND_PERMANENT_PATTERN: ClauseShape<'static> =

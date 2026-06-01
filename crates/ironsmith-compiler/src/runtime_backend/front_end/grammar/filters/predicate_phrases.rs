@@ -96,21 +96,8 @@ const LIFE_TOTAL_AT_LEAST_STARTING_PATTERN: ClauseShape<'static> = clause_shape!
         ]
 );
 const OR_MORE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["or", "more"]);
-const HAS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["has"]);
 const HAS_OR_HAVE_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["has"], &["have"]]);
-const HAD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["had"]);
-const DREW_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["drew"]);
-const DRAWN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["drawn"]);
-const HAND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["hand"]);
-const LAND_OR_LANDS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["land"], &["lands"]]);
-const ENTER_OR_ENTERED_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["enter"], &["entered"]]);
-const BATTLEFIELD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["battlefield"]);
-const UNDER_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["under"]);
-const CONTROL_POSSESSIVE_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["your"], &["their"], &["that"], &["its"]]);
 const IN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["in"]);
 const INSTEAD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["instead"]);
 const GRAVEYARD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["graveyard"]);
@@ -206,217 +193,6 @@ const MELD_ATTACKING_OWN_CONTROL_TAIL_PATTERN: ClauseShape<'static> = clause_sha
             "them",
         ]
 );
-const YOU_HAVE_NO_CARDS_IN_HAND_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["you", "have", "no", "cards", "in", "hand"]);
-const PLAYER_WOULD_DRAW_CARD_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["you", "would", "draw", "a", "card"],
-            &["you", "would", "draw", "card"],
-            &["an", "opponent", "would", "draw", "a", "card"],
-            &["an", "opponent", "would", "draw", "card"],
-            &["opponent", "would", "draw", "a", "card"],
-            &["opponent", "would", "draw", "card"],
-        ]
-);
-const PLAYER_WOULD_PROLIFERATE_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["you", "would", "proliferate"],
-            &["an", "opponent", "would", "proliferate"],
-            &["opponent", "would", "proliferate"],
-        ]
-);
-const OPPONENT_WOULD_BEGIN_EXTRA_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["opponent", "would", "begin", "extra", "turn"],
-            &["an", "opponent", "would", "begin", "an", "extra", "turn"],
-            &["opponents", "would", "begin", "extra", "turn"],
-        ]
-);
-const CREATURE_DIED_COUNT_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["or", "more", "creatures", "died", "this", "turn"]);
-const OPPONENT_LOST_LIFE_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["opponent", "lost", "life", "this", "turn"],
-            &[
-                "one",
-                "or",
-                "more",
-                "opponents",
-                "lost",
-                "life",
-                "this",
-                "turn",
-            ],
-        ]
-);
-const CREATURE_CARD_PUT_INTO_YOUR_GRAVEYARD_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "a",
-                "creature",
-                "card",
-                "was",
-                "put",
-                "into",
-                "your",
-                "graveyard",
-                "from",
-                "anywhere",
-                "this",
-                "turn",
-            ],
-            &[
-                "creature",
-                "card",
-                "was",
-                "put",
-                "into",
-                "your",
-                "graveyard",
-                "from",
-                "anywhere",
-                "this",
-                "turn",
-            ],
-        ]
-);
-const NO_PERMANENT_LEFT_BATTLEFIELD_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["no", "permanent", "left", "battlefield", "this", "turn"],
-            &["no", "permanents", "left", "battlefield", "this", "turn"],
-        ]
-);
-const PERMANENT_LEFT_BATTLEFIELD_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["a", "permanent", "left", "battlefield", "this", "turn"],
-            &["permanent", "left", "battlefield", "this", "turn"],
-            &["permanents", "left", "battlefield", "this", "turn"],
-        ]
-);
-const LAND_YOU_CONTROLLED_PUT_INTO_GRAVEYARD_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "land",
-                "you",
-                "controlled",
-                "was",
-                "put",
-                "into",
-                "graveyard",
-                "from",
-                "battlefield",
-                "this",
-                "turn",
-            ],
-            &[
-                "lands",
-                "you",
-                "controlled",
-                "were",
-                "put",
-                "into",
-                "graveyard",
-                "from",
-                "battlefield",
-                "this",
-                "turn",
-            ],
-        ]
-);
-const PERMANENT_LEFT_UNDER_YOUR_CONTROL_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "permanent",
-                "left",
-                "battlefield",
-                "under",
-                "your",
-                "control",
-                "this",
-                "turn",
-            ],
-            &[
-                "permanents",
-                "left",
-                "battlefield",
-                "under",
-                "your",
-                "control",
-                "this",
-                "turn",
-            ],
-            &[
-                "permanent",
-                "you",
-                "controlled",
-                "left",
-                "battlefield",
-                "this",
-                "turn",
-            ],
-            &[
-                "permanents",
-                "you",
-                "controlled",
-                "left",
-                "battlefield",
-                "this",
-                "turn",
-            ],
-            &[
-                "creature",
-                "left",
-                "battlefield",
-                "under",
-                "your",
-                "control",
-                "this",
-                "turn",
-            ],
-            &[
-                "creatures",
-                "left",
-                "battlefield",
-                "under",
-                "your",
-                "control",
-                "this",
-                "turn",
-            ],
-        ]
-);
-const NONLAND_PERMANENT_LEFT_OR_SPELL_WARPED_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact
-        & [
-            "nonland",
-            "permanent",
-            "left",
-            "battlefield",
-            "this",
-            "turn",
-            "or",
-            "spell",
-            "was",
-            "warped",
-            "this",
-            "turn",
-        ]
-);
-const YOU_GAINED_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["you", "gained"]);
-const YOU_LOST_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["you", "lost"]);
-const LIFE_THIS_TURN_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["life", "this", "turn"]);
-const YOU_GAINED_LIFE_THIS_TURN_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["you", "gained", "life", "this", "turn"]);
 const YOU_ATTACKED_THIS_TURN_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["you", "attacked", "this", "turn"]);
 const TRIGGERING_OBJECT_HAD_TO_ATTACK_THIS_COMBAT_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -532,48 +308,6 @@ const THIS_POSSESSIVE_PAID_SUBJECT_WORD_PATTERN: ClauseShape<'static> = clause_s
 const IT_WAS_KICKED_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["it", "was", "kicked"]);
 const THAT_WAS_KICKED_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["that", "was", "kicked"]);
-const YOU_HAVE_FULL_PARTY_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["you", "have", "full", "party"]);
-const TARGET_SPELL_CONTROLLER_POISONED_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["its", "controller", "poisoned"],
-            &["that", "spells", "controller", "poisoned"],
-        ]
-);
-const TARGET_SPELL_NO_MANA_SPENT_TO_CAST_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["no", "mana", "was", "spent", "to", "cast", "it"],
-            &["no", "mana", "were", "spent", "to", "cast", "it"],
-            &["no", "mana", "was", "spent", "to", "cast", "that", "spell",],
-            &["no", "mana", "were", "spent", "to", "cast", "that", "spell",],
-        ]
-);
-const YOU_CONTROL_MORE_CREATURES_THAN_TARGET_SPELL_CONTROLLER_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "you",
-                "control",
-                "more",
-                "creatures",
-                "than",
-                "that",
-                "spells",
-                "controller",
-            ],
-            &[
-                "you",
-                "control",
-                "more",
-                "creatures",
-                "than",
-                "its",
-                "controller",
-            ],
-        ]
-);
 const MANA_SPENT_TO_CAST_THIS_SPELL_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -661,36 +395,6 @@ const TAGGED_WASNT_BLOCKING_PATTERN: ClauseShape<'static> = clause_shape!(
 );
 const NO_CREATURES_ON_BATTLEFIELD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["no", "creatures", "are", "on", "battlefield"]);
-const YOU_HAVE_CITYS_BLESSING_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["you", "have", "citys", "blessing"],
-            &["you", "have", "city", "blessing"],
-        ]
-);
-const YOU_HAVE_CITYS_BLESSING_FOR_EACH_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["you", "have", "citys", "blessing", "for", "each"],
-            &["you", "have", "city", "blessing", "for", "each"],
-        ]
-);
-const YOU_ARE_MONARCH_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["youre", "the", "monarch"],
-            &["youre", "monarch"],
-            &["you", "are", "the", "monarch"],
-            &["you", "are", "monarch"],
-        ]
-);
-const YOU_HAVE_INITIATIVE_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["you", "have", "the", "initiative"],
-            &["you", "have", "initiative"]
-        ]
-);
 const YOU_OR_DEFENDING_PLAYER_HAS_INITIATIVE_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -716,30 +420,6 @@ const YOU_OR_DEFENDING_PLAYER_HAS_INITIATIVE_PATTERN: ClauseShape<'static> = cla
             ],
         ]
 );
-const YOU_COMPLETED_DUNGEON_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["youve", "completed", "a", "dungeon"],
-            &["you", "have", "completed", "a", "dungeon"],
-        ]
-);
-const YOUVE_COMPLETED_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["youve", "completed"]);
-const YOU_HAVE_COMPLETED_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["you", "have", "completed"]);
-const YOU_HAVENT_COMPLETED_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["you", "havent", "completed"]);
-const YOU_HAVE_NOT_COMPLETED_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["you", "have", "not", "completed"]);
-const YOU_CAST_ANOTHER_SPELL_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["youve", "cast", "another", "spell", "this", "turn"],
-            &["you", "have", "cast", "another", "spell", "this", "turn"],
-            &["you", "cast", "another", "spell", "this", "turn"],
-        ]
-);
-const THIS_TURN_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this", "turn"]);
 const IT_IS_NIGHT_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["its", "night"], &["it", "is", "night"], &["it", "night"]]);
 const FIRST_COMBAT_PHASE_OF_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -769,18 +449,10 @@ const SOURCE_DEALT_COMBAT_DAMAGE_TO_PLAYER_THIS_TURN_PATTERN: ClauseShape<'stati
 const PLAYER_WAS_DEALT_COMBAT_DAMAGE_BY_SUBTYPE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
         & [
-            &[
-                "a", "player", "was", "dealt", "combat", "damage", "by",
-            ],
-            &[
-                "player", "was", "dealt", "combat", "damage", "by",
-            ],
-            &[
-                "an", "opponent", "was", "dealt", "combat", "damage", "by",
-            ],
-            &[
-                "opponent", "was", "dealt", "combat", "damage", "by",
-            ],
+            &["a", "player", "was", "dealt", "combat", "damage", "by",],
+            &["player", "was", "dealt", "combat", "damage", "by",],
+            &["an", "opponent", "was", "dealt", "combat", "damage", "by",],
+            &["opponent", "was", "dealt", "combat", "damage", "by",],
         ]
 );
 const CAST_THIS_SPELL_DURING_YOUR_MAIN_PHASE_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -789,22 +461,6 @@ const CAST_THIS_SPELL_DURING_YOUR_MAIN_PHASE_PATTERN: ClauseShape<'static> = cla
             "you", "cast", "this", "spell", "during", "your", "main", "phase",
         ]
 );
-const OPPONENT_HAS_CAST_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["opponent", "has", "cast"]);
-const OPPONENTS_HAVE_CAST_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["opponents", "have", "cast"]);
-const YOUVE_CAST_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["youve", "cast"]);
-const YOU_HAVE_CAST_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["you", "have", "cast"]);
-const YOU_CAST_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["you", "cast"]);
-const THAT_PLAYER_DIDNT_CAST_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["that", "player", "didnt", "cast"]);
-const THAT_PLAYER_DID_NOT_CAST_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["that", "player", "did", "not", "cast"]);
-const YOU_DIDNT_CAST_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["you", "didnt", "cast"]);
-const YOU_DID_NOT_CAST_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["you", "did", "not", "cast"]);
 const YOU_CONTROL_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["you", "control"], &["you", "controls"]]);
 const YOU_CONTROL_NO_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -862,9 +518,6 @@ const YOUR_GRAVEYARD_WORDS_PATTERN: ClauseShape<'static> =
 const YOU_BOTH_OWN_AND_CONTROL_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["you", "both", "own", "and"]);
 const AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
-const BOTH_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["both"]);
-const SPELL_NAMED_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["a", "spell", "named"], &["spell", "named"]]);
 const THIS_WAY_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(suffix & ["this", "way"]);
 const PASSIVE_THIS_WAY_COPULA_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["is"], &["are"], &["was"], &["were"]]);
@@ -995,13 +648,6 @@ const SOURCE_REFERENCE_WORD_PATTERN: ClauseShape<'static> =
 const ENCHANTED_BY_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["enchanted", "by"]);
 const AURA_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["aura"], &["auras"]]);
-const YOU_HAVE_MAX_SPEED_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["you", "have", "max", "speed"],
-            &["you", "have", "maximum", "speed"]
-        ]
-);
 const CONTROL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["control"]);
 const CONTROL_OR_CONTROLS_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["control"], &["controls"]]);
@@ -1212,37 +858,7 @@ const LESS_THAN_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["
 const THAN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["than"]);
 const THAN_YOU_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["than", "you"], &["than", "you", "do"]]);
-const MORE_LIFE_THAN_YOU_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["more", "life", "than", "you"],
-            &["more", "life", "than", "you", "do"]
-        ]
-);
-const YOU_HAVE_MORE_LIFE_THAN_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["you", "have", "more", "life", "than"],
-            &["you", "has", "more", "life", "than"]
-        ]
-);
-const EACH_OPPONENT_WORDS_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["each", "opponent"], &["each", "opponents"]]);
-const LIFE_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["life"]);
-const NO_OPPONENT_HAS_MORE_LIFE_THAN_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["no", "opponent", "has", "more", "life", "than"],
-            &["no", "opponents", "has", "more", "life", "than"]
-        ]
-);
-const MORE_LIFE_THAN_EACH_OTHER_PLAYER_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["more", "life", "than", "each", "other", "player"],
-            &["more", "life", "than", "each", "other", "players"],
-        ]
-);
+const THIS_TURN_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this", "turn"]);
 
 fn source_zone_from_words(words: &[&str]) -> Option<Zone> {
     if SOURCE_IN_HAND_PATTERN.matches_words(words) {
@@ -1429,6 +1045,22 @@ fn parse_player_controls_predicate(
     allow_outlaw_shorthand: bool,
     allow_different_powers: bool,
 ) -> Result<Option<PredicateAst>, CardTextError> {
+    let control_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    if let Some(control_condition) =
+        crate::runtime_backend::grammar::conditions::parse_control_condition(
+            &control_tokens,
+            crate::runtime_backend::grammar::conditions::ControlConditionOptions {
+                allow_that_player: player == PlayerAst::That,
+                allow_opponent_players: false,
+                bind_filter_controller_to_subject: controller.is_some(),
+                allow_different_powers_tail: allow_different_powers,
+                default_filter_zone: None,
+            },
+        )
+    {
+        return Ok(Some(predicate_from_control_condition(control_condition)));
+    }
+
     let (min_count, exact_count, filter_start) = control_predicate_quantity(words, prefix_len);
     let mut control_words = words[filter_start..].to_vec();
     if control_words.is_empty() {
@@ -1493,6 +1125,46 @@ fn parse_player_controls_predicate(
     Ok(Some(PredicateAst::PlayerControls { player, filter }))
 }
 
+fn predicate_from_control_condition(
+    control_condition: crate::runtime_backend::grammar::conditions::ControlConditionAst,
+) -> PredicateAst {
+    match control_condition.comparison {
+        crate::effect::Comparison::Equal(count) if count >= 0 => {
+            PredicateAst::PlayerControlsExactly {
+                player: control_condition.player,
+                filter: control_condition.filter,
+                count: count as u32,
+            }
+        }
+        _ => {
+            let Some(count) = control_condition.at_least_count() else {
+                return PredicateAst::PlayerControls {
+                    player: control_condition.player,
+                    filter: control_condition.filter,
+                };
+            };
+            if count > 1 {
+                if control_condition.requires_different_powers {
+                    return PredicateAst::PlayerControlsAtLeastWithDifferentPowers {
+                        player: control_condition.player,
+                        filter: control_condition.filter,
+                        count,
+                    };
+                }
+                return PredicateAst::PlayerControlsAtLeast {
+                    player: control_condition.player,
+                    filter: control_condition.filter,
+                    count,
+                };
+            }
+            PredicateAst::PlayerControls {
+                player: control_condition.player,
+                filter: control_condition.filter,
+            }
+        }
+    }
+}
+
 fn parse_this_ability_resolution_count_predicate(filtered: &[&str]) -> Option<PredicateAst> {
     let count = match filtered {
         [
@@ -1546,54 +1218,6 @@ fn parse_this_ability_resolution_count_predicate(filtered: &[&str]) -> Option<Pr
     };
 
     Some(PredicateAst::ThisAbilityResolvedThisTurnExactly(count))
-}
-
-fn spell_cast_matching_predicate(
-    player: PlayerFilter,
-    filter_words: &[&str],
-) -> Result<PredicateAst, CardTextError> {
-    let filter_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filter_words);
-    let filter = parse_object_filter_lexed(&filter_tokens, false)?;
-    Ok(PredicateAst::ValueComparison {
-        left: Value::SpellsCastThisTurnMatching {
-            player,
-            filter,
-            exclude_source: false,
-        },
-        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
-        right: Value::Fixed(1),
-    })
-}
-
-fn parse_both_spell_cast_predicate(
-    player: PlayerFilter,
-    filter_words: &[&str],
-) -> Result<Option<PredicateAst>, CardTextError> {
-    let starts_with_both = filter_words
-        .first()
-        .is_some_and(|word| BOTH_WORD_PATTERN.matches_word(word));
-    let stripped = if starts_with_both {
-        &filter_words[1..]
-    } else {
-        filter_words
-    };
-    let Some(and_idx) = find_index(stripped, |word| AND_WORD_PATTERN.matches_word(word)) else {
-        return Ok(None);
-    };
-    let left_words = &stripped[..and_idx];
-    let right_words = &stripped[and_idx + 1..];
-    if left_words.is_empty() || right_words.is_empty() {
-        return Ok(None);
-    }
-    if !starts_with_both && !SPELL_NAMED_PREFIX_PATTERN.matches_words(left_words) {
-        return Ok(None);
-    }
-    if !starts_with_both && !SPELL_NAMED_PREFIX_PATTERN.matches_words(right_words) {
-        return Ok(None);
-    }
-    let left = spell_cast_matching_predicate(player.clone(), left_words)?;
-    let right = spell_cast_matching_predicate(player, right_words)?;
-    Ok(Some(PredicateAst::And(Box::new(left), Box::new(right))))
 }
 
 fn predicate_tokens_from_words(words: &[&str]) -> Vec<OwnedLexToken> {
@@ -1839,6 +1463,361 @@ fn player_filter_for_turn_value(player: PlayerAst) -> Option<PlayerFilter> {
             Some(PlayerFilter::TargetPlayerOrControllerOfTarget)
         }
         PlayerAst::ItsController | PlayerAst::ItsOwner => None,
+    }
+}
+
+fn player_ast_from_status_player_filter(player: PlayerFilter) -> Option<PlayerAst> {
+    match player {
+        PlayerFilter::You => Some(PlayerAst::You),
+        PlayerFilter::Any => Some(PlayerAst::Any),
+        PlayerFilter::Defending => Some(PlayerAst::Defending),
+        PlayerFilter::Attacking => Some(PlayerAst::Attacking),
+        PlayerFilter::Opponent => Some(PlayerAst::Opponent),
+        PlayerFilter::IteratedPlayer => Some(PlayerAst::That),
+        PlayerFilter::Target(base) if *base == PlayerFilter::Opponent => {
+            Some(PlayerAst::TargetOpponent)
+        }
+        PlayerFilter::Target(_) => Some(PlayerAst::Target),
+        _ => None,
+    }
+}
+
+fn parse_player_status_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let status =
+        crate::runtime_backend::grammar::conditions::parse_player_status_condition(&tokens)?;
+    match status.status {
+        crate::runtime_backend::grammar::conditions::PlayerStatusAst::Monarch => {
+            Some(PredicateAst::PlayerIsMonarch {
+                player: player_ast_from_status_player_filter(status.player)?,
+            })
+        }
+        crate::runtime_backend::grammar::conditions::PlayerStatusAst::Initiative => {
+            Some(PredicateAst::PlayerHasInitiative {
+                player: player_ast_from_status_player_filter(status.player)?,
+            })
+        }
+        crate::runtime_backend::grammar::conditions::PlayerStatusAst::MaxSpeed => {
+            Some(PredicateAst::ValueComparison {
+                left: Value::Speed(status.player),
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(4),
+            })
+        }
+    }
+}
+
+fn parse_player_achievement_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let achievement =
+        crate::runtime_backend::grammar::conditions::parse_player_achievement_condition(&tokens)?;
+    let player = player_ast_from_status_player_filter(achievement.player)?;
+    let predicate = match achievement.achievement {
+        crate::runtime_backend::grammar::conditions::PlayerAchievementAst::CitysBlessing => {
+            Some(PredicateAst::PlayerHasCitysBlessing { player })
+        }
+        crate::runtime_backend::grammar::conditions::PlayerAchievementAst::CompletedDungeon {
+            dungeon_name,
+        } => Some(PredicateAst::PlayerCompletedDungeon {
+            player,
+            dungeon_name,
+        }),
+        crate::runtime_backend::grammar::conditions::PlayerAchievementAst::FullParty => {
+            if player == PlayerAst::You {
+                Some(PredicateAst::YouHaveFullParty)
+            } else {
+                None
+            }
+        }
+    }?;
+    if achievement.negated {
+        Some(PredicateAst::Not(Box::new(predicate)))
+    } else {
+        Some(predicate)
+    }
+}
+
+fn parse_player_cards_in_hand_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let condition =
+        crate::runtime_backend::grammar::conditions::parse_player_cards_in_hand_condition(&tokens)?;
+    let player = player_ast_from_status_player_filter(condition.player.clone())?;
+    if player == PlayerAst::You && condition.is_no_cards_in_hand() {
+        return Some(PredicateAst::YouHaveNoCardsInHand);
+    }
+    match condition.comparison {
+        crate::effect::Comparison::GreaterThanOrEqual(count) if count >= 0 => {
+            Some(PredicateAst::PlayerCardsInHandOrMore {
+                player,
+                count: count as u32,
+            })
+        }
+        crate::effect::Comparison::GreaterThan(count) if count >= -1 => {
+            Some(PredicateAst::PlayerCardsInHandOrMore {
+                player,
+                count: (count + 1) as u32,
+            })
+        }
+        crate::effect::Comparison::LessThanOrEqual(count) if count >= 0 => {
+            Some(PredicateAst::PlayerCardsInHandOrFewer {
+                player,
+                count: count as u32,
+            })
+        }
+        crate::effect::Comparison::LessThan(count) if count > 0 => {
+            Some(PredicateAst::PlayerCardsInHandOrFewer {
+                player,
+                count: (count - 1) as u32,
+            })
+        }
+        _ => None,
+    }
+}
+
+fn parse_player_life_total_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let condition =
+        crate::runtime_backend::grammar::conditions::parse_player_life_total_condition(&tokens)?;
+    let (operator, amount) = comparison_to_value_comparison_operator(condition.comparison)?;
+    Some(PredicateAst::ValueComparison {
+        left: crate::effect::Value::LifeTotal(condition.player),
+        operator,
+        right: crate::effect::Value::Fixed(amount),
+    })
+}
+
+fn parse_player_life_relation_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let relation =
+        crate::runtime_backend::grammar::conditions::parse_player_life_relation_condition(&tokens)?;
+    let player = player_ast_from_status_player_filter(relation.player)?;
+    match relation.relation {
+        crate::runtime_backend::grammar::conditions::PlayerLifeRelationAst::HasMoreLifeThanYou => {
+            Some(PredicateAst::PlayerHasMoreLifeThanYou { player })
+        }
+        crate::runtime_backend::grammar::conditions::PlayerLifeRelationAst::HasLessLifeThanYou => {
+            Some(PredicateAst::PlayerHasLessLifeThanYou { player })
+        }
+        crate::runtime_backend::grammar::conditions::PlayerLifeRelationAst::HasNoOpponentWithMoreLifeThan => {
+            Some(PredicateAst::PlayerHasNoOpponentWithMoreLifeThan { player })
+        }
+        crate::runtime_backend::grammar::conditions::PlayerLifeRelationAst::HasMoreLifeThanEachOtherPlayer => {
+            Some(PredicateAst::PlayerHasMoreLifeThanEachOtherPlayer { player })
+        }
+    }
+}
+
+fn parse_player_cards_in_hand_relation_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let relation =
+        crate::runtime_backend::grammar::conditions::parse_player_cards_in_hand_relation_condition(
+            &tokens,
+        )?;
+    let player = player_ast_from_status_player_filter(relation.player)?;
+    match relation.relation {
+        crate::runtime_backend::grammar::conditions::PlayerCardsInHandRelationAst::HasMoreCardsInHandThanYou => {
+            Some(PredicateAst::PlayerHasMoreCardsInHandThanYou { player })
+        }
+        crate::runtime_backend::grammar::conditions::PlayerCardsInHandRelationAst::HasMoreCardsInHandThanEachOtherPlayer => {
+            Some(PredicateAst::PlayerHasMoreCardsInHandThanEachOtherPlayer { player })
+        }
+    }
+}
+
+fn parse_player_turn_event_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let condition =
+        crate::runtime_backend::grammar::conditions::parse_player_turn_event_condition(&tokens)?;
+    let (operator, count) = comparison_to_value_comparison_operator(condition.comparison)?;
+    let left = match condition.event {
+        crate::runtime_backend::grammar::conditions::PlayerTurnEventAst::CardsDrawn => {
+            Value::MaxCardsDrawnThisTurn(condition.player)
+        }
+        crate::runtime_backend::grammar::conditions::PlayerTurnEventAst::LandsEnteredBattlefieldUnderControl => {
+            Value::LandsEnteredBattlefieldThisTurn(condition.player)
+        }
+    };
+
+    Some(PredicateAst::ValueComparison {
+        left,
+        operator,
+        right: Value::Fixed(count),
+    })
+}
+
+fn parse_spell_context_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let condition =
+        crate::runtime_backend::grammar::conditions::parse_spell_context_condition(&tokens)?;
+    match condition {
+        crate::runtime_backend::grammar::conditions::SpellContextConditionAst::ControllerIsPoisoned {
+            ..
+        } => Some(PredicateAst::TargetSpellControllerIsPoisoned),
+        crate::runtime_backend::grammar::conditions::SpellContextConditionAst::NoManaSpentToCast {
+            ..
+        } => Some(PredicateAst::TargetSpellNoManaSpentToCast),
+        crate::runtime_backend::grammar::conditions::SpellContextConditionAst::YouControlMoreCreaturesThanController {
+            ..
+        } => Some(PredicateAst::YouControlMoreCreaturesThanTargetSpellController),
+    }
+}
+
+fn parse_player_spell_cast_this_turn_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let condition =
+        crate::runtime_backend::grammar::conditions::parse_player_spell_cast_this_turn_condition(
+            &tokens,
+        )?;
+    match condition {
+        crate::runtime_backend::grammar::conditions::PlayerSpellCastThisTurnConditionAst::CountAtLeast {
+            player,
+            count,
+        } => Some(PredicateAst::PlayerCastSpellsThisTurnOrMore {
+            player: player_ast_from_status_player_filter(player)?,
+            count,
+        }),
+        crate::runtime_backend::grammar::conditions::PlayerSpellCastThisTurnConditionAst::MatchingFilters {
+            player,
+            filters,
+            negated,
+        } => {
+            let mut predicates = filters.into_iter().map(|filter| {
+                PredicateAst::ValueComparison {
+                    left: Value::SpellsCastThisTurnMatching {
+                        player: player.clone(),
+                        filter,
+                        exclude_source: false,
+                    },
+                    operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                    right: Value::Fixed(1),
+                }
+            });
+            let first = predicates.next()?;
+            let predicate = predicates
+                .fold(first, |left, right| PredicateAst::And(Box::new(left), Box::new(right)));
+            if negated {
+                Some(PredicateAst::Not(Box::new(predicate)))
+            } else {
+                Some(predicate)
+            }
+        }
+    }
+}
+
+fn parse_player_life_change_this_turn_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let condition =
+        crate::runtime_backend::grammar::conditions::parse_player_life_change_this_turn_condition(
+            &tokens,
+        )?;
+    match condition.direction {
+        crate::runtime_backend::grammar::conditions::PlayerLifeChangeDirectionAst::Gained => {
+            let count = comparison_to_strict_at_least_threshold(&condition.comparison)?;
+            Some(PredicateAst::PlayerGainedLifeThisTurnOrMore {
+                player: player_ast_from_status_player_filter(condition.player)?,
+                count,
+            })
+        }
+        crate::runtime_backend::grammar::conditions::PlayerLifeChangeDirectionAst::Lost
+            if condition.player == PlayerFilter::Opponent
+                && comparison_to_strict_at_least_threshold(&condition.comparison) == Some(1) =>
+        {
+            Some(PredicateAst::OpponentLostLifeThisTurn)
+        }
+        crate::runtime_backend::grammar::conditions::PlayerLifeChangeDirectionAst::Lost => {
+            let (operator, count) = comparison_to_value_comparison_operator(condition.comparison)?;
+            Some(PredicateAst::ValueComparison {
+                left: Value::LifeLostThisTurn(condition.player),
+                operator,
+                right: Value::Fixed(count),
+            })
+        }
+    }
+}
+
+fn parse_object_death_this_turn_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let condition =
+        crate::runtime_backend::grammar::conditions::parse_object_death_this_turn_condition(
+            &tokens,
+        )?;
+    match condition.event {
+        crate::runtime_backend::grammar::conditions::ObjectDeathThisTurnEventAst::Died => {
+            let count = comparison_to_strict_at_least_threshold(&condition.comparison)?;
+            if count <= 1 {
+                Some(PredicateAst::CreatureDiedThisTurn)
+            } else {
+                Some(PredicateAst::CreatureDiedThisTurnOrMore(count))
+            }
+        }
+        crate::runtime_backend::grammar::conditions::ObjectDeathThisTurnEventAst::PutIntoYourGraveyardFromAnywhere => {
+            Some(PredicateAst::CreatureCardPutIntoYourGraveyardThisTurn)
+        }
+    }
+}
+
+fn parse_player_would_action_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let condition =
+        crate::runtime_backend::grammar::conditions::parse_player_would_action_condition(&tokens)?;
+    let player = player_ast_from_status_player_filter(condition.player)?;
+    match condition.action {
+        crate::runtime_backend::grammar::conditions::PlayerWouldActionAst::DrawCard => {
+            Some(PredicateAst::PlayerWouldDrawCard { player })
+        }
+        crate::runtime_backend::grammar::conditions::PlayerWouldActionAst::Proliferate => {
+            Some(PredicateAst::PlayerWouldProliferate { player })
+        }
+        crate::runtime_backend::grammar::conditions::PlayerWouldActionAst::BeginExtraTurn => {
+            Some(PredicateAst::PlayerWouldBeginExtraTurn { player })
+        }
+    }
+}
+
+fn parse_battlefield_entry_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let condition =
+        crate::runtime_backend::grammar::conditions::parse_battlefield_entry_condition(&tokens)?;
+    match condition {
+        crate::runtime_backend::grammar::conditions::BattlefieldEntryConditionAst::ObjectEntered {
+            filter,
+            window:
+                crate::runtime_backend::grammar::conditions::BattlefieldEntryTurnWindowAst::ThisTurn,
+        } => Some(PredicateAst::ObjectEnteredBattlefieldThisTurn(filter)),
+        crate::runtime_backend::grammar::conditions::BattlefieldEntryConditionAst::ObjectEntered {
+            filter,
+            window:
+                crate::runtime_backend::grammar::conditions::BattlefieldEntryTurnWindowAst::LastTurn,
+        } => Some(PredicateAst::ObjectEnteredBattlefieldLastTurn(filter)),
+        crate::runtime_backend::grammar::conditions::BattlefieldEntryConditionAst::LandEnteredUnderYourControlThisTurn {
+            player,
+        } => Some(PredicateAst::PlayerHadLandEnterBattlefieldThisTurn { player }),
+    }
+}
+
+fn parse_battlefield_change_this_turn_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let condition =
+        crate::runtime_backend::grammar::conditions::parse_battlefield_change_this_turn_condition(
+            &tokens,
+        )?;
+    match condition {
+        crate::runtime_backend::grammar::conditions::BattlefieldChangeThisTurnConditionAst::PermanentLeftBattlefield {
+            negated,
+        } => {
+            let predicate = PredicateAst::PermanentLeftBattlefieldThisTurn;
+            if negated {
+                Some(PredicateAst::Not(Box::new(predicate)))
+            } else {
+                Some(predicate)
+            }
+        }
+        crate::runtime_backend::grammar::conditions::BattlefieldChangeThisTurnConditionAst::PermanentLeftBattlefieldUnderYourControl => {
+            Some(PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn)
+        }
+        crate::runtime_backend::grammar::conditions::BattlefieldChangeThisTurnConditionAst::ObjectPutIntoGraveyardFromBattlefield {
+            filter,
+        } => Some(PredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter)),
     }
 }
 
@@ -2263,12 +2242,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if YOU_HAVE_MAX_SPEED_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::ValueComparison {
-            left: Value::Speed(PlayerFilter::You),
-            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
-            right: Value::Fixed(4),
-        });
+    if let Some(predicate) = parse_player_status_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     if let Some(predicate) = parse_counted_objects_have_counter_predicate(&filtered) {
@@ -3093,222 +3068,28 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
-    if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
-        && filtered
-            .get(subject_len)
-            .is_some_and(|word| HAS_OR_HAVE_WORD_PATTERN.matches_word(word))
-        && MORE_LIFE_THAN_YOU_TAIL_PATTERN.matches_words(&filtered[subject_len + 1..])
-    {
-        return Ok(PredicateAst::PlayerHasMoreLifeThanYou { player });
+    if let Some(predicate) = parse_player_life_relation_predicate(&filtered) {
+        return Ok(predicate);
     }
 
-    if YOU_HAVE_MORE_LIFE_THAN_PREFIX_PATTERN.matches_words(&filtered)
-        && filtered
-            .get(5)
-            .is_some_and(|word| OPPONENT_SUBJECT_PREFIX_PATTERN.matches_word(word))
-    {
-        if EACH_OPPONENT_WORDS_TAIL_PATTERN.matches_words(&raw_words[5..]) {
-            return Ok(PredicateAst::PlayerHasMoreLifeThanEachOtherPlayer {
-                player: PlayerAst::You,
-            });
-        }
-        return Ok(PredicateAst::PlayerHasLessLifeThanYou {
-            player: PlayerAst::Opponent,
-        });
+    if let Some(predicate) = parse_player_life_total_predicate(&filtered) {
+        return Ok(predicate);
     }
 
-    if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
-        && filtered
-            .get(subject_len)
-            .is_some_and(|word| HAS_OR_HAVE_WORD_PATTERN.matches_word(word))
-        && filtered.len() == subject_len + 5
-        && let Some((comparison, used)) = predicate_quantity_prefix(&filtered[subject_len + 1..])
-        && used == 3
-        && LIFE_TAIL_PATTERN.matches_words(&filtered[subject_len + 1 + used..])
-        && let Some((operator, amount)) = comparison_to_value_comparison_operator(comparison)
-    {
-        let player_filter = match player {
-            PlayerAst::You => Some(PlayerFilter::You),
-            PlayerAst::Opponent => Some(PlayerFilter::Opponent),
-            PlayerAst::Any => Some(PlayerFilter::Any),
-            PlayerAst::Defending => Some(PlayerFilter::Defending),
-            PlayerAst::Attacking => Some(PlayerFilter::Attacking),
-            _ => None,
-        };
-        if let Some(player_filter) = player_filter {
-            return Ok(PredicateAst::ValueComparison {
-                left: crate::effect::Value::LifeTotal(player_filter),
-                operator,
-                right: crate::effect::Value::Fixed(amount),
-            });
-        }
+    if let Some(predicate) = parse_player_cards_in_hand_relation_predicate(&filtered) {
+        return Ok(predicate);
     }
 
-    if filtered.len() >= 8
-        && NO_OPPONENT_HAS_MORE_LIFE_THAN_PREFIX_PATTERN.matches_words(&filtered)
-        && let Some((player, subject_len)) = parse_comparison_player_subject(&filtered[6..])
-        && subject_len + 6 == filtered.len()
-    {
-        return Ok(PredicateAst::PlayerHasNoOpponentWithMoreLifeThan { player });
+    if let Some(predicate) = parse_player_cards_in_hand_predicate(&filtered) {
+        return Ok(predicate);
     }
 
-    if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
-        && filtered
-            .get(subject_len)
-            .is_some_and(|word| HAS_OR_HAVE_WORD_PATTERN.matches_word(word))
-        && MORE_LIFE_THAN_EACH_OTHER_PLAYER_TAIL_PATTERN.matches_words(&filtered[subject_len + 1..])
-    {
-        return Ok(PredicateAst::PlayerHasMoreLifeThanEachOtherPlayer { player });
+    if let Some(predicate) = parse_player_turn_event_predicate(&filtered) {
+        return Ok(predicate);
     }
 
-    if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
-        && HAS_WORD_PATTERN.matches_word_at(&filtered, subject_len)
-        && matches!(
-            &filtered[subject_len + 1..],
-            ["more", "card", "in", "hand", "than", "you"]
-                | ["more", "cards", "in", "hand", "than", "you"]
-                | ["more", "card", "in", "their", "hand", "than", "you"]
-                | ["more", "cards", "in", "their", "hand", "than", "you"]
-                | ["more", "card", "in", "hand", "than", "you", "do"]
-                | ["more", "cards", "in", "hand", "than", "you", "do"]
-                | ["more", "card", "in", "their", "hand", "than", "you", "do"]
-                | ["more", "cards", "in", "their", "hand", "than", "you", "do"]
-        )
-    {
-        return Ok(PredicateAst::PlayerHasMoreCardsInHandThanYou { player });
-    }
-
-    if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
-        && HAS_WORD_PATTERN.matches_word_at(&filtered, subject_len)
-        && matches!(
-            &filtered[subject_len + 1..],
-            [
-                "more", "card", "in", "hand", "than", "each", "other", "player"
-            ] | [
-                "more", "cards", "in", "hand", "than", "each", "other", "player"
-            ] | [
-                "more", "card", "in", "their", "hand", "than", "each", "other", "player",
-            ] | [
-                "more", "cards", "in", "their", "hand", "than", "each", "other", "player",
-            ]
-        )
-    {
-        return Ok(PredicateAst::PlayerHasMoreCardsInHandThanEachOtherPlayer { player });
-    }
-
-    if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
-        && HAS_OR_HAVE_WORD_PATTERN.matches_word_at(&filtered, subject_len)
-        && let Some((comparison, used)) = predicate_quantity_prefix(&filtered[subject_len + 1..])
-        && CARD_OR_CARDS_WORD_PATTERN.matches_word_at(&filtered, subject_len + 1 + used)
-        && IN_WORD_PATTERN.matches_word_at(&filtered, subject_len + 2 + used)
-        && HAND_WORD_PATTERN.matches_word_at(&filtered, subject_len + 3 + used)
-        && filtered.len() == subject_len + 4 + used
-    {
-        if YOU_HAVE_NO_CARDS_IN_HAND_PATTERN.matches_words(&filtered) {
-            return Ok(PredicateAst::YouHaveNoCardsInHand);
-        }
-        match comparison {
-            crate::effect::Comparison::GreaterThanOrEqual(count) if count >= 0 => {
-                return Ok(PredicateAst::PlayerCardsInHandOrMore {
-                    player,
-                    count: count as u32,
-                });
-            }
-            crate::effect::Comparison::GreaterThan(count) if count >= -1 => {
-                return Ok(PredicateAst::PlayerCardsInHandOrMore {
-                    player,
-                    count: (count + 1) as u32,
-                });
-            }
-            crate::effect::Comparison::LessThanOrEqual(count) if count >= 0 => {
-                return Ok(PredicateAst::PlayerCardsInHandOrFewer {
-                    player,
-                    count: count as u32,
-                });
-            }
-            crate::effect::Comparison::LessThan(count) if count > 0 => {
-                return Ok(PredicateAst::PlayerCardsInHandOrFewer {
-                    player,
-                    count: (count - 1) as u32,
-                });
-            }
-            _ => {}
-        }
-    }
-
-    if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered) {
-        let draw_count_idx = if DREW_WORD_PATTERN.matches_word_at(&filtered, subject_len) {
-            Some(subject_len + 1)
-        } else if HAS_OR_HAVE_WORD_PATTERN.matches_word_at(&filtered, subject_len)
-            && DRAWN_WORD_PATTERN.matches_word_at(&filtered, subject_len + 1)
-        {
-            Some(subject_len + 2)
-        } else {
-            None
-        };
-        if let Some(count_idx) = draw_count_idx
-            && let Some((comparison, used)) = predicate_quantity_prefix(&filtered[count_idx..])
-            && let Some((operator, count)) = comparison_to_value_comparison_operator(comparison)
-            && CARD_OR_CARDS_WORD_PATTERN.matches_word_at(&filtered, count_idx + used)
-            && THIS_TURN_TAIL_PATTERN.matches_words(&filtered[count_idx + used + 1..])
-            && filtered.len() == count_idx + used + 3
-            && let Some(player_filter) = player_filter_for_turn_value(player)
-        {
-            return Ok(PredicateAst::ValueComparison {
-                left: Value::MaxCardsDrawnThisTurn(player_filter),
-                operator,
-                right: Value::Fixed(count),
-            });
-        }
-    }
-
-    if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
-        && HAD_WORD_PATTERN.matches_word_at(&filtered, subject_len)
-        && let Some((comparison, used)) = predicate_quantity_prefix(&filtered[subject_len + 1..])
-        && let Some((operator, count)) = comparison_to_value_comparison_operator(comparison)
-        && LAND_OR_LANDS_WORD_PATTERN.matches_word_at(&filtered, subject_len + 1 + used)
-        && ENTER_OR_ENTERED_WORD_PATTERN.matches_word_at(&filtered, subject_len + 2 + used)
-        && BATTLEFIELD_WORD_PATTERN.matches_word_at(&filtered, subject_len + 3 + used)
-        && UNDER_WORD_PATTERN.matches_word_at(&filtered, subject_len + 4 + used)
-        && CONTROL_POSSESSIVE_WORD_PATTERN.matches_word_at(&filtered, subject_len + 5 + used)
-        && CONTROL_WORD_PATTERN.matches_word_at(&filtered, subject_len + 6 + used)
-        && THIS_TURN_TAIL_PATTERN.matches_words(&filtered[subject_len + 7 + used..])
-        && filtered.len() == subject_len + 9 + used
-        && let Some(player_filter) = player_filter_for_turn_value(player)
-    {
-        return Ok(PredicateAst::ValueComparison {
-            left: Value::LandsEnteredBattlefieldThisTurn(player_filter),
-            operator,
-            right: Value::Fixed(count),
-        });
-    }
-
-    if YOU_HAVE_NO_CARDS_IN_HAND_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::YouHaveNoCardsInHand);
-    }
-
-    if PLAYER_WOULD_DRAW_CARD_PATTERN.matches_words(&filtered) {
-        let player = if YOU_WORD_PATTERN.matches_word(filtered[0]) {
-            PlayerAst::You
-        } else {
-            PlayerAst::Opponent
-        };
-        return Ok(PredicateAst::PlayerWouldDrawCard { player });
-    }
-
-    if PLAYER_WOULD_PROLIFERATE_PATTERN.matches_words(&filtered) {
-        let player = if YOU_WORD_PATTERN.matches_word(filtered[0]) {
-            PlayerAst::You
-        } else {
-            PlayerAst::Opponent
-        };
-        return Ok(PredicateAst::PlayerWouldProliferate { player });
-    }
-
-    if OPPONENT_WOULD_BEGIN_EXTRA_TURN_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::PlayerWouldBeginExtraTurn {
-            player: PlayerAst::Opponent,
-        });
+    if let Some(predicate) = parse_player_would_action_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     if matches!(
@@ -3329,215 +3110,20 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::Not(Box::new(PredicateAst::YourTurn)));
     }
 
-    if matches!(
-        filtered.as_slice(),
-        ["creature", "died", "this", "turn"] | ["creatures", "died", "this", "turn"]
-    ) {
-        return Ok(PredicateAst::CreatureDiedThisTurn);
+    if let Some(predicate) = parse_player_life_change_this_turn_predicate(&filtered) {
+        return Ok(predicate);
     }
 
-    if OPPONENT_LOST_LIFE_THIS_TURN_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::OpponentLostLifeThisTurn);
+    if let Some(predicate) = parse_object_death_this_turn_predicate(&filtered) {
+        return Ok(predicate);
     }
 
-    if let Some((count, used)) = predicate_number_prefix(&filtered)
-        && CREATURE_DIED_COUNT_TAIL_PATTERN.matches_words(&filtered[used..])
-    {
-        return Ok(PredicateAst::CreatureDiedThisTurnOrMore(count));
+    if let Some(predicate) = parse_battlefield_change_this_turn_predicate(&filtered) {
+        return Ok(predicate);
     }
 
-    if CREATURE_CARD_PUT_INTO_YOUR_GRAVEYARD_THIS_TURN_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::CreatureCardPutIntoYourGraveyardThisTurn);
-    }
-
-    if NO_PERMANENT_LEFT_BATTLEFIELD_THIS_TURN_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::Not(Box::new(
-            PredicateAst::PermanentLeftBattlefieldThisTurn,
-        )));
-    }
-
-    if PERMANENT_LEFT_BATTLEFIELD_THIS_TURN_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::PermanentLeftBattlefieldThisTurn);
-    }
-
-    if LAND_YOU_CONTROLLED_PUT_INTO_GRAVEYARD_THIS_TURN_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(
-            ObjectFilter::land().controlled_by(PlayerFilter::You),
-        ));
-    }
-
-    if PERMANENT_LEFT_UNDER_YOUR_CONTROL_THIS_TURN_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn);
-    }
-
-    if NONLAND_PERMANENT_LEFT_OR_SPELL_WARPED_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::PermanentLeftBattlefieldThisTurn);
-    }
-
-    if matches!(
-        filtered.as_slice(),
-        [
-            "you",
-            "had",
-            "another",
-            "creature",
-            "enter",
-            "the",
-            "battlefield",
-            "under",
-            "your",
-            "control",
-            "last",
-            "turn"
-        ] | [
-            "you",
-            "had",
-            "another",
-            "creature",
-            "entered",
-            "the",
-            "battlefield",
-            "under",
-            "your",
-            "control",
-            "last",
-            "turn"
-        ]
-    ) {
-        return Ok(PredicateAst::ObjectEnteredBattlefieldLastTurn(
-            ObjectFilter::creature()
-                .controlled_by(PlayerFilter::You)
-                .other(),
-        ));
-    }
-
-    if matches!(
-        filtered.as_slice(),
-        [
-            "artifact",
-            "entered",
-            "battlefield",
-            "under",
-            "your",
-            "control",
-            "this",
-            "turn"
-        ] | [
-            "artifact",
-            "enter",
-            "battlefield",
-            "under",
-            "your",
-            "control",
-            "this",
-            "turn"
-        ] | [
-            "artifacts",
-            "entered",
-            "battlefield",
-            "under",
-            "your",
-            "control",
-            "this",
-            "turn"
-        ] | [
-            "artifacts",
-            "enter",
-            "battlefield",
-            "under",
-            "your",
-            "control",
-            "this",
-            "turn"
-        ]
-    ) {
-        return Ok(PredicateAst::ObjectEnteredBattlefieldThisTurn(
-            ObjectFilter::artifact().controlled_by(PlayerFilter::You),
-        ));
-    }
-
-    if matches!(
-        filtered.as_slice(),
-        [
-            "you",
-            "had",
-            "land",
-            "enter",
-            "battlefield",
-            "under",
-            "your",
-            "control",
-            "this",
-            "turn"
-        ] | [
-            "you",
-            "had",
-            "land",
-            "entered",
-            "battlefield",
-            "under",
-            "your",
-            "control",
-            "this",
-            "turn"
-        ] | [
-            "you",
-            "had",
-            "lands",
-            "enter",
-            "battlefield",
-            "under",
-            "your",
-            "control",
-            "this",
-            "turn"
-        ] | [
-            "you",
-            "had",
-            "lands",
-            "entered",
-            "battlefield",
-            "under",
-            "your",
-            "control",
-            "this",
-            "turn"
-        ]
-    ) {
-        return Ok(PredicateAst::PlayerHadLandEnterBattlefieldThisTurn {
-            player: PlayerAst::You,
-        });
-    }
-
-    if filtered.len() >= 7
-        && YOU_GAINED_PREFIX_PATTERN.matches_words(&filtered)
-        && let Some((count, used)) = predicate_at_least_quantity_prefix(&filtered[2..])
-        && LIFE_THIS_TURN_TAIL_PATTERN.matches_words(&filtered[2 + used..])
-    {
-        return Ok(PredicateAst::PlayerGainedLifeThisTurnOrMore {
-            player: PlayerAst::You,
-            count,
-        });
-    }
-
-    if filtered.len() >= 7
-        && YOU_LOST_PREFIX_PATTERN.matches_words(&filtered)
-        && let Some((comparison, used)) = predicate_quantity_prefix(&filtered[2..])
-        && let Some((operator, count)) = comparison_to_value_comparison_operator(comparison)
-        && LIFE_THIS_TURN_TAIL_PATTERN.matches_words(&filtered[2 + used..])
-    {
-        return Ok(PredicateAst::ValueComparison {
-            left: Value::LifeLostThisTurn(PlayerFilter::You),
-            operator,
-            right: Value::Fixed(count),
-        });
-    }
-
-    if YOU_GAINED_LIFE_THIS_TURN_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::PlayerGainedLifeThisTurnOrMore {
-            player: PlayerAst::You,
-            count: 1,
-        });
+    if let Some(predicate) = parse_battlefield_entry_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     if YOU_ATTACKED_THIS_TURN_PATTERN.matches_words(&filtered) {
@@ -3672,17 +3258,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::TargetWasKicked);
     }
 
-    if YOU_HAVE_FULL_PARTY_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::YouHaveFullParty);
-    }
-    if TARGET_SPELL_CONTROLLER_POISONED_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::TargetSpellControllerIsPoisoned);
-    }
-    if TARGET_SPELL_NO_MANA_SPENT_TO_CAST_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::TargetSpellNoManaSpentToCast);
-    }
-    if YOU_CONTROL_MORE_CREATURES_THAN_TARGET_SPELL_CONTROLLER_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::YouControlMoreCreaturesThanTargetSpellController);
+    if let Some(predicate) = parse_spell_context_predicate(&filtered) {
+        return Ok(predicate);
     }
     if filtered.len() == 7
         && MANA_SYMBOL_WORD_PATTERN.matches_word(filtered[0])
@@ -4274,24 +3851,12 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         });
     }
 
-    if YOU_HAVE_CITYS_BLESSING_PATTERN.matches_words(&filtered)
-        || YOU_HAVE_CITYS_BLESSING_FOR_EACH_PREFIX_PATTERN.matches_words(&filtered)
-    {
-        return Ok(PredicateAst::PlayerHasCitysBlessing {
-            player: PlayerAst::You,
-        });
+    if let Some(predicate) = parse_player_achievement_predicate(&filtered) {
+        return Ok(predicate);
     }
 
-    if YOU_ARE_MONARCH_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::PlayerIsMonarch {
-            player: PlayerAst::You,
-        });
-    }
-
-    if YOU_HAVE_INITIATIVE_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::PlayerHasInitiative {
-            player: PlayerAst::You,
-        });
+    if let Some(predicate) = parse_player_status_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     if YOU_OR_DEFENDING_PLAYER_HAS_INITIATIVE_PATTERN.matches_words(&filtered) {
@@ -4303,82 +3868,6 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                 player: PlayerAst::Defending,
             }),
         ));
-    }
-
-    if YOU_COMPLETED_DUNGEON_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::PlayerCompletedDungeon {
-            player: PlayerAst::You,
-            dungeon_name: None,
-        });
-    }
-
-    if (YOUVE_COMPLETED_PREFIX_PATTERN.matches_words(&filtered) && filtered.len() > 2)
-        || (YOU_HAVE_COMPLETED_PREFIX_PATTERN.matches_words(&filtered) && filtered.len() > 3)
-    {
-        let name_start = if HAVE_WORD_PATTERN.matches_word(filtered[1]) {
-            3
-        } else {
-            2
-        };
-        let dungeon_name = filtered[name_start..]
-            .iter()
-            .map(|word| (*word).to_string())
-            .collect::<Vec<_>>()
-            .join(" ");
-        return Ok(PredicateAst::PlayerCompletedDungeon {
-            player: PlayerAst::You,
-            dungeon_name: Some(dungeon_name),
-        });
-    }
-
-    if (YOU_HAVENT_COMPLETED_PREFIX_PATTERN.matches_words(&filtered) && filtered.len() > 3)
-        || (YOU_HAVE_NOT_COMPLETED_PREFIX_PATTERN.matches_words(&filtered) && filtered.len() > 4)
-    {
-        let name_start = if HAVE_WORD_PATTERN.matches_word(filtered[1]) {
-            4
-        } else {
-            3
-        };
-        let dungeon_name = filtered[name_start..]
-            .iter()
-            .map(|word| (*word).to_string())
-            .collect::<Vec<_>>()
-            .join(" ");
-        return Ok(PredicateAst::Not(Box::new(
-            PredicateAst::PlayerCompletedDungeon {
-                player: PlayerAst::You,
-                dungeon_name: Some(dungeon_name),
-            },
-        )));
-    }
-
-    if YOU_CAST_ANOTHER_SPELL_THIS_TURN_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::PlayerCastSpellsThisTurnOrMore {
-            player: PlayerAst::You,
-            count: 2,
-        });
-    }
-
-    let negative_spell_cast_prefix =
-        if THAT_PLAYER_DIDNT_CAST_PREFIX_PATTERN.matches_words(&filtered) {
-            Some((4usize, PlayerFilter::Active))
-        } else if THAT_PLAYER_DID_NOT_CAST_PREFIX_PATTERN.matches_words(&filtered) {
-            Some((5usize, PlayerFilter::Active))
-        } else if YOU_DIDNT_CAST_PREFIX_PATTERN.matches_words(&filtered) {
-            Some((3usize, PlayerFilter::You))
-        } else if YOU_DID_NOT_CAST_PREFIX_PATTERN.matches_words(&filtered) {
-            Some((4usize, PlayerFilter::You))
-        } else {
-            None
-        };
-    if let Some((prefix_len, player)) = negative_spell_cast_prefix
-        && filtered.len() > prefix_len + 2
-        && THIS_TURN_TAIL_PATTERN.matches_words(&filtered[filtered.len() - 2..])
-    {
-        let filter_words = &filtered[prefix_len..filtered.len() - 2];
-        if let Ok(predicate) = spell_cast_matching_predicate(player, filter_words) {
-            return Ok(PredicateAst::Not(Box::new(predicate)));
-        }
     }
 
     if IT_IS_NIGHT_PATTERN.matches_words(&filtered) {
@@ -4393,8 +3882,11 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::SourceDealtCombatDamageToPlayerThisTurn);
     }
 
-    if THIS_TURN_TAIL_PATTERN.matches_words(filtered.get(filtered.len().saturating_sub(2)..).unwrap_or_default())
-        && PLAYER_WAS_DEALT_COMBAT_DAMAGE_BY_SUBTYPE_PREFIX_PATTERN.matches_words(&filtered)
+    if THIS_TURN_TAIL_PATTERN.matches_words(
+        filtered
+            .get(filtered.len().saturating_sub(2)..)
+            .unwrap_or_default(),
+    ) && PLAYER_WAS_DEALT_COMBAT_DAMAGE_BY_SUBTYPE_PREFIX_PATTERN.matches_words(&filtered)
     {
         let subtype_idx = filtered.len().saturating_sub(3);
         let subtype = parse_subtype_word(filtered[subtype_idx]).ok_or_else(|| {
@@ -4403,17 +3895,15 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                 filtered.join(" ")
             ))
         })?;
-        let player = if filtered.first() == Some(&"opponent")
-            || filtered.get(1) == Some(&"opponent")
-        {
-            PlayerAst::Opponent
-        } else {
-            PlayerAst::Any
-        };
-        return Ok(PredicateAst::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn {
-            player,
-            subtype,
-        });
+        let player =
+            if filtered.first() == Some(&"opponent") || filtered.get(1) == Some(&"opponent") {
+                PlayerAst::Opponent
+            } else {
+                PlayerAst::Any
+            };
+        return Ok(
+            PredicateAst::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype },
+        );
     }
 
     if CAST_THIS_SPELL_DURING_YOUR_MAIN_PHASE_PATTERN.matches_words(&filtered) {
@@ -4422,30 +3912,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         ));
     }
 
-    let spell_cast_prefix = if OPPONENT_HAS_CAST_PREFIX_PATTERN.matches_words(&filtered) {
-        Some((3usize, PlayerFilter::Opponent))
-    } else if OPPONENTS_HAVE_CAST_PREFIX_PATTERN.matches_words(&filtered) {
-        Some((3usize, PlayerFilter::Opponent))
-    } else if YOUVE_CAST_PREFIX_PATTERN.matches_words(&filtered) {
-        Some((2usize, PlayerFilter::You))
-    } else if YOU_HAVE_CAST_PREFIX_PATTERN.matches_words(&filtered) {
-        Some((3usize, PlayerFilter::You))
-    } else if YOU_CAST_PREFIX_PATTERN.matches_words(&filtered) {
-        Some((2usize, PlayerFilter::You))
-    } else {
-        None
-    };
-    if let Some((prefix_len, player)) = spell_cast_prefix
-        && filtered.len() > prefix_len + 2
-        && THIS_TURN_TAIL_PATTERN.matches_words(&filtered[filtered.len() - 2..])
-    {
-        let filter_words = &filtered[prefix_len..filtered.len() - 2];
-        if let Some(predicate) = parse_both_spell_cast_predicate(player.clone(), filter_words)? {
-            return Ok(predicate);
-        }
-        if let Ok(predicate) = spell_cast_matching_predicate(player, filter_words) {
-            return Ok(predicate);
-        }
+    if let Some(predicate) = parse_player_spell_cast_this_turn_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     if filtered.len() >= 4
@@ -4475,6 +3943,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::effect::ValueComparisonOperator;
     use crate::runtime_backend::front_end::lexer::lex_line;
 
     const IF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["if"]);
@@ -4554,6 +4023,83 @@ mod tests {
                 }),
             )
         );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_player_statuses_use_shared_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected) in [
+            (
+                "If you're monarch",
+                PredicateAst::PlayerIsMonarch {
+                    player: PlayerAst::You,
+                },
+            ),
+            (
+                "If you have the initiative",
+                PredicateAst::PlayerHasInitiative {
+                    player: PlayerAst::You,
+                },
+            ),
+            (
+                "If you have maximum speed",
+                PredicateAst::ValueComparison {
+                    left: Value::Speed(PlayerFilter::You),
+                    operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                    right: Value::Fixed(4),
+                },
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_player_achievements_use_shared_capture_parser() -> Result<(), CardTextError>
+    {
+        for (text, expected) in [
+            (
+                "If you have city's blessing",
+                PredicateAst::PlayerHasCitysBlessing {
+                    player: PlayerAst::You,
+                },
+            ),
+            (
+                "If you've completed a dungeon",
+                PredicateAst::PlayerCompletedDungeon {
+                    player: PlayerAst::You,
+                    dungeon_name: None,
+                },
+            ),
+            (
+                "If you have completed Lost Mine of Phandelver",
+                PredicateAst::PlayerCompletedDungeon {
+                    player: PlayerAst::You,
+                    dungeon_name: Some("lost mine of phandelver".to_string()),
+                },
+            ),
+            (
+                "If you haven't completed Lost Mine of Phandelver",
+                PredicateAst::Not(Box::new(PredicateAst::PlayerCompletedDungeon {
+                    player: PlayerAst::You,
+                    dungeon_name: Some("lost mine of phandelver".to_string()),
+                })),
+            ),
+            ("If you have a full party", PredicateAst::YouHaveFullParty),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
         Ok(())
     }
 
@@ -4718,6 +4264,45 @@ mod tests {
     }
 
     #[test]
+    fn parse_predicate_player_would_actions_use_shared_capture_parser() -> Result<(), CardTextError>
+    {
+        for (text, expected) in [
+            (
+                "If you would draw a card",
+                PredicateAst::PlayerWouldDrawCard {
+                    player: PlayerAst::You,
+                },
+            ),
+            (
+                "If an opponent would draw card",
+                PredicateAst::PlayerWouldDrawCard {
+                    player: PlayerAst::Opponent,
+                },
+            ),
+            (
+                "If opponent would proliferate",
+                PredicateAst::PlayerWouldProliferate {
+                    player: PlayerAst::Opponent,
+                },
+            ),
+            (
+                "If an opponent would begin an extra turn",
+                PredicateAst::PlayerWouldBeginExtraTurn {
+                    player: PlayerAst::Opponent,
+                },
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
     fn parse_predicate_supports_would_draw_while_no_cards_in_hand() -> Result<(), CardTextError> {
         let tokens = lex_line(
             "If you would draw a card while you have no cards in hand",
@@ -4736,6 +4321,185 @@ mod tests {
                 Box::new(PredicateAst::YouHaveNoCardsInHand),
             )
         );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_cards_in_hand_counts_use_shared_capture_parser() -> Result<(), CardTextError>
+    {
+        for (text, expected) in [
+            (
+                "If you have no cards in hand",
+                PredicateAst::YouHaveNoCardsInHand,
+            ),
+            (
+                "If you have one or fewer cards in hand",
+                PredicateAst::PlayerCardsInHandOrFewer {
+                    player: PlayerAst::You,
+                    count: 1,
+                },
+            ),
+            (
+                "If an opponent has three or more cards in hand",
+                PredicateAst::PlayerCardsInHandOrMore {
+                    player: PlayerAst::Opponent,
+                    count: 3,
+                },
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_cards_in_hand_relations_use_shared_capture_parser()
+    -> Result<(), CardTextError> {
+        for (text, expected) in [
+            (
+                "If an opponent has more cards in hand than you",
+                PredicateAst::PlayerHasMoreCardsInHandThanYou {
+                    player: PlayerAst::Opponent,
+                },
+            ),
+            (
+                "If a player has more cards in hand than each other player",
+                PredicateAst::PlayerHasMoreCardsInHandThanEachOtherPlayer {
+                    player: PlayerAst::Any,
+                },
+            ),
+            (
+                "If that player has more cards in their hand than you do",
+                PredicateAst::PlayerHasMoreCardsInHandThanYou {
+                    player: PlayerAst::That,
+                },
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_turn_event_counts_use_shared_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected) in [
+            (
+                "If you drew two or more cards this turn",
+                PredicateAst::ValueComparison {
+                    left: Value::MaxCardsDrawnThisTurn(PlayerFilter::You),
+                    operator: ValueComparisonOperator::GreaterThanOrEqual,
+                    right: Value::Fixed(2),
+                },
+            ),
+            (
+                "If an opponent has drawn three cards this turn",
+                PredicateAst::ValueComparison {
+                    left: Value::MaxCardsDrawnThisTurn(PlayerFilter::Opponent),
+                    operator: ValueComparisonOperator::Equal,
+                    right: Value::Fixed(3),
+                },
+            ),
+            (
+                "If that player had two or fewer lands entered battlefield under their control this turn",
+                PredicateAst::ValueComparison {
+                    left: Value::LandsEnteredBattlefieldThisTurn(PlayerFilter::IteratedPlayer),
+                    operator: ValueComparisonOperator::LessThanOrEqual,
+                    right: Value::Fixed(2),
+                },
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_spell_context_uses_shared_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected) in [
+            (
+                "If that spells controller poisoned",
+                PredicateAst::TargetSpellControllerIsPoisoned,
+            ),
+            (
+                "If no mana was spent to cast that spell",
+                PredicateAst::TargetSpellNoManaSpentToCast,
+            ),
+            (
+                "If you control more creatures than its controller",
+                PredicateAst::YouControlMoreCreaturesThanTargetSpellController,
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_spell_cast_this_turn_uses_shared_capture_parser() -> Result<(), CardTextError>
+    {
+        let tokens = lex_line("If you cast another spell this turn", 0)?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+        assert_eq!(
+            parsed,
+            PredicateAst::PlayerCastSpellsThisTurnOrMore {
+                player: PlayerAst::You,
+                count: 2,
+            }
+        );
+
+        let tokens = lex_line("If opponent has cast a creature spell this turn", 0)?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+        let PredicateAst::ValueComparison {
+            left:
+                Value::SpellsCastThisTurnMatching {
+                    player,
+                    filter,
+                    exclude_source,
+                },
+            operator: ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(1),
+        } = parsed
+        else {
+            panic!("expected spell-cast matching predicate, got {parsed:?}");
+        };
+        assert_eq!(player, PlayerFilter::Opponent);
+        assert!(!exclude_source);
+        assert!(filter.card_types.contains(&CardType::Creature));
+
+        let tokens = lex_line("If you didnt cast a noncreature spell this turn", 0)?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+        assert!(
+            matches!(&parsed, PredicateAst::Not(inner) if matches!(
+                inner.as_ref(),
+                PredicateAst::ValueComparison {
+                    left: Value::SpellsCastThisTurnMatching { player: PlayerFilter::You, .. },
+                    operator: ValueComparisonOperator::GreaterThanOrEqual,
+                    right: Value::Fixed(1),
+                }
+            )),
+            "expected negated spell-cast matching predicate, got {parsed:?}"
+        );
+
         Ok(())
     }
 
@@ -4772,6 +4536,115 @@ mod tests {
     }
 
     #[test]
+    fn parse_predicate_life_relations_use_shared_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected) in [
+            (
+                "if an opponent has more life than you",
+                PredicateAst::PlayerHasMoreLifeThanYou {
+                    player: PlayerAst::Opponent,
+                },
+            ),
+            (
+                "if you have more life than each opponent",
+                PredicateAst::PlayerHasMoreLifeThanEachOtherPlayer {
+                    player: PlayerAst::You,
+                },
+            ),
+            (
+                "if no opponent has more life than that player",
+                PredicateAst::PlayerHasNoOpponentWithMoreLifeThan {
+                    player: PlayerAst::That,
+                },
+            ),
+            (
+                "if a player has more life than each other player",
+                PredicateAst::PlayerHasMoreLifeThanEachOtherPlayer {
+                    player: PlayerAst::Any,
+                },
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_life_totals_use_shared_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected) in [
+            (
+                "If you have five or less life",
+                PredicateAst::ValueComparison {
+                    left: crate::effect::Value::LifeTotal(PlayerFilter::You),
+                    operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
+                    right: crate::effect::Value::Fixed(5),
+                },
+            ),
+            (
+                "If an opponent has ten or more life",
+                PredicateAst::ValueComparison {
+                    left: crate::effect::Value::LifeTotal(PlayerFilter::Opponent),
+                    operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                    right: crate::effect::Value::Fixed(10),
+                },
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_life_change_this_turn_uses_shared_capture_parser()
+    -> Result<(), CardTextError> {
+        for (text, expected) in [
+            (
+                "If you gained life this turn",
+                PredicateAst::PlayerGainedLifeThisTurnOrMore {
+                    player: PlayerAst::You,
+                    count: 1,
+                },
+            ),
+            (
+                "If you gained three or more life this turn",
+                PredicateAst::PlayerGainedLifeThisTurnOrMore {
+                    player: PlayerAst::You,
+                    count: 3,
+                },
+            ),
+            (
+                "If you lost two or more life this turn",
+                PredicateAst::ValueComparison {
+                    left: Value::LifeLostThisTurn(PlayerFilter::You),
+                    operator: ValueComparisonOperator::GreaterThanOrEqual,
+                    right: Value::Fixed(2),
+                },
+            ),
+            (
+                "If one or more opponents lost life this turn",
+                PredicateAst::OpponentLostLifeThisTurn,
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
     fn parse_predicate_supports_creature_card_put_into_your_graveyard_this_turn()
     -> Result<(), CardTextError> {
         let tokens = lex_line(
@@ -4786,6 +4659,106 @@ mod tests {
             parsed,
             PredicateAst::CreatureCardPutIntoYourGraveyardThisTurn
         );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_battlefield_change_this_turn_uses_shared_capture_parser()
+    -> Result<(), CardTextError> {
+        let cases = [
+            (
+                "If no permanents left battlefield this turn",
+                PredicateAst::Not(Box::new(PredicateAst::PermanentLeftBattlefieldThisTurn)),
+            ),
+            (
+                "If a permanent left battlefield this turn",
+                PredicateAst::PermanentLeftBattlefieldThisTurn,
+            ),
+            (
+                "If creatures left battlefield under your control this turn",
+                PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn,
+            ),
+            (
+                "If lands you controlled were put into graveyard from battlefield this turn",
+                PredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(
+                    ObjectFilter::land().controlled_by(PlayerFilter::You),
+                ),
+            ),
+        ];
+
+        for (text, expected) in cases {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_object_death_this_turn_uses_shared_capture_parser()
+    -> Result<(), CardTextError> {
+        let cases = [
+            (
+                "If a creature died this turn",
+                PredicateAst::CreatureDiedThisTurn,
+            ),
+            (
+                "If seven or more creatures died this turn",
+                PredicateAst::CreatureDiedThisTurnOrMore(7),
+            ),
+            (
+                "If a creature card was put into your graveyard from anywhere this turn",
+                PredicateAst::CreatureCardPutIntoYourGraveyardThisTurn,
+            ),
+        ];
+
+        for (text, expected) in cases {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_battlefield_entry_uses_shared_capture_parser() -> Result<(), CardTextError> {
+        let cases = [
+            (
+                "If you had another creature entered the battlefield under your control last turn",
+                PredicateAst::ObjectEnteredBattlefieldLastTurn(
+                    ObjectFilter::creature()
+                        .controlled_by(PlayerFilter::You)
+                        .other(),
+                ),
+            ),
+            (
+                "If artifacts entered battlefield under your control this turn",
+                PredicateAst::ObjectEnteredBattlefieldThisTurn(
+                    ObjectFilter::artifact().controlled_by(PlayerFilter::You),
+                ),
+            ),
+            (
+                "If you had lands entered battlefield under your control this turn",
+                PredicateAst::PlayerHadLandEnterBattlefieldThisTurn {
+                    player: PlayerAst::You,
+                },
+            ),
+        ];
+
+        for (text, expected) in cases {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
         Ok(())
     }
 

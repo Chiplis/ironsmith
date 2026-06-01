@@ -8,9 +8,9 @@ use super::{
     ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec,
     ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec, ConditionalSpellKeywordKind,
     ConditionalSpellKeywordSpec, CountAsCardNamedForSpellEffectSpec, EnterAsCopyAsEntersSpec,
-    GraveyardCountMetric,
-    PowerToughnessChoiceOption, StaticAbility, StaticAbilityId, StaticAbilityKind,
-    ThisSpellCastRestrictionKind, TriggerDuplicationSpec, TriggerSuppressionSpec,
+    GraveyardCountMetric, PowerToughnessChoiceOption, StaticAbility, StaticAbilityId,
+    StaticAbilityKind, ThisSpellCastRestrictionKind, TriggerDuplicationSpec,
+    TriggerSuppressionSpec,
     text_utils::{capitalize_first, join_with_and, number_word_u32},
 };
 use crate::ability::{Ability, AbilityKind, LevelAbility};
@@ -4355,6 +4355,17 @@ impl StaticAbilityKind for ConditionalDrawReplacement {
 
     fn display(&self) -> String {
         self.display.clone()
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        let mut combined = self.clone();
+        combined.condition = Condition::And(Box::new(condition), Box::new(combined.condition));
+        combined.display = format!(
+            "{} {}",
+            combined.display,
+            super::describe_static_condition(&combined.condition)
+        );
+        Some(StaticAbility::new(combined))
     }
 
     fn generate_replacement_effect(

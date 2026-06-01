@@ -219,10 +219,7 @@ impl ReferenceEnv {
     ) -> ReferenceFrame {
         ReferenceFrame {
             last_effect_id: self.last_effect_id.clone().into_option(),
-            last_library_search_effect_id: self
-                .last_library_search_effect_id
-                .clone()
-                .into_option(),
+            last_library_search_effect_id: self.last_library_search_effect_id.clone().into_option(),
             last_object_tag: self
                 .last_object_tag
                 .clone()
@@ -336,10 +333,7 @@ impl ReferenceExports {
             last_player_filter: self.last_player_filter.clone().into_option(),
             source_object_antecedent: self.source_object_antecedent,
             last_effect_id: self.last_effect_id.clone().into_option(),
-            last_library_search_effect_id: self
-                .last_library_search_effect_id
-                .clone()
-                .into_option(),
+            last_library_search_effect_id: self.last_library_search_effect_id.clone().into_option(),
         }
     }
 }

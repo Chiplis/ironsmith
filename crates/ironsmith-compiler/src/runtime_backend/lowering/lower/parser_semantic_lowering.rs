@@ -1,11 +1,14 @@
 use super::*;
 use crate::runtime_backend::ast::{SubjectVerbEffectAst, SubjectVerbSubjectAst};
+use crate::runtime_backend::grammar::abilities::{
+    is_minimum_spell_total_mana_three_line_lexed, is_players_cant_pay_life_or_sacrifice_line_lexed,
+};
 use crate::runtime_backend::grammar::structure::{
     StatementLineFamily, classify_statement_line_family_lexed,
 };
 use crate::runtime_backend::lexer::{
-    word_slice_contains_any_phrase, word_slice_contains_any_word, word_slice_contains_phrase,
-    word_slice_contains_word, word_slice_starts_with,
+    parser_token_word_refs, word_slice_contains_any_phrase, word_slice_contains_any_word,
+    word_slice_contains_phrase, word_slice_contains_word, word_slice_starts_with,
 };
 use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
     ClauseShape, clause_shape,
@@ -26,6 +29,107 @@ const DRAFT_BOOSTER_PASS_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix & ["each", "player", "passes"];
     contains_phrases & [&["booster", "pack"]]
 );
+const ANY_NUMBER_NAMED_DECK_CONSTRUCTION_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix
+        & [
+            "a", "deck", "can", "have", "any", "number", "of", "cards", "named"
+        ]
+);
+const ANY_NUMBER_NAMED_DECK_CONSTRUCTION_PREFIX_LEN: usize = 9;
+const ADDITIONAL_LAND_PLAY_STATIC_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["you", "may", "play"]);
+const ADDITIONAL_LAND_PLAY_STATIC_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["additional", "land", "on", "each", "of", "your", "turns"],
+            &["additional", "lands", "on", "each", "of", "your", "turns"],
+        ]
+);
+const SELF_ENTERS_WITH_SINGLE_PLUS_ONE_COUNTER_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &[
+                "this", "creature", "enters", "with", "a", "+1/+1", "counter", "on", "it"
+            ],
+            &[
+                "this",
+                "permanent",
+                "enters",
+                "with",
+                "a",
+                "+1/+1",
+                "counter",
+                "on",
+                "it"
+            ],
+            &["it", "enters", "with", "a", "+1/+1", "counter", "on", "it"],
+        ]
+);
+const ADAMANT_COUNTER_CONDITION_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["mana", "was", "spent", "to", "cast", "this", "spell"],
+            &["mana", "were", "spent", "to", "cast", "this", "spell"],
+        ]
+);
+const KRRRIK_BLACK_MANA_LIFE_PAYMENT_STATIC_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact
+        & [
+            "for", "each", "b", "in", "a", "cost", "you", "may", "pay", "2", "life", "rather",
+            "than", "pay", "that", "mana"
+        ]
+);
+const BOAST_TWICE_STATIC_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact
+        & [
+            "creatures",
+            "you",
+            "control",
+            "can",
+            "boast",
+            "twice",
+            "during",
+            "each",
+            "of",
+            "your",
+            "turns",
+            "rather",
+            "than",
+            "once"
+        ]
+);
+const EQUIP_ABILITIES_INSTANT_SPEED_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact
+        & [
+            "you",
+            "may",
+            "activate",
+            "equip",
+            "abilities",
+            "any",
+            "time",
+            "you",
+            "could",
+            "cast",
+            "an",
+            "instant"
+        ]
+);
+const VOTE_ADDITIONAL_TIME_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact
+        & [
+            "while",
+            "voting",
+            "you",
+            "may",
+            "vote",
+            "an",
+            "additional",
+            "time"
+        ]
+);
+const VOTE_ADDITIONAL_VOTE_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["while", "voting", "you", "get", "an", "additional", "vote"]);
 
 fn parse_effect_sentences_from_text(
     text: &str,
@@ -48,18 +152,30 @@ fn parse_triggered_line_from_text(text: &str, line_index: usize) -> Result<LineA
     parse_triggered_line_lexed(&tokens)
 }
 
-fn full_text_has_triggered_intervening_if_clause(text: &str, line_index: usize) -> bool {
-    let Ok(tokens) = lexed_tokens(text, line_index) else {
-        return false;
-    };
-    let start_idx = if tokens_start_with_trigger_intro_surface(&tokens) {
+fn full_parse_tokens_have_triggered_intervening_if_clause(tokens: &[OwnedLexToken]) -> bool {
+    let start_idx = if tokens_start_with_trigger_intro_surface(tokens) {
         1
     } else {
         0
     };
 
-    super::super::grammar::structure::split_triggered_conditional_clause_lexed(&tokens, start_idx)
+    super::super::grammar::structure::split_triggered_conditional_clause_lexed(tokens, start_idx)
         .is_some()
+}
+
+fn full_parse_tokens_contain_if_you_do(tokens: &[OwnedLexToken]) -> bool {
+    contains_token_word_sequence(tokens, IF_YOU_DO_PHRASE)
+}
+
+fn full_parse_tokens_contain_if_you_dont(tokens: &[OwnedLexToken]) -> bool {
+    IF_YOU_DONT_PHRASES
+        .iter()
+        .any(|phrase| contains_token_word_sequence(tokens, phrase))
+}
+
+fn full_parse_tokens_contain_full_party_instead(tokens: &[OwnedLexToken]) -> bool {
+    contains_token_word_sequence(tokens, IF_YOU_HAVE_FULL_PARTY_PHRASE)
+        && contains_token_word_sequence(tokens, UNTIL_END_OF_TURN_INSTEAD_PHRASE)
 }
 
 fn looks_like_combined_spell_and_activation_tax(words: &[&str]) -> bool {
@@ -69,87 +185,98 @@ fn looks_like_combined_spell_and_activation_tax(words: &[&str]) -> bool {
         && word_slice_contains_phrase(words, &["more", "to", "activate"])
 }
 
-fn triggered_line_source_text(line: &RewriteTriggeredLine) -> &str {
+fn triggered_line_source_text(line: &RewriteTriggeredLine) -> String {
     let raw = line.info.raw_line.trim();
     let full = line.full_text.trim();
     if raw != full && raw_preserves_triggered_source(raw, full) {
-        raw
+        raw.to_string()
     } else {
-        full
+        full.to_string()
     }
-}
-
-fn has_trigger_intro_surface(text: &str) -> bool {
-    text_starts_with_trigger_intro_surface(text)
-}
-
-fn presentation_label_from_raw_trigger_line(raw_line: &str) -> Option<&str> {
-    let (label, body) = raw_line.trim().split_once('—')?;
-    let label = label.trim();
-    let body = body.trim_start();
-    if label.is_empty()
-        || label.contains('.')
-        || label.contains(':')
-        || label.split_whitespace().count() > 4
-    {
-        return None;
-    }
-    text_starts_with_trigger_intro_surface(body).then_some(label)
 }
 
 fn raw_preserves_triggered_source(raw: &str, full: &str) -> bool {
     raw_label_prefix_preserves_triggered_source(raw, full)
-        || normalize_triggered_source_text(raw) == normalize_triggered_source_text(full)
+        || normalized_triggered_source_words(raw) == normalized_triggered_source_words(full)
 }
 
 fn raw_label_prefix_preserves_triggered_source(raw: &str, full: &str) -> bool {
-    let Some((_, body)) = raw_label_prefix_parts(raw) else {
+    let Some((_, body_tokens)) = raw_label_prefix_parts(raw) else {
         return false;
     };
-    normalize_triggered_source_text(body) == normalize_triggered_source_text(full)
+    normalized_triggered_source_words_from_tokens(&body_tokens)
+        == normalized_triggered_source_words(full)
 }
 
-fn raw_label_prefix_parts(raw: &str) -> Option<(&str, &str)> {
-    let (label, body) = raw.split_once('—').or_else(|| raw.split_once(" - "))?;
-    let label = label.trim();
-    if label.is_empty()
-        || label.len() > 40
-        || label.contains('.')
-        || label.contains(':')
-        || label.contains('\n')
-    {
+fn raw_label_prefix_parts(raw: &str) -> Option<(String, Vec<OwnedLexToken>)> {
+    let tokens = lex_line(raw, 0).ok()?;
+    let (label_tokens, body_tokens) = split_trigger_label_prefix_tokens(&tokens)?;
+    if !label_tokens_form_raw_trigger_label(label_tokens) {
         return None;
     }
 
-    let body = body.trim();
-    if !text_starts_with_trigger_intro_surface(body) {
+    let body_tokens = trim_lexed_commas(body_tokens);
+    if !tokens_start_with_trigger_intro_surface(body_tokens) {
         return None;
     }
 
-    Some((label, body))
+    Some((
+        render_token_slice(label_tokens).trim().to_string(),
+        body_tokens.to_vec(),
+    ))
 }
 
-fn normalize_triggered_source_text(text: &str) -> String {
-    let normalized = text
-        .trim()
-        .trim_end_matches('.')
-        .to_ascii_lowercase()
-        .replace(char::is_whitespace, " ");
-    strip_trigger_cap_suffix_from_normalized_source(normalized.as_str()).to_string()
+fn split_trigger_label_prefix_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+    let split_idx = tokens
+        .iter()
+        .position(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash))?;
+    let label_tokens = trim_lexed_commas(&tokens[..split_idx]);
+    let body_tokens = trim_lexed_commas(tokens.get(split_idx + 1..).unwrap_or_default());
+    (!label_tokens.is_empty() && !body_tokens.is_empty()).then_some((label_tokens, body_tokens))
 }
 
-fn strip_trigger_cap_suffix_from_normalized_source(text: &str) -> &str {
+fn label_tokens_form_raw_trigger_label(label_tokens: &[OwnedLexToken]) -> bool {
+    let label = render_token_slice(label_tokens);
+    !label.trim().is_empty()
+        && label.len() <= 40
+        && !label_tokens
+            .iter()
+            .any(|token| matches!(token.kind, TokenKind::Period | TokenKind::Colon))
+}
+
+fn normalized_triggered_source_words(text: &str) -> Vec<String> {
+    lex_line(text, 0)
+        .ok()
+        .map(|tokens| normalized_triggered_source_words_from_tokens(&tokens))
+        .unwrap_or_default()
+}
+
+fn normalized_triggered_source_words_from_tokens(tokens: &[OwnedLexToken]) -> Vec<String> {
+    let words = parser_token_word_refs(tokens);
+    strip_trigger_cap_suffix_from_words(words.as_slice())
+        .iter()
+        .map(|word| (*word).to_string())
+        .collect()
+}
+
+fn strip_trigger_cap_suffix_from_words<'a>(words: &'a [&'a str]) -> &'a [&'a str] {
     for suffix in [
-        ". this ability triggers only once each turn",
-        ". this ability triggers only twice each turn",
-        ". do this only once each turn",
-        ". do this only twice each turn",
+        &[
+            "this", "ability", "triggers", "only", "once", "each", "turn",
+        ][..],
+        &[
+            "this", "ability", "triggers", "only", "twice", "each", "turn",
+        ],
+        &["do", "this", "only", "once", "each", "turn"],
+        &["do", "this", "only", "twice", "each", "turn"],
     ] {
-        if let Some(stripped) = text.strip_suffix(suffix) {
-            return stripped.trim_end_matches('.').trim_end();
+        if words.len() >= suffix.len() && word_slice_ends_with(words, suffix) {
+            return &words[..words.len() - suffix.len()];
         }
     }
-    text
+    words
 }
 
 pub(crate) fn lower_rewrite_statement_token_groups_to_chunks(
@@ -422,87 +549,35 @@ fn statement_leading_effect_verb(word: &str) -> bool {
 }
 
 fn parse_self_enters_with_x_counters_static_chunk(tokens: &[OwnedLexToken]) -> Option<LineAst> {
-    let rendered = render_token_slice(tokens).to_ascii_lowercase();
-    let normalized = rendered
-        .replace('\u{2019}', "'")
-        .replace("  ", " ")
-        .trim()
-        .trim_end_matches('.')
-        .to_string();
-    let enters_with_single_counter = normalized
-        == "this creature enters with a +1/+1 counter on it"
-        || normalized == "this permanent enters with a +1/+1 counter on it"
-        || normalized == "it enters with a +1/+1 counter on it";
-    if enters_with_single_counter {
+    let words = token_word_refs(tokens);
+    if SELF_ENTERS_WITH_SINGLE_PLUS_ONE_COUNTER_PATTERN.matches_words(&words) {
+        return Some(single_plus_one_counter_enters_static_chunk());
+    }
+
+    if let Some((predicate_tokens, effect_tokens)) = split_once_at_comma_tokens(tokens)
+        && SELF_ENTERS_WITH_SINGLE_PLUS_ONE_COUNTER_PATTERN
+            .matches_words(&token_word_refs(effect_tokens))
+        && let Some((condition, predicate_body)) =
+            parse_adamant_counter_condition_tokens(predicate_tokens)
+    {
         return Some(LineAst::StaticAbilities(vec![
             crate::cards::builders::StaticAbilityAst::Static(
-                StaticAbility::enters_with_counters_value(
+                StaticAbility::enters_with_counters_if_condition(
                     crate::object::CounterType::PlusOnePlusOne,
                     crate::effect::Value::Fixed(1),
+                    condition,
+                    predicate_body,
                 ),
             ),
         ]));
     }
 
-    if let Some((predicate, effect)) = normalized.split_once(',') {
-        let effect = effect.trim();
-        let is_single_counter_effect = effect == "this creature enters with a +1/+1 counter on it"
-            || effect == "this permanent enters with a +1/+1 counter on it"
-            || effect == "it enters with a +1/+1 counter on it";
-        if is_single_counter_effect {
-            let predicate_text = predicate.trim();
-            let predicate_body = if text_starts_with_if(predicate_text) {
-                predicate_text.get("if".len()..)?.trim_start()
-            } else {
-                predicate_text.rsplit_once(" if ").map(|(_, tail)| tail)?
-            };
-            let predicate_words = predicate_body.split_whitespace().collect::<Vec<_>>();
-            if predicate_words.len() == 11
-                && predicate_words[0] == "at"
-                && predicate_words[1] == "least"
-                && predicate_words[4] == "mana"
-                && matches!(predicate_words[5], "was" | "were")
-                && predicate_words[6] == "spent"
-                && predicate_words[7] == "to"
-                && predicate_words[8] == "cast"
-                && predicate_words[9] == "this"
-                && predicate_words[10] == "spell"
-            {
-                let amount_tokens = [OwnedLexToken::word(
-                    predicate_words[2].to_string(),
-                    TextSpan::synthetic(),
-                )];
-                let (amount, _) =
-                    crate::runtime_backend::front_end::shared::util::parse_number(&amount_tokens)?;
-                let symbol = crate::runtime_backend::front_end::shared::util::parse_mana_symbol_word_flexible(
-                    predicate_words[3],
-                )?;
-                return Some(LineAst::StaticAbilities(vec![
-                    crate::cards::builders::StaticAbilityAst::Static(
-                        StaticAbility::enters_with_counters_if_condition(
-                            crate::object::CounterType::PlusOnePlusOne,
-                            crate::effect::Value::Fixed(1),
-                            crate::ConditionExpr::ManaSpentToCastThisSpellAtLeast {
-                                amount,
-                                symbol: Some(symbol),
-                            },
-                            predicate_body.to_string(),
-                        ),
-                    ),
-                ]));
-            }
-        }
-    }
-
-    if !text_starts_with_self_x_counter_etb(normalized.as_str()) {
+    if !tokens_start_with_self_x_counter_etb(tokens) {
         return None;
     }
 
     let count =
-        crate::runtime_backend::front_end::shared::util::revealed_cards_total_mana_value_x_value(
-            &normalized,
-        )
-        .unwrap_or(crate::effect::Value::X);
+        revealed_cards_total_mana_value_x_value_tokens(tokens).unwrap_or(crate::effect::Value::X);
 
     Some(LineAst::StaticAbilities(vec![
         crate::cards::builders::StaticAbilityAst::Static(
@@ -512,6 +587,94 @@ fn parse_self_enters_with_x_counters_static_chunk(tokens: &[OwnedLexToken]) -> O
             ),
         ),
     ]))
+}
+
+fn tokens_start_with_self_x_counter_etb(tokens: &[OwnedLexToken]) -> bool {
+    SELF_ENTERS_WITH_X_PLUS_ONE_COUNTER_PREFIXES
+        .iter()
+        .any(|prefix| token_slice_starts_with(tokens, prefix))
+}
+
+fn revealed_cards_total_mana_value_x_value_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<crate::effect::Value> {
+    const REVEALED_CARDS_TOTAL_MANA_VALUE_X_PHRASES: &[&[&str]] = &[
+        &[
+            "where", "x", "is", "the", "total", "mana", "value", "of", "all", "cards", "revealed",
+            "this", "way",
+        ],
+        &[
+            "where", "x", "is", "the", "total", "mana", "value", "of", "cards", "revealed", "this",
+            "way",
+        ],
+    ];
+
+    REVEALED_CARDS_TOTAL_MANA_VALUE_X_PHRASES
+        .iter()
+        .any(|phrase| contains_token_word_sequence(tokens, phrase))
+        .then(|| {
+            crate::effect::Value::TotalManaValue(ObjectFilter::tagged(TagKey::from(
+                "__public_revealed",
+            )))
+        })
+}
+
+fn single_plus_one_counter_enters_static_chunk() -> LineAst {
+    LineAst::StaticAbilities(vec![crate::cards::builders::StaticAbilityAst::Static(
+        StaticAbility::enters_with_counters_value(
+            crate::object::CounterType::PlusOnePlusOne,
+            crate::effect::Value::Fixed(1),
+        ),
+    )])
+}
+
+fn split_once_at_comma_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+    let comma_idx = tokens
+        .iter()
+        .position(|token| token.kind == TokenKind::Comma)?;
+    Some((
+        trim_lexed_commas(&tokens[..comma_idx]),
+        trim_lexed_commas(tokens.get(comma_idx + 1..).unwrap_or_default()),
+    ))
+}
+
+fn parse_adamant_counter_condition_tokens(
+    predicate_tokens: &[OwnedLexToken],
+) -> Option<(crate::ConditionExpr, String)> {
+    let predicate_words = TokenWordView::new(predicate_tokens);
+    let body_start_word = if predicate_words.first_is("if") {
+        1
+    } else {
+        predicate_words.find_word("if")? + 1
+    };
+    let body_start_token = predicate_words.token_index_for_word_index(body_start_word)?;
+    let body_tokens = trim_lexed_commas(&predicate_tokens[body_start_token..]);
+    let body_words = token_word_refs(body_tokens);
+    if body_words.len() != 11
+        || body_words[0] != "at"
+        || body_words[1] != "least"
+        || !ADAMANT_COUNTER_CONDITION_TAIL_PATTERN.matches_words(&body_words[4..])
+    {
+        return None;
+    }
+
+    let body_view = TokenWordView::new(body_tokens);
+    let amount_token_idx = body_view.token_index_for_word_index(2)?;
+    let (amount, _) = crate::runtime_backend::front_end::shared::util::parse_number(
+        body_tokens.get(amount_token_idx..)?,
+    )?;
+    let symbol = crate::runtime_backend::front_end::shared::util::parse_mana_symbol_word_flexible(
+        body_words[3],
+    )?;
+    Some((
+        crate::ConditionExpr::ManaSpentToCastThisSpellAtLeast {
+            amount,
+            symbol: Some(symbol),
+        },
+        render_token_slice(body_tokens).trim().to_string(),
+    ))
 }
 
 fn parse_day_night_starts_day_static_chunk(tokens: &[OwnedLexToken]) -> Option<LineAst> {
@@ -597,49 +760,57 @@ fn lower_rewrite_triggered_to_chunk_impl(
     effect_parse_tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
     let source_text = triggered_line_source_text(line);
-    let trigger_surface_text = if has_trigger_intro_surface(source_text)
-        || !has_trigger_intro_surface(&line.info.raw_line)
+    let source_text_tokens =
+        lex_line(source_text.as_str(), line.info.line_index).unwrap_or_default();
+    let trigger_surface_text = if tokens_start_with_trigger_intro_surface(&source_text_tokens)
+        || !tokens_start_with_trigger_intro_surface(full_parse_tokens)
     {
-        source_text
+        source_text.as_str()
     } else {
-        line.info.raw_line.trim()
+        line.full_text.trim()
     };
-    let chosen_option_label =
-        effective_chosen_option_label(&line.info.raw_line, line.chosen_option_label.as_deref());
+    let trigger_surface_tokens = if trigger_surface_text == source_text.as_str() {
+        source_text_tokens
+    } else {
+        lex_line(trigger_surface_text, line.info.line_index).unwrap_or_default()
+    };
+    let chosen_option_label = effective_chosen_option_label(line.chosen_option_label.as_deref());
     let presentation_label = line
         .presentation_label
         .as_deref()
-        .or_else(|| presentation_label_from_raw_trigger_line(&line.info.raw_line));
-    let inferred_max_triggers_per_turn = line
-        .max_triggers_per_turn
-        .or(infer_trigger_cap_from_text(&line.full_text))
-        .or(infer_trigger_cap_from_text(&line.info.raw_line));
+        .filter(|label| !label.trim().is_empty())
+        .map(|label| label.trim().to_string());
+    let presentation_label = presentation_label.as_deref();
+    let inferred_max_triggers_per_turn = line.max_triggers_per_turn;
 
-    if let Some(chunk) =
-        lower_special_rewrite_triggered_chunk(line, trigger_parse_tokens, effect_parse_tokens)?
-    {
+    if let Some(chunk) = lower_special_rewrite_triggered_chunk(
+        line,
+        full_parse_tokens,
+        trigger_parse_tokens,
+        effect_parse_tokens,
+    )? {
         return apply_chosen_option_to_triggered_chunk(
             apply_explicit_intervening_if_to_triggered_chunk(chunk, line.intervening_if.clone())?,
             trigger_surface_text,
+            &trigger_surface_tokens,
             inferred_max_triggers_per_turn,
             chosen_option_label,
             presentation_label,
         );
     }
 
-    if text_mentions_full_party_instead(line.full_text.as_str())
+    if full_parse_tokens_contain_full_party_instead(full_parse_tokens)
         && let Ok(trigger) = parse_trigger_clause_lexed(trigger_parse_tokens)
     {
-        let effect_text =
-            if text_contains_word_phrase(line.effect_text.trim(), IF_YOU_HAVE_FULL_PARTY_PHRASE) {
-                line.effect_text.as_str()
+        let effect_tokens =
+            if contains_token_word_sequence(effect_parse_tokens, IF_YOU_HAVE_FULL_PARTY_PHRASE) {
+                effect_parse_tokens
             } else {
-                line.full_text
-                    .split_once(',')
-                    .map(|(_, rest)| rest.trim())
-                    .unwrap_or(line.effect_text.as_str())
+                split_once_at_comma_tokens(full_parse_tokens)
+                    .map(|(_, rest)| rest)
+                    .unwrap_or(effect_parse_tokens)
             };
-        let effects = parse_effect_sentences_from_text(effect_text, line.info.line_index)?;
+        let effects = parse_effect_sentences_lexed(effect_tokens)?;
         if !effects.is_empty() {
             return apply_chosen_option_to_triggered_chunk(
                 apply_explicit_intervening_if_to_triggered_chunk(
@@ -651,6 +822,7 @@ fn lower_rewrite_triggered_to_chunk_impl(
                     line.intervening_if.clone(),
                 )?,
                 trigger_surface_text,
+                &trigger_surface_tokens,
                 inferred_max_triggers_per_turn,
                 chosen_option_label,
                 presentation_label,
@@ -675,6 +847,7 @@ fn lower_rewrite_triggered_to_chunk_impl(
                 line.intervening_if.clone(),
             )?,
             trigger_surface_text,
+            &trigger_surface_tokens,
             inferred_max_triggers_per_turn,
             chosen_option_label.clone(),
             presentation_label,
@@ -734,6 +907,7 @@ fn lower_rewrite_triggered_to_chunk_impl(
                     line.intervening_if.clone(),
                 )?,
                 trigger_surface_text,
+                &trigger_surface_tokens,
                 inferred_max_triggers_per_turn,
                 chosen_option_label.clone(),
                 presentation_label,
@@ -755,14 +929,11 @@ fn lower_rewrite_triggered_to_chunk_impl(
         }
     }
 
-    if !line.effect_text.trim().is_empty()
-        && !full_text_has_triggered_intervening_if_clause(
-            line.full_text.as_str(),
-            line.info.line_index,
-        )
-        && !text_mentions_if_you_do(line.full_text.as_str())
-        && !text_mentions_if_you_dont(line.full_text.as_str())
-        && !text_starts_with_if(line.effect_text.trim())
+    if !token_word_refs(effect_parse_tokens).is_empty()
+        && !full_parse_tokens_have_triggered_intervening_if_clause(full_parse_tokens)
+        && !full_parse_tokens_contain_if_you_do(full_parse_tokens)
+        && !full_parse_tokens_contain_if_you_dont(full_parse_tokens)
+        && !token_slice_starts_with(effect_parse_tokens, &["if"])
     {
         let direct_trigger = parse_trigger_clause_lexed(trigger_parse_tokens);
         let direct_effects = parse_effect_sentences_lexed(effect_parse_tokens);
@@ -779,6 +950,7 @@ fn lower_rewrite_triggered_to_chunk_impl(
                     line.intervening_if.clone(),
                 )?,
                 trigger_surface_text,
+                &trigger_surface_tokens,
                 inferred_max_triggers_per_turn,
                 chosen_option_label,
                 presentation_label,
@@ -793,14 +965,11 @@ fn lower_rewrite_triggered_to_chunk_impl(
     apply_chosen_option_to_triggered_chunk(
         parsed,
         trigger_surface_text,
+        &trigger_surface_tokens,
         inferred_max_triggers_per_turn,
         chosen_option_label,
         presentation_label,
     )
-}
-
-fn infer_trigger_cap_from_text(text: &str) -> Option<u32> {
-    trigger_cap_surface_from_text(text)
 }
 
 fn combat_death_blocked_damage_amount_lexed(
@@ -834,11 +1003,13 @@ pub(super) fn infer_rewrite_triggered_functional_zones(
     trigger: &TriggerSpec,
     normalized_line: &str,
 ) -> Vec<Zone> {
-    infer_triggered_ability_functional_zones(trigger, normalized_line)
+    let tokens = lex_line(normalized_line, 0).unwrap_or_default();
+    infer_triggered_ability_functional_zones(trigger, &tokens)
 }
 
 pub(crate) fn lower_special_rewrite_triggered_chunk(
     line: &RewriteTriggeredLine,
+    full_parse_tokens: &[OwnedLexToken],
     trigger_parse_tokens: &[OwnedLexToken],
     effect_parse_tokens: &[OwnedLexToken],
 ) -> Result<Option<LineAst>, CardTextError> {
@@ -889,7 +1060,7 @@ pub(crate) fn lower_special_rewrite_triggered_chunk(
         }));
     }
 
-    if text_matches_blocks_or_blocked_first_strike(normalized) {
+    if tokens_match_blocks_or_blocked_first_strike(full_parse_tokens) {
         let trigger = parse_trigger_clause_from_text(
             "this creature becomes blocked by a creature",
             line.info.line_index,
@@ -1139,14 +1310,19 @@ pub(crate) fn lower_special_rewrite_triggered_chunk(
 
 /// Recognizes "you may pay {COST} rather than pay the equip cost of the first
 /// equip ability you activate each turn." and the variant "during each of your turns."
-fn is_first_equip_cost_alternative_lowering_line(text: &str) -> bool {
-    text_is_first_equip_cost_alternative_line(text)
+fn is_first_equip_cost_alternative_lowering_line(tokens: &[OwnedLexToken]) -> bool {
+    token_slice_starts_with(tokens, YOU_MAY_PAY_PREFIX)
+        && contains_token_word_sequence(tokens, FIRST_EQUIP_COST_ALTERNATIVE_PHRASE)
+        && FIRST_EQUIP_COST_ALTERNATIVE_SUFFIXES
+            .iter()
+            .any(|suffix| token_slice_ends_with(tokens, suffix))
 }
 
 /// Build the display text for the first-equip-cost alternative static ability.
 /// Capitalises the leading "you" and strips the trailing period.
-fn capitalize_first_equip_cost_alternative_display(normalized: &str) -> String {
-    let s = normalized.trim_end_matches('.');
+fn capitalize_first_equip_cost_alternative_display(tokens: &[OwnedLexToken]) -> String {
+    let rendered = render_token_slice(tokens);
+    let s = rendered.trim().trim_end_matches('.');
     let mut chars = s.chars();
     match chars.next() {
         Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
@@ -1175,44 +1351,29 @@ fn lower_rewrite_static_to_chunk_impl(
     line: &RewriteStaticLine,
     parse_tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
-    let chosen_option_label =
-        effective_chosen_option_label(&line.info.raw_line, line.chosen_option_label.as_deref());
-    let raw = line.info.raw_line.trim();
+    let chosen_option_label = effective_chosen_option_label(line.chosen_option_label.as_deref());
     if tokens_start_with_partner_dash_label(&line.parse_tokens) {
-        let visible_label = raw
-            .split_once('(')
-            .map(|(head, _)| head)
-            .unwrap_or(raw)
-            .trim()
-            .to_string();
+        let visible_label = render_tokens_before_reminder_or_period(&line.parse_tokens)
+            .unwrap_or_else(|| line.text.trim().to_string());
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::partner().with_text(visible_label).into()),
             chosen_option_label,
         );
     }
-    if matches!(
-        line.text.as_str(),
-        "for each {B} in a cost, you may pay 2 life rather than pay that mana."
-            | "for each {b} in a cost, you may pay 2 life rather than pay that mana."
-    ) {
+    let parse_words = token_word_refs(parse_tokens);
+    if KRRRIK_BLACK_MANA_LIFE_PAYMENT_STATIC_PATTERN.matches_words(&parse_words) {
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::krrik_black_mana_may_be_paid_with_life().into()),
             chosen_option_label,
         );
     }
-    if line.text
-        == "as long as trinisphere is untapped, each spell that would cost less than three mana to cast costs three mana to cast."
-        || line.text
-            == "as long as this is untapped, each spell that would cost less than three mana to cast costs three mana to cast."
-    {
+    if is_minimum_spell_total_mana_three_line_lexed(parse_tokens) {
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::minimum_spell_total_mana(3).into()),
             chosen_option_label,
         );
     }
-    if line.text
-        == "players can't pay life or sacrifice nonland permanents to cast spells or activate abilities."
-    {
+    if is_players_cant_pay_life_or_sacrifice_line_lexed(parse_tokens) {
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(
                 StaticAbility::cant_pay_life_or_sacrifice_nonland_for_cast_or_activate().into(),
@@ -1220,66 +1381,67 @@ fn lower_rewrite_static_to_chunk_impl(
             chosen_option_label,
         );
     }
-    if line.text
-        == "creatures you control can boast twice during each of your turns rather than once."
-    {
+    if BOAST_TWICE_STATIC_PATTERN.matches_words(&parse_words) {
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::boast_twice_each_turn().into()),
             chosen_option_label,
         );
     }
     if is_draft_rule_static_line(parse_tokens) {
+        let display = render_token_slice(parse_tokens)
+            .trim()
+            .trim_end_matches('.')
+            .to_string();
         return wrap_chosen_option_static_chunk(
-            LineAst::StaticAbility(
-                StaticAbility::draft_rule_text(raw.trim_end_matches('.').to_string()).into(),
-            ),
+            LineAst::StaticAbility(StaticAbility::draft_rule_text(display).into()),
             chosen_option_label,
         );
     }
-    if is_any_number_named_deck_construction_line(raw) {
+    if is_any_number_named_deck_construction_line(parse_tokens) {
+        let display = render_token_slice(parse_tokens)
+            .trim()
+            .trim_end_matches('.')
+            .to_string();
         return wrap_chosen_option_static_chunk(
-            LineAst::StaticAbility(
-                StaticAbility::deck_construction_rule_text(raw.trim_end_matches('.').to_string())
-                    .into(),
-            ),
+            LineAst::StaticAbility(StaticAbility::deck_construction_rule_text(display).into()),
             chosen_option_label,
         );
     }
-    if is_first_equip_cost_alternative_lowering_line(&line.text) {
-        let display = capitalize_first_equip_cost_alternative_display(&line.text);
+    if is_first_equip_cost_alternative_lowering_line(parse_tokens) {
+        let display = capitalize_first_equip_cost_alternative_display(parse_tokens);
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::first_equip_cost_alternative(display).into()),
             chosen_option_label,
         );
     }
-    if line.text == "you may activate equip abilities any time you could cast an instant." {
+    if EQUIP_ABILITIES_INSTANT_SPEED_PATTERN.matches_words(&parse_words) {
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::equip_abilities_any_time().into()),
             chosen_option_label,
         );
     }
-    if line.text == "while voting, you may vote an additional time." {
+    if VOTE_ADDITIONAL_TIME_PATTERN.matches_words(&parse_words) {
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::vote_additional_time_while_voting().into()),
             chosen_option_label,
         );
     }
-    if line.text == "while voting, you get an additional vote." {
+    if VOTE_ADDITIONAL_VOTE_PATTERN.matches_words(&parse_words) {
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::vote_additional_vote_while_voting().into()),
             chosen_option_label,
         );
     }
-    if let Some(count) = parse_additional_land_play_static_count_from_text(line.text.as_str()) {
+    if let Some(count) = parse_additional_land_play_static_count_tokens(parse_tokens) {
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::additional_land_plays(count).into()),
             chosen_option_label,
         );
     }
-    if let Some(chunk) = try_lower_hideaway_text(line.text.as_str(), line.info.raw_line.as_str())? {
+    if let Some(chunk) = try_lower_hideaway_tokens(parse_tokens)? {
         return wrap_chosen_option_static_chunk(chunk, chosen_option_label);
     }
-    if let Some(chunk) = try_lower_partner_with_text(line.text.as_str(), line.text.as_str())? {
+    if let Some(chunk) = try_lower_partner_with_tokens(parse_tokens)? {
         return wrap_chosen_option_static_chunk(chunk, chosen_option_label);
     }
 
@@ -1320,7 +1482,7 @@ fn lower_rewrite_static_to_chunk_impl(
             chosen_option_label,
         );
     }
-    if !should_skip_keyword_action_static_probe(&line.text)
+    if !should_skip_keyword_action_static_probe_tokens(parse_tokens)
         && let Some(actions) = parse_ability_line_lexed(&lexed)
     {
         return Ok(LineAst::Abilities(actions));
@@ -1345,16 +1507,20 @@ fn lower_rewrite_static_to_chunk_impl(
             );
         }
         Ok(None) => {}
-        Err(_) if str_find(line.text.as_str(), ".").is_some() => {}
+        Err(_)
+            if parse_tokens
+                .iter()
+                .any(|token| token.kind == TokenKind::Period) => {}
         Err(err) => return Err(err),
     }
     if let Some(chunk) = lower_split_rewrite_static_chunk(line, parse_tokens)? {
-        return Ok(chunk);
+        return wrap_chosen_option_static_chunk(chunk, chosen_option_label);
     }
-    if looks_like_ability_word_marker_text(line.text.as_str(), parse_tokens) {
+    if looks_like_ability_word_marker_tokens(parse_tokens) {
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(
-                StaticAbility::keyword_marker(line.text.trim().to_string()).into(),
+                StaticAbility::keyword_marker(render_token_slice(parse_tokens).trim().to_string())
+                    .into(),
             ),
             chosen_option_label,
         );
@@ -1365,20 +1531,30 @@ fn lower_rewrite_static_to_chunk_impl(
     )))
 }
 
-fn looks_like_ability_word_marker_text(text: &str, parse_tokens: &[OwnedLexToken]) -> bool {
-    let trimmed = text.trim();
-    if trimmed.is_empty()
-        || trimmed.contains('.')
-        || trimmed.contains(':')
-        || trimmed.contains('—')
-        || trimmed.contains('-')
-        || trimmed.contains(',')
-        || trimmed.contains(';')
-    {
+fn looks_like_ability_word_marker_tokens(parse_tokens: &[OwnedLexToken]) -> bool {
+    if parse_tokens.iter().any(|token| {
+        matches!(
+            token.kind,
+            TokenKind::Period
+                | TokenKind::Colon
+                | TokenKind::Dash
+                | TokenKind::EmDash
+                | TokenKind::Comma
+                | TokenKind::Semicolon
+        )
+    }) {
         return false;
     }
     let words = token_word_refs(parse_tokens);
     !words.is_empty() && words.len() <= 4
+}
+
+fn should_skip_keyword_action_static_probe_tokens(tokens: &[OwnedLexToken]) -> bool {
+    CANT_BE_BLOCKED_SUFFIXES
+        .iter()
+        .any(|suffix| token_slice_ends_with(tokens, suffix))
+        && !token_slice_starts_with(tokens, &["this"])
+        && !token_slice_starts_with(tokens, &["it"])
 }
 
 fn is_draft_rule_static_line(parse_tokens: &[OwnedLexToken]) -> bool {
@@ -1388,31 +1564,55 @@ fn is_draft_rule_static_line(parse_tokens: &[OwnedLexToken]) -> bool {
         || DRAFT_BOOSTER_PASS_PATTERN.matches_words(&words)
 }
 
-fn is_any_number_named_deck_construction_line(raw: &str) -> bool {
-    let trimmed = raw.trim().trim_end_matches('.');
-    let lower = trimmed.to_ascii_lowercase();
-    let prefix = "a deck can have any number of cards named ";
-    lower.starts_with(prefix) && trimmed.len() > prefix.len()
+fn is_any_number_named_deck_construction_line(parse_tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(parse_tokens);
+    ANY_NUMBER_NAMED_DECK_CONSTRUCTION_PREFIX_PATTERN.matches_words(&words)
+        && words.len() > ANY_NUMBER_NAMED_DECK_CONSTRUCTION_PREFIX_LEN
 }
 
-fn parse_additional_land_play_static_count_from_text(text: &str) -> Option<u32> {
-    let words = text
-        .trim()
-        .trim_end_matches('.')
-        .split_whitespace()
-        .map(|word| word.to_ascii_lowercase())
-        .collect::<Vec<_>>();
-    if words.len() != 11
-        || words[0] != "you"
-        || words[1] != "may"
-        || words[2] != "play"
-        || words[4] != "additional"
-        || !matches!(words[5].as_str(), "land" | "lands")
-        || words[6..] != ["on", "each", "of", "your", "turns"]
-    {
+#[test]
+fn ability_word_marker_detection_uses_token_kinds() {
+    let marker_tokens = lex_line("Landfall", 0).expect("marker should lex");
+    assert!(looks_like_ability_word_marker_tokens(&marker_tokens));
+
+    let sentence_tokens = lex_line(
+        "Landfall — Whenever a land enters under your control, draw a card.",
+        0,
+    )
+    .expect("sentence should lex");
+    assert!(!looks_like_ability_word_marker_tokens(&sentence_tokens));
+}
+
+#[test]
+fn additional_land_play_static_count_uses_token_words() {
+    let tokens = lex_line(
+        "You may play two additional lands on each of your turns.",
+        0,
+    )
+    .expect("lexes");
+    assert_eq!(
+        parse_additional_land_play_static_count_tokens(&tokens),
+        Some(2)
+    );
+
+    let non_match = lex_line("You may play an additional land this turn.", 0).expect("lexes");
+    assert_eq!(
+        parse_additional_land_play_static_count_tokens(&non_match),
+        None
+    );
+}
+
+fn parse_additional_land_play_static_count_tokens(parse_tokens: &[OwnedLexToken]) -> Option<u32> {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(parse_tokens);
+    if !ADDITIONAL_LAND_PLAY_STATIC_PREFIX_PATTERN.matches_words(&words) {
         return None;
     }
-    ironsmith_core::parse_cardinal_word(words[3].as_str())
+    let (count, used) = ironsmith_core::parse_cardinal_words(&words[3..])?;
+    let tail_words = words.get(3 + used..)?;
+    if !ADDITIONAL_LAND_PLAY_STATIC_TAIL_PATTERN.matches_words(tail_words) {
+        return None;
+    }
+    Some(count)
 }
 
 #[cfg(test)]
@@ -1753,14 +1953,13 @@ fn rewrite_copy_count_to_times_paid_label_rewrite(effects: &mut [EffectAst], lab
 }
 
 pub(crate) fn lower_gift_keyword_line(line: &RewriteKeywordLine) -> Result<LineAst, CardTextError> {
-    let (followup_text, effects) =
-        standard_gift_followup(line.info.raw_line.as_str()).ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "rewrite keyword lowering could not parse gift line '{}'",
-                line.info.raw_line
-            ))
-        })?;
-    let timing = standard_gift_timing(line.info.raw_line.as_str()).ok_or_else(|| {
+    let variant = standard_gift_variant_tokens(&line.parse_tokens).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "rewrite keyword lowering could not parse gift line '{}'",
+            line.info.raw_line
+        ))
+    })?;
+    let timing = standard_gift_timing_tokens(&line.parse_tokens, variant).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "rewrite keyword lowering could not determine gift timing for line '{}'",
             line.info.raw_line
@@ -1780,8 +1979,8 @@ pub(crate) fn lower_gift_keyword_line(line: &RewriteKeywordLine) -> Result<LineA
 
     Ok(LineAst::GiftKeyword {
         cost: cost.into(),
-        effects,
-        followup_text,
+        effects: variant.effects(),
+        followup_text: variant.followup_text().to_string(),
         timing,
     })
 }
@@ -1869,32 +2068,30 @@ fn standard_gift_create_token_effect(name: &str, tapped: bool) -> EffectAst {
     )
 }
 
-fn standard_gift_variant(text: &str) -> Option<StandardGiftVariant> {
-    let head = str_split_once_char(text.trim(), '(')
-        .map(|(head, _)| head.trim())
-        .unwrap_or(text.trim())
-        .to_ascii_lowercase();
+fn standard_gift_variant_tokens(tokens: &[OwnedLexToken]) -> Option<StandardGiftVariant> {
+    let head_tokens = tokens
+        .iter()
+        .position(|token| token.kind == TokenKind::LParen)
+        .map(|idx| &tokens[..idx])
+        .unwrap_or(tokens);
 
-    match head.as_str() {
-        "gift a card" => Some(StandardGiftVariant::Card),
-        "gift a treasure" => Some(StandardGiftVariant::Treasure),
-        "gift a food" => Some(StandardGiftVariant::Food),
-        "gift a tapped fish" => Some(StandardGiftVariant::TappedFish),
-        "gift an extra turn" => Some(StandardGiftVariant::ExtraTurn),
-        "gift an octopus" => Some(StandardGiftVariant::Octopus),
+    match parser_token_word_refs(head_tokens).as_slice() {
+        ["gift", "a", "card"] => Some(StandardGiftVariant::Card),
+        ["gift", "a", "treasure"] => Some(StandardGiftVariant::Treasure),
+        ["gift", "a", "food"] => Some(StandardGiftVariant::Food),
+        ["gift", "a", "tapped", "fish"] => Some(StandardGiftVariant::TappedFish),
+        ["gift", "an", "extra", "turn"] => Some(StandardGiftVariant::ExtraTurn),
+        ["gift", "an", "octopus"] => Some(StandardGiftVariant::Octopus),
         _ => None,
     }
 }
 
-fn standard_gift_followup(text: &str) -> Option<(String, Vec<EffectAst>)> {
-    let variant = standard_gift_variant(text)?;
-    Some((variant.followup_text().to_string(), variant.effects()))
-}
-
-fn standard_gift_timing(text: &str) -> Option<GiftTimingAst> {
-    let normalized = text.trim().to_ascii_lowercase();
-    let variant = standard_gift_variant(normalized.as_str())?;
-    if text_mentions_when_it_enters(text) {
+fn standard_gift_timing_tokens(
+    tokens: &[OwnedLexToken],
+    variant: StandardGiftVariant,
+) -> Option<GiftTimingAst> {
+    let words = parser_token_word_refs(tokens);
+    if word_slice_contains_phrase(&words, WHEN_IT_ENTERS_PHRASE) {
         Some(GiftTimingAst::PermanentEtb)
     } else {
         Some(variant.default_timing())
@@ -1905,12 +2102,10 @@ pub(crate) fn lower_keyword_special_cases(
     line: &RewriteKeywordLine,
     parse_tokens: &[OwnedLexToken],
 ) -> Result<Option<LineAst>, CardTextError> {
-    if let Some(chunk) = try_lower_hideaway_keyword(line, parse_tokens)? {
+    if let Some(chunk) = try_lower_hideaway_keyword(parse_tokens)? {
         return Ok(Some(chunk));
     }
-    if let Some(chunk) =
-        try_lower_partner_with_text(line.info.raw_line.as_str(), line.text.as_str())?
-    {
+    if let Some(chunk) = try_lower_partner_with_tokens(parse_tokens)? {
         return Ok(Some(chunk));
     }
     if let Some(chunk) = try_lower_optional_cost_with_cast_trigger(line, parse_tokens)? {
@@ -1923,31 +2118,29 @@ pub(crate) fn lower_keyword_special_cases(
 }
 
 fn try_lower_hideaway_keyword(
-    line: &RewriteKeywordLine,
-    _parse_tokens: &[OwnedLexToken],
+    parse_tokens: &[OwnedLexToken],
 ) -> Result<Option<LineAst>, CardTextError> {
-    try_lower_hideaway_text(line.text.as_str(), line.info.raw_line.as_str())
+    try_lower_hideaway_tokens(parse_tokens)
 }
 
-fn try_lower_hideaway_text(text: &str, raw_line: &str) -> Result<Option<LineAst>, CardTextError> {
-    let normalized_words = text
-        .split_whitespace()
-        .map(|word| word.trim_matches(|ch: char| !ch.is_ascii_alphanumeric()))
-        .filter(|word| !word.is_empty())
-        .collect::<Vec<_>>();
-    if normalized_words.len() != 2 || !normalized_words[0].eq_ignore_ascii_case("hideaway") {
+fn try_lower_hideaway_tokens(
+    parse_tokens: &[OwnedLexToken],
+) -> Result<Option<LineAst>, CardTextError> {
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(parse_tokens);
+    if words.len() != 2 || words[0] != "hideaway" {
         return Ok(None);
     }
-    let Ok(count) = normalized_words[1].parse::<i32>() else {
+    let display = render_token_slice(parse_tokens);
+    let Ok(count) = words[1].parse::<i32>() else {
         return Err(CardTextError::ParseError(format!(
             "hideaway keyword expected numeric count in '{}'",
-            raw_line
+            display
         )));
     };
     if count <= 0 {
         return Err(CardTextError::ParseError(format!(
             "hideaway keyword expected positive count in '{}'",
-            raw_line
+            display
         )));
     }
 
@@ -1987,13 +2180,30 @@ fn hideaway_line_ast(count: i32) -> LineAst {
     }
 }
 
-fn try_lower_partner_with_text(
-    raw_line: &str,
-    normalized_text: &str,
+#[test]
+fn hideaway_special_case_uses_parse_tokens() {
+    let tokens = lex_line("Hideaway 5.", 0).expect("hideaway should lex");
+    assert!(
+        try_lower_hideaway_tokens(&tokens)
+            .expect("hideaway should lower")
+            .is_some()
+    );
+
+    let non_numeric = lex_line("Hideaway X.", 0).expect("hideaway should lex");
+    assert!(try_lower_hideaway_tokens(&non_numeric).is_err());
+
+    let reminder = lex_line("Hideaway 5 reminder", 0).expect("hideaway should lex");
+    assert!(
+        try_lower_hideaway_tokens(&reminder)
+            .expect("extra words should not match the closed-form special case")
+            .is_none()
+    );
+}
+
+fn try_lower_partner_with_tokens(
+    parse_tokens: &[OwnedLexToken],
 ) -> Result<Option<LineAst>, CardTextError> {
-    let Some(partner_name) = partner_with_name_from_text(raw_line)
-        .or_else(|| partner_with_name_from_text(normalized_text))
-    else {
+    let Some(partner_name) = partner_with_name_from_tokens(parse_tokens) else {
         return Ok(None);
     };
 
@@ -2025,22 +2235,62 @@ fn try_lower_partner_with_text(
     ])))
 }
 
-fn partner_with_name_from_text(text: &str) -> Option<String> {
-    let trimmed = text.trim();
-    let rest_start = "partner with ".len();
-    if !text_starts_with_partner_with(trimmed) {
+fn partner_with_name_from_tokens(tokens: &[OwnedLexToken]) -> Option<String> {
+    if !token_slice_starts_with(tokens, PARTNER_WITH_PREFIX) {
         return None;
     }
 
-    let rest = trimmed.get(rest_start..)?.trim();
-    let name = rest
-        .split_once('(')
-        .map(|(name, _)| name)
-        .unwrap_or(rest)
+    let words = TokenWordView::new(tokens);
+    let name_start = words.token_index_for_word_index(PARTNER_WITH_PREFIX.len())?;
+    let name_end = tokens[name_start..]
+        .iter()
+        .position(|token| matches!(token.kind, TokenKind::LParen | TokenKind::Period))
+        .map(|idx| name_start + idx)
+        .unwrap_or(tokens.len());
+    let name = render_token_slice(&tokens[name_start..name_end])
         .trim()
-        .trim_end_matches('.')
-        .trim();
-    (!name.is_empty()).then(|| name.replace('"', ""))
+        .replace('"', "");
+    (!name.is_empty()).then_some(name)
+}
+
+fn render_tokens_before_reminder_or_period(tokens: &[OwnedLexToken]) -> Option<String> {
+    let end = tokens
+        .iter()
+        .position(|token| matches!(token.kind, TokenKind::LParen | TokenKind::Period))
+        .unwrap_or(tokens.len());
+    let display = normalize_dash_label_display(render_token_slice(&tokens[..end]).trim());
+    (!display.is_empty()).then_some(display)
+}
+
+fn normalize_dash_label_display(display: &str) -> String {
+    display
+        .replace(" -", " - ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[test]
+fn partner_name_and_visible_label_trim_on_lexed_reminder_tokens() {
+    let partner_with_tokens = lex_line(
+        "Partner with Toothy, Imaginary Friend (When this creature enters...)",
+        0,
+    )
+    .expect("partner-with line should lex");
+    assert_eq!(
+        partner_with_name_from_tokens(&partner_with_tokens).as_deref(),
+        Some("Toothy, Imaginary Friend")
+    );
+
+    let partner_label_tokens = lex_line(
+        "Partner - Friends forever (You can have two commanders.)",
+        0,
+    )
+    .expect("partner label should lex");
+    assert_eq!(
+        render_tokens_before_reminder_or_period(&partner_label_tokens).as_deref(),
+        Some("Partner - Friends forever")
+    );
 }
 
 pub(crate) fn try_lower_optional_cost_with_cast_trigger(

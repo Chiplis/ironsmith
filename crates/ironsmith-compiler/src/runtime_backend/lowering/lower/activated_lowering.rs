@@ -30,6 +30,21 @@ fn activated_effect_is_for_each_color_among_add_mana_lexed(tokens: &[OwnedLexTok
         )
 }
 
+fn tokens_mention_phrase(tokens: &[OwnedLexToken], phrase: &[&str]) -> bool {
+    let words = token_word_refs(tokens);
+    word_slice_contains_phrase(&words, phrase)
+}
+
+fn tokens_mention_any_phrase(tokens: &[OwnedLexToken], phrases: &[&[&str]]) -> bool {
+    let words = token_word_refs(tokens);
+    word_slice_contains_any_phrase(&words, phrases)
+}
+
+fn tokens_mention_any_player_activate_on_stack(tokens: &[OwnedLexToken]) -> bool {
+    tokens_mention_phrase(tokens, ANY_PLAYER_MAY_ACTIVATE_THIS_ABILITY_PHRASE)
+        && tokens_mention_phrase(tokens, ON_THE_STACK_PHRASE)
+}
+
 fn activation_cost_defines_x_for_mana_ability(cost: &TotalCost) -> bool {
     if cost.mana_cost().is_some_and(crate::mana::ManaCost::has_x) {
         return true;
@@ -181,7 +196,7 @@ fn extract_fixed_mana_output_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<ManaS
         .iter()
         .try_fold(Vec::new(), |mut acc, token| match token.kind {
             TokenKind::ManaGroup => {
-                let inner = token.slice.trim_start_matches('{').trim_end_matches('}');
+                let inner = token.mana_group_inner()?;
                 acc.push(parse_mana_symbol(inner).ok()?);
                 Some(acc)
             }
@@ -571,6 +586,7 @@ pub(crate) fn lower_rewrite_activated_to_chunk(
     effect_parse_tokens: Vec<OwnedLexToken>,
     timing_hint: ActivationTiming,
     is_loyalty_ability: bool,
+    presentation_label: Option<String>,
     chosen_option_label: Option<String>,
 ) -> Result<LoweredRewriteActivatedLine, CardTextError> {
     lower_rewrite_activated_to_chunk_impl(
@@ -582,6 +598,7 @@ pub(crate) fn lower_rewrite_activated_to_chunk(
             effect_parse_tokens: effect_parse_tokens.clone(),
             timing_hint,
             is_loyalty_ability,
+            presentation_label,
             chosen_option_label,
         },
         &cost_parse_tokens,
@@ -592,15 +609,15 @@ pub(crate) fn lower_rewrite_activated_to_chunk(
 fn lower_rewrite_activated_to_chunk_impl(
     line: &RewriteActivatedLine,
     cost_parse_tokens: &[OwnedLexToken],
-    effect_parse_tokens: &[OwnedLexToken],
+    original_effect_parse_tokens: &[OwnedLexToken],
 ) -> Result<LoweredRewriteActivatedLine, CardTextError> {
-    let x_definition_value = activated_x_definition_value(effect_parse_tokens);
+    let x_definition_value = activated_x_definition_value(original_effect_parse_tokens);
     let SplitRewriteActivatedEffectText {
         effect_text,
         effect_parse_tokens,
         restrictions,
         mana_restrictions,
-    } = split_rewrite_activated_effect_text(line, effect_parse_tokens);
+    } = split_rewrite_activated_effect_text(line, original_effect_parse_tokens);
     if effect_text.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "rewrite activated lowering produced no parsed effect text for '{}'",
@@ -611,16 +628,13 @@ fn lower_rewrite_activated_to_chunk_impl(
     let normalized_cost =
         bind_activated_x_definition_to_mana_cost(line.cost.clone(), x_definition_value);
     let ability_text = rewrite_activated_display_text(line);
-    let additional_activation_restrictions = if ability_text
-        .as_deref()
-        .is_some_and(text_starts_with_exhaust)
-    {
+    let additional_activation_restrictions = if activated_line_has_exhaust_label(line) {
         vec!["Activate each exhaust ability only once.".to_string()]
     } else {
         Vec::new()
     };
-    if text_mentions_add_x_mana(effect_text.as_str())
-        && !text_mentions_where_x_is(line.info.raw_line.as_str())
+    if contains_token_word_sequence(&effect_parse_tokens, ADD_X_MANA_PHRASE)
+        && !tokens_mention_phrase(original_effect_parse_tokens, WHERE_X_IS_PHRASE)
         && !activation_cost_defines_x_for_mana_ability(&normalized_cost)
     {
         return Err(CardTextError::ParseError(
@@ -628,7 +642,7 @@ fn lower_rewrite_activated_to_chunk_impl(
         ));
     }
 
-    if let Some(level) = level_number_from_text(effect_text.as_str()) {
+    if let Some(level) = level_number_from_tokens(&effect_parse_tokens) {
         let parsed = ParsedAbility {
             ability: Ability {
                 kind: AbilityKind::Activated(ActivatedAbility {
@@ -664,6 +678,7 @@ fn lower_rewrite_activated_to_chunk_impl(
         let functional_zones = infer_rewrite_activated_functional_zones(
             line,
             cost_parse_tokens,
+            original_effect_parse_tokens,
             effect_text.as_str(),
             &effect_parse_tokens,
         )?;
@@ -716,6 +731,7 @@ fn lower_rewrite_activated_to_chunk_impl(
             let functional_zones = infer_rewrite_activated_functional_zones(
                 line,
                 cost_parse_tokens,
+                original_effect_parse_tokens,
                 effect_text.as_str(),
                 &effect_parse_tokens,
             )?;
@@ -777,6 +793,7 @@ fn lower_rewrite_activated_to_chunk_impl(
     let functional_zones = infer_rewrite_activated_functional_zones(
         line,
         cost_parse_tokens,
+        original_effect_parse_tokens,
         effect_text.as_str(),
         &effect_parse_tokens,
     )?;
@@ -819,6 +836,13 @@ fn lower_rewrite_activated_to_chunk_impl(
     })
 }
 
+fn level_number_from_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
+    if !token_slice_starts_with(tokens, &["level"]) {
+        return None;
+    }
+    tokens.get(1)?.parser_text.parse::<u32>().ok()
+}
+
 fn apply_chosen_option_condition_to_activated(
     parsed: &mut ParsedAbility,
     chosen_option_label: Option<&str>,
@@ -842,9 +866,44 @@ fn apply_chosen_option_condition_to_activated(
 }
 
 fn rewrite_activated_display_text(line: &RewriteActivatedLine) -> Option<String> {
-    let raw = line.info.raw_line.trim();
-    let raw_lower = raw.to_ascii_lowercase();
+    if let Some(label) = line.presentation_label.as_deref()
+        && let Some(display) = activated_presentation_display_label(label)
+    {
+        return Some(format!(
+            "{display} — {}: {}",
+            render_token_slice(&line.cost_parse_tokens).trim(),
+            render_token_slice(&line.effect_parse_tokens).trim()
+        ));
+    }
 
+    if let Some(chosen) = line.chosen_option_label.as_deref() {
+        if let Some(display) = activated_presentation_display_label(chosen) {
+            return Some(format!(
+                "{display} — {}: {}",
+                render_token_slice(&line.cost_parse_tokens).trim(),
+                render_token_slice(&line.effect_parse_tokens).trim()
+            ));
+        }
+    }
+
+    None
+}
+
+fn activated_line_has_exhaust_label(line: &RewriteActivatedLine) -> bool {
+    line.presentation_label
+        .as_deref()
+        .or(line.chosen_option_label.as_deref())
+        .and_then(activated_presentation_display_label)
+        == Some("Exhaust")
+}
+
+fn activated_presentation_display_label(label: &str) -> Option<&'static str> {
+    let label_tokens = lex_line(label, 0).ok();
+    let label_words = label_tokens
+        .as_deref()
+        .map(token_word_refs)
+        .unwrap_or_default();
+    let label_head = label_words.first().copied().unwrap_or(label);
     for display in [
         "Boast",
         "Exhaust",
@@ -854,44 +913,22 @@ fn rewrite_activated_display_text(line: &RewriteActivatedLine) -> Option<String>
         "Teleport",
         "Transmute",
     ] {
-        let needle = format!("{} —", display.to_ascii_lowercase());
-        if let Some(idx) = str_find(raw_lower.as_str(), needle.as_str()) {
-            return Some(raw[idx..].trim().to_string());
+        if label_head.eq_ignore_ascii_case(display) {
+            return Some(display);
         }
     }
-
-    if let Some(chosen) = line.chosen_option_label.as_deref() {
-        for display in [
-            "Boast",
-            "Exhaust",
-            "Renew",
-            "Channel",
-            "Cohort",
-            "Teleport",
-            "Transmute",
-        ] {
-            if chosen.eq_ignore_ascii_case(display)
-                && let Some((_, tail)) = str_split_once_char(raw, '—')
-            {
-                return Some(format!("{display} — {}", tail.trim()));
-            }
-        }
-    }
-
     None
 }
 
 fn infer_rewrite_activated_functional_zones(
     line: &RewriteActivatedLine,
     cost_parse_tokens: &[OwnedLexToken],
+    original_effect_parse_tokens: &[OwnedLexToken],
     effect_text: &str,
     effect_parse_tokens: &[OwnedLexToken],
 ) -> Result<Vec<Zone>, CardTextError> {
-    if text_mentions_any_player_activate_on_stack(line.info.raw_line.as_str()) {
+    if tokens_mention_any_player_activate_on_stack(original_effect_parse_tokens) {
         return Ok(vec![Zone::Stack]);
-    }
-    if text_mentions_exile_self_from_graveyard(line.info.raw_line.as_str()) {
-        return Ok(vec![Zone::Graveyard]);
     }
     let fallback_cost_text;
     let fallback_cost_tokens;
@@ -902,6 +939,9 @@ fn infer_rewrite_activated_functional_zones(
     } else {
         cost_parse_tokens
     };
+    if tokens_mention_any_phrase(cost_tokens, EXILE_SELF_FROM_GRAVEYARD_PHRASES) {
+        return Ok(vec![Zone::Graveyard]);
+    }
     if effect_parse_tokens.is_empty() {
         let effect_tokens = lexed_tokens(effect_text, line.info.line_index)?;
         return Ok(infer_activated_functional_zones_lexed(

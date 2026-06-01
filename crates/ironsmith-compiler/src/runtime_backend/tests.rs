@@ -5547,6 +5547,123 @@ fn rewrite_anthem_static_condition_normalizes_apostrophe_shapes() {
 }
 
 #[test]
+fn rewrite_anthem_static_status_condition_uses_subject_status_capture() {
+    for (text, expected) in [
+        (
+            "this permanent is tapped",
+            crate::ConditionExpr::SourceIsTapped,
+        ),
+        ("it is attacking", crate::ConditionExpr::SourceIsAttacking),
+        (
+            "equipped creature is untapped",
+            crate::ConditionExpr::EquippedCreatureUntapped,
+        ),
+    ] {
+        let tokens = lex_line(text, 0)
+            .expect("rewrite lexer should classify subject-status static-condition clause");
+
+        let parsed = super::keyword_static::parse_static_condition_clause(&tokens)
+            .expect("subject-status static-condition clause should parse");
+
+        assert_eq!(parsed, expected, "{text}");
+    }
+}
+
+#[test]
+fn rewrite_anthem_static_descriptor_condition_uses_subject_descriptor_capture() {
+    let vehicle_tokens = lex_line("enchanted permanent is a vehicle", 0)
+        .expect("rewrite lexer should classify enchanted-permanent descriptor condition");
+    let vehicle = super::keyword_static::parse_static_condition_clause(&vehicle_tokens)
+        .expect("enchanted-permanent descriptor condition should parse");
+    assert_eq!(vehicle, crate::ConditionExpr::EnchantedPermanentIsVehicle);
+
+    let color_tokens = lex_line("enchanted creature is red", 0)
+        .expect("rewrite lexer should classify attached-object descriptor condition");
+    let color = super::keyword_static::parse_static_condition_clause(&color_tokens)
+        .expect("attached-object descriptor condition should parse");
+    let debug = format!("{color:?}");
+
+    assert!(debug.contains("CountComparison"), "{debug}");
+    assert!(debug.contains("MatchingFilter"), "{debug}");
+    assert!(debug.contains("colors: Some"), "{debug}");
+}
+
+#[test]
+fn rewrite_anthem_static_player_status_condition_uses_player_status_capture() {
+    for (text, expected) in [
+        (
+            "You're the monarch",
+            crate::ConditionExpr::PlayerIsMonarch {
+                player: crate::target::PlayerFilter::You,
+            },
+        ),
+        (
+            "you have the initiative",
+            crate::ConditionExpr::PlayerHasInitiative {
+                player: crate::target::PlayerFilter::You,
+            },
+        ),
+        (
+            "you have maximum speed",
+            crate::ConditionExpr::ValueComparison {
+                left: crate::effect::Value::Speed(crate::target::PlayerFilter::You),
+                operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                right: crate::effect::Value::Fixed(4),
+            },
+        ),
+    ] {
+        let tokens = lex_line(text, 0)
+            .expect("rewrite lexer should classify player-status static-condition clause");
+
+        let parsed = super::keyword_static::parse_static_condition_clause(&tokens)
+            .expect("player-status static-condition clause should parse");
+
+        assert_eq!(parsed, expected, "{text}");
+    }
+}
+
+#[test]
+fn rewrite_anthem_static_player_achievement_condition_uses_achievement_capture() {
+    for text in ["you have the city's blessing", "you've completed a dungeon"] {
+        let tokens = lex_line(text, 0)
+            .expect("rewrite lexer should classify player-achievement static-condition clause");
+
+        let parsed = super::keyword_static::parse_static_condition_clause(&tokens)
+            .expect("player-achievement static-condition clause should parse");
+        let debug = format!("{parsed:?}");
+
+        assert!(
+            debug.contains("PlayerHasCitysBlessing") || debug.contains("PlayerCompletedDungeon"),
+            "{text}: {debug}"
+        );
+    }
+
+    let tokens = lex_line("you have completed Lost Mine of Phandelver", 0)
+        .expect("rewrite lexer should classify named-dungeon static-condition clause");
+    let parsed = super::keyword_static::parse_static_condition_clause(&tokens)
+        .expect("named-dungeon static-condition clause should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("PlayerCompletedDungeon"), "{debug}");
+    assert!(debug.contains("lost mine of phandelver"), "{debug}");
+}
+
+#[test]
+fn rewrite_anthem_static_ownership_condition_uses_owner_capture() {
+    let tokens = lex_line("As long as you own two or more artifacts", 0)
+        .expect("rewrite lexer should classify ownership static-condition clause");
+
+    let parsed = super::keyword_static::parse_static_condition_clause(&tokens)
+        .expect("ownership static-condition clause should parse");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("CountComparison"), "{debug}");
+    assert!(debug.contains("GreaterThanOrEqual(2)"), "{debug}");
+    assert!(debug.contains("owner: Some(You)"), "{debug}");
+    assert!(debug.contains("Artifact"), "{debug}");
+}
+
+#[test]
 fn rewrite_static_condition_parses_multicolor_devotion_comparison() {
     let tokens = lex_line("Your devotion to blue and red is less than seven", 0)
         .expect("rewrite lexer should classify devotion condition clause");
@@ -8385,7 +8502,10 @@ fn rewrite_grammar_zilortha_lethal_damage_power_static_line() {
         "grammar-owned lethal-damage power probe should match Zilortha's static line"
     );
 
-    let parsed = super::keyword_static::parse_lethal_damage_to_creatures_you_control_uses_power_line(&tokens)
+    let parsed =
+        super::keyword_static::parse_lethal_damage_to_creatures_you_control_uses_power_line(
+            &tokens,
+        )
         .expect("Zilortha lethal-damage static line should parse");
 
     assert!(matches!(

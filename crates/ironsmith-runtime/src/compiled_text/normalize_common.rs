@@ -2916,6 +2916,19 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             " until end of turn. If it's not your turn, untap those creatures.",
         );
     }
+    if normalized.starts_with("Each creature you control gets ")
+        && normalized
+            .contains(" until end of turn. Then if it is not your turn, untap that creature.")
+    {
+        normalized = normalized.replace(
+            "Each creature you control gets ",
+            "Creatures you control get ",
+        );
+        normalized = normalized.replace(
+            " until end of turn. Then if it is not your turn, untap that creature.",
+            " until end of turn. If it's not your turn, untap those creatures.",
+        );
+    }
     let preserve_plural_creatures_you_control = normalized
         .contains("from the command zone this game")
         || normalized
