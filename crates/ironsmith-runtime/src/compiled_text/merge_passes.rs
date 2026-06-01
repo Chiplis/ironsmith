@@ -259,7 +259,9 @@ fn parse_conditional_subject_predicate(line: &str) -> Option<ConditionalSubjectP
 
 fn is_creature_addition_predicate(predicate: &str) -> bool {
     let lower = predicate.trim().to_ascii_lowercase();
-    lower == "a creature in addition to its other types"
+    lower == "creature"
+        || lower == "a creature"
+        || lower == "a creature in addition to its other types"
         || lower == "creature in addition to its other types"
         || lower == "creatures in addition to their other types"
 }
@@ -522,6 +524,14 @@ fn conditioned_subject_key(subject: &str) -> String {
     let lower = subject.trim().to_ascii_lowercase();
     if let Some(rest) = lower.strip_prefix("each creature ") {
         return format!("creatures {rest}");
+    }
+    if lower.starts_with("this ") {
+        if let Some(stripped) = lower.strip_suffix(" creature") {
+            return stripped.to_string();
+        }
+        if let Some(stripped) = lower.strip_suffix(" source") {
+            return stripped.to_string();
+        }
     }
     lower
 }
@@ -1350,7 +1360,7 @@ pub(super) fn merge_subject_animation_lines(lines: Vec<String>) -> Vec<String> {
                 let Some(next) = parse_conditional_subject_predicate(&lines[idx + consumed]) else {
                     break;
                 };
-                if !start.subject.eq_ignore_ascii_case(&next.subject)
+                if !conditioned_subjects_equivalent(&start.subject, &next.subject)
                     || !start.condition.eq_ignore_ascii_case(&next.condition)
                 {
                     break;
@@ -1422,16 +1432,37 @@ pub(super) fn merge_subject_animation_lines(lines: Vec<String>) -> Vec<String> {
                     .as_deref()
                     .unwrap_or_else(|| start.subject.as_str());
                 if !plural_subject {
-                    let mut combined = format!(
-                        "{condition}, {subject} is {} {replacement_subtypes}",
-                        indefinite_article_for_phrase(&replacement_subtypes)
-                    );
-                    if let Some(pt) = base_pt {
-                        combined.push_str(" with base power and toughness ");
-                        combined.push_str(&pt);
+                    let subject = lowercase_first(subject);
+                    let replacement_subtypes = replacement_subtypes.replace(" and ", " ");
+                    let started_as_creature = is_creature_addition_predicate(&start.predicate);
+                    let mut combined = if started_as_creature {
+                        if let Some(pt) = base_pt {
+                            format!(
+                                "{condition}, {subject} is {} {pt} {replacement_subtypes} creature",
+                                indefinite_article_for_phrase(&pt)
+                            )
+                        } else {
+                            format!(
+                                "{condition}, {subject} is {} {replacement_subtypes} creature",
+                                indefinite_article_for_phrase(&replacement_subtypes)
+                            )
+                        }
+                    } else {
+                        let mut text = format!(
+                            "{condition}, {subject} is {} {replacement_subtypes}",
+                            indefinite_article_for_phrase(&replacement_subtypes)
+                        );
+                        if let Some(pt) = base_pt {
+                            text.push_str(" with base power and toughness ");
+                            text.push_str(&pt);
+                        }
+                        text
+                    };
+                    if combined.contains(" a 8") || combined.contains(" a 11") {
+                        combined = combined.replacen(" a ", " an ", 1);
                     }
                     if !granted_predicates.is_empty() {
-                        combined.push_str(" and has ");
+                        combined.push_str(" with ");
                         combined.push_str(&join_with_and(&granted_predicates));
                     }
                     merged.push(combined);

@@ -898,6 +898,50 @@ fn anthem_find_slash_word(words: &[&str]) -> Option<usize> {
         .position(|word| crate::string_primitives::contains_char(word, '/'))
 }
 
+fn is_source_pronoun_contracted_be_word(word: &str) -> bool {
+    matches!(
+        word,
+        "it's" | "it’s" | "its" | "he's" | "he’s" | "hes" | "she's" | "she’s" | "shes"
+    )
+}
+
+fn parse_static_be_subject_and_condition(
+    tokens: &[OwnedLexToken],
+    be_idx: usize,
+) -> Result<Option<(Option<crate::ConditionExpr>, AnthemSubjectAst, bool)>, CardTextError> {
+    let contracted_source_subject = tokens[be_idx]
+        .as_word()
+        .is_some_and(is_source_pronoun_contracted_be_word);
+    if contracted_source_subject && token_slice_starts_with(tokens, &["as", "long", "as"]) {
+        let condition_tokens = trim_commas(&tokens[3..be_idx]);
+        if condition_tokens.is_empty() {
+            return Ok(None);
+        }
+        return Ok(Some((
+            Some(parse_static_condition_clause(&condition_tokens)?),
+            AnthemSubjectAst::Source,
+            false,
+        )));
+    }
+
+    let (condition, subject_start) = match parse_anthem_prefix_condition(tokens, be_idx) {
+        Ok(parsed) => parsed,
+        Err(_) => return Ok(None),
+    };
+    let subject_tokens = trim_commas(&tokens[subject_start..be_idx]);
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+    let subject = match parse_anthem_subject(&subject_tokens) {
+        Ok(subject) => subject,
+        Err(_) => return Ok(None),
+    };
+    let attached_subject = crate::runtime_backend::token_word_refs(&subject_tokens)
+        .first()
+        .is_some_and(|word| ENCHANTED_OR_EQUIPPED_WORD_PATTERN.matches_word(word));
+    Ok(Some((condition, subject, attached_subject)))
+}
+
 
 fn first_spell_each_turn_subject(filter_words: &[&str]) -> Option<AnthemSubjectAst> {
     FIRST_SPELL_EACH_TURN_SUBJECT_PATTERN
@@ -2757,6 +2801,10 @@ pub(crate) fn parse_static_condition_clause(
         ));
     }
 
+    if let Some(condition) = parse_source_counter_static_condition(&tokens) {
+        return Ok(condition);
+    }
+
     if let Some(condition) = parse_cards_in_hand_static_condition(&tokens) {
         return Ok(condition);
     }
@@ -3514,6 +3562,38 @@ fn parse_cards_in_hand_static_condition(tokens: &[OwnedLexToken]) -> Option<crat
         }
         _ => None,
     }
+}
+
+fn parse_source_counter_static_condition(tokens: &[OwnedLexToken]) -> Option<crate::ConditionExpr> {
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    let count_start_idx = match clause_words.as_slice() {
+        ["this", "has", ..] | ["it", "has", ..] => 2,
+        ["this", "creature", "has", ..]
+        | ["this", "planeswalker", "has", ..]
+        | ["this", "permanent", "has", ..] => 3,
+        _ => return None,
+    };
+
+    let count_tokens = tokens.get(count_start_idx..)?;
+    let (comparison, used) = parse_static_quantity_prefix(count_tokens, false).ok()?;
+    let count = comparison_to_at_least_threshold(&comparison)?;
+    let rest_tokens = count_tokens.get(used..)?;
+    let rest_words = crate::runtime_backend::token_word_refs(rest_tokens);
+    let counter_idx = find_index(&rest_words, |word| {
+        COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word)
+    })?;
+    if counter_idx == 0 {
+        return None;
+    }
+    let counter_type = parse_counter_type_from_tokens(&rest_tokens[..=counter_idx])?;
+    if !ON_SOURCE_COUNTER_TAIL_PATTERN.matches_words(&rest_words[counter_idx + 1..]) {
+        return None;
+    }
+
+    Some(crate::ConditionExpr::SourceHasCounterAtLeast {
+        counter_type,
+        count,
+    })
 }
 
 fn parse_life_total_static_condition(tokens: &[OwnedLexToken]) -> Option<crate::ConditionExpr> {
@@ -7175,7 +7255,9 @@ pub(crate) fn parse_filter_has_granted_ability_line(
         let (mut condition, subject_start) = match parse_anthem_prefix_condition(tokens, has_idx) {
             Ok(parsed) => parsed,
             Err(err) => {
-                deferred_error.get_or_insert(err);
+                if !(token_slice_starts_with(tokens, &["as", "long", "as"]) && has_idx <= 4) {
+                    deferred_error.get_or_insert(err);
+                }
                 continue;
             }
         };

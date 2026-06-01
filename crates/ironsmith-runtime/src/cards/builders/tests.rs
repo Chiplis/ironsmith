@@ -41971,6 +41971,74 @@ fn assert_oracle_card_fails_strict(name: &str) {
 }
 
 #[test]
+fn grand_master_of_flowers_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Grand Master of Flowers");
+    let def = parse_oracle_card_definition("Grand Master of Flowers");
+    let ability_debug = format!("{:#?}", def.abilities);
+    assert!(
+        ability_debug.contains("SourceHasCounterAtLeast")
+            && ability_debug.contains("Loyalty")
+            && ability_debug.contains("SetCardTypes")
+            && ability_debug.contains("SetBasePowerToughness")
+            && ability_debug.contains("SetCreatureSubtypes")
+            && ability_debug.contains("Flying")
+            && ability_debug.contains("Indestructible")
+            && ability_debug.contains("FirstStrike")
+            && ability_debug.contains("DoubleStrike")
+            && ability_debug.contains("Vigilance"),
+        "Grand Master of Flowers should structurally model the seven-loyalty Dragon God animation, got {ability_debug}"
+    );
+
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("as long as this has seven or more loyalty counters on it")
+            && rendered.contains("7/7 dragon god creature")
+            && rendered.contains("flying and indestructible")
+            && rendered.contains("target creature without first strike, double strike, or vigilance can't attack or block until your next turn"),
+        "compiled text should preserve Grand Master's conditional animation and target restriction clauses, got {rendered}"
+    );
+}
+
+#[test]
+fn grand_master_of_flowers_animation_depends_on_loyalty_counter_threshold() {
+    let def = parse_oracle_card_definition("Grand Master of Flowers");
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let grand_master = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    assert!(
+        !game.calculated_card_types(grand_master).contains(&CardType::Creature),
+        "Grand Master should not be a creature below seven loyalty counters"
+    );
+    assert_eq!(game.calculated_power(grand_master), None);
+    assert_eq!(game.calculated_toughness(grand_master), None);
+    assert!(
+        !game.object_has_static_ability_id(grand_master, StaticAbilityId::Flying)
+            && !game.object_has_static_ability_id(grand_master, StaticAbilityId::Indestructible),
+        "Grand Master should not have creature keywords below the threshold"
+    );
+
+    game.add_counters(grand_master, crate::object::CounterType::Loyalty, 7)
+        .expect("add loyalty counters");
+
+    assert!(
+        game.calculated_card_types(grand_master).contains(&CardType::Creature),
+        "Grand Master should become a creature at seven loyalty counters"
+    );
+    assert_eq!(game.calculated_power(grand_master), Some(7));
+    assert_eq!(game.calculated_toughness(grand_master), Some(7));
+    let subtypes = game.calculated_subtypes(grand_master);
+    assert!(subtypes.contains(&Subtype::Dragon) && subtypes.contains(&Subtype::God));
+    assert!(game.object_has_static_ability_id(grand_master, StaticAbilityId::Flying));
+    assert!(game.object_has_static_ability_id(
+        grand_master,
+        StaticAbilityId::Indestructible
+    ));
+}
+
+#[test]
 fn death_in_heaven_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Death in Heaven");
     let def = parse_oracle_card_definition("Death in Heaven");

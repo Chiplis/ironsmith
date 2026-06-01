@@ -942,7 +942,8 @@ const THE_BATTLEFIELD_PREFIX_PATTERN: ClauseShape<'static> =
 const BATTLEFIELD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["battlefield"]);
 const CHOOSE_CARD_NAME_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["choose", "a", "card", "name"]);
-const SOURCE_IT_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["it"]);
+const SOURCE_IT_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["it"], &["he"], &["she"]]);
 const CHOICE_OR_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["or"]);
 const AS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["as"]);
 const THIS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this"]);
@@ -2759,6 +2760,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         },
         multi_static_ability_ast_passthrough_rule!(
             parse_has_base_power_toughness_and_granted_keywords_static_line
+        ),
+        multi_static_ability_ast_passthrough_rule!(
+            parse_subject_is_pt_creature_with_granted_abilities_line
         ),
         multi_static_ability_ast_passthrough_rule!(
             parse_subject_is_subtype_with_base_pt_and_granted_abilities_line
@@ -8376,6 +8380,95 @@ pub(crate) fn parse_filter_is_pt_creature_in_addition_and_has_line(
     )))
 }
 
+pub(crate) fn parse_subject_is_pt_creature_with_granted_abilities_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    let Some(be_idx) = find_index(tokens, |token| {
+        IS_OR_ARE_WORD_PATTERN.matches_token(token)
+            || token
+                .as_word()
+                .is_some_and(is_source_pronoun_contracted_be_word)
+    }) else {
+        return Ok(None);
+    };
+    let Some(with_idx) = find_index(&tokens[be_idx + 1..], |token| {
+        WITH_WORD_PATTERN.matches_token(token)
+    })
+    .map(|offset| be_idx + 1 + offset) else {
+        return Ok(None);
+    };
+    let Some((condition, subject, attached_subject)) =
+        parse_static_be_subject_and_condition(tokens, be_idx)?
+    else {
+        return Ok(None);
+    };
+
+    let before_with = trim_commas(&tokens[be_idx + 1..with_idx]);
+    if before_with.is_empty() {
+        return Ok(None);
+    }
+    let before_with_words = crate::runtime_backend::token_word_refs(&before_with);
+    let before_with_words = strip_leading_article_word_refs(&before_with_words);
+    if before_with_words.len() < 3 {
+        return Ok(None);
+    }
+    let (power, toughness) = match parse_pt_modifier(before_with_words[0]) {
+        Ok(parsed) => parsed,
+        Err(_) => return Ok(None),
+    };
+    let Some(creature_idx) = find_index(&before_with_words, |word| {
+        STATIC_CREATURE_OR_CREATURES_WORD_PATTERN.matches_word(word)
+    }) else {
+        return Ok(None);
+    };
+    if creature_idx == 0 || creature_idx + 1 != before_with_words.len() {
+        return Ok(None);
+    }
+    let mut subtypes = Vec::new();
+    for word in &before_with_words[1..creature_idx] {
+        if is_article(word) {
+            continue;
+        }
+        let Some(subtype) = parse_subtype_word(word) else {
+            return Ok(None);
+        };
+        subtypes.push(subtype);
+    }
+
+    let ability_tokens = trim_commas(&tokens[with_idx + 1..]);
+    let Some(granted_tail) =
+        parse_heterogeneous_granted_tail(&ability_tokens, &clause_words, attached_subject)?
+    else {
+        return Ok(None);
+    };
+
+    let filter = anthem_subject_filter(&subject);
+    let mut result = vec![
+        wrap_conditioned_animation_static_ability(
+            StaticAbility::set_card_types(filter.clone(), vec![CardType::Creature]),
+            &condition,
+        ),
+        wrap_conditioned_animation_static_ability(
+            StaticAbility::set_base_power_toughness(filter.clone(), power, toughness),
+            &condition,
+        ),
+    ];
+    if !subtypes.is_empty() {
+        result.push(wrap_conditioned_animation_static_ability(
+            StaticAbility::set_creature_subtypes(filter.clone(), subtypes),
+            &condition,
+        ));
+    }
+    result.extend(lower_granted_tail_for_anthem_subject(
+        &subject,
+        &condition,
+        granted_tail,
+    ));
+
+    Ok(Some(result))
+}
+
 pub(crate) fn parse_subject_is_subtype_with_base_pt_and_granted_abilities_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
@@ -8388,8 +8481,12 @@ pub(crate) fn parse_subject_is_subtype_with_base_pt_and_granted_abilities_line(
     } else {
         tokens
     };
-    let Some(be_idx) = find_index(tokens, |token| IS_OR_ARE_WORD_PATTERN.matches_token(token))
-    else {
+    let Some(be_idx) = find_index(tokens, |token| {
+        IS_OR_ARE_WORD_PATTERN.matches_token(token)
+            || token
+                .as_word()
+                .is_some_and(is_source_pronoun_contracted_be_word)
+    }) else {
         return Ok(None);
     };
     let Some(with_idx) = find_index(&tokens[be_idx + 1..], |token| {
@@ -8399,21 +8496,11 @@ pub(crate) fn parse_subject_is_subtype_with_base_pt_and_granted_abilities_line(
         return Ok(None);
     };
 
-    let (_condition, subject_start) = match parse_anthem_prefix_condition(tokens, be_idx) {
-        Ok(parsed) => parsed,
-        Err(_) => return Ok(None),
-    };
-    let subject_tokens = trim_commas(&tokens[subject_start..be_idx]);
-    if subject_tokens.is_empty() {
+    let Some((_condition, subject, attached_subject)) =
+        parse_static_be_subject_and_condition(tokens, be_idx)?
+    else {
         return Ok(None);
-    }
-    let subject = match parse_anthem_subject(&subject_tokens) {
-        Ok(subject) => subject,
-        Err(_) => return Ok(None),
     };
-    let attached_subject = crate::runtime_backend::token_word_refs(&subject_tokens)
-        .first()
-        .is_some_and(|word| ENCHANTED_OR_EQUIPPED_WORD_PATTERN.matches_word(word));
 
     let type_tokens = trim_commas(&tokens[be_idx + 1..with_idx]);
     if type_tokens.is_empty() {

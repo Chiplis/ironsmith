@@ -3770,10 +3770,16 @@ impl ObjectFilterExt for ObjectFilter {
         for marker in &self.ability_markers {
             parts.push(format!("with {}", marker.to_ascii_lowercase()));
         }
-        for ability in &self.excluded_static_abilities {
-            if let Some(label) = describe_filter_static_ability(*ability) {
-                parts.push(format!("without {}", label));
-            }
+        let excluded_static_ability_labels = self
+            .excluded_static_abilities
+            .iter()
+            .filter_map(|ability| describe_filter_static_ability(*ability))
+            .collect::<Vec<_>>();
+        if !excluded_static_ability_labels.is_empty() {
+            parts.push(format!(
+                "without {}",
+                join_filter_labels_or(&excluded_static_ability_labels)
+            ));
         }
         for marker in &self.excluded_ability_markers {
             parts.push(format!("without {}", marker.to_ascii_lowercase()));
@@ -4686,6 +4692,21 @@ fn describe_counter_constraint(constraint: CounterConstraint) -> String {
         CounterConstraint::Any => "a counter".to_string(),
         CounterConstraint::Typed(counter_type) => {
             format!("a {} counter", counter_type.description())
+        }
+    }
+}
+
+#[allow(dead_code)]
+fn join_filter_labels_or(labels: &[&str]) -> String {
+    match labels {
+        [] => String::new(),
+        [only] => (*only).to_string(),
+        [first, second] => format!("{first} or {second}"),
+        _ => {
+            let mut text = labels[..labels.len() - 1].join(", ");
+            text.push_str(", or ");
+            text.push_str(labels[labels.len() - 1]);
+            text
         }
     }
 }

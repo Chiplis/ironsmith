@@ -818,13 +818,63 @@ pub(super) fn try_apply_without_clause_tail(
     filter: &mut ObjectFilter,
     words: &[&str],
 ) -> Option<usize> {
-    if let Some((constraint, consumed)) = parse_filter_keyword_constraint_words(words) {
+    let mut consumed = 0usize;
+    let mut applied_keyword = false;
+    while consumed < words.len() {
+        while consumed < words.len()
+            && matches!(words[consumed], "," | "or" | "and")
+        {
+            consumed += 1;
+        }
+        if let Some((ability, used)) = parse_without_static_ability_keyword(&words[consumed..]) {
+            if !slice_contains(filter.excluded_static_abilities.as_slice(), &ability) {
+                filter.excluded_static_abilities.push(ability);
+            }
+            consumed += used;
+            applied_keyword = true;
+            continue;
+        }
+        let Some((constraint, used)) = parse_filter_keyword_constraint_words(&words[consumed..])
+        else {
+            break;
+        };
         apply_filter_keyword_constraint(filter, constraint, true);
+        consumed += used;
+        applied_keyword = true;
+    }
+    if applied_keyword {
         return Some(consumed);
     }
     if let Some((counter_constraint, consumed)) = parse_filter_counter_constraint_words(words) {
         filter.without_counter = Some(counter_constraint);
         return Some(consumed);
+    }
+
+    None
+}
+
+fn parse_without_static_ability_keyword(
+    words: &[&str],
+) -> Option<(crate::static_abilities::StaticAbilityId, usize)> {
+    use crate::static_abilities::StaticAbilityId;
+
+    if words.get(0..2) == Some(&["first", "strike"]) {
+        return Some((StaticAbilityId::FirstStrike, 2));
+    }
+    if words
+        .first()
+        .is_some_and(|word| matches!(*word, "first-strike" | "firststrike"))
+    {
+        return Some((StaticAbilityId::FirstStrike, 1));
+    }
+    if words.get(0..2) == Some(&["double", "strike"]) {
+        return Some((StaticAbilityId::DoubleStrike, 2));
+    }
+    if words
+        .first()
+        .is_some_and(|word| matches!(*word, "double-strike" | "doublestrike"))
+    {
+        return Some((StaticAbilityId::DoubleStrike, 1));
     }
 
     None

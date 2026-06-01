@@ -584,10 +584,13 @@ fn spell_grant_subject_text(filter: &ObjectFilter) -> Option<String> {
 }
 
 fn subject_verb_and_possessive(subject: &str) -> (&'static str, &'static str) {
-    let singular = subject.starts_with("enchanted ")
-        || subject.starts_with("equipped ")
-        || subject.starts_with("this ")
-        || subject.starts_with("that ");
+    let lower = subject.to_ascii_lowercase();
+    let singular = lower == "this"
+        || lower == "that"
+        || lower.starts_with("enchanted ")
+        || lower.starts_with("equipped ")
+        || lower.starts_with("this ")
+        || lower.starts_with("that ");
     if singular {
         ("is", "its")
     } else {
@@ -939,6 +942,20 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
         }
         crate::ConditionExpr::SourceIsMonstrous => {
             "as long as this creature is monstrous".to_string()
+        }
+        crate::ConditionExpr::SourceHasCounterAtLeast {
+            counter_type,
+            count,
+        } => {
+            let count_text = number_word_u32(*count).unwrap_or_else(|| count.to_string());
+            format!(
+                "as long as this has {count_text} or more {} counters on it",
+                counter_type.description()
+            )
+        }
+        crate::ConditionExpr::SourceHasCountersAtLeast(count) => {
+            let count_text = number_word_u32(*count).unwrap_or_else(|| count.to_string());
+            format!("as long as this has {count_text} or more counters on it")
         }
         crate::ConditionExpr::SourceDevouredCreaturesOrMore(count) => {
             if *count == 1 {
@@ -2572,11 +2589,18 @@ impl StaticAbilityKind for SetBasePowerToughnessForFilter {
     }
 
     fn display(&self) -> String {
-        let subject = pluralized_subject_text(&self.filter);
-        let singular = subject.starts_with("enchanted ")
-            || subject.starts_with("equipped ")
-            || subject.starts_with("this ")
-            || subject.starts_with("that ");
+        let subject = if self.filter.source {
+            "this".to_string()
+        } else {
+            pluralized_subject_text(&self.filter)
+        };
+        let subject_lower = subject.to_ascii_lowercase();
+        let singular = subject_lower.starts_with("enchanted ")
+            || subject_lower.starts_with("equipped ")
+            || subject_lower == "this"
+            || subject_lower == "that"
+            || subject_lower.starts_with("this ")
+            || subject_lower.starts_with("that ");
         let verb = if singular { "has" } else { "have" };
         let mut text = format!(
             "{subject} {verb} base power and toughness {}/{}",
@@ -3176,17 +3200,29 @@ impl StaticAbilityKind for RemoveCardTypesForFilter {
 pub struct SetCardTypesForFilter {
     pub filter: ObjectFilter,
     pub card_types: Vec<CardType>,
+    pub condition: Option<crate::ConditionExpr>,
 }
 
 impl SetCardTypesForFilter {
     pub fn new(filter: ObjectFilter, card_types: Vec<CardType>) -> Self {
-        Self { filter, card_types }
+        Self {
+            filter,
+            card_types,
+            condition: None,
+        }
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
+        self
     }
 }
 
 impl PartialEq for SetCardTypesForFilter {
     fn eq(&self, other: &Self) -> bool {
-        self.filter == other.filter && self.card_types == other.card_types
+        self.filter == other.filter
+            && self.card_types == other.card_types
+            && self.condition == other.condition
     }
 }
 
@@ -3196,7 +3232,11 @@ impl StaticAbilityKind for SetCardTypesForFilter {
     }
 
     fn display(&self) -> String {
-        let subject = pluralized_subject_text(&self.filter);
+        let subject = if self.filter.source {
+            "this".to_string()
+        } else {
+            pluralized_subject_text(&self.filter)
+        };
         let (verb, _) = subject_verb_and_possessive(&subject);
         let types = self
             .card_types
@@ -3210,7 +3250,16 @@ impl StaticAbilityKind for SetCardTypesForFilter {
                 }
             })
             .collect::<Vec<_>>();
-        format!("{subject} {verb} {}", join_with_and(&types))
+        let mut text = format!("{subject} {verb} {}", join_with_and(&types));
+        if let Some(condition) = &self.condition {
+            text.push(' ');
+            text.push_str(&describe_static_condition(condition));
+        }
+        text
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
     }
 
     fn generate_effects(
@@ -3219,7 +3268,7 @@ impl StaticAbilityKind for SetCardTypesForFilter {
         controller: PlayerId,
         _game: &GameState,
     ) -> Vec<ContinuousEffect> {
-        vec![
+        vec![effect_with_optional_static_condition(
             ContinuousEffect::new(
                 source,
                 controller,
@@ -3227,7 +3276,8 @@ impl StaticAbilityKind for SetCardTypesForFilter {
                 Modification::SetCardTypes(self.card_types.clone()),
             )
             .with_source_type(EffectSourceType::StaticAbility),
-        ]
+            &self.condition,
+        )]
     }
 }
 
