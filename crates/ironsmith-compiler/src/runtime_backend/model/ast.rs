@@ -1100,6 +1100,7 @@ pub(crate) enum SubjectVerbActionAst {
     ReturnAllToBattlefield {
         filter: ObjectFilter,
         tapped: bool,
+        face_down: bool,
         controller: ReturnControllerAst,
     },
     ExileUntilSourceLeaves {
@@ -1113,6 +1114,7 @@ pub(crate) enum SubjectVerbActionAst {
         battlefield_controller: ReturnControllerAst,
         battlefield_tapped: bool,
         battlefield_attacking: bool,
+        battlefield_face_down: bool,
         attached_to: Option<TargetAst>,
     },
     MoveToLibraryTopOrBottomChoice {
@@ -2346,11 +2348,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::ReturnAllToBattlefield {
                 filter,
                 tapped,
+                face_down,
                 controller,
             } => f
                 .debug_struct("ReturnAllToBattlefield")
                 .field("filter", filter)
                 .field("tapped", tapped)
+                .field("face_down", face_down)
                 .field("controller", controller)
                 .finish(),
             Self::ExileUntilSourceLeaves { target, face_down } => f
@@ -2365,6 +2369,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 battlefield_controller,
                 battlefield_tapped,
                 battlefield_attacking,
+                battlefield_face_down,
                 attached_to,
             } => f
                 .debug_struct("MoveToZone")
@@ -2374,6 +2379,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("battlefield_controller", battlefield_controller)
                 .field("battlefield_tapped", battlefield_tapped)
                 .field("battlefield_attacking", battlefield_attacking)
+                .field("battlefield_face_down", battlefield_face_down)
                 .field("attached_to", attached_to)
                 .finish(),
             Self::MoveToLibraryTopOrBottomChoice { target } => f
@@ -3922,6 +3928,7 @@ impl EffectAst {
     pub(crate) fn subject_verb_return_all_to_battlefield(
         filter: ObjectFilter,
         tapped: bool,
+        face_down: bool,
         controller: ReturnControllerAst,
     ) -> Self {
         Self::subject_verb(
@@ -3930,6 +3937,7 @@ impl EffectAst {
             SubjectVerbActionAst::ReturnAllToBattlefield {
                 filter,
                 tapped,
+                face_down,
                 controller,
             },
         )
@@ -3961,6 +3969,7 @@ impl EffectAst {
             battlefield_controller,
             battlefield_tapped,
             false,
+            false,
             attached_to,
         )
     }
@@ -3972,6 +3981,7 @@ impl EffectAst {
         battlefield_controller: ReturnControllerAst,
         battlefield_tapped: bool,
         battlefield_attacking: bool,
+        battlefield_face_down: bool,
         attached_to: Option<TargetAst>,
     ) -> Self {
         Self::subject_verb(
@@ -3984,6 +3994,7 @@ impl EffectAst {
                 battlefield_controller,
                 battlefield_tapped,
                 battlefield_attacking,
+                battlefield_face_down,
                 attached_to,
             },
         )

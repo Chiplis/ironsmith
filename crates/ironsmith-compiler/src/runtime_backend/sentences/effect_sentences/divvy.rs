@@ -353,6 +353,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
             EffectAst::subject_verb_return_all_to_battlefield(
                 rest_filter,
                 false,
+                false,
                 ReturnControllerAst::You,
             ),
         ]));

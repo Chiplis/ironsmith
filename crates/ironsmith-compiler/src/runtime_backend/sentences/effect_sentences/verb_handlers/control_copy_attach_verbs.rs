@@ -33,9 +33,12 @@ const CCA_BATTLEFIELD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact &
 const CCA_FROM_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["from"]);
 const CCA_COMMAND_ZONE_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["command", "zone"]);
 const CCA_DESTINATION_IGNORED_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["and"], &["tapped"], &["attacking"]]);
+    clause_shape!(exact_any & [&["and"], &["tapped"], &["attacking"], &["face"], &["down"]]);
 const CCA_ATTACHED_TO_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["attached", "to"]);
+const CCA_FACE_DOWN_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["face", "down"]);
+const CCA_FACE_DOWN_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["face", "down"]]);
 const CCA_UNDER_YOUR_CONTROL_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["under", "your", "control"]);
 const CCA_OWNER_CONTROL_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -813,6 +816,12 @@ pub(crate) fn parse_put_into_hand(
             idx += 1;
         }
 
+        let mut battlefield_face_down = false;
+        if CCA_FACE_DOWN_PREFIX_PATTERN.matches_words(&crate::runtime_backend::token_word_refs(&tokens[idx..])) {
+            battlefield_face_down = true;
+            idx += 2;
+        }
+
         let mut battlefield_controller = ReturnControllerAst::Preserve;
         if token_slice_at_is(tokens, idx, "under") {
             let controller_words = crate::runtime_backend::token_word_refs(&tokens[idx..]);
@@ -903,6 +912,7 @@ pub(crate) fn parse_put_into_hand(
                 return Ok(EffectAst::subject_verb_return_all_to_battlefield(
                     filter,
                     battlefield_tapped,
+                    battlefield_face_down,
                     battlefield_controller,
                 ));
             }
@@ -1145,6 +1155,7 @@ pub(crate) fn parse_put_into_hand(
         let destination_tail_words = crate::runtime_backend::token_word_refs(&destination_tail);
         let battlefield_attacking = CCA_ATTACKING_MARKER_PATTERN.matches_words(&destination_tail_words);
         let battlefield_tapped = CCA_TAPPED_MARKER_PATTERN.matches_words(&destination_tail_words);
+        let battlefield_face_down = CCA_FACE_DOWN_MARKER_PATTERN.matches_words(&destination_tail_words);
         if let Some(from_idx) = find_index(&destination_tail, |token| {
             CCA_FROM_WORD_PATTERN.matches_token(token)
         }) && destination_tail.len() >= from_idx + 3
@@ -1227,6 +1238,7 @@ pub(crate) fn parse_put_into_hand(
             return Ok(EffectAst::subject_verb_return_all_to_battlefield(
                 filter,
                 battlefield_tapped,
+                battlefield_face_down,
                 battlefield_controller,
             ));
         }
@@ -1253,6 +1265,7 @@ pub(crate) fn parse_put_into_hand(
             battlefield_controller,
             battlefield_tapped,
             battlefield_attacking,
+            battlefield_face_down,
             attached_to_target,
         ));
     }

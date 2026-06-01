@@ -275,6 +275,7 @@ pub(crate) fn resolve_it_tag(
     let mut resolved = resolve_object_filter_player_refs(filter, refs)?;
     if let Some(tag) = refs.known_last_object_tag()
         && tag.as_str() != crate::tag::SOURCE_EXILED_TAG
+        && tag.as_str() != "triggering"
     {
         for constraint in &mut resolved.tagged_constraints {
             if constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG {
