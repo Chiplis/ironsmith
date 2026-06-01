@@ -21011,6 +21011,29 @@ fn final_punishment_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn grisly_sigil_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(90_021), "Grisly Sigil")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Black]]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Casualty 1\n\
+             Choose target creature or planeswalker. If it was dealt noncombat damage this turn, Grisly Sigil deals 3 damage to it and you gain 3 life. Otherwise, Grisly Sigil deals 1 damage to it and you gain 1 life.",
+        )
+        .expect("Grisly Sigil should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn grisly_sigil_target_spec() -> crate::target::ChooseSpec {
+    crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
+        crate::filter::ObjectFilter {
+            zone: Some(Zone::Battlefield),
+            card_types: vec![CardType::Creature, CardType::Planeswalker],
+            ..Default::default()
+        },
+    ))
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn record_player_damage_this_turn(
     game: &mut GameState,
     source: ObjectId,
@@ -21032,6 +21055,47 @@ fn record_player_damage_this_turn(
     game.player_mut(player)
         .expect("damaged player should exist")
         .life -= amount as i32;
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn record_object_damage_this_turn(
+    game: &mut GameState,
+    source: ObjectId,
+    object: ObjectId,
+    amount: u32,
+    is_combat: bool,
+) {
+    let event = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            source,
+            crate::events::DamageTarget::Object(object),
+            amount,
+            is_combat,
+            crate::events::cause::EventCause::effect(),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    game.record_turn_history_event(&event);
+    game.mark_damage(object, amount);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_grisly_sigil_on_stack(
+    game: &mut GameState,
+    caster: PlayerId,
+    target: ObjectId,
+) -> ObjectId {
+    let grisly_sigil = grisly_sigil_definition();
+    let spell_id = game.create_object_from_definition(&grisly_sigil, caster, Zone::Stack);
+    game.stack.push(
+        crate::game_state::StackEntry::new(spell_id, caster)
+            .with_targets(vec![crate::game_state::Target::Object(target)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: grisly_sigil_target_spec(),
+                range: 0..1,
+            }]),
+    );
+    spell_id
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -21109,6 +21173,58 @@ fn final_punishment_makes_target_player_lose_no_life_when_they_were_not_damaged_
         game.player(bob).expect("Bob should exist").life,
         bob_life_before,
         "Final Punishment should use the target player's damage total, not damage dealt to another player"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn grisly_sigil_deals_three_and_gains_three_if_target_had_noncombat_damage_this_turn() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let target = create_creature(&mut game, "Previously Singed Creature", bob, 2, 10);
+    let damage_source = ObjectId::from_raw(90_022);
+
+    record_object_damage_this_turn(&mut game, damage_source, target, 2, false);
+    put_grisly_sigil_on_stack(&mut game, alice, target);
+
+    resolve_stack_entry(&mut game).expect("Grisly Sigil should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        23,
+        "Grisly Sigil should gain 3 life when its target had noncombat damage this turn"
+    );
+    assert_eq!(
+        game.damage_on(target),
+        5,
+        "Grisly Sigil should add 3 damage to the target after prior noncombat damage"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn grisly_sigil_deals_one_and_gains_one_if_target_only_had_combat_damage_this_turn() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let target = create_creature(&mut game, "Combat-Scratched Creature", bob, 2, 10);
+    let damage_source = ObjectId::from_raw(90_023);
+
+    record_object_damage_this_turn(&mut game, damage_source, target, 2, true);
+    put_grisly_sigil_on_stack(&mut game, alice, target);
+
+    resolve_stack_entry(&mut game).expect("Grisly Sigil should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        21,
+        "Grisly Sigil should not count prior combat damage for its condition"
+    );
+    assert_eq!(
+        game.damage_on(target),
+        3,
+        "Grisly Sigil should add only 1 damage when the target lacked prior noncombat damage"
     );
 }
 

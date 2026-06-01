@@ -13126,6 +13126,93 @@ fn parse_oracle_final_punishment_strictly_parses_and_renders_damage_dealt_this_t
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_grisly_sigil_strictly_parses_noncombat_damage_branch() {
+    assert_oracle_card_parses_strict("Grisly Sigil");
+
+    let def = parse_oracle_card_definition("Grisly Sigil");
+    let rendered_lines = canonical_compiled_lines(&def);
+    assert_eq!(
+        rendered_lines,
+        vec![
+            "Choose target creature or planeswalker. Then if it was dealt noncombat damage this turn, Grisly Sigil deals 3 damage to it and you gain 3 life. Otherwise, Grisly Sigil deals 1 damage to it and you gain 1 life."
+                .to_string(),
+            "Casualty 1".to_string(),
+        ],
+        "expected Grisly Sigil to render its noncombat-damage conditional branch"
+    );
+
+    let spell_effect = def
+        .spell_effect
+        .as_ref()
+        .expect("Grisly Sigil should have a spell effect");
+    let effects = spell_effect.flattened_default_effects();
+    let [target_effect, conditional_effect] = effects else {
+        panic!("expected target prelude and conditional effect, got {effects:#?}");
+    };
+
+    let target_tag = target_effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .expect("Grisly Sigil should tag its target");
+    let target_only = target_tag
+        .effect
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()
+        .expect("Grisly Sigil should target a creature or planeswalker");
+    let crate::target::ChooseSpec::Target(inner_target) = &target_only.target else {
+        panic!("expected targeted creature-or-planeswalker spec, got {target_only:#?}");
+    };
+    let crate::target::ChooseSpec::Object(target_filter) = inner_target.as_ref() else {
+        panic!("expected object target spec, got {target_only:#?}");
+    };
+    assert!(
+        target_filter.card_types.contains(&CardType::Creature)
+            && target_filter.card_types.contains(&CardType::Planeswalker),
+        "expected Grisly Sigil to structurally target a creature or planeswalker, got {target_filter:#?}"
+    );
+
+    let conditional = conditional_effect
+        .downcast_ref::<crate::effects::ConditionalEffect>()
+        .expect("Grisly Sigil should branch on the tagged target");
+    let crate::effect::Condition::TaggedObjectMatches(_, condition_filter) = &conditional.condition
+    else {
+        panic!(
+            "expected Grisly Sigil to use a tagged-object condition, got {:#?}",
+            conditional.condition
+        );
+    };
+    assert!(
+        condition_filter.was_dealt_noncombat_damage_this_turn,
+        "expected Grisly Sigil to structurally branch on prior noncombat damage, got {condition_filter:#?}"
+    );
+
+    assert!(
+        branch_has_damage_and_life_gain(&conditional.if_true, 3)
+            && branch_has_damage_and_life_gain(&conditional.if_false, 1),
+        "expected Grisly Sigil true/false branches to deal and gain 3/1, got {conditional:#?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn branch_has_damage_and_life_gain(effects: &[Effect], amount: i32) -> bool {
+    let has_damage = effects.iter().any(|effect| {
+        effect
+            .downcast_ref::<crate::effects::TaggedEffect>()
+            .and_then(|tagged| {
+                tagged
+                    .effect
+                    .downcast_ref::<crate::effects::DealDamageEffect>()
+            })
+            .is_some_and(|damage| damage.amount == crate::effect::Value::Fixed(amount))
+    });
+    let has_life_gain = effects.iter().any(|effect| {
+        effect
+            .downcast_ref::<crate::effects::GainLifeEffect>()
+            .is_some_and(|gain| gain.amount == crate::effect::Value::Fixed(amount))
+    });
+    has_damage && has_life_gain
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_one_or_more_etb_trigger_binds_that_much_to_zone_change_count() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Artillerist Variant")
         .card_types(vec![CardType::Creature])
