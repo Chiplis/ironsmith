@@ -1751,6 +1751,24 @@ fn tom_bombadil_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn battle_for_bretagard_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_929), "Battle for Bretagard")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Saga])
+        .from_text_with_metadata(
+            "I — Create a 1/1 white Human Warrior creature token.\n\
+             II — Create a 1/1 green Elf Warrior creature token.\n\
+             III — Choose any number of artifact tokens and/or creature tokens you control with different names. For each of them, create a token that's a copy of it.",
+        )
+        .expect("Battle for Bretagard should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn interface_ace_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(72_925), "Interface Ace")
         .mana_cost(ManaCost::from_pips(vec![
@@ -44321,6 +44339,114 @@ fn tom_bombadil_strict_parser_and_compiled_text_regression() {
         triggered.intervening_if,
         Some(crate::ConditionExpr::MaxTimesEachTurn(1))
     ));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn battle_for_bretagard_chapters_create_and_copy_distinct_named_tokens() {
+    struct SelectAllObjects;
+
+    impl DecisionMaker for SelectAllObjects {
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .collect()
+        }
+    }
+
+    fn count_controlled_named_tokens(game: &GameState, controller: PlayerId, name: &str) -> usize {
+        game.battlefield
+            .iter()
+            .filter(|&&id| {
+                game.object(id).is_some_and(|object| {
+                    object.name == name
+                        && matches!(object.kind, ObjectKind::Token)
+                        && game.controller_of(object) == controller
+                })
+            })
+            .count()
+    }
+
+    fn resolve_next_chapter(
+        game: &mut GameState,
+        trigger_queue: &mut TriggerQueue,
+        saga_id: ObjectId,
+        dm: &mut SelectAllObjects,
+    ) {
+        add_lore_counter_and_check_chapters(game, saga_id, trigger_queue);
+        put_triggers_on_stack_with_dm(game, trigger_queue, dm)
+            .expect("Battle for Bretagard chapter trigger should go on the stack");
+        resolve_stack_entry_with_dm_and_triggers(game, dm, trigger_queue)
+            .expect("Battle for Bretagard chapter trigger should resolve");
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = SelectAllObjects;
+
+    let battle_id = game.create_object_from_definition(
+        &battle_for_bretagard_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    resolve_next_chapter(&mut game, &mut trigger_queue, battle_id, &mut dm);
+    assert_eq!(count_controlled_named_tokens(&game, alice, "Human"), 1);
+
+    resolve_next_chapter(&mut game, &mut trigger_queue, battle_id, &mut dm);
+    assert_eq!(count_controlled_named_tokens(&game, alice, "Elf"), 1);
+
+    let treasure = CardDefinitionBuilder::new(CardId::from_raw(72_930), "Treasure")
+        .token()
+        .card_types(vec![CardType::Artifact])
+        .build();
+    for controller in [alice, alice, bob] {
+        let treasure_id =
+            game.create_object_from_definition(&treasure, controller, Zone::Battlefield);
+        game.object_mut(treasure_id)
+            .expect("Treasure token should exist")
+            .kind = ObjectKind::Token;
+    }
+    create_creature(&mut game, "Nontoken Guard", alice, 2, 2);
+
+    resolve_next_chapter(&mut game, &mut trigger_queue, battle_id, &mut dm);
+
+    assert_eq!(
+        count_controlled_named_tokens(&game, alice, "Human"),
+        2,
+        "chapter III should copy the Human token chosen from chapter I"
+    );
+    assert_eq!(
+        count_controlled_named_tokens(&game, alice, "Elf"),
+        2,
+        "chapter III should copy the Elf token chosen from chapter II"
+    );
+    assert_eq!(
+        count_controlled_named_tokens(&game, alice, "Treasure"),
+        3,
+        "chapter III should copy only one of two same-named Treasure tokens"
+    );
+    assert_eq!(
+        count_controlled_named_tokens(&game, bob, "Treasure"),
+        1,
+        "chapter III should not choose or copy opponents' tokens"
+    );
+    assert!(
+        game.battlefield.iter().all(|&id| {
+            game.object(id).is_none_or(|object| {
+                object.name != "Nontoken Guard" || !matches!(object.kind, ObjectKind::Token)
+            })
+        }),
+        "the nontoken creature should not be copied by the token-only choice"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

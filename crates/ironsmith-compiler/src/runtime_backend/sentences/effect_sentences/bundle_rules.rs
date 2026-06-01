@@ -112,8 +112,13 @@ const OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
 const YOU_OR_OWN_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["you"], &["own"]]);
 const YOU_OWN_PATTERN: ClauseShape<'static> = clause_shape!(contains_phrases & [&["you", "own"]]);
-const FOR_EACH_OF_THOSE_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["for", "each", "of", "those"]);
+const FOR_EACH_OF_THOSE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["for", "each", "of", "those"],
+            &["for", "each", "of", "them"]
+        ]
+);
 const AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
 const ARTICLE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["a"], &["an"]]);
 const SEARCH_YOUR_LIBRARY_FOR_PREFIX_PATTERN: ClauseShape<'static> =
@@ -1156,7 +1161,7 @@ fn parse_reveal_from_outside_game_to_hand(
 fn parse_choose_objects_then_for_each_of_those_bundle(
     first: &[OwnedLexToken],
     second: &[OwnedLexToken],
-    third: &[OwnedLexToken],
+    third: Option<&[OwnedLexToken]>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let mut normalized_first = first.to_vec();
     for token in &mut normalized_first {
@@ -1191,11 +1196,6 @@ fn parse_choose_objects_then_for_each_of_those_bundle(
         return Ok(None);
     }
 
-    let trailing_effects = effect_sentences::parse_effect_sentence_lexed(third)?;
-    if trailing_effects.is_empty() {
-        return Ok(None);
-    }
-
     let mut combined = vec![EffectAst::ChooseObjects {
         filter,
         count,
@@ -1207,7 +1207,13 @@ fn parse_choose_objects_then_for_each_of_those_bundle(
         tag: choose_tag,
         effects: loop_body_effects,
     });
-    combined.extend(trailing_effects);
+    if let Some(third) = third {
+        let trailing_effects = effect_sentences::parse_effect_sentence_lexed(third)?;
+        if trailing_effects.is_empty() {
+            return Ok(None);
+        }
+        combined.extend(trailing_effects);
+    }
     Ok(Some(combined))
 }
 
@@ -2090,8 +2096,14 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
         && let Ok(Some(effects)) = parse_choose_objects_then_for_each_of_those_bundle(
             sentences[0],
             sentences[1],
-            sentences[2],
+            Some(sentences[2]),
         )
+    {
+        return Some(effects);
+    }
+    if sentences.len() == 2
+        && let Ok(Some(effects)) =
+            parse_choose_objects_then_for_each_of_those_bundle(sentences[0], sentences[1], None)
     {
         return Some(effects);
     }
