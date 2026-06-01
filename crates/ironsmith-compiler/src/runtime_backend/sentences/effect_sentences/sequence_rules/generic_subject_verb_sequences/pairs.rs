@@ -45,6 +45,103 @@ fn look_at_top_cards_parts(effect: &EffectAst) -> Option<(PlayerAst, Value)> {
     Some((*player, count.clone()))
 }
 
+fn token_range_for_word_range(
+    tokens: &[OwnedLexToken],
+    start_word: usize,
+    end_word: usize,
+) -> Option<&[OwnedLexToken]> {
+    let clause = LexedClause::new(tokens);
+    let words = clause.word_refs();
+    if start_word >= end_word || end_word > words.len() {
+        return None;
+    }
+    let start = clause.token_index_for_word_index(start_word)?;
+    let end = if end_word == words.len() {
+        tokens.len()
+    } else {
+        clause.token_index_for_word_index(end_word)?
+    };
+    Some(&tokens[start..end])
+}
+
+pub(crate) fn parse_directional_adjacent_player_control(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let choice_sentence = sentences[sentence_idx].lowered();
+    let gain_sentence = sentences[sentence_idx + 1].lowered();
+
+    let choice_prefix = [
+        "starting",
+        "with",
+        "you",
+        "and",
+        "proceeding",
+        "in",
+        "the",
+        "chosen",
+        "direction",
+        "each",
+        "player",
+        "chooses",
+    ];
+    let choice_suffix = [
+        "controlled",
+        "by",
+        "the",
+        "next",
+        "player",
+        "in",
+        "that",
+        "direction",
+    ];
+    let choice_words = LexedClause::new(choice_sentence).word_refs();
+    if !choice_words.starts_with(&choice_prefix) || choice_words.len() <= choice_suffix.len() {
+        return Ok(None);
+    }
+    let choice_suffix_start = choice_words.len() - choice_suffix.len();
+    if choice_words[choice_suffix_start..] != choice_suffix {
+        return Ok(None);
+    }
+
+    let Some(object_tokens) = token_range_for_word_range(
+        choice_sentence,
+        choice_prefix.len(),
+        choice_suffix_start,
+    ) else {
+        return Ok(None);
+    };
+    let object_tokens = trim_commas(object_tokens);
+    let object_words = LexedClause::new(&object_tokens).word_refs();
+    let filter = parse_object_filter_lexed(&object_tokens, false)?;
+
+    let gain_prefix = ["each", "player", "gains", "control", "of"];
+    let gain_suffix = ["they", "chose"];
+    let gain_words = LexedClause::new(gain_sentence).word_refs();
+    if !gain_words.starts_with(&gain_prefix) || gain_words.len() <= gain_suffix.len() {
+        return Ok(None);
+    }
+    let gain_suffix_start = gain_words.len() - gain_suffix.len();
+    if gain_words[gain_suffix_start..] != gain_suffix {
+        return Ok(None);
+    }
+    let Some(gained_object_tokens) =
+        token_range_for_word_range(gain_sentence, gain_prefix.len(), gain_suffix_start)
+    else {
+        return Ok(None);
+    };
+    let gained_object_words = LexedClause::new(gained_object_tokens).word_refs();
+    if non_article_word_refs(&gained_object_words) != non_article_word_refs(&object_words) {
+        return Ok(None);
+    }
+
+    Ok(Some(vec![EffectAst::DirectionalAdjacentPlayerControl {
+        filter,
+        left_option: "left".to_string(),
+        right_option: "right".to_string(),
+    }]))
+}
+
 fn strip_leading_you_may(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
     let clause = LexedClause::new(tokens);
     let (_, tail) = clause.strip_any_prefix_clause(&[

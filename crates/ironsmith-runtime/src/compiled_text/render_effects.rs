@@ -29165,6 +29165,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             .collect::<Vec<_>>();
         return format!("{chooser} {choose_verb} {}", join_with_or(&options));
     }
+    if let Some(directional_control) =
+        effect.downcast_ref::<crate::effects::DirectionalAdjacentPlayerControlEffect>()
+    {
+        let object = with_indefinite_article(&directional_control.filter.description());
+        let chosen_object = strip_leading_article(&object);
+        return format!(
+            "Starting with you and proceeding in the chosen direction, each player chooses {object} controlled by the next player in that direction. Each player gains control of the {chosen_object} they chose"
+        );
+    }
     if let Some(choose_creature_type) =
         effect.downcast_ref::<crate::effects::ChooseCreatureTypeEffect>()
     {

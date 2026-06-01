@@ -1161,6 +1161,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::ForEachPlayerDoesNot { .. }
         | EffectAst::ForEachOpponentDid { .. }
         | EffectAst::ForEachPlayerDid { .. }
+        | EffectAst::DirectionalAdjacentPlayerControl { .. }
         | EffectAst::VoteStart { .. }
         | EffectAst::VoteStartObjects { .. }
         | EffectAst::VoteOption { .. }

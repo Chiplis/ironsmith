@@ -1374,6 +1374,27 @@ impl ExchangeControlEffect {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct DirectionalAdjacentPlayerControlEffect {
+    pub filter: ObjectFilter,
+    pub left_option: String,
+    pub right_option: String,
+}
+
+impl DirectionalAdjacentPlayerControlEffect {
+    pub fn new(
+        filter: ObjectFilter,
+        left_option: impl Into<String>,
+        right_option: impl Into<String>,
+    ) -> Self {
+        Self {
+            filter,
+            left_option: left_option.into(),
+            right_option: right_option.into(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BattlefieldController {
     Preserve,

@@ -1068,6 +1068,13 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         }
     }
 
+    if clause_words == ["choose", "left", "or", "right"] {
+        return Ok(EffectAst::subject_verb_choose_named_option(
+            PlayerAst::You,
+            vec!["left".to_string(), "right".to_string()],
+        ));
+    }
+
     if let Some((chooser, choose_filter, random, exclude_previous_choices)) =
         parse_you_choose_player_clause(tokens)?
     {
