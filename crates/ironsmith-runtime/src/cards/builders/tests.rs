@@ -883,6 +883,172 @@ fn whirlpool_whelm_lost_clash_returns_target_without_replacement() {
     );
 }
 
+fn lumengrid_augur_activated_ability(def: &CardDefinition) -> &crate::ability::ActivatedAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Activated(activated) = &ability.kind else {
+                return None;
+            };
+            Some(activated)
+        })
+        .expect("Lumengrid Augur should have an activated ability")
+}
+
+struct LumengridAugurDiscardDecisionMaker {
+    card_to_discard: ObjectId,
+}
+
+impl crate::decision::DecisionMaker for LumengridAugurDiscardDecisionMaker {
+    fn decide_objects(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        if ctx
+            .candidates
+            .iter()
+            .any(|candidate| candidate.id == self.card_to_discard && candidate.legal)
+        {
+            vec![self.card_to_discard]
+        } else {
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .take(ctx.min)
+                .collect()
+        }
+    }
+}
+
+fn lumengrid_augur_test_card(name: &str, card_types: Vec<CardType>) -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(card_types)
+        .build()
+}
+
+fn resolve_lumengrid_augur_discarding(
+    discarded_card_types: Vec<CardType>,
+) -> (crate::game_state::GameState, ObjectId, PlayerId) {
+    let def = parse_oracle_card_definition("Lumengrid Augur");
+    let activated = lumengrid_augur_activated_ability(&def);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.tap(source);
+
+    let drawn = lumengrid_augur_test_card("Bob Drawn Card", vec![CardType::Creature]);
+    game.create_object_from_definition(&drawn, bob, Zone::Library);
+    let discard_card = lumengrid_augur_test_card("Bob Discarded Card", discarded_card_types);
+    let discarded = game.create_object_from_definition(&discard_card, bob, Zone::Hand);
+    let kept = lumengrid_augur_test_card("Bob Kept Card", vec![CardType::Creature]);
+    game.create_object_from_definition(&kept, bob, Zone::Hand);
+
+    let mut dm = LumengridAugurDiscardDecisionMaker {
+        card_to_discard: discarded,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: activated
+                .choices
+                .first()
+                .expect("Lumengrid Augur should target a player")
+                .clone(),
+            range: 0..1,
+        }]);
+
+    for effect in activated.effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Lumengrid Augur activated ability effect should resolve");
+    }
+
+    (game, source, bob)
+}
+
+#[test]
+fn lumengrid_augur_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Lumengrid Augur");
+    let def = parse_oracle_card_definition("Lumengrid Augur");
+    let activated = lumengrid_augur_activated_ability(&def);
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let debug = format!("{:#?}", activated);
+    let cost_debug = format!("{:?}", activated.mana_cost);
+
+    assert!(
+        activated.has_tap_cost() && cost_debug.contains("Generic(1)"),
+        "Lumengrid Augur should keep its {{1}}, {{T}} activation cost, got {cost_debug}"
+    );
+    assert!(
+        format!("{:?}", activated.choices).contains("Player"),
+        "Lumengrid Augur should target a player, got {:?}",
+        activated.choices
+    );
+    assert_eq!(
+        rendered,
+        "{1}, {T}: Target player draws a card, then discards a card. If that player discards an artifact card this way, untap this creature.",
+        "Lumengrid Augur should render its artifact-discard untap branch"
+    );
+    assert!(
+        debug.contains("DrawCardsEffect")
+            && debug.contains("DiscardEffect")
+            && debug.contains("PlayerTaggedObjectMatches")
+            && debug.contains("Artifact")
+            && debug.contains("UntapEffect"),
+        "Lumengrid Augur should structurally lower draw-discard plus artifact-discard conditional untap, got {debug}"
+    );
+}
+
+#[test]
+fn lumengrid_augur_untaps_when_target_player_discards_artifact_card() {
+    let (game, source, bob) = resolve_lumengrid_augur_discarding(vec![CardType::Artifact]);
+
+    assert!(
+        !game.is_tapped(source),
+        "Lumengrid Augur should untap when the target player discards an artifact card this way"
+    );
+    assert!(
+        game.player(bob).is_some_and(|player| player
+            .graveyard
+            .iter()
+            .any(|id| game
+                .object(*id)
+                .is_some_and(|obj| obj.name == "Bob Discarded Card"))),
+        "the chosen artifact card should be discarded to the target player's graveyard"
+    );
+    assert!(
+        game.player(bob).is_some_and(|player| player
+            .hand
+            .iter()
+            .any(|id| game.object(*id).is_some_and(|obj| obj.name == "Bob Drawn Card"))),
+        "the target player should draw before discarding"
+    );
+}
+
+#[test]
+fn lumengrid_augur_stays_tapped_when_target_player_discards_nonartifact_card() {
+    let (game, source, bob) = resolve_lumengrid_augur_discarding(vec![CardType::Creature]);
+
+    assert!(
+        game.is_tapped(source),
+        "Lumengrid Augur should stay tapped when the target player discards a nonartifact card this way"
+    );
+    assert!(
+        game.player(bob).is_some_and(|player| player
+            .graveyard
+            .iter()
+            .any(|id| game
+                .object(*id)
+                .is_some_and(|obj| obj.name == "Bob Discarded Card"))),
+        "the chosen nonartifact card should still be discarded"
+    );
+}
+
 #[test]
 fn alacrian_armory_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Alacrian Armory");

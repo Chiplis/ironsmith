@@ -1712,6 +1712,45 @@ fn parse_passive_this_way_tagged_object_predicate(
     )))
 }
 
+fn parse_active_this_way_discard_predicate(
+    filtered: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    if filtered.len() < 5 || !THIS_WAY_SUFFIX_PATTERN.matches_words(filtered) {
+        return Ok(None);
+    }
+
+    let Some((player, subject_len)) = active_discard_player_subject(filtered) else {
+        return Ok(None);
+    };
+    let Some(verb) = filtered.get(subject_len) else {
+        return Ok(None);
+    };
+    if !matches!(*verb, "discard" | "discards" | "discarded") {
+        return Ok(None);
+    }
+
+    let filter_words = &filtered[subject_len + 1..filtered.len() - 2];
+    let Some(filter) = parse_this_way_object_filter_words(filter_words) else {
+        return Ok(None);
+    };
+    Ok(Some(PredicateAst::PlayerTaggedObjectMatches {
+        player,
+        tag: TagKey::from(IT_TAG),
+        filter,
+    }))
+}
+
+fn active_discard_player_subject(words: &[&str]) -> Option<(PlayerAst, usize)> {
+    match words {
+        ["you", ..] => Some((PlayerAst::You, 1)),
+        ["that", "player" | "players", ..] => Some((PlayerAst::That, 2)),
+        ["target", "player", ..] => Some((PlayerAst::Target, 2)),
+        ["target", "opponent", ..] => Some((PlayerAst::TargetOpponent, 2)),
+        ["opponent" | "opponents", ..] => Some((PlayerAst::Opponent, 1)),
+        _ => None,
+    }
+}
+
 fn parse_repeated_if_or_predicate(
     filtered: &[&str],
 ) -> Result<Option<PredicateAst>, CardTextError> {
@@ -2199,6 +2238,9 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some(predicate) = parse_passive_this_way_tagged_object_predicate(&filtered)? {
+        return Ok(predicate);
+    }
+    if let Some(predicate) = parse_active_this_way_discard_predicate(&filtered)? {
         return Ok(predicate);
     }
 
@@ -4698,6 +4740,27 @@ mod tests {
         assert_eq!(
             parsed,
             PredicateAst::TaggedMatches(TagKey::from(IT_TAG), aura_filter)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_supports_that_player_discards_filtered_card_this_way() -> Result<(), CardTextError> {
+        let tokens = lex_line("If that player discards an artifact card this way", 0)?;
+        let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+        let artifact_filter_tokens = lex_line("an artifact card", 0)?;
+        let mut artifact_filter = parse_object_filter(&artifact_filter_tokens, false)?;
+        artifact_filter.zone = None;
+
+        assert_eq!(
+            parsed,
+            PredicateAst::PlayerTaggedObjectMatches {
+                player: PlayerAst::That,
+                tag: TagKey::from(IT_TAG),
+                filter: artifact_filter,
+            }
         );
         Ok(())
     }
