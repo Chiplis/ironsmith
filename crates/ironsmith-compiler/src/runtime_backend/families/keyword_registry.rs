@@ -295,6 +295,12 @@ pub(super) fn lower_alternative_cast(
     }
 
     if SNEAK_KEYWORD_PREFIX_PATTERN.matches_words(&parser_token_word_refs(tokens)) {
+        if !is_supported_spell_sneak_line(line.info.raw_line.as_str()) {
+            return Err(CardTextError::ParseError(format!(
+                "sneak keyword form is not yet supported: '{}'",
+                line.info.raw_line
+            )));
+        }
         let raw_tokens = lex_line(line.text.as_str(), line.info.line_index)?;
         let cost_tokens = raw_tokens.get(1..).unwrap_or_default();
         let (cost, _) = leading_mana_cost_from_tokens(cost_tokens).ok_or_else(|| {
@@ -346,6 +352,15 @@ pub(super) fn lower_alternative_cast(
         "rewrite keyword lowering could not parse alternative cost line '{}'",
         line.info.raw_line
     )))
+}
+
+fn is_supported_spell_sneak_line(raw_line: &str) -> bool {
+    let lower = raw_line.to_ascii_lowercase();
+    lower.contains("you may cast this spell for")
+        && lower.contains(
+            "return an unblocked attacker you control to hand during the declare blockers step",
+        )
+        && !lower.contains("enters tapped and attacking")
 }
 
 pub(super) fn lower_bestow(

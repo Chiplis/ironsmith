@@ -19470,6 +19470,26 @@ fn splinters_technique_strict_parser_and_compiled_text_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn permanent_sneak_form_stays_unsupported_until_tapped_attacking_is_modeled() {
+    let err = CardDefinitionBuilder::new(CardId::from_raw(80_491), "Permanent Sneak Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 2))
+        .parse_text(
+            "Sneak {1}{B} (You may cast this spell for {1}{B} if you also return an \
+             unblocked attacker you control to hand during the declare blockers step. It enters \
+             tapped and attacking.)",
+        )
+        .expect_err("permanent Sneak should not compile without tapped-and-attacking support");
+
+    let err_text = err.to_string();
+    assert!(
+        err_text.contains("sneak keyword form is not yet supported"),
+        "unexpected permanent Sneak parse error: {err_text}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn source_cost_compiled_text_does_not_leak_placeholder_surfaces() {
     let memory_jar = CardDefinitionBuilder::new(CardId::new(), "Memory Jar Variant")
         .card_types(vec![CardType::Artifact])
