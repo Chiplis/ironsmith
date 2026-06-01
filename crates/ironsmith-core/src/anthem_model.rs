@@ -6,6 +6,7 @@ pub enum AnthemCountExpression {
     GreatestManaValueAmong(ObjectFilter),
     AttachedToSource(ObjectFilter),
     AttachedToAffected(ObjectFilter),
+    ColorsOfAffected,
     AffectedAttackedThisTurn,
     CountersOnSource(CounterType),
     CountersAmong(ObjectFilter, CounterType),
@@ -42,6 +43,7 @@ impl AnthemValue {
             self,
             Self::PerCount {
                 count: AnthemCountExpression::AttachedToAffected(_)
+                    | AnthemCountExpression::ColorsOfAffected
                     | AnthemCountExpression::AffectedAttackedThisTurn,
                 ..
             }

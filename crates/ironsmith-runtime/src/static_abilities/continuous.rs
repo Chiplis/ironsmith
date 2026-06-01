@@ -654,6 +654,7 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
         AnthemCountExpression::AttachedToAffected(filter) => {
             format!("{} attached to it", strip_article(filter.description()))
         }
+        AnthemCountExpression::ColorsOfAffected => "color it has".to_string(),
         AnthemCountExpression::AffectedAttackedThisTurn => {
             "time it has attacked this turn".to_string()
         }
@@ -755,6 +756,7 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
             "{} attached to it",
             strip_article(filter.description())
         )),
+        AnthemCountExpression::ColorsOfAffected => Some("of its colors".to_string()),
         AnthemCountExpression::AffectedAttackedThisTurn => {
             Some("time it has attacked this turn".to_string())
         }
@@ -1543,6 +1545,10 @@ pub(crate) fn resolve_anthem_count_expression(
                     .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, game))
                     .count() as i32
             })
+            .unwrap_or(0),
+        AnthemCountExpression::ColorsOfAffected => game
+            .object(source)
+            .map(|object| object.colors().count() as i32)
             .unwrap_or(0),
         AnthemCountExpression::AffectedAttackedThisTurn => {
             game.creature_attack_count_this_turn(source) as i32

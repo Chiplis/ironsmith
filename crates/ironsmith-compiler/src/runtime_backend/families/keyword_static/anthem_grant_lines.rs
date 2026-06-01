@@ -379,6 +379,15 @@ const ANTHEM_FOR_EACH_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["for", "each"]);
 const ANTHEM_AFFECTED_ATTACKED_THIS_TURN_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["time", "it", "has", "attacked", "this", "turn"]);
+const ANTHEM_AFFECTED_COLORS_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["of", "its", "colors"],
+            &["of", "their", "colors"],
+            &["color", "it", "is"],
+            &["colors", "it", "is"],
+        ]
+);
 const ANTHEM_WARD_PAY_LIFE_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["ward", "pay"]; suffix & ["life"]);
 const ANTHEM_BASIC_LAND_TYPES_AMONG_PREFIX_PATTERN: ClauseShape<'static> =
@@ -3556,6 +3565,10 @@ pub(crate) fn parse_anthem_for_each_expression(
     let rest_words = crate::runtime_backend::token_word_refs(rest);
     if ANTHEM_AFFECTED_ATTACKED_THIS_TURN_PATTERN.matches_words(&rest_words) {
         return Ok(AnthemCountExpression::AffectedAttackedThisTurn);
+    }
+
+    if ANTHEM_AFFECTED_COLORS_PATTERN.matches_words(&rest_words) {
+        return Ok(AnthemCountExpression::ColorsOfAffected);
     }
 
     if ANTHEM_BASIC_LAND_TYPES_AMONG_PREFIX_PATTERN.matches_words(&rest_words) {
