@@ -346,6 +346,106 @@ pub(super) fn merge_same_true_type_addition_lines(lines: Vec<String>) -> Vec<Str
     merged
 }
 
+#[derive(Debug, Clone)]
+struct ColorLine {
+    subject: String,
+    verb: String,
+    color: String,
+}
+
+fn parse_color_line(line: &str) -> Option<ColorLine> {
+    let trimmed = line.trim().trim_end_matches('.');
+    let (subject, verb, predicate) = split_subject_predicate_clause(trimmed)?;
+    if !matches!(verb, "is" | "are") || !is_color_predicate(predicate) {
+        return None;
+    }
+
+    Some(ColorLine {
+        subject: normalize_nonbattlefield_owned_cards_subject(subject.trim())
+            .unwrap_or_else(|| subject.trim().to_string()),
+        verb: verb.trim().to_string(),
+        color: predicate.trim().to_string(),
+    })
+}
+
+fn is_color_predicate(predicate: &str) -> bool {
+    matches!(
+        predicate.trim().to_ascii_lowercase().as_str(),
+        "white" | "blue" | "black" | "red" | "green" | "colorless"
+    )
+}
+
+fn normalize_nonbattlefield_owned_cards_subject(subject: &str) -> Option<String> {
+    let lower = subject.to_ascii_lowercase();
+    let parts = lower.split(" or ").collect::<Vec<_>>();
+    if parts.len() != 5 {
+        return None;
+    }
+
+    let zones = ["hand", "library", "graveyard", "exile", "command zone"];
+    let mut prefix: Option<&str> = None;
+    for (part, zone) in parts.iter().zip(zones) {
+        let suffix = format!(" cards in your {zone}");
+        let current_prefix = part.strip_suffix(&suffix)?.trim();
+        if current_prefix.is_empty() {
+            return None;
+        }
+        match prefix {
+            Some(existing) if existing != current_prefix => return None,
+            Some(_) => {}
+            None => prefix = Some(current_prefix),
+        }
+    }
+
+    Some(format!(
+        "{} cards you own that aren't on the battlefield",
+        prefix?
+    ))
+}
+
+pub(super) fn merge_same_true_color_lines(lines: Vec<String>) -> Vec<String> {
+    let mut merged = Vec::with_capacity(lines.len());
+    let mut idx = 0usize;
+
+    while idx < lines.len() {
+        let Some(first) = parse_color_line(&lines[idx]) else {
+            merged.push(lines[idx].clone());
+            idx += 1;
+            continue;
+        };
+
+        let mut same_true_subjects = Vec::new();
+        let mut consumed = 1usize;
+        while idx + consumed < lines.len() {
+            let Some(next) = parse_color_line(&lines[idx + consumed]) else {
+                break;
+            };
+            if !first.color.eq_ignore_ascii_case(&next.color)
+                || !first.verb.eq_ignore_ascii_case(&next.verb)
+            {
+                break;
+            }
+            same_true_subjects.push(lowercase_first(&next.subject));
+            consumed += 1;
+        }
+
+        if same_true_subjects.len() < 2 {
+            merged.push(lines[idx].clone());
+            idx += 1;
+            continue;
+        }
+
+        merged.push(format!(
+            "{} The same is true for {}.",
+            lines[idx].trim(),
+            join_with_and(&same_true_subjects)
+        ));
+        idx += consumed;
+    }
+
+    merged
+}
+
 fn indefinite_article_for_phrase(phrase: &str) -> &'static str {
     match phrase.chars().next().map(|ch| ch.to_ascii_lowercase()) {
         Some('a' | 'e' | 'i' | 'o' | 'u') => "an",

@@ -34005,6 +34005,179 @@ fn parse_existing_mana_spend_as_any_color_static_patterns() {
     );
 }
 
+#[test]
+fn celestial_dawn_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Celestial Dawn");
+    let def = parse_oracle_card_definition("Celestial Dawn");
+    let rendered = canonical_compiled_lines(&def).join("\n");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered_lower.contains("lands you control are plains"),
+        "Celestial Dawn should render the Plains-changing static ability, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("nonland permanents you control are white. the same is true for spells you control and nonland cards you own that aren't on the battlefield"),
+        "Celestial Dawn should render the same-is-true color static ability, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("you may spend white mana as though it were mana of any color. you may spend other mana only as though it were colorless mana"),
+        "Celestial Dawn should render the white-mana spend permission and other-mana restriction, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("ManaSpendPermission")
+            && ability_debug.contains("any_color_mana_symbol: Some(White)")
+            && ability_debug.contains("other_mana_only_as_colorless: true"),
+        "Celestial Dawn should structurally lower its mana-spend rule, got {ability_debug}"
+    );
+}
+
+#[test]
+fn celestial_dawn_mana_spend_runtime_uses_white_as_any_color_only() {
+    let def = parse_oracle_card_definition("Celestial Dawn");
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.update_cant_effects();
+
+    let blue_spell = CardDefinitionBuilder::new(
+        CardId::from_raw(700_900),
+        "Celestial Dawn Blue Cost Probe",
+    )
+    .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+    .card_types(vec![CardType::Sorcery])
+    .build();
+    let blue_spell_id = game.create_object_from_definition(&blue_spell, alice, Zone::Stack);
+    let blue_cost = ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]);
+
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::White, 1);
+    let view = crate::derived_view::DerivedGameView::new(&game);
+    assert!(
+        view.can_potentially_pay_with_reason(
+            alice,
+            Some(blue_spell_id),
+            &blue_cost,
+            0,
+            crate::costs::PaymentReason::CastSpell,
+        ),
+        "Celestial Dawn should also make the derived affordability path see white mana as usable for blue"
+    );
+    assert!(
+        game.can_pay_mana_cost(alice, Some(blue_spell_id), &blue_cost, 0),
+        "Celestial Dawn should let white mana pay a blue pip"
+    );
+    assert!(
+        game.try_pay_mana_cost(alice, Some(blue_spell_id), &blue_cost, 0),
+        "white mana should actually be spent as blue"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice exists").mana_pool.total(),
+        0,
+        "white mana should be consumed by the blue-pip payment"
+    );
+}
+
+#[test]
+fn celestial_dawn_mana_spend_runtime_treats_other_mana_as_colorless_only() {
+    let def = parse_oracle_card_definition("Celestial Dawn");
+    let alice = PlayerId::from_index(0);
+
+    let blue_cost = ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]);
+    let colorless_cost = ManaCost::from_pips(vec![vec![ManaSymbol::Colorless]]);
+    let spell = CardDefinitionBuilder::new(CardId::from_raw(700_901), "Celestial Dawn Cost Probe")
+        .mana_cost(blue_cost.clone())
+        .card_types(vec![CardType::Sorcery])
+        .build();
+
+    let mut nonwhite_for_blue = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    nonwhite_for_blue.create_object_from_definition(&def, alice, Zone::Battlefield);
+    nonwhite_for_blue.update_cant_effects();
+    let blue_spell_id = nonwhite_for_blue.create_object_from_definition(&spell, alice, Zone::Stack);
+    nonwhite_for_blue
+        .player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+    let nonwhite_view = crate::derived_view::DerivedGameView::new(&nonwhite_for_blue);
+    assert!(
+        !nonwhite_view.can_potentially_pay_with_reason(
+            alice,
+            Some(blue_spell_id),
+            &blue_cost,
+            0,
+            crate::costs::PaymentReason::CastSpell,
+        ),
+        "Celestial Dawn should also make the derived affordability path reject nonwhite mana for colored pips"
+    );
+    assert!(
+        !nonwhite_for_blue.can_pay_mana_cost(alice, Some(blue_spell_id), &blue_cost, 0),
+        "Celestial Dawn should not let nonwhite mana pay colored pips"
+    );
+
+    let mut nonwhite_for_colorless = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    nonwhite_for_colorless.create_object_from_definition(&def, alice, Zone::Battlefield);
+    nonwhite_for_colorless.update_cant_effects();
+    let colorless_spell_id =
+        nonwhite_for_colorless.create_object_from_definition(&spell, alice, Zone::Stack);
+    nonwhite_for_colorless
+        .player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+    assert!(
+        nonwhite_for_colorless.can_pay_mana_cost(
+            alice,
+            Some(colorless_spell_id),
+            &colorless_cost,
+            0,
+        ),
+        "Celestial Dawn should let nonwhite mana be spent as colorless"
+    );
+    assert!(
+        nonwhite_for_colorless.try_pay_mana_cost(
+            alice,
+            Some(colorless_spell_id),
+            &colorless_cost,
+            0,
+        ),
+        "nonwhite mana should actually be spendable as colorless"
+    );
+
+    let mut white_for_colorless = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    white_for_colorless.create_object_from_definition(&def, alice, Zone::Battlefield);
+    white_for_colorless.update_cant_effects();
+    let white_colorless_spell_id =
+        white_for_colorless.create_object_from_definition(&spell, alice, Zone::Stack);
+    white_for_colorless
+        .player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::White, 1);
+    assert!(
+        !white_for_colorless.can_pay_mana_cost(
+            alice,
+            Some(white_colorless_spell_id),
+            &colorless_cost,
+            0,
+        ),
+        "Celestial Dawn's white-as-any-color permission should not turn white mana into colorless mana"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_mnemonic_betrayal_temporary_any_color_cast_permission() {

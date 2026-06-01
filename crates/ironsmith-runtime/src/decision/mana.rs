@@ -1480,9 +1480,9 @@ fn mana_cost_can_be_paid_with_view(
     view: &DerivedGameView<'_>,
 ) -> bool {
     let potential = view.potential_mana(player);
-    let allow_any_color = game.can_spend_mana_as_any_color(player, Some(spell_id));
-    let allow_any_color_for_obvious =
-        allow_any_color || game.has_source_filtered_mana_spend_permission(player, Some(spell_id));
+    let mana_spend_policy = game.mana_spend_policy(player, Some(spell_id));
+    let allow_any_color_for_obvious = mana_spend_policy.has_any_color_spending()
+        || game.has_source_filtered_mana_spend_permission(player, Some(spell_id));
     let allow_black_life = view
         .player_can_pay_black_with_life_for_reason(player, crate::costs::PaymentReason::CastSpell);
     !mana_cost_is_obviously_unpayable(
@@ -1497,7 +1497,7 @@ fn mana_cost_can_be_paid_with_view(
         cost,
         0,
         crate::costs::PaymentReason::CastSpell,
-        allow_any_color,
+        &mana_spend_policy,
         allow_black_life,
         view,
     )
@@ -1992,8 +1992,8 @@ pub(crate) fn can_cast_with_cost_with_context(
 
         let affordability_started_at = PerfTimer::start();
         let potential = view.potential_mana(player);
-        let allow_any_color = game.can_spend_mana_as_any_color(player, Some(spell_id));
-        let allow_any_color_for_obvious = allow_any_color
+        let mana_spend_policy = game.mana_spend_policy(player, Some(spell_id));
+        let allow_any_color_for_obvious = mana_spend_policy.has_any_color_spending()
             || game.has_source_filtered_mana_spend_permission(player, Some(spell_id));
         let allow_black_life = view.player_can_pay_black_with_life_for_reason(
             player,
@@ -2015,7 +2015,7 @@ pub(crate) fn can_cast_with_cost_with_context(
             &adjusted,
             0,
             crate::costs::PaymentReason::CastSpell,
-            allow_any_color,
+            &mana_spend_policy,
             allow_black_life,
             view,
         ) {
@@ -3700,7 +3700,7 @@ fn can_pay_mana_cost_with_available_sources(
     cost: &crate::mana::ManaCost,
     x_value: u32,
     reason: crate::costs::PaymentReason,
-    allow_any_color: bool,
+    mana_spend_policy: &crate::player::ManaSpendPolicy,
     allow_black_life: bool,
     view: &DerivedGameView<'_>,
 ) -> bool {
@@ -3723,7 +3723,7 @@ fn can_pay_mana_cost_with_available_sources(
             &sources,
             &mut vec![false; sources.len()],
             0,
-            allow_any_color,
+            mana_spend_policy,
             source,
         );
     }
@@ -3739,7 +3739,7 @@ fn can_pay_mana_cost_with_available_sources(
         &sources,
         0,
         0,
-        allow_any_color,
+        mana_spend_policy,
         source,
         &mut failed_states,
     )
@@ -4029,7 +4029,7 @@ fn can_pay_expanded_pips(
     sources: &[AvailableManaSource],
     used_sources_mask: u128,
     life_to_pay: u32,
-    allow_any_color: bool,
+    mana_spend_policy: &crate::player::ManaSpendPolicy,
     payment_source: Option<ObjectId>,
     failed_states: &mut std::collections::HashSet<ManaPaymentSearchKey>,
 ) -> bool {
@@ -4057,7 +4057,7 @@ fn can_pay_expanded_pips(
                     sources,
                     used_sources_mask,
                     next_life,
-                    allow_any_color,
+                    mana_spend_policy,
                     payment_source,
                     failed_states,
                 )
@@ -4068,7 +4068,7 @@ fn can_pay_expanded_pips(
         }
 
         let mut pool_after = pool.clone();
-        if remove_mana_for_pip(&mut pool_after, symbol, allow_any_color)
+        if remove_mana_for_pip(&mut pool_after, symbol, mana_spend_policy)
             && can_pay_expanded_pips(
                 game,
                 player,
@@ -4079,7 +4079,7 @@ fn can_pay_expanded_pips(
                 sources,
                 used_sources_mask,
                 life_to_pay,
-                allow_any_color,
+                mana_spend_policy,
                 payment_source,
                 failed_states,
             )
@@ -4092,15 +4092,15 @@ fn can_pay_expanded_pips(
             if used_sources_mask & source_mask != 0 {
                 continue;
             }
-            let allow_source_any_color = allow_any_color
-                || game.can_spend_mana_as_any_color_from_mana_source(
+            let mut source_policy = mana_spend_policy.clone();
+            source_policy.allow_any_color |= game.can_spend_mana_as_any_color_from_mana_source(
                     player,
                     payment_source,
                     source.source_id,
                 );
             for output in &source.outputs {
                 if let Some(pool_from_output) =
-                    consume_output_for_pip(output, symbol, allow_source_any_color)
+                    consume_output_for_pip(output, symbol, &source_policy)
                 {
                     let mut combined_pool = pool.clone();
                     add_pool(&mut combined_pool, &pool_from_output);
@@ -4114,7 +4114,7 @@ fn can_pay_expanded_pips(
                         sources,
                         used_sources_mask | source_mask,
                         life_to_pay,
-                        allow_any_color,
+                        mana_spend_policy,
                         payment_source,
                         failed_states,
                     );
@@ -4141,7 +4141,7 @@ fn can_pay_expanded_pips_large_source_count(
     sources: &[AvailableManaSource],
     used_sources: &mut [bool],
     life_to_pay: u32,
-    allow_any_color: bool,
+    mana_spend_policy: &crate::player::ManaSpendPolicy,
     payment_source: Option<ObjectId>,
 ) -> bool {
     if pip_index >= pips.len() {
@@ -4163,7 +4163,7 @@ fn can_pay_expanded_pips_large_source_count(
                     sources,
                     used_sources,
                     next_life,
-                    allow_any_color,
+                    mana_spend_policy,
                     payment_source,
                 )
             {
@@ -4173,7 +4173,7 @@ fn can_pay_expanded_pips_large_source_count(
         }
 
         let mut pool_after = pool.clone();
-        if remove_mana_for_pip(&mut pool_after, symbol, allow_any_color)
+        if remove_mana_for_pip(&mut pool_after, symbol, mana_spend_policy)
             && can_pay_expanded_pips_large_source_count(
                 game,
                 player,
@@ -4184,7 +4184,7 @@ fn can_pay_expanded_pips_large_source_count(
                 sources,
                 used_sources,
                 life_to_pay,
-                allow_any_color,
+                mana_spend_policy,
                 payment_source,
             )
         {
@@ -4195,15 +4195,15 @@ fn can_pay_expanded_pips_large_source_count(
             if used_sources[source_index] {
                 continue;
             }
-            let allow_source_any_color = allow_any_color
-                || game.can_spend_mana_as_any_color_from_mana_source(
+            let mut source_policy = mana_spend_policy.clone();
+            source_policy.allow_any_color |= game.can_spend_mana_as_any_color_from_mana_source(
                     player,
                     payment_source,
                     source.source_id,
                 );
             for output in &source.outputs {
                 if let Some(pool_from_output) =
-                    consume_output_for_pip(output, symbol, allow_source_any_color)
+                    consume_output_for_pip(output, symbol, &source_policy)
                 {
                     let mut combined_pool = pool.clone();
                     add_pool(&mut combined_pool, &pool_from_output);
@@ -4218,7 +4218,7 @@ fn can_pay_expanded_pips_large_source_count(
                         sources,
                         used_sources,
                         life_to_pay,
-                        allow_any_color,
+                        mana_spend_policy,
                         payment_source,
                     );
                     used_sources[source_index] = false;
@@ -4236,10 +4236,10 @@ fn can_pay_expanded_pips_large_source_count(
 fn consume_output_for_pip(
     output: &[ManaSymbol],
     pip: ManaSymbol,
-    allow_any_color: bool,
+    mana_spend_policy: &crate::player::ManaSpendPolicy,
 ) -> Option<crate::player::ManaPool> {
     for (idx, &produced) in output.iter().enumerate() {
-        if mana_symbol_can_pay_pip(produced, pip, allow_any_color) {
+        if mana_symbol_can_pay_pip(produced, pip, mana_spend_policy) {
             let mut remainder = crate::player::ManaPool::default();
             for (other_idx, &symbol) in output.iter().enumerate() {
                 if other_idx != idx && is_payable_mana_symbol(symbol) {
@@ -4273,7 +4273,7 @@ const PAYABLE_MANA_SYMBOLS: [ManaSymbol; 6] = [
 fn remove_mana_for_pip(
     pool: &mut crate::player::ManaPool,
     pip: ManaSymbol,
-    allow_any_color: bool,
+    mana_spend_policy: &crate::player::ManaSpendPolicy,
 ) -> bool {
     match pip {
         ManaSymbol::White
@@ -4281,12 +4281,23 @@ fn remove_mana_for_pip(
         | ManaSymbol::Black
         | ManaSymbol::Red
         | ManaSymbol::Green => {
-            if !allow_any_color {
-                return pool.remove(pip, 1);
+            for symbol in PAYABLE_MANA_SYMBOLS {
+                if mana_spend_policy.can_pay_symbol(symbol, pip) && pool.remove(symbol, 1) {
+                    return true;
+                }
             }
-            remove_any_payable_mana(pool)
+            false
         }
-        ManaSymbol::Colorless => pool.remove(ManaSymbol::Colorless, 1),
+        ManaSymbol::Colorless => {
+            for symbol in PAYABLE_MANA_SYMBOLS {
+                if mana_spend_policy.can_pay_symbol(symbol, ManaSymbol::Colorless)
+                    && pool.remove(symbol, 1)
+                {
+                    return true;
+                }
+            }
+            false
+        }
         ManaSymbol::Generic(_) => remove_any_payable_mana(pool),
         ManaSymbol::Snow => false,
         ManaSymbol::Life(_) | ManaSymbol::X => false,
@@ -4302,17 +4313,19 @@ fn remove_any_payable_mana(pool: &mut crate::player::ManaPool) -> bool {
     false
 }
 
-fn mana_symbol_can_pay_pip(produced: ManaSymbol, pip: ManaSymbol, allow_any_color: bool) -> bool {
+fn mana_symbol_can_pay_pip(
+    produced: ManaSymbol,
+    pip: ManaSymbol,
+    mana_spend_policy: &crate::player::ManaSpendPolicy,
+) -> bool {
     match pip {
         ManaSymbol::Generic(_) => is_payable_mana_symbol(produced),
         ManaSymbol::White
         | ManaSymbol::Blue
         | ManaSymbol::Black
         | ManaSymbol::Red
-        | ManaSymbol::Green => {
-            produced == pip || (allow_any_color && is_payable_mana_symbol(produced))
-        }
-        ManaSymbol::Colorless => produced == ManaSymbol::Colorless,
+        | ManaSymbol::Green
+        | ManaSymbol::Colorless => mana_spend_policy.can_pay_symbol(produced, pip),
         ManaSymbol::Snow | ManaSymbol::Life(_) | ManaSymbol::X => false,
     }
 }
