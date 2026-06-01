@@ -11100,6 +11100,146 @@ fn ecological_appreciation_puts_two_chosen_cards_back_and_recruits_the_rest() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn elemental_teachings_buries_two_opponent_chosen_lands_and_recruits_the_rest_tapped() {
+    struct ElementalTeachingsDecisionMaker {
+        caster: PlayerId,
+        opponent: PlayerId,
+    }
+
+    impl DecisionMaker for ElementalTeachingsDecisionMaker {
+        fn decide_objects(
+            &mut self,
+            game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            let legal = ctx
+                .candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .collect::<Vec<_>>();
+
+            if ctx.player == self.caster {
+                assert_eq!(
+                    ctx.min, 0,
+                    "Elemental Teachings searches for up to four lands"
+                );
+                assert_eq!(
+                    ctx.max,
+                    Some(4),
+                    "Elemental Teachings searches for up to four lands"
+                );
+                assert!(
+                    legal
+                        .iter()
+                        .all(|candidate| game.object_has_card_type(candidate.id, CardType::Land)),
+                    "only land cards should be legal search choices"
+                );
+                return legal.into_iter().map(|candidate| candidate.id).collect();
+            }
+
+            assert_eq!(
+                ctx.player, self.opponent,
+                "the opponent should make the divvy choice"
+            );
+            assert_eq!(ctx.min, 2, "the opponent should choose exactly two cards");
+            assert_eq!(ctx.max, Some(2), "the opponent should choose exactly two cards");
+
+            ["Plains", "Island"]
+                .into_iter()
+                .map(|wanted_name| {
+                    legal
+                        .iter()
+                        .find(|candidate| {
+                            game.object(candidate.id)
+                                .is_some_and(|object| object.name == wanted_name)
+                        })
+                        .map(|candidate| candidate.id)
+                        .unwrap_or_else(|| panic!("expected to find {wanted_name} in the divvy"))
+                })
+                .collect()
+        }
+    }
+
+    fn test_land(name: &str) -> crate::card::Card {
+        CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Land])
+            .build()
+    }
+
+    fn test_creature(name: &str) -> crate::card::Card {
+        CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build()
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let text = "Search your library for up to four land cards with different names and reveal them. \
+        An opponent chooses two of those cards. Put the chosen cards into your graveyard and the \
+        rest onto the battlefield tapped, then shuffle.";
+
+    let elemental_teachings =
+        CardDefinitionBuilder::new(CardId::from_raw(91_002), "Elemental Teachings")
+            .card_types(vec![CardType::Instant])
+            .parse_text(text)
+            .expect("Elemental Teachings should parse");
+
+    let source_id = game.create_object_from_definition(&elemental_teachings, alice, Zone::Stack);
+    let _plains = game.create_object_from_card(&test_land("Plains"), alice, Zone::Library);
+    let _island = game.create_object_from_card(&test_land("Island"), alice, Zone::Library);
+    let _swamp = game.create_object_from_card(&test_land("Swamp"), alice, Zone::Library);
+    let _forest = game.create_object_from_card(&test_land("Forest"), alice, Zone::Library);
+    let _nonland =
+        game.create_object_from_card(&test_creature("Elvish Mystic"), alice, Zone::Library);
+
+    game.stack.push(StackEntry::new(source_id, alice));
+
+    let mut dm = ElementalTeachingsDecisionMaker {
+        caster: alice,
+        opponent: bob,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Elemental Teachings should resolve");
+
+    let zone_has_name = |ids: &[ObjectId], name: &str| {
+        ids.iter()
+            .any(|&id| game.object(id).is_some_and(|object| object.name == name))
+    };
+    let battlefield_id = |name: &str| {
+        game.battlefield
+            .iter()
+            .copied()
+            .find(|&id| game.object(id).is_some_and(|object| object.name == name))
+            .unwrap_or_else(|| panic!("expected {name} on the battlefield"))
+    };
+
+    assert!(
+        zone_has_name(&game.player(alice).expect("alice exists").graveyard, "Plains"),
+        "the first opponent-chosen land should go to the graveyard"
+    );
+    assert!(
+        zone_has_name(&game.player(alice).expect("alice exists").graveyard, "Island"),
+        "the second opponent-chosen land should go to the graveyard"
+    );
+    let swamp = battlefield_id("Swamp");
+    let forest = battlefield_id("Forest");
+    assert!(
+        game.is_tapped(swamp),
+        "the first unchosen land should enter tapped"
+    );
+    assert!(
+        game.is_tapped(forest),
+        "the second unchosen land should enter tapped"
+    );
+    assert!(
+        zone_has_name(&game.player(alice).expect("alice exists").library, "Elvish Mystic"),
+        "nonland cards should remain in the library"
+    );
+}
+
 // === Target Extraction Tests ===
 
 #[test]

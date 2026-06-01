@@ -36426,6 +36426,42 @@ fn parse_oracle_ecological_appreciation_divvy_surface_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_elemental_teachings_divvy_surface_regression() {
+    let def = parse_oracle_card_definition("Elemental Teachings");
+    let rendered = debug_compiled_lines(&def).join(" ");
+
+    assert_eq!(
+        rendered,
+        "Search your library for up to 4 land cards with different names and reveal them. An opponent chooses two of those cards. Put the chosen cards into your graveyard and the rest onto the battlefield tapped. Then shuffle.",
+        "expected Elemental Teachings to render its exact opponent-choice land divvy wording"
+    );
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("divvy_chosen")
+            && debug.contains("divvy_source")
+            && debug.contains("distinct_names: true")
+            && debug.contains("enters_tapped: true"),
+        "expected Elemental Teachings to preserve the tagged divvy bundle, distinct-name search, and tapped battlefield move, got {debug}"
+    );
+
+    let oracle = oracle_text_by_name()
+        .get("Elemental Teachings")
+        .expect("missing Elemental Teachings oracle text");
+    let rendered_lines = vec![rendered.clone()];
+    let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+        crate::semantic_compare::compare_card_semantics_scored(
+            "Elemental Teachings",
+            oracle,
+            &rendered_lines,
+            crate::semantic_compare::report_embedding_config(),
+        );
+    assert!(similarity >= 0.99, "expected >=0.99 similarity, got {similarity}");
+    assert!(!mismatch, "expected no semantic mismatch, got {rendered}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_split_the_spoils_divvy_uses_splitter_then_opponent_choice() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Split the Spoils")
         .mana_cost(ManaCost::from_pips(vec![

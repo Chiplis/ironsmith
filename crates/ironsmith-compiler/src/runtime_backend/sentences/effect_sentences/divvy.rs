@@ -1175,6 +1175,82 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         return Ok(Some(effects));
     }
 
+    if first_sentence_has_prefix(
+        &sentence_words,
+        &[
+            "search",
+            "your",
+            "library",
+            "for",
+            "up",
+            "to",
+            "four",
+            "land",
+            "cards",
+            "with",
+            "different",
+            "names",
+            "and",
+            "reveal",
+            "them",
+        ],
+    ) && sentence_has_phrase(
+        &sentence_words,
+        &["an", "opponent", "chooses", "two", "of", "those", "cards"],
+    ) && sentence_has_phrase(
+        &sentence_words,
+        &["put", "the", "chosen", "cards", "into", "your", "graveyard"],
+    ) && sentence_has_phrase(
+        &sentence_words,
+        &["the", "rest", "onto", "the", "battlefield", "tapped"],
+    ) && sentence_has_phrase(&sentence_words, &["shuffle"])
+    {
+        let mut effects = parse_effect_sentence_lexed(sentences[0].lowered())?;
+        effects.push(EffectAst::subject_verb_tag_matching_objects(
+            ObjectFilter::tagged(TagKey::from(IT_TAG)),
+            vec![Zone::Library],
+            TagKey::from("divvy_source"),
+        ));
+        effects.push(EffectAst::ChooseObjectsAcrossZones {
+            filter: ObjectFilter::tagged(TagKey::from("divvy_source")),
+            count: ChoiceCount::exactly(2),
+            count_value: None,
+            player: PlayerAst::Opponent,
+            tag: TagKey::from("divvy_chosen"),
+            zones: vec![Zone::Library],
+            search_mode: None,
+        });
+        effects.push(EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(TagKey::from("divvy_chosen"), None),
+            Zone::Graveyard,
+            false,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
+        ));
+        effects.push(EffectAst::ForEachTagged {
+            tag: TagKey::from("divvy_source"),
+            effects: vec![EffectAst::Conditional {
+                predicate: membership_predicate_for_iterated_object("divvy_chosen"),
+                if_true: Vec::new(),
+                if_false: vec![EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    Zone::Battlefield,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    true,
+                    None,
+                )],
+            }],
+        });
+        effects.push(EffectAst::subject_verb(
+            SubjectVerbRoleAst::LibraryOwner,
+            PlayerAst::You,
+            SubjectVerbActionAst::ShuffleLibrary,
+        ));
+        return Ok(Some(effects));
+    }
+
     if sentence_has_phrase(&sentence_words, &["target", "opponent", "chooses", "one"])
         && sentence_has_phrase(
             &sentence_words,

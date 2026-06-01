@@ -9081,11 +9081,11 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         Some(zones)
     }
 
-    fn effect_moves_chosen_to_zone(effect: &Effect, chosen_tag: &str) -> Option<Zone> {
+    fn effect_moves_chosen_to_zone(effect: &Effect, chosen_tag: &str) -> Option<(Zone, bool)> {
         if let Some(move_to_zone) = downcast_move_to_zone(effect)
             && move_to_zone_uses_tag(move_to_zone, chosen_tag, move_to_zone.zone)
         {
-            return Some(move_to_zone.zone);
+            return Some((move_to_zone.zone, move_to_zone.enters_tapped));
         }
 
         let (_, for_each) = for_each_tagged_for_compaction(effect)?;
@@ -9093,7 +9093,8 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             return None;
         }
         let move_to_zone = downcast_move_to_zone(&for_each.effects[0])?;
-        matches!(move_to_zone.target, ChooseSpec::Iterated).then_some(move_to_zone.zone)
+        matches!(move_to_zone.target, ChooseSpec::Iterated)
+            .then_some((move_to_zone.zone, move_to_zone.enters_tapped))
     }
 
     fn effect_moves_unselected_to_zone(
@@ -9101,15 +9102,26 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         source_tag: &str,
         chosen_tag: &str,
     ) -> Option<Zone> {
+        effect_moves_unselected_to_zone_and_tapped(effect, source_tag, chosen_tag)
+            .map(|(zone, _)| zone)
+    }
+
+    fn effect_moves_unselected_to_zone_and_tapped(
+        effect: &Effect,
+        source_tag: &str,
+        chosen_tag: &str,
+    ) -> Option<(Zone, bool)> {
         let (_, for_each) = for_each_tagged_for_compaction(effect)?;
-        [
-            Zone::Hand,
-            Zone::Graveyard,
-            Zone::Library,
-            Zone::Battlefield,
-        ]
-        .into_iter()
-        .find(|zone| for_each_moves_unselected_to_zone(for_each, source_tag, chosen_tag, *zone))
+        let [effect] = for_each.effects.as_slice() else {
+            return None;
+        };
+        let conditional = effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+        let [rest_move] = conditional.if_false.as_slice() else {
+            return None;
+        };
+        let move_to_zone = downcast_move_to_zone(rest_move)?;
+        for_each_moves_unselected_to_zone(for_each, source_tag, chosen_tag, move_to_zone.zone)
+            .then_some((move_to_zone.zone, move_to_zone.enters_tapped))
     }
 
     fn divvy_search_selection(search: &crate::effects::ChooseObjectsEffect) -> String {
@@ -9287,12 +9299,12 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         let first_chosen_zone = effect_moves_chosen_to_zone(first_move_effect, choose.tag.as_str());
         let second_chosen_zone =
             effect_moves_chosen_to_zone(second_move_effect, choose.tag.as_str());
-        let first_rest_zone = effect_moves_unselected_to_zone(
+        let first_rest_zone = effect_moves_unselected_to_zone_and_tapped(
             first_move_effect,
             tag_source.tag.as_str(),
             choose.tag.as_str(),
         );
-        let second_rest_zone = effect_moves_unselected_to_zone(
+        let second_rest_zone = effect_moves_unselected_to_zone_and_tapped(
             second_move_effect,
             tag_source.tag.as_str(),
             choose.tag.as_str(),
@@ -9317,12 +9329,13 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         }
 
         let searched_owner = describe_possessive_player_filter(&search.chooser);
-        let describe_searched_owner_zone = |zone: Zone| -> Option<String> {
+        let describe_searched_owner_zone = |zone: Zone, tapped: bool| -> Option<String> {
+            let tapped_suffix = if tapped { " tapped" } else { "" };
             match zone {
                 Zone::Hand => Some(format!("into {searched_owner} hand")),
                 Zone::Graveyard => Some(format!("into {searched_owner} graveyard")),
                 Zone::Library => Some(format!("into {searched_owner} library")),
-                Zone::Battlefield => Some("onto the battlefield".to_string()),
+                Zone::Battlefield => Some(format!("onto the battlefield{tapped_suffix}")),
                 _ => None,
             }
         };
@@ -9399,7 +9412,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         } else {
             "the rest"
         };
-        let rest_destination = describe_searched_owner_zone(rest_zone)?;
+        let (chosen_zone, chosen_tapped) = chosen_zone;
+        let (rest_zone, rest_tapped) = rest_zone;
+        let rest_destination = describe_searched_owner_zone(rest_zone, rest_tapped)?;
         let (move_line, shuffle_line) = if chosen_zone == Zone::Library {
             let shuffle_verb = if shuffle.player == PlayerFilter::You {
                 "Shuffle".to_string()
@@ -9414,7 +9429,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                 None,
             )
         } else {
-            let selected_destination = describe_searched_owner_zone(chosen_zone)?;
+            let selected_destination = describe_searched_owner_zone(chosen_zone, chosen_tapped)?;
             let shuffle_line = if shuffle.player == PlayerFilter::You {
                 "Then shuffle".to_string()
             } else {
