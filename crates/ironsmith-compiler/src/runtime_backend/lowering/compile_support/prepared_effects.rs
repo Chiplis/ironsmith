@@ -7,6 +7,7 @@ use crate::target::{ChooseSpec, ObjectFilter};
 use super::{
     EffectPreludeTag, LoweredEffects, PreparedEffectsForLowering, PreparedPredicateForLowering,
     PreparedTriggeredEffectsForLowering, ReferenceEnv, ReferenceExports, ReferenceImports,
+    carry_animation_shape_into_base_pt_replacement,
     compile_annotated_effects_with_context, compile_condition_from_predicate_ast,
     rewrite_prepare_effects_for_lowering,
 };
@@ -117,6 +118,10 @@ fn materialize_trailing_self_replacement(
             .to_vec();
         let replacement_effects =
             strip_duplicate_self_replacement_prelude(&default_effects, replacement_effects);
+        let replacement_effects = carry_animation_shape_into_base_pt_replacement(
+            &default_effects,
+            replacement_effects,
+        );
         let replacement_effects = if let Some(antecedent) = default_effects
             .iter()
             .rev()

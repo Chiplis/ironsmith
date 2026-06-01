@@ -9397,7 +9397,7 @@ pub(super) fn describe_apply_continuous_animation_effect(
         } else {
             format!("{}/{}", describe_value(power), describe_value(toughness))
         };
-        let pt_noun_phrase = format!("{pt} {noun_phrase}");
+        let pt_noun_phrase = format!("{noun_phrase} with base power and toughness {pt}");
         if returned_permanent_animation {
             format!("{target_text} are {pt_noun_phrase}")
         } else if plural_target {
@@ -11498,6 +11498,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             }
             if label.eq_ignore_ascii_case("bargain") {
                 return "this spell was bargained".to_string();
+            }
+            if label.eq_ignore_ascii_case("Collect evidence") {
+                return "evidence was collected".to_string();
             }
             if label.eq_ignore_ascii_case("CastDuringYourMainPhase") {
                 return "you cast this spell during your main phase".to_string();

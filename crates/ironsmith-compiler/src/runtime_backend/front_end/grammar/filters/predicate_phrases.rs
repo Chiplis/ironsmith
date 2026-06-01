@@ -493,6 +493,8 @@ const THIS_SPELL_WAS_BARGAINED_PATTERN: ClauseShape<'static> = clause_shape!(
             &["it", "was", "bargained"],
         ]
 );
+const EVIDENCE_WAS_COLLECTED_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["evidence", "was", "collected"]);
 const GIFT_PROMISED_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["gift", "was", "promised"]);
 const GIFT_NOT_PROMISED_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -3596,6 +3598,9 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
     if THIS_SPELL_WAS_BARGAINED_PATTERN.matches_words(&filtered) {
         return Ok(PredicateAst::ThisSpellPaidLabel("Bargain".to_string()));
+    }
+    if EVIDENCE_WAS_COLLECTED_PATTERN.matches_words(&filtered) {
+        return Ok(PredicateAst::ThisSpellPaidLabel("Collect evidence".to_string()));
     }
     if filtered.len() == 4
         && ARTICLE_WORD_PATTERN.matches_word(filtered[0])

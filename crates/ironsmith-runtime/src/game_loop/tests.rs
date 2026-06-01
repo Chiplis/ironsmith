@@ -3863,6 +3863,229 @@ fn dance_of_the_manse_x_five_returns_without_animation() {
     assert_eq!(game.calculated_toughness(returned), None);
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn behind_the_mask_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_970), "Behind the Mask")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "As an additional cost to cast this spell, you may collect evidence 6.\n\
+             Until end of turn, target artifact or creature becomes an artifact creature with base power and toughness 4/3. If evidence was collected, it has base power and toughness 1/1 until end of turn instead.",
+        )
+        .expect("Behind the Mask should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn behind_the_mask_evidence_card(id: u32, name: &str, mana_value: u8) -> crate::card::Card {
+    CardBuilder::new(CardId::from_raw(id), name)
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
+            mana_value,
+        )]]))
+        .card_types(vec![CardType::Instant])
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_behind_the_mask_artifact_target(game: &mut GameState, owner: PlayerId) -> ObjectId {
+    let card = CardBuilder::new(CardId::from_raw(72_971), "Masked Relic")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    game.create_object_from_card(&card, owner, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn behind_the_mask_target_assignment(
+    game: &GameState,
+    spell_id: ObjectId,
+    controller: PlayerId,
+) -> crate::game_state::TargetAssignment {
+    let effects = game
+        .object(spell_id)
+        .and_then(|object| object.spell_effect.as_deref())
+        .expect("Behind the Mask should have spell effects");
+    let requirements = extract_target_requirements(game, effects, controller, Some(spell_id));
+    assert_eq!(
+        requirements.len(),
+        1,
+        "Behind the Mask should have one target requirement"
+    );
+    crate::game_state::TargetAssignment {
+        spec: requirements[0].spec.clone(),
+        range: 0..1,
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn assert_behind_the_mask_animation(
+    game: &mut GameState,
+    target: ObjectId,
+    expected_power: i32,
+    expected_toughness: i32,
+) {
+    game.refresh_continuous_state();
+    let card_types = game
+        .current_card_types(target)
+        .expect("animated target should have card types");
+    assert!(
+        card_types.contains(&CardType::Artifact) && card_types.contains(&CardType::Creature),
+        "Behind the Mask should make the target an artifact creature, got {card_types:?}"
+    );
+    assert_eq!(game.calculated_power(target), Some(expected_power));
+    assert_eq!(game.calculated_toughness(target), Some(expected_toughness));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn behind_the_mask_unpaid_collect_evidence_animates_target_as_four_three() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let def = behind_the_mask_definition();
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let target = create_behind_the_mask_artifact_target(&mut game, alice);
+    let assignment = behind_the_mask_target_assignment(&game, spell_id, alice);
+
+    game.push_to_stack(
+        StackEntry::new(spell_id, alice)
+            .with_targets(vec![Target::Object(target)])
+            .with_target_assignments(vec![assignment])
+            .with_optional_costs_paid(crate::cost::OptionalCostsPaid::from_costs(
+                &def.optional_costs,
+            )),
+    );
+    resolve_stack_entry(&mut game).expect("Behind the Mask should resolve");
+
+    assert_behind_the_mask_animation(&mut game, target, 4, 3);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn behind_the_mask_paid_collect_evidence_exiles_evidence_and_animates_target_as_one_one() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let def = behind_the_mask_definition();
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let target = create_behind_the_mask_artifact_target(&mut game, alice);
+    let evidence = game.create_object_from_card(
+        &behind_the_mask_evidence_card(72_972, "Evidence Fuel", 6),
+        alice,
+        Zone::Graveyard,
+    );
+    let evidence_stable = game.object(evidence).expect("evidence should exist").stable_id;
+    let collect_effect = def.optional_costs[0].cost.costs()[0]
+        .effect_ref()
+        .expect("collect evidence should be an effect-backed optional cost")
+        .clone();
+    let mut cost_ctx = crate::effects::ExecutionContext::new_default(spell_id, alice)
+        .with_cost_choice_targets(vec![crate::effects::ResolvedTarget::Object(evidence)]);
+    crate::effects::execute_effect(&mut game, &collect_effect, &mut cost_ctx)
+        .expect("collect evidence cost should exile selected graveyard cards");
+    assert!(
+        game.exile.iter().any(|id| game
+            .object(*id)
+            .is_some_and(|object| object.stable_id == evidence_stable)),
+        "paid collect evidence should exile the chosen evidence card"
+    );
+
+    let mut paid = crate::cost::OptionalCostsPaid::from_costs(&def.optional_costs);
+    paid.mark_label_paid("Collect evidence");
+    let assignment = behind_the_mask_target_assignment(&game, spell_id, alice);
+    game.push_to_stack(
+        StackEntry::new(spell_id, alice)
+            .with_targets(vec![Target::Object(target)])
+            .with_target_assignments(vec![assignment])
+            .with_optional_costs_paid(paid),
+    );
+    resolve_stack_entry(&mut game).expect("Behind the Mask should resolve");
+
+    assert_behind_the_mask_animation(&mut game, target, 1, 1);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn behind_the_mask_paid_collect_evidence_can_use_multiple_cards() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let def = behind_the_mask_definition();
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let target = create_behind_the_mask_artifact_target(&mut game, alice);
+    let first_evidence = game.create_object_from_card(
+        &behind_the_mask_evidence_card(72_974, "Small Evidence", 2),
+        alice,
+        Zone::Graveyard,
+    );
+    let second_evidence = game.create_object_from_card(
+        &behind_the_mask_evidence_card(72_975, "Large Evidence", 4),
+        alice,
+        Zone::Graveyard,
+    );
+    let evidence_stables = [first_evidence, second_evidence]
+        .map(|id| game.object(id).expect("evidence should exist").stable_id);
+    let collect_effect = def.optional_costs[0].cost.costs()[0]
+        .effect_ref()
+        .expect("collect evidence should be an effect-backed optional cost")
+        .clone();
+    let mut cost_ctx = crate::effects::ExecutionContext::new_default(spell_id, alice)
+        .with_cost_choice_targets(vec![
+            crate::effects::ResolvedTarget::Object(first_evidence),
+            crate::effects::ResolvedTarget::Object(second_evidence),
+        ]);
+    crate::effects::execute_effect(&mut game, &collect_effect, &mut cost_ctx)
+        .expect("collect evidence cost should accept multiple cards totaling six mana value");
+    for stable_id in evidence_stables {
+        assert!(
+            game.exile.iter().any(|id| game
+                .object(*id)
+                .is_some_and(|object| object.stable_id == stable_id)),
+            "paid collect evidence should exile each chosen evidence card"
+        );
+    }
+
+    let mut paid = crate::cost::OptionalCostsPaid::from_costs(&def.optional_costs);
+    paid.mark_label_paid("Collect evidence");
+    let assignment = behind_the_mask_target_assignment(&game, spell_id, alice);
+    game.push_to_stack(
+        StackEntry::new(spell_id, alice)
+            .with_targets(vec![Target::Object(target)])
+            .with_target_assignments(vec![assignment])
+            .with_optional_costs_paid(paid),
+    );
+    resolve_stack_entry(&mut game).expect("Behind the Mask should resolve");
+
+    assert_behind_the_mask_animation(&mut game, target, 1, 1);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn behind_the_mask_collect_evidence_requires_enough_graveyard_mana_value() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let def = behind_the_mask_definition();
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    game.create_object_from_card(
+        &behind_the_mask_evidence_card(72_973, "Insufficient Evidence", 5),
+        alice,
+        Zone::Graveyard,
+    );
+    let collect_effect = def.optional_costs[0].cost.costs()[0]
+        .effect_ref()
+        .expect("collect evidence should be an effect-backed optional cost");
+    let collect_cost = collect_effect
+        .0
+        .as_cost_executable()
+        .expect("collect evidence should be executable as a cost");
+
+    assert_eq!(
+        crate::effects::CostExecutableEffect::can_execute_as_cost(
+            collect_cost,
+            &game,
+            spell_id,
+            alice,
+        ),
+        Err(crate::effects::CostValidationError::NotEnoughCards),
+        "collect evidence 6 should be unavailable below total graveyard mana value 6"
+    );
+}
+
 #[test]
 fn regeneration_count_tracks_used_shields_until_cleanup() {
     let mut game = setup_game();

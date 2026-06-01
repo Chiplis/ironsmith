@@ -1212,6 +1212,10 @@ where
     {
         return Ok(converted);
     }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::CollectEvidenceEffect>(&effect)
+    {
+        return Ok(converted);
+    }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ExploreEffect>(&effect) {
         return Ok(Effect::new(crate::effects::ExploreEffect::new(
             payload.target.clone(),

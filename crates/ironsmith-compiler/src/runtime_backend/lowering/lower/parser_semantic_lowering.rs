@@ -1913,6 +1913,9 @@ pub(crate) fn lower_keyword_special_cases(
     if let Some(chunk) = try_lower_optional_behold_additional_cost(line, parse_tokens)? {
         return Ok(Some(chunk));
     }
+    if let Some(chunk) = try_lower_optional_collect_evidence_additional_cost(line, parse_tokens)? {
+        return Ok(Some(chunk));
+    }
     Ok(None)
 }
 
@@ -2165,6 +2168,40 @@ pub(crate) fn try_lower_optional_behold_additional_cost(
 
     Ok(Some(LineAst::OptionalCost(
         OptionalCost::custom(line.info.raw_line.trim(), total_cost).into(),
+    )))
+}
+
+fn try_lower_optional_collect_evidence_additional_cost(
+    line: &RewriteKeywordLine,
+    parse_tokens: &[OwnedLexToken],
+) -> Result<Option<LineAst>, CardTextError> {
+    if line.kind != RewriteKeywordLineKind::AdditionalCost {
+        return Ok(None);
+    }
+
+    let Some(effect_tokens) = additional_cost_tail_tokens(parse_tokens) else {
+        return Ok(None);
+    };
+    let stripped = trim_lexed_commas(effect_tokens);
+    let words = token_word_refs(stripped);
+    if words.len() != 5
+        || !word_slice_starts_with(&words, &["you", "may", "collect", "evidence"])
+    {
+        return Ok(None);
+    }
+    let amount = words[4].parse::<u32>().map_err(|_| {
+        CardTextError::ParseError(format!(
+            "collect evidence additional cost expected numeric amount in '{}'",
+            line.info.raw_line
+        ))
+    })?;
+
+    Ok(Some(LineAst::OptionalCost(
+        OptionalCost::custom(
+            "Collect evidence",
+            TotalCost::from_cost(Cost::effect(crate::effects::CollectEvidenceEffect::new(amount))),
+        )
+        .into(),
     )))
 }
 

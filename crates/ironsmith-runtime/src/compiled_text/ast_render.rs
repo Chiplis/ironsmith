@@ -508,9 +508,73 @@ fn describe_single_self_replacement_segment(
     ) {
         return Some(token_life_text);
     }
+    if let Some(base_pt_text) = describe_animation_base_pt_self_replacement(
+        &segment.default_effects,
+        &branch.replacement_effects,
+        &default_text,
+        &condition_text,
+    ) {
+        return Some(base_pt_text);
+    }
     Some(format!(
         "{default_text}. If {condition_text}, {} instead",
         rewrite_self_replacement_referent_phrase(&default_text, &replacement_text)
+    ))
+}
+
+fn describe_animation_base_pt_self_replacement(
+    default_effects: &[Effect],
+    replacement_effects: &[Effect],
+    default_text: &str,
+    condition_text: &str,
+) -> Option<String> {
+    let [default_effect] = default_effects else {
+        return None;
+    };
+    let [replacement_effect] = replacement_effects else {
+        return None;
+    };
+    let default_apply = unwrap_tagged_effect(default_effect)
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    let replacement_apply = unwrap_tagged_effect(replacement_effect)
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if default_apply.target_spec != replacement_apply.target_spec
+        || default_apply.modification != replacement_apply.modification
+        || !matches!(
+            default_apply.modification,
+            Some(crate::continuous::Modification::AddCardTypes(_))
+        )
+        || default_apply.until != replacement_apply.until
+        || default_apply.runtime_modifications != replacement_apply.runtime_modifications
+        || default_apply.condition.is_some()
+        || replacement_apply.condition.is_some()
+        || default_apply.additional_modifications.len() != 1
+        || replacement_apply.additional_modifications.len() != 1
+    {
+        return None;
+    }
+    let crate::continuous::Modification::SetPowerToughness {
+        power,
+        toughness,
+        sublayer: _,
+    } = &replacement_apply.additional_modifications[0]
+    else {
+        return None;
+    };
+    if !matches!(
+        default_apply.additional_modifications[0],
+        crate::continuous::Modification::SetPowerToughness { .. }
+    ) {
+        return None;
+    }
+    let duration = match replacement_apply.until {
+        crate::effect::Until::EndOfTurn => " until end of turn",
+        _ => "",
+    };
+    Some(format!(
+        "{default_text}. If {condition_text}, it has base power and toughness {}/{}{duration} instead",
+        describe_value(power),
+        describe_value(toughness),
     ))
 }
 
@@ -762,6 +826,13 @@ fn rewrite_self_replacement_referent_phrase(default_text: &str, replacement_text
         && replacement.starts_with("target creature ")
     {
         replacement = replacement.replacen("target creature", "that creature", 1);
+    }
+    if default_text
+        .to_ascii_lowercase()
+        .contains("target artifact or creature")
+        && replacement.starts_with("target artifact or creature ")
+    {
+        replacement = replacement.replacen("target artifact or creature", "it", 1);
     }
     replacement
 }

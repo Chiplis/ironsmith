@@ -39390,6 +39390,12 @@ pub(super) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> S
     if label.to_ascii_lowercase().starts_with("gift ") {
         return label.trim().to_string();
     }
+    if label.eq_ignore_ascii_case("Collect evidence") {
+        return format!(
+            "As an additional cost to cast this spell, you may {}",
+            cost_text.trim().trim_end_matches('.').to_ascii_lowercase()
+        );
+    }
     if label == "Conspire" || label.starts_with("Conspire ") {
         let reminder_cost = cost_text
             .trim()

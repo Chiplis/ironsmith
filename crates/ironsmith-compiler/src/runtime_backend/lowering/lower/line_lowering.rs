@@ -7,6 +7,7 @@ use crate::runtime_backend::activation_and_restrictions::last_created_token_info
 use crate::runtime_backend::effect_ast_traversal::{
     for_each_nested_effects, for_each_nested_effects_mut,
 };
+use crate::runtime_backend::compile_support::carry_animation_shape_into_base_pt_replacement;
 use crate::runtime_backend::lexer::{word_slice_contains_any_word, word_slice_contains_phrase};
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::zone::Zone;
@@ -1140,7 +1141,10 @@ fn lower_statement_chunk(
             replacement.if_true =
                 retarget_replacement_effects(replacement.if_true, &previous_target);
         }
-        let mut spell_effect = crate::resolution::ResolutionProgram::from_effects(vec![previous]);
+        let default_effects = vec![previous];
+        replacement.if_true =
+            carry_animation_shape_into_base_pt_replacement(&default_effects, replacement.if_true);
+        let mut spell_effect = crate::resolution::ResolutionProgram::from_effects(default_effects);
         let Some(segment) = spell_effect.last_segment_mut() else {
             return Err(CardTextError::InvariantViolation(
                 "expected previous spell resolution segment for inline self-replacement"

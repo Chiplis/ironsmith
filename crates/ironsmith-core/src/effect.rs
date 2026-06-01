@@ -2075,6 +2075,17 @@ impl DevourEffect {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CollectEvidenceEffect {
+    pub amount: u32,
+}
+
+impl CollectEvidenceEffect {
+    pub fn new(amount: u32) -> Self {
+        Self { amount }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConniveEffect {
     pub target: ChooseSpec,

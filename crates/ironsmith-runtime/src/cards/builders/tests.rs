@@ -47602,6 +47602,37 @@ fn creepy_puppeteer_regression_renders_base_power_toughness_followup() {
 }
 
 #[test]
+fn behind_the_mask_collect_evidence_replacement_compiles_and_renders() {
+    let def = parse_oracle_card_definition("Behind the Mask");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    let debug = format!("{:#?}", def);
+
+    assert!(
+        rendered.contains("As an additional cost to cast this spell, you may collect evidence 6."),
+        "expected Behind the Mask to render its optional collect evidence cost, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains(
+            "target artifact or creature becomes an artifact creature with base power and toughness 4/3 until end of turn"
+        ),
+        "expected Behind the Mask to render its default artifact-creature animation, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains(
+            "if evidence was collected, it has base power and toughness 1/1 until end of turn instead"
+        ),
+        "expected Behind the Mask to render its evidence-collected self-replacement, got {rendered}"
+    );
+    assert!(
+        debug.contains("CollectEvidenceEffect")
+            && debug.contains("ThisSpellPaidLabel")
+            && debug.contains("Collect evidence"),
+        "expected Behind the Mask to model collect evidence structurally, got {debug}"
+    );
+}
+
+#[test]
 fn optional_continuous_effects_render_causative_have() {
     for (name, expected) in [
         (

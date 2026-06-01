@@ -67,6 +67,101 @@ use crate::runtime_backend::lexer::{
 use super::effect_ast_traversal::{
     assert_effect_ast_variant_coverage, for_each_nested_effects, for_each_nested_effects_mut,
 };
+
+fn tagged_apply_continuous(
+    effect: &crate::effect::Effect,
+) -> Option<(Option<crate::tag::TagKey>, &crate::effects::ApplyContinuousEffect)> {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return tagged
+            .effect
+            .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+            .map(|apply| (Some(tagged.tag.clone()), apply));
+    }
+    effect
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        .map(|apply| (None, apply))
+}
+
+pub(crate) fn carry_animation_shape_into_base_pt_replacement(
+    default_effects: &[crate::effect::Effect],
+    replacement_effects: Vec<crate::effect::Effect>,
+) -> Vec<crate::effect::Effect> {
+    let candidates = replacement_effects
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, effect)| tagged_apply_continuous(effect).map(|apply| (idx, apply)))
+        .filter(|(_, (_, apply))| {
+            matches!(
+                apply.modification,
+                Some(crate::continuous::Modification::SetPowerToughness { .. })
+            ) && apply.additional_modifications.is_empty()
+                && apply.runtime_modifications.is_empty()
+        })
+        .collect::<Vec<_>>();
+    let [(replacement_idx, (_, replacement_apply))] = candidates.as_slice() else {
+        return replacement_effects;
+    };
+    let Some(crate::continuous::Modification::SetPowerToughness { power, toughness, sublayer }) =
+        replacement_apply.modification.as_ref()
+    else {
+        return replacement_effects;
+    };
+    if !replacement_apply.additional_modifications.is_empty()
+        || !replacement_apply.runtime_modifications.is_empty()
+    {
+        return replacement_effects;
+    }
+
+    let Some((tag, default_apply)) = default_effects.iter().rev().find_map(tagged_apply_continuous)
+    else {
+        return replacement_effects;
+    };
+    if default_apply.until != replacement_apply.until
+        || default_apply.condition.is_some()
+        || !matches!(
+            default_apply.modification,
+            Some(crate::continuous::Modification::AddCardTypes(_))
+        )
+    {
+        return replacement_effects;
+    }
+    let has_base_pt = default_apply.additional_modifications.iter().any(|modification| {
+        matches!(
+            modification,
+            crate::continuous::Modification::SetPowerToughness { .. }
+        )
+    });
+    if !has_base_pt {
+        return replacement_effects;
+    }
+
+    let mut carried = default_apply.clone();
+    for modification in &mut carried.additional_modifications {
+        if matches!(
+            modification,
+            crate::continuous::Modification::SetPowerToughness { .. }
+        ) {
+            *modification = crate::continuous::Modification::SetPowerToughness {
+                power: power.clone(),
+                toughness: toughness.clone(),
+                sublayer: *sublayer,
+            };
+        }
+    }
+    carried.require_creature_target = default_apply.require_creature_target;
+
+    let replacement_idx = *replacement_idx;
+    let effect = crate::effect::Effect::new(carried);
+    drop(candidates);
+    let mut rewritten = replacement_effects;
+    rewritten[replacement_idx] = if let Some(tag) = tag {
+        crate::effect::Effect::new(crate::effects::TaggedEffect::new(tag, effect))
+    } else {
+        effect
+    };
+    rewritten
+}
+
 use super::effect_pipeline::{
     EffectPreludeTag, PreparedEffectsForLowering, PreparedPredicateForLowering,
     PreparedTriggeredEffectsForLowering,

@@ -2175,3 +2175,9 @@ impl From<crate::effects::ChoosePlayerEffect> for Effect {
         Self::new(value)
     }
 }
+
+impl From<crate::effects::CollectEvidenceEffect> for Effect {
+    fn from(value: crate::effects::CollectEvidenceEffect) -> Self {
+        Self::new(value)
+    }
+}

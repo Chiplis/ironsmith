@@ -330,7 +330,10 @@ fn parse_shared_subject_base_pt_from_has_tail(
         ))
     })?;
     let tail = &rest_words[5..];
-    if !tail.is_empty() && !is_until_end_of_turn(tail) {
+    if !tail.is_empty()
+        && !is_until_end_of_turn(tail)
+        && !matches!(tail, ["until", "end", "of", "turn", "instead"])
+    {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing base power/toughness clause (clause: '{}')",
             GainAbilityWordView::new(tokens).to_word_refs().join(" ")
@@ -367,6 +370,7 @@ fn parse_leading_subject_base_pt_before_gain(
     if !tail.is_empty()
         && !is_until_end_of_turn(tail)
         && !UNTIL_END_OF_TURN_AND_TAIL_PATTERN.matches_words(tail)
+        && !matches!(tail, ["until", "end", "of", "turn", "instead"])
     {
         return Err(CardTextError::ParseError(format!(
             "unsupported trailing base power/toughness clause (clause: '{}')",

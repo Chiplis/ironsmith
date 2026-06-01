@@ -5,8 +5,10 @@
 
 use crate::decisions::make_decision;
 use crate::decisions::specs::ChooseObjectsSpec;
-use crate::effect::{ChoiceCount, Effect, EffectOutcome, ExecutionFact, OutcomeValue, Until};
-use crate::effects::EffectExecutor;
+use crate::effect::{
+    ChoiceCount, Effect, EffectOutcome, ExecutionFact, OutcomeObjectMemory, OutcomeValue, Until,
+};
+use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::helpers::{normalize_object_selection, resolve_value};
 use crate::effects::player::CastTaggedEffect;
 use crate::effects::zones::apply_zone_change;
@@ -21,18 +23,200 @@ use crate::events::processing::{
 };
 use crate::events::zones::ZoneChangeEvent;
 use crate::events::{CardRevealedEvent, KeywordActionEvent, KeywordActionKind};
-use crate::filter::PlayerFilter;
+use crate::filter::{FilterContext, ObjectFilterExt as _, PlayerFilter};
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId, StableId};
+use crate::object_query::candidate_ids_for_filter;
 use crate::object::{CounterType, ObjectKind};
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
 use crate::target::ChooseSpec;
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 pub type AmplifyEffect = ironsmith_core::AmplifyEffect;
-pub use ironsmith_core::{BolsterEffect, CipherEffect, DevourEffect};
+pub use ironsmith_core::{BolsterEffect, CipherEffect, CollectEvidenceEffect, DevourEffect};
+
+fn evidence_candidates(
+    game: &GameState,
+    source: ObjectId,
+    controller: PlayerId,
+) -> Vec<ObjectId> {
+    let filter = crate::target::ObjectFilter::default()
+        .in_zone(Zone::Graveyard)
+        .owned_by(crate::target::PlayerFilter::You);
+    let filter_ctx = FilterContext::new(controller).with_source(source);
+    let mut candidates = candidate_ids_for_filter(game, &filter)
+        .into_iter()
+        .filter(|id| {
+            game.object(*id)
+                .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by_key(|id| {
+        std::cmp::Reverse(
+            game.object(*id)
+                .and_then(|object| object.mana_cost.as_ref())
+                .map_or(0, crate::mana::ManaCost::mana_value),
+        )
+    });
+    candidates
+}
+
+fn evidence_total_mana_value(game: &GameState, objects: &[ObjectId]) -> u32 {
+    objects
+        .iter()
+        .filter_map(|id| game.object(*id))
+        .filter_map(|object| object.mana_cost.as_ref())
+        .map(crate::mana::ManaCost::mana_value)
+        .sum()
+}
+
+fn minimum_evidence_cards(game: &GameState, candidates: &[ObjectId], amount: u32) -> usize {
+    let mut total = 0;
+    for (idx, id) in candidates.iter().enumerate() {
+        total += game
+            .object(*id)
+            .and_then(|object| object.mana_cost.as_ref())
+            .map_or(0, crate::mana::ManaCost::mana_value);
+        if total >= amount {
+            return idx + 1;
+        }
+    }
+    candidates.len()
+}
+
+fn normalize_evidence_selection(chosen: Vec<ObjectId>, candidates: &[ObjectId]) -> Vec<ObjectId> {
+    let mut seen = HashSet::new();
+    chosen
+        .into_iter()
+        .filter(|id| candidates.contains(id) && seen.insert(*id))
+        .collect()
+}
+
+impl EffectExecutor for CollectEvidenceEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        Some(self)
+    }
+
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let candidates = evidence_candidates(game, ctx.source, ctx.controller);
+        if evidence_total_mana_value(game, &candidates) < self.amount {
+            return Err(ExecutionError::Impossible(format!(
+                "not enough total mana value in graveyard to collect evidence {}",
+                self.amount
+            )));
+        }
+
+        let chosen = if ctx.targets_are_cost_choices && !ctx.targets.is_empty() {
+            normalize_evidence_selection(
+                ctx.targets
+                    .iter()
+                    .filter_map(|target| match target {
+                        crate::effects::ResolvedTarget::Object(id) => Some(*id),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>(),
+                &candidates,
+            )
+        } else {
+            let min = minimum_evidence_cards(game, &candidates, self.amount);
+            let spec = ChooseObjectsSpec::new(
+                ctx.source,
+                format!("Collect evidence {}", self.amount),
+                candidates.clone(),
+                min,
+                None,
+            )
+            .require_explicit_choice();
+            let selection: Vec<ObjectId> = make_decision(
+                game,
+                ctx.decision_maker,
+                ctx.controller,
+                Some(ctx.source),
+                spec,
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::resolved());
+            }
+            let selected = normalize_evidence_selection(selection, &candidates);
+            if selected.is_empty() {
+                normalize_object_selection(selected, &candidates, min)
+            } else {
+                selected
+            }
+        };
+
+        if chosen.is_empty()
+            || !chosen.iter().all(|id| candidates.contains(id))
+            || evidence_total_mana_value(game, &chosen) < self.amount
+        {
+            return Err(ExecutionError::Impossible(format!(
+                "chosen evidence cards must have total mana value {} or greater",
+                self.amount
+            )));
+        }
+
+        let mut affected_ids = Vec::new();
+        let mut affected_memory = Vec::new();
+        for object_id in chosen {
+            let Some(object) = game.object(object_id) else {
+                continue;
+            };
+            let from_zone = object.zone;
+            let pre_memory = OutcomeObjectMemory::from_object_id(game, object_id);
+            match apply_zone_change(
+                game,
+                object_id,
+                from_zone,
+                Zone::Exile,
+                ctx.cause.clone(),
+                &mut ctx.decision_maker,
+            ) {
+                EventOutcome::Proceed(result) => {
+                    affected_ids.extend(result.new_object_ids);
+                    if let Some(memory) = pre_memory {
+                        affected_memory.push(memory);
+                    }
+                }
+                EventOutcome::Replaced => {
+                    if let Some(memory) = pre_memory {
+                        affected_memory.push(memory);
+                    }
+                }
+                EventOutcome::Prevented | EventOutcome::NotApplicable => {}
+            }
+        }
+
+        Ok(EffectOutcome::count(affected_memory.len() as i32)
+            .with_affected_objects(affected_ids)
+            .with_affected_object_memory(affected_memory))
+    }
+
+    fn cost_description(&self) -> Option<String> {
+        Some(format!("Collect evidence {}", self.amount))
+    }
+}
+
+impl CostExecutableEffect for CollectEvidenceEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Result<(), CostValidationError> {
+        let candidates = evidence_candidates(game, source, controller);
+        if evidence_total_mana_value(game, &candidates) >= self.amount {
+            Ok(())
+        } else {
+            Err(CostValidationError::NotEnoughCards)
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BackupEffect {
