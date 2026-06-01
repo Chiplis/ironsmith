@@ -10269,6 +10269,175 @@ fn lilah_undefeated_slickshot_exiles_and_plots_matching_spell_from_hand() {
     );
 }
 
+fn lilah_plot_cast_action(
+    game: &crate::game_state::GameState,
+    player: PlayerId,
+    spell_id: ObjectId,
+) -> Option<crate::decision::LegalAction> {
+    crate::decision::compute_legal_actions(game, player)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::CastSpell {
+                    spell_id: action_spell_id,
+                    from_zone: Zone::Exile,
+                    casting_method:
+                        crate::alternative_cast::CastingMethod::PlayFrom {
+                            use_alternative: Some(_),
+                            ..
+                        },
+                } if *action_spell_id == spell_id
+            )
+        })
+}
+
+#[test]
+fn lilah_undefeated_slickshot_plotted_non_plot_spell_casts_later_as_sorcery_for_free() {
+    let def = lilah_undefeated_slickshot_definition();
+    let triggered = lilah_plot_replacement_trigger(&def);
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.turn_number = 3;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+
+    let source_id = game.create_object_from_card(&def.card, alice, Zone::Battlefield);
+    let spell = lilah_spell_card(
+        "Lilah Later Cast Gold Test Spell",
+        vec![vec![ManaSymbol::Blue], vec![ManaSymbol::Red]],
+        CardType::Instant,
+    );
+    let spell_id = game.create_object_from_card(&spell, alice, Zone::Stack);
+    game.stack.push(StackEntry::new(spell_id, alice));
+    let stable_id = game.object(spell_id).expect("spell should exist").stable_id;
+    let event = TriggerEvent::new_with_provenance(
+        SpellCastEvent::new(spell_id, alice, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let mut ctx = ExecutionContext::new(source_id, alice, &mut dm).with_triggering_event(event);
+    for effect in &triggered.effects {
+        execute_effect(&mut game, effect, &mut ctx).expect("Lilah trigger effect should resolve");
+    }
+    execute_effect(
+        &mut game,
+        &Effect::move_to_zone(ChooseSpec::SpecificObject(spell_id), Zone::Graveyard, false),
+        &mut ctx,
+    )
+    .expect("resolving spell should move through Lilah replacement");
+    game.stack.retain(|entry| entry.object_id != spell_id);
+    let exiled_id = game
+        .find_object_by_stable_id(stable_id)
+        .expect("spell should remain findable after replacement");
+    assert!(game.is_plotted_by(exiled_id, alice));
+
+    assert!(
+        lilah_plot_cast_action(&game, alice, exiled_id).is_none(),
+        "Lilah-plotted spell should not be castable on the same turn"
+    );
+
+    game.turn.turn_number += 1;
+    let cast_action = lilah_plot_cast_action(&game, alice, exiled_id)
+        .expect("Lilah-plotted non-Plot spell should be castable on a later main phase");
+    let crate::decision::LegalAction::CastSpell { casting_method, .. } = &cast_action else {
+        unreachable!("helper only returns cast actions");
+    };
+    let free_cost = crate::decision::spell_mana_cost_for_cast(
+        &game,
+        alice,
+        game.object(exiled_id).expect("exiled spell should exist"),
+        casting_method,
+        Zone::Exile,
+    )
+    .expect("plotted cast should have a mana cost object");
+    assert_eq!(free_cost.mana_value(), 0, "plotted cast should cost no mana");
+
+    let mut state = crate::game_loop::PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+    crate::game_loop::apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &crate::game_loop::PriorityResponse::PriorityAction(cast_action),
+        &mut decision_maker,
+    )
+    .expect("casting the Lilah-plotted spell should succeed");
+    let stack_id = game
+        .find_object_by_stable_id(stable_id)
+        .expect("cast spell should remain findable on the stack");
+    let stack_spell = game.object(stack_id).expect("stack spell should exist");
+    assert_eq!(stack_spell.zone, Zone::Stack);
+    assert_eq!(stack_spell.mana_spent_to_cast.total(), 0);
+    assert!(
+        !game.is_plotted_by(stack_id, alice),
+        "plot marker should clear once the spell leaves exile"
+    );
+}
+
+#[test]
+fn lilah_undefeated_slickshot_plotted_spell_obeys_later_turn_sorcery_timing() {
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.turn_number = 2;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+
+    let spell = lilah_spell_card(
+        "Lilah Timing Gold Test Spell",
+        vec![vec![ManaSymbol::Blue], vec![ManaSymbol::Red]],
+        CardType::Instant,
+    );
+    let spell_id = game.create_object_from_card(&spell, alice, Zone::Exile);
+    game.set_plotted(spell_id, alice);
+    game.turn.turn_number += 1;
+
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(alice);
+    assert!(
+        lilah_plot_cast_action(&game, alice, spell_id).is_none(),
+        "Lilah-plotted spell should not be castable during another player's turn"
+    );
+
+    game.turn.active_player = alice;
+    game.turn.phase = crate::game_state::Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+    assert!(
+        lilah_plot_cast_action(&game, alice, spell_id).is_none(),
+        "Lilah-plotted spell should not be castable outside sorcery timing"
+    );
+}
+
+#[test]
+fn lilah_undefeated_slickshot_nonmatching_spells_do_not_gain_plot_cast_permission() {
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.turn_number = 4;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+
+    let monocolored_spell = lilah_spell_card(
+        "Lilah Nonmatching Exiled Test Spell",
+        vec![vec![ManaSymbol::Blue]],
+        CardType::Instant,
+    );
+    let spell_id = game.create_object_from_card(&monocolored_spell, alice, Zone::Exile);
+
+    assert!(
+        lilah_plot_cast_action(&game, alice, spell_id).is_none(),
+        "a nonmatching spell that was not marked plotted should not gain Lilah's cast permission"
+    );
+}
+
 #[test]
 fn lilah_undefeated_slickshot_does_not_trigger_on_nonmatching_casts() {
     let def = lilah_undefeated_slickshot_definition();

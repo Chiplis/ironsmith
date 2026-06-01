@@ -398,6 +398,7 @@ pub(crate) fn calculate_effective_activation_mana_cost_with_view(
 /// The index space is:
 /// 1) Card intrinsic alternatives (`card.alternative_casts`)
 /// 2) Granted alternatives for this card/zone/player (appended after intrinsic methods)
+/// 3) Virtual plotted cast permission for exiled cards already marked plotted.
 pub fn resolve_play_from_alternative_method(
     game: &GameState,
     player: PlayerId,
@@ -418,14 +419,92 @@ pub fn resolve_play_from_alternative_method(
         return Some(entry.method.clone());
     }
 
-    let adventure_idx = granted_idx.checked_sub(granted.len())?;
-    let adventure_view = spell_view_for_split_other_half_cast(game, spell)?;
-    let view = DerivedGameView::new(game);
-    let adventure_granted =
-        view.granted_alternative_casts_for_card_view(spell.id, &adventure_view, zone, player);
-    adventure_granted
-        .get(adventure_idx)
-        .map(|entry| entry.method.clone())
+    let mut extra_idx = granted_idx.checked_sub(granted.len())?;
+    if let Some(adventure_view) = spell_view_for_split_other_half_cast(game, spell) {
+        let view = DerivedGameView::new(game);
+        let adventure_granted =
+            view.granted_alternative_casts_for_card_view(spell.id, &adventure_view, zone, player);
+        if let Some(entry) = adventure_granted.get(extra_idx) {
+            return Some(entry.method.clone());
+        }
+        extra_idx = extra_idx.saturating_sub(adventure_granted.len());
+    }
+
+    if extra_idx == 0 {
+        return virtual_plotted_cast_method(game, player, spell, zone);
+    }
+
+    None
+}
+
+pub(crate) fn virtual_plotted_cast_alternative_index(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    zone: Zone,
+) -> Option<usize> {
+    virtual_plotted_cast_method(game, player, spell, zone)?;
+
+    let granted_len = game
+        .effect_store
+        .grant_registry
+        .granted_alternative_casts_for_card(game, spell.id, zone, player)
+        .len();
+    let adventure_granted_len = spell_view_for_split_other_half_cast(game, spell)
+        .map(|adventure_view| {
+            let view = DerivedGameView::new(game);
+            view.granted_alternative_casts_for_card_view(spell.id, &adventure_view, zone, player)
+                .len()
+        })
+        .unwrap_or(0);
+
+    Some(spell.alternative_casts.len() + granted_len + adventure_granted_len)
+}
+
+fn virtual_plotted_cast_method(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    zone: Zone,
+) -> Option<crate::alternative_cast::AlternativeCastingMethod> {
+    if zone != Zone::Exile
+        || spell.zone != Zone::Exile
+        || !game.is_plotted_by(spell.id, player)
+        || spell.alternative_casts.iter().any(|method| {
+            matches!(
+                method,
+                crate::alternative_cast::AlternativeCastingMethod::Plot { .. }
+            )
+        })
+    {
+        return None;
+    }
+
+    Some(crate::alternative_cast::AlternativeCastingMethod::Plot {
+        cost: crate::mana::ManaCost::new(),
+    })
+}
+
+pub(crate) fn plotted_cast_permission_allows(
+    game: &GameState,
+    player: PlayerId,
+    spell_id: crate::ids::ObjectId,
+) -> bool {
+    if !game.is_plotted_by(spell_id, player) {
+        return false;
+    }
+    let Some(spell) = game.object(spell_id) else {
+        return false;
+    };
+    if spell.zone != Zone::Exile {
+        return false;
+    }
+    let Some(plotted_turn) = game.plotted_turn(spell_id) else {
+        return false;
+    };
+    plotted_turn < game.turn.turn_number
+        && game.turn.active_player == player
+        && crate::turn::is_sorcery_timing(game)
 }
 
 pub(crate) fn alternative_cast_method_matches_kind(
@@ -1603,7 +1682,7 @@ pub(crate) fn can_cast_spell_with_context(
     };
     let spell_for_checks = cast_view.as_ref().unwrap_or(spell);
 
-    if let Some(method) = match casting_method {
+    let selected_alternative_method = match casting_method {
         CastingMethod::Alternative(idx) => spell.alternative_casts.get(*idx).cloned(),
         CastingMethod::PlayFrom {
             use_alternative: Some(idx),
@@ -1617,15 +1696,25 @@ pub(crate) fn can_cast_spell_with_context(
         } => resolve_play_from_alternative_method(game, player, spell, *zone, *idx)
             .or_else(|| spell.cast_alternative_method.clone()),
         _ => spell.cast_alternative_method.clone(),
-    } && let Some(condition) = method.cast_condition()
-        && !crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
-            game,
-            spell.id,
-            condition,
-            &[],
-        )
-    {
-        return false;
+    };
+    if let Some(method) = selected_alternative_method {
+        if matches!(
+            method,
+            crate::alternative_cast::AlternativeCastingMethod::Plot { .. }
+        ) && !plotted_cast_permission_allows(game, player, spell.id)
+        {
+            return false;
+        }
+        if let Some(condition) = method.cast_condition()
+            && !crate::static_abilities::this_spell_cost_condition_is_active_for_cast(
+                game,
+                spell.id,
+                condition,
+                &[],
+            )
+        {
+            return false;
+        }
     }
 
     let restrictions_started_at = PerfTimer::start();
@@ -2274,16 +2363,7 @@ pub(crate) fn can_cast_with_alternative_with_context(
             get_mana_cost_for_method(method, spell_for_checks)
         }
         AlternativeCastingMethod::Plot { .. } => {
-            if !game.is_plotted_by(spell.id, player) {
-                return false;
-            }
-            let Some(plotted_turn) = game.plotted_turn(spell.id) else {
-                return false;
-            };
-            if plotted_turn >= game.turn.turn_number {
-                return false;
-            }
-            if game.turn.active_player != player || !crate::turn::is_sorcery_timing(game) {
+            if !plotted_cast_permission_allows(game, player, spell.id) {
                 return false;
             }
             Some(&free_plot_cost)

@@ -152,6 +152,37 @@ fn append_native_alternative_cast_actions_for_card_from_zone(
     }
 }
 
+fn append_virtual_plotted_cast_action_for_card(
+    game: &GameState,
+    actions: &mut Vec<LegalAction>,
+    player: PlayerId,
+    card_id: ObjectId,
+    card: &crate::object::Object,
+    from_zone: Zone,
+    view: &DerivedGameView<'_>,
+) {
+    let Some(idx) = virtual_plotted_cast_alternative_index(game, player, card, from_zone) else {
+        return;
+    };
+    let Some(method) = resolve_play_from_alternative_method(game, player, card, from_zone, idx)
+    else {
+        return;
+    };
+    if !can_cast_with_alternative_with_view(game, player, card, &method, view) {
+        return;
+    }
+
+    actions.push(LegalAction::CastSpell {
+        spell_id: card_id,
+        from_zone,
+        casting_method: CastingMethod::PlayFrom {
+            source: card_id,
+            zone: from_zone,
+            use_alternative: Some(idx),
+        },
+    });
+}
+
 fn card_has_graveyard_blitz_permission(card: &crate::object::Object) -> bool {
     let permission_text = "from your graveyard using its blitz ability";
     card.compiled_card_text
@@ -350,6 +381,9 @@ fn append_cast_actions_from_zone_for_card(
     zone_has_active_grants: bool,
 ) {
     append_native_alternative_cast_actions_for_card_from_zone(
+        game, actions, player, card_id, card, from_zone, view,
+    );
+    append_virtual_plotted_cast_action_for_card(
         game, actions, player, card_id, card, from_zone, view,
     );
     if zone_has_active_grants && from_zone == Zone::Graveyard {
