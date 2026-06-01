@@ -484,6 +484,7 @@ pub(crate) fn parse_look(
                 PlayerAst::You,
                 true,
                 false,
+                false,
             ),
         );
     }

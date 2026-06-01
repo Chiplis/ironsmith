@@ -2111,6 +2111,7 @@ fn compile_subject_verb_effect(
             tag,
             player,
             allow_land,
+            without_paying_mana_cost,
             allow_any_color_for_cast,
         } => {
             let player_filter =
@@ -2131,16 +2132,23 @@ fn compile_subject_verb_effect(
             } else {
                 tag.clone()
             };
-            Ok((
-                vec![Effect::new(crate::effects::GrantPlayTaggedEffect::new(
-                    resolved_tag,
-                    player_filter,
-                    crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled,
-                    *allow_land,
-                    *allow_any_color_for_cast,
-                ))],
-                Vec::new(),
-            ))
+            let mut effects = vec![Effect::new(crate::effects::GrantPlayTaggedEffect::new(
+                resolved_tag.clone(),
+                player_filter.clone(),
+                crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled,
+                *allow_land,
+                *allow_any_color_for_cast,
+            ))];
+            if *without_paying_mana_cost {
+                effects.push(Effect::new(
+                    crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect::new(
+                        resolved_tag,
+                        player_filter,
+                    )
+                    .for_as_long_as_exiled(),
+                ));
+            }
+            Ok((effects, Vec::new()))
         }
         SubjectVerbActionAst::GrantPlayTaggedForAsLongAsYouControlSource {
             tag,

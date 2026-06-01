@@ -3951,6 +3951,12 @@ impl GameState {
         let old_zone = old_object.zone;
         let owner = old_object.owner;
 
+        if old_zone != new_zone {
+            self.effect_store
+                .grant_registry
+                .remove_stable_card_grants_for_zone(old_object.stable_id, old_zone);
+        }
+
         if let Some(target) = old_object.attached_to {
             match target {
                 AttachmentTarget::Object(id) => {

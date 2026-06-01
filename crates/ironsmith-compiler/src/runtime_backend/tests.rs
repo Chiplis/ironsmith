@@ -5290,6 +5290,27 @@ fn rewrite_lexed_permission_helpers_parse_while_exiled_you_may_spend_mana_suffix
 }
 
 #[test]
+fn rewrite_lexed_permission_helpers_parse_while_exiled_owner_prefix() {
+    let tokens = lex_line(
+        "For as long as that card remains exiled, its owner may cast it without paying its mana cost",
+        0,
+    )
+    .expect("rewrite lexer should classify while-exiled owner cast permission");
+
+    let parsed = super::permission_helpers::parse_cast_or_play_tagged_clause(&tokens)
+        .expect("while-exiled owner permission should parse")
+        .expect("while-exiled owner permission should produce an effect");
+    let debug = format!("{parsed:?}");
+
+    assert!(
+        debug.contains("GrantPlayTaggedForAsLongAsExiled"),
+        "{debug}"
+    );
+    assert!(debug.contains("player: ItsOwner"), "{debug}");
+    assert!(debug.contains("without_paying_mana_cost: true"), "{debug}");
+}
+
+#[test]
 fn rewrite_lowering_choose_from_opponent_graveyard_or_hand_keeps_choice_zones()
 -> Result<(), CardTextError> {
     let def = CardDefinitionBuilder::new(CardId::new(), "Psychic Intrusion Variant")
