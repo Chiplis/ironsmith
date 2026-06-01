@@ -122,6 +122,12 @@ fn collapse_filter_to_current_matching_objects(
     }
 }
 
+fn filter_has_not_tagged_constraint(filter: &ObjectFilter) -> bool {
+    filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+    })
+}
+
 fn normalize_restriction_for_resolution(
     restriction: &Restriction,
     ctx: &ExecutionContext,
@@ -137,18 +143,24 @@ fn normalize_restriction_for_resolution(
         Restriction::MustBeBlocked(filter) => Restriction::must_be_blocked(
             collapse_filter_to_current_matching_objects(filter, ctx, game),
         ),
-        Restriction::Attack(filter) => Restriction::attack(
-            collapse_filter_to_current_matching_objects(filter, ctx, game),
-        ),
+        Restriction::Attack(filter) if filter_has_not_tagged_constraint(filter) => {
+            Restriction::attack(filter.clone())
+        }
+        Restriction::Attack(filter) => {
+            Restriction::attack(collapse_filter_to_current_matching_objects(filter, ctx, game))
+        }
         Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, player } => {
             Restriction::attack_player_or_planeswalkers_controlled_by(
                 collapse_filter_to_current_matching_objects(attackers, ctx, game),
                 player.clone(),
             )
         }
-        Restriction::Block(filter) => Restriction::block(
-            collapse_filter_to_current_matching_objects(filter, ctx, game),
-        ),
+        Restriction::Block(filter) if filter_has_not_tagged_constraint(filter) => {
+            Restriction::block(filter.clone())
+        }
+        Restriction::Block(filter) => {
+            Restriction::block(collapse_filter_to_current_matching_objects(filter, ctx, game))
+        }
         _ => restriction.clone(),
     }
 }
@@ -198,12 +210,13 @@ impl EffectExecutor for CantEffect {
                 );
             }
         } else {
-            game.add_restriction_effect(
+            game.add_restriction_effect_with_tagged_objects(
                 restriction,
                 self.duration.clone(),
                 ctx.source,
                 ctx.controller,
                 ctx.iteration.iterated_player,
+                ctx.tagged_objects.clone(),
             );
         }
         game.update_cant_effects();

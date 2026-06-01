@@ -692,6 +692,7 @@ pub struct RestrictionEffectInstance {
     pub controller: PlayerId,
     pub source: ObjectId,
     pub iterated_player: Option<PlayerId>,
+    pub tagged_objects: HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
     pub duration: crate::effect::Until,
     pub expires_end_of_turn: u32,
     pub consumed_next_untap: bool,
@@ -2727,6 +2728,25 @@ impl GameState {
         controller: PlayerId,
         iterated_player: Option<PlayerId>,
     ) {
+        self.add_restriction_effect_with_tagged_objects(
+            restriction,
+            duration,
+            source,
+            controller,
+            iterated_player,
+            HashMap::new(),
+        );
+    }
+
+    pub fn add_restriction_effect_with_tagged_objects(
+        &mut self,
+        restriction: crate::effect::Restriction,
+        duration: crate::effect::Until,
+        source: ObjectId,
+        controller: PlayerId,
+        iterated_player: Option<PlayerId>,
+        tagged_objects: HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
+    ) {
         let expires_end_of_turn = match duration {
             crate::effect::Until::EndOfTurn => self.turn.turn_number,
             crate::effect::Until::Forever => u32::MAX,
@@ -2740,6 +2760,7 @@ impl GameState {
                 controller,
                 source,
                 iterated_player,
+                tagged_objects,
                 duration,
                 expires_end_of_turn,
                 consumed_next_untap: false,
@@ -3015,6 +3036,16 @@ impl GameState {
             !matches!(effect.duration, crate::effect::Until::EndOfTurn)
                 || effect.expires_end_of_turn > current_turn
         });
+    }
+
+    pub fn cleanup_restrictions_end_of_combat(&mut self) {
+        let before = self.effect_store.restriction_effects.len();
+        self.effect_store
+            .restriction_effects
+            .retain(|effect| !matches!(effect.duration, crate::effect::Until::EndOfCombat));
+        if self.effect_store.restriction_effects.len() != before {
+            self.update_cant_effects();
+        }
     }
 
     pub fn cleanup_granted_mana_abilities_end_of_turn(&mut self) {
@@ -6053,12 +6084,13 @@ impl GameState {
 
         let mut restriction_tracker = CantEffectTracker::default();
         for effect in active_restrictions {
-            effect.restriction.apply(
+            effect.restriction.apply_with_tagged_objects(
                 self,
                 &mut restriction_tracker,
                 effect.controller,
                 Some(effect.source),
                 effect.iterated_player,
+                &effect.tagged_objects,
             );
         }
         self.effect_store.cant_effects.merge(restriction_tracker);
