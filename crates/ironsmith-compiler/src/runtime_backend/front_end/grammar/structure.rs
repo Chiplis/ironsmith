@@ -298,6 +298,7 @@ pub(crate) enum StatementLineFamily {
     Divvy,
     ArtRating,
     ExilePlayCostsMore,
+    BidLife,
     Vote,
     Generic,
 }
@@ -533,6 +534,13 @@ pub(crate) fn classify_statement_line_family_lexed(
         return Some(StatementLineFamily::Vote);
     }
 
+    if primitives::contains_phrase(tokens, &["bid", "life"])
+        && primitives::contains_phrase(tokens, &["high", "bid"])
+        && primitives::contains_phrase(tokens, &["high", "bidder"])
+    {
+        return Some(StatementLineFamily::BidLife);
+    }
+
     let words = tokens
         .iter()
         .filter_map(OwnedLexToken::as_word)
@@ -601,6 +609,8 @@ fn is_statement_verb_word(word: &str) -> bool {
             | "draws"
             | "become"
             | "becomes"
+            | "bid"
+            | "bids"
             | "enchant"
             | "enchants"
             | "exchange"

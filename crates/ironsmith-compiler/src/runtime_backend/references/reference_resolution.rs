@@ -1147,6 +1147,9 @@ fn advance_reference_frame_for_effect(
         EffectAst::RepeatEffects { effects, .. } => {
             advance_effects_preserving_last_effect(&effects, id_gen, frame)?;
         }
+        EffectAst::BidLife { winner_effects, .. } => {
+            advance_effects_preserving_last_effect(winner_effects, id_gen, frame)?;
+        }
         EffectAst::ManaRestricted { effects, .. } => {
             advance_reference_frames(effects, id_gen, frame)?;
         }

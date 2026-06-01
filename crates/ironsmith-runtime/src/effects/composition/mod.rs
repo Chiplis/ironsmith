@@ -17,6 +17,7 @@
 
 mod aura_swap;
 mod behold;
+mod bid_life;
 mod choose_mode;
 mod choose_mode_runtime;
 mod choose_objects;
@@ -57,6 +58,7 @@ mod with_id;
 
 pub use aura_swap::AuraSwapEffect;
 pub use behold::BeholdEffect;
+pub use bid_life::{BidLifeEffect, LifeBidStart};
 pub use choose_mode::ChooseModeEffect;
 pub use choose_objects::ChooseObjectsEffect;
 pub use choose_spell_cast_history::ChooseSpellCastHistoryEffect;

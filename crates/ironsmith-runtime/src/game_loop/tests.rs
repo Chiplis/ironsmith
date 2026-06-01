@@ -17026,6 +17026,239 @@ fn target_opponent_gains_control_keeps_player_target_visible_to_object_effect() 
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+const ILLICIT_AUCTION_ORACLE: &str = "Each player may bid life for control of target creature. You start the bidding with a bid of 0. In turn order, each player may top the high bid. The bidding ends if the high bid stands. The high bidder loses life equal to the high bid and gains control of the creature. (This effect lasts indefinitely.)";
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn illicit_auction_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(16_449), "Illicit Auction")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(ILLICIT_AUCTION_ORACLE)
+        .expect("Illicit Auction should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct ScriptedLifeBids {
+    bids: Vec<u32>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for ScriptedLifeBids {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        self.bids.first().is_some_and(|&bid| bid > 0)
+    }
+
+    fn decide_number(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::NumberContext,
+    ) -> u32 {
+        if self.bids.is_empty() {
+            0
+        } else {
+            self.bids.remove(0)
+        }
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct RecordingLifeBids {
+    responses: std::collections::VecDeque<(PlayerId, Option<u32>)>,
+    pending_bid: Option<(PlayerId, u32)>,
+    prompted_players: Vec<PlayerId>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl RecordingLifeBids {
+    fn new(responses: Vec<(PlayerId, Option<u32>)>) -> Self {
+        Self {
+            responses: responses.into(),
+            pending_bid: None,
+            prompted_players: Vec::new(),
+        }
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for RecordingLifeBids {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        let (expected_player, response) = self
+            .responses
+            .pop_front()
+            .expect("expected another life-bid prompt");
+        assert_eq!(ctx.player, expected_player, "life-bid prompt order mismatch");
+        self.prompted_players.push(ctx.player);
+        if let Some(bid) = response {
+            self.pending_bid = Some((ctx.player, bid));
+            true
+        } else {
+            false
+        }
+    }
+
+    fn decide_number(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::NumberContext,
+    ) -> u32 {
+        let (expected_player, bid) = self
+            .pending_bid
+            .take()
+            .expect("number prompt should follow a top-bid choice");
+        assert_eq!(ctx.player, expected_player, "life-bid number prompt mismatch");
+        bid
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_illicit_auction_on_stack(
+    game: &mut GameState,
+    controller: PlayerId,
+    target_creature: ObjectId,
+) {
+    let definition = illicit_auction_definition();
+    let spell_effect = definition
+        .spell_effect
+        .as_ref()
+        .expect("Illicit Auction should have a spell effect");
+    let target_requirement = super::targeting::extract_target_requirements(
+        game,
+        spell_effect.flattened_default_effects(),
+        controller,
+        None,
+    )
+    .into_iter()
+    .find(|requirement| {
+        requirement
+            .legal_targets
+            .contains(&Target::Object(target_creature))
+    })
+    .expect("Illicit Auction should target the creature");
+
+    let spell_id = game.create_object_from_definition(&definition, controller, Zone::Stack);
+    game.push_to_stack(
+        StackEntry::new(spell_id, controller)
+            .with_targets(vec![Target::Object(target_creature)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: target_requirement.spec,
+                range: 0..1,
+            }]),
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn illicit_auction_high_bidder_can_bid_more_life_than_they_have_and_gains_control_indefinitely() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let creature_id = create_creature(&mut game, "Auctioned Bear", alice, 2, 2);
+
+    put_illicit_auction_on_stack(&mut game, alice, creature_id);
+    let mut bids = ScriptedLifeBids { bids: vec![25, 0] };
+    resolve_stack_entry_with(&mut game, &mut bids).expect("Illicit Auction should resolve");
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        game.player(bob).expect("Bob should exist").life,
+        -5,
+        "high bidder can bid more life than they have, then loses life equal to the high bid"
+    );
+    assert_eq!(
+        game.current_controller(creature_id),
+        Some(bob),
+        "high bidder should gain control of the target creature"
+    );
+
+    crate::turn::execute_cleanup_step(&mut game);
+    game.refresh_continuous_state();
+    assert_eq!(
+        game.current_controller(creature_id),
+        Some(bob),
+        "Illicit Auction's control effect should last indefinitely"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn illicit_auction_zero_bid_stands_for_controller_when_no_player_tops_it() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let creature_id = create_creature(&mut game, "Unbid Bear", bob, 2, 2);
+
+    put_illicit_auction_on_stack(&mut game, alice, creature_id);
+    let mut bids = ScriptedLifeBids { bids: vec![0] };
+    resolve_stack_entry_with(&mut game, &mut bids).expect("Illicit Auction should resolve");
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").life,
+        20,
+        "the standing zero bid should not make the controller lose life"
+    );
+    assert_eq!(
+        game.current_controller(creature_id),
+        Some(alice),
+        "the initial high bidder should gain control when no one tops the zero bid"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn illicit_auction_bidding_uses_turn_order_until_high_bid_stands() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    game.turn_store.turn_order = vec![bob, alice, charlie];
+    let creature_id = create_creature(&mut game, "Turn Order Bear", alice, 2, 2);
+
+    put_illicit_auction_on_stack(&mut game, bob, creature_id);
+    let mut bids = RecordingLifeBids::new(vec![
+        (alice, Some(3)),
+        (charlie, None),
+        (bob, Some(5)),
+        (alice, None),
+        (charlie, None),
+    ]);
+    resolve_stack_entry_with(&mut game, &mut bids).expect("Illicit Auction should resolve");
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        bids.prompted_players,
+        vec![alice, charlie, bob, alice, charlie],
+        "bidding should follow turn order from the spell controller through multiple rounds"
+    );
+    assert!(
+        bids.responses.is_empty(),
+        "the high bid should stand only after every other player declines to top it"
+    );
+    assert_eq!(
+        game.player(bob).expect("Bob should exist").life,
+        15,
+        "the final high bidder should lose life equal to the final high bid"
+    );
+    assert_eq!(
+        game.current_controller(creature_id),
+        Some(bob),
+        "the final high bidder should gain control of the target creature"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn beamsplitter_mage_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(82_200), "Beamsplitter Mage")
         .mana_cost(ManaCost::from_pips(vec![

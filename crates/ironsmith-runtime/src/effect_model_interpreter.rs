@@ -776,6 +776,13 @@ where
         };
         return Ok(Effect::new(converted));
     }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::BidLifeEffect<M::Effect>>(&effect) {
+        return Ok(Effect::new(crate::effects::BidLifeEffect::new(
+            payload.target.clone(),
+            payload.starting_bid,
+            convert_effects(payload.winner_effects.iter().cloned(), hooks)?,
+        )));
+    }
     if let Some(converted) = hooks.runtime_external_model_effect_hook(&effect)? {
         return Ok(converted);
     }

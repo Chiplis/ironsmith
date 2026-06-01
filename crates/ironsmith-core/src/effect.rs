@@ -5981,6 +5981,28 @@ impl<E> RepeatEffectsEffect<E> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LifeBidStart {
+    Fixed(u32),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BidLifeEffect<E> {
+    pub target: ChooseSpec,
+    pub starting_bid: LifeBidStart,
+    pub winner_effects: Vec<E>,
+}
+
+impl<E> BidLifeEffect<E> {
+    pub fn new(target: ChooseSpec, starting_bid: LifeBidStart, winner_effects: Vec<E>) -> Self {
+        Self {
+            target,
+            starting_bid,
+            winner_effects,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct LoseLifeEffect {
     pub amount: Value,

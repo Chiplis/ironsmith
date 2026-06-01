@@ -31540,6 +31540,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             describe_until(&modify_pt_each.duration)
         );
     }
+    if let Some(bid_life) = effect.downcast_ref::<crate::effects::BidLifeEffect>() {
+        let target = describe_choose_spec(&bid_life.target);
+        let starting_bid = match bid_life.starting_bid {
+            crate::effects::LifeBidStart::Fixed(amount) => amount,
+        };
+        return format!(
+            "Each player may bid life for control of {target}. You start the bidding with a bid of {starting_bid}. In turn order, each player may top the high bid. The bidding ends if the high bid stands. The high bidder loses life equal to the high bid and gains control of the creature. This effect lasts indefinitely"
+        );
+    }
     if let Some(gain_control) = effect.downcast_ref::<crate::effects::GainControlEffect>() {
         return format!(
             "Gain control of {} {}",

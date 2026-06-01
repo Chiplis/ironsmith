@@ -15026,6 +15026,59 @@ fn test_keyword_marker_rejects_partial_trailing_clause() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+const ILLICIT_AUCTION_ORACLE: &str = "Each player may bid life for control of target creature. You start the bidding with a bid of 0. In turn order, each player may top the high bid. The bidding ends if the high bid stands. The high bidder loses life equal to the high bid and gains control of the creature. (This effect lasts indefinitely.)";
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_oracle_illicit_auction_life_bid_for_control() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(16_449), "Illicit Auction")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(ILLICIT_AUCTION_ORACLE)
+        .expect("Illicit Auction should parse strictly");
+
+    let effects = def
+        .spell_effect
+        .as_ref()
+        .expect("Illicit Auction should have spell effects")
+        .flattened_default_effects();
+    assert_eq!(effects.len(), 1, "expected one bidding effect, got {effects:?}");
+    assert!(
+        effects[0]
+            .downcast_ref::<crate::effects::BidLifeEffect>()
+            .is_some(),
+        "Illicit Auction should lower to a life-bidding effect, got {:?}",
+        effects[0]
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn compiled_text_illicit_auction_mentions_high_bidder_reward() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(16_449), "Illicit Auction")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(ILLICIT_AUCTION_ORACLE)
+        .expect("Illicit Auction should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Each player may bid life for control of target creature")
+            && rendered.contains("The high bidder loses life equal to the high bid")
+            && rendered.contains("This effect lasts indefinitely"),
+        "compiled text should preserve the life-bidding control clauses, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_parse_level_up_tiers_render_semantics() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Level-Up Tiers Probe")

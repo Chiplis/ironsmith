@@ -3423,6 +3423,11 @@ pub(crate) enum EffectAst {
         continue_effect_index: usize,
         continue_predicate: IfResultPredicate,
     },
+    BidLife {
+        target: TargetAst,
+        starting_bid: u32,
+        winner_effects: Vec<EffectAst>,
+    },
     VoteStart {
         options: Vec<String>,
         secret: bool,
