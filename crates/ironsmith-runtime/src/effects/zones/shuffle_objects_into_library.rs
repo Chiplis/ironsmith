@@ -119,16 +119,37 @@ impl EffectExecutor for ShuffleObjectsIntoLibraryEffect {
             }
         }
 
-        game.shuffle_player_library(player_id);
-        let shuffle_event = TriggerEvent::new_with_provenance(
-            ShuffleLibraryEvent::new(player_id, ctx.cause.clone()),
-            ctx.provenance,
-        );
+        let mut shuffle_players = Vec::new();
+        if moved_ids.is_empty() {
+            shuffle_players.push(player_id);
+        } else {
+            for moved_id in &moved_ids {
+                if let Some(owner) = game.object(*moved_id).map(|object| object.owner)
+                    && !shuffle_players.contains(&owner)
+                {
+                    shuffle_players.push(owner);
+                }
+            }
+            if shuffle_players.is_empty() {
+                shuffle_players.push(player_id);
+            }
+        }
+
+        let shuffle_events = shuffle_players
+            .into_iter()
+            .map(|player| {
+                game.shuffle_player_library(player);
+                TriggerEvent::new_with_provenance(
+                    ShuffleLibraryEvent::new(player, ctx.cause.clone()),
+                    ctx.provenance,
+                )
+            })
+            .collect::<Vec<_>>();
 
         if moved_ids.is_empty() {
-            Ok(EffectOutcome::resolved().with_event(shuffle_event))
+            Ok(EffectOutcome::resolved().with_events(shuffle_events))
         } else {
-            Ok(EffectOutcome::with_objects(moved_ids).with_event(shuffle_event))
+            Ok(EffectOutcome::with_objects(moved_ids).with_events(shuffle_events))
         }
     }
 

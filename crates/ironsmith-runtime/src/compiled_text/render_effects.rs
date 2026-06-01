@@ -1,7 +1,7 @@
 use super::*;
 use crate::effect::SearchSelectionMode;
-use crate::filter::StackObjectKind;
-use ironsmith_core::{LibraryBottomOrder, ValueSurfaceHint, ordinal_word};
+use crate::filter::{ObjectRef, StackObjectKind};
+use ironsmith_core::{LibraryBottomOrder, LibraryConsultMode, ValueSurfaceHint, ordinal_word};
 
 fn value_has_surface_hint(value: &Value, hint: ValueSurfaceHint) -> bool {
     value.has_surface_hint(hint)
@@ -3293,6 +3293,106 @@ fn describe_each_player_repeat_pay_life_tokens_sequence(effects: &[Effect]) -> O
     Some("Starting with you, each player may pay any amount of life. Repeat this process until no one pays life. Each player creates a 1/1 black Rat creature token for each 1 life they paid this way".to_string())
 }
 
+fn describe_each_player_choose_target_shuffle_consult_cast(effects: &[&Effect]) -> Option<String> {
+    if effects.len() != 3 {
+        return None;
+    }
+
+    let (choose_players_effect, _) = unwrap_with_id(effects[0]);
+    let choose_players = choose_players_effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    if choose_players.filter != PlayerFilter::Any || choose_players.effects.len() != 1 {
+        return None;
+    }
+    let (target_effect, _) = unwrap_with_id(&choose_players.effects[0]);
+    let (chosen_tag, target_only) = tagged_target_only_effect(target_effect)?;
+    if !target_only.target.is_target() {
+        return None;
+    }
+    let ChooseSpec::Object(target_filter) = target_only.target.base() else {
+        return None;
+    };
+    if target_only.target.count().min != 1
+        || target_only.target.count().max != Some(1)
+        || target_filter.zone != Some(Zone::Battlefield)
+        || target_filter.controller != Some(PlayerFilter::IteratedPlayer)
+        || !target_filter
+            .excluded_card_types
+            .contains(&crate::types::CardType::Enchantment)
+        || !target_filter
+            .excluded_card_types
+            .contains(&crate::types::CardType::Land)
+    {
+        return None;
+    }
+    let (shuffle_effect, _) = unwrap_with_id(unwrap_basic_tag_wrappers(effects[1]));
+    let shuffle = shuffle_effect.downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()?;
+    if shuffle.target != ChooseSpec::Tagged(chosen_tag.clone())
+        || shuffle.player != PlayerFilter::OwnerOf(ObjectRef::tagged(chosen_tag.clone()))
+    {
+        return None;
+    }
+
+    let (consult_players_effect, _) = unwrap_with_id(effects[2]);
+    let consult_players = consult_players_effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    if consult_players.filter != PlayerFilter::Any || consult_players.effects.len() != 1 {
+        return None;
+    }
+    let conditional = consult_players.effects[0].downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let crate::effect::Condition::PlayerTaggedObjectMatches { player, tag, .. } =
+        &conditional.condition
+    else {
+        return None;
+    };
+    if *player != PlayerFilter::IteratedPlayer
+        || *tag != *chosen_tag
+        || !conditional.if_false.is_empty()
+    {
+        return None;
+    }
+    let [consult_effect, bottom_effect, may_effect] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    let (consult_effect, _) = unwrap_with_id(consult_effect);
+    let consult = consult_effect.downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
+    if consult.player != PlayerFilter::IteratedPlayer
+        || consult.mode != LibraryConsultMode::Exile
+        || consult.stop_rule != crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
+        || !consult
+            .filter
+            .excluded_card_types
+            .contains(&crate::types::CardType::Land)
+    {
+        return None;
+    }
+    let (bottom_effect, _) = unwrap_with_id(bottom_effect);
+    let bottom = bottom_effect
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+    if bottom.tag != consult.all_tag
+        || bottom.keep_tagged != Some(consult.match_tag.clone())
+        || bottom.order != LibraryBottomOrder::Random
+        || bottom.player != PlayerFilter::IteratedPlayer
+    {
+        return None;
+    }
+    let (may_effect, _) = unwrap_with_id(may_effect);
+    let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+    if may.effects.len() != 1 {
+        return None;
+    }
+    let (cast_effect, _) = unwrap_with_id(&may.effects[0]);
+    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    if cast.tag != consult.match_tag
+        || cast.player != PlayerFilter::IteratedPlayer
+        || cast.allow_land
+        || cast.as_copy
+        || !cast.without_paying_mana_cost
+    {
+        return None;
+    }
+
+    Some("For each player, choose target nonenchantment, nonland permanent that player controls. Those permanents' owners shuffle them into their libraries. Each player who controlled one of those permanents exiles cards from the top of their library until they exile a nonland card, then puts the rest on the bottom of their library in a random order. Each player may cast the nonland card they exiled without paying its mana cost".to_string())
+}
+
 fn describe_reveal_top_to_hand_then_lose_mana_value_effects(effects: &[Effect]) -> Option<String> {
     let [reveal_effect, move_effect, lose_effect] = effects else {
         return None;
@@ -4323,6 +4423,10 @@ fn describe_revealed_cards_opponent_may_put_or_draw(effects: &[&Effect]) -> Opti
 }
 
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
+    let raw_effects = effects.iter().collect::<Vec<_>>();
+    if let Some(compact) = describe_each_player_choose_target_shuffle_consult_cast(&raw_effects) {
+        return compact;
+    }
     if let Some(compact) = describe_reveal_top_to_hand_then_lose_mana_value_effects(effects) {
         return compact;
     }
@@ -4330,7 +4434,6 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
 
-    let raw_effects = effects.iter().collect::<Vec<_>>();
     if let Some(compact) = describe_choose_color_then_chosen_color_mana(&raw_effects) {
         return compact;
     }
@@ -6748,6 +6851,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
     if let Some(compact) = describe_each_player_gain_life_and_draw_pair(&visible_effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_each_player_choose_target_shuffle_consult_cast(&visible_effects) {
         return compact;
     }
     if let Some(compact) = describe_sacrifice_source_then_return_with_counters(&visible_effects) {
@@ -14986,6 +15092,10 @@ pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
 
     let effect_refs = effects.iter().collect::<Vec<_>>();
     if let Some(compact) = describe_choose_color_then_chosen_color_mana(&effect_refs) {
+        return Some(compact);
+    }
+
+    if let Some(compact) = describe_each_player_choose_target_shuffle_consult_cast(&effect_refs) {
         return Some(compact);
     }
 

@@ -499,6 +499,98 @@ pub(crate) fn classify_statement_line_family_lexed(
         .collect::<Vec<_>>();
     if matches!(
         sentences.as_slice(),
+        [first, second, third, fourth]
+            if sentence_words_match(
+                first,
+                &[
+                    "for",
+                    "each",
+                    "player",
+                    "choose",
+                    "target",
+                    "nonenchantment",
+                    "nonland",
+                    "permanent",
+                    "that",
+                    "player",
+                    "controls",
+                ],
+            ) && sentence_words_match(
+                second,
+                &[
+                    "those",
+                    "permanents",
+                    "owners",
+                    "shuffle",
+                    "them",
+                    "into",
+                    "their",
+                    "libraries",
+                ],
+            ) && sentence_words_match(
+                third,
+                &[
+                    "each",
+                    "player",
+                    "who",
+                    "controlled",
+                    "one",
+                    "of",
+                    "those",
+                    "permanents",
+                    "exiles",
+                    "cards",
+                    "from",
+                    "the",
+                    "top",
+                    "of",
+                    "their",
+                    "library",
+                    "until",
+                    "they",
+                    "exile",
+                    "a",
+                    "nonland",
+                    "card",
+                    "then",
+                    "puts",
+                    "the",
+                    "rest",
+                    "on",
+                    "the",
+                    "bottom",
+                    "of",
+                    "their",
+                    "library",
+                    "in",
+                    "a",
+                    "random",
+                    "order",
+                ],
+            ) && sentence_words_match(
+                fourth,
+                &[
+                    "each",
+                    "player",
+                    "may",
+                    "cast",
+                    "the",
+                    "nonland",
+                    "card",
+                    "they",
+                    "exiled",
+                    "without",
+                    "paying",
+                    "its",
+                    "mana",
+                    "cost",
+                ],
+            )
+    ) {
+        return Some(StatementLineFamily::Generic);
+    }
+    if matches!(
+        sentences.as_slice(),
         [first, second, third]
             if sentence_words_match(first, &["exile", "target", "nonland", "permanent"])
                 && sentence_words_match(

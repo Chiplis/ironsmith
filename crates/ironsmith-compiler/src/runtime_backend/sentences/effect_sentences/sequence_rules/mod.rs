@@ -137,6 +137,10 @@ fn first_word_each(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "each")
 }
 
+fn first_word_each_or_for(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_in(sentences, sentence_idx, &["each", "for"])
+}
+
 fn first_word_target(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "target")
 }
@@ -219,6 +223,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         predicate: first_word_look,
         parser:
             generic_subject_verb_sequences::quads::parse_look_at_top_may_reveal_match_bargain_battlefield_else_hand_then_shuffle,
+    },
+    SequenceRuleDef {
+        name: "each-player-choose-target-shuffle-consult-cast",
+        feature_tag: Some("mass-polymorph-consult-cast"),
+        priority: 427,
+        consumed_sentences: 4,
+        predicate: first_word_each_or_for,
+        parser: generic_subject_verb_sequences::parse_each_player_choose_target_shuffle_consult_cast,
     },
     SequenceRuleDef {
         name: "choose-land-or-nonland-consult-hand-bottom",

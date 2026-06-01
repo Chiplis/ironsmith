@@ -4,9 +4,10 @@ pub(crate) mod pairs;
 pub(crate) mod quads;
 pub(crate) mod triples;
 use crate::cards::builders::{
-    CardTextError, EffectAst, IfResultPredicate, ObjectFilter, OwnedLexToken, PlayerAst,
-    PredicateAst, ReturnControllerAst, SubjectVerbActionAst, SubjectVerbEffectAst,
-    SubjectVerbRoleAst, SubjectVerbSubjectAst, TagKey, TargetAst,
+    CardTextError, EffectAst, IfResultPredicate, LibraryBottomOrderAst, LibraryConsultModeAst,
+    LibraryConsultStopRuleAst, ObjectFilter, OwnedLexToken, PlayerAst, PredicateAst,
+    ReturnControllerAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst,
+    SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan,
 };
 use crate::effect::{EventValueSpec, Value};
 use crate::mana::ManaSymbol;
@@ -19,6 +20,7 @@ use crate::runtime_backend::util::{
     mana_pips_from_token, non_article_token_word_refs, trim_commas,
 };
 use crate::target::PlayerFilter;
+use crate::types::CardType;
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -362,6 +364,172 @@ pub(crate) fn parse_each_player_repeat_pay_life_tokens_sequence(
                     granted_abilities: Vec::new(),
                 },
             )],
+        },
+    ]))
+}
+
+pub(crate) fn parse_each_player_choose_target_shuffle_consult_cast(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first = LexedClause::new(sentences[sentence_idx].lowered()).trimmed();
+    if first.word_refs()
+        != [
+            "for",
+            "each",
+            "player",
+            "choose",
+            "target",
+            "nonenchantment",
+            "nonland",
+            "permanent",
+            "that",
+            "player",
+            "controls",
+        ]
+    {
+        return Ok(None);
+    }
+
+    let second = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
+    if second.word_refs()
+        != [
+            "those",
+            "permanents",
+            "owners",
+            "shuffle",
+            "them",
+            "into",
+            "their",
+            "libraries",
+        ]
+    {
+        return Ok(None);
+    }
+
+    let third = LexedClause::new(sentences[sentence_idx + 2].lowered()).trimmed();
+    if third.word_refs()
+        != [
+            "each",
+            "player",
+            "who",
+            "controlled",
+            "one",
+            "of",
+            "those",
+            "permanents",
+            "exiles",
+            "cards",
+            "from",
+            "the",
+            "top",
+            "of",
+            "their",
+            "library",
+            "until",
+            "they",
+            "exile",
+            "a",
+            "nonland",
+            "card",
+            "then",
+            "puts",
+            "the",
+            "rest",
+            "on",
+            "the",
+            "bottom",
+            "of",
+            "their",
+            "library",
+            "in",
+            "a",
+            "random",
+            "order",
+        ]
+    {
+        return Ok(None);
+    }
+
+    let fourth = LexedClause::new(sentences[sentence_idx + 3].lowered()).trimmed();
+    if fourth.word_refs()
+        != [
+            "each",
+            "player",
+            "may",
+            "cast",
+            "the",
+            "nonland",
+            "card",
+            "they",
+            "exiled",
+            "without",
+            "paying",
+            "its",
+            "mana",
+            "cost",
+        ]
+    {
+        return Ok(None);
+    }
+
+    let chosen_permanents_tag = TagKey::from(effect_sentences::IT_TAG);
+    let all_exiled_tag = TagKey::from("mass_polymorph_exiled_cards");
+    let nonland_exiled_tag = TagKey::from("mass_polymorph_nonland_card");
+
+    let mut target_filter = ObjectFilter::permanent().controlled_by(PlayerFilter::IteratedPlayer);
+    target_filter.excluded_card_types.push(CardType::Enchantment);
+    target_filter.excluded_card_types.push(CardType::Land);
+
+    let eligible_player = PredicateAst::PlayerTaggedObjectMatches {
+        player: PlayerAst::That,
+        tag: chosen_permanents_tag.clone(),
+        filter: ObjectFilter::default(),
+    };
+
+    Ok(Some(vec![
+        EffectAst::ForEachPlayer {
+            effects: vec![EffectAst::subject_verb_target_only(TargetAst::Object(
+                target_filter,
+                Some(TextSpan::synthetic()),
+                None,
+            ))],
+        },
+        EffectAst::subject_verb_shuffle_objects_into_library(
+            PlayerAst::ItsOwner,
+            TargetAst::Tagged(chosen_permanents_tag.clone(), None),
+        ),
+        EffectAst::ForEachPlayer {
+            effects: vec![EffectAst::Conditional {
+                predicate: eligible_player,
+                if_true: vec![
+                    EffectAst::subject_verb_consult_top_of_library(
+                        PlayerAst::That,
+                        LibraryConsultModeAst::Exile,
+                        ObjectFilter::nonland(),
+                        LibraryConsultStopRuleAst::FirstMatch,
+                        all_exiled_tag.clone(),
+                        nonland_exiled_tag.clone(),
+                    ),
+                    EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+                        all_exiled_tag,
+                        Some(nonland_exiled_tag.clone()),
+                        LibraryBottomOrderAst::Random,
+                        PlayerAst::That,
+                    ),
+                    EffectAst::May {
+                        effects: vec![EffectAst::subject_verb_cast_tagged(
+                            nonland_exiled_tag,
+                            PlayerAst::That,
+                            false,
+                            false,
+                            true,
+                            None,
+                        )],
+                    },
+                ],
+                if_false: Vec::new(),
+            }],
         },
     ]))
 }

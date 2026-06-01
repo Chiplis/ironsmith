@@ -39359,6 +39359,315 @@ fn parse_oracle_chaos_wand_uses_consult_cast_bottom_path() {
     );
 }
 
+#[test]
+fn parse_oracle_guff_rewrites_history_uses_mass_polymorph_consult_cast_path() {
+    let def = parse_oracle_card_definition("Guff Rewrites History");
+    let compiled = unprocessed_compiled_lines(&def).join("\n");
+
+    assert_eq!(
+        compiled,
+        "For each player, choose target nonenchantment, nonland permanent that player controls. Those permanents' owners shuffle them into their libraries. Each player who controlled one of those permanents exiles cards from the top of their library until they exile a nonland card, then puts the rest on the bottom of their library in a random order. Each player may cast the nonland card they exiled without paying its mana cost."
+    );
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("TargetOnlyEffect"),
+        "expected per-player target selection, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("ShuffleObjectsIntoLibraryEffect"),
+        "expected chosen permanents to shuffle into libraries, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("OwnerOf(") && spell_debug.contains("targeted_"),
+        "expected owner-of-chosen-permanent shuffle binding, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("ConsultTopOfLibraryEffect"),
+        "expected consult-top-of-library effect, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+        "expected random bottom remainder effect, got {spell_debug}"
+    );
+    assert!(
+        spell_debug.contains("CastTaggedEffect"),
+        "expected optional free cast of tagged nonland card, got {spell_debug}"
+    );
+}
+
+#[test]
+fn guff_rewrites_history_runtime_shuffles_consults_and_casts_for_each_player() {
+    fn card(name: &str, card_types: Vec<CardType>) -> crate::card::Card {
+        CardBuilder::new(CardId::new(), name)
+            .card_types(card_types)
+            .build()
+    }
+
+    let def = parse_oracle_card_definition("Guff Rewrites History");
+    let spell_effect = def
+        .spell_effect
+        .clone()
+        .expect("Guff Rewrites History should have a spell effect");
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    game.set_random_seed(17);
+
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let alice_permanent = game.create_object_from_card(
+        &card("Alice Idol", vec![CardType::Artifact]),
+        alice,
+        Zone::Battlefield,
+    );
+    let bob_permanent = game.create_object_from_card(
+        &card("Bob Idol", vec![CardType::Artifact]),
+        bob,
+        Zone::Battlefield,
+    );
+    game.create_object_from_card(
+        &card("Alice Island", vec![CardType::Land]),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &card("Alice Free Spell", vec![CardType::Sorcery]),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &card("Bob Island", vec![CardType::Land]),
+        bob,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &card("Bob Free Spell", vec![CardType::Sorcery]),
+        bob,
+        Zone::Library,
+    );
+
+    let target_requirements = crate::game_loop::extract_target_requirements_from_program_with_modes(
+        &game,
+        &spell_effect,
+        alice,
+        Some(source),
+        None,
+    );
+    assert_eq!(
+        target_requirements.len(),
+        2,
+        "Guff Rewrites History should require one target for each player: {target_requirements:?}"
+    );
+    assert_eq!(
+        target_requirements[0].legal_targets,
+        vec![crate::game_state::Target::Object(alice_permanent)],
+        "first target requirement should be Alice's nonenchantment, nonland permanent"
+    );
+    assert_eq!(
+        target_requirements[1].legal_targets,
+        vec![crate::game_state::Target::Object(bob_permanent)],
+        "second target requirement should be Bob's nonenchantment, nonland permanent"
+    );
+
+    let target_assignments = vec![
+        crate::game_state::TargetAssignment {
+            spec: target_requirements[0].spec.clone(),
+            range: 0..1,
+        },
+        crate::game_state::TargetAssignment {
+            spec: target_requirements[1].spec.clone(),
+            range: 1..2,
+        },
+    ];
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_targets(vec![
+            crate::effects::ResolvedTarget::Object(alice_permanent),
+            crate::effects::ResolvedTarget::Object(bob_permanent),
+        ])
+        .with_target_assignments(target_assignments.clone());
+    let events = crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &spell_effect,
+        None,
+        &target_assignments,
+    )
+    .expect("Guff Rewrites History should resolve");
+
+    assert!(
+        !game.battlefield.contains(&alice_permanent),
+        "Alice's chosen permanent should leave the battlefield"
+    );
+    assert!(
+        !game.battlefield.contains(&bob_permanent),
+        "Bob's chosen permanent should leave the battlefield"
+    );
+    assert_eq!(
+        game.stack.len(),
+        2,
+        "each player should cast one consulted nonland card"
+    );
+    assert!(
+        game.stack.iter().any(|entry| entry.controller == alice),
+        "Alice should cast her consulted nonland card"
+    );
+    assert!(
+        game.stack.iter().any(|entry| entry.controller == bob),
+        "Bob should cast his consulted nonland card"
+    );
+    assert!(
+        events.iter().any(|event| event
+            .downcast::<crate::events::ShuffleLibraryEvent>()
+            .is_some_and(|shuffle| shuffle.player == alice)),
+        "Alice should shuffle the library that received her chosen permanent"
+    );
+    assert!(
+        events.iter().any(|event| event
+            .downcast::<crate::events::ShuffleLibraryEvent>()
+            .is_some_and(|shuffle| shuffle.player == bob)),
+        "Bob should shuffle the library that received his chosen permanent"
+    );
+
+    let exiled_names = game
+        .exile
+        .iter()
+        .filter_map(|id| game.object(*id))
+        .map(|object| object.name.as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        !exiled_names.contains(&"Alice Island") && !exiled_names.contains(&"Bob Island"),
+        "consulted land remainders should not be stranded in exile: {exiled_names:?}"
+    );
+}
+
+#[test]
+fn guff_rewrites_history_runtime_skips_player_whose_target_is_gone() {
+    fn card(name: &str, card_types: Vec<CardType>) -> crate::card::Card {
+        CardBuilder::new(CardId::new(), name)
+            .card_types(card_types)
+            .build()
+    }
+
+    let def = parse_oracle_card_definition("Guff Rewrites History");
+    let spell_effect = def
+        .spell_effect
+        .clone()
+        .expect("Guff Rewrites History should have a spell effect");
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    game.set_random_seed(23);
+
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let alice_permanent = game.create_object_from_card(
+        &card("Alice Idol", vec![CardType::Artifact]),
+        alice,
+        Zone::Battlefield,
+    );
+    let bob_permanent = game.create_object_from_card(
+        &card("Bob Idol", vec![CardType::Artifact]),
+        bob,
+        Zone::Battlefield,
+    );
+    game.create_object_from_card(
+        &card("Alice Island", vec![CardType::Land]),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &card("Alice Free Spell", vec![CardType::Sorcery]),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &card("Bob Island", vec![CardType::Land]),
+        bob,
+        Zone::Library,
+    );
+    let bob_spell = game.create_object_from_card(
+        &card("Bob Free Spell", vec![CardType::Sorcery]),
+        bob,
+        Zone::Library,
+    );
+
+    let target_requirements = crate::game_loop::extract_target_requirements_from_program_with_modes(
+        &game,
+        &spell_effect,
+        alice,
+        Some(source),
+        None,
+    );
+    assert_eq!(target_requirements.len(), 2);
+    let target_assignments = vec![
+        crate::game_state::TargetAssignment {
+            spec: target_requirements[0].spec.clone(),
+            range: 0..1,
+        },
+        crate::game_state::TargetAssignment {
+            spec: target_requirements[1].spec.clone(),
+            range: 1..2,
+        },
+    ];
+    game.move_object_by_effect(bob_permanent, Zone::Graveyard)
+        .expect("Bob's target should move away before resolution");
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_targets(vec![
+            crate::effects::ResolvedTarget::Object(alice_permanent),
+            crate::effects::ResolvedTarget::Object(bob_permanent),
+        ])
+        .with_target_assignments(target_assignments.clone());
+    let events = crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &spell_effect,
+        None,
+        &target_assignments,
+    )
+    .expect("Guff Rewrites History should resolve with one valid target");
+
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "only the player whose target stayed valid should cast a consulted card"
+    );
+    assert!(game.stack.iter().any(|entry| entry.controller == alice));
+    assert!(!game.stack.iter().any(|entry| entry.controller == bob));
+    assert!(
+        game.player(bob)
+            .expect("bob exists")
+            .library
+            .contains(&bob_spell),
+        "Bob should not consult or cast when his target is gone"
+    );
+    assert!(
+        events.iter().any(|event| event
+            .downcast::<crate::events::ShuffleLibraryEvent>()
+            .is_some_and(|shuffle| shuffle.player == alice)),
+        "Alice should shuffle because her targeted permanent moved"
+    );
+    assert!(
+        !events.iter().any(|event| event
+            .downcast::<crate::events::ShuffleLibraryEvent>()
+            .is_some_and(|shuffle| shuffle.player == bob)),
+        "Bob should not shuffle when his target is gone"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_oracle_ryan_sinclair_uses_dynamic_consult_gate() {

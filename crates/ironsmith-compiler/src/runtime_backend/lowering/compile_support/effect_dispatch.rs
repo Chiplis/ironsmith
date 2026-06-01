@@ -1485,12 +1485,25 @@ fn compile_subject_verb_effect(
         SubjectVerbActionAst::ShuffleObjectsIntoLibrary { target } => {
             let (spec, mut choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
-            let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
-            for choice in subject.into_choices() {
-                push_choice(&mut choices, choice);
-            }
-            let mut effect =
-                Effect::shuffle_objects_into_library(spec.clone(), subject.into_player_filter());
+            let player_filter = if matches!(player, PlayerAst::ItsOwner | PlayerAst::ItsController)
+                && let TargetAst::Tagged(tag, _) = target
+            {
+                let resolved_tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
+                match player {
+                    PlayerAst::ItsOwner => PlayerFilter::OwnerOf(ObjectRef::tagged(resolved_tag)),
+                    PlayerAst::ItsController => {
+                        PlayerFilter::ControllerOf(ObjectRef::tagged(resolved_tag))
+                    }
+                    _ => unreachable!(),
+                }
+            } else {
+                let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
+                for choice in subject.into_choices() {
+                    push_choice(&mut choices, choice);
+                }
+                subject.into_player_filter()
+            };
+            let mut effect = Effect::shuffle_objects_into_library(spec.clone(), player_filter);
             let id = ctx.next_effect_id();
             ctx.last_effect_id = Some(id);
             effect = Effect::with_id(id.0, effect);
