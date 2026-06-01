@@ -144,6 +144,8 @@ const OBJECT_FILTER_YOU_DO_NOT_CONTROL_SUFFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["you", "do", "not", "control"]);
 const OBJECT_FILTER_OPPONENT_CONTROLS_SUFFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["opponents", "control"], &["opponent", "controls"]]);
+const OBJECT_FILTER_ENCHANTED_PLAYER_CONTROLS_SUFFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["enchanted", "player", "controls"]);
 const OBJECT_FILTER_YOU_OWN_SUFFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["you", "own"]);
 const OBJECT_FILTER_YOUR_GRAVEYARD_SUFFIX_PATTERN: ClauseShape<'static> =
@@ -328,6 +330,16 @@ fn parse_simple_object_filter_suffix(words: &[&str]) -> Option<(SimpleObjectFilt
     {
         return Some((
             SimpleObjectFilterSuffix::OwnerZone(PlayerFilter::You, Zone::Library),
+            3,
+        ));
+    }
+    if tail(words, 3).is_some_and(|tail| {
+        OBJECT_FILTER_ENCHANTED_PLAYER_CONTROLS_SUFFIX_PATTERN.matches_words(tail)
+    }) {
+        return Some((
+            SimpleObjectFilterSuffix::Controller(PlayerFilter::TaggedPlayer(TagKey::from(
+                "enchanted",
+            ))),
             3,
         ));
     }
@@ -737,6 +749,31 @@ fn parse_simple_object_filter_lexed(tokens: &[OwnedLexToken], other: bool) -> Op
     Some(filter)
 }
 
+fn strip_enchanted_player_controls_suffix(
+    tokens: &[OwnedLexToken],
+) -> Option<(Vec<OwnedLexToken>, PlayerFilter)> {
+    let word_view = TokenWordView::new(tokens);
+    let words = word_view.to_word_refs();
+    if !words
+        .get(words.len().checked_sub(3)?..)
+        .is_some_and(|tail| {
+            OBJECT_FILTER_ENCHANTED_PLAYER_CONTROLS_SUFFIX_PATTERN.matches_words(tail)
+        })
+    {
+        return None;
+    }
+
+    let prefix_end = word_view.token_index_for_word_index(words.len().saturating_sub(3))?;
+    let prefix = trim_commas(&tokens[..prefix_end]);
+    if prefix.is_empty() {
+        return None;
+    }
+    Some((
+        prefix,
+        PlayerFilter::TaggedPlayer(TagKey::from("enchanted")),
+    ))
+}
+
 pub(super) fn parse_attached_reference_or_another_disjunction(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
@@ -780,6 +817,9 @@ pub(crate) fn parse_object_filter(
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
     let (tokens, distinct_names) = strip_object_filter_different_names_clause(tokens);
+    let (tokens, controller_suffix) = strip_enchanted_player_controls_suffix(&tokens)
+        .map(|(tokens, controller)| (tokens, Some(controller)))
+        .unwrap_or((tokens, None));
     let tokens = tokens.as_slice();
     let mut filter = if let Some(with_idx) = find_token_word(tokens, "with") {
         let base_tokens = trim_commas(&tokens[..with_idx]);
@@ -815,6 +855,10 @@ pub(crate) fn parse_object_filter(
     } else {
         super::grammar::filters::parse_object_filter_with_grammar_entrypoint(tokens, other)?
     };
+    if let Some(controller) = controller_suffix {
+        filter.controller = Some(controller);
+        filter.zone = Some(Zone::Battlefield);
+    }
     filter.distinct_names |= distinct_names;
     Ok(filter)
 }

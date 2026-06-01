@@ -1199,6 +1199,12 @@ impl ObjectFilter {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
                 PlayerFilter::ChosenPlayer => parts.push("the chosen player's".to_string()),
+                PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {
+                    if !has_leading_determiner {
+                        parts.insert(0, "a".to_string());
+                    }
+                    controller_suffix = Some("enchanted player controls".to_string());
+                }
                 PlayerFilter::TaggedPlayer(_) => parts.push("that player's".to_string()),
                 PlayerFilter::Teammate => parts.push("a teammate's".to_string()),
                 PlayerFilter::Defending => parts.push("the defending player's".to_string()),

@@ -417,6 +417,11 @@ pub(crate) fn resolve_restriction_it_tag(
         Restriction::ActivateNonManaAbilities(player) => Restriction::activate_non_mana_abilities(
             resolve_contextual_player_filter(player, refs)?,
         ),
+        Restriction::ActivateNonManaNonLoyaltyAbilities(player) => {
+            Restriction::activate_non_mana_non_loyalty_abilities(
+                resolve_contextual_player_filter(player, refs)?,
+            )
+        }
         Restriction::CastMoreThanOneSpellEachTurn(player, filter) => {
             Restriction::CastMoreThanOneSpellEachTurn(
                 resolve_contextual_player_filter(player, refs)?,

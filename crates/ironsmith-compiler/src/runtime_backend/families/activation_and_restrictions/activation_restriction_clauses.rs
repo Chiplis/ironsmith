@@ -168,6 +168,34 @@ const ACTIVATE_ABILITIES_THAT_ARENT_MANA_TAIL_PATTERN: ClauseShape<'static> = cl
             "abilities"
         ]
 );
+const ACTIVATE_ABILITIES_THAT_ARENT_MANA_OR_LOYALTY_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(
+        exact_any
+            & [
+                &[
+                    "activate",
+                    "abilities",
+                    "that",
+                    "arent",
+                    "mana",
+                    "abilities",
+                    "or",
+                    "loyalty",
+                    "abilities",
+                ],
+                &[
+                    "activate",
+                    "abilities",
+                    "which",
+                    "arent",
+                    "mana",
+                    "abilities",
+                    "or",
+                    "loyalty",
+                    "abilities",
+                ],
+            ]
+    );
 const ACTIVATE_ABILITIES_OF_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["activate", "abilities", "of"]);
 const UNLESS_MANA_ABILITIES_SUFFIX_PATTERN: ClauseShape<'static> =
@@ -545,6 +573,10 @@ fn player_negated_restriction_from_tail(
             player,
             ObjectFilter::spell(),
         ))
+    } else if ACTIVATE_ABILITIES_THAT_ARENT_MANA_OR_LOYALTY_TAIL_PATTERN.matches_words(words) {
+        Some(Restriction::activate_non_mana_non_loyalty_abilities(player))
+    } else if ACTIVATE_ABILITIES_THAT_ARENT_MANA_TAIL_PATTERN.matches_words(words) {
+        Some(Restriction::activate_non_mana_abilities(player))
     } else {
         None
     }
@@ -1335,6 +1367,12 @@ pub(crate) fn parse_player_negated_restriction_clause(
     if ACTIVATE_ABILITIES_THAT_ARENT_MANA_TAIL_PATTERN.matches_words(&remainder_words) {
         return Ok(Some(ParsedCantRestriction {
             restriction: Restriction::activate_non_mana_abilities(player),
+            target,
+        }));
+    }
+    if ACTIVATE_ABILITIES_THAT_ARENT_MANA_OR_LOYALTY_TAIL_PATTERN.matches_words(&remainder_words) {
+        return Ok(Some(ParsedCantRestriction {
+            restriction: Restriction::activate_non_mana_non_loyalty_abilities(player),
             target,
         }));
     }

@@ -39199,6 +39199,41 @@ fn parse_abeyance_supports_instant_or_sorcery_cast_restriction() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_overwhelming_splendor_preserves_enchanted_player_activation_exception() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Overwhelming Splendor")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura, Subtype::Curse])
+        .parse_text(
+            "Enchant player\n\
+             Creatures enchanted player controls lose all abilities and have base power and toughness 1/1.\n\
+             Enchanted player can't activate abilities that aren't mana abilities or loyalty abilities.",
+        )
+        .expect("Overwhelming Splendor should parse");
+
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "Creatures enchanted player controls lose all abilities and have base power and toughness 1/1"
+        ),
+        "expected enchanted-player creature controller text, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Enchanted player can't activate abilities that aren't mana abilities or loyalty abilities"
+        ),
+        "expected mana-or-loyalty activation exception text, got {rendered}"
+    );
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("controller: Some(TaggedPlayer")
+            && abilities_debug.contains("ActivateNonManaNonLoyaltyAbilities"),
+        "expected enchanted-player controller and mana-or-loyalty activation restriction, got {abilities_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_conquerors_flail_condition_maps_attached_equipment_to_equipped() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Conqueror's Flail")
         .card_types(vec![CardType::Artifact])

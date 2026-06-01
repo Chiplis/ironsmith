@@ -165,6 +165,11 @@ pub(super) fn extract_base_pt_tail_for_subject(line: &str, subject: &str) -> Opt
 
 pub(super) fn normalize_global_subject_number(subject: &str) -> String {
     let trimmed = subject.trim();
+    if trimmed.eq_ignore_ascii_case("a creature enchanted player controls")
+        || trimmed.eq_ignore_ascii_case("creature enchanted player controls")
+    {
+        return "Creatures enchanted player controls".to_string();
+    }
     if trimmed.eq_ignore_ascii_case("Creature") {
         return "Creatures".to_string();
     }

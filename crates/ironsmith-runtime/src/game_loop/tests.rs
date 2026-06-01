@@ -34882,6 +34882,142 @@ fn test_grievous_wound_stops_enchanted_player_life_gain_and_triggers_on_damage()
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn overwhelming_splendor_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Overwhelming Splendor")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura, Subtype::Curse])
+        .parse_text(
+            "Enchant player\n\
+             Creatures enchanted player controls lose all abilities and have base power and toughness 1/1.\n\
+             Enchanted player can't activate abilities that aren't mana abilities or loyalty abilities.",
+        )
+        .expect("Overwhelming Splendor should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_overwhelming_splendor_restricts_only_enchanted_player_and_preserves_exceptions() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let splendor = overwhelming_splendor_definition();
+    let splendor_id = game.create_object_from_definition(&splendor, alice, Zone::Battlefield);
+    game.object_mut(splendor_id)
+        .expect("Overwhelming Splendor should exist")
+        .attached_to = Some(crate::object::AttachmentTarget::Player(bob));
+    game.player_mut(bob)
+        .expect("bob should exist")
+        .attachments
+        .push(splendor_id);
+
+    let bob_creature = CardDefinitionBuilder::new(CardId::new(), "Bob's Prodigal Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text("{0}: Draw a card.")
+        .expect("bob creature should parse");
+    let alice_creature = CardDefinitionBuilder::new(CardId::new(), "Alice's Prodigal Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text("{0}: Draw a card.")
+        .expect("alice creature should parse");
+    let mana_rock = CardDefinitionBuilder::new(CardId::new(), "Bob's Mana Rock")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("{T}: Add {C}.")
+        .expect("mana rock should parse");
+    let draw_rock = CardDefinitionBuilder::new(CardId::new(), "Bob's Draw Rock")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("{0}: Draw a card.")
+        .expect("draw rock should parse");
+    let alice_draw_rock = CardDefinitionBuilder::new(CardId::new(), "Alice's Draw Rock")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("{0}: Draw a card.")
+        .expect("alice draw rock should parse");
+    let planeswalker = CardDefinitionBuilder::new(CardId::new(), "Bob's Test Chandra")
+        .card_types(vec![CardType::Planeswalker])
+        .loyalty(3)
+        .parse_text("+1: Draw a card.")
+        .expect("planeswalker should parse");
+
+    let bob_creature_id = game.create_object_from_definition(&bob_creature, bob, Zone::Battlefield);
+    let alice_creature_id =
+        game.create_object_from_definition(&alice_creature, alice, Zone::Battlefield);
+    let mana_rock_id = game.create_object_from_definition(&mana_rock, bob, Zone::Battlefield);
+    let draw_rock_id = game.create_object_from_definition(&draw_rock, bob, Zone::Battlefield);
+    let alice_draw_rock_id =
+        game.create_object_from_definition(&alice_draw_rock, alice, Zone::Battlefield);
+    let planeswalker_id =
+        game.create_object_from_definition(&planeswalker, bob, Zone::Battlefield);
+    game.refresh_continuous_state();
+
+    let bob_creature_characteristics = game
+        .calculated_characteristics(bob_creature_id)
+        .expect("bob creature should have characteristics");
+    assert_eq!(
+        (bob_creature_characteristics.power, bob_creature_characteristics.toughness),
+        (Some(1), Some(1)),
+        "Overwhelming Splendor should set enchanted player's creatures to 1/1"
+    );
+    assert_eq!(
+        activated_ability_count(&game, bob_creature_id),
+        0,
+        "Overwhelming Splendor should remove abilities from enchanted player's creatures"
+    );
+
+    let alice_creature_characteristics = game
+        .calculated_characteristics(alice_creature_id)
+        .expect("alice creature should have characteristics");
+    assert_eq!(
+        (alice_creature_characteristics.power, alice_creature_characteristics.toughness),
+        (Some(4), Some(4)),
+        "Overwhelming Splendor should not affect non-enchanted players' creatures"
+    );
+    assert_eq!(
+        activated_ability_count(&game, alice_creature_id),
+        1,
+        "Overwhelming Splendor should not remove abilities from other players' creatures"
+    );
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(bob);
+    let bob_actions = crate::decision::compute_legal_actions(&game, bob);
+    assert!(
+        bob_actions.iter().any(|action| matches!(
+            action,
+            crate::decision::LegalAction::ActivateManaAbility { source, .. } if *source == mana_rock_id
+        )),
+        "Overwhelming Splendor should still allow enchanted player to activate mana abilities: {bob_actions:?}"
+    );
+    assert!(
+        !bob_actions.iter().any(|action| matches!(
+            action,
+            crate::decision::LegalAction::ActivateAbility { source, .. } if *source == draw_rock_id
+        )),
+        "Overwhelming Splendor should stop enchanted player from activating ordinary non-mana abilities: {bob_actions:?}"
+    );
+    assert!(
+        bob_actions.iter().any(|action| matches!(
+            action,
+            crate::decision::LegalAction::ActivateAbility { source, .. } if *source == planeswalker_id
+        )),
+        "Overwhelming Splendor should still allow enchanted player to activate loyalty abilities: {bob_actions:?}"
+    );
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    let alice_actions = crate::decision::compute_legal_actions(&game, alice);
+    assert!(
+        alice_actions.iter().any(|action| matches!(
+            action,
+            crate::decision::LegalAction::ActivateAbility { source, .. } if *source == alice_draw_rock_id
+        )),
+        "Overwhelming Splendor should not restrict non-enchanted players' ordinary activations: {alice_actions:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_kitsune_mystic_requires_two_attached_auras_for_end_step_trigger() {
     let mut game = setup_game();

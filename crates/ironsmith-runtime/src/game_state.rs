@@ -590,6 +590,10 @@ pub struct CantEffectTracker {
     /// Example: Split second while a split-second spell is on the stack.
     pub cant_activate_non_mana_abilities: HashSet<PlayerId>,
 
+    /// Players who can't activate abilities except mana abilities and loyalty abilities.
+    /// Example: Overwhelming Splendor.
+    pub cant_activate_non_mana_non_loyalty_abilities: HashSet<PlayerId>,
+
     /// Permanents whose activated abilities can't be activated (including mana abilities).
     /// Example: Collector Ouphe ("Activated abilities of artifacts can't be activated.")
     pub cant_activate_abilities_of: HashSet<ObjectId>,
@@ -872,6 +876,8 @@ impl CantEffectTracker {
             .extend(other.cast_spells_only_as_sorcery);
         self.cant_activate_non_mana_abilities
             .extend(other.cant_activate_non_mana_abilities);
+        self.cant_activate_non_mana_non_loyalty_abilities
+            .extend(other.cant_activate_non_mana_non_loyalty_abilities);
         self.cant_activate_abilities_of
             .extend(other.cant_activate_abilities_of);
         self.cant_activate_tap_abilities_of
@@ -929,6 +935,8 @@ impl CantEffectTracker {
         self.cant_cast_filters.clear();
         self.cast_spells_only_as_sorcery.clear();
         self.cant_activate_non_mana_abilities.clear();
+        self.cant_activate_non_mana_non_loyalty_abilities
+            .clear();
         self.cant_activate_abilities_of.clear();
         self.cant_activate_tap_abilities_of.clear();
         self.cant_activate_non_mana_abilities_of.clear();
@@ -1119,6 +1127,14 @@ impl CantEffectTracker {
     /// Check if a player can activate non-mana abilities.
     pub fn can_activate_non_mana_abilities(&self, player: PlayerId) -> bool {
         !self.cant_activate_non_mana_abilities.contains(&player)
+    }
+
+    /// Check if a player can activate non-mana, non-loyalty abilities.
+    pub fn can_activate_non_mana_non_loyalty_abilities(&self, player: PlayerId) -> bool {
+        !self.cant_activate_non_mana_abilities.contains(&player)
+            && !self
+                .cant_activate_non_mana_non_loyalty_abilities
+                .contains(&player)
     }
 
     /// Check if activated abilities of a permanent can be activated (including mana abilities).
@@ -3343,6 +3359,13 @@ impl GameState {
         self.effect_store
             .cant_effects
             .can_activate_non_mana_abilities(player)
+    }
+
+    /// Can the player activate non-mana, non-loyalty abilities?
+    pub fn can_activate_non_mana_non_loyalty_abilities(&self, player: PlayerId) -> bool {
+        self.effect_store
+            .cant_effects
+            .can_activate_non_mana_non_loyalty_abilities(player)
     }
 
     /// Can activated abilities of this permanent be activated (including mana abilities)?

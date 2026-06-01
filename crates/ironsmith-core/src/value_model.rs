@@ -268,6 +268,7 @@ pub enum Restriction {
     CastSpellsMatching(PlayerFilter, ObjectFilter),
     CastSpellsOnlyAsSorcery(PlayerFilter),
     ActivateNonManaAbilities(PlayerFilter),
+    ActivateNonManaNonLoyaltyAbilities(PlayerFilter),
     ActivateAbilitiesOf(ObjectFilter),
     ActivateTapAbilitiesOf(ObjectFilter),
     ActivateNonManaAbilitiesOf(ObjectFilter),
@@ -428,6 +429,10 @@ impl Restriction {
 
     pub fn activate_non_mana_abilities(filter: PlayerFilter) -> Self {
         Self::ActivateNonManaAbilities(filter)
+    }
+
+    pub fn activate_non_mana_non_loyalty_abilities(filter: PlayerFilter) -> Self {
+        Self::ActivateNonManaNonLoyaltyAbilities(filter)
     }
 
     pub fn activate_abilities_of(filter: ObjectFilter) -> Self {

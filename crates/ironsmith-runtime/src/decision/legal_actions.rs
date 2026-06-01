@@ -1,6 +1,18 @@
 use super::*;
 use crate::ability::ActivatedAbilityRuntimeExt as _;
 
+fn player_can_activate_non_mana_ability(
+    game: &GameState,
+    player: PlayerId,
+    activated: &crate::ability::ActivatedAbility,
+) -> bool {
+    if activated.is_loyalty_ability() {
+        game.can_activate_non_mana_abilities(player)
+    } else {
+        game.can_activate_non_mana_non_loyalty_abilities(player)
+    }
+}
+
 fn grant_usage_limit_allows(
     game: &GameState,
     player: PlayerId,
@@ -830,28 +842,29 @@ fn add_battlefield_actions(
                 }
             }
 
-            if game.can_activate_non_mana_abilities(player) {
-                for &ability_index in activated_ability_indices {
-                    let Some(ability) = abilities.get(ability_index) else {
-                        continue;
-                    };
-                    let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {
-                        continue;
-                    };
-                    if can_activate_ability_with_restrictions_with_view(
-                        game,
-                        perm_id,
+            for &ability_index in activated_ability_indices {
+                let Some(ability) = abilities.get(ability_index) else {
+                    continue;
+                };
+                let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {
+                    continue;
+                };
+                if !player_can_activate_non_mana_ability(game, player, activated) {
+                    continue;
+                }
+                if can_activate_ability_with_restrictions_with_view(
+                    game,
+                    perm_id,
+                    ability_index,
+                    activated,
+                    view,
+                    Some(battlefield_ability_ctx),
+                    Some(&source_facts),
+                ) {
+                    actions.push(LegalAction::ActivateAbility {
+                        source: perm_id,
                         ability_index,
-                        activated,
-                        view,
-                        Some(battlefield_ability_ctx),
-                        Some(&source_facts),
-                    ) {
-                        actions.push(LegalAction::ActivateAbility {
-                            source: perm_id,
-                            ability_index,
-                        });
-                    }
+                    });
                 }
             }
         }
@@ -932,36 +945,37 @@ fn add_non_battlefield_ability_actions(
             }
         }
 
-        if game.can_activate_non_mana_abilities(player) {
-            let current_abilities = view.abilities_rc(source_id);
-            let abilities = current_abilities.as_deref().unwrap_or(&obj.abilities);
-            for &ability_index in ability_summary.activated_ability_indices() {
-                let Some(ability) = abilities.get(ability_index) else {
-                    continue;
-                };
-                if !ability.functions_in(&obj.zone) {
-                    continue;
-                }
-                let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {
-                    continue;
-                };
-                if game.controller_of(obj) != player && !activated_allows_any_player(activated) {
-                    continue;
-                }
-                if can_activate_ability_with_restrictions_with_view(
-                    game,
-                    source_id,
+        let current_abilities = view.abilities_rc(source_id);
+        let abilities = current_abilities.as_deref().unwrap_or(&obj.abilities);
+        for &ability_index in ability_summary.activated_ability_indices() {
+            let Some(ability) = abilities.get(ability_index) else {
+                continue;
+            };
+            if !ability.functions_in(&obj.zone) {
+                continue;
+            }
+            let crate::ability::AbilityKind::Activated(activated) = &ability.kind else {
+                continue;
+            };
+            if game.controller_of(obj) != player && !activated_allows_any_player(activated) {
+                continue;
+            }
+            if !player_can_activate_non_mana_ability(game, player, activated) {
+                continue;
+            }
+            if can_activate_ability_with_restrictions_with_view(
+                game,
+                source_id,
+                ability_index,
+                activated,
+                view,
+                None,
+                None,
+            ) {
+                actions.push(LegalAction::ActivateAbility {
+                    source: source_id,
                     ability_index,
-                    activated,
-                    view,
-                    None,
-                    None,
-                ) {
-                    actions.push(LegalAction::ActivateAbility {
-                        source: source_id,
-                        ability_index,
-                    });
-                }
+                });
             }
         }
     }
@@ -1364,7 +1378,9 @@ fn activation_precheck_with_view(
         source_facts.controller
     };
 
-    if game.object(source).is_some() && !game.can_activate_non_mana_abilities(controller) {
+    if game.object(source).is_some()
+        && !player_can_activate_non_mana_ability(game, controller, activated)
+    {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());
         }

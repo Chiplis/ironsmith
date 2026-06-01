@@ -10245,6 +10245,12 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 describe_player_set_filter(filter)
             )
         }
+        crate::effect::Restriction::ActivateNonManaNonLoyaltyAbilities(filter) => {
+            format!(
+                "{} can't activate abilities that aren't mana abilities or loyalty abilities",
+                describe_player_set_filter(filter)
+            )
+        }
         crate::effect::Restriction::ActivateAbilitiesOf(filter) => {
             let description = filter.description();
             let subject = description

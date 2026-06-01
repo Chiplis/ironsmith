@@ -918,6 +918,15 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::ActivateNonManaNonLoyaltyAbilities(filter) => {
+                for player in &game.players {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
+                        tracker
+                            .cant_activate_non_mana_non_loyalty_abilities
+                            .insert(player.id);
+                    }
+                }
+            }
             Restriction::ActivateAbilitiesOf(filter) => {
                 for &obj_id in &game.battlefield {
                     if let Some(obj) = game.object(obj_id)
