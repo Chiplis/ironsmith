@@ -825,6 +825,11 @@ pub enum Condition {
         tag: TagKey,
         filter: ObjectFilter,
     },
+    PlayerControlledTaggedObjectSnapshot {
+        player: PlayerFilter,
+        tag: TagKey,
+        filter: ObjectFilter,
+    },
     PlayerTaggedObjectEnteredBattlefieldThisTurn {
         player: PlayerFilter,
         tag: TagKey,

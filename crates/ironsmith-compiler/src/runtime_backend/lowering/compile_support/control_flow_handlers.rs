@@ -21,6 +21,9 @@ fn bind_explicit_tag_to_player_tagged_predicate(
     let mut bound = predicate.clone();
     if let PredicateAst::PlayerTaggedObjectMatches {
         tag: predicate_tag, ..
+    }
+    | PredicateAst::PlayerControlledTaggedObjectSnapshot {
+        tag: predicate_tag, ..
     } = &mut bound
         && predicate_tag.as_str() == IT_TAG
     {

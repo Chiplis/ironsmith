@@ -39668,6 +39668,139 @@ fn guff_rewrites_history_runtime_skips_player_whose_target_is_gone() {
     );
 }
 
+#[test]
+fn guff_rewrites_history_runtime_uses_previous_controller_for_stolen_permanent() {
+    fn card(name: &str, card_types: Vec<CardType>) -> crate::card::Card {
+        CardBuilder::new(CardId::new(), name)
+            .card_types(card_types)
+            .build()
+    }
+
+    let def = parse_oracle_card_definition("Guff Rewrites History");
+    let spell_effect = def
+        .spell_effect
+        .clone()
+        .expect("Guff Rewrites History should have a spell effect");
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    game.set_random_seed(31);
+
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let bob_owned_stolen_permanent = game.create_object_from_card(
+        &card("Borrowed Bob Idol", vec![CardType::Artifact]),
+        bob,
+        Zone::Battlefield,
+    );
+    game.set_current_controller(bob_owned_stolen_permanent, alice);
+    let bob_permanent = game.create_object_from_card(
+        &card("Bob Idol", vec![CardType::Artifact]),
+        bob,
+        Zone::Battlefield,
+    );
+    game.create_object_from_card(
+        &card("Alice Island", vec![CardType::Land]),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &card("Alice Free Spell", vec![CardType::Sorcery]),
+        alice,
+        Zone::Library,
+    );
+    game.create_object_from_card(
+        &card("Bob Island", vec![CardType::Land]),
+        bob,
+        Zone::Library,
+    );
+    let bob_spell = game.create_object_from_card(
+        &card("Bob Free Spell", vec![CardType::Sorcery]),
+        bob,
+        Zone::Library,
+    );
+
+    let target_requirements = crate::game_loop::extract_target_requirements_from_program_with_modes(
+        &game,
+        &spell_effect,
+        alice,
+        Some(source),
+        None,
+    );
+    assert_eq!(target_requirements.len(), 2);
+    assert_eq!(
+        target_requirements[0].legal_targets,
+        vec![crate::game_state::Target::Object(bob_owned_stolen_permanent)],
+        "Alice should target the Bob-owned permanent she currently controls"
+    );
+    assert_eq!(
+        target_requirements[1].legal_targets,
+        vec![crate::game_state::Target::Object(bob_permanent)],
+        "Bob should target the permanent he currently controls"
+    );
+    let target_assignments = vec![
+        crate::game_state::TargetAssignment {
+            spec: target_requirements[0].spec.clone(),
+            range: 0..1,
+        },
+        crate::game_state::TargetAssignment {
+            spec: target_requirements[1].spec.clone(),
+            range: 1..2,
+        },
+    ];
+
+    game.move_object_by_effect(bob_permanent, Zone::Graveyard)
+        .expect("Bob's own target should move away before resolution");
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_targets(vec![
+            crate::effects::ResolvedTarget::Object(bob_owned_stolen_permanent),
+            crate::effects::ResolvedTarget::Object(bob_permanent),
+        ])
+        .with_target_assignments(target_assignments.clone());
+    let events = crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &spell_effect,
+        None,
+        &target_assignments,
+    )
+    .expect("Guff Rewrites History should resolve with the stolen permanent target");
+
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "only the previous controller of the moved permanent should cast"
+    );
+    assert!(
+        game.stack.iter().any(|entry| entry.controller == alice),
+        "Alice controlled the Bob-owned permanent before it moved, so Alice should consult and cast"
+    );
+    assert!(
+        !game.stack.iter().any(|entry| entry.controller == bob),
+        "Bob owned the moved permanent but did not control it, so Bob should not consult or cast"
+    );
+    assert!(
+        game.player(bob)
+            .expect("bob exists")
+            .library
+            .contains(&bob_spell),
+        "Bob's nonland card should remain in his library when Bob did not control a moved target"
+    );
+    assert!(
+        events.iter().any(|event| event
+            .downcast::<crate::events::ShuffleLibraryEvent>()
+            .is_some_and(|shuffle| shuffle.player == bob)),
+        "Bob should still shuffle the library that received his owned permanent"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_oracle_ryan_sinclair_uses_dynamic_consult_gate() {

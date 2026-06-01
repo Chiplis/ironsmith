@@ -12030,6 +12030,14 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 )
             }
         }
+        Condition::PlayerControlledTaggedObjectSnapshot { player, tag, filter } => {
+            format!(
+                "{} controlled the tagged object '{}' matching {}",
+                describe_player_filter(player),
+                tag.as_str(),
+                filter.description()
+            )
+        }
         Condition::PlayerTaggedObjectEnteredBattlefieldThisTurn { player, tag } => {
             if let Some(action) = tag_action_from_name(tag.as_str()) {
                 format!("{} {} it this way", describe_player_filter(player), action)

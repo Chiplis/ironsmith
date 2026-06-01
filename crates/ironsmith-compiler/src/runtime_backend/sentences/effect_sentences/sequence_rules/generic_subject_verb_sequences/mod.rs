@@ -481,7 +481,7 @@ pub(crate) fn parse_each_player_choose_target_shuffle_consult_cast(
     target_filter.excluded_card_types.push(CardType::Enchantment);
     target_filter.excluded_card_types.push(CardType::Land);
 
-    let eligible_player = PredicateAst::PlayerTaggedObjectMatches {
+    let eligible_player = PredicateAst::PlayerControlledTaggedObjectSnapshot {
         player: PlayerAst::That,
         tag: chosen_permanents_tag.clone(),
         filter: ObjectFilter::default(),

@@ -1076,6 +1076,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::TargetMatches(..) => {}
         Condition::TargetIsSoulbondPaired => {}
         Condition::PlayerTaggedObjectMatches { .. } => {}
+        Condition::PlayerControlledTaggedObjectSnapshot { .. } => {}
         Condition::PlayerTaggedObjectEnteredBattlefieldThisTurn { .. } => {}
         Condition::PlayerOwnsCardNamedInZones { .. } => {}
         Condition::ThisAbilityResolvedThisTurnExactly(..) => {}
@@ -1904,6 +1905,7 @@ pub fn evaluate_condition_external(
         | Condition::EnchantedPermanentAttackedThisTurn
         | Condition::TargetIsSoulbondPaired
         | Condition::PlayerTaggedObjectMatches { .. }
+        | Condition::PlayerControlledTaggedObjectSnapshot { .. }
         | Condition::TargetIsTapped
         | Condition::TargetIsAttacking
         | Condition::TargetIsBlocked
@@ -2627,6 +2629,7 @@ fn evaluate_condition_simple(
         Condition::TargetMatches(_) => false,
         Condition::TargetIsSoulbondPaired => false,
         Condition::PlayerTaggedObjectMatches { .. } => false,
+        Condition::PlayerControlledTaggedObjectSnapshot { .. } => false,
         Condition::PlayerTaggedObjectEnteredBattlefieldThisTurn { .. } => false,
         // Target-dependent conditions default to false during casting
         Condition::TargetIsTapped
@@ -3585,6 +3588,22 @@ fn evaluate_condition(
                 }
             }
             Ok(false)
+        }
+        Condition::PlayerControlledTaggedObjectSnapshot {
+            player,
+            tag,
+            filter,
+        } => {
+            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            let Some(tagged) = ctx.get_tagged_all(tag.as_str()) else {
+                return Ok(false);
+            };
+            let mut filter_ctx = ctx.filter_context(game);
+            filter_ctx.iterated_player = Some(player_id);
+            Ok(tagged.iter().any(|snapshot| {
+                snapshot.controller == player_id
+                    && filter.matches_snapshot(snapshot, &filter_ctx, game)
+            }))
         }
         Condition::PlayerTaggedObjectEnteredBattlefieldThisTurn { player, tag } => {
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;

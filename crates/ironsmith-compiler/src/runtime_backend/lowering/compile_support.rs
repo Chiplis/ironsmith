@@ -240,6 +240,19 @@ pub(crate) fn compile_condition_from_predicate_ast(
                 filter: resolve_it_tag(filter, &refs)?,
             }
         }
+        PredicateAst::PlayerControlledTaggedObjectSnapshot {
+            player,
+            tag,
+            filter,
+        } => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            let resolved_tag = resolve_it_tag_key(tag, &refs)?;
+            Condition::PlayerControlledTaggedObjectSnapshot {
+                player,
+                tag: resolved_tag,
+                filter: resolve_it_tag(filter, &refs)?,
+            }
+        }
         PredicateAst::PlayerControls { player, filter } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             let resolved = resolve_it_tag(filter, &refs)?;

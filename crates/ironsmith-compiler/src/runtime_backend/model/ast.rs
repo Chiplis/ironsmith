@@ -399,6 +399,11 @@ pub(crate) enum PredicateAst {
         tag: TagKey,
         filter: ObjectFilter,
     },
+    PlayerControlledTaggedObjectSnapshot {
+        player: PlayerAst,
+        tag: TagKey,
+        filter: ObjectFilter,
+    },
     PlayerTaggedObjectEnteredBattlefieldThisTurn {
         player: PlayerAst,
         tag: TagKey,

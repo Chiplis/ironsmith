@@ -3338,7 +3338,7 @@ fn describe_each_player_choose_target_shuffle_consult_cast(effects: &[&Effect]) 
         return None;
     }
     let conditional = consult_players.effects[0].downcast_ref::<crate::effects::ConditionalEffect>()?;
-    let crate::effect::Condition::PlayerTaggedObjectMatches { player, tag, .. } =
+    let crate::effect::Condition::PlayerControlledTaggedObjectSnapshot { player, tag, .. } =
         &conditional.condition
     else {
         return None;
