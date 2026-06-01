@@ -35513,6 +35513,16 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 repeated
             );
         }
+        if repeat
+            .count
+            .has_surface_hint(ValueSurfaceHint::CountersRemovedThisWay)
+            && let Value::DividedRoundedDown(value, divisor) = repeat.count.unhinted()
+            && matches!(value.as_ref(), Value::X)
+            && *divisor > 0
+        {
+            let group = small_number_word(*divisor as u32).unwrap_or_else(|| divisor.to_string());
+            return format!("For each {group} counters removed this way, {repeated}");
+        }
         return format!(
             "Repeat {} {} times",
             repeated,

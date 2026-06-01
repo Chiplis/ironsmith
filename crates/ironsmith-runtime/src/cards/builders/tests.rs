@@ -31283,6 +31283,31 @@ fn parse_aura_barbs_attached_target_contraction_keeps_second_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn sage_of_hours_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Sage of Hours");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let abilities_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains("Heroic")
+            && rendered.contains("Whenever you cast a spell that targets this creature"),
+        "Sage of Hours should preserve its heroic trigger in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("For each five counters removed this way, you take an extra turn after this one"),
+        "Sage of Hours should render the counter-group extra-turn clause, got {rendered}"
+    );
+    assert!(
+        abilities_debug.contains("RemoveAnyCountersFromSourceEffect")
+            && abilities_debug.contains("RepeatEffectsEffect")
+            && abilities_debug.contains("DividedRoundedDown")
+            && abilities_debug.contains("ExtraTurnEffect"),
+        "Sage of Hours should lower removed-counter groups into repeated extra turns, got {abilities_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_for_each_of_x_target_permanents_builds_choose_then_for_each_tagged() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Doppelgang Variant")
         .parse_text(

@@ -42,6 +42,7 @@ pub enum ValueSurfaceHint {
     WhereXIs,
     EqualTo,
     ForEach,
+    CountersRemovedThisWay,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -55,6 +56,7 @@ pub enum Value {
     X,
     XTimes(i32),
     Scaled(Box<Value>, i32),
+    DividedRoundedDown(Box<Value>, i32),
     HalfRoundedDown(Box<Value>),
     Count(ObjectFilter),
     CountScaled(ObjectFilter, i32),

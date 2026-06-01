@@ -1038,7 +1038,9 @@ fn bind_relative_iterated_player_in_value_to_player_filter(
             bind_relative_iterated_player_in_value_to_player_filter(left, player_filter);
             bind_relative_iterated_player_in_value_to_player_filter(right, player_filter);
         }
-        Value::Scaled(inner, _) | Value::HalfRoundedDown(inner) => {
+        Value::Scaled(inner, _)
+        | Value::DividedRoundedDown(inner, _)
+        | Value::HalfRoundedDown(inner) => {
             bind_relative_iterated_player_in_value_to_player_filter(inner, player_filter);
         }
         Value::Min(left, right) => {

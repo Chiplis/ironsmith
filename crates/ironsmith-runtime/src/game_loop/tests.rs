@@ -15021,6 +15021,173 @@ fn magma_mine_activated_ability_uses_current_pressure_counter_count_when_zero() 
     );
 }
 
+fn sage_of_hours_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(994_200), "Sage of Hours")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Wizard])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "Heroic — Whenever you cast a spell that targets this creature, put a +1/+1 counter on it.\n\
+             Remove all +1/+1 counters from this creature: For each five counters removed this way, take an extra turn after this one.",
+        )
+        .expect("Sage of Hours should parse for runtime tests")
+}
+
+fn sage_of_hours_extra_turn_ability_index(game: &GameState, sage_id: ObjectId) -> usize {
+    game.object(sage_id)
+        .expect("Sage of Hours should exist")
+        .abilities
+        .iter()
+        .position(|ability| {
+            if let AbilityKind::Activated(activated) = &ability.kind {
+                format!("{:?}", activated.effects).contains("ExtraTurnEffect")
+            } else {
+                false
+            }
+        })
+        .expect("Sage of Hours should have an extra-turn activated ability")
+}
+
+fn activate_sage_of_hours_extra_turn_ability(counter_count: u32) -> GameState {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let sage_def = sage_of_hours_definition();
+    let sage_id = game.create_object_from_definition(&sage_def, alice, Zone::Battlefield);
+    game.add_counters(
+        sage_id,
+        crate::object::CounterType::PlusOnePlusOne,
+        counter_count,
+    )
+    .expect("+1/+1 counters should be addable to Sage of Hours");
+
+    let ability_index = sage_of_hours_extra_turn_ability_index(&game, sage_id);
+    let activate_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == sage_id && *idx == ability_index
+            )
+        })
+        .expect("Sage of Hours activation should be legal");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Sage of Hours activation should be put on the stack");
+
+    assert_eq!(
+        game.counter_count(sage_id, crate::object::CounterType::PlusOnePlusOne),
+        0,
+        "Sage of Hours activation cost should remove all +1/+1 counters"
+    );
+    resolve_stack_entry(&mut game).expect("Sage of Hours activation should resolve");
+    game
+}
+
+#[test]
+fn sage_of_hours_activation_takes_one_extra_turn_per_five_removed_counters() {
+    let game = activate_sage_of_hours_extra_turn_ability(10);
+    let alice = PlayerId::from_index(0);
+
+    assert_eq!(
+        game.turn_store.extra_turns,
+        vec![alice, alice],
+        "ten removed counters should schedule two extra turns for Sage of Hours controller"
+    );
+}
+
+#[test]
+fn sage_of_hours_activation_below_five_removed_counters_takes_no_extra_turns() {
+    let game = activate_sage_of_hours_extra_turn_ability(4);
+
+    assert!(
+        game.turn_store.extra_turns.is_empty(),
+        "fewer than five removed counters should not schedule an extra turn"
+    );
+}
+
+fn queue_spell_cast_targeting(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    caster: PlayerId,
+    target: ObjectId,
+) {
+    let spell = CardBuilder::new(CardId::from_raw(994_201), "Sage Targeting Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Instant])
+        .build();
+    let spell_id = game.create_object_from_card(&spell, caster, Zone::Stack);
+    game.push_to_stack(
+        StackEntry::new(spell_id, caster).with_targets(vec![Target::Object(target)]),
+    );
+    let event = TriggerEvent::new_with_provenance(
+        SpellCastEvent::new(spell_id, caster, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    queue_triggers_from_event(game, trigger_queue, event, false);
+}
+
+#[test]
+fn sage_of_hours_heroic_adds_counter_when_your_spell_targets_it() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let sage_def = sage_of_hours_definition();
+    let sage_id = game.create_object_from_definition(&sage_def, alice, Zone::Battlefield);
+    let mut trigger_queue = TriggerQueue::new();
+
+    queue_spell_cast_targeting(&mut game, &mut trigger_queue, alice, sage_id);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Sage of Hours should trigger when Alice casts a spell targeting it"
+    );
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Sage of Hours heroic trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Sage of Hours heroic trigger should resolve");
+
+    assert_eq!(
+        game.counter_count(sage_id, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "Sage of Hours heroic trigger should add a +1/+1 counter"
+    );
+}
+
+#[test]
+fn sage_of_hours_heroic_does_not_trigger_for_spell_targeting_another_creature() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let sage_def = sage_of_hours_definition();
+    game.create_object_from_definition(&sage_def, alice, Zone::Battlefield);
+    let other_id = create_creature(&mut game, "Other Target", alice, 1, 1);
+    let mut trigger_queue = TriggerQueue::new();
+
+    queue_spell_cast_targeting(&mut game, &mut trigger_queue, alice, other_id);
+
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Sage of Hours should not trigger when the spell targets a different creature"
+    );
+}
+
 #[test]
 fn molten_hydra_activated_damage_uses_number_of_removed_plus1_counters() {
     let mut game = setup_game();

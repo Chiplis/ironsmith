@@ -449,6 +449,14 @@ pub fn resolve_value(
             .ok_or_else(|| ExecutionError::UnresolvableValue("X value not set".to_string())),
 
         Value::Scaled(value, multiplier) => Ok(resolve_value(game, value, ctx)? * *multiplier),
+        Value::DividedRoundedDown(value, divisor) => {
+            if *divisor == 0 {
+                return Err(ExecutionError::UnresolvableValue(
+                    "division by zero in dynamic value".to_string(),
+                ));
+            }
+            Ok(resolve_value(game, value, ctx)?.div_euclid(*divisor))
+        }
         Value::Min(left, right) => {
             Ok(resolve_value(game, left, ctx)?.min(resolve_value(game, right, ctx)?))
         }
