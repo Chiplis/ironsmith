@@ -3380,6 +3380,14 @@ pub(crate) enum EffectAst {
         tag: TagKey,
         effects: Vec<EffectAst>,
     },
+    TagAll {
+        tag: TagKey,
+        effect: Box<EffectAst>,
+    },
+    ForEachOwnerOfTagged {
+        tag: TagKey,
+        effects: Vec<EffectAst>,
+    },
     ForEachOpponentDoesNot {
         effects: Vec<EffectAst>,
         predicate: Option<PredicateAst>,

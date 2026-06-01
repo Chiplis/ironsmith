@@ -364,6 +364,7 @@ fn vortex_elemental_strict_parser_and_compiled_text_regression() {
     assert!(
         ability_debug.contains("MoveToZoneEffect")
             && ability_debug.contains("ShuffleLibraryEffect")
+            && ability_debug.contains("ForEachOwnerOfTaggedEffect")
             && ability_debug.contains("in_combat_with_source: true")
             && ability_debug.contains("TargetOnlyEffect")
             && ability_debug.contains("MustBlockSpecificAttacker"),
@@ -433,6 +434,112 @@ fn vortex_elemental_first_ability_moves_source_and_combatants_runtime() {
     assert!(
         game.battlefield.contains(&bystander),
         "unrelated creatures not blocking or blocked by Vortex Elemental should remain on the battlefield"
+    );
+}
+
+#[test]
+fn vortex_elemental_first_ability_shuffles_each_affected_owner_once_after_all_moves() {
+    let def = parse_oracle_card_definition("Vortex Elemental");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Activated(activated) = &ability.kind else {
+                return None;
+            };
+            format!("{:?}", activated.effects)
+                .contains("MoveToZoneEffect")
+                .then_some(activated)
+        })
+        .expect("Vortex Elemental should have a library-move activated ability");
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let vortex = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let blocker_def = CardDefinitionBuilder::new(CardId::from_raw(92_022), "Shared Owner Blocker")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let first_blocker = game.create_object_from_definition(&blocker_def, bob, Zone::Battlefield);
+    let second_blocker = game.create_object_from_definition(&blocker_def, bob, Zone::Battlefield);
+    game.combat = Some(crate::combat_state::CombatState {
+        attackers: vec![crate::combat_state::AttackerInfo {
+            creature: vortex,
+            target: crate::combat_state::AttackTarget::Player(bob),
+        }],
+        blockers: HashMap::from([(vortex, vec![first_blocker, second_blocker])]),
+        ..Default::default()
+    });
+
+    let effects = activated.effects.flattened_default_effects();
+    assert_eq!(
+        effects.len(),
+        2,
+        "Vortex Elemental should move all affected objects before a distinct-owner shuffle step"
+    );
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(vortex, alice, &mut dm);
+    let move_outcome = effects[0]
+        .0
+        .execute(&mut game, &mut ctx)
+        .expect("Vortex Elemental move step should resolve");
+    assert_eq!(
+        move_outcome
+            .events_of_type::<crate::events::ShuffleLibraryEvent>()
+            .count(),
+        0,
+        "the move step must not shuffle before all affected objects are on top"
+    );
+    assert!(
+        game.player(alice).is_some_and(|player| player.library.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Vortex Elemental")
+        })),
+        "Vortex Elemental should be in its owner's library before any shuffle"
+    );
+    let bob_blockers_in_library = game
+        .player(bob)
+        .map(|player| {
+            player
+                .library
+                .iter()
+                .filter(|id| {
+                    game.object(**id)
+                        .is_some_and(|object| object.name == "Shared Owner Blocker")
+                })
+                .count()
+        })
+        .unwrap_or_default();
+    assert_eq!(
+        bob_blockers_in_library, 2,
+        "both same-owner blockers should be in their owner's library before any shuffle"
+    );
+
+    let shuffle_outcome = effects[1]
+        .0
+        .execute(&mut game, &mut ctx)
+        .expect("Vortex Elemental owner-shuffle step should resolve");
+    let shuffle_players = shuffle_outcome
+        .events_of_type::<crate::events::ShuffleLibraryEvent>()
+        .map(|event| event.player)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        shuffle_players.len(),
+        2,
+        "each affected owner should shuffle exactly once"
+    );
+    assert_eq!(
+        shuffle_players.iter().filter(|player| **player == alice).count(),
+        1,
+        "Vortex Elemental's owner should shuffle once"
+    );
+    assert_eq!(
+        shuffle_players.iter().filter(|player| **player == bob).count(),
+        1,
+        "the shared owner of two affected blockers should shuffle once"
     );
 }
 

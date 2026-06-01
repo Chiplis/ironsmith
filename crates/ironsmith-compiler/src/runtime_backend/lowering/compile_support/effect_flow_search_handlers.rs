@@ -376,6 +376,23 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             let effect = Effect::for_each_tagged(effective_tag, inner_effects);
             (vec![effect], inner_choices)
         }
+        EffectAst::ForEachOwnerOfTagged { tag, effects } => {
+            let effective_tag = if tag.as_str() == IT_TAG {
+                ctx.last_object_tag
+                    .clone()
+                    .unwrap_or_else(|| IT_TAG.to_string())
+            } else {
+                tag.as_str().to_string()
+            };
+
+            let (inner_effects, inner_choices) = compile_effects_in_iterated_player_context(
+                effects,
+                ctx,
+                Some(effective_tag.clone()),
+            )?;
+            let effect = Effect::for_each_owner_of_tagged(effective_tag, inner_effects);
+            (vec![effect], inner_choices)
+        }
         EffectAst::ForEachTaggedPlayer { tag, effects } => {
             let (inner_effects, inner_choices) =
                 compile_effects_in_iterated_player_context(effects, ctx, None)?;

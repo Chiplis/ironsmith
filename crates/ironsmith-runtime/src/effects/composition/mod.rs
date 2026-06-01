@@ -67,7 +67,8 @@ pub use emit_keyword_action::EmitKeywordActionEffect;
 pub use execute_with_source::ExecuteWithSourceEffect;
 pub use for_each_object::ForEachObject;
 pub use for_each_tagged::{
-    ForEachControllerOfTaggedEffect, ForEachTaggedEffect, ForEachTaggedPlayerEffect,
+    ForEachControllerOfTaggedEffect, ForEachOwnerOfTaggedEffect, ForEachTaggedEffect,
+    ForEachTaggedPlayerEffect,
 };
 pub use for_players::ForPlayersEffect;
 pub use if_effect::IfEffect;

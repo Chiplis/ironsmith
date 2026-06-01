@@ -48,6 +48,10 @@ macro_rules! nested_effects_variants {
                 effects: $effects,
                 ..
             }
+            | EffectAst::ForEachOwnerOfTagged {
+                effects: $effects,
+                ..
+            }
             | EffectAst::ForEachOpponentDoesNot {
                 effects: $effects,
                 ..
@@ -147,6 +151,8 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ForEachTargetPlayers { .. } => {}
         EffectAst::ForEachObject { .. } => {}
         EffectAst::ForEachTagged { .. } => {}
+        EffectAst::TagAll { .. } => {}
+        EffectAst::ForEachOwnerOfTagged { .. } => {}
         EffectAst::ForEachOpponentDoesNot { .. } => {}
         EffectAst::ForEachPlayerDoesNot { .. } => {}
         EffectAst::ForEachOpponentDid { .. } => {}
@@ -178,6 +184,9 @@ pub(crate) fn for_each_nested_effects(
         }
         nested_effects_variants!(effects) => {
             visit(effects);
+        }
+        EffectAst::TagAll { effect, .. } => {
+            visit(std::slice::from_ref(effect.as_ref()));
         }
         EffectAst::UnlessAction {
             effects,
@@ -212,6 +221,9 @@ pub(crate) fn for_each_nested_effects_mut(
         nested_effects_variants!(effects) => {
             visit(effects);
         }
+        EffectAst::TagAll { effect, .. } => {
+            visit(std::slice::from_mut(effect.as_mut()));
+        }
         EffectAst::UnlessAction {
             effects,
             alternative,
@@ -244,6 +256,9 @@ pub(crate) fn try_for_each_nested_effects_mut<E>(
         }
         nested_effects_variants!(effects) => {
             visit(effects)?;
+        }
+        EffectAst::TagAll { effect, .. } => {
+            visit(std::slice::from_mut(effect.as_mut()))?;
         }
         EffectAst::UnlessAction {
             effects,

@@ -145,6 +145,15 @@ fn compile_effect_inner(
     if let EffectAst::Sequence { effects } = effect {
         return compile_effects(effects, ctx);
     }
+    if let EffectAst::TagAll { tag, effect } = effect {
+        let (mut compiled, choices) = compile_effect(effect, ctx)?;
+        if compiled.len() != 1 {
+            return Err(CardTextError::ParseError(
+                "tag-all wrapper requires exactly one compiled effect".to_string(),
+            ));
+        }
+        return Ok((vec![compiled.remove(0).tag(tag.clone())], choices));
+    }
     if let EffectAst::ManaRestricted {
         effects,
         restrictions,

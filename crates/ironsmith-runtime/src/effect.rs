@@ -3264,6 +3264,11 @@ impl Effect {
         Self::new(ForEachControllerOfTaggedEffect::new(tag.into(), effects))
     }
 
+    pub fn for_each_owner_of_tagged(tag: impl Into<TagKey>, effects: Vec<Effect>) -> Self {
+        use crate::effects::ForEachOwnerOfTaggedEffect;
+        Self::new(ForEachOwnerOfTaggedEffect::new(tag.into(), effects))
+    }
+
     /// Execute effects for each player tagged under the given tag.
     ///
     /// Sets `ctx.iterated_player` for each iteration, allowing inner effects

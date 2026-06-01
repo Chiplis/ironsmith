@@ -1713,6 +1713,7 @@ fn rewrite_copy_count_to_times_paid_label_rewrite(effects: &mut [EffectAst], lab
             | EffectAst::ForEachTargetPlayers { effects, .. }
             | EffectAst::ForEachObject { effects, .. }
             | EffectAst::ForEachTagged { effects, .. }
+            | EffectAst::ForEachOwnerOfTagged { effects, .. }
             | EffectAst::ForEachOpponentDoesNot { effects, .. }
             | EffectAst::ForEachPlayerDoesNot { effects, .. }
             | EffectAst::ForEachOpponentDid { effects, .. }
@@ -1728,6 +1729,12 @@ fn rewrite_copy_count_to_times_paid_label_rewrite(effects: &mut [EffectAst], lab
             | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
             | EffectAst::VoteOption { effects, .. } => {
                 rewrite_copy_count_to_times_paid_label_rewrite(effects, label);
+            }
+            EffectAst::TagAll { effect, .. } => {
+                rewrite_copy_count_to_times_paid_label_rewrite(
+                    std::slice::from_mut(effect.as_mut()),
+                    label,
+                );
             }
             EffectAst::UnlessAction {
                 effects,

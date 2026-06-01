@@ -129,6 +129,11 @@ fn validate_effect_for_iterated_player(
     {
         return validate_effects_for_iterated_player(&for_each_controller.effects, true, context);
     }
+    if let Some(for_each_owner) = effect
+        .downcast_ref::<crate::effects::ForEachOwnerOfTaggedEffect<crate::effect::Effect>>()
+    {
+        return validate_effects_for_iterated_player(&for_each_owner.effects, true, context);
+    }
     if let Some(for_each_player) =
         effect.downcast_ref::<crate::effects::ForEachTaggedPlayerEffect<crate::effect::Effect>>()
     {

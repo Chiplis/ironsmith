@@ -1119,6 +1119,18 @@ fn advance_reference_frame_for_effect(
         | EffectAst::ForEachTaggedPlayer { effects, .. } => {
             advance_effects_in_iterated_player_context(&effects, id_gen, frame, None)?;
         }
+        EffectAst::ForEachOwnerOfTagged { tag, effects } => {
+            let tagged_object = if tag.as_str() == IT_TAG {
+                frame.last_object_tag.clone()
+            } else {
+                Some(tag.as_str().to_string())
+            };
+            advance_effects_in_iterated_player_context(&effects, id_gen, frame, tagged_object)?;
+        }
+        EffectAst::TagAll { tag, effect } => {
+            advance_reference_frames(std::slice::from_ref(effect.as_ref()), id_gen, frame)?;
+            frame.last_object_tag = Some(tag.as_str().to_string());
+        }
         EffectAst::ForEachObject { effects, .. } => {
             let saved = frame.clone();
             let mut nested = saved.clone();
@@ -1360,6 +1372,7 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
         | EffectAst::ForEachPlayersFiltered { effects, .. }
         | EffectAst::ForEachPlayer { effects }
         | EffectAst::ForEachTargetPlayers { effects, .. }
+        | EffectAst::ForEachOwnerOfTagged { effects, .. }
         | EffectAst::ForEachTaggedPlayer { effects, .. } => {
             effects.iter().any(effect_can_supply_prior_effect_memory)
         }
@@ -2988,7 +3001,12 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
         },
         EffectAst::ForEachObject { filter, .. } => bind_unresolved_it_in_filter(filter, seed_tag),
         EffectAst::ForEachTagged { tag, .. }
+        | EffectAst::ForEachOwnerOfTagged { tag, .. }
         | EffectAst::ForEachTaggedPlayer { tag, .. } => bind_unresolved_it_in_tag(tag, seed_tag),
+        EffectAst::TagAll { tag, effect } => {
+            bind_unresolved_it_in_tag(tag, seed_tag)
+                + bind_unresolved_it_in_effect(effect.as_mut(), seed_tag)
+        }
         EffectAst::ForEachPlayersFiltered { filter: player, .. } => {
             bind_unresolved_it_in_player_filter(player, seed_tag)
         }

@@ -326,6 +326,14 @@ impl Effect {
             }
             return;
         }
+        if let Some(for_each_owner) =
+            self.downcast_ref::<crate::effects::ForEachOwnerOfTaggedEffect<Effect>>()
+        {
+            for effect in &for_each_owner.effects {
+                visitor(effect);
+            }
+            return;
+        }
         if let Some(for_each_player) =
             self.downcast_ref::<crate::effects::ForEachTaggedPlayerEffect<Effect>>()
         {
@@ -740,6 +748,16 @@ impl Effect {
         effects: Vec<Effect>,
     ) -> Self {
         Self::new(crate::effects::ForEachTaggedPlayerEffect {
+            tag: tag.into(),
+            effects,
+        })
+    }
+
+    pub fn for_each_owner_of_tagged(
+        tag: impl Into<crate::tag::TagKey>,
+        effects: Vec<Effect>,
+    ) -> Self {
+        Self::new(crate::effects::ForEachOwnerOfTaggedEffect {
             tag: tag.into(),
             effects,
         })

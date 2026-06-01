@@ -743,6 +743,14 @@ where
             convert_effects(payload.effects.iter().cloned(), hooks)?,
         )));
     }
+    if let Some(payload) =
+        M::downcast_ref::<ironsmith_core::ForEachOwnerOfTaggedEffect<M::Effect>>(&effect)
+    {
+        return Ok(Effect::new(crate::effects::ForEachOwnerOfTaggedEffect::new(
+            payload.tag.clone(),
+            convert_effects(payload.effects.iter().cloned(), hooks)?,
+        )));
+    }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::VoteEffect<M::Effect>>(&effect) {
         let converted = match &payload.choice {
             ironsmith_core::VoteChoice::NamedOptions(options) => {

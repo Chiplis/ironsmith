@@ -49,6 +49,7 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
         | EffectAst::ForEachTargetPlayers { effects, .. }
         | EffectAst::ForEachObject { effects, .. }
         | EffectAst::ForEachTagged { effects, .. }
+        | EffectAst::ForEachOwnerOfTagged { effects, .. }
         | EffectAst::ForEachOpponentDoesNot { effects, .. }
         | EffectAst::ForEachPlayerDoesNot { effects, .. }
         | EffectAst::ForEachOpponentDid { effects, .. }
@@ -65,6 +66,7 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
         | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
         | EffectAst::VoteOption { effects, .. }
         | EffectAst::ManaRestricted { effects, .. } => normalize_effects_vec(effects),
+        EffectAst::TagAll { effect, .. } => normalize_nested_effects(effect),
         EffectAst::UnlessAction {
             effects,
             alternative,

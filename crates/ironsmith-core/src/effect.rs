@@ -6082,6 +6082,12 @@ pub struct ForEachControllerOfTaggedEffect<E> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ForEachOwnerOfTaggedEffect<E> {
+    pub tag: crate::tag::TagKey,
+    pub effects: Vec<E>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ForEachTaggedPlayerEffect<E> {
     pub tag: crate::tag::TagKey,
     pub effects: Vec<E>,

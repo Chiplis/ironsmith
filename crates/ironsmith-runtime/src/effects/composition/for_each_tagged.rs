@@ -145,6 +145,21 @@ pub struct ForEachControllerOfTaggedEffect {
     pub effects: Vec<Effect>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ForEachOwnerOfTaggedEffect {
+    pub tag: TagKey,
+    pub effects: Vec<Effect>,
+}
+
+impl ForEachOwnerOfTaggedEffect {
+    pub fn new(tag: impl Into<TagKey>, effects: Vec<Effect>) -> Self {
+        Self {
+            tag: tag.into(),
+            effects,
+        }
+    }
+}
+
 impl ForEachControllerOfTaggedEffect {
     /// Create a new ForEachControllerOfTagged effect.
     pub fn new(tag: impl Into<TagKey>, effects: Vec<Effect>) -> Self {
@@ -202,6 +217,47 @@ impl EffectExecutor for ForEachControllerOfTaggedEffect {
         }
         ctx.effect_outcomes
             .remove(&crate::effect::EffectId::TAGGED_COUNT);
+
+        Ok(EffectOutcome::aggregate_summing_counts(outcomes))
+    }
+}
+
+impl EffectExecutor for ForEachOwnerOfTaggedEffect {
+    fn clone_box(&self) -> Box<dyn EffectExecutor> {
+        Box::new(self.clone())
+    }
+
+    fn visit_child_effects(&self, visitor: &mut dyn FnMut(&Effect)) {
+        for effect in &self.effects {
+            visitor(effect);
+        }
+    }
+
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let Some(tagged) = ctx.get_tagged_all(&self.tag) else {
+            return Ok(EffectOutcome::count(0));
+        };
+        if tagged.is_empty() {
+            return Ok(EffectOutcome::count(0));
+        }
+
+        let mut owners: Vec<PlayerId> = tagged.iter().map(|snapshot| snapshot.owner).collect();
+        owners.sort_by_key(|player| player.0);
+        owners.dedup();
+
+        let mut outcomes = Vec::new();
+        for owner in owners {
+            ctx.with_temp_iterated_player(Some(owner), |ctx| {
+                for effect in &self.effects {
+                    outcomes.push(execute_effect(game, effect, ctx)?);
+                }
+                Ok::<(), ExecutionError>(())
+            })?;
+        }
 
         Ok(EffectOutcome::aggregate_summing_counts(outcomes))
     }

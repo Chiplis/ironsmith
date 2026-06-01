@@ -551,30 +551,41 @@ pub(crate) fn parse_put_into_hand(
         let mut target_filter = ObjectFilter::default();
         target_filter.any_of = vec![ObjectFilter::source(), combatants];
 
-        let mut effects = vec![EffectAst::subject_verb_move_to_zone(
-            TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(target_tokens)),
-            Zone::Library,
-            true,
-            ReturnControllerAst::Preserve,
-            false,
-            None,
-        )];
+        let move_effect = EffectAst::ForEachObject {
+            filter: target_filter.clone(),
+            effects: vec![EffectAst::subject_verb_move_to_zone(
+                TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(target_tokens)),
+                Zone::Library,
+                true,
+                ReturnControllerAst::Preserve,
+                false,
+                None,
+            )],
+        };
 
         if destination_words
             .windows(3)
             .any(|window| matches!(window, ["those", "players", "shuffle"]))
         {
-            effects.push(EffectAst::subject_verb(
-                SubjectVerbRoleAst::LibraryOwner,
-                PlayerAst::ItsOwner,
-                SubjectVerbActionAst::ShuffleLibrary,
-            ));
+            return Some(EffectAst::Sequence {
+                effects: vec![
+                    EffectAst::TagAll {
+                        tag: TagKey::from(IT_TAG),
+                        effect: Box::new(move_effect),
+                    },
+                    EffectAst::ForEachOwnerOfTagged {
+                        tag: TagKey::from(IT_TAG),
+                        effects: vec![EffectAst::subject_verb(
+                            SubjectVerbRoleAst::LibraryOwner,
+                            PlayerAst::That,
+                            SubjectVerbActionAst::ShuffleLibrary,
+                        )],
+                    },
+                ],
+            });
         }
 
-        Some(EffectAst::ForEachObject {
-            filter: target_filter,
-            effects,
-        })
+        Some(move_effect)
     }
 
     fn expand_graveyard_or_hand_disjunction(

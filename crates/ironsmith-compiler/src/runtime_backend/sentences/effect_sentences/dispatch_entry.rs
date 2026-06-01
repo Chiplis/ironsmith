@@ -3139,6 +3139,7 @@ fn token_copy_followup_container_effects_mut(
         | EffectAst::ForEachTargetPlayers { effects, .. }
         | EffectAst::ForEachObject { effects, .. }
         | EffectAst::ForEachTagged { effects, .. }
+        | EffectAst::ForEachOwnerOfTagged { effects, .. }
         | EffectAst::ForEachOpponentDoesNot { effects, .. }
         | EffectAst::ForEachPlayerDoesNot { effects, .. }
         | EffectAst::ForEachOpponentDid { effects, .. }
@@ -3153,6 +3154,13 @@ fn token_copy_followup_container_effects_mut(
         | EffectAst::DelayedTriggerThisTurn { effects, .. }
         | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
         | EffectAst::VoteOption { effects, .. } => Some(effects),
+        EffectAst::TagAll { effect, .. } => {
+            if let EffectAst::Sequence { effects } = effect.as_mut() {
+                Some(effects)
+            } else {
+                None
+            }
+        }
         _ => None,
     }
 }
