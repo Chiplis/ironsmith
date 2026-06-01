@@ -2664,6 +2664,11 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
             3,
         ));
     }
+    if words.get(..2).is_some_and(|prefix| prefix == ["that", "many"])
+        || words.get(..2).is_some_and(|prefix| prefix == ["that", "much"])
+    {
+        return Some((Value::EventValue(EventValueSpec::Amount), 2));
+    }
     if words.len() >= 5 && NUMBER_OF_REMOVED_THIS_WAY_PATTERN.matches_words(words) {
         return Some((Value::EventValue(EventValueSpec::Amount), words.len()));
     }

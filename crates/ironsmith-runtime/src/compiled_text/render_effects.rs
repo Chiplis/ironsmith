@@ -32607,6 +32607,18 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         return format!("{payer} {} {payment}", player_verb(&payer, "pay", "pays"));
     }
+    if let Some(pay_any_mana) = effect.downcast_ref::<crate::effects::PayAnyManaEffect>() {
+        let payer = describe_choose_spec(&pay_any_mana.player);
+        let payment = if pay_any_mana.min_amount == 0 {
+            "any amount of mana".to_string()
+        } else {
+            format!("{} or more mana", pay_any_mana.min_amount)
+        };
+        if payer == "you" {
+            return format!("Pay {payment}");
+        }
+        return format!("{payer} {} {payment}", player_verb(&payer, "pay", "pays"));
+    }
     if let Some(pay_energy) = effect.downcast_ref::<crate::effects::PayEnergyEffect>() {
         let payer = describe_choose_spec(&pay_energy.player);
         let amount = describe_energy_payment_amount(&pay_energy.amount);

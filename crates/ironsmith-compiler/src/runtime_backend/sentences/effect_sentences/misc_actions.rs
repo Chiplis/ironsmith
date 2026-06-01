@@ -882,6 +882,11 @@ pub(crate) fn parse_pay(
     {
         return Ok(EffectAst::subject_verb_pay_any_energy(player, 0));
     }
+    if grammar::words_match_any_prefix(tokens, ANY_AMOUNT_OF_PREFIXES).is_some()
+        && grammar::contains_word(tokens, "mana")
+    {
+        return Ok(EffectAst::subject_verb_pay_any_mana(player, 0));
+    }
     if grammar::words_match_any_prefix(tokens, &[&["one", "or", "more"]]).is_some()
         && (grammar::contains_word(tokens, "e") || energy_symbol_count > 0)
     {

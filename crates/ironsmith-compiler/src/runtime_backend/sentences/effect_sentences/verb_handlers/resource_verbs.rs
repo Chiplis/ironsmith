@@ -544,6 +544,35 @@ pub(crate) fn parse_look(
         return Ok(EffectAst::subject_verb_look_at_hand(target));
     }
 
+    if let Some((count, used)) = parse_value(&clause_tokens) {
+        let mut idx = used;
+        if clause_tokens
+            .get(idx)
+            .and_then(OwnedLexToken::as_word)
+            .is_some_and(|w| RESOURCE_CARD_OR_CARDS_WORD_PATTERN.matches_word(w))
+        {
+            idx += 1;
+            let tail_words = crate::runtime_backend::token_word_refs(&clause_tokens[idx..]);
+            let owner_start = if tail_words.starts_with(&["from", "the", "top", "of"]) {
+                Some(4)
+            } else if tail_words.starts_with(&["from", "top", "of"]) {
+                Some(3)
+            } else {
+                None
+            };
+            if let Some(owner_start) = owner_start
+                && let Some((player, used_owner_words)) = parse_library_owner(&tail_words[owner_start..])
+                && owner_start + used_owner_words == tail_words.len()
+            {
+                return Ok(EffectAst::subject_verb_look_at_top_cards(
+                    player,
+                    count,
+                    TagKey::from(IT_TAG),
+                ));
+            }
+        }
+    }
+
     let Some(top_idx) = find_index(&clause_tokens, |t| {
         RESOURCE_TOP_WORD_PATTERN.matches_token(t)
     }) else {

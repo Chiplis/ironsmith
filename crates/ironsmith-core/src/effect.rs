@@ -1836,6 +1836,18 @@ impl PayManaEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct PayAnyManaEffect {
+    pub player: ChooseSpec,
+    pub min_amount: u32,
+}
+
+impl PayAnyManaEffect {
+    pub fn new(player: ChooseSpec, min_amount: u32) -> Self {
+        Self { player, min_amount }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct AmassEffect {
     pub subtype: Option<crate::types::Subtype>,
     pub amount: Value,

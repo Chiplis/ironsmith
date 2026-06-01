@@ -1941,6 +1941,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::LoseGame
             | SubjectVerbActionAst::WinGame
             | SubjectVerbActionAst::PayAnyEnergy { .. }
+            | SubjectVerbActionAst::PayAnyMana { .. }
             | SubjectVerbActionAst::PayMana { .. }
             | SubjectVerbActionAst::DiscardHand
             | SubjectVerbActionAst::Detain { .. }
