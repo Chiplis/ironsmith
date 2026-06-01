@@ -264,6 +264,9 @@ pub(crate) fn has_divided_evenly_clause_sentence_lexed(words: &[&str]) -> bool {
 }
 
 pub(crate) fn has_different_names_clause_sentence_lexed(words: &[&str]) -> bool {
+    if words.first().is_some_and(|word| *word == "choose") {
+        return false;
+    }
     DIFFERENT_NAMES_PATTERN.matches_words(words)
 }
 

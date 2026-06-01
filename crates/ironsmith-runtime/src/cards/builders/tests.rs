@@ -36985,6 +36985,44 @@ fn parse_oracle_elemental_teachings_divvy_surface_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_battle_for_bretagard_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition("Battle for Bretagard");
+    let rendered = debug_compiled_lines(&def).join(" ").to_ascii_lowercase();
+
+    assert!(
+        rendered.contains(
+            "choose any number of artifact tokens and/or creature tokens you control with different names. for each of them, create a token that's a copy of it"
+        ),
+        "expected Battle for Bretagard chapter III to render its distinct-name token-copy choice, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("ChooseObjectsEffect")
+            && debug.contains("distinct_names: true")
+            && debug.contains("token: true")
+            && debug.contains("ForEachTaggedEffect")
+            && debug.contains("CreateTokenCopyEffect"),
+        "expected Battle for Bretagard to preserve a structural distinct-name token choice and per-object copy, got {debug}"
+    );
+
+    let oracle = oracle_text_by_name()
+        .get("Battle for Bretagard")
+        .expect("missing Battle for Bretagard oracle text");
+    let rendered_lines = debug_compiled_lines(&def);
+    let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+        crate::semantic_compare::compare_card_semantics_scored(
+            "Battle for Bretagard",
+            oracle,
+            &rendered_lines,
+            crate::semantic_compare::report_embedding_config(),
+        );
+    assert!(similarity >= 0.99, "expected >=0.99 similarity, got {similarity}");
+    assert!(!mismatch, "expected no semantic mismatch, got {rendered}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_split_the_spoils_divvy_uses_splitter_then_opponent_choice() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Split the Spoils")
         .mana_cost(ManaCost::from_pips(vec![

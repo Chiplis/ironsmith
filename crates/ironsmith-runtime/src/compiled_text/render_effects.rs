@@ -20798,7 +20798,9 @@ pub(super) fn describe_choose_then_for_each_copy(
     }
     let create_copy =
         for_each.effects[0].downcast_ref::<crate::effects::CreateTokenCopyEffect>()?;
-    if !matches!(create_copy.target, ChooseSpec::Tagged(ref tag) if tag == &choose.tag) {
+    if !matches!(create_copy.target, ChooseSpec::Iterated)
+        && !matches!(create_copy.target, ChooseSpec::Tagged(ref tag) if tag == &choose.tag)
+    {
         return None;
     }
     if create_copy.controller != PlayerFilter::You
@@ -20822,13 +20824,31 @@ pub(super) fn describe_choose_then_for_each_copy(
         return None;
     }
 
-    let selected = describe_choose_spec(
-        &ChooseSpec::target(ChooseSpec::Object(choose.filter.clone())).with_count(choose.count),
-    );
-    Some(format!(
-        "For each of {selected}, create {} tokens that are copies of that permanent",
-        describe_value(&create_copy.count)
-    ))
+    let selected = if choose.count.min == 0
+        && choose.count.max.is_none()
+        && !choose.count.dynamic_x
+        && !choose.count.up_to_x
+        && !choose.count.random
+        && choose.filter.token
+        && choose.filter.distinct_names
+        && choose.filter.controller == Some(PlayerFilter::You)
+        && choose.filter.card_types.len() == 2
+        && choose.filter.card_types.contains(&CardType::Artifact)
+        && choose.filter.card_types.contains(&CardType::Creature)
+    {
+        "any number of artifact tokens and/or creature tokens you control with different names"
+            .to_string()
+    } else {
+        describe_choose_spec(&ChooseSpec::Object(choose.filter.clone()).with_count(choose.count))
+    };
+    let copy_action = match create_copy.count {
+        Value::Fixed(1) => "create a token that's a copy of it".to_string(),
+        _ => format!(
+            "create {} tokens that are copies of it",
+            describe_value(&create_copy.count)
+        ),
+    };
+    Some(format!("Choose {selected}. For each of them, {copy_action}"))
 }
 
 pub(super) fn describe_choose_then_cant_pile_restriction(
