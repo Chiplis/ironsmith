@@ -41569,6 +41569,165 @@ fn selvala_eager_trailblazer_creature_spell_trigger_creates_mercenary_token() {
     );
 }
 
+fn dovescape_test_spell(
+    name: &str,
+    card_types: Vec<CardType>,
+    mana_cost: ManaCost,
+) -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(card_types)
+        .mana_cost(mana_cost)
+        .build()
+}
+
+fn dovescape_spell_cast_event(spell: ObjectId, caster: PlayerId) -> crate::triggers::TriggerEvent {
+    crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::spells::SpellCastEvent::new(spell, caster, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    )
+}
+
+#[test]
+fn dovescape_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Dovescape");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+
+    assert!(
+        def.abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, AbilityKind::Triggered(_))),
+        "Dovescape should parse its noncreature-spell trigger strictly"
+    );
+    assert!(
+        ability_debug.contains("CounterEffect")
+            && ability_debug.contains("CreateTokenEffect")
+            && ability_debug.contains("ManaValueOf")
+            && ability_debug.contains("triggering")
+            && ability_debug.contains("WhereXIs"),
+        "Dovescape should structurally counter the triggering spell and create X Birds from its mana value, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains("whenever a player casts a noncreature spell, counter it")
+            && rendered.contains(
+                "that player creates x 1/1 white and blue bird creature tokens with flying, where x is that spell's mana value"
+            ),
+        "Dovescape compiled text should preserve the where-X token clause, got {rendered}"
+    );
+}
+
+#[test]
+fn dovescape_counters_noncreature_spell_and_creates_birds_equal_to_mana_value() {
+    let def = parse_oracle_card_definition("Dovescape");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let dovescape_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let spell_def = dovescape_test_spell(
+        "Bob's Probe",
+        vec![CardType::Instant],
+        ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)], vec![ManaSymbol::Blue]]),
+    );
+    let spell_id = game.create_object_from_definition(&spell_def, bob, Zone::Stack);
+    let spell_stable_id = game
+        .object(spell_id)
+        .expect("Bob's spell should exist on the stack")
+        .stable_id;
+    game.push_to_stack(crate::game_state::StackEntry::new(spell_id, bob));
+
+    let event = dovescape_spell_cast_event(spell_id, bob);
+    let triggers = crate::triggers::check_triggers(&game, &event);
+    assert_eq!(
+        triggers
+            .iter()
+            .filter(|entry| entry.source == dovescape_id)
+            .count(),
+        1,
+        "Dovescape should trigger once for a noncreature spell"
+    );
+
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for trigger in triggers {
+        trigger_queue.add(trigger);
+    }
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Dovescape trigger should go on the stack");
+    crate::game_loop::resolve_stack_entry(&mut game).expect("Dovescape trigger should resolve");
+
+    let moved_spell_id = game
+        .find_object_by_stable_id(spell_stable_id)
+        .expect("countered spell should still be findable by stable id");
+    assert_eq!(
+        game.object(moved_spell_id)
+            .expect("countered spell should still exist")
+            .zone,
+        Zone::Graveyard,
+        "Dovescape should counter the triggering spell into its owner's graveyard"
+    );
+    assert!(
+        !game.stack.iter().any(|entry| entry.object_id == spell_id),
+        "countered spell should no longer be on the stack"
+    );
+
+    let bird_tokens = game
+        .objects_in_zone(Zone::Battlefield)
+        .into_iter()
+        .filter(|&id| id != dovescape_id)
+        .filter_map(|id| game.object(id).map(|object| (id, object)))
+        .filter(|(_, object)| {
+            matches!(object.kind, crate::object::ObjectKind::Token)
+                && object.name == "Bird"
+                && object.subtypes.contains(&Subtype::Bird)
+                && game.controller_of(object) == bob
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        bird_tokens.len(),
+        3,
+        "Dovescape should create one Bird per mana value of the triggering spell"
+    );
+    for (token_id, token) in bird_tokens {
+        assert_eq!(game.current_power(token_id), Some(1));
+        assert_eq!(game.current_toughness(token_id), Some(1));
+        assert_eq!(
+            token.colors(),
+            crate::color::ColorSet::WHITE.union(crate::color::ColorSet::BLUE)
+        );
+        assert!(
+            game.object_has_static_ability_id(token_id, StaticAbilityId::Flying),
+            "Dovescape's Bird tokens should have flying"
+        );
+    }
+}
+
+#[test]
+fn dovescape_does_not_trigger_for_creature_spells() {
+    let def = parse_oracle_card_definition("Dovescape");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let dovescape_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let creature_def = dovescape_test_spell(
+        "Bob's Creature",
+        vec![CardType::Creature],
+        ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]),
+    );
+    let creature_id = game.create_object_from_definition(&creature_def, bob, Zone::Stack);
+
+    let event = dovescape_spell_cast_event(creature_id, bob);
+    let triggers = crate::triggers::check_triggers(&game, &event);
+    assert_eq!(
+        triggers
+            .iter()
+            .filter(|entry| entry.source == dovescape_id)
+            .count(),
+        0,
+        "Dovescape should not trigger for creature spells"
+    );
+}
+
 #[test]
 fn when_we_were_young_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("When We Were Young");

@@ -321,6 +321,9 @@ const ETB_EXILED_CARD_MANA_VALUE_PATTERN: ClauseShape<'static> = clause_shape!(
 const ETB_TRIGGERING_SPELL_MANA_VALUE_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
+            &["the", "spell", "mana", "value"],
+            &["the", "spell's", "mana", "value"],
+            &["the", "spells", "mana", "value"],
             &["that", "spell", "mana", "value"],
             &["that", "spell's", "mana", "value"],
             &["that", "spells", "mana", "value"],
