@@ -3066,6 +3066,7 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         .or_else(|| describe_gain_control_untap_haste_structural(effects))
         .or_else(|| describe_exile_then_free_cast_while_exiled_structural(effects))
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
+        .or_else(|| describe_choose_name_target_mills_conditional_draw(effects))
         .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
 }
 
@@ -3588,6 +3589,65 @@ fn describe_choose_top_exile_then_play_structural(effects: &[Effect]) -> Option<
     Some(format!(
         "Exile the top card of your library. You may {verb} that card this turn"
     ))
+}
+
+fn describe_choose_name_target_mills_conditional_draw(effects: &[Effect]) -> Option<String> {
+    let [choose_effect, target_effect, mill_effect, conditional_effect] = effects else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseCardNameEffect>()?;
+    if choose.chooser != PlayerFilter::You || choose.filter.is_some() {
+        return None;
+    }
+    let target = target_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    if target.target != ChooseSpec::target_player() {
+        return None;
+    }
+    let tagged_mill = mill_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let mill = tagged_mill
+        .effect
+        .downcast_ref::<crate::effects::MillEffect>()?;
+    if mill.count != Value::Fixed(1) || mill.player != PlayerFilter::target_player() {
+        return None;
+    }
+    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let crate::effect::Condition::TaggedObjectMatches(milled_tag, filter) = &conditional.condition
+    else {
+        return None;
+    };
+    if milled_tag != &tagged_mill.tag {
+        return None;
+    }
+    let mut expected_filter = ObjectFilter::default();
+    expected_filter
+        .tagged_constraints
+        .push(crate::filter::TaggedObjectConstraint {
+            tag: choose.tag.clone(),
+            relation: crate::filter::TaggedOpbjectRelation::SameNameAsTagged,
+        });
+    if filter != &expected_filter {
+        return None;
+    }
+    let [draw_two_effect] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    let [draw_one_effect] = conditional.if_false.as_slice() else {
+        return None;
+    };
+    let draw_two = draw_two_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    let draw_one = draw_one_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    if draw_two.player != PlayerFilter::You
+        || draw_two.count != Value::Fixed(2)
+        || draw_one.player != PlayerFilter::You
+        || draw_one.count != Value::Fixed(1)
+    {
+        return None;
+    }
+
+    Some(
+        "Choose a card name, then target player mills a card. If a card with the chosen name was milled this way, draw two cards. Otherwise, draw a card"
+            .to_string(),
+    )
 }
 
 fn describe_exile_then_free_cast_while_exiled_structural(effects: &[Effect]) -> Option<String> {
