@@ -130,6 +130,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::SelfReplacement { .. } => {}
         EffectAst::ChooseObjects { .. } => {}
         EffectAst::ChooseObjectsAcrossZones { .. } => {}
+        EffectAst::DirectionalAdjacentPlayerControl { .. } => {}
         EffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. } => {}
         EffectAst::RepeatThisProcess => {}
         EffectAst::RepeatThisProcessMay => {}

@@ -167,6 +167,28 @@ fn commander_liara_portyr_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn order_of_succession_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Order of Succession");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let spell_debug = format!("{:#?}", def.spell_effect);
+
+    assert!(
+        def.spell_effect.is_some(),
+        "Order of Succession should parse as a strict sorcery spell"
+    );
+    assert!(
+        spell_debug.contains("ChooseNamedOptionEffect")
+            && spell_debug.contains("DirectionalAdjacentPlayerControlEffect"),
+        "expected Order of Succession to structurally choose left/right and apply directional adjacent-player control, got {spell_debug}"
+    );
+    assert_eq!(
+        rendered,
+        "You choose left or right. Starting with you and proceeding in the chosen direction, each player chooses a creature controlled by the next player in that direction. Each player gains control of the creature they chose.",
+        "Order of Succession compiled text should preserve the full directional choice-control text"
+    );
+}
+
+#[test]
 fn templar_knight_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Templar Knight");
     let rendered = unprocessed_compiled_lines(&def);

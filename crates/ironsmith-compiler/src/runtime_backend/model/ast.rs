@@ -3320,6 +3320,11 @@ pub(crate) enum EffectAst {
         zones: Vec<Zone>,
         search_mode: Option<crate::effect::SearchSelectionMode>,
     },
+    DirectionalAdjacentPlayerControl {
+        filter: ObjectFilter,
+        left_option: String,
+        right_option: String,
+    },
     MayCastMatchingSpellWithoutPayingManaCost {
         player: PlayerAst,
         zone_owner: PlayerAst,

@@ -334,6 +334,18 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                     .unwrap_or_else(|| Effect::for_players(PlayerFilter::Any, inner_effects));
             (vec![effect], inner_choices)
         }
+        EffectAst::DirectionalAdjacentPlayerControl {
+            filter,
+            left_option,
+            right_option,
+        } => {
+            let effect = Effect::new(crate::effects::DirectionalAdjacentPlayerControlEffect::new(
+                filter.clone(),
+                left_option.clone(),
+                right_option.clone(),
+            ));
+            (vec![effect], Vec::new())
+        }
         EffectAst::ForEachTargetPlayers { count, effects } => {
             let (inner_effects, inner_choices) =
                 compile_effects_in_iterated_player_context(effects, ctx, None)?;

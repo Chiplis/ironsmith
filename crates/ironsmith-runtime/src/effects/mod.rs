@@ -119,7 +119,10 @@ pub use composition::{
     VoteEffect, VoteOption, VoteResult, WithIdEffect,
 };
 pub use continuous::{ApplyContinuousEffect, ExchangeTextBoxesEffect, RuntimeModification};
-pub use control::{ExchangeControlEffect, GainControlEffect, SharedTypeConstraint};
+pub use control::{
+    DirectionalAdjacentPlayerControlEffect, ExchangeControlEffect, GainControlEffect,
+    SharedTypeConstraint,
+};
 pub use counters::{
     ForEachCounterKindPutOrRemoveEffect, MoveAllCountersEffect, MoveCountersEffect,
     MoveOneCounterEffect, ProliferateEffect, PutCountersEffect, RemoveAnyCountersAmongEffect,

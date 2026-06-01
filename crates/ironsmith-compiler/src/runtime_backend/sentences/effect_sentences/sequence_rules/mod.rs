@@ -121,6 +121,10 @@ fn first_word_tap(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "tap")
 }
 
+fn first_word_starting(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_is(sentences, sentence_idx, "starting")
+}
+
 fn first_word_choose(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "choose")
 }
@@ -618,6 +622,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 2,
         predicate: first_word_target_exile_look_or_reveal,
         parser: generic_subject_verb_sequences::pairs::parse_consult_match_move_and_bottom_remainder,
+    },
+    SequenceRuleDef {
+        name: "directional-adjacent-player-control",
+        feature_tag: Some("directional-player-choice-control"),
+        priority: 260,
+        consumed_sentences: 2,
+        predicate: first_word_starting,
+        parser: generic_subject_verb_sequences::pairs::parse_directional_adjacent_player_control,
     },
     SequenceRuleDef {
         name: "consult-match-onto-battlefield-or-into-hand",

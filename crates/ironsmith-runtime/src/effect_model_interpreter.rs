@@ -1329,6 +1329,11 @@ where
             payload.options.clone(),
         )));
     }
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::DirectionalAdjacentPlayerControlEffect>(&effect)
+    {
+        return Ok(converted);
+    }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::SetLifeTotalEffect>(&effect) {
         return Ok(Effect::new(crate::effects::SetLifeTotalEffect::new(
             payload.amount.clone(),

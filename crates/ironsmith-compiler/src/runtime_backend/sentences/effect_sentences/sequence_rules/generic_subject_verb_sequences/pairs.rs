@@ -45,6 +45,58 @@ fn look_at_top_cards_parts(effect: &EffectAst) -> Option<(PlayerAst, Value)> {
     Some((*player, count.clone()))
 }
 
+fn token_words_equal(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
+    TokenWordView::new(tokens).word_refs() == expected
+}
+
+pub(crate) fn parse_directional_adjacent_player_control(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let choose_sentence = sentences[sentence_idx].lowered();
+    let gain_sentence = sentences[sentence_idx + 1].lowered();
+    if !token_words_equal(
+        choose_sentence,
+        &[
+            "starting",
+            "with",
+            "you",
+            "and",
+            "proceeding",
+            "in",
+            "the",
+            "chosen",
+            "direction",
+            "each",
+            "player",
+            "chooses",
+            "a",
+            "creature",
+            "controlled",
+            "by",
+            "the",
+            "next",
+            "player",
+            "in",
+            "that",
+            "direction",
+        ],
+    ) || !token_words_equal(
+        gain_sentence,
+        &[
+            "each", "player", "gains", "control", "of", "the", "creature", "they", "chose",
+        ],
+    ) {
+        return Ok(None);
+    }
+
+    Ok(Some(vec![EffectAst::DirectionalAdjacentPlayerControl {
+        filter: ObjectFilter::creature(),
+        left_option: "left".to_string(),
+        right_option: "right".to_string(),
+    }]))
+}
+
 fn strip_leading_you_may(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
     let clause = LexedClause::new(tokens);
     let (_, tail) = clause.strip_any_prefix_clause(&[
