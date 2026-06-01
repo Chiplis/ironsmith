@@ -313,6 +313,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::triples::parse_top_cards_put_any_matching_to_zone_rest_bottom,
     },
     SequenceRuleDef {
+        name: "look-at-top-put-one-hand-bottom-cast-non-hand-put-all-hand",
+        feature_tag: Some("looked-cards-cast-non-hand-override"),
+        priority: 335,
+        consumed_sentences: 3,
+        predicate: first_word_look,
+        parser: generic_subject_verb_sequences::triples::parse_look_at_top_put_one_hand_bottom_cast_non_hand_put_all_hand,
+    },
+    SequenceRuleDef {
         name: "top-cards-reveal-any-matching-to-hand-rest-bottom",
         feature_tag: Some("looked-cards-revealed-hand-bottom"),
         priority: 335,

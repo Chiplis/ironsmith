@@ -601,6 +601,7 @@ pub(crate) enum PredicateAst {
     },
     SameColorManaSpentToCastThisSpellAtLeast(u32),
     ThisSpellWasCastFromZone(Zone),
+    ThisSpellWasCastFromNonHand,
     ValueComparison {
         left: Value,
         operator: crate::effect::ValueComparisonOperator,
@@ -636,7 +637,8 @@ impl PredicateAst {
             | PredicateAst::ThisSpellEscaped
             | PredicateAst::ThisSpellWasKicked
             | PredicateAst::ThisSpellPaidLabel(_)
-            | PredicateAst::ThisSpellWasCastFromZone(_) => {
+            | PredicateAst::ThisSpellWasCastFromZone(_)
+            | PredicateAst::ThisSpellWasCastFromNonHand => {
                 Some(PredicateReferenceAntecedent::SourceObject)
             }
             PredicateAst::And(left, right) | PredicateAst::Or(left, right) => left

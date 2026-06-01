@@ -3529,6 +3529,9 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if filtered.len() >= 6 && THIS_SPELL_WAS_CAST_FROM_PREFIX_PATTERN.matches_words(&filtered) {
         let zone_words = &filtered[5..];
+        if zone_words == ["anywhere", "other", "than", "your", "hand"] {
+            return Ok(PredicateAst::ThisSpellWasCastFromNonHand);
+        }
         let zone = if zone_words.len() == 1 {
             parse_zone_word(zone_words[0])
         } else if zone_words.len() == 2 && is_article(zone_words[0]) {

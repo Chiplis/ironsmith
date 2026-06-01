@@ -99,6 +99,29 @@ fn this_spell_was_cast_from_zone(
     }
 }
 
+fn this_spell_was_cast_from_non_hand(
+    game: &GameState,
+    source: ObjectId,
+    ctx: &ExecutionContext,
+) -> bool {
+    match &ctx.casting_method {
+        crate::alternative_cast::CastingMethod::Normal
+        | crate::alternative_cast::CastingMethod::FaceDown
+        | crate::alternative_cast::CastingMethod::SplitOtherHalf
+        | crate::alternative_cast::CastingMethod::Fuse => false,
+        crate::alternative_cast::CastingMethod::GrantedFlashback
+        | crate::alternative_cast::CastingMethod::GrantedEscape { .. } => true,
+        crate::alternative_cast::CastingMethod::PlayFrom { zone, .. }
+        | crate::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom { zone, .. } => {
+            *zone != Zone::Hand
+        }
+        crate::alternative_cast::CastingMethod::Alternative(idx) => game
+            .object(source)
+            .and_then(|obj| obj.alternative_casts.get(*idx))
+            .is_some_and(|method| method.cast_from_zone() != Zone::Hand),
+    }
+}
+
 fn this_spell_escaped(game: &GameState, source: ObjectId, ctx: &ExecutionContext) -> bool {
     if ctx.optional_costs_paid.was_paid_label("Escape") || source_escaped(game, source) {
         return true;
@@ -799,6 +822,7 @@ fn evaluate_condition_shared_core(
         Condition::TaggedObjectWasCast(_) => None,
         Condition::ThisSpellEscaped => Some(source_escaped(game, ctx.source)),
         Condition::ThisSpellWasCastFromZone(_) => None,
+        Condition::ThisSpellWasCastFromNonHand => None,
         Condition::NoSpellsWereCastLastTurn => {
             Some(game.turn_store.spells_cast_last_turn_total == 0)
         }
@@ -874,19 +898,7 @@ fn evaluate_condition_shared_core(
             Some(game.source_dealt_combat_damage_to_player_this_turn(ctx.source))
         }
         Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype } => {
-            let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
-            let players: Vec<PlayerId> = match player {
-                PlayerFilter::You => vec![ctx.controller],
-                PlayerFilter::Opponent => filter_ctx.opponents.clone(),
-                PlayerFilter::Specific(id) => vec![*id],
-                PlayerFilter::Any => game.players.iter().map(|p| p.id).collect(),
-                PlayerFilter::NotYou => game
-                    .players
-                    .iter()
-                    .filter_map(|p| (p.id != ctx.controller).then_some(p.id))
-                    .collect(),
-                _ => Vec::new(),
-            };
+            let players = matching_condition_players_simple(game, ctx.controller, player);
             Some(
                 game.turn_store
                     .turn_history
@@ -984,6 +996,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::SourceWasCast => {}
         Condition::ThisSpellEscaped => {}
         Condition::ThisSpellWasCastFromZone(..) => {}
+        Condition::ThisSpellWasCastFromNonHand => {}
         Condition::NoSpellsWereCastLastTurn => {}
         Condition::ItIsNight => {}
         Condition::SpellsWereCastLastTurnOrMore(..) => {}
@@ -1181,6 +1194,7 @@ pub fn evaluate_condition_external(
             .object(ctx.source)
             .is_some_and(|obj| obj.optional_costs_paid.was_kicked()),
         Condition::ThisSpellWasCastFromZone(_) => false,
+        Condition::ThisSpellWasCastFromNonHand => false,
         Condition::ThisSpellPaidLabel(label) => game
             .object(ctx.source)
             .is_some_and(|obj| obj.optional_costs_paid.was_paid_label(label)),
@@ -1225,19 +1239,7 @@ pub fn evaluate_condition_external(
             cast_count >= *count
         }
         Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype } => {
-            let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
-            let players: Vec<PlayerId> = match player {
-                PlayerFilter::You => vec![ctx.controller],
-                PlayerFilter::Opponent => filter_ctx.opponents.clone(),
-                PlayerFilter::Specific(id) => vec![*id],
-                PlayerFilter::Any => game.players.iter().map(|p| p.id).collect(),
-                PlayerFilter::NotYou => game
-                    .players
-                    .iter()
-                    .filter_map(|p| (p.id != ctx.controller).then_some(p.id))
-                    .collect(),
-                _ => Vec::new(),
-            };
+            let players = matching_condition_players_external(game, ctx, player);
             game.turn_store
                 .turn_history
                 .player_was_dealt_combat_damage_by_creature_subtype_this_turn(&players, *subtype)
@@ -2099,6 +2101,7 @@ fn evaluate_condition_simple(
             .is_some_and(|obj| obj.optional_costs_paid.was_kicked()),
         Condition::ThisSpellEscaped => source_escaped(game, source),
         Condition::ThisSpellWasCastFromZone(_) => false,
+        Condition::ThisSpellWasCastFromNonHand => false,
         Condition::ThisSpellPaidLabel(label) => game
             .object(source)
             .is_some_and(|obj| obj.optional_costs_paid.was_paid_label(label)),
@@ -2116,18 +2119,7 @@ fn evaluate_condition_simple(
             .filter(|obj| opponents.contains(&game.controller_of(obj)))
             .any(|obj| filter.matches(obj, &filter_ctx, game)),
         Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype } => {
-            let players: Vec<PlayerId> = match player {
-                PlayerFilter::You => vec![controller],
-                PlayerFilter::Opponent => opponents.clone(),
-                PlayerFilter::Specific(id) => vec![*id],
-                PlayerFilter::Any => game.players.iter().map(|p| p.id).collect(),
-                PlayerFilter::NotYou => game
-                    .players
-                    .iter()
-                    .filter_map(|p| (p.id != controller).then_some(p.id))
-                    .collect(),
-                _ => Vec::new(),
-            };
+            let players = matching_condition_players_simple(game, controller, player);
             game.turn_store
                 .turn_history
                 .player_was_dealt_combat_damage_by_creature_subtype_this_turn(&players, *subtype)
@@ -2891,19 +2883,7 @@ fn evaluate_condition(
             Ok(has_matching)
         }
         Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype } => {
-            let filter_ctx = ctx.filter_context(game);
-            let players: Vec<PlayerId> = match player {
-                PlayerFilter::You => vec![ctx.controller],
-                PlayerFilter::Opponent => filter_ctx.opponents.clone(),
-                PlayerFilter::Specific(id) => vec![*id],
-                PlayerFilter::Any => game.players.iter().map(|p| p.id).collect(),
-                PlayerFilter::NotYou => game
-                    .players
-                    .iter()
-                    .filter_map(|p| (p.id != ctx.controller).then_some(p.id))
-                    .collect(),
-                _ => Vec::new(),
-            };
+            let players = matching_condition_players_exec(game, ctx, player)?;
             Ok(game
                 .turn_store
                 .turn_history
@@ -3245,6 +3225,9 @@ fn evaluate_condition(
         Condition::ThisSpellEscaped => Ok(this_spell_escaped(game, ctx.source, ctx)),
         Condition::ThisSpellWasCastFromZone(zone) => {
             Ok(this_spell_was_cast_from_zone(game, ctx.source, ctx, *zone))
+        }
+        Condition::ThisSpellWasCastFromNonHand => {
+            Ok(this_spell_was_cast_from_non_hand(game, ctx.source, ctx))
         }
         Condition::ThisSpellPaidLabel(label) => {
             Ok(resolve_value(game, &Value::WasPaidLabel(label.clone()), ctx)? != 0)

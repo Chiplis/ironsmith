@@ -11430,6 +11430,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             };
             format!("this spell was cast from {zone_text}")
         }
+        Condition::ThisSpellWasCastFromNonHand => {
+            "this spell was cast from anywhere other than your hand".to_string()
+        }
         Condition::PlayerTappedLandForManaThisTurn { player } => {
             format!(
                 "{} tapped a land for mana this turn",
