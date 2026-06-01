@@ -653,6 +653,23 @@ pub(crate) fn parse_get(
         return Ok(EffectAst::subject_verb_energy_counters(player, count));
     }
 
+    if grammar::contains_word(tokens, "experience")
+        && (grammar::contains_word(tokens, "counter") || grammar::contains_word(tokens, "counters"))
+    {
+        let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
+        let count = if matches!(
+            clause_words.first().copied(),
+            Some("a" | "an" | "another" | "one")
+        ) {
+            Value::Fixed(1)
+        } else {
+            parse_value(tokens)
+                .map(|(value, _)| value)
+                .unwrap_or(Value::Fixed(1))
+        };
+        return Ok(EffectAst::subject_verb_experience_counters(player, count));
+    }
+
     let ticket_count = tokens
         .iter()
         .filter(|token| ticket_symbol_token(token))

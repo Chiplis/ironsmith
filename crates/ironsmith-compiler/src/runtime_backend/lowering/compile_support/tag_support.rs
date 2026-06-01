@@ -567,6 +567,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Discard { count: amount, .. }
         | SubjectVerbActionAst::PoisonCounters { count: amount }
         | SubjectVerbActionAst::EnergyCounters { count: amount }
+        | SubjectVerbActionAst::ExperienceCounters { count: amount }
         | SubjectVerbActionAst::TicketCounters { count: amount }
         | SubjectVerbActionAst::PayEnergy { amount }
         | SubjectVerbActionAst::SetLifeTotal { amount }

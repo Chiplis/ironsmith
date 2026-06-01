@@ -1926,6 +1926,17 @@ impl Effect {
         ))
     }
 
+    pub fn experience_counters(count: impl Into<Value>) -> Self {
+        Self::new(crate::effects::ExperienceCountersEffect::you(count))
+    }
+
+    pub fn experience_counters_player(
+        count: impl Into<Value>,
+        player: crate::target::PlayerFilter,
+    ) -> Self {
+        Self::new(crate::effects::ExperienceCountersEffect::new(count, player))
+    }
+
     pub fn scry(count: impl Into<Value>) -> Self {
         Self::new(crate::effects::ScryEffect::you(count))
     }

@@ -25429,6 +25429,19 @@ pub(super) fn describe_where_x_basis(value: &Value) -> Option<String> {
         Value::PowerOf(spec) => Some(describe_dynamic_counter_basis(spec, "power")),
         Value::ToughnessOf(spec) => Some(describe_dynamic_counter_basis(spec, "toughness")),
         Value::ManaValueOf(spec) => Some(describe_dynamic_counter_basis(spec, "mana value")),
+        Value::CountersOn(spec, Some(counter_type)) if matches!(spec.base(), ChooseSpec::Player(_)) => {
+            Some(format!(
+                "the number of {} counters {} have",
+                describe_counter_type(*counter_type),
+                describe_player_filter(spec_player_filter(spec)?)
+            ))
+        }
+        Value::CountersOn(spec, None) if matches!(spec.base(), ChooseSpec::Player(_)) => {
+            Some(format!(
+                "the number of counters {} have",
+                describe_player_filter(spec_player_filter(spec)?)
+            ))
+        }
         Value::Devotion { .. } | Value::DevotionToChosenColor(_) => Some(describe_value(value)),
         _ => {
             let rendered = describe_value(value);

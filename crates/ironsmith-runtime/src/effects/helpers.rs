@@ -1623,6 +1623,25 @@ pub fn resolve_value(
             }
         }
         Value::CountersOn(spec, counter_type) => {
+            if let ChooseSpec::Player(player_filter) = spec.base() {
+                let player_id = resolve_player_filter(game, player_filter, ctx)?;
+                let Some(player) = game.player(player_id) else {
+                    return Ok(0);
+                };
+                let total = match counter_type {
+                    Some(crate::object::CounterType::Poison) => player.poison_counters as i32,
+                    Some(crate::object::CounterType::Energy) => player.energy_counters as i32,
+                    Some(crate::object::CounterType::Experience) => player.experience_counters as i32,
+                    Some(_) => 0,
+                    None => {
+                        (player.poison_counters
+                            + player.energy_counters
+                            + player.experience_counters) as i32
+                    }
+                };
+                return Ok(total);
+            }
+
             if matches!(spec.base(), ChooseSpec::Source) {
                 if let Some(snapshot) =
                     source_lki_for_moved_current_object(game, ctx).or_else(|| {

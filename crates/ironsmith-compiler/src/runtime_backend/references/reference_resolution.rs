@@ -1490,6 +1490,7 @@ fn visit_subject_verb_action_values(action: &SubjectVerbActionAst, visit: &mut i
         | SubjectVerbActionAst::Discard { count, .. }
         | SubjectVerbActionAst::PoisonCounters { count }
         | SubjectVerbActionAst::EnergyCounters { count }
+        | SubjectVerbActionAst::ExperienceCounters { count }
         | SubjectVerbActionAst::TicketCounters { count }
         | SubjectVerbActionAst::PayEnergy { amount: count }
         | SubjectVerbActionAst::SetLifeTotal { amount: count }
@@ -1833,6 +1834,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Discard { count: amount, .. }
             | SubjectVerbActionAst::PoisonCounters { count: amount }
             | SubjectVerbActionAst::EnergyCounters { count: amount }
+            | SubjectVerbActionAst::ExperienceCounters { count: amount }
             | SubjectVerbActionAst::TicketCounters { count: amount }
             | SubjectVerbActionAst::PayEnergy { amount }
             | SubjectVerbActionAst::SetLifeTotal { amount }
@@ -2424,6 +2426,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             }
             SubjectVerbActionAst::PoisonCounters { count }
             | SubjectVerbActionAst::EnergyCounters { count }
+            | SubjectVerbActionAst::ExperienceCounters { count }
             | SubjectVerbActionAst::TicketCounters { count } => {
                 bind_unresolved_it_in_value(count, seed_tag)
             }

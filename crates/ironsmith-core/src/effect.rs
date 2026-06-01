@@ -5175,6 +5175,25 @@ impl EnergyCountersEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ExperienceCountersEffect {
+    pub count: Value,
+    pub player: PlayerFilter,
+}
+
+impl ExperienceCountersEffect {
+    pub fn new(count: impl Into<Value>, player: PlayerFilter) -> Self {
+        Self {
+            count: count.into(),
+            player,
+        }
+    }
+
+    pub fn you(count: impl Into<Value>) -> Self {
+        Self::new(count, PlayerFilter::You)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct TicketCountersEffect {
     pub count: Value,
     pub player: PlayerFilter,

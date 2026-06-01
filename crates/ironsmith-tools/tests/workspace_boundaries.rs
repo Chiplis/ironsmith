@@ -178,6 +178,7 @@ fn migrated_effect_payloads_are_core_owned() {
         "DiscoverEffect",
         "EmitKeywordActionEffect",
         "EnergyCountersEffect",
+        "ExperienceCountersEffect",
         "ExchangeTextBoxesEffect",
         "ExileInsteadOfGraveyardEffect",
         "ExtraTurnAfterNextTurnEffect",

@@ -5222,6 +5222,20 @@ fn compile_subject_verb_effect(
             Effect::energy_counters,
             Effect::energy_counters_player,
         ),
+        SubjectVerbActionAst::ExperienceCounters { count } => {
+            compile_subject_verb_player_value_effect(
+                role,
+                player,
+                count,
+                ctx,
+                true,
+                true,
+                true,
+                false,
+                Effect::experience_counters,
+                Effect::experience_counters_player,
+            )
+        }
         SubjectVerbActionAst::TicketCounters { count } => compile_subject_verb_player_value_effect(
             role,
             player,

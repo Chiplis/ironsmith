@@ -795,6 +795,223 @@ fn alacrian_armory_mount_vehicle_target_gets_both_branches_runtime() {
     );
 }
 
+fn ezuri_trigger_with_effect<'a>(
+    def: &'a CardDefinition,
+    effect_name: &str,
+) -> &'a crate::ability::TriggeredAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Triggered(triggered) = &ability.kind else {
+                return None;
+            };
+            format!("{:#?}", triggered.effects)
+                .contains(effect_name)
+                .then_some(triggered)
+        })
+        .unwrap_or_else(|| panic!("Ezuri should have a triggered ability with {effect_name}"))
+}
+
+fn ezuri_test_creature(name: &str, power: i32, toughness: i32) -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(power, toughness))
+        .build()
+}
+
+fn ezuri_enter_event(object_id: ObjectId) -> crate::triggers::TriggerEvent {
+    crate::events::RawEvent::new(
+        crate::events::ZoneChangeEvent::with_cause(
+            object_id,
+            Zone::Hand,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    )
+}
+
+fn ezuri_beginning_of_combat_event(player: PlayerId) -> crate::triggers::TriggerEvent {
+    crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfCombatEvent::new(player),
+        crate::provenance::ProvNodeId::default(),
+    )
+}
+
+fn resolve_ezuri_combat_trigger_for_target(
+    game: &mut crate::game_state::GameState,
+    ezuri_id: ObjectId,
+    controller: PlayerId,
+    target: ObjectId,
+    triggered: &crate::ability::TriggeredAbility,
+) {
+    let mut ctx = crate::effects::ExecutionContext::new_default(ezuri_id, controller)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: triggered
+                .choices
+                .first()
+                .expect("Ezuri's combat trigger should require a target")
+                .clone(),
+            range: 0..1,
+        }]);
+    ctx.snapshot_targets(game);
+
+    for effect in triggered.effects.flattened_default_effects() {
+        crate::effects::execute_effect(game, effect, &mut ctx)
+            .expect("Ezuri combat trigger effect should resolve");
+    }
+}
+
+#[test]
+fn ezuri_claw_of_progress_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Ezuri, Claw of Progress");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let compact_debug = format!("{:?}", def.abilities);
+
+    assert!(
+        compact_debug.contains("ExperienceCountersEffect")
+            && compact_debug.contains("BeginningOfCombatTrigger")
+            && compact_debug.contains("CountersOn(Player(You), Some(Experience))")
+            && compact_debug.contains("other: true")
+            && compact_debug.contains("controller: Some(You)")
+            && compact_debug.contains("LessThanOrEqual(2)"),
+        "Ezuri should structurally model experience counters, power-2 ETB gating, and another target you control, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains("you get 1 experience counter"),
+        "expected Ezuri compiled text to render the experience counter get clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("where X is the number of experience counters you have"),
+        "expected Ezuri compiled text to render the player experience-counter count, got {rendered}"
+    );
+}
+
+#[test]
+fn ezuri_experience_trigger_resolves_for_your_small_creature_entering() {
+    let def = parse_oracle_card_definition("Ezuri, Claw of Progress");
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let ezuri_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let small = ezuri_test_creature("Small Creature", 2, 2);
+    let small_id = game.create_object_from_definition(&small, alice, Zone::Battlefield);
+
+    let triggers = crate::triggers::check_triggers(&game, &ezuri_enter_event(small_id));
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for entry in triggers.into_iter().filter(|entry| entry.source == ezuri_id) {
+        trigger_queue.add(entry);
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Ezuri should trigger once for your creature with power 2 or less entering"
+    );
+
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Ezuri experience trigger should go on the stack");
+    crate::game_loop::resolve_stack_entry(&mut game)
+        .expect("Ezuri experience trigger should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").experience_counters,
+        1,
+        "Ezuri should give you one experience counter"
+    );
+}
+
+#[test]
+fn ezuri_experience_trigger_ignores_large_or_opponent_creatures() {
+    let def = parse_oracle_card_definition("Ezuri, Claw of Progress");
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let ezuri_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let large = ezuri_test_creature("Large Creature", 3, 3);
+    let small = ezuri_test_creature("Opponent Small Creature", 2, 2);
+    let large_id = game.create_object_from_definition(&large, alice, Zone::Battlefield);
+    let opponent_small_id = game.create_object_from_definition(&small, bob, Zone::Battlefield);
+
+    let large_triggers = crate::triggers::check_triggers(&game, &ezuri_enter_event(large_id));
+    assert_eq!(
+        large_triggers
+            .iter()
+            .filter(|entry| entry.source == ezuri_id)
+            .count(),
+        0,
+        "Ezuri should not trigger for your creature with power greater than 2"
+    );
+
+    let opponent_triggers = crate::triggers::check_triggers(&game, &ezuri_enter_event(opponent_small_id));
+    assert_eq!(
+        opponent_triggers
+            .iter()
+            .filter(|entry| entry.source == ezuri_id)
+            .count(),
+        0,
+        "Ezuri should not trigger for an opponent's small creature entering"
+    );
+}
+
+#[test]
+fn ezuri_combat_trigger_adds_counters_equal_to_experience_counters() {
+    let def = parse_oracle_card_definition("Ezuri, Claw of Progress");
+    let combat_trigger = ezuri_trigger_with_effect(&def, "PutCountersEffect");
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let ezuri_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let target = ezuri_test_creature("Counter Target", 1, 1);
+    let target_id = game.create_object_from_definition(&target, alice, Zone::Battlefield);
+    game.players[0].experience_counters = 3;
+
+    assert_eq!(
+        crate::triggers::check_triggers(&game, &ezuri_beginning_of_combat_event(alice))
+            .iter()
+            .filter(|entry| entry.source == ezuri_id)
+            .count(),
+        1,
+        "Ezuri should trigger at the beginning of combat on your turn"
+    );
+    assert_eq!(
+        crate::triggers::check_triggers(&game, &ezuri_beginning_of_combat_event(bob))
+            .iter()
+            .filter(|entry| entry.source == ezuri_id)
+            .count(),
+        0,
+        "Ezuri should not trigger at the beginning of combat on an opponent's turn"
+    );
+
+    resolve_ezuri_combat_trigger_for_target(&mut game, ezuri_id, alice, target_id, combat_trigger);
+
+    assert_eq!(
+        game.counter_count(target_id, crate::object::CounterType::PlusOnePlusOne),
+        3,
+        "Ezuri should put one +1/+1 counter on the target for each experience counter you have"
+    );
+}
+
+#[test]
+fn ezuri_combat_trigger_adds_no_counters_when_you_have_no_experience() {
+    let def = parse_oracle_card_definition("Ezuri, Claw of Progress");
+    let combat_trigger = ezuri_trigger_with_effect(&def, "PutCountersEffect");
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let ezuri_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let target = ezuri_test_creature("No Counter Target", 1, 1);
+    let target_id = game.create_object_from_definition(&target, alice, Zone::Battlefield);
+
+    resolve_ezuri_combat_trigger_for_target(&mut game, ezuri_id, alice, target_id, combat_trigger);
+
+    assert_eq!(
+        game.counter_count(target_id, crate::object::CounterType::PlusOnePlusOne),
+        0,
+        "Ezuri should put zero +1/+1 counters on the target when you have no experience counters"
+    );
+}
+
 #[test]
 fn vampire_socialite_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Vampire Socialite");

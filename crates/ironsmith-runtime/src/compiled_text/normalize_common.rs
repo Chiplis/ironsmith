@@ -8504,6 +8504,19 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the number of {} counters on this source",
             counter_type.description()
         ),
+        Value::CountersOn(spec, Some(counter_type)) if matches!(spec.base(), ChooseSpec::Player(_)) => {
+            format!(
+                "the number of {} counters {} have",
+                counter_type.description(),
+                describe_player_filter(spec_player_filter(spec).expect("player spec checked"))
+            )
+        }
+        Value::CountersOn(spec, None) if matches!(spec.base(), ChooseSpec::Player(_)) => {
+            format!(
+                "the number of counters {} have",
+                describe_player_filter(spec_player_filter(spec).expect("player spec checked"))
+            )
+        }
         Value::CountersOn(spec, Some(counter_type)) => format!(
             "the number of {} counters on {}",
             counter_type.description(),
@@ -8513,6 +8526,13 @@ pub(crate) fn describe_value(value: &Value) -> String {
             format!("the number of counters on {}", describe_choose_spec(spec))
         }
         Value::TaggedCount => "the tagged object count".to_string(),
+    }
+}
+
+pub(super) fn spec_player_filter(spec: &ChooseSpec) -> Option<&PlayerFilter> {
+    match spec.base() {
+        ChooseSpec::Player(filter) => Some(filter),
+        _ => None,
     }
 }
 

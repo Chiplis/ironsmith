@@ -575,6 +575,13 @@ pub(crate) fn parse_equal_to_number_of_counters_on_reference_value(
     }
     idx += 1;
 
+    if clause_words.starts_with_at(idx, &["you", "have"]) {
+        return Some(Value::CountersOn(
+            Box::new(ChooseSpec::Player(PlayerFilter::You)),
+            counter_type,
+        ));
+    }
+
     if !clause_words.at_is(idx, "on") {
         return None;
     }
@@ -881,6 +888,13 @@ pub(crate) fn parse_equal_to_number_of_counters_on_reference_value_lexed(
         return None;
     }
     idx += 1;
+
+    if clause_words.starts_with_at(idx, &["you", "have"]) {
+        return Some(
+            Value::CountersOn(Box::new(ChooseSpec::Player(PlayerFilter::You)), counter_type)
+                .with_surface_hint(ValueSurfaceHint::EqualTo),
+        );
+    }
 
     if !clause_words.at_is(idx, "on") {
         return None;

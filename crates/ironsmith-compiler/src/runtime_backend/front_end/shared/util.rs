@@ -2318,6 +2318,7 @@ pub(crate) fn parse_counter_type_word(word: &str) -> Option<CounterType> {
         "storage" => Some(CounterType::Storage),
         "ki" => Some(CounterType::Ki),
         "energy" => Some(CounterType::Energy),
+        "experience" => Some(CounterType::Experience),
         "age" => Some(CounterType::Age),
         "blood" => Some(CounterType::Blood),
         "ice" => Some(CounterType::Ice),
@@ -2970,10 +2971,24 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
     if words
         .get(counter_idx)
         .is_some_and(|word| COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word))
-        && words
+    {
+        if words
+            .get(counter_idx + 1..counter_idx + 3)
+            .is_some_and(|tail| tail == ["you", "have"])
+        {
+            let value = Value::CountersOn(
+                Box::new(ChooseSpec::Player(PlayerFilter::You)),
+                parsed_counter_type,
+            );
+            return Some((value, counter_idx + 3));
+        }
+
+        if !words
             .get(counter_idx + 1)
             .is_some_and(|word| ON_WORD_PATTERN.matches_word(word))
-    {
+        {
+            return None;
+        }
         let reference_start = counter_idx + 2;
         let mut reference_end = reference_start;
         while reference_end < words.len()
