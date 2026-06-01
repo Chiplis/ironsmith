@@ -660,6 +660,11 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
         AnthemCountExpression::CountersOnSource(counter_type) => {
             format!("{} counter on this permanent", counter_type.description())
         }
+        AnthemCountExpression::PlayerCounters(player, counter_type) => format!(
+            "{} counter {} have",
+            counter_type.description(),
+            anthem_player_counter_subject(player),
+        ),
         AnthemCountExpression::CountersAmong(filter, counter_type) => format!(
             "{} counter among {}",
             counter_type.description(),
@@ -761,6 +766,11 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
         AnthemCountExpression::CountersOnSource(counter_type) => {
             Some(format!("{} counter on it", counter_type.description()))
         }
+        AnthemCountExpression::PlayerCounters(player, counter_type) => Some(format!(
+            "{} counter {} have",
+            counter_type.description(),
+            anthem_player_counter_subject(player),
+        )),
         AnthemCountExpression::CountersAmong(filter, counter_type) => Some(format!(
             "{} counter among {}",
             counter_type.description(),
@@ -819,6 +829,27 @@ fn mana_symbol_word(symbol: crate::mana::ManaSymbol) -> &'static str {
         crate::mana::ManaSymbol::Green => "green",
         crate::mana::ManaSymbol::Colorless => "colorless",
         _ => "mana",
+    }
+}
+
+fn anthem_player_counter_subject(player: &PlayerFilter) -> String {
+    match player {
+        PlayerFilter::You => "you".to_string(),
+        PlayerFilter::Opponent => "your opponents".to_string(),
+        PlayerFilter::Any => "players".to_string(),
+        other => other.description(),
+    }
+}
+
+fn player_counter_count(game: &GameState, player: PlayerId, counter_type: CounterType) -> u32 {
+    let Some(player) = game.player(player) else {
+        return 0;
+    };
+    match counter_type {
+        CounterType::Poison => player.poison_counters,
+        CounterType::Energy => player.energy_counters,
+        CounterType::Experience => player.experience_counters,
+        _ => 0,
     }
 }
 
@@ -1550,6 +1581,20 @@ pub(crate) fn resolve_anthem_count_expression(
         AnthemCountExpression::CountersOnSource(counter_type) => {
             game.counter_count(source, *counter_type) as i32
         }
+        AnthemCountExpression::PlayerCounters(player_filter, counter_type) => game
+            .players
+            .iter()
+            .filter(|player| {
+                player.is_in_game()
+                    && crate::filter::player_filter_matches_game(
+                        player_filter,
+                        player.id,
+                        game,
+                        &filter_ctx,
+                    )
+            })
+            .map(|player| player_counter_count(game, player.id, *counter_type) as i32)
+            .sum(),
         AnthemCountExpression::CountersAmong(filter, counter_type) => all_game_object_ids(game)
             .into_iter()
             .filter_map(|id| game.object(id))

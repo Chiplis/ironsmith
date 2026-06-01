@@ -46319,6 +46319,66 @@ fn exuberant_fuseling_compiled_text_keeps_oil_counter_scaling_clause() {
     );
 }
 
+#[test]
+fn mycosynth_fiend_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Mycosynth Fiend");
+    let def = parse_oracle_card_definition("Mycosynth Fiend");
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("PlayerCounters") && debug.contains("Opponent") && debug.contains("Poison"),
+        "expected Mycosynth Fiend to lower to opponent poison-counter scaling, got {debug}"
+    );
+
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("this creature gets +1/+1 for each poison counter your opponents have"),
+        "expected Mycosynth Fiend compiled text to preserve opponent poison-counter scaling, got {rendered}"
+    );
+}
+
+#[test]
+fn mycosynth_fiend_runtime_counts_only_opponents_poison_counters() {
+    let oracle = oracle_text_by_name()
+        .get("Mycosynth Fiend")
+        .expect("missing Mycosynth Fiend oracle text")
+        .clone();
+    let def = CardDefinitionBuilder::new(CardId::new(), "Mycosynth Fiend")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(oracle)
+        .expect("Mycosynth Fiend should parse with base characteristics");
+
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string(), "Cara".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let fiend = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let base_chars = game
+        .calculated_characteristics(fiend)
+        .expect("Mycosynth Fiend should have characteristics");
+    assert_eq!(
+        (base_chars.power, base_chars.toughness),
+        (Some(2), Some(2)),
+        "Mycosynth Fiend should be 2/2 while opponents have no poison counters"
+    );
+
+    game.players[0].poison_counters = 4;
+    game.players[1].poison_counters = 3;
+    game.players[2].poison_counters = 2;
+    let poisoned_chars = game
+        .calculated_characteristics(fiend)
+        .expect("Mycosynth Fiend should still have characteristics");
+    assert_eq!(
+        (poisoned_chars.power, poisoned_chars.toughness),
+        (Some(7), Some(7)),
+        "Mycosynth Fiend should count only opponents' poison counters, not its controller's"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn exuberant_fuseling_trigger_adds_oil_counter_for_etb_and_other_controlled_death_only() {

@@ -375,6 +375,19 @@ const ANTHEM_OPPONENT_HAS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["an", "opponent", "has"], &["opponent", "has"]]);
 const ANTHEM_A_PLAYER_HAS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["a", "player", "has"], &["player", "has"]]);
+const ANTHEM_PLAYER_COUNTER_OWNER_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["you", "have"],
+            &["an", "opponent", "has"],
+            &["opponent", "has"],
+            &["opponents", "have"],
+            &["your", "opponents", "have"],
+            &["a", "player", "has"],
+            &["player", "has"],
+            &["players", "have"],
+        ]
+);
 const ANTHEM_FOR_EACH_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["for", "each"]);
 const ANTHEM_AFFECTED_ATTACKED_THIS_TURN_PATTERN: ClauseShape<'static> =
@@ -3617,6 +3630,9 @@ pub(crate) fn parse_anthem_for_each_expression(
         && let Some(counter_type) = parse_counter_type_word(rest_words[counter_word_idx - 1])
     {
         let tail_words = &rest_words[counter_word_idx + 1..];
+        if let Some(player) = parse_player_counter_owner_tail(tail_words) {
+            return Ok(AnthemCountExpression::PlayerCounters(player, counter_type));
+        }
         if ON_SOURCE_COUNTER_TAIL_PATTERN.matches_words(tail_words) {
             return Ok(AnthemCountExpression::CountersOnSource(counter_type));
         }
@@ -3629,6 +3645,23 @@ pub(crate) fn parse_anthem_for_each_expression(
         ))
     })?;
     Ok(AnthemCountExpression::MatchingFilter(filter))
+}
+
+fn parse_player_counter_owner_tail(words: &[&str]) -> Option<PlayerFilter> {
+    if !ANTHEM_PLAYER_COUNTER_OWNER_TAIL_PATTERN.matches_words(words) {
+        return None;
+    }
+    match words {
+        ["you", "have"] => Some(PlayerFilter::You),
+        ["an", "opponent", "has"]
+        | ["opponent", "has"]
+        | ["opponents", "have"]
+        | ["your", "opponents", "have"] => Some(PlayerFilter::Opponent),
+        ["a", "player", "has"] | ["player", "has"] | ["players", "have"] => {
+            Some(PlayerFilter::Any)
+        }
+        _ => None,
+    }
 }
 
 fn parse_compound_anthem_count_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
