@@ -143,6 +143,31 @@ fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn boss_s_chauffeur_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Boss's Chauffeur");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains(
+            "This creature enters with a number of +1/+1 counters on it equal to one plus the number of other creatures you control."
+        ),
+        "Boss's Chauffeur should render the equal-to ETB counter count, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Alliance — Whenever another creature you control enters, put a +1/+1 counter on this creature."
+        ),
+        "Boss's Chauffeur should render its Alliance trigger, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "When this creature dies, create a 1/1 green and white Citizen creature token for each +1/+1 counter on it."
+        ),
+        "Boss's Chauffeur should render token creation for each +1/+1 counter on it, got {rendered}"
+    );
+}
+
+#[test]
 fn commander_liara_portyr_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Commander Liara Portyr");
     let ability_debug = format!("{:#?}", def.abilities);

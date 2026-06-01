@@ -21922,6 +21922,16 @@ pub(super) fn describe_create_for_each_count(value: &Value) -> Option<String> {
         }
         Value::CreaturesDiedThisTurn => Some("creature that died this turn".to_string()),
         Value::SourceRegeneratedThisTurnCount => Some("time it regenerated this turn".to_string()),
+        Value::CountersOnSource(counter_type) => Some(format!(
+            "{} counter on it",
+            describe_counter_type(*counter_type)
+        )),
+        Value::CountersOn(spec, Some(counter_type)) => Some(format!(
+            "{} counter on {}",
+            describe_counter_type(*counter_type),
+            describe_choose_spec(spec)
+        )),
+        Value::CountersOn(spec, None) => Some(format!("counter on {}", describe_choose_spec(spec))),
         _ => None,
     }
 }

@@ -20557,6 +20557,194 @@ fn parsed_dies_token_count_uses_source_lki_after_prior_counter_trigger() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn boss_s_chauffeur_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(671_495), "Boss's Chauffeur")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elf, Subtype::Citizen])
+        .power_toughness(PowerToughness::fixed(0, 0))
+        .parse_text(
+            "This creature enters with a number of +1/+1 counters on it equal to one plus the number of other creatures you control.\n\
+             Alliance — Whenever another creature you control enters, put a +1/+1 counter on this creature.\n\
+             When this creature dies, create a 1/1 green and white Citizen creature token for each +1/+1 counter on it.",
+        )
+        .expect("Boss's Chauffeur should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn plus_one_counters(game: &GameState, object_id: ObjectId) -> u32 {
+    game.object(object_id)
+        .expect("object should exist")
+        .counters
+        .get(&crate::object::CounterType::PlusOnePlusOne)
+        .copied()
+        .unwrap_or(0)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn citizen_token_count(game: &GameState) -> usize {
+    game.battlefield
+        .iter()
+        .filter(|id| game.object(**id).is_some_and(|object| object.name == "Citizen"))
+        .count()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_boss_s_chauffeur_onto_battlefield(
+    game: &mut GameState,
+    definition: &crate::cards::CardDefinition,
+    controller: PlayerId,
+) -> ObjectId {
+    let object_id = game.create_object_from_definition(definition, controller, Zone::Hand);
+    game.move_object_with_etb_processing(object_id, Zone::Battlefield)
+        .expect("Boss's Chauffeur should move onto the battlefield")
+        .new_id
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_plain_creature_onto_battlefield(
+    game: &mut GameState,
+    name: &str,
+    controller: PlayerId,
+) -> ObjectId {
+    let card = CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let object_id = game.create_object_from_card(&card, controller, Zone::Hand);
+    game.move_object_with_etb_processing(object_id, Zone::Battlefield)
+        .expect("test creature should move onto the battlefield")
+        .new_id
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn boss_s_chauffeur_enters_with_one_plus_other_creatures_you_control() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let chauffeur = boss_s_chauffeur_definition();
+
+    create_creature(&mut game, "Alice Creature One", alice, 2, 2);
+    create_creature(&mut game, "Alice Creature Two", alice, 2, 2);
+    create_creature(&mut game, "Bob Creature", bob, 2, 2);
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("no Boss's Chauffeur triggers should exist before it enters");
+    assert!(game.stack_is_empty());
+
+    let chauffeur_id = put_boss_s_chauffeur_onto_battlefield(&mut game, &chauffeur, alice);
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Boss's Chauffeur should not trigger on itself entering");
+
+    assert!(
+        game.stack_is_empty(),
+        "Boss's Chauffeur's Alliance trigger should not count its own enter event"
+    );
+    assert_eq!(
+        plus_one_counters(&game, chauffeur_id),
+        3,
+        "Boss's Chauffeur should enter with one plus Alice's two other creatures, ignoring itself and Bob's creature"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn boss_s_chauffeur_alliance_triggers_only_for_another_creature_you_control() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let chauffeur = boss_s_chauffeur_definition();
+    let chauffeur_id = put_boss_s_chauffeur_onto_battlefield(&mut game, &chauffeur, alice);
+
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Boss's Chauffeur should not trigger on itself entering");
+    assert!(game.stack_is_empty());
+    assert_eq!(plus_one_counters(&game, chauffeur_id), 1);
+
+    put_plain_creature_onto_battlefield(&mut game, "Opponent Creature", bob);
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("opponent creature enter should not create an Alliance trigger");
+    assert!(
+        game.stack_is_empty(),
+        "Boss's Chauffeur should not trigger for a creature an opponent controls"
+    );
+    assert_eq!(plus_one_counters(&game, chauffeur_id), 1);
+
+    put_plain_creature_onto_battlefield(&mut game, "Alice Followup Creature", alice);
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Alice's other creature should create an Alliance trigger");
+    assert!(
+        !game.stack_is_empty(),
+        "Boss's Chauffeur should trigger for another creature Alice controls"
+    );
+    while !game.stack_is_empty() {
+        resolve_stack_entry(&mut game).expect("Alliance trigger should resolve");
+    }
+
+    assert_eq!(
+        plus_one_counters(&game, chauffeur_id),
+        2,
+        "Boss's Chauffeur should get one +1/+1 counter from the Alliance trigger"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn boss_s_chauffeur_dies_creates_citizens_for_each_plus_one_counter_on_it() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let chauffeur = boss_s_chauffeur_definition();
+
+    create_creature(&mut game, "Alice Creature One", alice, 2, 2);
+    create_creature(&mut game, "Alice Creature Two", alice, 2, 2);
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("setup creatures should not create Boss's Chauffeur triggers");
+    assert!(game.stack_is_empty());
+
+    let chauffeur_id = put_boss_s_chauffeur_onto_battlefield(&mut game, &chauffeur, alice);
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Boss's Chauffeur should not trigger on itself entering");
+    assert_eq!(plus_one_counters(&game, chauffeur_id), 3);
+
+    put_plain_creature_onto_battlefield(&mut game, "Alice Followup Creature", alice);
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Alliance trigger should stack");
+    while !game.stack_is_empty() {
+        resolve_stack_entry(&mut game).expect("Alliance trigger should resolve");
+    }
+    assert_eq!(plus_one_counters(&game, chauffeur_id), 4);
+
+    game.move_object_by_effect(chauffeur_id, Zone::Graveyard)
+        .expect("Boss's Chauffeur should die");
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Boss's Chauffeur dies trigger should stack");
+    while !game.stack_is_empty() {
+        resolve_stack_entry(&mut game).expect("dies trigger should resolve");
+    }
+
+    assert_eq!(
+        citizen_token_count(&game),
+        4,
+        "Boss's Chauffeur should create one Citizen token for each +1/+1 counter it had using source LKI"
+    );
+}
+
 #[test]
 fn test_resolution_uses_source_lki_for_source_owner() {
     let mut game = setup_game();

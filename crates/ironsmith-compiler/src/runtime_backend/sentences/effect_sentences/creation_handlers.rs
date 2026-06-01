@@ -6,7 +6,7 @@ use crate::cards::builders::{
 use crate::color::ColorSet;
 use crate::effect::{EventValueSpec, Value};
 use crate::static_abilities::{Anthem, AnthemCountExpression, AnthemValue, StaticAbility};
-use crate::target::{ObjectFilter, PlayerFilter};
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 use ironsmith_core::ValueSurfaceHint;
@@ -22,8 +22,9 @@ use super::super::token_primitives::{
     find_index as find_token_index, str_split_once_char, str_starts_with_char,
 };
 use super::super::util::{
-    is_article, parse_card_type, parse_color, parse_number, parse_subtype_flexible,
-    parse_target_phrase, parse_value, token_index_for_word_index, trim_commas,
+    is_article, parse_card_type, parse_color, parse_counter_type_word, parse_number,
+    parse_subtype_flexible, parse_target_phrase, parse_value, source_choose_spec_for_surface,
+    source_reference_surface_for_words, token_index_for_word_index, trim_commas,
     value_contains_unbound_x,
 };
 use super::clause_pattern_helpers::{ClauseShape, clause_shape, extract_subject_player};
@@ -178,6 +179,25 @@ const CREATE_TOKEN_OR_TOKENS_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["token"], &["tokens"]]);
 const CREATE_FOR_EACH_WORDS: &[&str] = &["for", "each"];
 const CREATE_FOR_EACH_PATTERN: ClauseShape<'static> = clause_shape!(exact & CREATE_FOR_EACH_WORDS);
+const CREATE_COUNTER_OR_COUNTERS_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["counter"], &["counters"]]);
+const CREATE_SOURCE_COUNTER_LEADING_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["a"], &["an"], &["one"], &["another"]]);
+const CREATE_ON_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["on"]);
+const CREATE_SOURCE_COUNTER_REFERENCE_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["it"],
+            &["this"],
+            &["this", "card"],
+            &["this", "creature"],
+            &["this", "permanent"],
+            &["this", "source"],
+            &["this", "artifact"],
+            &["this", "land"],
+            &["this", "enchantment"],
+        ]
+);
 const CREATE_TOKEN_GETS_FOR_EACH_WORDS: &[&str] =
     &["this", "token", "gets", "+1/+1", "for", "each"];
 const CREATE_TOKEN_GETS_FOR_EACH_PATTERN: ClauseShape<'static> =
@@ -1302,7 +1322,54 @@ fn parse_create_for_each_player_condition(
     Ok(Some((filter, predicate)))
 }
 
+fn parse_create_for_each_counter_count(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let words = token_word_refs(tokens);
+    let mut idx = 0usize;
+    if words
+        .get(idx)
+        .is_some_and(|word| CREATE_SOURCE_COUNTER_LEADING_WORD_PATTERN.matches_word(word))
+    {
+        idx += 1;
+    }
+
+    let counter_type = words
+        .get(idx)
+        .and_then(|word| parse_counter_type_word(word));
+    if counter_type.is_some() {
+        idx += 1;
+    }
+
+    if !words
+        .get(idx)
+        .is_some_and(|word| CREATE_COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word))
+        || !words
+            .get(idx + 1)
+            .is_some_and(|word| CREATE_ON_WORD_PATTERN.matches_word(word))
+    {
+        return None;
+    }
+
+    let reference = &words[idx + 2..];
+    if CREATE_SOURCE_COUNTER_REFERENCE_PATTERN.matches_words(reference) {
+        return Some(match counter_type {
+            Some(counter_type) => Value::CountersOnSource(counter_type),
+            None => Value::CountersOn(Box::new(ChooseSpec::Source), None),
+        });
+    }
+
+    source_reference_surface_for_words(reference).map(|surface| {
+        Value::CountersOn(
+            Box::new(source_choose_spec_for_surface(surface)),
+            counter_type,
+        )
+    })
+}
+
 pub(crate) fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> Option<Value> {
+    if let Some(value) = parse_create_for_each_counter_count(tokens) {
+        return Some(value.with_surface_hint(ValueSurfaceHint::ForEach));
+    }
+
     if grammar::words_match_any_prefix(
         tokens,
         &[
