@@ -5180,6 +5180,7 @@ mod tests {
     use crate::card::{CardBuilder, PowerToughness};
     use crate::cards::builders::CardDefinitionBuilder;
     use crate::derived_view::DerivedGameView;
+    use crate::effects::{AddManaEffect, EffectExecutor, ExecutionContext};
     use crate::events::spells::SpellCastEvent;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
@@ -5234,6 +5235,22 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
+    fn one_mana_land_definition() -> crate::cards::CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), "Damping Sphere Test Forest")
+            .card_types(vec![CardType::Land])
+            .parse_text("{T}: Add {G}.")
+            .expect("test one-mana land ability should parse")
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    fn two_mana_artifact_definition() -> crate::cards::CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), "Damping Sphere Test Battery")
+            .card_types(vec![CardType::Artifact])
+            .parse_text("{T}: Add {C}{C}.")
+            .expect("test artifact mana ability should parse")
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
     fn test_spell_card(name: &str, cost: u8) -> crate::card::Card {
         CardBuilder::new(CardId::new(), name)
             .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(cost)]]))
@@ -5265,24 +5282,58 @@ mod tests {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0);
         let temple_def = two_mana_land_definition();
+        let forest_def = one_mana_land_definition();
+        let battery_def = two_mana_artifact_definition();
         let temple_id = game.create_object_from_definition(&temple_def, alice, Zone::Battlefield);
+        game.create_object_from_definition(&forest_def, alice, Zone::Battlefield);
+        game.create_object_from_definition(&battery_def, alice, Zone::Battlefield);
 
         let potential_without_sphere = compute_potential_mana(&game, alice);
-        assert_eq!(potential_without_sphere.colorless, 2);
+        assert_eq!(potential_without_sphere.colorless, 4);
+        assert_eq!(potential_without_sphere.green, 1);
 
         let sphere_def = damping_sphere_definition();
         game.create_object_from_definition(&sphere_def, alice, Zone::Battlefield);
 
         let potential_with_sphere = compute_potential_mana(&game, alice);
         assert_eq!(
-            potential_with_sphere.colorless, 1,
-            "Damping Sphere should replace the land's two-mana output with one colorless mana"
+            potential_with_sphere.colorless, 3,
+            "Damping Sphere should replace only the land's two-mana output with one colorless mana"
+        );
+        assert_eq!(
+            potential_with_sphere.green, 1,
+            "Damping Sphere should not replace a land's one-mana output"
         );
         assert!(
             game.object(temple_id)
                 .expect("temple should remain on battlefield")
                 .card_types
                 .contains(&CardType::Land)
+        );
+
+        let temple_mana_ability_index = game
+            .object(temple_id)
+            .expect("temple should remain on battlefield")
+            .abilities
+            .iter()
+            .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+            .expect("test land should have a mana ability");
+        let mut ctx = ExecutionContext::new_default(temple_id, alice)
+            .with_ability_index(temple_mana_ability_index);
+        let outcome = AddManaEffect::you(vec![ManaSymbol::Colorless, ManaSymbol::Colorless])
+            .execute(&mut game, &mut ctx)
+            .expect("test land mana ability should execute");
+        assert_eq!(
+            outcome.value,
+            crate::effect::OutcomeValue::ManaAdded(vec![ManaSymbol::Colorless])
+        );
+        assert_eq!(
+            game.player(alice)
+                .expect("Alice should exist")
+                .mana_pool
+                .colorless,
+            1,
+            "Damping Sphere should also replace actually produced land mana"
         );
     }
 
