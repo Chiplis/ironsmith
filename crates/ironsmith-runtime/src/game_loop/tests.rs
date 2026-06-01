@@ -73,6 +73,21 @@ fn the_eternity_elevator_threshold_ability_index(def: &crate::cards::CardDefinit
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn minds_dilation_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(658_545), "Mind's Dilation")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Whenever an opponent casts their first spell each turn, that player exiles the top card of their library. If it's a nonland card, you may cast it without paying its mana cost.",
+        )
+        .expect("Mind's Dilation should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn the_eternity_elevator_threshold_mana_requires_twenty_charge_counters() {
     let mut game = setup_game();
@@ -4905,6 +4920,230 @@ fn resolve_triggered_ability_from_spell_cast(
         crate::effects::execute_effect(game, effect, &mut ctx)
             .expect("Quandrix Apprentice trigger should resolve");
     }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn queue_minds_dilation_spell_cast(
+    game: &mut GameState,
+    caster: PlayerId,
+    trigger_queue: &mut TriggerQueue,
+) -> ObjectId {
+    let spell_id = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Triggering Probe Spell")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+            .card_types(vec![CardType::Instant])
+            .build(),
+        caster,
+        Zone::Stack,
+    );
+    let event = TriggerEvent::new_with_provenance(
+        SpellCastEvent::new(spell_id, caster, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    queue_triggers_from_event(game, trigger_queue, event, false);
+    spell_id
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn minds_dilation_first_opponent_spell_exiles_that_players_top_nonland_and_casts_it() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+
+    let minds_dilation = minds_dilation_definition();
+    game.create_object_from_definition(&minds_dilation, alice, Zone::Battlefield);
+
+    let charlie_top = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Charlie's Top Card")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+            .card_types(vec![CardType::Sorcery])
+            .build(),
+        charlie,
+        Zone::Library,
+    );
+    let charlie_top_stable = game
+        .object(charlie_top)
+        .expect("Charlie's library card should exist")
+        .stable_id;
+    let bob_top = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Bob's Exiled Spell")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+            .card_types(vec![CardType::Sorcery])
+            .build(),
+        bob,
+        Zone::Library,
+    );
+    let bob_top_stable = game
+        .object(bob_top)
+        .expect("Bob's library card should exist")
+        .stable_id;
+
+    let mut trigger_queue = TriggerQueue::new();
+    queue_minds_dilation_spell_cast(&mut game, bob, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Mind's Dilation should trigger for an opponent's first spell each turn"
+    );
+
+    let mut dm = SelectFirstDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Mind's Dilation trigger should go on the stack");
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Mind's Dilation trigger should resolve");
+
+    let cast_id = game
+        .find_object_by_stable_id(bob_top_stable)
+        .expect("Bob's exiled nonland card should still exist");
+    let cast_object = game
+        .object(cast_id)
+        .expect("Bob's exiled nonland card should be on stack");
+    assert_eq!(cast_object.zone, Zone::Stack);
+    assert!(
+        game.stack
+            .iter()
+            .any(|entry| entry.object_id == cast_id && entry.controller == alice),
+        "Alice should cast Bob's exiled nonland card without paying its mana cost"
+    );
+
+    let charlie_id = game
+        .find_object_by_stable_id(charlie_top_stable)
+        .expect("Charlie's library card should still exist");
+    assert_eq!(
+        game.object(charlie_id).expect("Charlie's card should exist").zone,
+        Zone::Library,
+        "Mind's Dilation should exile the triggering player's top card, not another opponent's"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn minds_dilation_declined_may_cast_leaves_nonland_card_exiled() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+
+    let minds_dilation = minds_dilation_definition();
+    game.create_object_from_definition(&minds_dilation, alice, Zone::Battlefield);
+    let bob_top = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Declined Exiled Spell")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+            .card_types(vec![CardType::Sorcery])
+            .build(),
+        bob,
+        Zone::Library,
+    );
+    let bob_top_stable = game
+        .object(bob_top)
+        .expect("Bob's library card should exist")
+        .stable_id;
+
+    let mut trigger_queue = TriggerQueue::new();
+    queue_minds_dilation_spell_cast(&mut game, bob, &mut trigger_queue);
+    let mut dm = AutoPassDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Mind's Dilation trigger should go on the stack");
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Mind's Dilation trigger should resolve");
+
+    let exiled_id = game
+        .find_object_by_stable_id(bob_top_stable)
+        .expect("Bob's declined nonland card should still exist");
+    assert_eq!(
+        game.object(exiled_id)
+            .expect("Bob's declined nonland card should exist")
+            .zone,
+        Zone::Exile,
+        "declining the optional cast should leave the nonland card in exile"
+    );
+    assert!(
+        game.stack.is_empty(),
+        "declining the optional cast should not put the exiled card on the stack"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn minds_dilation_land_card_is_exiled_but_not_cast() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+
+    let minds_dilation = minds_dilation_definition();
+    game.create_object_from_definition(&minds_dilation, alice, Zone::Battlefield);
+    let bob_top = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Exiled Island")
+            .card_types(vec![CardType::Land])
+            .subtypes(vec![Subtype::Island])
+            .build(),
+        bob,
+        Zone::Library,
+    );
+    let bob_top_stable = game
+        .object(bob_top)
+        .expect("Bob's library land should exist")
+        .stable_id;
+
+    let mut trigger_queue = TriggerQueue::new();
+    queue_minds_dilation_spell_cast(&mut game, bob, &mut trigger_queue);
+    let mut dm = SelectFirstDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Mind's Dilation trigger should go on the stack");
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Mind's Dilation trigger should resolve");
+
+    let exiled_id = game
+        .find_object_by_stable_id(bob_top_stable)
+        .expect("Bob's exiled land should still exist");
+    assert_eq!(
+        game.object(exiled_id)
+            .expect("Bob's exiled land should exist")
+            .zone,
+        Zone::Exile,
+        "Mind's Dilation should exile a land top card"
+    );
+    assert!(
+        game.stack.is_empty(),
+        "Mind's Dilation should not cast a land card from exile"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn minds_dilation_ignores_second_spell_by_same_opponent_that_turn() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+
+    let minds_dilation = minds_dilation_definition();
+    game.create_object_from_definition(&minds_dilation, alice, Zone::Battlefield);
+
+    let mut first_queue = TriggerQueue::new();
+    queue_minds_dilation_spell_cast(&mut game, bob, &mut first_queue);
+    assert_eq!(first_queue.entries.len(), 1);
+
+    let mut second_queue = TriggerQueue::new();
+    queue_minds_dilation_spell_cast(&mut game, bob, &mut second_queue);
+    assert_eq!(
+        second_queue.entries.len(),
+        0,
+        "Mind's Dilation should trigger only for an opponent's first spell each turn"
+    );
 }
 
 struct DeclineOptionalTriggerTargetsDecisionMaker {

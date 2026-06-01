@@ -54745,6 +54745,38 @@ fn mindleech_mass_strict_parser_and_compiled_text_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn minds_dilation_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Mind's Dilation");
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert_eq!(def.card.name, "Mind's Dilation");
+    assert!(
+        abilities_debug.contains("SpellCastTrigger")
+            && abilities_debug.contains("exact_spells_this_turn: Some(1)")
+            && abilities_debug.contains("ControllerOf(Tagged(TagKey(\"triggering\")))")
+            && abilities_debug.contains("ChooseObjectsEffect")
+            && abilities_debug.contains("ConditionalEffect")
+            && abilities_debug.contains("CastTaggedEffect")
+            && abilities_debug.contains(crate::tag::SOURCE_EXILED_TAG),
+        "expected Mind's Dilation to lower to first-spell trigger, triggering-player library exile, and conditional free cast, got {abilities_debug}"
+    );
+
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains("whenever an opponent casts their first spell each turn")
+            && rendered_lower.contains("that player exiles the top card of their library")
+            && rendered_lower.contains("if it's a nonland card, you may cast it without paying its mana cost"),
+        "expected Mind's Dilation compiled text to preserve the triggering-player nonland free-cast clause, got {rendered}"
+    );
+    assert!(
+        !rendered_lower.contains("tagged object") && !rendered_lower.contains("tagged '"),
+        "Mind's Dilation compiled text should not expose internal tagged references, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn villainous_wealth_runtime_casts_only_exiled_nonland_spells_with_mana_value_at_most_x() {
     let def = parse_oracle_card_definition("Villainous Wealth");
     let spell = def
