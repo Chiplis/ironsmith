@@ -10756,6 +10756,76 @@ fn thunder_brute_etb_does_not_trigger_when_tribute_paid() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn thunder_brute_tribute_uses_controller_chosen_opponent() {
+    struct ChooseCharlieThenAccept {
+        chose_opponent: bool,
+        prompted_chosen_opponent: bool,
+    }
+
+    impl crate::decision::DecisionMaker for ChooseCharlieThenAccept {
+        fn decide_options(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            assert_eq!(ctx.player, PlayerId::from_index(0));
+            self.chose_opponent = true;
+            let charlie = ctx
+                .options
+                .iter()
+                .find(|option| option.description == "Charlie")
+                .expect("Charlie should be a tribute opponent option");
+            vec![charlie.index]
+        }
+
+        fn decide_boolean(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            self.prompted_chosen_opponent = ctx.player == PlayerId::from_index(2);
+            self.prompted_chosen_opponent
+        }
+    }
+
+    let def = parse_oracle_card_definition("Thunder Brute");
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let stack_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut dm = ChooseCharlieThenAccept {
+        chose_opponent: false,
+        prompted_chosen_opponent: false,
+    };
+
+    let result = game
+        .move_object_with_etb_processing_with_dm(stack_id, Zone::Battlefield, &mut dm)
+        .expect("Thunder Brute should enter the battlefield");
+    let thunder_brute_id = result.new_id;
+
+    assert!(dm.chose_opponent, "controller should choose a tribute opponent");
+    assert!(
+        dm.prompted_chosen_opponent,
+        "chosen opponent should receive the tribute payment choice"
+    );
+    assert_eq!(
+        game.counter_count(thunder_brute_id, crate::object::CounterType::PlusOnePlusOne),
+        3,
+        "Thunder Brute should get counters when the chosen opponent accepts tribute"
+    );
+    assert!(
+        game.object(thunder_brute_id)
+            .expect("Thunder Brute exists")
+            .optional_costs_paid
+            .was_paid_label("Tribute"),
+        "tribute should be marked paid when the chosen opponent accepts"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_disturb_keyword_line_compiles_to_alternative_cast() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Disturb Probe")
         .card_types(vec![CardType::Creature])

@@ -108,27 +108,22 @@ pub(super) fn apply_trait_replacement(
         }
 
         ReplacementAction::Tribute { count, .. } => {
-            let Some(opponent) = game
-                .players
-                .iter()
-                .filter(|player| player.is_in_game() && player.id != effect.controller)
-                .map(|player| player.id)
-                .min_by_key(|player| player.0)
-            else {
+            let opponents = super::tribute_opponents(game, effect.controller);
+            if opponents.is_empty() {
                 return TraitApplyResult::Unchanged(event);
             };
-            let source_name = game
-                .object(effect.source)
-                .map(|object| object.name.clone())
-                .unwrap_or_else(|| "this creature".to_string());
-            let mut bool_ctx = crate::decisions::context::BooleanContext::new(
-                opponent,
-                Some(effect.source),
-                format!("Put {count} +1/+1 counters on {source_name}? (Tribute {count})"),
-            );
-            bool_ctx = bool_ctx.with_source_name(source_name);
+            let decision_ctx = if opponents.len() == 1 {
+                super::tribute_boolean_context(game, effect.source, opponents[0], *count)
+            } else {
+                super::tribute_opponent_choice_context(
+                    game,
+                    effect.source,
+                    effect.controller,
+                    &opponents,
+                )
+            };
             TraitApplyResult::NeedsInteraction {
-                decision_ctx: crate::decisions::context::DecisionContext::Boolean(bool_ctx),
+                decision_ctx,
                 redirect_zone: Zone::Battlefield,
                 effect_id: effect.id,
                 object_id: effect.source,
