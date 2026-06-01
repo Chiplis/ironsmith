@@ -644,6 +644,9 @@ pub struct CantEffectTracker {
     /// Players who can't lose life.
     pub cant_lose_life: HashSet<PlayerId>,
 
+    /// Players whose damage dealt to them does not cause life loss.
+    pub damage_cant_cause_life_loss: HashSet<PlayerId>,
+
     /// Players who can't lose the game.
     /// Example: Platinum Angel
     pub cant_lose_game: HashSet<PlayerId>,
@@ -892,6 +895,8 @@ impl CantEffectTracker {
         self.life_total_cant_change
             .extend(other.life_total_cant_change);
         self.cant_lose_life.extend(other.cant_lose_life);
+        self.damage_cant_cause_life_loss
+            .extend(other.damage_cant_cause_life_loss);
         self.cant_lose_game.extend(other.cant_lose_game);
         self.cant_win_game.extend(other.cant_win_game);
         self.cant_become_monarch.extend(other.cant_become_monarch);
@@ -936,6 +941,7 @@ impl CantEffectTracker {
         self.damage_cant_be_prevented = false;
         self.life_total_cant_change.clear();
         self.cant_lose_life.clear();
+        self.damage_cant_cause_life_loss.clear();
         self.cant_lose_game.clear();
         self.cant_win_game.clear();
         self.cant_become_monarch.clear();
@@ -955,6 +961,11 @@ impl CantEffectTracker {
     /// Check if a player can lose life (not from damage).
     pub fn can_lose_life(&self, player: PlayerId) -> bool {
         !self.cant_lose_life.contains(&player) && !self.life_total_cant_change.contains(&player)
+    }
+
+    /// Check if damage dealt to a player can cause that player to lose life.
+    pub fn can_damage_cause_life_loss(&self, player: PlayerId) -> bool {
+        self.can_lose_life(player) && !self.damage_cant_cause_life_loss.contains(&player)
     }
 
     /// Check if a player's life total can change (Platinum Emperion, etc.).
@@ -3100,6 +3111,13 @@ impl GameState {
     /// Can the player lose life (not from damage)?
     pub fn can_lose_life(&self, player: PlayerId) -> bool {
         self.effect_store.cant_effects.can_lose_life(player)
+    }
+
+    /// Can damage dealt to the player cause life loss?
+    pub fn can_damage_cause_life_loss(&self, player: PlayerId) -> bool {
+        self.effect_store
+            .cant_effects
+            .can_damage_cause_life_loss(player)
     }
 
     /// Can the player's life total change?

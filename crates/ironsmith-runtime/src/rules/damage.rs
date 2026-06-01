@@ -141,8 +141,12 @@ pub(crate) fn apply_processed_damage_assignment(
             if game.player(player_id).is_none() {
                 return AppliedDamageAssignment::default();
             }
-            // Damage is still dealt even when life total can't change; track only actual life lost.
-            let life_lost = game.lose_life(player_id, amount);
+            // Damage is still dealt even when a replacement/restriction stops the life loss.
+            let life_lost = if game.can_damage_cause_life_loss(player_id) {
+                game.lose_life(player_id, amount)
+            } else {
+                0
+            };
             AppliedDamageAssignment {
                 applied: true,
                 life_lost,

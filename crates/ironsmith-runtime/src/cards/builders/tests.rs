@@ -144,6 +144,8 @@ fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
 
 #[test]
 fn boss_s_chauffeur_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Boss's Chauffeur");
+
     let def = parse_oracle_card_definition("Boss's Chauffeur");
     let rendered = unprocessed_compiled_lines(&def).join("\n");
 
@@ -164,6 +166,33 @@ fn boss_s_chauffeur_strict_parser_and_compiled_text_regression() {
             "When this creature dies, create a 1/1 green and white Citizen creature token for each +1/+1 counter on it."
         ),
         "Boss's Chauffeur should render token creation for each +1/+1 counter on it, got {rendered}"
+    );
+}
+
+#[test]
+fn archon_of_coronation_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Archon of Coronation");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        def.abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, AbilityKind::Triggered(_))),
+        "Archon of Coronation should parse its enters trigger strictly"
+    );
+    assert!(
+        ability_debug.contains("BecomeMonarchEffect")
+            && ability_debug.contains("DamageCauseLifeLoss")
+            && ability_debug.contains("PlayerIsMonarch"),
+        "expected monarch trigger and conditional damage-life-loss restriction, got {ability_debug}"
+    );
+    assert!(
+        rendered_lower.contains("you become the monarch")
+            && rendered_lower.contains("damage doesn't cause you to lose life")
+            && rendered_lower.contains("as long as you're the monarch"),
+        "expected Archon compiled text to preserve monarch and damage-life-loss clauses, got {rendered}"
     );
 }
 

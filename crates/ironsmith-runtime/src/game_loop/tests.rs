@@ -413,6 +413,69 @@ fn lost_monarch_of_ifnir_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn archon_of_coronation_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(559_764), "Archon of Coronation")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(5, 5))
+        .flying()
+        .parse_text(
+            "When this creature enters, you become the monarch.\n\
+             As long as you're the monarch, damage doesn't cause you to lose life.",
+        )
+        .expect("Archon of Coronation should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn deal_test_combat_damage_to_player(
+    game: &mut GameState,
+    source: ObjectId,
+    player: PlayerId,
+    amount: u32,
+) -> CombatDamageEvent {
+    let cause = crate::events::cause::EventCause::combat_damage(source);
+    let processed = crate::events::processing::process_damage_assignments_with_event(
+        game,
+        source,
+        crate::events::DamageTarget::Player(player),
+        amount,
+        true,
+        cause.clone(),
+    );
+    let keywords = crate::rules::damage::source_damage_keywords(game, source, None);
+    let mut damage_dealt = 0u32;
+    let mut life_lost = 0u32;
+    for assignment in processed.assignments {
+        let applied = crate::rules::damage::apply_processed_damage_assignment(
+            game,
+            source,
+            assignment.target,
+            assignment.amount,
+            keywords,
+            cause.clone(),
+        );
+        assert!(applied.applied, "combat damage assignment should apply");
+        damage_dealt = damage_dealt.saturating_add(assignment.amount);
+        life_lost = life_lost.saturating_add(applied.life_lost);
+    }
+
+    CombatDamageEvent {
+        source,
+        target: DamageEventTarget::Player(player),
+        amount: damage_dealt,
+        life_lost,
+        result: DamageResult {
+            damage_dealt,
+            ..DamageResult::default()
+        },
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn create_typed_creature(
     game: &mut GameState,
     name: &str,
@@ -6625,6 +6688,121 @@ fn test_monarch_changes_when_creature_deals_combat_damage_to_monarch() {
         game.monarch,
         Some(alice),
         "the attacking creature's controller should become the monarch"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn archon_of_coronation_enters_trigger_makes_controller_the_monarch() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let archon = archon_of_coronation_definition();
+    let archon_id = game.create_object_from_definition(&archon, alice, Zone::Battlefield);
+    let event = crate::events::RawEvent::new(
+        crate::events::ZoneChangeEvent::with_cause(
+            archon_id,
+            Zone::Stack,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::from_game_rule(),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    for trigger in crate::triggers::check_triggers(&game, &event) {
+        if trigger.source == archon_id {
+            trigger_queue.add(trigger);
+        }
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Archon of Coronation should trigger when it enters"
+    );
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Archon of Coronation enters trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Archon of Coronation enters trigger should resolve");
+
+    assert_eq!(
+        game.monarch,
+        Some(alice),
+        "Archon of Coronation's controller should become the monarch"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn archon_of_coronation_monarch_takes_damage_without_losing_life_and_still_loses_monarch() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let archon = archon_of_coronation_definition();
+    game.create_object_from_definition(&archon, alice, Zone::Battlefield);
+    let attacker = create_creature(&mut game, "Archon Challenger", bob, 3, 3);
+    game.monarch = Some(alice);
+    game.update_cant_effects();
+
+    assert!(
+        game.can_lose_life(alice),
+        "Archon should not stop non-damage life loss"
+    );
+    assert_eq!(
+        game.lose_life(alice, 2),
+        2,
+        "non-damage life loss should still happen while Archon's controller is monarch"
+    );
+    let life_before_damage = game.player(alice).expect("alice exists").life;
+
+    let event = deal_test_combat_damage_to_player(&mut game, attacker, alice, 3);
+    assert_eq!(event.life_lost, 0, "combat damage should not cause life loss");
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        life_before_damage,
+        "damage should be dealt without reducing the monarch's life total"
+    );
+
+    generate_damage_triggers(&mut game, &[event], &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "combat damage still dealt to the monarch should queue the transfer trigger"
+    );
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("monarch transfer trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("monarch transfer trigger should resolve");
+
+    assert_eq!(
+        game.monarch,
+        Some(bob),
+        "combat damage to the monarch should still make the attacker's controller the monarch"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn archon_of_coronation_nonmonarch_controller_still_loses_life_to_damage() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let archon = archon_of_coronation_definition();
+    game.create_object_from_definition(&archon, alice, Zone::Battlefield);
+    let attacker = create_creature(&mut game, "Archon Challenger", bob, 3, 3);
+    game.monarch = Some(bob);
+    game.update_cant_effects();
+    let life_before_damage = game.player(alice).expect("alice exists").life;
+
+    let event = deal_test_combat_damage_to_player(&mut game, attacker, alice, 3);
+
+    assert_eq!(
+        event.life_lost, 3,
+        "Archon should not stop damage-caused life loss when its controller is not monarch"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        life_before_damage - 3,
+        "nonmonarch Archon controller should lose life from damage normally"
     );
 }
 

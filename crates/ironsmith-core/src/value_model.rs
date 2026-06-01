@@ -274,6 +274,7 @@ pub enum Restriction {
     DrawExtraCards(PlayerFilter),
     PoisonCounters(PlayerFilter),
     LoseLife(PlayerFilter),
+    DamageCauseLifeLoss(PlayerFilter),
     ChangeLifeTotal(PlayerFilter),
     LoseGame(PlayerFilter),
     WinGame(PlayerFilter),
@@ -475,6 +476,10 @@ impl Restriction {
 
     pub fn lose_life(filter: PlayerFilter) -> Self {
         Self::LoseLife(filter)
+    }
+
+    pub fn damage_cause_life_loss(filter: PlayerFilter) -> Self {
+        Self::DamageCauseLifeLoss(filter)
     }
 
     pub fn change_life_total(filter: PlayerFilter) -> Self {
