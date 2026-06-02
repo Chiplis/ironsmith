@@ -5102,10 +5102,8 @@ fn compile_subject_verb_effect(
         }
         SubjectVerbActionAst::ReturnAllToHand { filter } => {
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-            let tag = ctx.next_tag("returned");
-            ctx.last_object_tag = Some(tag.clone());
             Ok((
-                vec![Effect::return_all_to_hand(resolved_filter).tag(tag)],
+                vec![Effect::return_all_to_hand(resolved_filter)],
                 Vec::new(),
             ))
         }

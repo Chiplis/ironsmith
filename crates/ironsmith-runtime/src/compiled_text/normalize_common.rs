@@ -10723,7 +10723,6 @@ pub(super) fn tag_action_from_name(tag: &str) -> Option<&'static str> {
         "destroyed" => Some("destroyed"),
         "exiled" => Some("exiled"),
         "discarded" => Some("discarded"),
-        "returned" => Some("returned"),
         "died" => Some("died"),
         "milled" => Some("milled"),
         "moved" => Some("put"),
@@ -10820,10 +10819,6 @@ pub(super) fn describe_player_relative_condition(condition: &Condition) -> Optio
         } => {
             if *player != PlayerFilter::IteratedPlayer {
                 return None;
-            }
-            if tag.as_str().starts_with("returned_") {
-                let object_text = describe_player_tagged_object_text(tag, filter);
-                return Some(format!("controlled {object_text} returned this way"));
             }
             let action = tag_action_from_name(tag.as_str())?;
             let object_text = with_indefinite_article(&filter.description());
@@ -12212,14 +12207,6 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             }
         }
         Condition::PlayerTaggedObjectMatches { player, tag, filter } => {
-            if tag.as_str().starts_with("returned_") {
-                let object_text = describe_player_tagged_object_text(tag, filter);
-                return format!(
-                    "{} controlled {} returned this way",
-                    describe_player_filter(player),
-                    object_text
-                );
-            }
             if let Some(action) = tag_action_from_name(tag.as_str()) {
                 let object_text = describe_player_tagged_object_text(tag, filter);
                 format!(
