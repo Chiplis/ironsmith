@@ -2085,6 +2085,24 @@ fn parse_opponent_controls_tagged_object_predicate(words: &[&str]) -> Option<Pre
     Some(PredicateAst::ItMatches(filter))
 }
 
+fn parse_secret_choices_match_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::subject("choices", LexCaptureKind::UntilPhrase(&["match"])),
+        LexPattern::action("action", LexCaptureKind::OneOf(&["match"])),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let subject = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(
+        subject.word_refs().as_slice(),
+        ["they"] | ["those", "choices"]
+    ) {
+        return None;
+    }
+    Some(PredicateAst::SecretChoicesMatch)
+}
+
 fn parse_spell_context_predicate(words: &[&str]) -> Option<PredicateAst> {
     let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
     let condition =
@@ -3416,11 +3434,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if let Some(predicate) = parse_repeated_if_or_predicate(&filtered)? {
         return Ok(predicate);
     }
-    if matches!(
-        filtered.as_slice(),
-        ["they", "match"] | ["those", "choices", "match"]
-    ) {
-        return Ok(PredicateAst::SecretChoicesMatch);
+    if let Some(predicate) = parse_secret_choices_match_predicate(&filtered) {
+        return Ok(predicate);
     }
     if let Some(gets_idx) = find_index(&filtered, |word| GETS_WORD_PATTERN.matches_word(word))
         && gets_idx > 0
@@ -4839,6 +4854,19 @@ mod tests {
                 player: PlayerAst::Opponent,
             }
         );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_secret_choices_match_uses_capture_parser() -> Result<(), CardTextError> {
+        for text in ["If they match", "If those choices match"] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, PredicateAst::SecretChoicesMatch, "{text}");
+        }
         Ok(())
     }
 
