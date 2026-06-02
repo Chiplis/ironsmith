@@ -2690,6 +2690,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_choose_creature_type_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_named_options_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_player_as_enters_line),
+        single_static_ability_ast_rule!(parse_note_life_total_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_color_as_becomes_attached_line),
         single_static_ability_ast_rule!(parse_enchanted_land_is_chosen_type_line),
         single_static_ability_ast_rule!(parse_source_is_chosen_type_in_addition_line),
@@ -4332,6 +4333,24 @@ pub(crate) fn parse_choose_card_name_as_enters_line(
 
     Ok(Some(StaticAbility::choose_card_name_as_enters(format!(
         "As {display_subject} enters, choose a card name."
+    ))))
+}
+
+pub(crate) fn parse_note_life_total_as_enters_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = parser_token_word_refs(tokens);
+    let Some((idx, display_subject)) =
+        parse_as_enters_choice_subject_words(&words, AS_ENTERS_STANDARD_SUBJECTS_WITH_AURA)
+    else {
+        return Ok(None);
+    };
+    if words.get(idx..) != Some(&["note", "your", "life", "total"][..]) {
+        return Ok(None);
+    }
+
+    Ok(Some(StaticAbility::note_life_total_as_enters(format!(
+        "As {display_subject} enters, note your life total."
     ))))
 }
 

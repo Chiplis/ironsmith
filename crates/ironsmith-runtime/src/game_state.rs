@@ -2024,6 +2024,9 @@ pub struct GameState {
     /// Highest pregame draft-note number recorded by a player for a named card.
     pub draft_noted_highest_numbers: HashMap<(PlayerId, String), u32>,
 
+    /// Last life total noted for a battlefield source object.
+    pub noted_life_totals: HashMap<ObjectId, i32>,
+
     // =========================================================================
     // Battlefield State Extension Maps
     // =========================================================================
@@ -2213,6 +2216,7 @@ impl GameState {
             combat_damage_player_batch_hits: Vec::new(),
             speed_increase_triggered_this_turn: HashSet::new(),
             draft_noted_highest_numbers: HashMap::new(),
+            noted_life_totals: HashMap::new(),
             // Battlefield state extension maps
             tapped_permanents: HashSet::new(),
             summoning_sick: HashSet::new(),
@@ -2277,6 +2281,16 @@ impl GameState {
             .get(&(player, normalize_draft_note_card_name(card_name.as_ref())))
             .copied()
             .unwrap_or(0)
+    }
+
+    pub fn note_life_total_for_source(&mut self, source: ObjectId, player: PlayerId) -> Option<i32> {
+        let life_total = self.player(player)?.life;
+        self.noted_life_totals.insert(source, life_total);
+        Some(life_total)
+    }
+
+    pub fn noted_life_total_for_source(&self, source: ObjectId) -> Option<i32> {
+        self.noted_life_totals.get(&source).copied()
     }
 
     /// Creates a new game state after explicitly resetting runtime player/object IDs.
@@ -3535,6 +3549,16 @@ impl GameState {
             // effects use proper timestamp order in layers.
             self.effect_store.continuous_effects.record_entry(id);
             self.handle_day_night_object_entered(id);
+            if self.object(id).is_some_and(|object| {
+                object.abilities.iter().any(|ability| match &ability.kind {
+                    crate::ability::AbilityKind::Static(static_ability) => {
+                        static_ability.life_total_note_as_enters().is_some()
+                    }
+                    _ => false,
+                })
+            }) {
+                self.note_life_total_for_source(id, owner);
+            }
         }
         id
     }
@@ -4717,6 +4741,9 @@ impl GameState {
                         {
                             self.set_chosen_named_option(new_id, spec.options[chosen_idx].clone());
                         }
+                    }
+                    if static_ability.life_total_note_as_enters().is_some() {
+                        self.note_life_total_for_source(new_id, controller);
                     }
                 }
             }
@@ -8716,6 +8743,7 @@ impl GameState {
         self.transform_count.remove(&id);
         self.phased_out.remove(&id);
         self.imprinted_cards.remove(&id);
+        self.noted_life_totals.remove(&id);
         self.choice_store.chosen_colors.remove(&id);
         self.choice_store.chosen_basic_land_types.remove(&id);
         self.choice_store.chosen_land_types.remove(&id);

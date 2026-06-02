@@ -1179,6 +1179,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::ChoosePlayerAsEnters(display) => {
                 StaticAbility::choose_player_as_enters(display.clone())
             }
+            ironsmith_core::StaticAbilityPayload::NoteLifeTotalAsEnters(display) => {
+                StaticAbility::note_life_total_as_enters(display.clone())
+            }
             ironsmith_core::StaticAbilityPayload::ChooseCardNameAsEnters(display) => {
                 StaticAbility::choose_card_name_as_enters(display.clone())
             }
@@ -1572,6 +1575,12 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             return increase.display();
         }
         self.model.label.clone()
+    }
+
+    fn life_total_note_as_enters(
+        &self,
+    ) -> Option<crate::static_abilities::NoteLifeTotalAsEntersSpec> {
+        self.leaf_static_ability()?.life_total_note_as_enters()
     }
 
     fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {

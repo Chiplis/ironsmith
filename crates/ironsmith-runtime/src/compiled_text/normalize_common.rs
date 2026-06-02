@@ -8474,6 +8474,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the highest number you noted for cards named {}",
             title_case_card_name_fragment(card_name)
         ),
+        Value::LastNotedLifeTotal => "the last noted life total for this permanent".to_string(),
         Value::EffectValue(_) => "X".to_string(),
         Value::EffectValueOffset(_, offset) => {
             if *offset == 0 {

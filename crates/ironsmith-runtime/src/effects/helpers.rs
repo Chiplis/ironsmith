@@ -1528,6 +1528,12 @@ pub fn resolve_value(
             .try_into()
             .unwrap_or(i32::MAX)),
 
+        Value::LastNotedLifeTotal => game.noted_life_total_for_source(ctx.source).ok_or_else(|| {
+                ExecutionError::UnresolvableValue(
+                    "last noted life total is not available for this source".to_string(),
+                )
+            }),
+
         Value::EffectValue(effect_id) => {
             let outcome = ctx
                 .get_outcome(*effect_id)

@@ -1952,6 +1952,37 @@ fn parse_life_total_at_least_starting_predicate(words: &[&str]) -> Option<Predic
     None
 }
 
+fn parse_life_total_at_least_last_noted_predicate(words: &[&str]) -> Option<PredicateAst> {
+    if !matches!(
+        words,
+        [
+            "your",
+            "life",
+            "total",
+            "is",
+            "greater",
+            "than",
+            "or",
+            "equal",
+            "to",
+            "last",
+            "noted",
+            "life",
+            "total",
+            "for",
+            "this",
+            "permanent" | "enchantment" | "artifact" | "creature" | "land",
+        ]
+    ) {
+        return None;
+    }
+    Some(PredicateAst::ValueComparison {
+        left: Value::LifeTotal(PlayerFilter::You),
+        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::LastNotedLifeTotal,
+    })
+}
+
 fn parse_counted_objects_have_counter_predicate(words: &[&str]) -> Option<PredicateAst> {
     if words.len() < 7 {
         return None;
@@ -2239,6 +2270,9 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some(predicate) = parse_life_total_at_least_starting_predicate(&filtered) {
+        return Ok(predicate);
+    }
+    if let Some(predicate) = parse_life_total_at_least_last_noted_predicate(&filtered) {
         return Ok(predicate);
     }
 

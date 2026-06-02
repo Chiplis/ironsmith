@@ -144,7 +144,7 @@ pub use delayed::{
     ExileTaggedWhenSourceLeavesEffect, SacrificeSourceWhenTaggedLeavesEffect,
     ScheduleDelayedTriggerEffect, ScheduleEffectsWhenTaggedLeavesEffect, TaggedLeavesAbilitySource,
 };
-pub use life::{ExchangeLifeTotalsEffect, GainLifeEffect, LoseLifeEffect, SetLifeTotalEffect};
+pub use life::{ExchangeLifeTotalsEffect, GainLifeEffect, LoseLifeEffect, NoteLifeTotalEffect, SetLifeTotalEffect};
 pub use mana::{
     AddColorlessManaEffect, AddManaEffect, AddManaFromCommanderColorIdentityEffect,
     AddManaOfAnyColorEffect, AddManaOfAnyOneColorEffect, AddManaOfChosenColorEffect,

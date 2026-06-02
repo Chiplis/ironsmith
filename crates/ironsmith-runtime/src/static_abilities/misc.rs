@@ -5,7 +5,7 @@
 use super::{
     ChooseBasicLandTypeAsEntersSpec, ChooseCardNameAsEntersSpec, ChooseColorAsBecomesAttachedSpec,
     ChooseColorAsEntersSpec, ChooseCreatureTypeAsEntersSpec, ChooseLandTypeAsEntersSpec,
-    ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec,
+    ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec, NoteLifeTotalAsEntersSpec,
     ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec, ConditionalSpellKeywordKind,
     ConditionalSpellKeywordSpec, CountAsCardNamedForSpellEffectSpec, EnterAsCopyAsEntersSpec,
     GraveyardCountMetric, PowerToughnessChoiceOption, StaticAbility, StaticAbilityId,
@@ -1553,6 +1553,32 @@ impl StaticAbilityKind for ChoosePlayerAsEnters {
 
     fn player_choice_as_enters(&self) -> Option<ChoosePlayerAsEntersSpec> {
         Some(ChoosePlayerAsEntersSpec)
+    }
+}
+
+/// "As this enters, note your life total."
+#[derive(Debug, Clone, PartialEq)]
+pub struct NoteLifeTotalAsEnters {
+    pub display: String,
+}
+
+impl NoteLifeTotalAsEnters {
+    pub fn new(display: String) -> Self {
+        Self { display }
+    }
+}
+
+impl StaticAbilityKind for NoteLifeTotalAsEnters {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::NoteLifeTotalAsEnters
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn life_total_note_as_enters(&self) -> Option<NoteLifeTotalAsEntersSpec> {
+        Some(NoteLifeTotalAsEntersSpec)
     }
 }
 

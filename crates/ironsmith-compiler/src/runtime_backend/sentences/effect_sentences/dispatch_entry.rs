@@ -2501,6 +2501,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::ChooseCreatureType { .. }
             | SubjectVerbActionAst::ChooseCardName { .. }
             | SubjectVerbActionAst::ChoosePlayer { .. }
+            | SubjectVerbActionAst::NoteLifeTotal
             | SubjectVerbActionAst::AddMana { .. }
             | SubjectVerbActionAst::ExchangeLifeTotals { .. }
             | SubjectVerbActionAst::ExchangeTextBoxes { .. }

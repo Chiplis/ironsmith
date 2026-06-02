@@ -1529,6 +1529,11 @@ impl Effect {
         Self::new(DrawCardsEffect::you(count))
     }
 
+    pub fn note_life_total() -> Self {
+        use crate::effects::NoteLifeTotalEffect;
+        Self::new(NoteLifeTotalEffect)
+    }
+
     /// Create a "target player draws N cards" effect.
     pub fn target_draws(count: impl Into<Value>, player: PlayerFilter) -> Self {
         use crate::effects::DrawCardsEffect;

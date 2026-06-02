@@ -106,7 +106,7 @@ pub use effect::{
     MillEffect, ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect, MonstrosityEffect,
     MoveAllCountersEffect, MoveCountersEffect, MoveOneCounterEffect, MoveToLibraryNthFromTopEffect,
     MoveToLibraryTopOrBottomChoiceEffect, MoveToZoneEffect, NewTargetRestriction,
-    NinjutsuCostEffect, NinjutsuEffect, OpenAttractionEffect, PayAnyEnergyEffect,
+    NinjutsuCostEffect, NinjutsuEffect, NoteLifeTotalEffect, OpenAttractionEffect, PayAnyEnergyEffect,
     PayAnyLifeEffect, PayEnergyEffect, PayManaEffect, PhaseInEffect, PhaseOutEffect,
     PlayerControlDuration, PlayerControlStart,
     PoisonCountersEffect, PopulateEffect, PreventAllCombatDamageEffect, PreventAllDamageEffect,

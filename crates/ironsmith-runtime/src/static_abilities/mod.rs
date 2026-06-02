@@ -627,6 +627,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Returns info for "as this enters, note your life total" abilities.
+    fn life_total_note_as_enters(&self) -> Option<NoteLifeTotalAsEntersSpec> {
+        None
+    }
+
     /// Returns info for "as this enters, choose a card name" abilities.
     fn card_name_choice_as_enters(&self) -> Option<ChooseCardNameAsEntersSpec> {
         None
@@ -960,6 +965,10 @@ pub struct ChooseColorAsBecomesAttachedSpec;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ChoosePlayerAsEntersSpec;
 
+/// Spec for "as this enters, note your life total" abilities.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct NoteLifeTotalAsEntersSpec;
+
 /// Spec for "as this enters, choose a card name" abilities.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ChooseCardNameAsEntersSpec;
@@ -1120,6 +1129,10 @@ impl StaticAbility {
 
     pub fn player_choice_as_enters(&self) -> Option<ChoosePlayerAsEntersSpec> {
         self.0.player_choice_as_enters()
+    }
+
+    pub fn life_total_note_as_enters(&self) -> Option<NoteLifeTotalAsEntersSpec> {
+        self.0.life_total_note_as_enters()
     }
 
     pub fn card_name_choice_as_enters(&self) -> Option<ChooseCardNameAsEntersSpec> {
@@ -2672,6 +2685,10 @@ impl StaticAbility {
 
     pub fn choose_player_as_enters(display: String) -> Self {
         Self::new(ChoosePlayerAsEnters::new(display))
+    }
+
+    pub fn note_life_total_as_enters(display: String) -> Self {
+        Self::new(NoteLifeTotalAsEnters::new(display))
     }
 
     pub fn choose_card_name_as_enters(display: String) -> Self {

@@ -33827,6 +33827,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             describe_value(&set_life.amount)
         );
     }
+    if effect
+        .downcast_ref::<crate::effects::NoteLifeTotalEffect>()
+        .is_some()
+    {
+        return "Note your life total".to_string();
+    }
     if let Some(pay_mana) = effect.downcast_ref::<crate::effects::PayManaEffect>() {
         let player = describe_choose_spec(&pay_mana.player);
         return format!(

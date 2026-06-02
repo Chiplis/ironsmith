@@ -163,6 +163,7 @@ pub enum Value {
     DraftNotedHighestNumber {
         card_name: String,
     },
+    LastNotedLifeTotal,
     CountersOnSource(CounterType),
     CountersOn(Box<ChooseSpec>, Option<CounterType>),
     TaggedCount,

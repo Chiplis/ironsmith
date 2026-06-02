@@ -1359,6 +1359,9 @@ where
             payload.player.clone(),
         )));
     }
+    if M::downcast_ref::<ironsmith_core::NoteLifeTotalEffect>(&effect).is_some() {
+        return Ok(Effect::note_life_total());
+    }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::IncreaseSpeedEffect>(&effect)
     {
         return Ok(converted);

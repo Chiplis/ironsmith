@@ -45,7 +45,7 @@ pub use ironsmith_core::{
     MillEffect, ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect, MonstrosityEffect,
     MoveAllCountersEffect, MoveCountersEffect, MoveOneCounterEffect, MoveToLibraryNthFromTopEffect,
     MoveToLibraryTopOrBottomChoiceEffect, MoveToZoneEffect, NewTargetRestriction,
-    NinjutsuCostEffect, NinjutsuEffect, OpenAttractionEffect, PayAnyEnergyEffect,
+    NinjutsuCostEffect, NinjutsuEffect, NoteLifeTotalEffect, OpenAttractionEffect, PayAnyEnergyEffect,
     PayAnyLifeEffect, PayEnergyEffect, PayManaEffect, PhaseInEffect, PhaseOutEffect,
     PoisonCountersEffect, PopulateEffect,
     PreventAllCombatDamageEffect, PreventAllDamageEffect,

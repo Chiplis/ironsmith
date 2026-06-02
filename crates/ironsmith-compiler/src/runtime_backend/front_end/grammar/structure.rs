@@ -633,6 +633,8 @@ fn is_statement_verb_word(word: &str) -> bool {
             | "loses"
             | "mill"
             | "mills"
+            | "note"
+            | "notes"
             | "put"
             | "puts"
             | "return"
