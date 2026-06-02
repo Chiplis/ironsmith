@@ -19782,6 +19782,114 @@ fn parse_oracle_healing_grace_strict_and_keeps_source_choice_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn fiery_emancipation_strict_parser_compiled_text_and_model_regression() {
+    assert_oracle_card_parses_strict("Fiery Emancipation");
+    let def = parse_oracle_card_definition("Fiery Emancipation");
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains(
+            "If a source you control would deal damage to a permanent or player, it deals triple that damage to that permanent or player instead"
+        ),
+        "expected Fiery Emancipation triple-damage replacement wording, got {rendered}"
+    );
+    assert!(
+        debug.contains("DoubleDamageAmountReplacement")
+            && debug.contains("factor: 3")
+            && debug.contains("source_filter")
+            && debug.contains("target_player_filter")
+            && debug.contains("target_object_filter"),
+        "expected Fiery Emancipation to compile to a factor-3 damage replacement, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn fiery_emancipation_triples_only_damage_from_sources_you_control() {
+    let fiery = parse_oracle_card_definition("Fiery Emancipation");
+    let alice_source = CardDefinitionBuilder::new(CardId::from_raw(91_300), "Alice Damage Source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let bob_source = CardDefinitionBuilder::new(CardId::from_raw(91_301), "Bob Damage Source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let target = CardDefinitionBuilder::new(CardId::from_raw(91_302), "Bob Target Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let fiery_id = game.create_object_from_definition(&fiery, alice, Zone::Battlefield);
+    let alice_source_id = game.create_object_from_definition(&alice_source, alice, Zone::Battlefield);
+    let bob_source_id = game.create_object_from_definition(&bob_source, bob, Zone::Battlefield);
+    let target_id = game.create_object_from_definition(&target, bob, Zone::Battlefield);
+
+    game.update_replacement_effects();
+    assert!(
+        game.effect_store
+            .replacement_effects
+            .effects()
+            .iter()
+            .any(|replacement| {
+                replacement.source == fiery_id
+                    && matches!(
+                        replacement.replacement,
+                        crate::replacement::ReplacementAction::Modify(
+                            crate::replacement::EventModification::Multiply(3)
+                        )
+                    )
+            }),
+        "Fiery Emancipation should register a factor-3 damage replacement"
+    );
+
+    let (player_damage, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        alice_source_id,
+        crate::events::DamageTarget::Player(bob),
+        2,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        player_damage, 6,
+        "damage from an Alice-controlled source to a player should be tripled"
+    );
+
+    let (permanent_damage, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        alice_source_id,
+        crate::events::DamageTarget::Object(target_id),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        permanent_damage, 9,
+        "damage from an Alice-controlled source to a permanent should be tripled"
+    );
+
+    let (opponent_source_damage, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        bob_source_id,
+        crate::events::DamageTarget::Player(alice),
+        4,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        opponent_source_damage, 4,
+        "damage from a source Alice does not control should not be tripled"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn sphere_of_truth_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Sphere of Truth");
     let def = parse_oracle_card_definition("Sphere of Truth");
