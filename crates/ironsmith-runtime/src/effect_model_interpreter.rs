@@ -987,6 +987,9 @@ where
             ironsmith_core::PreventNextTimeDamageSource::Choice => {
                 crate::effects::PreventNextTimeDamageSource::Choice
             }
+            ironsmith_core::PreventNextTimeDamageSource::Target(spec) => {
+                crate::effects::PreventNextTimeDamageSource::Target(spec.clone())
+            }
             ironsmith_core::PreventNextTimeDamageSource::Filter(filter) => {
                 crate::effects::PreventNextTimeDamageSource::Filter(filter.clone())
             }

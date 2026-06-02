@@ -19629,6 +19629,121 @@ fn parse_oracle_cho_arrim_alchemist_strict_text_and_activation_shape() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_dazzling_reflection_strict_text_and_spell_shape() {
+    assert_oracle_card_parses_strict("Dazzling Reflection");
+    let def = parse_oracle_card_definition("Dazzling Reflection");
+    let spell = def
+        .spell_effect
+        .as_ref()
+        .expect("Dazzling Reflection should have a spell effect");
+    let debug = format!("{spell:#?}");
+    assert!(
+        debug.contains("TargetOnlyEffect")
+            && debug.contains("GainLifeEffect")
+            && debug.contains("PowerOf")
+            && debug.contains("PreventNextTimeDamageEffect"),
+        "expected Dazzling Reflection to target a creature, gain life from its power, and prevent that source's next damage, got {debug}"
+    );
+
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("You gain life equal to target creature's power")
+            && rendered.contains("The next time that creature would deal damage this turn, prevent that damage"),
+        "expected Dazzling Reflection compiled text to preserve target-power life gain and that-creature prevention, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn dazzling_reflection_runtime_gains_target_power_and_prevents_that_creature_damage_only() {
+    fn resolve_for_target_power(power: i32) -> (i32, bool, u32, bool, u32) {
+        let def = parse_oracle_card_definition("Dazzling Reflection");
+        let spell_effect = def.spell_effect.as_ref().expect("spell effect exists");
+        let mut game =
+            crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let spell_source = game.create_object_from_definition(&def, alice, Zone::Stack);
+        let target_creature = game.create_object_from_definition(
+            &CardDefinitionBuilder::new(CardId::from_raw(91_601), "Dazzling Target")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(power, 4))
+                .build(),
+            bob,
+            Zone::Battlefield,
+        );
+        let other_creature = game.create_object_from_definition(
+            &CardDefinitionBuilder::new(CardId::from_raw(91_602), "Other Damage Source")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(3, 3))
+                .build(),
+            bob,
+            Zone::Battlefield,
+        );
+
+        let mut dm = crate::decision::AutoPassDecisionMaker;
+        let mut ctx = crate::effects::ExecutionContext::new(spell_source, alice, &mut dm)
+            .with_targets(vec![crate::effects::ResolvedTarget::Object(target_creature)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: ChooseSpec::target_creature(),
+                range: 0..1,
+            }]);
+        crate::game_loop::execute_resolution_program(
+            &mut game,
+            &mut ctx,
+            alice,
+            spell_source,
+            spell_effect,
+            None,
+            &[],
+        )
+        .expect("Dazzling Reflection should resolve");
+
+        let life_after_resolution = game.life_total(alice);
+        let (other_source_damage, other_source_prevented) =
+            crate::events::processing::process_damage_with_event(
+                &mut game,
+                other_creature,
+                crate::events::DamageTarget::Player(alice),
+                3,
+                false,
+                crate::events::cause::EventCause::effect(),
+            );
+        let (target_source_damage, target_source_prevented) =
+            crate::events::processing::process_damage_with_event(
+                &mut game,
+                target_creature,
+                crate::events::DamageTarget::Player(bob),
+                5,
+                false,
+                crate::events::cause::EventCause::effect(),
+            );
+
+        (
+            life_after_resolution,
+            other_source_prevented,
+            other_source_damage,
+            target_source_prevented,
+            target_source_damage,
+        )
+    }
+
+    let (life, other_prevented, other_damage, target_prevented, target_damage) =
+        resolve_for_target_power(4);
+    assert_eq!(life, 24, "Alice should gain life equal to target creature's power");
+    assert!(!other_prevented, "damage from a different creature should not be prevented");
+    assert_eq!(other_damage, 3, "nonmatching damage should still be dealt");
+    assert!(target_prevented, "damage from the targeted creature should be prevented");
+    assert_eq!(target_damage, 0, "prevented target-creature damage should be reduced to zero");
+
+    let (life, _, _, target_prevented, target_damage) = resolve_for_target_power(0);
+    assert_eq!(life, 20, "zero-power target should not increase Alice's life total");
+    assert!(target_prevented, "the prevention shield should still apply for a zero-power target");
+    assert_eq!(target_damage, 0, "zero-power branch should still prevent that creature's damage");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn cho_arrim_alchemist_runtime_prevents_chosen_source_to_you_and_gains_that_life() {
     struct ChooseNamedSourceDecisionMaker {
         source_name: &'static str,
