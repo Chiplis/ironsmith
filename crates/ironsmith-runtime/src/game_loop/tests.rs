@@ -270,6 +270,24 @@ fn minds_dilation_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn nymris_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(658_546), "Nymris, Oona's Trickster")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 6))
+        .parse_text(
+            "Flash\n\
+             Flying\n\
+             Whenever you cast your first spell during each opponent's turn, look at the top two cards of your library. Put one of those cards into your hand and the other into your graveyard.",
+        )
+        .expect("Nymris, Oona's Trickster should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn necrotic_ooze_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(645_500), "Necrotic Ooze")
         .card_types(vec![CardType::Creature])
@@ -5808,6 +5826,178 @@ fn queue_minds_dilation_spell_cast(
     );
     queue_triggers_from_event(game, trigger_queue, event, false);
     spell_id
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn queue_nymris_spell_cast(
+    game: &mut GameState,
+    caster: PlayerId,
+    trigger_queue: &mut TriggerQueue,
+) -> ObjectId {
+    let spell_id = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Nymris Trigger Probe Spell")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+            .card_types(vec![CardType::Instant])
+            .build(),
+        caster,
+        Zone::Stack,
+    );
+    let event = TriggerEvent::new_with_provenance(
+        SpellCastEvent::new(spell_id, caster, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    queue_triggers_from_event(game, trigger_queue, event, false);
+    spell_id
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_nymris_library_card(
+    game: &mut GameState,
+    owner: PlayerId,
+    name: &str,
+) -> crate::ids::StableId {
+    let card = CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Instant])
+        .build();
+    let id = game.create_object_from_card(&card, owner, Zone::Library);
+    game.object(id).expect("Nymris library card exists").stable_id
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn nymris_first_spell_on_opponents_turn_moves_one_top_card_to_hand_and_one_to_graveyard() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+
+    let nymris = nymris_definition();
+    game.create_object_from_definition(&nymris, alice, Zone::Battlefield);
+    let bottom_stable = create_nymris_library_card(&mut game, alice, "Nymris Bottom Card");
+    let top_one_stable = create_nymris_library_card(&mut game, alice, "Nymris Top Card One");
+    let top_two_stable = create_nymris_library_card(&mut game, alice, "Nymris Top Card Two");
+
+    let mut trigger_queue = TriggerQueue::new();
+    queue_nymris_spell_cast(&mut game, alice, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Nymris should trigger for your first spell during an opponent's turn"
+    );
+    assert_eq!(
+        trigger_queue.entries[0].ability.trigger.display(),
+        "Whenever you cast your first spell during each opponent's turn"
+    );
+
+    let mut dm = SelectFirstDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Nymris trigger should go on the stack");
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Nymris trigger should resolve");
+
+    let top_one_id = game
+        .find_object_by_stable_id(top_one_stable)
+        .expect("first looked-at card should still exist");
+    let top_two_id = game
+        .find_object_by_stable_id(top_two_stable)
+        .expect("second looked-at card should still exist");
+    let hand = &game.player(alice).expect("alice exists").hand;
+    let graveyard = &game.player(alice).expect("alice exists").graveyard;
+    assert_eq!(
+        usize::from(hand.contains(&top_one_id)) + usize::from(hand.contains(&top_two_id)),
+        1,
+        "exactly one of the two looked-at cards should move to Alice's hand"
+    );
+    assert_eq!(
+        usize::from(graveyard.contains(&top_one_id)) + usize::from(graveyard.contains(&top_two_id)),
+        1,
+        "the other looked-at card should move to Alice's graveyard"
+    );
+
+    let bottom_id = game
+        .find_object_by_stable_id(bottom_stable)
+        .expect("bottom card should still exist");
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .library
+            .contains(&bottom_id),
+        "Nymris should only move the top two library cards"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn nymris_ignores_your_spell_during_your_own_turn() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+
+    let nymris = nymris_definition();
+    game.create_object_from_definition(&nymris, alice, Zone::Battlefield);
+
+    let mut trigger_queue = TriggerQueue::new();
+    queue_nymris_spell_cast(&mut game, alice, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        0,
+        "Nymris should not trigger for your spell during your own turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn nymris_ignores_opponents_spell_during_that_opponents_turn() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(bob);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+
+    let nymris = nymris_definition();
+    game.create_object_from_definition(&nymris, alice, Zone::Battlefield);
+
+    let mut trigger_queue = TriggerQueue::new();
+    queue_nymris_spell_cast(&mut game, bob, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        0,
+        "Nymris should not trigger for an opponent casting a spell"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn nymris_ignores_your_second_spell_during_same_opponents_turn() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+
+    let nymris = nymris_definition();
+    game.create_object_from_definition(&nymris, alice, Zone::Battlefield);
+
+    let mut first_queue = TriggerQueue::new();
+    queue_nymris_spell_cast(&mut game, alice, &mut first_queue);
+    assert_eq!(first_queue.entries.len(), 1);
+
+    let mut second_queue = TriggerQueue::new();
+    queue_nymris_spell_cast(&mut game, alice, &mut second_queue);
+    assert_eq!(
+        second_queue.entries.len(),
+        0,
+        "Nymris should trigger only for your first spell during each opponent's turn"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

@@ -501,6 +501,9 @@ const PUT_ONE_LOOKED_CARD_INTO_HAND_PATTERN: ClauseShape<'static> = clause_shape
     prefix_any
         & [
             &["put", "one", "of", "them", "into", "your", "hand"],
+            &[
+                "put", "one", "of", "those", "cards", "into", "your", "hand",
+            ],
             &["put", "one", "into", "your", "hand"],
         ]
 );
