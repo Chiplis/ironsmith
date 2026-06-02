@@ -209,14 +209,13 @@ const SOURCE_IS_YOUR_RING_BEARER_PATTERN: ClauseShape<'static> = clause_shape!(
             &["this", "creature", "is", "your", "ring", "bearer"],
         ]
 );
-const RING_HAS_TEMPTED_YOU_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(
-        prefix_any
-            & [
-                &["ring", "has", "tempted", "you"],
-                &["the", "ring", "has", "tempted", "you"],
-            ]
-    );
+const RING_HAS_TEMPTED_YOU_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["ring", "has", "tempted", "you"],
+            &["the", "ring", "has", "tempted", "you"],
+        ]
+);
 const TIMES_THIS_GAME_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["times", "this", "game"], &["time", "this", "game"]]);
 const TRIGGERING_OBJECT_HAD_TO_ATTACK_THIS_COMBAT_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -2170,7 +2169,8 @@ fn parse_counted_source_exiled_objects_predicate(words: &[&str]) -> Option<Predi
     }
     let object_words = &words[used..have_idx];
     let tail_words = &words[have_idx + 1..];
-    if object_words.is_empty() || !BEEN_EXILED_WITH_THIS_SOURCE_PREFIX_PATTERN.matches_words(tail_words)
+    if object_words.is_empty()
+        || !BEEN_EXILED_WITH_THIS_SOURCE_PREFIX_PATTERN.matches_words(tail_words)
     {
         return None;
     }
@@ -2364,7 +2364,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if let Some(predicate) = parse_repeated_if_or_predicate(&filtered)? {
         return Ok(predicate);
     }
-    if matches!(filtered.as_slice(), ["they", "match"] | ["those", "choices", "match"]) {
+    if matches!(
+        filtered.as_slice(),
+        ["they", "match"] | ["those", "choices", "match"]
+    ) {
         return Ok(PredicateAst::SecretChoicesMatch);
     }
     if let Some(gets_idx) = find_index(&filtered, |word| GETS_WORD_PATTERN.matches_word(word))
@@ -3565,10 +3568,9 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             PERMANENT_WORD_PATTERN.matches_word(sacrificed_head) || subject_card_type.is_some();
 
         if subject_is_permanent {
-            let descriptor_tokens =
-                crate::runtime_backend::lexer::synthetic_word_tokens(
-                    &filtered[sacrificed_idx + 3..],
-                );
+            let descriptor_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(
+                &filtered[sacrificed_idx + 3..],
+            );
             let mut filter = match parse_object_filter(&descriptor_tokens, false) {
                 Ok(filter) => filter,
                 Err(err) => parse_color_only_object_filter_words(&filtered[sacrificed_idx + 3..])
@@ -4298,6 +4300,44 @@ mod tests {
     }
 
     #[test]
+    fn parse_predicate_control_conditions_use_shared_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected) in [
+            (
+                "If you control three or more artifacts",
+                PredicateAst::PlayerControlsAtLeast {
+                    player: PlayerAst::You,
+                    filter: ObjectFilter::artifact().controlled_by(PlayerFilter::You),
+                    count: 3,
+                },
+            ),
+            (
+                "If you control three or more creatures with different powers",
+                PredicateAst::PlayerControlsAtLeastWithDifferentPowers {
+                    player: PlayerAst::You,
+                    filter: ObjectFilter::creature().controlled_by(PlayerFilter::You),
+                    count: 3,
+                },
+            ),
+            (
+                "If that player controls exactly two lands",
+                PredicateAst::PlayerControlsExactly {
+                    player: PlayerAst::That,
+                    filter: ObjectFilter::land(),
+                    count: 2,
+                },
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
     fn parse_predicate_player_achievements_use_shared_capture_parser() -> Result<(), CardTextError>
     {
         for (text, expected) in [
@@ -4486,7 +4526,8 @@ mod tests {
     }
 
     #[test]
-    fn parse_predicate_supports_that_player_discards_filtered_card_this_way() -> Result<(), CardTextError> {
+    fn parse_predicate_supports_that_player_discards_filtered_card_this_way()
+    -> Result<(), CardTextError> {
         let tokens = lex_line("If that player discards an artifact card this way", 0)?;
         let predicate_tokens = predicate_tokens_after_if(&tokens);
 

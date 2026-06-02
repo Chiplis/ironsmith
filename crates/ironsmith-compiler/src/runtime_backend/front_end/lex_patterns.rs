@@ -87,6 +87,30 @@ impl<'p> LexPattern<'p> {
         LexPatternAtom::RoleCapture(name, role, kind)
     }
 
+    pub(crate) const fn subject(name: &'p str, kind: LexCaptureKind<'p>) -> LexPatternAtom<'p> {
+        Self::role_capture(name, LexCaptureRole::Subject, kind)
+    }
+
+    pub(crate) const fn action(name: &'p str, kind: LexCaptureKind<'p>) -> LexPatternAtom<'p> {
+        Self::role_capture(name, LexCaptureRole::Action, kind)
+    }
+
+    pub(crate) const fn object(name: &'p str, kind: LexCaptureKind<'p>) -> LexPatternAtom<'p> {
+        Self::role_capture(name, LexCaptureRole::Object, kind)
+    }
+
+    pub(crate) const fn amount(name: &'p str, kind: LexCaptureKind<'p>) -> LexPatternAtom<'p> {
+        Self::role_capture(name, LexCaptureRole::Amount, kind)
+    }
+
+    pub(crate) const fn modifier(name: &'p str, kind: LexCaptureKind<'p>) -> LexPatternAtom<'p> {
+        Self::role_capture(name, LexCaptureRole::Modifier, kind)
+    }
+
+    pub(crate) const fn tail(name: &'p str, kind: LexCaptureKind<'p>) -> LexPatternAtom<'p> {
+        Self::role_capture(name, LexCaptureRole::Tail, kind)
+    }
+
     pub(crate) fn matches_clause(self, clause: LexedClause<'_>) -> bool {
         self.match_clause(clause).is_some()
     }
@@ -548,9 +572,8 @@ mod tests {
         let clause = LexedClause::new(&tokens);
         let atoms = [
             LexPattern::word("sacrifice"),
-            LexPattern::role_capture(
+            LexPattern::object(
                 "object",
-                LexCaptureRole::Object,
                 LexCaptureKind::UntilPhrase(&["at", "end", "of", "combat"]),
             ),
             LexPattern::phrase(&["at", "end", "of", "combat"]),
@@ -562,6 +585,42 @@ mod tests {
             .capture_clause_by_role(LexCaptureRole::Object, clause)
             .expect("object role");
         assert_eq!(object.word_refs(), ["that", "token"]);
+    }
+
+    #[test]
+    fn pattern_role_helpers_capture_subject_action_object() {
+        let tokens = tokens(&["you", "control", "three", "artifacts"]);
+        let clause = LexedClause::new(&tokens);
+        let atoms = [
+            LexPattern::subject("subject", LexCaptureKind::WordCount(1)),
+            LexPattern::action("action", LexCaptureKind::OneOf(&["control", "controls"])),
+            LexPattern::amount("amount", LexCaptureKind::WordCount(1)),
+            LexPattern::object("object", LexCaptureKind::Rest),
+        ];
+        let pattern = LexPattern::new(&atoms);
+
+        let matched = pattern.match_clause(clause).expect("match");
+        assert_eq!(
+            matched
+                .capture_clause_by_role(LexCaptureRole::Subject, clause)
+                .expect("subject")
+                .word_refs(),
+            ["you"]
+        );
+        assert_eq!(
+            matched
+                .capture_clause_by_role(LexCaptureRole::Action, clause)
+                .expect("action")
+                .word_refs(),
+            ["control"]
+        );
+        assert_eq!(
+            matched
+                .capture_clause_by_role(LexCaptureRole::Object, clause)
+                .expect("object")
+                .word_refs(),
+            ["artifacts"]
+        );
     }
 
     #[test]
