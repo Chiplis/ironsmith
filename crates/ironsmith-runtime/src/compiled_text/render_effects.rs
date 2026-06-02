@@ -70,14 +70,14 @@ fn describe_pay_any_energy_amount(
     }
 }
 
-fn is_target_permanent_with_counter_or_suspended_card(spec: &ChooseSpec) -> bool {
+fn is_target_permanent_or_suspended_card(spec: &ChooseSpec) -> bool {
     let ChooseSpec::Target(inner) = spec else {
         return false;
     };
     let ChooseSpec::Object(filter) = inner.as_ref() else {
         return false;
     };
-    let permanent = crate::target::ObjectFilter::permanent().with_any_counter();
+    let permanent = crate::target::ObjectFilter::permanent();
     let suspended = crate::target::ObjectFilter::default()
         .in_zone(crate::zone::Zone::Exile)
         .with_alternative_cast(crate::filter::AlternativeCastKind::Suspend)
@@ -589,6 +589,9 @@ pub(super) fn describe_spell_mastery_reanimation_program(
 }
 
 fn unwrap_basic_tag_wrappers(effect: &Effect) -> &Effect {
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return unwrap_basic_tag_wrappers(&with_id.effect);
+    }
     if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
         return unwrap_basic_tag_wrappers(&tag_all.effect);
     }
@@ -602,6 +605,19 @@ fn direct_wrapped_effect_tag(effect: &Effect) -> Option<&crate::TagKey> {
     effect
         .downcast_ref::<crate::effects::TaggedEffect>()
         .map(|tagged| &tagged.tag)
+}
+
+fn wrapped_effect_tag(effect: &Effect) -> Option<&crate::TagKey> {
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return wrapped_effect_tag(&with_id.effect);
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return Some(&tagged.tag);
+    }
+    if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+        return Some(&tag_all.tag);
+    }
+    None
 }
 
 fn describe_spell_mastery_reanimation_effects(effects: &[&Effect]) -> Option<String> {
@@ -15719,7 +15735,7 @@ fn describe_exile_then_return_transformed_with_counter(
     transform_effect: &Effect,
     put_counter_effect: &Effect,
 ) -> Option<String> {
-    let exile_tag = direct_wrapped_effect_tag(exile_effect)?;
+    let exile_tag = wrapped_effect_tag(exile_effect);
     let exile_move = unwrap_basic_tag_wrappers(exile_effect)
         .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     let move_back = unwrap_basic_tag_wrappers(return_effect)
@@ -15738,10 +15754,11 @@ fn describe_exile_then_return_transformed_with_counter(
     let crate::target::ChooseSpec::Tagged(return_tag) = &move_back.target else {
         return None;
     };
-    if return_tag != exile_tag
-        || (!return_tag.as_str().starts_with("exiled_")
-            && return_tag.as_str() != "__source_exiled__")
-    {
+    let returns_exiled_source = return_tag.as_str() == "__source_exiled__"
+        && matches!(exile_move.target, ChooseSpec::Source);
+    let returns_wrapped_exile = return_tag.as_str().starts_with("exiled_")
+        && exile_tag.is_some_and(|exile_tag| exile_tag == return_tag);
+    if !returns_exiled_source && !returns_wrapped_exile {
         return None;
     }
     if !matches!(&transform.target, ChooseSpec::Tagged(tag) if tag == return_tag)
@@ -35954,7 +35971,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 "For each kind of counter on {target}, choose to put or remove one of that kind"
             );
         }
-        if is_target_permanent_with_counter_or_suspended_card(&for_each_counter_kind.target) {
+        if is_target_permanent_or_suspended_card(&for_each_counter_kind.target) {
             return "Choose a counter on target permanent or suspended card. Remove that counter from that permanent or card or put another of those counters on it".to_string();
         }
         return format!(
@@ -40074,6 +40091,9 @@ pub(super) fn describe_ability(
                     } else if triggered.presentation_label.is_some() {
                         line.push_str(", ");
                         line.push_str(&lowercase_first(only));
+                    } else if triggered.trigger.saga_chapters().is_some() {
+                        line.push_str(" — ");
+                        line.push_str(only);
                     } else {
                         line.push_str(", ");
                         line.push_str(&lowercase_first(only));

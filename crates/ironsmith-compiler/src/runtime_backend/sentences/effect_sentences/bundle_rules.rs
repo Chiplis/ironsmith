@@ -1225,21 +1225,6 @@ fn parse_choose_objects_then_for_each_of_those_bundle(
     Ok(Some(combined))
 }
 
-fn target_with_any_counter(target: TargetAst) -> TargetAst {
-    match target {
-        TargetAst::Object(filter, target_span, it_span) => {
-            TargetAst::Object(filter.with_any_counter(), target_span, it_span)
-        }
-        TargetAst::WithCount(inner, count) => {
-            TargetAst::WithCount(Box::new(target_with_any_counter(*inner)), count)
-        }
-        TargetAst::WithCountValue(inner, count, value) => {
-            TargetAst::WithCountValue(Box::new(target_with_any_counter(*inner)), count, value)
-        }
-        other => other,
-    }
-}
-
 fn choose_counter_target(
     first: &[OwnedLexToken],
     first_words: &[&str],
@@ -1248,7 +1233,7 @@ fn choose_counter_target(
         return Ok(TargetAst::Object(
             ObjectFilter {
                 any_of: vec![
-                    ObjectFilter::permanent().with_any_counter(),
+                    ObjectFilter::permanent(),
                     ObjectFilter::default()
                         .in_zone(Zone::Exile)
                         .with_alternative_cast(AlternativeCastKind::Suspend)
@@ -1268,7 +1253,7 @@ fn choose_counter_target(
         ))
     })?;
     let target_tokens = trim_commas(&first[target_token_start..]);
-    Ok(target_with_any_counter(parse_target_phrase(&target_tokens)?))
+    parse_target_phrase(&target_tokens)
 }
 
 fn parse_choose_counter_on_target_then_put_or_remove_bundle(

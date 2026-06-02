@@ -6732,7 +6732,7 @@ fn clockspinning_target_permanent(game: &mut GameState, controller: PlayerId) ->
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn clockspinning_targets_only_countered_permanents_or_suspended_cards() {
+fn clockspinning_targets_permanents_or_suspended_cards() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
     let def = clockspinning_definition();
@@ -6764,11 +6764,11 @@ fn clockspinning_targets_only_countered_permanents_or_suspended_cards() {
     );
     assert!(
         legal_targets.contains(&Target::Object(suspended_id)),
-        "suspended cards with counters should be legal Clockspinning targets, got {legal_targets:?}"
+        "suspended cards with time counters should be legal Clockspinning targets, got {legal_targets:?}"
     );
     assert!(
-        !legal_targets.contains(&Target::Object(uncountered_permanent)),
-        "permanents without counters should not be legal Clockspinning targets, got {legal_targets:?}"
+        legal_targets.contains(&Target::Object(uncountered_permanent)),
+        "permanents without counters should still be legal Clockspinning targets, got {legal_targets:?}"
     );
     assert!(
         !legal_targets.contains(&Target::Object(uncountered_suspended)),

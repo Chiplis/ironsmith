@@ -169,7 +169,7 @@ fn clockspinning_strict_parser_and_compiled_text_regression() {
             && spell_debug.contains("Suspend")
             && spell_debug.contains("with_counter: Some")
             && spell_debug.contains("Time"),
-        "Clockspinning should compile to a one-counter-kind put/remove effect targeting countered permanents or suspended cards, got {spell_debug}"
+        "Clockspinning should compile to a one-counter-kind put/remove effect targeting permanents or suspended cards, got {spell_debug}"
     );
     assert!(
         rendered.contains(

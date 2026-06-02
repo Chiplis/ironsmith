@@ -9290,7 +9290,7 @@ pub(super) fn describe_doesnt_untap_apply_continuous_effect(
         text.push(' ');
         text.push_str(&tail);
     }
-    Some(text)
+    Some(normalize_each_other_continuous_subject(text))
 }
 
 fn choose_spec_land_filter(spec: &ChooseSpec) -> Option<&ObjectFilter> {
@@ -9673,7 +9673,38 @@ pub(super) fn describe_apply_continuous_effect(
         text.push(' ');
         text.push_str(&tail);
     }
-    Some(text)
+    Some(normalize_each_other_continuous_subject(text))
+}
+
+fn normalize_each_other_continuous_subject(text: String) -> String {
+    let (prefix, rest) = if let Some(rest) = text.strip_prefix("Each other ") {
+        ("Other", rest)
+    } else if let Some(rest) = text.strip_prefix("each other ") {
+        ("other", rest)
+    } else {
+        return text;
+    };
+
+    for (singular_verb, plural_verb) in [
+        (" gets ", " get "),
+        (" gains ", " gain "),
+        (" has ", " have "),
+        (" loses ", " lose "),
+    ] {
+        if let Some((subject, tail)) = rest.split_once(singular_verb) {
+            let tail = tail
+                .replace(" and gets ", " and get ")
+                .replace(" and gains ", " and gain ")
+                .replace(" and has ", " and have ")
+                .replace(" and loses ", " and lose ");
+            return format!(
+                "{prefix} {}{plural_verb}{tail}",
+                pluralize_noun_phrase(subject)
+            );
+        }
+    }
+
+    text
 }
 
 fn describe_dies_return_counter_grant(
@@ -9842,7 +9873,7 @@ fn describe_color_subtype_addition_pair(
         text.push(' ');
         text.push_str(&tail);
     }
-    Some(text)
+    Some(normalize_each_other_continuous_subject(text))
 }
 
 pub(super) fn describe_compact_apply_continuous_pair(
@@ -9875,7 +9906,7 @@ pub(super) fn describe_compact_apply_continuous_pair(
         text.push(' ');
         text.push_str(&tail);
     }
-    Some(text)
+    Some(normalize_each_other_continuous_subject(text))
 }
 
 pub(super) fn describe_compact_tagged_apply_continuous_pair(
@@ -9947,7 +9978,7 @@ pub(super) fn describe_compact_tagged_apply_continuous_pair(
         text.push(' ');
         text.push_str(&tail);
     }
-    Some(text)
+    Some(normalize_each_other_continuous_subject(text))
 }
 
 fn tagged_apply_pair_preserves_animated_land(
