@@ -198,15 +198,20 @@ const OWNER_CONTROL_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
             &["under", "its", "owner", "control"],
+            &["under", "its", "owners", "control"],
             &["under", "their", "owner", "control"],
+            &["under", "their", "owners", "control"],
             &["under", "his", "owner", "control"],
+            &["under", "his", "owners", "control"],
             &["under", "her", "owner", "control"],
+            &["under", "her", "owners", "control"],
             &["under", "that", "player", "control"],
         ]
 );
 const IT_OR_THEM_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["it"], &["them"]]);
 const IT_OR_THEM_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["it"], &["them"]]);
+const TRANSFORMED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["transformed"]);
 const ENTERS_AS_CREATURE_PREDICATE_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -226,6 +231,23 @@ fn subject_verb_put_counters_target(effect: &EffectAst) -> Option<TargetAst> {
         },
         _ => None,
     }
+}
+
+fn strip_transformed_destination_tail<'a>(words: &[&'a str]) -> (Vec<&'a str>, bool) {
+    let mut transformed = false;
+    let stripped = words
+        .iter()
+        .copied()
+        .filter(|word| {
+            if TRANSFORMED_WORD_PATTERN.matches_word(word) {
+                transformed = true;
+                false
+            } else {
+                true
+            }
+        })
+        .collect();
+    (stripped, transformed)
 }
 
 fn counter_type_from_choice_segment(
@@ -775,6 +797,7 @@ pub(crate) fn parse_return_with_counters_on_it_sentence_matched(
         .copied()
         .filter(|word| !TAPPED_WORD_PATTERN.matches_word(word))
         .collect::<Vec<_>>();
+    let (destination_tail, transformed) = strip_transformed_destination_tail(&destination_tail);
     let battlefield_controller = if destination_tail.is_empty()
         || PRESERVE_CONTROL_TAIL_PATTERN.matches_words(&destination_tail)
     {
@@ -833,7 +856,7 @@ pub(crate) fn parse_return_with_counters_on_it_sentence_matched(
     let mut effects = vec![EffectAst::subject_verb_return_to_battlefield(
         parse_target_phrase(target_clause.tokens())?,
         tapped,
-        false,
+        transformed,
         false,
         battlefield_controller,
         None,
@@ -915,16 +938,17 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence_matched(
         return Ok(None);
     }
 
-    let destination_tail = &base_destination_words[1..];
+    let (destination_tail, transformed) =
+        strip_transformed_destination_tail(&base_destination_words[1..]);
     let supported_control_tail = destination_tail.is_empty()
-        || YOUR_CONTROL_TAIL_PATTERN.matches_words(destination_tail)
-        || OWNER_CONTROL_TAIL_PATTERN.matches_words(destination_tail);
+        || YOUR_CONTROL_TAIL_PATTERN.matches_words(&destination_tail)
+        || OWNER_CONTROL_TAIL_PATTERN.matches_words(&destination_tail);
     if !supported_control_tail {
         return Ok(None);
     }
-    let battlefield_controller = if YOUR_CONTROL_TAIL_PATTERN.matches_words(destination_tail) {
+    let battlefield_controller = if YOUR_CONTROL_TAIL_PATTERN.matches_words(&destination_tail) {
         ReturnControllerAst::You
-    } else if OWNER_CONTROL_TAIL_PATTERN.matches_words(destination_tail) {
+    } else if OWNER_CONTROL_TAIL_PATTERN.matches_words(&destination_tail) {
         ReturnControllerAst::Owner
     } else {
         ReturnControllerAst::Preserve
@@ -966,6 +990,9 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence_matched(
         None,
     )];
     let tagged_target = TargetAst::Tagged(TagKey::from(IT_TAG), clause.span());
+    if transformed {
+        effects.push(EffectAst::subject_verb_transform(tagged_target.clone()));
+    }
     for descriptor in descriptors {
         let (count, counter_type) = parse_counter_descriptor(descriptor.tokens())?;
         effects.push(EffectAst::subject_verb_put_counters(

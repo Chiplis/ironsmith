@@ -70,6 +70,24 @@ fn describe_pay_any_energy_amount(
     }
 }
 
+fn is_target_permanent_or_suspended_card(spec: &ChooseSpec) -> bool {
+    let ChooseSpec::Target(inner) = spec else {
+        return false;
+    };
+    let ChooseSpec::Object(filter) = inner.as_ref() else {
+        return false;
+    };
+    let permanent = crate::target::ObjectFilter::permanent();
+    let suspended = crate::target::ObjectFilter::default()
+        .in_zone(crate::zone::Zone::Exile)
+        .with_alternative_cast(crate::filter::AlternativeCastKind::Suspend)
+        .with_counter_type(crate::object::CounterType::Time);
+    filter.any_of.len() == 2
+        && filter.zone.is_none()
+        && filter.any_of.iter().any(|arm| arm == &permanent)
+        && filter.any_of.iter().any(|arm| arm == &suspended)
+}
+
 fn describe_discard_hand_add_mana_draw_sequence(effects: &[&Effect]) -> Option<String> {
     let [discard_effect, mana_effect, draw_effect] = effects else {
         return None;
@@ -571,6 +589,9 @@ pub(super) fn describe_spell_mastery_reanimation_program(
 }
 
 fn unwrap_basic_tag_wrappers(effect: &Effect) -> &Effect {
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return unwrap_basic_tag_wrappers(&with_id.effect);
+    }
     if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
         return unwrap_basic_tag_wrappers(&tag_all.effect);
     }
@@ -584,6 +605,19 @@ fn direct_wrapped_effect_tag(effect: &Effect) -> Option<&crate::TagKey> {
     effect
         .downcast_ref::<crate::effects::TaggedEffect>()
         .map(|tagged| &tagged.tag)
+}
+
+fn wrapped_effect_tag(effect: &Effect) -> Option<&crate::TagKey> {
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return wrapped_effect_tag(&with_id.effect);
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return Some(&tagged.tag);
+    }
+    if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+        return Some(&tag_all.tag);
+    }
+    None
 }
 
 fn describe_spell_mastery_reanimation_effects(effects: &[&Effect]) -> Option<String> {
@@ -13731,6 +13765,18 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 2;
             continue;
         }
+        if idx + 3 < filtered.len()
+            && let Some(compact) = describe_exile_then_return_transformed_with_counter(
+                filtered[idx],
+                filtered[idx + 1],
+                filtered[idx + 2],
+                filtered[idx + 3],
+            )
+        {
+            parts.push(compact);
+            idx += 4;
+            continue;
+        }
         if idx + 2 < filtered.len()
             && let Some(compact) = describe_exile_return_then_transform(
                 filtered[idx],
@@ -15683,6 +15729,75 @@ pub(super) fn describe_exile_then_return(
     ))
 }
 
+fn describe_exile_then_return_transformed_with_counter(
+    exile_effect: &Effect,
+    return_effect: &Effect,
+    transform_effect: &Effect,
+    put_counter_effect: &Effect,
+) -> Option<String> {
+    let exile_tag = wrapped_effect_tag(exile_effect);
+    let exile_move = unwrap_basic_tag_wrappers(exile_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let move_back = unwrap_basic_tag_wrappers(return_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let transform = unwrap_basic_tag_wrappers(transform_effect)
+        .downcast_ref::<crate::effects::TransformEffect>()?;
+    let put_counter = unwrap_basic_tag_wrappers(put_counter_effect)
+        .downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if move_back.zone != Zone::Battlefield
+        || exile_move.zone != Zone::Exile
+        || put_counter.distributed
+        || put_counter.target_count.is_some()
+    {
+        return None;
+    }
+    let crate::target::ChooseSpec::Tagged(return_tag) = &move_back.target else {
+        return None;
+    };
+    let returns_exiled_source = return_tag.as_str() == "__source_exiled__"
+        && matches!(exile_move.target, ChooseSpec::Source);
+    let returns_wrapped_exile = return_tag.as_str().starts_with("exiled_")
+        && exile_tag.is_some_and(|exile_tag| exile_tag == return_tag);
+    if !returns_exiled_source && !returns_wrapped_exile {
+        return None;
+    }
+    if !matches!(&transform.target, ChooseSpec::Tagged(tag) if tag == return_tag)
+        || !matches!(&put_counter.target, ChooseSpec::Tagged(tag) if tag == return_tag)
+    {
+        return None;
+    }
+
+    let target = if matches!(exile_move.target, ChooseSpec::Source) {
+        "it".to_string()
+    } else {
+        describe_choose_spec(&exile_move.target)
+    };
+    let return_object = if choose_spec_allows_multiple(&exile_move.target) {
+        "them"
+    } else {
+        "it"
+    };
+    let owner_control_suffix = if choose_spec_allows_multiple(&exile_move.target) {
+        " under their owners' control"
+    } else {
+        " under its owner's control"
+    };
+    let tapped_suffix = if move_back.enters_tapped {
+        " tapped"
+    } else {
+        ""
+    };
+    let controller_suffix = match move_back.battlefield_controller {
+        crate::effects::BattlefieldController::Preserve => "",
+        crate::effects::BattlefieldController::Owner => owner_control_suffix,
+        crate::effects::BattlefieldController::You => " under your control",
+    };
+    let counter_text = describe_put_counter_phrase(&put_counter.amount, put_counter.counter_type);
+    Some(format!(
+        "Exile {target}, then put {return_object} onto the battlefield{tapped_suffix} transformed{controller_suffix} with {counter_text} on it"
+    ))
+}
+
 pub(super) fn describe_exile_return_then_transform(
     exile_effect: &Effect,
     return_effect: &Effect,
@@ -15852,6 +15967,7 @@ pub(super) fn describe_reveal_top_then_if_put_into_hand(
             | "enchantment"
             | "planeswalker"
             | "battle"
+            | "permanent"
             | "instant"
             | "sorcery"
     ) {
@@ -21982,6 +22098,11 @@ pub(super) fn describe_tagged_target_then_cant_restriction(
             return None;
         }
         let subject = capitalize_first(&describe_choose_spec(&target_only.target));
+        if let Some(allowed) = describe_except_by_subtype_blockers(blockers) {
+            return Some(format!(
+                "{subject} can't be blocked this turn except by {allowed}"
+            ));
+        }
         let blockers = pluralize_noun_phrase(strip_leading_article(&blockers.description()));
         return Some(format!(
             "{subject} can't be blocked by {blockers} this turn"
@@ -22026,6 +22147,27 @@ pub(super) fn describe_tagged_target_then_cant_restriction(
 
     let subject = capitalize_first(&describe_choose_spec(&target_only.target));
     Some(format!("{subject} {restriction_text}"))
+}
+
+fn describe_except_by_subtype_blockers(blockers: &ObjectFilter) -> Option<String> {
+    if blockers.excluded_subtypes.is_empty() {
+        return None;
+    }
+
+    let mut expected = ObjectFilter::creature();
+    for subtype in &blockers.excluded_subtypes {
+        expected = expected.without_subtype(*subtype);
+    }
+    if *blockers != expected {
+        return None;
+    }
+
+    let allowed = blockers
+        .excluded_subtypes
+        .iter()
+        .map(|subtype| pluralize_noun_phrase(&subtype.to_string()))
+        .collect::<Vec<_>>();
+    Some(join_with_and(&allowed))
 }
 
 pub(super) fn describe_damage_then_self_skip_next_untap(
@@ -35823,9 +35965,17 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(for_each_counter_kind) =
         effect.downcast_ref::<crate::effects::ForEachCounterKindPutOrRemoveEffect>()
     {
+        let target = describe_choose_spec(&for_each_counter_kind.target);
+        if for_each_counter_kind.all_kinds {
+            return format!(
+                "For each kind of counter on {target}, choose to put or remove one of that kind"
+            );
+        }
+        if is_target_permanent_or_suspended_card(&for_each_counter_kind.target) {
+            return "Choose a counter on target permanent or suspended card. Remove that counter from that permanent or card or put another of those counters on it".to_string();
+        }
         return format!(
-            "For each kind of counter on {}, choose to put or remove one of that kind",
-            describe_choose_spec(&for_each_counter_kind.target)
+            "Choose a counter on {target}. Remove that counter from it or put another of those counters on it"
         );
     }
     if let Some(grant) = effect.downcast_ref::<crate::effects::GrantEffect>() {
@@ -36135,7 +36285,13 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             );
         }
 
-        let mut spell_text = if let Some(kind) = may_cast_matching.filter.alternative_cast {
+        let mut spell_text = if may_cast_matching.filter
+            == crate::target::ObjectFilter::default()
+                .commander()
+                .owned_by(crate::target::PlayerFilter::You)
+        {
+            "your commander".to_string()
+        } else if let Some(kind) = may_cast_matching.filter.alternative_cast {
             format!("a spell with {}", alternative_cast_kind_text(kind))
         } else if !may_cast_matching.filter.card_types.is_empty() {
             let card_type_words: Vec<String> = may_cast_matching
@@ -36164,6 +36320,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         } else if !spell_text.starts_with("a ")
             && !spell_text.starts_with("an ")
             && !spell_text.starts_with("the ")
+            && !spell_text.starts_with("your ")
         {
             spell_text = format!("a {spell_text}");
         }
@@ -39934,6 +40091,9 @@ pub(super) fn describe_ability(
                     } else if triggered.presentation_label.is_some() {
                         line.push_str(", ");
                         line.push_str(&lowercase_first(only));
+                    } else if triggered.trigger.saga_chapters().is_some() {
+                        line.push_str(" — ");
+                        line.push_str(only);
                     } else {
                         line.push_str(", ");
                         line.push_str(&lowercase_first(only));

@@ -6663,6 +6663,191 @@ fn bought_back_instant_returns_to_owners_hand_after_resolution() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn clockspinning_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(80_600), "Clockspinning")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Buyback {3}
+Choose a counter on target permanent or suspended card. Remove that counter from that permanent or card or put another of those counters on it.",
+        )
+        .expect("Clockspinning should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn suspended_card_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(80_601), "Suspended Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Instant])
+        .parse_text("Suspend 3—{U}")
+        .expect("suspend probe should parse for Clockspinning target tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct ClockspinningDecisionMaker {
+    mode_index: usize,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for ClockspinningDecisionMaker {
+    fn decide_options(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        if ctx.description == "Choose a counter kind" {
+            vec![0]
+        } else if ctx.description.starts_with("Choose for ") {
+            vec![self.mode_index.min(ctx.options.len().saturating_sub(1))]
+        } else {
+            vec![0]
+        }
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn clockspinning_counter_effect(
+    def: &crate::cards::CardDefinition,
+) -> &crate::effect::Effect {
+    def.spell_effect
+        .as_ref()
+        .expect("Clockspinning should have spell effects")
+        .flattened_default_effects()
+        .into_iter()
+        .find(|effect| {
+            effect
+                .downcast_ref::<crate::effects::ForEachCounterKindPutOrRemoveEffect>()
+                .is_some()
+        })
+        .expect("Clockspinning should have a chosen-counter put/remove effect")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn clockspinning_target_permanent(game: &mut GameState, controller: PlayerId) -> ObjectId {
+    let target = CardBuilder::new(CardId::from_raw(80_602), "Clockspinning Target")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    game.create_object_from_card(&target, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn clockspinning_targets_permanents_or_suspended_cards() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let def = clockspinning_definition();
+    let effects = def.spell_effect.as_ref().expect("Clockspinning spell effects");
+
+    let countered_permanent = clockspinning_target_permanent(&mut game, alice);
+    game.add_counters(countered_permanent, crate::object::CounterType::Charge, 1)
+        .expect("countered permanent should accept a charge counter");
+    let uncountered_permanent = clockspinning_target_permanent(&mut game, alice);
+    let suspended = suspended_card_definition();
+    let suspended_id = game.create_object_from_definition(&suspended, alice, Zone::Exile);
+    game.add_counters(suspended_id, crate::object::CounterType::Time, 1)
+        .expect("suspended card should accept a time counter");
+    let uncountered_suspended = game.create_object_from_definition(&suspended, alice, Zone::Exile);
+    let no_longer_suspended = game.create_object_from_definition(&suspended, alice, Zone::Exile);
+    game.add_counters(no_longer_suspended, crate::object::CounterType::Charge, 1)
+        .expect("exiled suspend card should accept non-time counters");
+
+    let requirements = extract_target_requirements(&game, effects, alice, None);
+    assert_eq!(
+        requirements.len(),
+        1,
+        "Clockspinning should have one target requirement"
+    );
+    let legal_targets = &requirements[0].legal_targets;
+    assert!(
+        legal_targets.contains(&Target::Object(countered_permanent)),
+        "countered permanents should be legal Clockspinning targets, got {legal_targets:?}"
+    );
+    assert!(
+        legal_targets.contains(&Target::Object(suspended_id)),
+        "suspended cards with time counters should be legal Clockspinning targets, got {legal_targets:?}"
+    );
+    assert!(
+        legal_targets.contains(&Target::Object(uncountered_permanent)),
+        "permanents without counters should still be legal Clockspinning targets, got {legal_targets:?}"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Object(uncountered_suspended)),
+        "suspended cards without counters should not be legal Clockspinning targets, got {legal_targets:?}"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Object(no_longer_suspended)),
+        "exiled cards with suspend but no time counter should not be legal Clockspinning targets, got {legal_targets:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn clockspinning_buyback_put_branch_returns_to_hand_and_adds_counter() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let def = clockspinning_definition();
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let target = clockspinning_target_permanent(&mut game, alice);
+    game.add_counters(target, crate::object::CounterType::Charge, 1)
+        .expect("target should accept an initial charge counter");
+
+    let mut paid = crate::cost::OptionalCostsPaid::from_costs(&def.optional_costs);
+    paid.mark_label_paid("Buyback");
+    game.push_to_stack(
+        StackEntry::new(spell_id, alice)
+            .with_targets(vec![Target::Object(target)])
+            .with_optional_costs_paid(paid)
+            .with_source_info(
+                game.object(spell_id)
+                    .expect("Clockspinning spell object")
+                    .stable_id,
+                "Clockspinning".to_string(),
+            ),
+    );
+
+    let mut dm = ClockspinningDecisionMaker { mode_index: 0 };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Clockspinning should resolve its put branch");
+
+    assert_eq!(
+        game.counter_count(target, crate::object::CounterType::Charge),
+        2,
+        "Clockspinning put branch should add one chosen counter kind"
+    );
+    assert!(
+        game.player(alice).expect("alice exists").hand.iter().any(|&id| game
+            .object(id)
+            .is_some_and(|object| object.name == "Clockspinning")),
+        "Clockspinning should return to hand when buyback was paid"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn clockspinning_remove_branch_removes_one_chosen_counter() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let def = clockspinning_definition();
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let target = clockspinning_target_permanent(&mut game, alice);
+    game.add_counters(target, crate::object::CounterType::Charge, 2)
+        .expect("target should accept charge counters");
+
+    let mut dm = ClockspinningDecisionMaker { mode_index: 1 };
+    let ctx = crate::effects::ExecutionContext::new_default(spell_id, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target)]);
+    let mut ctx = ctx.with_decision_maker(&mut dm);
+    crate::effects::execute_effect(&mut game, clockspinning_counter_effect(&def), &mut ctx)
+        .expect("Clockspinning remove branch should execute");
+
+    assert_eq!(
+        game.counter_count(target, crate::object::CounterType::Charge),
+        1,
+        "Clockspinning remove branch should remove exactly one chosen counter"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn feudkillers_verdict_creates_token_when_you_have_more_life_than_an_opponent() {
     let mut game = setup_game();
@@ -26582,6 +26767,187 @@ fn mindleech_mass_casts_spell_from_damaged_players_hand_without_paying() {
         game.object(land_id)
             .is_some_and(|object| object.zone == Zone::Hand),
         "Mindleech Mass should not offer lands as spells to cast"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn geode_golem_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(627_850), "Geode Golem")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(5)]]))
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Golem])
+        .power_toughness(PowerToughness::fixed(5, 3))
+        .parse_text(
+            "Trample\nWhenever this creature deals combat damage to a player, you may cast your commander from the command zone without paying its mana cost.",
+        )
+        .expect("Geode Golem should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_geode_golem_damage_trigger(
+    game: &mut GameState,
+    definition: &crate::cards::CardDefinition,
+    source_id: ObjectId,
+    damaged_player: PlayerId,
+    dm: &mut dyn DecisionMaker,
+) {
+    let controller = game
+        .controller_of_id(source_id)
+        .expect("Geode Golem should have a controller");
+    let triggered = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Geode Golem should have a combat damage trigger");
+
+    let damage_event = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            source_id,
+            crate::events::DamageTarget::Player(damaged_player),
+            5,
+            true,
+            crate::events::cause::EventCause::combat_damage(source_id),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut ctx = ExecutionContext::new_default(source_id, controller)
+        .with_decision_maker(dm)
+        .with_triggering_event(damage_event);
+    for effect in &triggered.effects {
+        execute_effect(game, effect, &mut ctx).expect("Geode Golem trigger should resolve");
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn geode_golem_damage_trigger_casts_your_commander_from_command_zone_without_mana() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let definition = geode_golem_definition();
+    let geode_id = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+
+    let opponents_commander =
+        CardBuilder::new(CardId::from_raw(627_849), "Bob's Geode Commander")
+            .supertypes(vec![Supertype::Legendary])
+            .card_types(vec![CardType::Creature])
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+            .build();
+    let opponents_commander_id =
+        game.create_object_from_card(&opponents_commander, bob, Zone::Command);
+    game.set_as_commander(opponents_commander_id, bob);
+
+    let noncommander = CardBuilder::new(
+        CardId::from_raw(627_848),
+        "Geode Command-Zone Noncommander",
+    )
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+        .build();
+    let noncommander_id =
+        game.create_object_from_card(&noncommander, alice, Zone::Command);
+
+    let commander = CardBuilder::new(CardId::from_raw(627_851), "Geode Test Commander")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+        .build();
+    let commander_id = game.create_object_from_card(&commander, alice, Zone::Command);
+    game.set_as_commander(commander_id, alice);
+
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_geode_golem_damage_trigger(&mut game, &definition, geode_id, bob, &mut dm);
+
+    let stack_entry = game
+        .stack
+        .last()
+        .expect("accepting Geode Golem should cast the commander onto the stack");
+    let stack_object = game
+        .object(stack_entry.object_id)
+        .expect("cast commander should exist on the stack");
+    assert_eq!(stack_object.name, "Geode Test Commander");
+    assert_eq!(stack_entry.controller, alice);
+    assert_eq!(
+        stack_entry.casting_method,
+        crate::alternative_cast::CastingMethod::PlayFrom {
+            source: geode_id,
+            zone: Zone::Command,
+            use_alternative: None,
+        }
+    );
+    assert_eq!(
+        game.commander_cast_count(commander_id),
+        1,
+        "effect-driven command-zone casts should update commander cast count"
+    );
+    assert_eq!(
+        game.object(opponents_commander_id)
+            .expect("opponent commander should remain in the command zone")
+            .zone,
+        Zone::Command,
+        "Geode Golem should not offer an opponent's commander"
+    );
+    assert_eq!(
+        game.object(noncommander_id)
+            .expect("noncommander should remain in the command zone")
+            .zone,
+        Zone::Command,
+        "Geode Golem should not offer noncommander command-zone objects"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn geode_golem_damage_trigger_does_not_cast_when_declined_or_no_commander_exists() {
+    let mut declined_game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let definition = geode_golem_definition();
+    let geode_id =
+        declined_game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+    let commander = CardBuilder::new(CardId::from_raw(627_852), "Declined Geode Commander")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+        .build();
+    let commander_id = declined_game.create_object_from_card(&commander, alice, Zone::Command);
+    declined_game.set_as_commander(commander_id, alice);
+
+    let mut decline_dm = AutoPassDecisionMaker;
+    resolve_geode_golem_damage_trigger(
+        &mut declined_game,
+        &definition,
+        geode_id,
+        bob,
+        &mut decline_dm,
+    );
+    assert!(declined_game.stack.is_empty());
+    assert_eq!(
+        declined_game
+            .object(commander_id)
+            .expect("declined commander should remain in command zone")
+            .zone,
+        Zone::Command
+    );
+
+    let mut no_commander_game = setup_game();
+    let geode_id =
+        no_commander_game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+    let mut accept_dm = SelectFirstDecisionMaker;
+    resolve_geode_golem_damage_trigger(
+        &mut no_commander_game,
+        &definition,
+        geode_id,
+        bob,
+        &mut accept_dm,
+    );
+    assert!(
+        no_commander_game.stack.is_empty(),
+        "Geode Golem should not cast anything when you have no commander in the command zone"
     );
 }
 

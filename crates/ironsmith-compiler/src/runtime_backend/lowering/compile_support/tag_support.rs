@@ -137,7 +137,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target }
             | SubjectVerbActionAst::RemoveUpToAnyCounters { target, .. }
             | SubjectVerbActionAst::DoubleCountersOnTarget { target, .. }
-            | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target }
+            | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target, .. }
             | SubjectVerbActionAst::PutSticker { target, .. }
             | SubjectVerbActionAst::SwitchPowerToughness { target, .. }
             | SubjectVerbActionAst::GrantProtectionChoice { target, .. }

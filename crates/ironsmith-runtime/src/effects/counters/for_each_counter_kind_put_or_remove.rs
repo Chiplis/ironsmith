@@ -14,15 +14,61 @@ use crate::target::ChooseSpec;
 #[derive(Debug, Clone, PartialEq)]
 pub struct ForEachCounterKindPutOrRemoveEffect {
     pub target: ChooseSpec,
+    pub all_kinds: bool,
 }
 
 impl ForEachCounterKindPutOrRemoveEffect {
     pub fn new(target: ChooseSpec) -> Self {
-        Self { target }
+        Self {
+            target,
+            all_kinds: true,
+        }
+    }
+
+    pub fn one_kind(target: ChooseSpec) -> Self {
+        Self {
+            target,
+            all_kinds: false,
+        }
     }
 
     fn counter_label(counter_type: CounterType) -> String {
         format!("{counter_type:?}").to_ascii_lowercase()
+    }
+
+    fn choose_counter_kind(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+        counter_kinds: &[CounterType],
+    ) -> Option<CounterType> {
+        let options = counter_kinds
+            .iter()
+            .enumerate()
+            .map(|(idx, counter_type)| {
+                SelectableOption::new(
+                    idx,
+                    format!("Choose {} counter", Self::counter_label(*counter_type)),
+                )
+            })
+            .collect::<Vec<_>>();
+        let choice_ctx = SelectOptionsContext::new(
+            ctx.controller,
+            Some(ctx.source),
+            "Choose a counter kind".to_string(),
+            options,
+            1,
+            1,
+        );
+        let choice = ctx
+            .decision_maker
+            .decide_options(game, &choice_ctx)
+            .into_iter()
+            .next();
+        if ctx.decision_maker.awaiting_choice() {
+            return None;
+        }
+        choice.and_then(|idx| counter_kinds.get(idx).copied())
     }
 }
 
@@ -54,7 +100,16 @@ impl EffectExecutor for ForEachCounterKindPutOrRemoveEffect {
             }
             counter_kinds.sort_by_key(|counter_type| format!("{counter_type:?}"));
 
-            for counter_type in counter_kinds {
+            let selected_kinds = if self.all_kinds {
+                counter_kinds
+            } else {
+                let Some(counter_type) = self.choose_counter_kind(game, ctx, &counter_kinds) else {
+                    return Ok(EffectOutcome::count(0));
+                };
+                vec![counter_type]
+            };
+
+            for counter_type in selected_kinds {
                 let label = Self::counter_label(counter_type);
                 let options = vec![
                     SelectableOption::new(0, format!("Put one {label} counter on it")),

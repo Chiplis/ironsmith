@@ -563,7 +563,7 @@ fn advance_reference_frame_for_effect(
                     maybe_tag_target(target, frame, id_gen, "counters")?;
                 }
                 SubjectVerbActionAst::RemoveUpToAnyCounters { target, .. }
-                | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target } => {
+                | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "counters")?;
                 }
                 SubjectVerbActionAst::MoveAllCounters { from, to }
@@ -2690,7 +2690,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 bind_unresolved_it_in_target(from, seed_tag)
                     + bind_unresolved_it_in_target(to, seed_tag)
             }
-            SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target } => {
+            SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target, .. } => {
                 bind_unresolved_it_in_target(target, seed_tag)
             }
             SubjectVerbActionAst::Discard { count, filter, .. } => {
