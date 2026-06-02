@@ -186,8 +186,6 @@ const MELD_ATTACKING_OWN_CONTROL_TAIL_PATTERN: ClauseShape<'static> = clause_sha
             "them",
         ]
 );
-const YOU_ATTACKED_THIS_TURN_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["you", "attacked", "this", "turn"]);
 const SOURCE_IS_YOUR_RING_BEARER_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -204,45 +202,6 @@ const RING_HAS_TEMPTED_YOU_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
 );
 const TIMES_THIS_GAME_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["times", "this", "game"], &["time", "this", "game"]]);
-const TRIGGERING_OBJECT_HAD_TO_ATTACK_THIS_COMBAT_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["that", "creature", "had", "to", "attack", "this", "combat"],
-            &["it", "had", "to", "attack", "this", "combat"],
-            &["that", "creature", "must", "attack", "this", "combat"],
-            &["it", "must", "attack", "this", "combat"],
-        ]
-);
-const YOU_ATTACKED_WITH_EXACTLY_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["you", "attacked", "with", "exactly"]);
-const OTHER_CREATURES_THIS_COMBAT_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["other", "creature", "this", "combat"],
-            &["other", "creatures", "this", "combat"],
-            &["others", "creature", "this", "combat"],
-            &["others", "creatures", "this", "combat"],
-        ]
-);
-const SOURCE_ATTACKED_OR_BLOCKED_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "this", "creature", "attacked", "or", "blocked", "this", "turn",
-            ],
-            &[
-                "this",
-                "permanent",
-                "attacked",
-                "or",
-                "blocked",
-                "this",
-                "turn",
-            ],
-            &["this", "attacked", "or", "blocked", "this", "turn"],
-            &["it", "attacked", "or", "blocked", "this", "turn"],
-        ]
-);
 const YOU_CAST_SOURCE_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["you", "cast", "it"], &["you", "cast", "this", "spell"]]);
 const TAGGED_WAS_CAST_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -3471,26 +3430,6 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if let Some(predicate) = parse_combat_turn_predicate(&filtered) {
         return Ok(predicate);
-    }
-
-    if YOU_ATTACKED_THIS_TURN_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::YouAttackedThisTurn);
-    }
-
-    if TRIGGERING_OBJECT_HAD_TO_ATTACK_THIS_COMBAT_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::TriggeringObjectHadToAttackThisCombat);
-    }
-
-    if filtered.len() >= 9
-        && YOU_ATTACKED_WITH_EXACTLY_PREFIX_PATTERN.matches_words(&filtered)
-        && let Some((count, used)) = predicate_number_prefix(&filtered[4..])
-        && OTHER_CREATURES_THIS_COMBAT_TAIL_PATTERN.matches_words(&filtered[4 + used..])
-    {
-        return Ok(PredicateAst::YouAttackedWithExactlyNOtherCreaturesThisCombat(count));
-    }
-
-    if SOURCE_ATTACKED_OR_BLOCKED_THIS_TURN_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::SourceAttackedOrBlockedThisTurn);
     }
 
     if YOU_CAST_SOURCE_PATTERN.matches_words(&filtered) {
