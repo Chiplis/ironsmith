@@ -42762,6 +42762,48 @@ fn assert_oracle_card_fails_strict(name: &str) {
 }
 
 #[test]
+fn frodo_adventurous_hobbit_strict_parser_and_compiled_text_regression() {
+    let oracle = oracle_text_by_name()
+        .get("Frodo, Adventurous Hobbit")
+        .expect("missing Frodo, Adventurous Hobbit oracle text")
+        .clone();
+    let def = CardDefinitionBuilder::new(CardId::new(), "Frodo, Adventurous Hobbit")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("Frodo, Adventurous Hobbit should parse strictly");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        def.abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, AbilityKind::Triggered(_))),
+        "Frodo, Adventurous Hobbit should parse its attack trigger strictly"
+    );
+    assert!(
+        ability_debug.contains("RingTemptsYouEffect")
+            && ability_debug.contains("ConditionalEffect")
+            && ability_debug.contains("SourceIsRingBearer")
+            && ability_debug.contains("PlayerRingTemptedThisGameOrMore")
+            && ability_debug.contains("DrawCardsEffect"),
+        "expected Ring temptation plus Ring-bearer draw gate, got {ability_debug}"
+    );
+    assert!(
+        rendered_lower.contains(
+            "if frodo is your ring-bearer and the ring has tempted you two or more times this game"
+        ) && rendered_lower.contains("draw a card"),
+        "expected Frodo's Ring-bearer temptation gate to render, got {rendered}"
+    );
+    assert!(
+        !rendered_lower.contains("unsupported predicate")
+            && !rendered_lower.contains("unsupported effect"),
+        "Frodo should compile without unsupported fallbacks, got {rendered}"
+    );
+}
+
+#[test]
 fn martyr_of_spores_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Martyr of Spores");
     let rendered = canonical_compiled_lines(&def).join(" ");

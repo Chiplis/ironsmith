@@ -1085,11 +1085,7 @@ pub(super) fn substitute_legendary_source_reference(
         return line.to_string();
     }
 
-    let source_name = if lower.starts_with("whenever this creature attacks") {
-        card.name.as_str()
-    } else {
-        card.name.split(',').next().unwrap_or(&card.name).trim()
-    };
+    let source_name = card.name.split(',').next().unwrap_or(&card.name).trim();
     if source_name.is_empty() {
         return line.to_string();
     }
