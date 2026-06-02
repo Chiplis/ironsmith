@@ -39200,15 +39200,8 @@ fn parse_abeyance_supports_instant_or_sorcery_cast_restriction() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_overwhelming_splendor_preserves_enchanted_player_activation_exception() {
-    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Overwhelming Splendor")
-        .card_types(vec![CardType::Enchantment])
-        .subtypes(vec![Subtype::Aura, Subtype::Curse])
-        .parse_text(
-            "Enchant player\n\
-             Creatures enchanted player controls lose all abilities and have base power and toughness 1/1.\n\
-             Enchanted player can't activate abilities that aren't mana abilities or loyalty abilities.",
-        )
-        .expect("Overwhelming Splendor should parse");
+    assert_oracle_card_parses_strict("Overwhelming Splendor");
+    let def = parse_oracle_card_definition("Overwhelming Splendor");
 
     let rendered = compiled_text_lines(&def).join(" ");
     assert!(
