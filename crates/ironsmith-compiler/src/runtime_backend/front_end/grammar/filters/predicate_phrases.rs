@@ -186,12 +186,6 @@ const YOU_PUT_ONTO_BATTLEFIELD_THIS_WAY_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["you", "put"]; suffix & ["onto", "the", "battlefield", "this", "way"]);
 const IS_PUT_ONTO_BATTLEFIELD_THIS_WAY_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(suffix & ["is", "put", "onto", "battlefield", "this", "way"]);
-const CAST_THIS_SPELL_DURING_YOUR_MAIN_PHASE_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact
-        & [
-            "you", "cast", "this", "spell", "during", "your", "main", "phase",
-        ]
-);
 const YOU_CONTROL_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["you", "control"], &["you", "controls"]]);
 const YOU_CONTROL_NO_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -1918,7 +1912,43 @@ fn parse_cast_payment_state_predicate(filtered: &[&str]) -> Option<PredicateAst>
     parse_no_spells_cast_last_turn_shape(&tokens)
         .or_else(|| parse_source_spell_state_shape(&tokens))
         .or_else(|| parse_target_spell_state_shape(&tokens))
+        .or_else(|| parse_cast_this_spell_during_your_main_phase_shape(&tokens))
         .or_else(|| parse_named_payment_state_shape(&tokens))
+}
+
+fn parse_cast_this_spell_during_your_main_phase_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::subject("player", LexCaptureKind::WordCount(1)),
+        LexPattern::action("cast", LexCaptureKind::WordCount(1)),
+        LexPattern::object("spell", LexCaptureKind::UntilPhrase(&["during"])),
+        LexPattern::modifier("window", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let player = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(player.word_refs().as_slice(), ["you"]) {
+        return None;
+    }
+    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(action.word_refs().as_slice(), ["cast"]) {
+        return None;
+    }
+    let spell = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if !matches!(spell.word_refs().as_slice(), ["this", "spell"]) {
+        return None;
+    }
+    let window = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    if !matches!(
+        window.word_refs().as_slice(),
+        ["during", "your", "main", "phase"]
+    ) {
+        return None;
+    }
+    Some(PredicateAst::ThisSpellPaidLabel(
+        "CastDuringYourMainPhase".to_string(),
+    ))
 }
 
 fn parse_no_spells_cast_last_turn_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -4523,12 +4553,6 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if let Some(predicate) = parse_player_was_dealt_combat_damage_by_subtype_this_turn(&filtered)? {
         return Ok(predicate);
-    }
-
-    if CAST_THIS_SPELL_DURING_YOUR_MAIN_PHASE_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::ThisSpellPaidLabel(
-            "CastDuringYourMainPhase".to_string(),
-        ));
     }
 
     if let Some(predicate) = parse_player_spell_cast_this_turn_predicate(&filtered) {
