@@ -367,6 +367,9 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     CostIncreasePerTargetBeyondFirst(u32),
     CostIncreaseManaCostPerTargetBeyondFirst(ManaCost),
     MinimumSpellTotalMana(u32),
+    PlayersSkipUpkeep {
+        player: PlayerFilter,
+    },
     ActivatedAbilityCostReduction {
         filter: ObjectFilter,
         reduction: u32,
@@ -812,6 +815,9 @@ where
         {
             let payload = match ability.payload {
             StaticAbilityPayload::None => StaticAbilityPayload::None,
+            StaticAbilityPayload::PlayersSkipUpkeep { player } => {
+                StaticAbilityPayload::PlayersSkipUpkeep { player }
+            }
             StaticAbilityPayload::Anthem(anthem) => StaticAbilityPayload::Anthem(anthem),
             StaticAbilityPayload::AttachedAbilityGrant(grant) => {
                 let grant = *grant;
@@ -3351,10 +3357,13 @@ impl<
         }
     }
     pub fn players_skip_upkeep() -> Self {
+        Self::player_skips_upkeep(PlayerFilter::Any)
+    }
+    pub fn player_skips_upkeep(player: PlayerFilter) -> Self {
         Self {
             id: Some(StaticAbilityId::PlayersSkipUpkeep),
             label: "players skip upkeep".into(),
-            payload: StaticAbilityPayload::None,
+            payload: StaticAbilityPayload::PlayersSkipUpkeep { player },
         }
     }
     pub fn legend_rule_doesnt_apply() -> Self {

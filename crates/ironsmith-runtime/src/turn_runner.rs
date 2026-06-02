@@ -327,6 +327,12 @@ impl TurnRunner {
             }
 
             TurnState::Upkeep => {
+                if game.player_skips_upkeep_step(game.turn.active_player) {
+                    game.turn.step = Some(Step::Upkeep);
+                    game.turn.priority_player = Some(game.turn.active_player);
+                    self.state = TurnState::Draw;
+                    return Ok(TurnAction::Continue);
+                }
                 game.turn.step = Some(Step::Upkeep);
                 game.turn.priority_player = Some(game.turn.active_player);
                 drain_pending_trigger_events(game, tq);
@@ -1198,6 +1204,69 @@ mod tests {
         let object = Object::from_card(object_id, &card, owner, Zone::Battlefield);
         game.add_object(object);
         object_id
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    fn gibbering_descent_definition() -> crate::cards::CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), "Gibbering Descent")
+            .card_types(vec![CardType::Enchantment])
+            .parse_text(
+                "At the beginning of each player's upkeep, that player loses 1 life and discards a card.\n\
+                 Hellbent — Skip your upkeep step if you have no cards in hand.\n\
+                 Madness {2}{B}{B} (If you discard this card, discard it into exile. When you do, cast it for its madness cost or put it into your graveyard.)",
+            )
+            .expect("Gibbering Descent should parse for turn-runner tests")
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    fn run_gibbering_descent_upkeep_with_hand_size(hand_size: usize) -> (TurnAction, TurnRunner, TriggerQueue) {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        game.turn.active_player = alice;
+        game.turn.phase = Phase::Beginning;
+        game.turn.step = Some(Step::Untap);
+        let gibbering_descent = gibbering_descent_definition();
+        game.create_object_from_definition(&gibbering_descent, alice, Zone::Battlefield);
+        for idx in 0..hand_size {
+            let card = CardBuilder::new(CardId::new(), &format!("Hand Card {idx}"))
+                .card_types(vec![CardType::Creature])
+                .build();
+            game.create_object_from_card(&card, alice, Zone::Hand);
+        }
+
+        let mut runner = TurnRunner::from_state_for_sync(TurnState::Upkeep);
+        let mut tq = TriggerQueue::new();
+        let action = runner
+            .advance(&mut game, &mut tq)
+            .expect("Gibbering Descent upkeep should advance");
+        (action, runner, tq)
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn gibbering_descent_skips_your_upkeep_when_you_have_no_cards_in_hand() {
+        let (action, runner, tq) = run_gibbering_descent_upkeep_with_hand_size(0);
+
+        assert!(matches!(action, TurnAction::Continue));
+        assert!(matches!(runner.state(), TurnState::Draw));
+        assert!(
+            tq.is_empty(),
+            "skipping the upkeep step should not queue Gibbering Descent's upkeep trigger"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn gibbering_descent_keeps_your_upkeep_when_you_have_cards_in_hand() {
+        let (action, runner, tq) = run_gibbering_descent_upkeep_with_hand_size(1);
+
+        assert!(matches!(action, TurnAction::RunPriority));
+        assert!(matches!(runner.state(), TurnState::UpkeepPriority));
+        assert_eq!(
+            tq.entries.len(),
+            1,
+            "not satisfying hellbent should queue the normal upkeep trigger"
+        );
     }
 
     #[test]

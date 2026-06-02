@@ -863,6 +863,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::AttachedChosenLandwalkGrant(grant) => {
                 StaticAbility::attached_chosen_landwalk_grant(grant.display.clone(), grant.snow)
             }
+            ironsmith_core::StaticAbilityPayload::PlayersSkipUpkeep { player } => {
+                StaticAbility::players_skip_upkeep_for(player.clone())
+            }
             ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
                 let converted = StaticAbility::from_model((**ability).clone());
                 converted.with_condition(condition.clone()).unwrap_or_else(|| {
@@ -1652,6 +1655,18 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         self.leaf_static_ability()
             .map(|ability| ability.is_active(game, source))
             .unwrap_or(true)
+    }
+
+    fn skips_upkeep_for_player(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        player: PlayerId,
+    ) -> bool {
+        self.leaf_static_ability().is_some_and(|ability| {
+            ability.skips_upkeep_for_player(game, source, controller, player)
+        })
     }
 
     fn is_keyword(&self) -> bool {

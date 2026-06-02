@@ -6428,6 +6428,16 @@ impl GameState {
             && self.player(player).is_some()
     }
 
+    pub fn player_skips_upkeep_step(&self, player: PlayerId) -> bool {
+        self.with_active_battlefield_static_abilities(|source, controller, ability| {
+            ability
+                .skips_upkeep_for_player(self, source, controller, player)
+                .then_some(true)
+        })
+        .unwrap_or(false)
+            && self.player(player).is_some()
+    }
+
     fn object_is_land_for_cost_restrictions(&self, object_id: ObjectId) -> bool {
         let Some(object) = self.object(object_id) else {
             return false;

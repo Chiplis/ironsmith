@@ -7853,6 +7853,24 @@ pub(crate) fn parse_add_mana_that_much_value(tokens: &[OwnedLexToken]) -> Option
 pub(crate) fn parse_players_skip_upkeep_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    let tokens = super::grammar::effects::split_labeled_effect_prefix_lexed(&tokens)
+        .unwrap_or(&tokens);
+    let words = parser_token_word_refs(tokens);
+    if token_slice_starts_with(tokens, &["skip", "your", "upkeep", "step"]) {
+        let mut ability = StaticAbility::player_skips_upkeep(crate::target::PlayerFilter::You);
+        if words.len() > 4 {
+            if words.get(4) != Some(&"if") || tokens.len() <= 5 {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported skip-upkeep tail (clause: '{}')",
+                    words.join(" ")
+                )));
+            }
+            let condition = parse_static_condition_clause(&tokens[5..])?;
+            ability = ability.with_condition(condition);
+        }
+        return Ok(Some(ability));
+    }
     if is_players_skip_upkeep_line_lexed(tokens) {
         return Ok(Some(StaticAbility::players_skip_upkeep()));
     }
