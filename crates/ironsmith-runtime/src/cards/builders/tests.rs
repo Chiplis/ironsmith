@@ -17949,6 +17949,49 @@ fn test_commander_recursion_trigger_uses_graveyard_zone_and_commander_filter() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_resize_strictly_parses_and_renders_recover() {
+    assert_oracle_card_parses_strict("Resize");
+    let def = parse_oracle_card_definition("Resize");
+
+    let rendered = unprocessed_compiled_lines(&def);
+    assert_eq!(
+        rendered,
+        vec![
+            "Target creature gets +3/+3 until end of turn.".to_string(),
+            "Recover {1}{G}.".to_string(),
+        ],
+        "expected Resize to render its spell effect and compact recover keyword line"
+    );
+
+    let recover = def
+        .abilities
+        .iter()
+        .find(|ability| matches!(&ability.kind, AbilityKind::Triggered(triggered) if triggered.presentation_label.as_deref() == Some("keyword:recover {1}{G}")))
+        .expect("Resize should lower recover to a triggered ability");
+    assert_eq!(
+        recover.functional_zones,
+        vec![Zone::Graveyard],
+        "recover should function only from the graveyard"
+    );
+
+    let debug = format!("{recover:#?}");
+    let compact = debug.split_whitespace().collect::<String>();
+    assert!(
+        compact.contains("ZoneChangeTrigger")
+            && compact.contains("from:Specific(Battlefield)")
+            && compact.contains("to:Specific(Graveyard)")
+            && compact.contains("owner:Some(You")
+            && debug.contains("SourceIsInZone")
+            && debug.contains("PayManaEffect")
+            && debug.contains("ReturnFromGraveyardToHandEffect")
+            && debug.contains("ExileEffect")
+            && debug.contains("DidNotHappen"),
+        "expected Resize recover to structurally model payment, return, and otherwise-exile branches, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_bridge_from_below_compiles_graveyard_triggers() {
     use crate::zone::Zone;
 

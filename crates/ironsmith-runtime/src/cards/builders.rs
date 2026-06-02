@@ -512,6 +512,7 @@ pub(crate) enum KeywordAction {
     Graft(u32),
     Soulbond,
     Soulshift(u32),
+    Recover(ManaCost),
     Outlast(ManaCost),
     Scavenge(ManaCost),
     Unearth(ManaCost),
@@ -783,6 +784,7 @@ impl KeywordAction {
             Self::Graft(amount) => format!("Graft {amount}"),
             Self::Soulbond => "Soulbond".to_string(),
             Self::Soulshift(amount) => format!("Soulshift {amount}"),
+            Self::Recover(cost) => format!("Recover {}", cost.to_oracle()),
             Self::Outlast(cost) => format!("Outlast {}", cost.to_oracle()),
             Self::Scavenge(cost) => format!("Scavenge {}", cost.to_oracle()),
             Self::Unearth(cost) => format!("Unearth {}", cost.to_oracle()),
@@ -1663,6 +1665,7 @@ impl CardDefinitionBuilder {
             KeywordAction::Graft(amount) => self.graft(amount),
             KeywordAction::Soulbond => self.soulbond(),
             KeywordAction::Soulshift(amount) => self.soulshift(amount),
+            KeywordAction::Recover(cost) => self.recover(cost),
             KeywordAction::Outlast(cost) => self.outlast(cost),
             KeywordAction::Scavenge(cost) => self.scavenge(cost),
             KeywordAction::Unearth(cost) => self.unearth(cost),
@@ -2578,6 +2581,54 @@ impl CardDefinitionBuilder {
                 presentation_label: None,
             }),
             functional_zones: vec![Zone::Battlefield],
+        })
+    }
+
+    /// Add recover with a mana cost.
+    ///
+    /// Recover means "When a creature is put into your graveyard from the
+    /// battlefield, you may pay {cost}. If you do, return this card from your
+    /// graveyard to your hand. Otherwise, exile this card."
+    pub fn recover(self, cost: ManaCost) -> Self {
+        let payment_id = EffectId(0);
+        let cost_text = cost.to_oracle();
+        let trigger = Trigger::new(
+            crate::triggers::ZoneChangeTrigger::new()
+                .from(Zone::Battlefield)
+                .to(Zone::Graveyard)
+                .filter(ObjectFilter::creature().owned_by(PlayerFilter::You)),
+        );
+
+        self.with_ability(Ability {
+            kind: AbilityKind::Triggered(TriggeredAbility {
+                trigger,
+                effects: ResolutionProgram::from_effects(vec![Effect::conditional_only(
+                    Condition::SourceIsInZone(Zone::Graveyard),
+                    vec![
+                        Effect::with_id(
+                            payment_id.0,
+                            Effect::may_single(Effect::new(crate::effects::PayManaEffect::new(
+                                cost,
+                                ChooseSpec::SourceController,
+                            ))),
+                        ),
+                        Effect::if_then(
+                            payment_id,
+                            EffectPredicate::Happened,
+                            vec![Effect::return_from_graveyard_to_hand(ChooseSpec::Source)],
+                        ),
+                        Effect::if_then(
+                            payment_id,
+                            EffectPredicate::DidNotHappen,
+                            vec![Effect::exile(ChooseSpec::Source)],
+                        ),
+                    ],
+                )]),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: Some(format!("keyword:recover {cost_text}")),
+            }),
+            functional_zones: vec![Zone::Graveyard],
         })
     }
 

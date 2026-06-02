@@ -233,6 +233,7 @@ const COST_MARKER_KEYWORDS: &[&str] = &[
     "flashback",
     "foretell",
     "overload",
+    "recover",
 ];
 const ECHO_MARKER_KEYWORD: &str = "echo";
 const BUYBACK_MARKER_KEYWORD: &str = "buyback";
@@ -1301,6 +1302,15 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         "unearth",
         KeywordCostFallback::MarkerOnly,
         KeywordAction::Unearth,
+    ) {
+        return Some(action);
+    }
+
+    if let Some(action) = parse_cost_keyword_action(
+        &words,
+        "recover",
+        KeywordCostFallback::MarkerOrText,
+        KeywordAction::Recover,
     ) {
         return Some(action);
     }
