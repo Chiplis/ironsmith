@@ -28,7 +28,7 @@ pub(super) fn try_parse_level_header_block(
             probe_idx += 1;
             continue;
         }
-        match parse_level_item_cst(next_line) {
+        match parse_level_item_cst(&preprocessed.builder, next_line) {
             Ok(Some(item)) => {
                 items.push(item);
                 probe_idx += 1;

@@ -5267,6 +5267,209 @@ fn party_dude_does_not_trigger_when_its_controller_is_attacked() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn kargan_dragonlord_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(18_920), "Kargan Dragonlord")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red], vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Warrior])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "Level up {R}\n\
+             LEVEL 4-7\n\
+             4/4\n\
+             Flying\n\
+             LEVEL 8+\n\
+             8/8\n\
+             Flying, trample\n\
+             {R}: This creature gets +1/+0 until end of turn.",
+        )
+        .expect("Kargan Dragonlord should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn kargan_pump_ability_index(game: &GameState, kargan_id: ObjectId) -> usize {
+    game.object(kargan_id)
+        .expect("Kargan Dragonlord should be on the battlefield")
+        .abilities
+        .iter()
+        .enumerate()
+        .find_map(|(index, ability)| match &ability.kind {
+            AbilityKind::Activated(activated)
+                if activated.additional_restrictions.iter().any(|restriction| {
+                    restriction == "__ironsmith_level_range:8:+"
+                }) =>
+            {
+                Some(index)
+            }
+            _ => None,
+        })
+        .expect("Kargan Dragonlord should have its level-8 pump ability")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn kargan_level_up_ability_index(game: &GameState, kargan_id: ObjectId) -> usize {
+    game.object(kargan_id)
+        .expect("Kargan Dragonlord should be on the battlefield")
+        .abilities
+        .iter()
+        .enumerate()
+        .find_map(|(index, ability)| match &ability.kind {
+            AbilityKind::Activated(activated)
+                if matches!(activated.timing, crate::ability::ActivationTiming::SorcerySpeed)
+                    && activated
+                        .effects
+                        .flattened_default_effects()
+                        .iter()
+                        .any(|effect| {
+                            effect
+                                .downcast_ref::<crate::effects::PutCountersEffect>()
+                                .is_some_and(|put| put.counter_type == crate::object::CounterType::Level)
+                        }) =>
+            {
+                Some(index)
+            }
+            _ => None,
+        })
+        .expect("Kargan Dragonlord should have its level-up ability")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn kargan_can_activate(game: &GameState, kargan_id: ObjectId, ability_index: usize) -> bool {
+    crate::decision::compute_legal_actions(game, PlayerId::from_index(0))
+        .iter()
+        .any(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == kargan_id && *idx == ability_index
+            )
+        })
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn activate_kargan_ability_and_resolve(
+    game: &mut GameState,
+    kargan_id: ObjectId,
+    ability_index: usize,
+) {
+    let action = crate::decision::compute_legal_actions(game, PlayerId::from_index(0))
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == kargan_id && *idx == ability_index
+            )
+        })
+        .expect("Kargan Dragonlord activation should be legal");
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = AutoPassDecisionMaker;
+    apply_priority_response_with_dm(
+        game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(action),
+        &mut dm,
+    )
+    .expect("Kargan Dragonlord activation should start");
+    resolve_stack_entry_with_dm_and_triggers(game, &mut dm, &mut trigger_queue)
+        .expect("Kargan Dragonlord activation should resolve");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn kargan_dragonlord_level_up_adds_counter_and_uses_sorcery_timing() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+
+    let kargan = kargan_dragonlord_definition();
+    let kargan_id = game.create_object_from_definition(&kargan, alice, Zone::Battlefield);
+    let level_up_index = kargan_level_up_ability_index(&game, kargan_id);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    assert!(
+        kargan_can_activate(&game, kargan_id, level_up_index),
+        "Kargan's level-up ability should be legal in its controller's main phase"
+    );
+    game.turn.phase = Phase::Combat;
+    assert!(
+        !kargan_can_activate(&game, kargan_id, level_up_index),
+        "Kargan's level-up ability should not be legal outside sorcery timing"
+    );
+
+    game.turn.phase = Phase::FirstMain;
+    activate_kargan_ability_and_resolve(&mut game, kargan_id, level_up_index);
+
+    assert_eq!(
+        game.object(kargan_id)
+            .expect("Kargan should exist")
+            .counters
+            .get(&crate::object::CounterType::Level)
+            .copied(),
+        Some(1),
+        "Kargan's level-up activation should put one level counter on itself"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").mana_pool.red,
+        0,
+        "Kargan's level-up activation should spend its red mana cost"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn kargan_dragonlord_level_eight_pump_is_gated_and_expires() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+
+    let kargan = kargan_dragonlord_definition();
+    let kargan_id = game.create_object_from_definition(&kargan, alice, Zone::Battlefield);
+    let pump_index = kargan_pump_ability_index(&game, kargan_id);
+    game.add_counters(kargan_id, crate::object::CounterType::Level, 7);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 2);
+
+    assert!(
+        !kargan_can_activate(&game, kargan_id, pump_index),
+        "Kargan's pump should not be legal before it has eight level counters"
+    );
+    game.add_counters(kargan_id, crate::object::CounterType::Level, 1);
+    assert!(
+        kargan_can_activate(&game, kargan_id, pump_index),
+        "Kargan's pump should become legal at eight level counters"
+    );
+
+    activate_kargan_ability_and_resolve(&mut game, kargan_id, pump_index);
+    game.refresh_continuous_state();
+
+    assert_eq!(game.calculated_power(kargan_id), Some(9));
+    assert_eq!(game.calculated_toughness(kargan_id), Some(8));
+    assert!(
+        game.object_has_ability(kargan_id, &StaticAbility::flying())
+            && game.object_has_ability(kargan_id, &StaticAbility::trample()),
+        "Kargan should have its level-eight flying and trample while pumped"
+    );
+
+    execute_cleanup_step(&mut game);
+    assert_eq!(game.calculated_power(kargan_id), Some(8));
+    assert_eq!(game.calculated_toughness(kargan_id), Some(8));
+}
+
 #[test]
 fn guardian_of_the_ages_loses_defender_and_stops_triggering() {
     let mut game = setup_game();
