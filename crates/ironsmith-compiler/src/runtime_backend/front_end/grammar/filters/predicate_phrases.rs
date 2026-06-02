@@ -4072,31 +4072,42 @@ fn parse_counted_objects_have_counter_predicate(words: &[&str]) -> Option<Predic
 }
 
 fn parse_counted_source_exiled_objects_predicate(words: &[&str]) -> Option<PredicateAst> {
-    if words.len() < 7 {
-        return None;
-    }
-    let (comparison, used) = predicate_quantity_prefix(words)?;
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let clause = LexedClause::new(&tokens);
+    let have_phrases: &[&[&str]] = &[&["has"], &["have"]];
+    let atoms = [
+        LexPattern::object(
+            "counted_object",
+            LexCaptureKind::UntilAnyPhrase(have_phrases),
+        ),
+        LexPattern::action("have", LexCaptureKind::OneOf(&["has", "have"])),
+        LexPattern::modifier("tail", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+
+    let counted_object = matched.capture_clause("counted_object", clause)?;
+    let counted_words = counted_object.word_refs();
+    let (comparison, used) = predicate_quantity_prefix(&counted_words)?;
     let (operator, count) = comparison_to_value_comparison_operator(comparison)?;
-    let have_idx = find_index(words, |word| HAS_OR_HAVE_WORD_PATTERN.matches_word(word))?;
-    if have_idx <= used {
-        return None;
-    }
-    let object_words = &words[used..have_idx];
-    let tail_words = &words[have_idx + 1..];
-    if object_words.is_empty()
-        || !BEEN_EXILED_WITH_THIS_SOURCE_PREFIX_PATTERN.matches_words(tail_words)
-    {
+    if used >= counted_words.len() {
         return None;
     }
 
-    let object_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(object_words);
+    let tail = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    let tail_words = tail.word_refs();
+    if !BEEN_EXILED_WITH_THIS_SOURCE_PREFIX_PATTERN.matches_words(&tail_words) {
+        return None;
+    }
+
+    let object_tokens = &counted_object.tokens()[used..];
+    let object_words = &counted_words[used..];
     let mut filter = if object_words
         .iter()
         .all(|word| CARD_OR_CARDS_WORD_PATTERN.matches_word(word))
     {
         ObjectFilter::default()
     } else {
-        parse_object_filter(&object_tokens, false).ok()?
+        parse_object_filter(object_tokens, false).ok()?
     };
     filter.zone = Some(Zone::Exile);
     filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -7070,6 +7081,48 @@ mod tests {
                 },
                 "{text}"
             );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_counted_source_exiled_objects_uses_capture_parser()
+    -> Result<(), CardTextError> {
+        for (text, expected_count, expected_card_type) in [
+            (
+                "If three or more cards have been exiled with this artifact",
+                3,
+                None,
+            ),
+            (
+                "If exactly two creature cards have been exiled with this",
+                2,
+                Some(CardType::Creature),
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+
+            let PredicateAst::ValueComparison {
+                left: Value::Count(filter),
+                right: Value::Fixed(count),
+                ..
+            } = parsed
+            else {
+                panic!("expected counted source-exiled predicate for {text}");
+            };
+            assert_eq!(count, expected_count, "{text}");
+            assert_eq!(filter.zone, Some(Zone::Exile), "{text}");
+            assert!(
+                filter
+                    .tagged_constraints
+                    .iter()
+                    .any(|constraint| constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG),
+                "{text}"
+            );
+            if let Some(card_type) = expected_card_type {
+                assert!(filter.card_types.contains(&card_type), "{text}");
+            }
         }
         Ok(())
     }
