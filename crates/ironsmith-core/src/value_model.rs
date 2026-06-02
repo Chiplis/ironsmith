@@ -842,6 +842,7 @@ pub enum Condition {
         zones: Vec<Zone>,
     },
     ThisAbilityResolvedThisTurnExactly(u32),
+    ThisAbilityAddedManaThisTurnExactly(u32),
     FirstTimeThisTurn,
     MaxTimesEachTurn(u32),
     DoThisMaxTimesEachTurn(u32),

@@ -191,6 +191,8 @@ const BEGINNING_FIRST_MAIN_PHASE_TRIGGER_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_words & ["beginning", "first", "main", "phase"]);
 const BEGINNING_SECOND_MAIN_PHASE_TRIGGER_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_words & ["beginning", "second", "main", "phase"]);
+const BEGINNING_EACH_MAIN_PHASE_TRIGGER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["beginning", "main"]; contains_any_words & [&["phase", "phases"]]; contains_words & ["each"]);
 const BEGINNING_PRECOMBAT_MAIN_TRIGGER_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_words & ["beginning", "precombat", "main"]);
 const BEGINNING_POSTCOMBAT_MAIN_TRIGGER_PATTERN: ClauseShape<'static> =
@@ -4064,6 +4066,13 @@ pub(crate) fn parse_trigger_clause_lexed(
         _ if BEGINNING_SECOND_MAIN_PHASE_TRIGGER_PATTERN.matches_words(&words) => Ok(
             TriggerSpec::BeginningOfPostcombatMain(parse_possessive_clause_player_filter(&words)),
         ),
+        _ if BEGINNING_EACH_MAIN_PHASE_TRIGGER_PATTERN.matches_words(&words) => {
+            let player = parse_possessive_clause_player_filter(&words);
+            Ok(TriggerSpec::Either(
+                Box::new(TriggerSpec::BeginningOfPrecombatMain(player.clone())),
+                Box::new(TriggerSpec::BeginningOfPostcombatMain(player)),
+            ))
+        }
         _ if BEGINNING_PRECOMBAT_MAIN_TRIGGER_PATTERN.matches_words(&words) => Ok(
             TriggerSpec::BeginningOfPrecombatMain(parse_possessive_clause_player_filter(&words)),
         ),

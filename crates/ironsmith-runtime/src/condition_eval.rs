@@ -677,6 +677,7 @@ struct SharedConditionContext<'a> {
     filter_source: Option<ObjectId>,
     triggering_event: Option<&'a TriggerEvent>,
     trigger_identity: Option<TriggerIdentity>,
+    ability_index: Option<usize>,
 }
 
 fn object_matching_was_put_into_graveyard_from_battlefield_this_turn(
@@ -1067,6 +1068,18 @@ fn evaluate_condition_shared_core(
                     == *count
             }))
         }
+        Condition::ThisAbilityAddedManaThisTurnExactly(count) => Some(
+            ctx.trigger_identity
+                .map(|trigger_identity| {
+                    game.triggered_ability_mana_added_count_this_turn(ctx.source, trigger_identity)
+                })
+                .or_else(|| {
+                    ctx.ability_index.map(|ability_index| {
+                        game.activated_ability_mana_added_count_this_turn(ctx.source, ability_index)
+                    })
+                })
+                .is_some_and(|actual| actual == *count),
+        ),
         Condition::Custom(_) => Some(false),
         _ => None,
     }
@@ -1153,6 +1166,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::PlayerTaggedObjectEnteredBattlefieldThisTurn { .. } => {}
         Condition::PlayerOwnsCardNamedInZones { .. } => {}
         Condition::ThisAbilityResolvedThisTurnExactly(..) => {}
+        Condition::ThisAbilityAddedManaThisTurnExactly(..) => {}
         Condition::FirstTimeThisTurn => {}
         Condition::MaxTimesEachTurn(..) => {}
         Condition::DoThisMaxTimesEachTurn(..) => {}
@@ -1285,6 +1299,7 @@ pub fn evaluate_condition_external(
             filter_source: ctx.filter_source,
             triggering_event: ctx.triggering_event,
             trigger_identity: ctx.trigger_identity,
+            ability_index: ctx.ability_index,
         },
     ) {
         return result;
@@ -2023,6 +2038,7 @@ pub fn evaluate_condition_external(
         | Condition::ValueComparison { .. }
         | Condition::YouControlCommander
         | Condition::ThisAbilityResolvedThisTurnExactly(_)
+        | Condition::ThisAbilityAddedManaThisTurnExactly(_)
         | Condition::Not(_)
         | Condition::And(_, _)
         | Condition::Or(_, _) => unreachable!("handled before external match"),
@@ -2199,6 +2215,7 @@ fn evaluate_condition_simple(
             filter_source: Some(source),
             triggering_event: None,
             trigger_identity: None,
+            ability_index: None,
         },
     ) {
         return result;
@@ -2756,6 +2773,7 @@ fn evaluate_condition_simple(
         | Condition::ValueComparison { .. }
         | Condition::YouControlCommander
         | Condition::ThisAbilityResolvedThisTurnExactly(_)
+        | Condition::ThisAbilityAddedManaThisTurnExactly(_)
         | Condition::Not(_)
         | Condition::And(_, _)
         | Condition::Or(_, _) => {
@@ -2974,6 +2992,7 @@ fn evaluate_condition(
             filter_source: Some(ctx.source),
             triggering_event: ctx.triggering_event.as_ref(),
             trigger_identity: ctx.trigger_identity,
+            ability_index: ctx.ability_index,
         },
     ) {
         return Ok(result);
@@ -3873,6 +3892,7 @@ fn evaluate_condition(
         | Condition::PlayerRingTemptedThisGameOrMore { .. }
         | Condition::YouControlCommander
         | Condition::ThisAbilityResolvedThisTurnExactly(_)
+        | Condition::ThisAbilityAddedManaThisTurnExactly(_)
         | Condition::Not(_)
         | Condition::And(_, _)
         | Condition::Or(_, _) => {

@@ -1237,6 +1237,32 @@ fn predicate_from_control_condition(
 }
 
 fn parse_this_ability_resolution_count_predicate(filtered: &[&str]) -> Option<PredicateAst> {
+    match filtered {
+        [
+            "you",
+            "havent",
+            "added",
+            "mana",
+            "with",
+            "this",
+            "ability",
+            "this",
+            "turn",
+        ]
+        | [
+            "you",
+            "haven't",
+            "added",
+            "mana",
+            "with",
+            "this",
+            "ability",
+            "this",
+            "turn",
+        ] => return Some(PredicateAst::ThisAbilityAddedManaThisTurnExactly(0)),
+        _ => {}
+    }
+
     let count = match filtered {
         [
             "this",

@@ -596,6 +596,7 @@ pub(crate) enum PredicateAst {
     ThisSpellPaidLabel(String),
     TargetWasKicked,
     ThisAbilityResolvedThisTurnExactly(u32),
+    ThisAbilityAddedManaThisTurnExactly(u32),
     TargetSpellCastOrderThisTurn(u32),
     TargetSpellControllerIsPoisoned,
     TargetSpellNoManaSpentToCast,

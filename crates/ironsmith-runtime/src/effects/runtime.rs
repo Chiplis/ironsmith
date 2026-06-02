@@ -96,6 +96,18 @@ pub fn execute_effect(
         for event in &outcome.events {
             game.stage_turn_history_event(event);
         }
+        if outcome
+            .events
+            .iter()
+            .any(|event| event.downcast::<crate::events::ManaAddedEvent>().is_some())
+        {
+            if let Some(trigger_identity) = ctx.trigger_identity {
+                game.record_triggered_ability_added_mana(ctx.source, trigger_identity);
+            }
+            if let Some(ability_index) = ctx.ability_index {
+                game.record_activated_ability_added_mana(ctx.source, ability_index);
+            }
+        }
     }
 
     Ok(outcome)

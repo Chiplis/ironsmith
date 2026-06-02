@@ -626,6 +626,9 @@ pub(crate) fn compile_condition_from_predicate_ast(
         PredicateAst::ThisAbilityResolvedThisTurnExactly(count) => {
             Condition::ThisAbilityResolvedThisTurnExactly(*count)
         }
+        PredicateAst::ThisAbilityAddedManaThisTurnExactly(count) => {
+            Condition::ThisAbilityAddedManaThisTurnExactly(*count)
+        }
         PredicateAst::TargetSpellCastOrderThisTurn(order) => {
             Condition::TargetSpellCastOrderThisTurn(*order)
         }

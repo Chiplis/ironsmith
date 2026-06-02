@@ -464,6 +464,17 @@ fn triggered_ability_resolution_turn_counter_name(
     format!("triggered_ability_resolved:{}:{}", source.0, trigger_id.0)
 }
 
+fn triggered_ability_mana_added_turn_counter_name(
+    source: ObjectId,
+    trigger_id: TriggerIdentity,
+) -> String {
+    format!("triggered_ability_mana_added:{}:{}", source.0, trigger_id.0)
+}
+
+fn activated_ability_mana_added_turn_counter_name(source: ObjectId, ability_index: usize) -> String {
+    format!("activated_ability_mana_added:{}:{}", source.0, ability_index)
+}
+
 impl TurnCounterTracker {
     pub fn increment(&mut self, key: TurnCounterKey) {
         *self.counters.entry(key).or_insert(0) += 1;
@@ -7667,6 +7678,29 @@ impl GameState {
             })
     }
 
+    /// Record that a specific triggered ability added mana this turn.
+    pub fn record_triggered_ability_added_mana(
+        &mut self,
+        source_object_id: ObjectId,
+        trigger_id: TriggerIdentity,
+    ) {
+        self.turn_store.turn_history.turn_counters.increment_named(
+            triggered_ability_mana_added_turn_counter_name(source_object_id, trigger_id),
+        );
+    }
+
+    /// Get how many times this triggered ability added mana this turn.
+    pub fn triggered_ability_mana_added_count_this_turn(
+        &self,
+        source_object_id: ObjectId,
+        trigger_id: TriggerIdentity,
+    ) -> u32 {
+        self.named_turn_counter(&triggered_ability_mana_added_turn_counter_name(
+            source_object_id,
+            trigger_id,
+        ))
+    }
+
     /// Record an event kind occurrence this turn.
     pub fn record_trigger_event_kind(&mut self, event_kind: EventKind) {
         self.turn_store
@@ -7808,6 +7842,25 @@ impl GameState {
                     ability_index,
                 ))
             })
+    }
+
+    /// Record that a specific activated ability added mana this turn.
+    pub fn record_activated_ability_added_mana(&mut self, source: ObjectId, ability_index: usize) {
+        self.turn_store.turn_history.turn_counters.increment_named(
+            activated_ability_mana_added_turn_counter_name(source, ability_index),
+        );
+    }
+
+    /// Get how many times this activated ability added mana this turn.
+    pub fn activated_ability_mana_added_count_this_turn(
+        &self,
+        source: ObjectId,
+        ability_index: usize,
+    ) -> u32 {
+        self.named_turn_counter(&activated_ability_mana_added_turn_counter_name(
+            source,
+            ability_index,
+        ))
     }
 
     /// Record that a mode index was chosen for an activated modal ability.

@@ -12106,6 +12106,12 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             "this is the {} time this ability has resolved this turn",
             ordinal_number_word(*count)
         ),
+        Condition::ThisAbilityAddedManaThisTurnExactly(0) => {
+            "you haven't added mana with this ability this turn".to_string()
+        }
+        Condition::ThisAbilityAddedManaThisTurnExactly(count) => {
+            format!("this ability has added mana {count} times this turn")
+        }
         Condition::MaxTimesEachTurn(limit) => {
             format!("this ability has triggered fewer than {limit} times this turn")
         }
