@@ -4928,7 +4928,18 @@ fn compile_subject_verb_effect(
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::Counter { target } => {
-            compile_tagged_effect_for_target(target, ctx, "countered", Effect::counter)
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let spec = if choices.is_empty() {
+                match spec {
+                    ChooseSpec::Object(filter) => ChooseSpec::All(filter),
+                    other => other,
+                }
+            } else {
+                spec
+            };
+            let effect = tag_object_target_effect(Effect::counter(spec.clone()), &spec, ctx, "countered");
+            Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::CounterUnlessPays { target, cost } => {
             let cost = cost.clone();

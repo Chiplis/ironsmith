@@ -1302,8 +1302,32 @@ fn parse_counter_ability_target_phrase(
 ) -> Result<Option<TargetAst>, CardTextError> {
     let clause_tokens = LexedClause::new(tokens).trim();
     let clause = LexedClause::new(&clause_tokens);
-    let is_you_control_tail =
-        |idx: usize| {
+    let is_opponents_control_tail = |idx: usize| {
+        (clause_tokens
+            .get(idx)
+            .is_some_and(|token| token.as_word() == Some("your"))
+            && clause_tokens
+                .get(idx + 1)
+                .is_some_and(|token| token.as_word() == Some("opponents"))
+            && clause_tokens.get(idx + 2).is_some_and(|token| {
+                CLAUSE_CONTROL_OR_CONTROLS_WORD_PATTERN.matches_token(token)
+            }))
+            || (clause_tokens.get(idx).is_some_and(|token| {
+                matches!(token.as_word(), Some("opponents" | "opponent"))
+            }) && clause_tokens.get(idx + 1).is_some_and(|token| {
+                CLAUSE_CONTROL_OR_CONTROLS_WORD_PATTERN.matches_token(token)
+            }))
+            || (clause_tokens
+                .get(idx)
+                .is_some_and(|token| token.as_word() == Some("an"))
+                && clause_tokens
+                    .get(idx + 1)
+                    .is_some_and(|token| token.as_word() == Some("opponent"))
+                && clause_tokens.get(idx + 2).is_some_and(|token| {
+                    CLAUSE_CONTROL_OR_CONTROLS_WORD_PATTERN.matches_token(token)
+                }))
+    };
+    let is_controller_tail = |idx: usize| {
             clause_tokens
                 .get(idx)
                 .is_some_and(|token| CLAUSE_YOU_WORD_PATTERN.matches_token(token))
@@ -1322,8 +1346,9 @@ fn parse_counter_ability_target_phrase(
                     && clause_tokens.get(idx + 3).is_some_and(|token| {
                         CLAUSE_CONTROL_OR_CONTROLS_WORD_PATTERN.matches_token(token)
                     })))
+                || is_opponents_control_tail(idx)
         };
-    if !clause.contains_word("ability") || clause.contains_no_words(&["activated", "triggered"]) {
+    if clause.contains_no_words(&["ability", "abilities"]) {
         return Ok(None);
     }
 
@@ -1334,13 +1359,18 @@ fn parse_counter_ability_target_phrase(
         idx += used;
     }
 
-    if !clause_tokens
+    let explicit_target = clause_tokens
         .get(idx)
-        .is_some_and(|token| CLAUSE_TARGET_WORD_PATTERN.matches_token(token))
-    {
+        .is_some_and(|token| CLAUSE_TARGET_WORD_PATTERN.matches_token(token));
+    if explicit_target {
+        idx += 1;
+    } else if clause_tokens.get(idx).is_some_and(|token| {
+        matches!(token.as_word(), Some("all" | "each"))
+    }) {
+        idx += 1;
+    } else {
         return Ok(None);
     }
-    idx += 1;
 
     #[derive(Clone, Copy)]
     enum CounterTargetTerm {
@@ -1351,7 +1381,7 @@ fn parse_counter_ability_target_phrase(
     let mut list_end = clause_tokens.len();
     let mut scan = idx;
     while scan < clause_tokens.len() {
-        if CLAUSE_FROM_WORD_PATTERN.matches_token(&clause_tokens[scan]) || is_you_control_tail(scan)
+        if CLAUSE_FROM_WORD_PATTERN.matches_token(&clause_tokens[scan]) || is_controller_tail(scan)
         {
             list_end = scan;
             break;
@@ -1427,7 +1457,12 @@ fn parse_counter_ability_target_phrase(
             }),
             grammar::phrase(&["colorless", "spell"])
                 .map(|_| vec![(ObjectFilter::spell().colorless(), CounterTargetTerm::Spell)]),
-            grammar::kw("spell").map(|_| vec![(ObjectFilter::spell(), CounterTargetTerm::Spell)]),
+            alt((
+                alt((grammar::kw("ability"), grammar::kw("abilities")))
+                    .map(|_| vec![(ObjectFilter::ability(), CounterTargetTerm::Ability)]),
+                grammar::kw("spell")
+                    .map(|_| vec![(ObjectFilter::spell(), CounterTargetTerm::Spell)]),
+            )),
         ))
         .parse_next(input)
     }
@@ -1511,6 +1546,18 @@ fn parse_counter_ability_target_phrase(
             idx += 4;
             continue;
         }
+        if is_opponents_control_tail(idx) {
+            controller_filter = Some(crate::target::PlayerFilter::Opponent);
+            idx += if clause_tokens
+                .get(idx)
+                .is_some_and(|token| matches!(token.as_word(), Some("your" | "an")))
+            {
+                3
+            } else {
+                2
+            };
+            continue;
+        }
         if CLAUSE_FROM_WORD_PATTERN.matches_word(word) {
             idx += 1;
             if clause_tokens
@@ -1578,7 +1625,11 @@ fn parse_counter_ability_target_phrase(
     };
 
     let target = wrap_target_count(
-        TargetAst::Object(target_filter, span_from_tokens(&clause_tokens), None),
+        TargetAst::Object(
+            target_filter,
+            explicit_target.then(|| span_from_tokens(&clause_tokens)).flatten(),
+            None,
+        ),
         target_count,
     );
     Ok(Some(target))

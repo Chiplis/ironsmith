@@ -17199,6 +17199,54 @@ fn test_parse_trigger_when_this_creature_is_turned_face_up() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_kadenas_silencer_strict_parse_counter_all_opponent_abilities() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Kadena's Silencer")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .parse_text(
+            "When this creature is turned face up, counter all abilities your opponents control.\nMegamorph {1}{U} (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its megamorph cost and put a +1/+1 counter on it.)",
+        )
+        .expect("Kadena's Silencer should strictly parse");
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Kadena's Silencer should have a turned-face-up trigger");
+    let effects_debug = format!("{:#?}", triggered.effects);
+    assert!(
+        effects_debug.contains("CounterEffect")
+            && effects_debug.contains("Stack")
+            && effects_debug.contains("Ability")
+            && effects_debug.contains("Opponent"),
+        "expected counter-all-opponent-abilities effect, got {effects_debug}"
+    );
+
+    let compiled = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        compiled.contains("counter")
+            && compiled.contains("all")
+            && compiled.contains("abilities")
+            && compiled.contains("opponent"),
+        "expected compiled text for countering all opponent abilities, got {compiled}"
+    );
+    assert!(
+        compiled.contains("megamorph {1}{u}"),
+        "expected megamorph text to remain present, got {compiled}"
+    );
+    assert!(
+        !compiled.contains("unsupported parser line fallback"),
+        "Kadena's Silencer should not rely on unsupported fallback: {compiled}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_trigger_when_face_down_permanent_is_turned_face_up() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Sumala Trigger Probe")
         .card_types(vec![CardType::Creature])
