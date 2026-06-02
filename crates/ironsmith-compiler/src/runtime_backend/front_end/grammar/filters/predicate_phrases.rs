@@ -129,13 +129,6 @@ const WAS_OR_WERE_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["was"], &["were"]]);
 const WAS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["was"]);
 const BEHELD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["beheld"]);
-const MANA_SPENT_TO_CAST_THIS_SPELL_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["was", "spent", "to", "cast", "this", "spell"],
-            &["were", "spent", "to", "cast", "this", "spell"],
-        ]
-);
 const WITH_DIFFERENT_POWERS_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -3513,6 +3506,47 @@ fn parse_this_possessive_cost_paid_label_shape(tokens: &[OwnedLexToken]) -> Opti
     )))
 }
 
+fn parse_mana_symbols_spent_to_cast_shape(filtered: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let tail_phrases: &[&[&str]] = &[
+        &["was", "spent", "to", "cast", "this", "spell"],
+        &["were", "spent", "to", "cast", "this", "spell"],
+    ];
+    let atoms = [
+        LexPattern::amount("symbols", LexCaptureKind::UntilAnyPhrase(tail_phrases)),
+        LexPattern::action("spent", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let tail = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !tail_phrases
+        .iter()
+        .any(|phrase| tail.word_refs().as_slice() == *phrase)
+    {
+        return None;
+    }
+    let symbols = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let symbol_words = symbols.word_refs();
+    if symbol_words.is_empty()
+        || !symbol_words
+            .iter()
+            .all(|word| MANA_SYMBOL_WORD_PATTERN.matches_word(word))
+    {
+        return None;
+    }
+    let mut predicates = symbol_words
+        .iter()
+        .filter_map(|word| parse_mana_symbol(word).ok())
+        .map(|symbol| PredicateAst::ManaSpentToCastThisSpellAtLeast {
+            amount: 1,
+            symbol: Some(symbol),
+        });
+    let first = predicates.next()?;
+    Some(predicates.fold(first, |left, right| {
+        PredicateAst::And(Box::new(left), Box::new(right))
+    }))
+}
+
 fn parse_active_source_cast_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
@@ -4613,34 +4647,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if let Some(predicate) = parse_spell_context_predicate(&filtered) {
         return Ok(predicate);
     }
-    if filtered.len() == 7
-        && MANA_SYMBOL_WORD_PATTERN.matches_word(filtered[0])
-        && MANA_SPENT_TO_CAST_THIS_SPELL_TAIL_PATTERN.matches_words(&filtered[1..])
-        && let Ok(symbol) = parse_mana_symbol(filtered[0])
-    {
-        return Ok(PredicateAst::ManaSpentToCastThisSpellAtLeast {
-            amount: 1,
-            symbol: Some(symbol),
-        });
-    }
-    if filtered.len() >= 8
-        && MANA_SPENT_TO_CAST_THIS_SPELL_TAIL_PATTERN.matches_words(&filtered[filtered.len() - 6..])
-        && filtered[..filtered.len() - 6]
-            .iter()
-            .all(|word| MANA_SYMBOL_WORD_PATTERN.matches_word(word))
-    {
-        let mut predicates = filtered[..filtered.len() - 6]
-            .iter()
-            .filter_map(|word| parse_mana_symbol(word).ok())
-            .map(|symbol| PredicateAst::ManaSpentToCastThisSpellAtLeast {
-                amount: 1,
-                symbol: Some(symbol),
-            });
-        if let Some(first) = predicates.next() {
-            return Ok(predicates.fold(first, |left, right| {
-                PredicateAst::And(Box::new(left), Box::new(right))
-            }));
-        }
+    if let Some(predicate) = parse_mana_symbols_spent_to_cast_shape(&filtered) {
+        return Ok(predicate);
     }
 
     if let Some(amount) = parse_same_color_mana_spent_to_cast_predicate(&filtered) {
@@ -6561,6 +6569,26 @@ mod tests {
             (
                 "If this spells surge cost was paid",
                 PredicateAst::ThisSpellPaidLabel("Surge".to_string()),
+            ),
+            (
+                "If r was spent to cast this spell",
+                PredicateAst::ManaSpentToCastThisSpellAtLeast {
+                    amount: 1,
+                    symbol: Some(ironsmith_core::mana::ManaSymbol::Red),
+                },
+            ),
+            (
+                "If w u were spent to cast this spell",
+                PredicateAst::And(
+                    Box::new(PredicateAst::ManaSpentToCastThisSpellAtLeast {
+                        amount: 1,
+                        symbol: Some(ironsmith_core::mana::ManaSymbol::White),
+                    }),
+                    Box::new(PredicateAst::ManaSpentToCastThisSpellAtLeast {
+                        amount: 1,
+                        symbol: Some(ironsmith_core::mana::ManaSymbol::Blue),
+                    }),
+                ),
             ),
         ] {
             let tokens = lex_line(text, 0)?;
