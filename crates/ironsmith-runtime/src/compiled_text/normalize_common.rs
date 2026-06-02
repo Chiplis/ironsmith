@@ -10149,7 +10149,7 @@ pub(super) fn describe_until(until: &Until) -> String {
         Until::ThisLeavesTheBattlefield => {
             "for as long as this source remains on the battlefield".to_string()
         }
-        Until::YouStopControllingThis => "while you control this source".to_string(),
+        Until::YouStopControllingThis => "for as long as you control this source".to_string(),
         Until::TurnsPass(turns) => format!("for {} turn(s)", describe_value(turns)),
     }
 }

@@ -69,7 +69,7 @@ const CCA_FOR_AS_LONG_AS_MARKER_PATTERN: ClauseShape<'static> =
 const CCA_YOU_CONTROL_SOURCE_MARKER_PATTERN: ClauseShape<'static> =
     ClauseShape::new()
         .contains_words(&["you", "control"])
-        .contains_any_words(&[&["this"], &["thiss"], &["source"], &["creature"], &["permanent"]]);
+        .contains_any_words(&[&["this", "thiss", "source", "creature", "permanent"]]);
 const CCA_DURING_NEXT_TURN_MARKER_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_words & ["during", "next", "turn"]);
 const CCA_UNTIL_END_NEXT_TURN_MARKER_PATTERN: ClauseShape<'static> =

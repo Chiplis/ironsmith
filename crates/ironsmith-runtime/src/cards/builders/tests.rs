@@ -3001,6 +3001,140 @@ fn pyretic_hunter_strict_parser_and_compiled_text_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn pyreswipe_hawk_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Pyreswipe Hawk");
+    let rendered = canonical_compiled_lines(&def);
+    let debug = format!("{:#?}", def.abilities);
+
+    assert_eq!(
+        rendered,
+        vec![
+            "Flying, haste".to_string(),
+            "Whenever this creature attacks, it gets +X/+0 until end of turn, where X is the greatest mana value among artifacts you control."
+                .to_string(),
+            "Whenever you expend 6, gain control of up to one target artifact for as long as you control this creature."
+                .to_string(),
+        ],
+        "Pyreswipe Hawk should strictly parse and preserve its expend control-duration text"
+    );
+    assert!(
+        debug.contains("ExpendTrigger")
+            && debug.contains("amount: 6")
+            && debug.contains("WithCount")
+            && debug.contains("min: 0")
+            && debug.contains("max: Some")
+            && debug.contains("Artifact")
+            && debug.contains("YouStopControllingThis"),
+        "Pyreswipe Hawk should structurally model expend 6, up to one target artifact, and the source-control duration, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn pyreswipe_hawk_expend_trigger(def: &CardDefinition) -> &crate::ability::TriggeredAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => {
+                format!("{:?}", triggered.trigger)
+                    .contains("ExpendTrigger")
+                    .then_some(triggered)
+            }
+            _ => None,
+        })
+        .expect("Pyreswipe Hawk should compile an expend triggered ability")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_pyreswipe_hawk_expend_trigger(
+    game: &mut crate::game_state::GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    target: Option<ObjectId>,
+    triggered: &crate::ability::TriggeredAbility,
+) {
+    let targets = target
+        .map(|target| vec![crate::effects::ResolvedTarget::Object(target)])
+        .unwrap_or_default();
+    let range = if target.is_some() { 0..1 } else { 0..0 };
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, controller)
+        .with_targets(targets)
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: triggered
+                .choices
+                .first()
+                .expect("Pyreswipe Hawk should declare an optional artifact target")
+                .clone(),
+            range,
+        }]);
+    ctx.snapshot_targets(game);
+
+    for effect in triggered.effects.flattened_default_effects() {
+        crate::effects::execute_effect(game, effect, &mut ctx)
+            .expect("Pyreswipe Hawk expend trigger effect should resolve");
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn pyreswipe_hawk_gain_control_lasts_only_while_you_control_pyreswipe() {
+    let def = parse_oracle_card_definition("Pyreswipe Hawk");
+    let triggered = pyreswipe_hawk_expend_trigger(&def);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let pyreswipe = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let artifact = CardDefinitionBuilder::new(CardId::new(), "Borrowed Bauble")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let artifact_id = game.create_object_from_definition(&artifact, bob, Zone::Battlefield);
+
+    resolve_pyreswipe_hawk_expend_trigger(
+        &mut game,
+        pyreswipe,
+        alice,
+        Some(artifact_id),
+        triggered,
+    );
+
+    assert_eq!(game.current_controller(artifact_id), Some(alice));
+
+    game.set_current_controller(pyreswipe, bob);
+
+    assert_eq!(game.current_controller(pyreswipe), Some(bob));
+    assert_eq!(
+        game.current_controller(artifact_id),
+        Some(bob),
+        "Pyreswipe Hawk's control effect should end once its controller stops controlling Pyreswipe Hawk"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn pyreswipe_hawk_optional_target_branch_can_choose_no_artifact() {
+    let def = parse_oracle_card_definition("Pyreswipe Hawk");
+    let triggered = pyreswipe_hawk_expend_trigger(&def);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let pyreswipe = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let artifact = CardDefinitionBuilder::new(CardId::new(), "Unchosen Bauble")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let artifact_id = game.create_object_from_definition(&artifact, bob, Zone::Battlefield);
+
+    resolve_pyreswipe_hawk_expend_trigger(&mut game, pyreswipe, alice, None, triggered);
+
+    assert_eq!(
+        game.current_controller(artifact_id),
+        Some(bob),
+        "choosing zero targets for Pyreswipe Hawk's up-to-one artifact target should not change control"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn pyretic_hunter_draft_note_and_counter_value_are_structural() {
     let def = parse_oracle_card_definition("Pyretic Hunter");
     let debug = format!("{:#?}", def.abilities);
