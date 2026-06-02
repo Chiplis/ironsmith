@@ -247,10 +247,6 @@ const MANA_SPENT_TO_CAST_THIS_SPELL_TAIL_PATTERN: ClauseShape<'static> = clause_
             &["were", "spent", "to", "cast", "this", "spell"],
         ]
 );
-const YOU_PUT_ONTO_BATTLEFIELD_THIS_WAY_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["you", "put"]; suffix & ["onto", "the", "battlefield", "this", "way"]);
-const IS_PUT_ONTO_BATTLEFIELD_THIS_WAY_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(suffix & ["is", "put", "onto", "battlefield", "this", "way"]);
 const NO_CREATURES_ON_BATTLEFIELD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["no", "creatures", "are", "on", "battlefield"]);
 const YOU_CONTROL_PREFIX_PATTERN: ClauseShape<'static> =
@@ -1530,6 +1526,62 @@ fn parse_active_this_way_battlefield_predicate(
         tag: TagKey::from(IT_TAG),
         filter,
     }))
+}
+
+fn parse_passive_this_way_battlefield_predicate(
+    filtered: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    if filtered.len() < 7 || !THIS_WAY_SUFFIX_PATTERN.matches_words(filtered) {
+        return Ok(None);
+    }
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::object("object", LexCaptureKind::UntilPhrase(&["is", "put"])),
+        LexPattern::action("action", LexCaptureKind::WordCount(2)),
+        LexPattern::modifier("destination", LexCaptureKind::Rest),
+    ];
+    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+        return Ok(None);
+    };
+    let action_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Action, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError(
+                "missing action in passive this-way battlefield predicate".to_string(),
+            )
+        })?;
+    if !matches!(action_clause.word_refs().as_slice(), ["is", "put"]) {
+        return Ok(None);
+    }
+    let destination_clause = matched
+        .capture_clause("destination", clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError(
+                "missing destination in passive this-way battlefield predicate".to_string(),
+            )
+        })?;
+    if !matches!(
+        destination_clause.word_refs().as_slice(),
+        ["onto", "battlefield", "this", "way"] | ["onto", "the", "battlefield", "this", "way"]
+    ) {
+        return Ok(None);
+    }
+    let filter_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError(
+                "missing object in passive this-way battlefield predicate".to_string(),
+            )
+        })?;
+    let mut filter = parse_object_filter(filter_clause.tokens(), false)?;
+    if filter.zone.is_none() {
+        filter.zone = Some(Zone::Battlefield);
+    }
+    Ok(Some(PredicateAst::TaggedMatches(
+        TagKey::from(IT_TAG),
+        filter,
+    )))
 }
 
 fn active_discard_player_subject(words: &[&str]) -> Option<(PlayerAst, usize)> {
@@ -3314,6 +3366,9 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if let Some(predicate) = parse_active_this_way_battlefield_predicate(&filtered)? {
         return Ok(predicate);
     }
+    if let Some(predicate) = parse_passive_this_way_battlefield_predicate(&filtered)? {
+        return Ok(predicate);
+    }
 
     if let Some(predicate) = parse_this_ability_resolution_count_predicate(&filtered) {
         return Ok(predicate);
@@ -4616,25 +4671,6 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
-    if filtered.len() >= 8 && YOU_PUT_ONTO_BATTLEFIELD_THIS_WAY_PATTERN.matches_words(&filtered) {
-        let filter_words = &filtered[2..filtered.len() - 5];
-        let filter_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filter_words);
-        let filter = parse_object_filter(&filter_tokens, false)?;
-        return Ok(PredicateAst::PlayerTaggedObjectMatches {
-            player: PlayerAst::You,
-            tag: TagKey::from(IT_TAG),
-            filter,
-        });
-    }
-
-    if filtered.len() >= 7 && IS_PUT_ONTO_BATTLEFIELD_THIS_WAY_TAIL_PATTERN.matches_words(&filtered)
-    {
-        let filter_words = &filtered[..filtered.len() - 6];
-        let filter_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filter_words);
-        let filter = parse_object_filter(&filter_tokens, false)?;
-        return Ok(PredicateAst::TaggedMatches(TagKey::from(IT_TAG), filter));
-    }
-
     if let Some(predicate) = parse_negative_put_tagged_object_predicate(&filtered) {
         return Ok(predicate);
     }
@@ -5133,36 +5169,29 @@ mod tests {
     }
 
     #[test]
-    fn parse_predicate_supports_if_equipment_is_put_onto_the_battlefield_this_way()
+    fn parse_predicate_passive_battlefield_this_way_uses_capture_parser()
     -> Result<(), CardTextError> {
-        let tokens = lex_line("If an Equipment is put onto the battlefield this way", 0)?;
-        let predicate_tokens = predicate_tokens_after_if(&tokens);
+        for (text, filter_text) in [
+            (
+                "If an Equipment is put onto the battlefield this way",
+                "an Equipment",
+            ),
+            ("If an Aura is put onto the battlefield this way", "an Aura"),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
 
-        let parsed = parse_predicate(&predicate_tokens)?;
-        let equipment_filter_tokens = lex_line("an Equipment", 0)?;
-        let equipment_filter = parse_object_filter(&equipment_filter_tokens, false)?;
+            let parsed = parse_predicate(&predicate_tokens)?;
+            let filter_tokens = lex_line(filter_text, 0)?;
+            let mut filter = parse_object_filter(&filter_tokens, false)?;
+            filter.zone = Some(Zone::Battlefield);
 
-        assert_eq!(
-            parsed,
-            PredicateAst::TaggedMatches(TagKey::from(IT_TAG), equipment_filter)
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn parse_predicate_supports_if_aura_is_put_onto_the_battlefield_this_way()
-    -> Result<(), CardTextError> {
-        let tokens = lex_line("If an Aura is put onto the battlefield this way", 0)?;
-        let predicate_tokens = predicate_tokens_after_if(&tokens);
-
-        let parsed = parse_predicate(&predicate_tokens)?;
-        let aura_filter_tokens = lex_line("an Aura", 0)?;
-        let aura_filter = parse_object_filter(&aura_filter_tokens, false)?;
-
-        assert_eq!(
-            parsed,
-            PredicateAst::TaggedMatches(TagKey::from(IT_TAG), aura_filter)
-        );
+            assert_eq!(
+                parsed,
+                PredicateAst::TaggedMatches(TagKey::from(IT_TAG), filter),
+                "{text}"
+            );
+        }
         Ok(())
     }
 
