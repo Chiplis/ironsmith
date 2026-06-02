@@ -1465,6 +1465,49 @@ fn parse_you_control_or_graveyard_predicate(
     Some(result)
 }
 
+fn parse_you_control_conjoined_predicate(
+    filtered: &[&str],
+) -> Option<Result<PredicateAst, CardTextError>> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::subject("controller", LexCaptureKind::WordCount(1)),
+        LexPattern::action("action", LexCaptureKind::OneOf(&["control", "controls"])),
+        LexPattern::object("left_object", LexCaptureKind::UntilPhrase(&["and"])),
+        LexPattern::word("and"),
+        LexPattern::object("right_object", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let controller_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(controller_clause.word_refs().as_slice(), ["you"]) {
+        return None;
+    }
+
+    let left_object = matched.capture_clause("left_object", clause)?;
+    let right_object = matched.capture_clause("right_object", clause)?;
+    if left_object.word_refs().is_empty() || right_object.word_refs().is_empty() {
+        return None;
+    }
+
+    let result = parse_object_filter(left_object.tokens(), false).and_then(|mut left_filter| {
+        parse_object_filter(right_object.tokens(), false).map(|mut right_filter| {
+            left_filter.controller = Some(PlayerFilter::You);
+            right_filter.controller = Some(PlayerFilter::You);
+            PredicateAst::And(
+                Box::new(PredicateAst::PlayerControls {
+                    player: PlayerAst::You,
+                    filter: left_filter,
+                }),
+                Box::new(PredicateAst::PlayerControls {
+                    player: PlayerAst::You,
+                    filter: right_filter,
+                }),
+            )
+        })
+    });
+    Some(result)
+}
+
 fn parse_player_controls_predicate(
     words: &[&str],
     player: PlayerAst,
@@ -5055,33 +5098,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if filtered.len() >= 3 && YOU_CONTROL_PREFIX_PATTERN.matches_words(&filtered) {
-        if let Some(and_idx) =
-            find_index(&filtered[2..], |word| AND_WORD_PATTERN.matches_word(word))
-        {
-            let and_idx = 2 + and_idx;
-            if and_idx > 2 && and_idx + 1 < filtered.len() {
-                let left_tokens =
-                    crate::runtime_backend::lexer::synthetic_word_tokens(&filtered[2..and_idx]);
-                let right_tokens =
-                    crate::runtime_backend::lexer::synthetic_word_tokens(&filtered[and_idx + 1..]);
-                if let (Ok(mut left_filter), Ok(mut right_filter)) = (
-                    parse_object_filter(&left_tokens, false),
-                    parse_object_filter(&right_tokens, false),
-                ) {
-                    left_filter.controller = Some(PlayerFilter::You);
-                    right_filter.controller = Some(PlayerFilter::You);
-                    return Ok(PredicateAst::And(
-                        Box::new(PredicateAst::PlayerControls {
-                            player: PlayerAst::You,
-                            filter: left_filter,
-                        }),
-                        Box::new(PredicateAst::PlayerControls {
-                            player: PlayerAst::You,
-                            filter: right_filter,
-                        }),
-                    ));
-                }
-            }
+        if let Some(predicate) = parse_you_control_conjoined_predicate(&filtered).transpose()? {
+            return Ok(predicate);
         }
 
         if let Some(predicate) = parse_player_controls_predicate(
@@ -5633,6 +5651,33 @@ mod tests {
                 "{text}"
             );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_conjoined_control_uses_capture_parser() -> Result<(), CardTextError> {
+        let tokens = lex_line("If you control an artifact and a creature", 0)?;
+        let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        let PredicateAst::And(left, right) = parsed else {
+            panic!("expected conjoined control predicate");
+        };
+        assert_eq!(
+            *left,
+            PredicateAst::PlayerControls {
+                player: PlayerAst::You,
+                filter: ObjectFilter::artifact().controlled_by(PlayerFilter::You),
+            }
+        );
+        assert_eq!(
+            *right,
+            PredicateAst::PlayerControls {
+                player: PlayerAst::You,
+                filter: ObjectFilter::creature().controlled_by(PlayerFilter::You),
+            }
+        );
         Ok(())
     }
 
