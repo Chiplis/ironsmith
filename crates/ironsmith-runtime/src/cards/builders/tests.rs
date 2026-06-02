@@ -60904,6 +60904,220 @@ fn card_fixer_parse_color_conditional_keyword_grants_merge_to_oracle_surface() {
 }
 
 #[test]
+fn esper_origins_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Esper Origins // Summon: Esper Maduin");
+
+    let front = parse_oracle_card_definition("Esper Origins // Summon: Esper Maduin");
+    let rendered = crate::compiled_text::compiled_text_lines(&front).join("\n");
+    let debug = format!("{:#?}", front.spell_effect);
+    assert!(
+        rendered.contains(
+            "exile it, then put it onto the battlefield transformed under its owner's control with a finality counter on it"
+        ),
+        "Esper Origins should render the transformed finality-counter return clause, got {rendered}"
+    );
+    assert!(
+        debug.contains("ThisSpellWasCastFromZone")
+            && debug.contains("Graveyard")
+            && debug.contains("TransformEffect")
+            && debug.contains("Finality"),
+        "Esper Origins should structurally lower graveyard-cast transform and finality counter effects, got {debug}"
+    );
+
+    let back = summon_esper_maduin_test_definition();
+    let back_rendered = crate::compiled_text::compiled_text_lines(&back).join("\n");
+    assert!(
+        back_rendered.contains(
+            "I — Reveal the top card of your library. If it's a permanent card, put it into your hand."
+        ) && back_rendered.contains(
+            "III — Other creatures you control get +2/+2 and gain trample until end of turn."
+        ),
+        "Summon: Esper Maduin should render oracle-style Saga chapters, got {back_rendered}"
+    );
+}
+
+#[test]
+fn esper_origins_graveyard_cast_condition_moves_source_with_finality_counter() {
+    use crate::effects::{ExecutionContext, execute_effect};
+    use crate::tests::test_helpers::setup_two_player_game;
+
+    let (def, back_def) = esper_origins_linked_test_definitions();
+    let conditional = def
+        .spell_effect
+        .as_ref()
+        .expect("Esper Origins spell effect")
+        .flattened_default_effects()
+        .into_iter()
+        .find(|effect| effect.downcast_ref::<crate::effects::ConditionalEffect>().is_some())
+        .expect("Esper Origins graveyard-cast conditional");
+
+    let mut normal_game = setup_two_player_game();
+    normal_game.register_linked_face_definition(&back_def);
+    let alice = PlayerId::from_index(0);
+    let normal_source = normal_game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut normal_ctx = ExecutionContext::new_default(normal_source, alice);
+    execute_effect(&mut normal_game, conditional, &mut normal_ctx)
+        .expect("normal-cast conditional should resolve");
+    assert_eq!(
+        normal_game.object(normal_source).expect("source exists").zone,
+        Zone::Stack,
+        "Esper Origins should not move itself when it was not cast from a graveyard"
+    );
+    assert!(
+        normal_game.objects_in_zone(Zone::Battlefield).is_empty(),
+        "normal-cast condition should not put Esper Origins onto the battlefield"
+    );
+
+    let mut flashback_game = setup_two_player_game();
+    flashback_game.register_linked_face_definition(&back_def);
+    let flashback_source = flashback_game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut flashback_ctx = ExecutionContext::new_default(flashback_source, alice)
+        .with_casting_method(crate::alternative_cast::CastingMethod::GrantedFlashback);
+    execute_effect(&mut flashback_game, conditional, &mut flashback_ctx)
+        .expect("graveyard-cast conditional should resolve");
+    let battlefield = flashback_game.objects_in_zone(Zone::Battlefield);
+    assert_eq!(
+        battlefield.len(),
+        1,
+        "graveyard-cast Esper Origins should put itself onto the battlefield, got {battlefield:?}"
+    );
+    let returned = flashback_game
+        .object(battlefield[0])
+        .expect("graveyard-cast Esper Origins should remain on the battlefield");
+    assert_eq!(returned.name, "Summon: Esper Maduin");
+    assert!(returned.card_types.contains(&CardType::Enchantment));
+    assert!(returned.card_types.contains(&CardType::Creature));
+    assert_eq!(
+        flashback_game.controller_of(returned),
+        alice,
+        "graveyard-cast Esper Origins should return transformed under its owner's control"
+    );
+    assert_eq!(
+        flashback_game.counter_count(battlefield[0], crate::object::CounterType::Finality),
+        1,
+        "graveyard-cast Esper Origins should return with one finality counter"
+    );
+}
+
+fn esper_origins_linked_test_definitions() -> (CardDefinition, CardDefinition) {
+    let front_id = CardId::from_raw(605_190_001);
+    let back_id = CardId::from_raw(605_190_002);
+    let front_text = oracle_text_by_name()
+        .get("Esper Origins")
+        .expect("Esper Origins front-face oracle text")
+        .clone();
+    let front = CardDefinitionBuilder::new(front_id, "Esper Origins")
+        .card_types(vec![CardType::Sorcery])
+        .other_face(back_id)
+        .other_face_name("Summon: Esper Maduin")
+        .linked_face_layout(crate::card::LinkedFaceLayout::TransformLike)
+        .parse_text(front_text)
+        .expect("Esper Origins front face should parse");
+    let mut back = summon_esper_maduin_test_definition();
+    back.card.id = back_id;
+    back.card.other_face = Some(front_id);
+    back.card.other_face_name = Some("Esper Origins".to_string());
+    back.card.linked_face_layout = crate::card::LinkedFaceLayout::TransformLike;
+    (front, back)
+}
+
+#[test]
+fn summon_esper_maduin_saga_chapters_resolve_their_branches() {
+    use crate::effects::{ExecutionContext, execute_effect};
+    use crate::tests::test_helpers::setup_two_player_game;
+
+    fn execute_chapter(
+        game: &mut crate::game_state::GameState,
+        ability: &crate::ability::TriggeredAbility,
+        source: ObjectId,
+        controller: PlayerId,
+    ) {
+        let mut ctx = ExecutionContext::new_default(source, controller);
+        for effect in ability.effects.flattened_default_effects() {
+            if effect
+                .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+                .is_some()
+            {
+                continue;
+            }
+            execute_effect(game, effect, &mut ctx).expect("Saga chapter effect should resolve");
+        }
+    }
+
+    let saga = summon_esper_maduin_test_definition();
+    let chapters = saga
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(chapters.len(), 3, "expected three Saga chapter abilities");
+
+    let alice = PlayerId::from_index(0);
+    let permanent = CardDefinitionBuilder::new(CardId::new(), "Library Permanent")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let mut permanent_game = setup_two_player_game();
+    let permanent_source =
+        permanent_game.create_object_from_definition(&saga, alice, Zone::Battlefield);
+    permanent_game.create_object_from_definition(&permanent, alice, Zone::Library);
+    execute_chapter(&mut permanent_game, chapters[0], permanent_source, alice);
+    assert_eq!(
+        permanent_game.objects_in_zone(Zone::Hand).len(),
+        1,
+        "chapter I should put a revealed permanent card into your hand"
+    );
+
+    let instant = CardDefinitionBuilder::new(CardId::new(), "Library Instant")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let mut instant_game = setup_two_player_game();
+    let instant_source =
+        instant_game.create_object_from_definition(&saga, alice, Zone::Battlefield);
+    instant_game.create_object_from_definition(&instant, alice, Zone::Library);
+    execute_chapter(&mut instant_game, chapters[0], instant_source, alice);
+    assert!(
+        instant_game.objects_in_zone(Zone::Hand).is_empty(),
+        "chapter I should not put a revealed nonpermanent card into your hand"
+    );
+
+    let creature = CardDefinitionBuilder::new(CardId::new(), "Other Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let mut pump_game = setup_two_player_game();
+    let pump_source = pump_game.create_object_from_definition(&saga, alice, Zone::Battlefield);
+    let other_creature =
+        pump_game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+    execute_chapter(&mut pump_game, chapters[2], pump_source, alice);
+    assert_eq!(pump_game.calculated_power(other_creature), Some(3));
+    assert_eq!(pump_game.calculated_toughness(other_creature), Some(3));
+    assert!(
+        pump_game.current_has_static_ability_id(other_creature, StaticAbilityId::Trample),
+        "chapter III should grant trample to other creatures you control"
+    );
+    assert!(
+        !pump_game.current_has_static_ability_id(pump_source, StaticAbilityId::Trample),
+        "chapter III should not grant trample to Summon: Esper Maduin itself"
+    );
+}
+
+fn summon_esper_maduin_test_definition() -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Summon: Esper Maduin")
+        .card_types(vec![CardType::Enchantment, CardType::Creature])
+        .subtypes(vec![Subtype::Saga, Subtype::Elemental])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "I — Reveal the top card of your library. If it's a permanent card, put it into your hand.\n\
+             II — Add {G}{G}.\n\
+             III — Other creatures you control get +2/+2 and gain trample until end of turn.",
+        )
+        .expect("Summon: Esper Maduin back face should parse")
+}
+
+#[test]
 fn parse_additional_combat_phase_followed_by_main_phase() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Extra Combat Variant")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))

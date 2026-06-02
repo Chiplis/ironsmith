@@ -13731,6 +13731,18 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 2;
             continue;
         }
+        if idx + 3 < filtered.len()
+            && let Some(compact) = describe_exile_then_return_transformed_with_counter(
+                filtered[idx],
+                filtered[idx + 1],
+                filtered[idx + 2],
+                filtered[idx + 3],
+            )
+        {
+            parts.push(compact);
+            idx += 4;
+            continue;
+        }
         if idx + 2 < filtered.len()
             && let Some(compact) = describe_exile_return_then_transform(
                 filtered[idx],
@@ -15683,6 +15695,70 @@ pub(super) fn describe_exile_then_return(
     ))
 }
 
+fn describe_exile_then_return_transformed_with_counter(
+    exile_effect: &Effect,
+    return_effect: &Effect,
+    transform_effect: &Effect,
+    put_counter_effect: &Effect,
+) -> Option<String> {
+    let exile_move = unwrap_basic_tag_wrappers(exile_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let move_back = unwrap_basic_tag_wrappers(return_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let transform = unwrap_basic_tag_wrappers(transform_effect)
+        .downcast_ref::<crate::effects::TransformEffect>()?;
+    let put_counter = unwrap_basic_tag_wrappers(put_counter_effect)
+        .downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if move_back.zone != Zone::Battlefield
+        || exile_move.zone != Zone::Exile
+        || put_counter.distributed
+        || put_counter.target_count.is_some()
+    {
+        return None;
+    }
+    let crate::target::ChooseSpec::Tagged(return_tag) = &move_back.target else {
+        return None;
+    };
+    if !return_tag.as_str().starts_with("exiled_") && return_tag.as_str() != "__source_exiled__" {
+        return None;
+    }
+    if !matches!(&transform.target, ChooseSpec::Tagged(tag) if tag == return_tag)
+        || !matches!(&put_counter.target, ChooseSpec::Tagged(tag) if tag == return_tag)
+    {
+        return None;
+    }
+
+    let target = if matches!(exile_move.target, ChooseSpec::Source) {
+        "it".to_string()
+    } else {
+        describe_choose_spec(&exile_move.target)
+    };
+    let return_object = if choose_spec_allows_multiple(&exile_move.target) {
+        "them"
+    } else {
+        "it"
+    };
+    let owner_control_suffix = if choose_spec_allows_multiple(&exile_move.target) {
+        " under their owners' control"
+    } else {
+        " under its owner's control"
+    };
+    let tapped_suffix = if move_back.enters_tapped {
+        " tapped"
+    } else {
+        ""
+    };
+    let controller_suffix = match move_back.battlefield_controller {
+        crate::effects::BattlefieldController::Preserve => "",
+        crate::effects::BattlefieldController::Owner => owner_control_suffix,
+        crate::effects::BattlefieldController::You => " under your control",
+    };
+    let counter_text = describe_put_counter_phrase(&put_counter.amount, put_counter.counter_type);
+    Some(format!(
+        "Exile {target}, then put {return_object} onto the battlefield{tapped_suffix} transformed{controller_suffix} with {counter_text} on it"
+    ))
+}
+
 pub(super) fn describe_exile_return_then_transform(
     exile_effect: &Effect,
     return_effect: &Effect,
@@ -15852,6 +15928,7 @@ pub(super) fn describe_reveal_top_then_if_put_into_hand(
             | "enchantment"
             | "planeswalker"
             | "battle"
+            | "permanent"
             | "instant"
             | "sorcery"
     ) {

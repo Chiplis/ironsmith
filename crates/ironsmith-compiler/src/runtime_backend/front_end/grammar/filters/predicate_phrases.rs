@@ -1516,6 +1516,9 @@ fn predicate_words_start_with_reference(words: &[&str]) -> bool {
 }
 
 fn parse_single_card_type_card_descriptor(words: &[&str]) -> Option<ObjectFilter> {
+    if matches!(words, ["permanent", "card"] | ["permanent", "cards"]) {
+        return Some(ObjectFilter::permanent_card());
+    }
     if words.len() == 2
         && CARD_OR_CARDS_WORD_PATTERN.matches_word(words[1])
         && let Some(card_type) = parse_card_type(words[0])

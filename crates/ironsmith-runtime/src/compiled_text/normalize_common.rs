@@ -6010,7 +6010,35 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "Choose target creature you control and target creature an opponent controls. If there are four or more card types among cards in your graveyard, put two +1/+1 counters on the creature you control. The creature you control deals damage equal to its power to the creature an opponent controls.",
         )
         ;
+    normalized = normalize_saga_chapter_prefixes(normalized);
     normalized
+}
+
+fn normalize_saga_chapter_prefixes(text: String) -> String {
+    text.lines()
+        .map(|line| {
+            for prefix in ["I", "II", "III", "IV", "V"] {
+                let Some(rest) = line.strip_prefix(&format!("{prefix}, ")) else {
+                    continue;
+                };
+                let rest = if let Some(tail) =
+                    rest.strip_prefix("each other creature you control gets ")
+                {
+                    format!(
+                        "Other creatures you control get {}",
+                        tail.replace(" and gains ", " and gain ")
+                    )
+                } else {
+                    rest.strip_prefix("each other ")
+                        .map(|tail| format!("Other {tail}"))
+                        .unwrap_or_else(|| capitalize_first(rest))
+                };
+                return format!("{prefix} — {rest}");
+            }
+            line.to_string()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 pub(super) fn normalize_reveal_match_filter(filter: &str) -> String {
