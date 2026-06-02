@@ -594,7 +594,7 @@ pub(crate) fn parse_get_modifier_values_with_tail(
         return Ok((
             out_power,
             out_toughness,
-            Until::ThisLeavesTheBattlefield,
+            Until::SourceUntaps,
             condition,
         ));
     }

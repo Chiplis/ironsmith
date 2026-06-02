@@ -4305,7 +4305,7 @@ fn rewrite_lexed_restriction_duration_handles_for_as_long_as_token_shapes() {
     let parsed = parse_restriction_duration_lexed(&suffix)
         .expect("suffix duration should parse")
         .expect("suffix duration should be present");
-    assert_eq!(parsed.0, crate::effect::Until::ThisLeavesTheBattlefield);
+    assert_eq!(parsed.0, crate::effect::Until::SourceUntaps);
     assert_eq!(
         TokenWordView::new(&parsed.1).to_word_refs(),
         vec!["target", "creature", "cant", "attack"]

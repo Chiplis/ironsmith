@@ -45076,6 +45076,174 @@ fn assert_oracle_card_parses_strict(name: &str) {
     );
 }
 
+fn flamestick_courier_activated_ability(
+    def: &CardDefinition,
+) -> &crate::ability::ActivatedAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Flamestick Courier should have an activated ability")
+}
+
+fn flamestick_courier_target_filter(
+    activated: &crate::ability::ActivatedAbility,
+) -> &crate::target::ObjectFilter {
+    match activated.choices.first() {
+        Some(ChooseSpec::Target(inner)) => match inner.as_ref() {
+            ChooseSpec::Object(filter) => filter,
+            other => panic!("Flamestick Courier should target an object, got {other:?}"),
+        },
+        other => panic!("Flamestick Courier should have one target choice, got {other:?}"),
+    }
+}
+
+#[test]
+fn flamestick_courier_strict_parser_text_and_structure_regression() {
+    assert_oracle_card_parses_strict("Flamestick Courier");
+
+    let def = parse_oracle_card_definition("Flamestick Courier");
+    let activated = flamestick_courier_activated_ability(&def);
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let ability_debug = format!("{activated:#?}");
+
+    assert!(
+        rendered.contains("You may choose not to untap this creature during your untap step"),
+        "expected optional untap static line for Flamestick Courier, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "{2}{R}, {T}: Target Goblin creature gets +2/+2 and has haste for as long as this creature remains tapped"
+        ),
+        "expected source-tapped pump-and-haste line for Flamestick Courier, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("SourceUntaps")
+            && ability_debug.contains("SourceIsTapped")
+            && ability_debug.contains("ModifyPowerToughness")
+            && ability_debug.contains("Haste"),
+        "expected source-remains-tapped +2/+2 and haste effects, got {ability_debug}"
+    );
+
+    let target_filter = flamestick_courier_target_filter(activated);
+    assert_eq!(
+        target_filter.card_types,
+        vec![CardType::Creature],
+        "Flamestick Courier should target a creature"
+    );
+    assert_eq!(
+        target_filter.subtypes,
+        vec![Subtype::Goblin],
+        "Flamestick Courier should target a Goblin creature"
+    );
+}
+
+#[test]
+fn flamestick_courier_activation_pumps_goblin_only_while_source_remains_tapped() {
+    let def = parse_oracle_card_definition("Flamestick Courier");
+    let activated = flamestick_courier_activated_ability(&def);
+    let target_filter = flamestick_courier_target_filter(activated);
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(source);
+
+    let goblin_def = CardDefinitionBuilder::new(CardId::new(), "Goblin Target")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Goblin])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let goblin = game.create_object_from_definition(&goblin_def, alice, Zone::Battlefield);
+    let non_goblin_def = CardDefinitionBuilder::new(CardId::new(), "Elf Bystander")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elf])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let non_goblin = game.create_object_from_definition(&non_goblin_def, alice, Zone::Battlefield);
+
+    let filter_ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .filter_context(&game);
+    assert!(
+        target_filter.matches(
+            game.object(goblin).expect("Goblin target should exist"),
+            &filter_ctx,
+            &game,
+        ),
+        "Flamestick Courier should be able to target a Goblin creature"
+    );
+    assert!(
+        !target_filter.matches(
+            game.object(non_goblin).expect("Elf bystander should exist"),
+            &filter_ctx,
+            &game,
+        ),
+        "Flamestick Courier should not be able to target a non-Goblin creature"
+    );
+
+    assert!(
+        crate::cost::can_pay_cost(&game, source, alice, &activated.mana_cost).is_err(),
+        "Flamestick Courier activation should require mana before the tap cost can be paid"
+    );
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .red = 3;
+    crate::cost::can_pay_cost(&game, source, alice, &activated.mana_cost).expect(
+        "Flamestick Courier activation should be payable with three red mana and an untapped source",
+    );
+    let mut dm = crate::decision::AutoPassDecisionMaker::default();
+    crate::special_actions::pay_total_cost_with_choice(
+        &mut game,
+        alice,
+        source,
+        &activated.mana_cost,
+        crate::costs::PaymentReason::ActivateAbility,
+        &mut dm,
+    )
+    .expect("Flamestick Courier activation cost should be paid");
+    assert!(game.is_tapped(source), "activation cost should tap Flamestick Courier");
+    assert_eq!(
+        game.player(alice)
+            .expect("Alice should exist")
+            .mana_pool
+            .total(),
+        0,
+        "activation cost should spend {{2}}{{R}}"
+    );
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(goblin)]);
+    for effect in activated.effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Flamestick Courier activation should resolve");
+    }
+
+    assert_eq!(game.calculated_power(goblin), Some(3));
+    assert_eq!(game.calculated_toughness(goblin), Some(3));
+    assert!(
+        game.object_has_static_ability_id(goblin, StaticAbilityId::Haste),
+        "target Goblin should have haste while Flamestick Courier remains tapped"
+    );
+
+    game.untap(source);
+    assert_eq!(game.calculated_power(goblin), Some(1));
+    assert_eq!(game.calculated_toughness(goblin), Some(1));
+    assert!(
+        !game.object_has_static_ability_id(goblin, StaticAbilityId::Haste),
+        "target Goblin should lose haste once Flamestick Courier untaps"
+    );
+
+    game.tap(source);
+    assert_eq!(game.calculated_power(goblin), Some(1));
+    assert_eq!(game.calculated_toughness(goblin), Some(1));
+    assert!(
+        !game.object_has_static_ability_id(goblin, StaticAbilityId::Haste),
+        "source-remains-tapped duration should not reactivate after Flamestick Courier taps again"
+    );
+}
+
 #[test]
 fn departed_deckhand_strict_parser_text_and_structure_regression() {
     let def = parse_oracle_card_definition("Departed Deckhand");

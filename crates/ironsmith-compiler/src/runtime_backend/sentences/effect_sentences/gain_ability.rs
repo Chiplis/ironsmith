@@ -673,7 +673,7 @@ fn parse_source_tapped_ability_duration(
         Some((
             idx,
             words_after_verb.len().saturating_sub(idx),
-            Until::ThisLeavesTheBattlefield,
+            Until::SourceUntaps,
             crate::ConditionExpr::SourceIsTapped,
         ))
     } else {

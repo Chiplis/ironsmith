@@ -157,7 +157,7 @@ pub(crate) fn parse_restriction_duration_lexed(
         if is_source_remains_tapped_duration_tokens(suffix_tokens) {
             let remainder = trim_lexed_commas(&tokens[..token_idx]).to_vec();
             if !remainder.is_empty() {
-                return Ok(Some((Until::ThisLeavesTheBattlefield, remainder)));
+                return Ok(Some((Until::SourceUntaps, remainder)));
             }
         }
     }
