@@ -5150,6 +5150,10 @@ pub fn compare_semantics_scored(
         .flat_map(|clause| split_compiled_activation_restriction_clauses(&clause))
         .collect::<Vec<_>>();
 
+    if oracle_clauses == raw_compiled_clauses {
+        return (1.0, 1.0, 1.0, 0, false);
+    }
+
     let oracle_tokens: Vec<Vec<String>> = oracle_clauses
         .iter()
         .map(|clause| comparison_tokens(clause))
@@ -5935,6 +5939,23 @@ mod tests {
             !mismatch,
             "expected no mismatch for any-combination mana wording"
         );
+    }
+
+    #[test]
+    fn compare_semantics_scores_identical_winter_chill_text_as_exact() {
+        let oracle = "Cast this spell only during combat before blockers are declared.\nX can't be greater than the number of snow lands you control.\nChoose X target attacking creatures. For each of those creatures, its controller may pay {1} or {2}. If that player doesn't, destroy that creature at end of combat. If that player pays only {1}, prevent all combat damage that would be dealt to and dealt by that creature this combat.";
+        let compiled = vec![
+            String::from("Cast this spell only during combat before blockers are declared."),
+            String::from("X can't be greater than the number of snow lands you control."),
+            String::from("Choose X target attacking creatures. For each of those creatures, its controller may pay {1} or {2}. If that player doesn't, destroy that creature at end of combat. If that player pays only {1}, prevent all combat damage that would be dealt to and dealt by that creature this combat."),
+        ];
+        let (oracle_cov, compiled_cov, similarity, _delta, mismatch) =
+            compare_semantics_scored(oracle, &compiled, strict_embedding());
+        assert!(
+            similarity >= 0.99,
+            "expected identical Winter's Chill text to compare exactly, got similarity={similarity}, oracle_cov={oracle_cov}, compiled_cov={compiled_cov}"
+        );
+        assert!(!mismatch, "expected no mismatch for identical text");
     }
 
     #[test]

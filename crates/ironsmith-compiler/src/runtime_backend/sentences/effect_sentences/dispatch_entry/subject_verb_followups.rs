@@ -1140,7 +1140,29 @@ fn post_rule_delayed_trigger_copy_retarget_followup(
     }))
 }
 
+fn pre_rule_choose_payment_branch(
+    state: &mut SentenceDispatchState<'_>,
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+    _sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    let Some(effects) = super::super::sequence_rules::generic_subject_verb_sequences::quads::parse_choose_for_each_controller_may_pay_two_amounts_else_branch(sentences, sentence_idx)? else {
+        return Ok(None);
+    };
+    state.effects.extend(effects);
+    Ok(Some(PreParseFollowupResult::Handled {
+        consumed_sentences: 4,
+        route: Some("subject-verb verb=Pay subject=chosen-object-controller recognizer=choose-payment-branch"),
+    }))
+}
+
 const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
+    SubjectVerbFollowupRuleDef {
+        id: "choose-payment-branch",
+        priority: 5,
+        heads: &["choose"],
+        run: pre_rule_choose_payment_branch,
+    },
     SubjectVerbFollowupRuleDef {
         id: "library-shuffle",
         priority: 10,

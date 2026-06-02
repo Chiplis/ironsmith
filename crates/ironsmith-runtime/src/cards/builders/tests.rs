@@ -11343,6 +11343,49 @@ fn open_the_way_parses_x_cap_and_reveal_x_lands() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn winters_chill_definition() -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Winter's Chill")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::X],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Cast this spell only during combat before blockers are declared.\n\
+             X can't be greater than the number of snow lands you control.\n\
+             Choose X target attacking creatures. For each of those creatures, its controller may pay {1} or {2}. If that player doesn't, destroy that creature at end of combat. If that player pays only {1}, prevent all combat damage that would be dealt to and dealt by that creature this combat.",
+        )
+        .expect("Winter's Chill should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn winters_chill_parses_and_renders_payment_branch() {
+    let def = winters_chill_definition();
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Cast this spell only during combat before blockers are declared")
+            && rendered.contains("X can't be greater than the number of snow lands you control")
+            && rendered.contains("Choose X target attacking creatures")
+            && rendered.contains("its controller may pay {1} or {2}")
+            && rendered.contains("If that player pays only {1}, prevent all combat damage"),
+        "expected Winter's Chill restrictions and payment branch in compiled text, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("ThisSpellXMaximum")
+            && debug.contains("Supertype(Snow)")
+            && debug.contains("TargetOnly")
+            && debug.contains("ForEachTagged")
+            && debug.contains("UnlessAction")
+            && debug.contains("PreventAllCombatDamageFromSource")
+            && debug.contains("PreventAllDamageToTarget"),
+        "expected Winter's Chill to lower to X cap, target loop, payment, and prevention effects, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn costume_shop_keeps_visit_sticker_effect() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Costume Shop")

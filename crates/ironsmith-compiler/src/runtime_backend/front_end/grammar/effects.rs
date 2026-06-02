@@ -7,7 +7,7 @@ use crate::cards::builders::{
     LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst,
     SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst, TextSpan,
 };
-use crate::effect::SearchSelectionMode;
+use crate::effect::{SearchSelectionMode, Until};
 use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
     ClauseShape, clause_shape,
 };
@@ -67,6 +67,7 @@ const CONTROL_OR_OWN_WORD_PATTERN: ClauseShape<'static> =
 const THEN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["then"]);
 const WHO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["who"]);
 const THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this", "turn"]);
+const THIS_COMBAT_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this", "combat"]);
 const THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this", "way"]);
 const COMPACT_NEGATED_ACTION_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["doesnt"], &["didnt"], &["doesn't"], &["didn't"]]);
@@ -697,19 +698,29 @@ pub(crate) fn parse_prevent_damage_sentence_lexed(
         return Ok(None);
     }
 
-    let Some(this_turn_idx) = THIS_TURN_PATTERN.find_exact_window(&words, 2) else {
+    let duration = THIS_TURN_PATTERN
+        .find_exact_window(&words, 2)
+        .map(|idx| (idx, Until::EndOfTurn))
+        .or_else(|| {
+            THIS_COMBAT_PATTERN
+                .find_exact_window(&words, 2)
+                .map(|idx| (idx, Until::EndOfCombat))
+        });
+    let Some((duration_idx, duration)) = duration else {
         return Err(CardTextError::ParseError(format!(
             "unsupported prevent-all-combat-damage duration (clause: '{}')",
             words.join(" ")
         )));
     };
-    if THIS_TURN_PATTERN.matches_words(&words[this_turn_idx + 2..]) {
+    if THIS_TURN_PATTERN.matches_words(&words[duration_idx + 2..])
+        || THIS_COMBAT_PATTERN.matches_words(&words[duration_idx + 2..])
+    {
         return Err(CardTextError::ParseError(format!(
             "unsupported prevent-all-combat-damage duration (clause: '{}')",
             words.join(" ")
         )));
     }
-    if this_turn_idx < prefix.len() {
+    if duration_idx < prefix.len() {
         return Err(CardTextError::ParseError(format!(
             "unsupported prevent-all-combat-damage duration (clause: '{}')",
             words.join(" ")
@@ -717,15 +728,15 @@ pub(crate) fn parse_prevent_damage_sentence_lexed(
     }
 
     let mut core_words = Vec::with_capacity(words.len() - prefix.len() - 2);
-    core_words.extend_from_slice(&words[prefix.len()..this_turn_idx]);
-    core_words.extend_from_slice(&words[this_turn_idx + 2..]);
+    core_words.extend_from_slice(&words[prefix.len()..duration_idx]);
+    core_words.extend_from_slice(&words[duration_idx + 2..]);
     let mut core_tokens = Vec::with_capacity(tokens.len() - prefix.len() - 2);
-    core_tokens.extend_from_slice(&tokens[prefix.len()..this_turn_idx]);
-    core_tokens.extend_from_slice(&tokens[this_turn_idx + 2..]);
+    core_tokens.extend_from_slice(&tokens[prefix.len()..duration_idx]);
+    core_tokens.extend_from_slice(&tokens[duration_idx + 2..]);
 
     if THAT_WOULD_BE_DEALT_PATTERN.matches_words(&core_words) {
         return Ok(Some(EffectAst::subject_verb_prevent_all_combat_damage(
-            crate::effect::Until::EndOfTurn,
+            duration,
         )));
     }
 
@@ -740,13 +751,14 @@ pub(crate) fn parse_prevent_damage_sentence_lexed(
             return Ok(Some(prevent_damage_effect_with_optional_condition(
                 source,
                 has_color_condition,
+                duration,
             )));
         }
         if let Ok(source_filter) = parse_object_filter(source_tokens, false) {
             return Ok(Some(
                 EffectAst::subject_verb_prevent_all_combat_damage_from_source_filter(
                     source_filter,
-                    crate::effect::Until::EndOfTurn,
+                    duration,
                 ),
             ));
         }
@@ -755,6 +767,7 @@ pub(crate) fn parse_prevent_damage_sentence_lexed(
         return Ok(Some(prevent_damage_effect_with_optional_condition(
             source,
             has_color_condition,
+            duration,
         )));
     }
 
@@ -763,14 +776,16 @@ pub(crate) fn parse_prevent_damage_sentence_lexed(
         let source_tokens = &core_tokens[8..];
         let (source, has_color_condition) =
             parse_prevent_damage_source_target_lexed(source_tokens, &words)?;
-        return Ok(Some(prevent_damage_effect_with_optional_condition(
-            source,
-            has_color_condition,
-        )));
+        return Ok(Some(EffectAst::Sequence {
+            effects: vec![
+                EffectAst::subject_verb_prevent_all_damage_to_target(source.clone(), duration.clone()),
+                prevent_damage_effect_with_optional_condition(source, has_color_condition, duration),
+            ],
+        }));
     }
 
     if primitives::words_match_any_prefix(&core_tokens, PREVENT_DAMAGE_TO_PREFIXES).is_some() {
-        return parse_prevent_damage_target_scope_lexed(&core_tokens[5..], &words);
+        return parse_prevent_damage_target_scope_lexed(&core_tokens[5..], &words, duration);
     }
 
     if let Some(would_idx) = WOULD_WORD_PATTERN.find_word(&core_words)
@@ -786,6 +801,7 @@ pub(crate) fn parse_prevent_damage_sentence_lexed(
         return Ok(Some(prevent_damage_effect_with_optional_condition(
             source,
             has_color_condition,
+            duration,
         )));
     }
 
@@ -835,6 +851,7 @@ pub(crate) fn parse_prevent_damage_source_target_lexed(
 fn prevent_damage_effect_with_optional_condition(
     source: TargetAst,
     has_color_condition: bool,
+    duration: Until,
 ) -> EffectAst {
     let condition_filter = match &source {
         TargetAst::Object(filter, _, _) => Some(filter.clone()),
@@ -842,7 +859,7 @@ fn prevent_damage_effect_with_optional_condition(
     };
     let prevent = EffectAst::subject_verb_prevent_all_combat_damage_from_source(
         source,
-        crate::effect::Until::EndOfTurn,
+        duration,
     );
     if has_color_condition {
         let predicate = condition_filter.map_or_else(
@@ -894,6 +911,7 @@ fn strip_prevent_damage_shares_color_clause_lexed(
 pub(crate) fn parse_prevent_damage_target_scope_lexed(
     tokens: &[OwnedLexToken],
     clause_words: &[&str],
+    duration: Until,
 ) -> Result<Option<EffectAst>, CardTextError> {
     if tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
@@ -905,16 +923,12 @@ pub(crate) fn parse_prevent_damage_target_scope_lexed(
     let target_words = crate::runtime_backend::util::non_article_token_word_refs(tokens);
     if PREVENT_DAMAGE_PLAYERS_TARGET_PATTERN.matches_words(&target_words) {
         return Ok(Some(
-            EffectAst::subject_verb_prevent_all_combat_damage_to_players(
-                crate::effect::Until::EndOfTurn,
-            ),
+            EffectAst::subject_verb_prevent_all_combat_damage_to_players(duration),
         ));
     }
     if YOU_TARGET_PATTERN.matches_words(&target_words) {
         return Ok(Some(
-            EffectAst::subject_verb_prevent_all_combat_damage_to_you(
-                crate::effect::Until::EndOfTurn,
-            ),
+            EffectAst::subject_verb_prevent_all_combat_damage_to_you(duration),
         ));
     }
 

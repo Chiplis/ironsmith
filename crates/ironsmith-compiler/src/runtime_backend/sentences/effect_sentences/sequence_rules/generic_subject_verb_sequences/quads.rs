@@ -4,17 +4,19 @@ use super::super::super::dispatch_entry::{
     parse_if_you_dont_put_card_from_among_them_into_your_hand,
 };
 use crate::cards::builders::{
-    CardTextError, EffectAst, ObjectFilter, PlayerAst, PredicateAst, SubjectVerbActionAst,
+    CardTextError, EffectAst, IT_TAG, ObjectFilter, PlayerAst, PredicateAst, SubjectVerbActionAst,
     SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst,
 };
 use crate::effect::ChoiceCount;
 use crate::filter::TaggedObjectConstraint;
+use crate::mana::{ManaCost, ManaSymbol};
 use crate::runtime_backend::effect_sentences;
 use crate::runtime_backend::effect_sentences::SentenceInput;
 use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use crate::runtime_backend::front_end::lexer::{LexedClause, OwnedLexToken};
 use crate::runtime_backend::util::{
-    helper_tag_for_tokens, parse_choice_count_token_prefix_consumed,
+    helper_tag_for_tokens, mana_pips_from_token, parse_choice_count_token_prefix_consumed,
+    parse_target_phrase,
 };
 use crate::target::TaggedOpbjectRelation;
 use crate::zone::Zone;
@@ -106,6 +108,134 @@ const OTHERWISE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["oth
 
 const THEN_SHUFFLE_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["then", "shuffle"], &["shuffle"]]);
+
+const FOR_EACH_THOSE_CONTROLLER_MAY_PAY_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix & ["for", "each", "of", "those"];
+    contains_phrases & [&["its", "controller", "may", "pay"], &["or"]]
+);
+
+const IF_THAT_PLAYER_DOESNT_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any & [
+        &["if", "that", "player", "doesnt"],
+        &["if", "that", "player", "doesn't"],
+        &["if", "that", "player", "does", "not"],
+    ]
+);
+
+const IF_THAT_PLAYER_PAYS_ONLY_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["if", "that", "player", "pays", "only"]);
+
+fn token_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
+    crate::runtime_backend::token_word_refs(tokens)
+}
+
+fn strip_after_comma(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    let comma_idx = tokens.iter().position(|token| token.slice == ",")?;
+    let tail = &tokens[comma_idx + 1..];
+    (!tail.is_empty()).then_some(tail)
+}
+
+fn generic_mana_amount(cost: &ManaCost) -> Option<u8> {
+    match cost.pips() {
+        [pip] => match pip.as_slice() {
+            [ManaSymbol::Generic(amount)] => Some(*amount),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn parse_two_generic_payment_costs(tokens: &[OwnedLexToken]) -> Option<(ManaCost, ManaCost)> {
+    let words = token_words(tokens);
+    if !FOR_EACH_THOSE_CONTROLLER_MAY_PAY_PATTERN.matches_words(&words) {
+        return None;
+    }
+
+    let costs = tokens
+        .iter()
+        .filter_map(|token| mana_pips_from_token(token).map(ManaCost::from_symbols))
+        .collect::<Vec<_>>();
+    if costs.len() != 2 {
+        return None;
+    }
+
+    let low = generic_mana_amount(&costs[0])?;
+    let high = generic_mana_amount(&costs[1])?;
+    (high > low).then(|| (costs[0].clone(), costs[1].clone()))
+}
+
+fn parse_choose_target_objects_effect(tokens: &[OwnedLexToken]) -> Option<(EffectAst, TagKey)> {
+    let words = token_words(tokens);
+    if words.first().copied() != Some("choose") {
+        return None;
+    }
+    let target = parse_target_phrase(&tokens[1..]).ok()?;
+    let tag = TagKey::from("targeted_0");
+    Some((EffectAst::subject_verb_target_only(target), tag))
+}
+
+pub(crate) fn parse_choose_for_each_controller_may_pay_two_amounts_else_branch(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if sentence_idx + 3 >= sentences.len() {
+        return Ok(None);
+    }
+
+    let Some((choose_effect, chosen_tag)) =
+        parse_choose_target_objects_effect(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+
+    let Some((low_cost, high_cost)) =
+        parse_two_generic_payment_costs(sentences[sentence_idx + 1].lowered())
+    else {
+        return Ok(None);
+    };
+
+    let no_pay_words = token_words(sentences[sentence_idx + 2].lowered());
+    if !IF_THAT_PLAYER_DOESNT_PREFIX_PATTERN.matches_words(&no_pay_words) {
+        return Ok(None);
+    }
+    let Some(no_pay_tail) = strip_after_comma(sentences[sentence_idx + 2].lowered()) else {
+        return Ok(None);
+    };
+    let no_pay_effects = effect_sentences::parse_effect_sentence_lexed(no_pay_tail)?;
+
+    let low_only_words = token_words(sentences[sentence_idx + 3].lowered());
+    if !IF_THAT_PLAYER_PAYS_ONLY_PREFIX_PATTERN.matches_words(&low_only_words) {
+        return Ok(None);
+    }
+    let Some(low_only_tail) = strip_after_comma(sentences[sentence_idx + 3].lowered()) else {
+        return Ok(None);
+    };
+    let low_only_effects = effect_sentences::parse_effect_sentence_lexed(low_only_tail)?;
+
+    let low = generic_mana_amount(&low_cost).expect("already checked generic low payment");
+    let high = generic_mana_amount(&high_cost).expect("already checked generic high payment");
+    let extra_cost = ManaCost::from_symbols(vec![ManaSymbol::Generic(high - low)]);
+
+    let pay_low = EffectAst::subject_verb_pay_mana(PlayerAst::ItsController, low_cost);
+    let pay_extra = EffectAst::subject_verb_pay_mana(PlayerAst::ItsController, extra_cost);
+    let pay_only_low_branch = EffectAst::UnlessAction {
+        effects: low_only_effects,
+        alternative: vec![pay_extra],
+        player: PlayerAst::ItsController,
+    };
+    let payment_branch = EffectAst::UnlessAction {
+        effects: no_pay_effects,
+        alternative: vec![pay_low, pay_only_low_branch],
+        player: PlayerAst::ItsController,
+    };
+
+    let mut effects = vec![choose_effect];
+    effects.push(EffectAst::ForEachTagged {
+        tag: chosen_tag,
+        effects: vec![payment_branch],
+    });
+    Ok(Some(effects))
+}
 
 const MAY_REVEAL_FROM_LOOKED_CARDS_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["you", "may", "reveal"]);

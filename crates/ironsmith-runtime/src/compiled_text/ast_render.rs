@@ -2644,7 +2644,20 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
             lowercase_first(&additional_cost_text)
         ));
     }
-    if !spell_like_card {
+    let spell_like_leading_static_restrictions = spell_like_card
+        && !def.abilities.is_empty()
+        && def.abilities.iter().all(|ability| {
+            matches!(
+                &ability.kind,
+                AbilityKind::Static(static_ability)
+                    if matches!(
+                        static_ability.id(),
+                        crate::static_abilities::StaticAbilityId::ThisSpellCastRestriction
+                            | crate::static_abilities::StaticAbilityId::ThisSpellXMaximum
+                    )
+            )
+        });
+    if !spell_like_card || spell_like_leading_static_restrictions {
         push_abilities(&mut out);
     }
     if let Some(spell_effects) = &def.spell_effect
@@ -2662,7 +2675,7 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
         }
     }
     out.extend(deferred_spell_optional_lines);
-    if spell_like_card {
+    if spell_like_card && !spell_like_leading_static_restrictions {
         push_abilities(&mut out);
     }
     if def.has_fuse {

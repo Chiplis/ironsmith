@@ -22,6 +22,23 @@ fn execute_effect_sequence(
     Ok(EffectOutcome::aggregate(outcomes))
 }
 
+fn execute_alternative_effect_sequence(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    effects: &[Effect],
+) -> Result<EffectOutcome, ExecutionError> {
+    let mut outcomes = Vec::new();
+    for effect in effects {
+        let outcome = execute_effect(game, effect, ctx)?;
+        let happened = outcome.something_happened();
+        outcomes.push(outcome);
+        if !happened {
+            break;
+        }
+    }
+    Ok(EffectOutcome::aggregate(outcomes))
+}
+
 fn players_in_turn_order(game: &GameState) -> Vec<PlayerId> {
     if game.turn_store.turn_order.is_empty() {
         return Vec::new();
@@ -146,10 +163,10 @@ impl EffectExecutor for UnlessActionEffect {
             // Only prevent the main effects if the alternative action actually happens.
             let mut alternative_outcome = if matches!(self.player, PlayerFilter::Any) {
                 ctx.with_temp_targets(vec![ResolvedTarget::Player(deciding_player)], |ctx| {
-                    execute_effect_sequence(game, ctx, &self.alternative)
+                    execute_alternative_effect_sequence(game, ctx, &self.alternative)
                 })?
             } else {
-                execute_effect_sequence(game, ctx, &self.alternative)?
+                execute_alternative_effect_sequence(game, ctx, &self.alternative)?
             };
 
             if alternative_outcome.something_happened() {

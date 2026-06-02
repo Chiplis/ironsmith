@@ -3056,6 +3056,38 @@ fn parse_count_as_card_named_for_spell_effect_line(words: &[&str]) -> Option<Sta
     ))
 }
 
+fn parse_this_spell_x_maximum_object_count_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    const NORMALIZED_PREFIX: &[&str] = &[
+        "x", "cant", "be", "greater", "than", "the", "number", "of",
+    ];
+
+    let words = parser_token_word_refs(tokens);
+    if !word_slice_starts_with(&words, NORMALIZED_PREFIX) {
+        return Ok(None);
+    }
+
+    let Some((_, filter_start)) = find_token_word_sequence_span(tokens, &["the", "number", "of"])
+    else {
+        return Ok(None);
+    };
+    let filter_tokens = &tokens[filter_start..];
+    if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let filter = parse_object_filter_lexed(filter_tokens, false)?;
+    if filter == ObjectFilter::default() {
+        return Ok(None);
+    }
+
+    Ok(Some(StaticAbility::this_spell_x_maximum(
+        Value::Count(filter),
+        render_token_slice(tokens),
+    )))
+}
+
 fn parse_static_ability_ast_line_early_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
@@ -3073,6 +3105,9 @@ fn parse_static_ability_ast_line_early_lexed(
             )
             .into(),
         ]));
+    }
+    if let Some(ability) = parse_this_spell_x_maximum_object_count_line_lexed(tokens)? {
+        return Ok(Some(vec![ability.into()]));
     }
     if EXHAUST_AS_THOUGH_UNACTIVATED_PATTERN.matches_words(&rendered_words) {
         return Ok(Some(vec![

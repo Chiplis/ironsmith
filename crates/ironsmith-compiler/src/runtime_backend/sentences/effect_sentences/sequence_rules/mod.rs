@@ -203,6 +203,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::quads::parse_look_at_top_put_counted_into_hand_rest_bottom_with_kicker_override,
     },
     SequenceRuleDef {
+        name: "choose-for-each-controller-may-pay-two-amounts-else-branch",
+        feature_tag: Some("choose-payment-branch"),
+        priority: 431,
+        consumed_sentences: 4,
+        predicate: first_word_choose,
+        parser: generic_subject_verb_sequences::quads::parse_choose_for_each_controller_may_pay_two_amounts_else_branch,
+    },
+    SequenceRuleDef {
         name: "look-at-top-may-put-match-onto-battlefield-if-not-put-into-hand-rest-bottom",
         feature_tag: Some("looked-cards-battlefield-or-hand"),
         priority: 429,

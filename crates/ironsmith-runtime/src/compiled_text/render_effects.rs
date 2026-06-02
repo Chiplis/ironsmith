@@ -4337,11 +4337,89 @@ fn describe_revealed_cards_opponent_may_put_or_draw(effects: &[&Effect]) -> Opti
     ))
 }
 
+fn generic_cost_amount(cost: &crate::mana::ManaCost) -> Option<u8> {
+    match cost.pips() {
+        [pip] => match pip.as_slice() {
+            [crate::mana::ManaSymbol::Generic(amount)] => Some(*amount),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn unwrap_surface_effect(effect: &Effect) -> &Effect {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return unwrap_surface_effect(&tagged.effect);
+    }
+    if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+        return unwrap_surface_effect(&tag_all.effect);
+    }
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return unwrap_surface_effect(with_id.effect.as_ref());
+    }
+    effect
+}
+
+fn describe_targeted_controller_two_payment_branch(effects: &[Effect]) -> Option<String> {
+    let [target_effect, for_each_effect] = effects else {
+        return None;
+    };
+    let target_only = unwrap_surface_effect(target_effect)
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    let for_each = unwrap_surface_effect(for_each_effect)
+        .downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    if !for_each.tag.as_str().starts_with("targeted_") || for_each.effects.len() != 1 {
+        return None;
+    }
+    let outer = for_each.effects[0].downcast_ref::<crate::effects::UnlessActionEffect>()?;
+    let [pay_low_effect, inner_effect] = outer.alternative.as_slice() else {
+        return None;
+    };
+    let pay_low = pay_low_effect.downcast_ref::<crate::effects::PayManaEffect>()?;
+    let inner = inner_effect.downcast_ref::<crate::effects::UnlessActionEffect>()?;
+    let [pay_extra_effect] = inner.alternative.as_slice() else {
+        return None;
+    };
+    let pay_extra = pay_extra_effect.downcast_ref::<crate::effects::PayManaEffect>()?;
+    if pay_low.player != pay_extra.player || pay_low.player != ChooseSpec::Player(outer.player.clone())
+    {
+        return None;
+    }
+    let low = generic_cost_amount(&pay_low.cost)?;
+    let extra = generic_cost_amount(&pay_extra.cost)?;
+    let high = low.checked_add(extra)?;
+    let destroy_text = describe_effect_list(&outer.effects).to_ascii_lowercase();
+    let prevent_text = describe_effect_list(&inner.effects).to_ascii_lowercase();
+    if !destroy_text.contains("destroy")
+        || !destroy_text.contains("end of combat")
+        || !prevent_text.contains("prevent")
+        || !prevent_text.contains("combat damage")
+    {
+        return None;
+    }
+
+    let target_text = describe_effect(target_effect);
+    let object_word = if describe_choose_spec(&target_only.target)
+        .to_ascii_lowercase()
+        .contains("creature")
+    {
+        "creature"
+    } else {
+        "object"
+    };
+    Some(format!(
+        "{target_text}. For each of those {object_word}s, its controller may pay {{{low}}} or {{{high}}}. If that player doesn't, destroy that {object_word} at end of combat. If that player pays only {{{low}}}, prevent all combat damage that would be dealt to and dealt by that {object_word} this combat"
+    ))
+}
+
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     if let Some(compact) = describe_reveal_top_to_hand_then_lose_mana_value_effects(effects) {
         return compact;
     }
     if let Some(compact) = describe_structural_multisentence_effect_list(effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_targeted_controller_two_payment_branch(effects) {
         return compact;
     }
 
@@ -29299,6 +29377,10 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             || crate::cards::is_sentence_helper_tag(tag, "sacrificed")
         {
             "For each object sacrificed this way".to_string()
+        } else if tag.starts_with("targeted_") {
+            "For each of those objects".to_string()
+        } else if tag == "__it__" {
+            "For each of those objects".to_string()
         } else if tag.is_empty() {
             "For each tagged object".to_string()
         } else {
