@@ -36609,6 +36609,147 @@ fn season_of_the_burrow_weighted_mode_boundary_rejects_more_than_five_points() {
 }
 
 #[test]
+fn season_of_the_burrow_target_requirements_enforce_mode_filters() {
+    let def = parse_oracle_card_definition("Season of the Burrow");
+    let effects = def
+        .spell_effect
+        .as_ref()
+        .expect("Season of the Burrow should compile to spell effects")
+        .clone();
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+
+    let valid_nonland = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_730), "Bob's Bauble")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let land = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_731), "Bob's Burrow")
+            .card_types(vec![CardType::Land])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let valid_graveyard_permanent = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_732), "Alice's Keepsake")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Graveyard,
+    );
+    let too_expensive = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_733), "Alice's Monument")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Graveyard,
+    );
+    let opponent_graveyard_card = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_734), "Bob's Keepsake")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Graveyard,
+    );
+    let nonpermanent_card = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_735), "Alice's Trick")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+            .card_types(vec![CardType::Instant])
+            .build(),
+        alice,
+        Zone::Graveyard,
+    );
+
+    let chosen_modes = [1usize, 2usize];
+    let requirements = crate::game_loop::extract_target_requirements_from_program_with_modes(
+        &game,
+        &effects,
+        alice,
+        Some(source),
+        Some(&chosen_modes),
+    );
+    assert_eq!(requirements.len(), 2);
+
+    let exile_targets = &requirements[0].legal_targets;
+    assert!(exile_targets.contains(&crate::game_state::Target::Object(valid_nonland)));
+    assert!(!exile_targets.contains(&crate::game_state::Target::Object(land)));
+
+    let return_targets = &requirements[1].legal_targets;
+    assert!(return_targets.contains(&crate::game_state::Target::Object(
+        valid_graveyard_permanent,
+    )));
+    assert!(!return_targets.contains(&crate::game_state::Target::Object(too_expensive)));
+    assert!(!return_targets.contains(&crate::game_state::Target::Object(
+        opponent_graveyard_card,
+    )));
+    assert!(!return_targets.contains(&crate::game_state::Target::Object(nonpermanent_card)));
+}
+
+#[test]
+fn season_of_the_burrow_allows_zero_modes_without_targets_or_effects() {
+    let def = parse_oracle_card_definition("Season of the Burrow");
+    let modal = season_of_the_burrow_modal_effect(&def).clone();
+    let effects = def
+        .spell_effect
+        .as_ref()
+        .expect("Season of the Burrow should compile to spell effects")
+        .clone();
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+
+    assert!(
+        crate::game_loop::spell_program_has_legal_targets_with_modes(
+            &game,
+            &effects,
+            alice,
+            Some(source),
+            Some(&[]),
+        ),
+        "Season says choose up to five, so choosing no modes should be legal even with no targets"
+    );
+    assert!(
+        crate::game_loop::extract_target_requirements_from_program_with_modes(
+            &game,
+            &effects,
+            alice,
+            Some(source),
+            Some(&[]),
+        )
+        .is_empty(),
+        "choosing no Season modes should not require any targets"
+    );
+
+    let battlefield_before = game.objects_in_zone(Zone::Battlefield).len();
+    let exile_before = game.objects_in_zone(Zone::Exile).len();
+    let hand_before = game.player(alice).expect("Alice should exist").hand.len();
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_chosen_modes(Some(Vec::new()));
+
+    modal
+        .execute(&mut game, &mut ctx)
+        .expect("Season of the Burrow zero-mode choice should resolve");
+
+    assert_eq!(game.objects_in_zone(Zone::Battlefield).len(), battlefield_before);
+    assert_eq!(game.objects_in_zone(Zone::Exile).len(), exile_before);
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").hand.len(),
+        hand_before
+    );
+}
+
+#[test]
 fn season_of_the_burrow_rabbit_mode_creates_token() {
     let def = parse_oracle_card_definition("Season of the Burrow");
     let modal = season_of_the_burrow_modal_effect(&def).clone();
