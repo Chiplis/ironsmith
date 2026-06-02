@@ -50,6 +50,35 @@ fn object_is_enlist_eligible(game: &GameState, id: ObjectId) -> bool {
     !game.is_summoning_sick(id) || game.current_has_static_ability_id(id, StaticAbilityId::Haste)
 }
 
+fn first_matching_spell_cast_each_turn_matches(
+    filter: &ObjectFilter,
+    object_id: ObjectId,
+    ctx: &FilterContext,
+    game: &GameState,
+    fallback_cast_player: Option<PlayerId>,
+) -> bool {
+    let mut matching_filter = filter.clone();
+    matching_filter.first_spell_cast_each_turn = false;
+
+    let mut history_ctx = ctx.clone();
+    history_ctx.caster = None;
+
+    for snapshot in game.turn_store.turn_history.spell_cast_snapshot_history() {
+        if matching_filter.matches_snapshot(&snapshot, &history_ctx, game) {
+            return snapshot.object_id == object_id;
+        }
+    }
+
+    let cast_order = fallback_cast_player
+        .and_then(|player| {
+            game.turn_store
+                .turn_history
+                .spell_cast_order_for_player(object_id, player)
+        })
+        .or_else(|| game.turn_store.turn_history.spell_cast_order(object_id));
+    cast_order == Some(1)
+}
+
 fn expand_semantic_subtypes(chars: &mut crate::continuous::CalculatedCharacteristics) {
     let has_changeling = chars
         .static_abilities
@@ -1927,6 +1956,8 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
 
+        let mut resolved_cast_player = None;
+
         // Caster check
         if let Some(caster_filter) = &self.cast_by {
             let cast_player = ctx.caster.or_else(|| {
@@ -1942,10 +1973,17 @@ impl ObjectFilterExt for ObjectFilter {
             if !caster_filter.matches_player(cast_player, ctx) {
                 return false;
             }
+            resolved_cast_player = Some(cast_player);
         }
 
         if self.first_spell_cast_each_turn
-            && game.turn_store.turn_history.spell_cast_order(object.id) != Some(1)
+            && !first_matching_spell_cast_each_turn_matches(
+                self,
+                object.id,
+                ctx,
+                game,
+                resolved_cast_player,
+            )
         {
             return false;
         }
@@ -2561,11 +2599,13 @@ impl ObjectFilterExt for ObjectFilter {
         }
 
         if self.first_spell_cast_each_turn
-            && game
-                .turn_store
-                .turn_history
-                .spell_cast_order(snapshot.object_id)
-                != Some(1)
+            && !first_matching_spell_cast_each_turn_matches(
+                self,
+                snapshot.object_id,
+                ctx,
+                game,
+                None,
+            )
         {
             return false;
         }
