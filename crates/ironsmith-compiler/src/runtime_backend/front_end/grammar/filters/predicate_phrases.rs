@@ -307,18 +307,6 @@ const THERE_ARE_NO_COUNTERS_ON_SOURCE_PATTERN: ClauseShape<'static> = clause_sha
     contains_words & ["counters", "on"];
     contains_any_words & [&["this", "it", "them"]]
 );
-const COUNTER_ON_SOURCE_TAIL_ANY_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["on", "it"],
-            &["on", "this"],
-            &["on", "this", "artifact"],
-            &["on", "this", "creature"],
-            &["on", "this", "enchantment"],
-            &["on", "this", "land"],
-            &["on", "this", "permanent"],
-        ]
-);
 const SOURCE_POWER_IS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
         & [
@@ -2818,6 +2806,71 @@ fn source_counter_predicate_from_words(words: &[&str]) -> Option<PredicateAst> {
     None
 }
 
+fn parse_there_are_source_counter_predicate(filtered: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let counter_words: &[&[&str]] = &[&["counter"], &["counters"]];
+    let atoms = [
+        LexPattern::word("there"),
+        LexPattern::action("are", LexCaptureKind::WordCount(1)),
+        LexPattern::amount("quantity", LexCaptureKind::UntilAnyPhrase(counter_words)),
+        LexPattern::object("counter_word", LexCaptureKind::WordCount(1)),
+        LexPattern::modifier("tail", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(action.word_refs().as_slice(), ["are"]) {
+        return None;
+    }
+    let counter_word = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if !matches!(
+        counter_word.word_refs().as_slice(),
+        ["counter"] | ["counters"]
+    ) {
+        return None;
+    }
+    let tail = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    if !source_counter_tail_matches(tail.word_refs().as_slice()) {
+        return None;
+    }
+    let quantity = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let quantity_words = quantity.word_refs();
+    let (comparison, used) = predicate_quantity_prefix(&quantity_words)?;
+    let count = comparison_to_at_least_threshold(&comparison)?;
+    let rest = &tokens[2 + used..tokens.len().saturating_sub(tail.word_refs().len())];
+    let rest_words = crate::runtime_backend::token_word_refs(rest);
+    if rest_words
+        .first()
+        .is_some_and(|word| COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word))
+    {
+        return Some(PredicateAst::SourceHasCountersAtLeast(count));
+    }
+    if let Some(counter_idx) = find_index(rest_words.as_slice(), |word| {
+        COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word)
+    }) && counter_idx > 0
+    {
+        let counter_type = parse_counter_type_from_tokens(&rest[..=counter_idx])?;
+        return Some(PredicateAst::SourceHasCounterAtLeast {
+            counter_type,
+            count,
+        });
+    }
+    None
+}
+
+fn source_counter_tail_matches(words: &[&str]) -> bool {
+    matches!(
+        words,
+        ["on", "it"]
+            | ["on", "this"]
+            | ["on", "this", "artifact"]
+            | ["on", "this", "creature"]
+            | ["on", "this", "enchantment"]
+            | ["on", "this", "land"]
+            | ["on", "this", "permanent"]
+    )
+}
+
 fn parse_triggering_object_counter_shape(
     tokens: &[OwnedLexToken],
     action_phrase: &[&str],
@@ -3890,33 +3943,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if THERE_ARE_PREFIX_PATTERN.matches_words(&raw_words)
-        && raw_words
-            .iter()
-            .any(|w| COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(w))
-        && let Some((comparison, used)) = predicate_quantity_prefix(&raw_words[2..])
-        && let Some(count) = comparison_to_at_least_threshold(&comparison)
-    {
-        let rest = &tokens[2 + used..];
-        let rest_words = crate::runtime_backend::token_word_refs(rest);
-        if let Some(counter_idx) = find_index(rest_words.as_slice(), |word| {
-            COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word)
-        }) {
-            let consumed_source_tail =
-                COUNTER_ON_SOURCE_TAIL_ANY_PATTERN.matches_words(&rest_words[counter_idx + 1..]);
-            if counter_idx == 0 && consumed_source_tail {
-                return Ok(PredicateAst::SourceHasCountersAtLeast(count));
-            }
-            if counter_idx > 0
-                && let Some(counter_type) = parse_counter_type_from_tokens(&rest[..=counter_idx])
-                && consumed_source_tail
-            {
-                return Ok(PredicateAst::SourceHasCounterAtLeast {
-                    counter_type,
-                    count,
-                });
-            }
-        }
+    if let Some(predicate) = parse_there_are_source_counter_predicate(&raw_words) {
+        return Ok(predicate);
     }
 
     if filtered.len() == 7
@@ -5467,6 +5495,39 @@ mod tests {
                 PredicateAst::SourceHasCounterAtLeast {
                     counter_type: CounterType::Stun,
                     count: 3,
+                },
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_there_are_source_counters_uses_capture_parser() -> Result<(), CardTextError>
+    {
+        for (text, expected) in [
+            (
+                "if there are three or more counters on it",
+                PredicateAst::SourceHasCountersAtLeast(3),
+            ),
+            (
+                "if there are two or more stun counters on this creature",
+                PredicateAst::SourceHasCounterAtLeast {
+                    counter_type: CounterType::Stun,
+                    count: 2,
+                },
+            ),
+            (
+                "if there are five time counters on this permanent",
+                PredicateAst::SourceHasCounterAtLeast {
+                    counter_type: CounterType::Time,
+                    count: 5,
                 },
             ),
         ] {
