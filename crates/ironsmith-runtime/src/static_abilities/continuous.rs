@@ -626,6 +626,17 @@ impl AnthemValueRuntimeExt for AnthemValue {
     }
 }
 
+fn color_count_multiplier(value: &AnthemValue) -> Option<i32> {
+    match value {
+        AnthemValue::Fixed(0) => Some(0),
+        AnthemValue::PerCount {
+            multiplier,
+            count: AnthemCountExpression::ColorsOfAffected,
+        } => Some(*multiplier),
+        _ => None,
+    }
+}
+
 fn strip_article(text: String) -> String {
     if let Some(rest) = text.strip_prefix("a ") {
         return rest.to_string();
@@ -667,6 +678,7 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
         AnthemCountExpression::AttachedToAffected(filter) => {
             format!("{} attached to it", strip_article(filter.description()))
         }
+        AnthemCountExpression::ColorsOfAffected => "color it has".to_string(),
         AnthemCountExpression::AffectedAttackedThisTurn => {
             "time it has attacked this turn".to_string()
         }
@@ -768,6 +780,7 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
             "{} attached to it",
             strip_article(filter.description())
         )),
+        AnthemCountExpression::ColorsOfAffected => Some("of its colors".to_string()),
         AnthemCountExpression::AffectedAttackedThisTurn => {
             Some("time it has attacked this turn".to_string())
         }
@@ -1555,6 +1568,10 @@ pub(crate) fn resolve_anthem_count_expression(
                     .count() as i32
             })
             .unwrap_or(0),
+        AnthemCountExpression::ColorsOfAffected => game
+            .calculated_characteristics(source)
+            .map(|chars| chars.colors.count() as i32)
+            .unwrap_or(0),
         AnthemCountExpression::AffectedAttackedThisTurn => {
             game.creature_attack_count_this_turn(source) as i32
         }
@@ -1997,13 +2014,37 @@ impl StaticAbilityKind for Anthem {
         controller: PlayerId,
         game: &GameState,
     ) -> Vec<ContinuousEffect> {
-        // When the anthem value depends on properties of the affected creature
-        // (e.g. "for each Equipment attached to it" where "it" is each creature
-        // the anthem affects), we must enumerate affected creatures individually
-        // and evaluate the count per-creature.
+        // Color-count anthems need the affected object's layer-5 colors, so keep
+        // the target dynamic and defer the count until layer 7 applies.
+        if let (Some(power_multiplier), Some(toughness_multiplier)) = (
+            color_count_multiplier(&self.power),
+            color_count_multiplier(&self.toughness),
+        ) {
+            let target = if self.source_only {
+                EffectTarget::Source
+            } else {
+                effect_target_for_filter(source, &self.filter)
+            };
+            return vec![effect_with_optional_static_condition(
+                ContinuousEffect::new(
+                    source,
+                    controller,
+                    target,
+                    Modification::ModifyPowerToughnessByColorCount {
+                        power_multiplier,
+                        toughness_multiplier,
+                    },
+                )
+                .with_source_type(EffectSourceType::StaticAbility),
+                &self.condition,
+            )];
+        }
+
         let uses_affected =
             self.power.uses_affected_object() || self.toughness.uses_affected_object();
 
+        // Other affected-object counts are game-state counts, so enumerate each
+        // affected creature and evaluate the count per-creature.
         if uses_affected && !self.source_only {
             let filter_ctx = game.filter_context_for(controller, Some(source));
             let attached_target = if attached_subject(&self.filter).is_some() {

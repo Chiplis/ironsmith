@@ -772,6 +772,142 @@ fn king_darien_xlviii_anthem_buffs_only_your_other_creatures_runtime() {
 }
 
 #[test]
+fn knight_of_new_alara_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Knight of New Alara");
+    let def = parse_oracle_card_definition("Knight of New Alara");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    let abilities_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered_lower.contains(
+            "other multicolored creatures you control get +1/+1 for each of its colors"
+        ),
+        "Knight of New Alara should render the affected-creature color-count anthem, got {rendered}"
+    );
+    assert!(
+        abilities_debug.contains("ColorsOfAffected")
+            && !abilities_debug.contains("UnsupportedParserLine")
+            && !abilities_debug.contains("RuleFallbackText"),
+        "Knight of New Alara should structurally count each affected creature's colors, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn knight_of_new_alara_counts_each_affected_creatures_colors_runtime() {
+    fn colored_creature_def(
+        name: &str,
+        colors: crate::color::ColorSet,
+        power: i32,
+        toughness: i32,
+    ) -> CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .color_indicator(colors)
+            .power_toughness(PowerToughness::fixed(power, toughness))
+            .build()
+    }
+
+    let knight_oracle = oracle_text_by_name()
+        .get("Knight of New Alara")
+        .expect("missing oracle text for Knight of New Alara")
+        .clone();
+    let knight = CardDefinitionBuilder::new(CardId::new(), "Knight of New Alara")
+        .card_types(vec![CardType::Creature])
+        .color_indicator(crate::color::ColorSet::GREEN.union(crate::color::ColorSet::WHITE))
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(knight_oracle)
+        .expect("Knight of New Alara should parse for runtime regression");
+    let two_color = colored_creature_def(
+        "Alice Two-Color Creature",
+        crate::color::ColorSet::WHITE.union(crate::color::ColorSet::BLUE),
+        2,
+        2,
+    );
+    let three_color = colored_creature_def(
+        "Alice Three-Color Creature",
+        crate::color::ColorSet::WHITE
+            .union(crate::color::ColorSet::BLUE)
+            .union(crate::color::ColorSet::BLACK),
+        1,
+        1,
+    );
+    let one_color = colored_creature_def(
+        "Alice One-Color Creature",
+        crate::color::ColorSet::GREEN,
+        2,
+        2,
+    );
+    let bob_two_color = colored_creature_def(
+        "Bob Two-Color Creature",
+        crate::color::ColorSet::RED.union(crate::color::ColorSet::GREEN),
+        2,
+        2,
+    );
+    let color_granter = CardDefinitionBuilder::new(CardId::new(), "Alice Color Granter")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(Ability::static_ability(
+            crate::static_abilities::StaticAbility::add_colors(
+                ObjectFilter::creature()
+                    .you_control()
+                    .named("Alice Two-Color Creature"),
+                crate::color::ColorSet::RED,
+            ),
+        ))
+        .build();
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let knight_id = game.create_object_from_definition(&knight, alice, Zone::Battlefield);
+    let two_color_id = game.create_object_from_definition(&two_color, alice, Zone::Battlefield);
+    let three_color_id = game.create_object_from_definition(&three_color, alice, Zone::Battlefield);
+    let one_color_id = game.create_object_from_definition(&one_color, alice, Zone::Battlefield);
+    let bob_two_color_id =
+        game.create_object_from_definition(&bob_two_color, bob, Zone::Battlefield);
+    game.create_object_from_definition(&color_granter, alice, Zone::Battlefield);
+
+    assert_eq!(
+        (
+            game.calculated_power(two_color_id),
+            game.calculated_toughness(two_color_id)
+        ),
+        (Some(5), Some(5)),
+        "a two-color creature Alice controls that gains a third color should get +3/+3"
+    );
+    assert_eq!(
+        (
+            game.calculated_power(three_color_id),
+            game.calculated_toughness(three_color_id)
+        ),
+        (Some(4), Some(4)),
+        "a three-color creature Alice controls should get +3/+3"
+    );
+    assert_eq!(
+        (
+            game.calculated_power(one_color_id),
+            game.calculated_toughness(one_color_id)
+        ),
+        (Some(2), Some(2)),
+        "a monocolored creature should not match the multicolored subject"
+    );
+    assert_eq!(
+        (
+            game.calculated_power(bob_two_color_id),
+            game.calculated_toughness(bob_two_color_id)
+        ),
+        (Some(2), Some(2)),
+        "an opponent's multicolored creature should not be affected"
+    );
+    assert_eq!(
+        (game.calculated_power(knight_id), game.calculated_toughness(knight_id)),
+        (Some(2), Some(2)),
+        "Knight of New Alara should not buff itself"
+    );
+}
+
+#[test]
 fn king_darien_xlviii_mana_ability_puts_counter_on_self_and_creates_soldier_runtime() {
     let def = parse_oracle_card_definition("King Darien XLVIII");
     let activated = def
