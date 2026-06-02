@@ -243,7 +243,6 @@ const YOUR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["your"]);
 const THEIR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["their"]);
 const HAVE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["have"]);
 const YOU_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["you"]);
-const WHILE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["while"]);
 const MANA_VALUE_HEAD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["mana", "value"]);
 const COLORS_SPENT_TO_CAST_SOURCE_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
@@ -2118,6 +2117,48 @@ fn parse_or_predicate(filtered: &[&str]) -> Result<Option<PredicateAst>, CardTex
         }
     };
     Ok(Some(PredicateAst::Or(Box::new(left), Box::new(right))))
+}
+
+fn parse_while_conjoined_predicate(
+    filtered: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::object("left", LexCaptureKind::UntilPhrase(&["while"])),
+        LexPattern::word("while"),
+        LexPattern::modifier("right", LexCaptureKind::Rest),
+    ];
+    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+        return Ok(None);
+    };
+    let left_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing left side in while predicate".to_string())
+        })?;
+    let right_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Modifier, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing right side in while predicate".to_string())
+        })?;
+    if left_clause.word_refs().is_empty() || right_clause.word_refs().is_empty() {
+        return Ok(None);
+    }
+
+    let left = parse_predicate(left_clause.tokens())?;
+    let right = parse_predicate(right_clause.tokens())?;
+    if matches!(
+        left,
+        PredicateAst::ManaSpentToCastThisSpellAtLeast { .. }
+            | PredicateAst::SameColorManaSpentToCastThisSpellAtLeast(_)
+    ) {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported mana-spent predicate tail (predicate: '{}')",
+            filtered.join(" ")
+        )));
+    }
+    Ok(Some(PredicateAst::And(Box::new(left), Box::new(right))))
 }
 
 fn player_filter_for_turn_value(player: PlayerAst) -> Option<PlayerFilter> {
@@ -4665,27 +4706,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
-    if let Some(while_idx) = find_index(&filtered, |word| WHILE_WORD_PATTERN.matches_word(word))
-        && while_idx > 0
-        && while_idx + 1 < filtered.len()
-    {
-        let left_tokens =
-            crate::runtime_backend::lexer::synthetic_word_tokens(&filtered[..while_idx]);
-        let right_tokens =
-            crate::runtime_backend::lexer::synthetic_word_tokens(&filtered[while_idx + 1..]);
-        let left = parse_predicate(&left_tokens)?;
-        let right = parse_predicate(&right_tokens)?;
-        if matches!(
-            left,
-            PredicateAst::ManaSpentToCastThisSpellAtLeast { .. }
-                | PredicateAst::SameColorManaSpentToCastThisSpellAtLeast(_)
-        ) {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported mana-spent predicate tail (predicate: '{}')",
-                filtered.join(" ")
-            )));
-        }
-        return Ok(PredicateAst::And(Box::new(left), Box::new(right)));
+    if let Some(predicate) = parse_while_conjoined_predicate(&filtered)? {
+        return Ok(predicate);
     }
 
     if let Some(predicate) = parse_source_simple_state_predicate(&filtered) {
@@ -6245,7 +6267,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_predicate_supports_would_draw_while_no_cards_in_hand() -> Result<(), CardTextError> {
+    fn parse_predicate_while_conjoined_uses_capture_parser() -> Result<(), CardTextError> {
         let tokens = lex_line(
             "If you would draw a card while you have no cards in hand",
             0,
